@@ -129,9 +129,7 @@ namespace Game.Aviation
         // == 0, never set) have no meaningful fuel and should not be shown one.
         public static int RemainingFuel(UnitData unit)
         {
-            if (unit == null)
-                return 0;
-            return Mathf.Max(0, unit.TurnsWithoutRefuel - unit.ConsecutiveUnlandedEnds);
+            return AviationRange.SafeUnlandedEndsRemaining(unit);
         }
 
         public static void ResetAfterLanding(UnitData aircraft)

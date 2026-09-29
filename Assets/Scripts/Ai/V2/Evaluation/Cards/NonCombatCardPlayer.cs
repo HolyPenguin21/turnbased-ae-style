@@ -617,7 +617,7 @@ namespace Game.Ai.V2
                 // refuel endurance allows (plane: half its move; helicopter: its whole move) and
                 // returning — prove that sortie, not a flight all the way to the anchor.
                 HexCoord sweepPoint = ReconAirCapacityPolicy.SweepEndpoint(airfield, objective.FocusHex,
-                    ReconAirCapacityPolicy.SweepReach(projected));
+                    AviationRange.FirstTurnOutboundBudget(projected));
                 if (sweepPoint.Equals(airfield))
                     continue;
                 Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
@@ -662,7 +662,7 @@ namespace Game.Ai.V2
         {
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             ReconAirStepPlanner.StepChoice? step = ReconAirStepPlanner.PickFromStorage(
-                player, ctx, new AirLaunchCandidate(airfield, null, projected), snap, mode,
+                player, ctx, airfield, projected, snap, mode,
                 ctx.TurnNumber, missionFocusHex: focus);
             if (!step.HasValue || step.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 return false;

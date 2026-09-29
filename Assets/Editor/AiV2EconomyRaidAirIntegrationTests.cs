@@ -18,31 +18,20 @@ namespace Game.EditorTests
         [TestCase(10, 0, 5)]
         [TestCase(9, 0, 4)]
         [TestCase(10, 1, 10)]
-        public void ReconOutboundCap_IsFrozenFromLaunchBudgetAndEndurance(
+        public void FirstTurnBudget_DerivesFromLiveEndurance(
             int movement, int endurance, int expectedCap)
         {
             ArmyData wing = Wing(movement, endurance);
-            var state = new ReconAirSortieState();
-
-            state.EnsureLaunchProfile(wing);
-            wing.Members[0].MoveCurrent = 1;
-            state.EnsureLaunchProfile(wing);
-
-            Assert.That(state.LaunchMovementBudget, Is.EqualTo(movement));
-            Assert.That(state.OutboundMovementCap, Is.EqualTo(expectedCap));
+            Assert.That(AviationRange.FirstTurnOutboundBudget(wing.Members), Is.EqualTo(expectedCap));
         }
 
         [Test]
-        public void ReconOutboundCap_MixedWingUsesMostLimitedEndurance()
+        public void MixedWingUsesMostLimitedEndurance()
         {
             ArmyData wing = Wing(10, 1);
             wing.Members.Add(Aircraft(10, 0, 1));
-            var state = new ReconAirSortieState();
-
-            state.EnsureLaunchProfile(wing);
-
-            Assert.That(state.LaunchSafeUnlandedEnds, Is.Zero);
-            Assert.That(state.OutboundMovementCap, Is.EqualTo(5));
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(wing), Is.Zero);
+            Assert.That(AviationRange.FirstTurnOutboundBudget(wing.Members), Is.EqualTo(5));
         }
 
         [Test]

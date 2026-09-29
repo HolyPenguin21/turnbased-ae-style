@@ -66,10 +66,8 @@ namespace Game.Ai.V2
         //
         // >= 0 marks this ProvisionedMission as NOT YET a real mover: MoverArmyId is a synthetic
         // negative id (SyntheticGarrisonExtractionActorId), and this field names the garrison
-        // TaskExecutor.RunEconomyStep must extract a hero from — the same pattern as AirLaunch
-        // (ScoutExecutorKind.AirLaunch's synthetic ActorKey + AirfieldHex/LaunchSubset below
-        // materialize inside ReconAirExecutor). -1 (default) means MoverArmyId is already a real,
-        // resolvable army.
+        // TaskExecutor.RunEconomyStep must extract a hero from. -1 (default) means MoverArmyId is
+        // already a real, resolvable army. Recon aviation always uses a real existing army.
         public int EconomyExtractionGarrisonArmyId = -1;
         // The EXACT resolved plan (tier/hero/container/AP) Provisioning chose, pinned so Execution
         // materializes precisely that plan instead of re-running ResolveGarrisonExtractionCandidate
@@ -94,6 +92,11 @@ namespace Game.Ai.V2
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
         public float ClaimedEnergy;
+        // Cross-turn aviation claim. These are planning-pass commitments only; the next
+        // round's real Energy bank is derived again from the actually-airborne armies by
+        // PreTurnCapacityAnalysis.
+        public float ClaimedNextTurnAirEnergy;
+        public float ClaimedNextTurnAirAp;
         public bool StealthApReserved;
         // State version after provisioning completed. In the current batch adapter several
         // provisioned missions may coexist; the future selected-only loop executes immediately
@@ -103,12 +106,8 @@ namespace Game.Ai.V2
         // Required OR a non-zero DetectionRisk). Flows Requirement -> Mission -> Intent so the
         // durable ScoutIntent knows an active lane is a stealth lane a generic scout can't cover.
         public bool RequiresStealth;
-        // Round 4 — which executor this Scout mission is bound to. Ground (default) is executed by
-        // ReconGroundExecutor through TaskExecutor, exactly as before. AirExisting/AirLaunch are
-        // executed by ReconAirExecutor (the orchestrator routes provisioned Scout missions to the
-        // right executor by this tag BEFORE calling TaskExecutor.Execute — see AiStrategyV2Pipeline).
+        // Which executor this Scout mission is bound to. Ground (default) goes through
+        // ReconGroundExecutor; AirExisting goes through ReconAirExecutor. Both bind a real army.
         public ScoutExecutorKind ExecutorKind = ScoutExecutorKind.Ground;
-        public HexCoord AirfieldHex;                       // AirLaunch only
-        public System.Collections.Generic.List<Game.Units.UnitData> LaunchSubset; // AirLaunch only
     }
 }

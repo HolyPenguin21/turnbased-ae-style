@@ -99,6 +99,7 @@ namespace Game.Ai.V2
                     AirStrikePolicy.Standard,
                     opp => WorthIt.EstimateSequential(roster, commander, opp, hexBonus).WinChance,
                     "attack", eps, out HexCoord landing, out float ap, out float energy,
+                    out float nextTurnEnergy, out float nextTurnAp,
                     out ProvisionFailure finishFailure))
                 return ProvisioningResult.Fail(finishFailure);
 
@@ -114,6 +115,8 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedAp = ap,
                 ClaimedEnergy = energy,
+                ClaimedNextTurnAirEnergy = nextTurnEnergy,
+                ClaimedNextTurnAirAp = nextTurnAp,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });
         }

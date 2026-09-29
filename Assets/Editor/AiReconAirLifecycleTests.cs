@@ -1,49 +1,33 @@
 #if UNITY_INCLUDE_TESTS
-using System.Linq;
+using System.Collections.Generic;
 using Game.Ai.V2;
+using Game.Aviation;
+using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
+using Game.Players;
+using Game.Terrain;
+using Game.Units;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Game.EditorTests
 {
-    // Recon S1/S5 — air-recon lifecycle facts that must reach Continuity honestly.
+    // Air-recon lifecycle facts that must reach Continuity honestly.
     public class AiReconAirLifecycleTests
     {
-        // S5 — an AirLaunch that never formed aircraft carries no durable mover: its synthetic
-        // per-airfield key is not an army and must never become an intent's PreferredMoverArmyId.
-        [Test]
-        public void UnlaunchedAirLaunch_ReportsNoMover_LaunchedOneReportsTheRealArmy()
-        {
-            Assert.That(Finalize(actualArmyId: null).MoverArmyId, Is.Null);
-            Assert.That(Finalize(actualArmyId: 41).MoverArmyId, Is.EqualTo(41));
-        }
-
-        // S1 — the used-up outbound leg is one rule on the sortie state.
-        [Test]
-        public void OutboundCapReached_IsTheSpentVersusCapRule()
-        {
-            var sortie = new ReconAirSortieState { OutboundMovementCap = 1, OutboundMovementSpent = 0 };
-            Assert.That(sortie.OutboundCapReached, Is.False);
-            sortie.OutboundMovementSpent = 1;
-            Assert.That(sortie.OutboundCapReached, Is.True, "a launch step can already spend a small cap");
-        }
-
-        // Owned airfield + departed wing: only a wing turning for home lands there.
         [Test]
         public void OwnedAirfieldDuringOutbound_DoesNotCompleteSortie()
         {
-            var heli = new ReconAirSortieState
-            {
-                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 6, OutboundMovementSpent = 2,
-            };
-            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(heli, atAirfield: true,
-                hasDeparted: true), Is.False, "intermediate airfield on the outbound route");
+            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Outbound };
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, atAirfield: true,
+                hasDeparted: true), Is.False, "an intermediate airfield does not end an outbound sortie");
         }
 
         [Test]
         public void ReturnPhaseAtOwnedAirfield_CompletesSortie()
         {
-            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Return, OutboundMovementCap = 6 };
+            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Return };
             Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True);
             Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, hasDeparted: false),
                 Is.False, "a wing that never left its airfield has not flown a sortie");
@@ -51,52 +35,168 @@ namespace Game.EditorTests
                 Is.False);
         }
 
-        [Test]
-        public void OutboundCapUsedUpOnAnAirfield_CompletesSortie()
+        [TestCase(0, 10, 5)]
+        [TestCase(1, 10, 10)]
+        [TestCase(2, 5, 5)]
+        public void FirstTurnOutboundBudget_IsDerivedFromEndurance(
+            int turnsWithoutRefuel, int movement, int expected)
         {
-            var wing = new ReconAirSortieState
+            var unit = new UnitData
             {
-                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 3, OutboundMovementSpent = 3,
+                IsAviation = true,
+                TurnsWithoutRefuel = turnsWithoutRefuel,
+                MoveMax = movement,
+                MoveCurrent = movement,
             };
-            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True,
-                "PlanStep does not turn a wing for home while it stands on an airfield");
+            Assert.That(AviationRange.FirstTurnOutboundBudget(
+                new List<UnitData> { unit }), Is.EqualTo(expected));
         }
 
         [Test]
-        public void OutboundCap_EveryAircraftReservesHalf_ToLandTheSameTurn()
+        public void FutureActivationBudget_UsesCumulativeEnergyAndGuaranteedApFloor()
         {
-            Assert.That(ReconAirSortieState.OutboundCapFor(6), Is.EqualTo(3),
-                "half the movement out, the other half back the same turn");
-            Assert.That(ReconAirSortieState.OutboundCapFor(10), Is.EqualTo(5),
-                "a refuel margin is a recovery buffer, not an outbound budget: no planned overnight aloft");
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 5f,
+                nextTurnEnergyCost: 5f, nextTurnApCost: 6f, out _), Is.True);
+
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 5f,
+                nextTurnEnergyCost: 6f, nextTurnApCost: 6f, out string energyBlock), Is.False);
+            Assert.That(energyBlock, Is.EqualTo("insufficient_next_turn_air_energy"));
+
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 10f,
+                nextTurnEnergyCost: 5f, nextTurnApCost: 7f, out string apBlock), Is.False);
+            Assert.That(apBlock, Is.EqualTo("insufficient_guaranteed_next_turn_ap"));
         }
 
-        private static MissionTurnOutcome Finalize(int? actualArmyId)
+        [TestCase(0, 0, 0)]
+        [TestCase(1, 0, 1)]
+        [TestCase(2, 0, 2)]
+        [TestCase(2, 1, 1)]
+        [TestCase(2, 2, 0)]
+        public void RemainingEndurance_IsDerivedOnlyFromTurnsWithoutRefuel(
+            int turnsWithoutRefuel, int unlandedEnds, int expected)
         {
-            var m = new MissionProposal
+            var unit = new UnitData
             {
-                Kind = MissionKind.Scout,
-                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.AirSweep, FocusHex = new HexCoord(9, 0) },
+                IsAviation = true,
+                TurnsWithoutRefuel = turnsWithoutRefuel,
+                ConsecutiveUnlandedEnds = unlandedEnds,
             };
-            var pm = new ProvisionedMission
-            {
-                Mission = m, Key = StableMissionKey.For(m), Kind = MissionKind.Scout,
-                ScoutKind = ScoutTargetKind.AirSweep, ExecutorKind = ScoutExecutorKind.AirLaunch,
-                MoverArmyId = ScoutExecutionCandidate.SyntheticAirfieldActorId(new HexCoord(1, 1)),
-                AirfieldHex = new HexCoord(1, 1),
-            };
-            var ledger = new MissionOutcomeLedger();
-            ledger.RegisterProposals(new[] { m });
-            ledger.RecordProvisionSuccess(m, pm);
-            ledger.RecordExecution(new ExecutionResult
-            {
-                Key = pm.Key, Source = pm, ActualActorArmyId = actualArmyId,
-                StepsMoved = actualArmyId.HasValue ? 1 : 0,
-                StopReason = actualArmyId.HasValue ? ExecutionStopReason.StepCompleted
-                    : ExecutionStopReason.NoSafeStep,
-            });
-            return ledger.Finalize().Single();
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(
+                new List<UnitData> { unit }), Is.EqualTo(expected));
         }
+
+        [TestCase(0, 4, false, 0)]
+        [TestCase(1, 4, true, 2)]
+        [TestCase(2, 6, true, 3)]
+        public void SortieRoute_UsesLiveEnduranceAndProvesLanding(
+            int endurance, int targetDistance, bool multiTurnExpected, int expectedTurns)
+        {
+            var owner = new PlayerSetupData();
+            GameObject mapObject = new GameObject("aviation-endurance-route-map");
+            try
+            {
+                BuildingRegistry.Clear();
+                ArmyRegistry.Clear();
+                AirSortieRegistry.Clear();
+                HexMap map = mapObject.AddComponent<HexMap>();
+                var terrain = new TerrainTypeEntry { moveCost = 1 };
+                var hexes = new Dictionary<HexCoord, TerrainTypeEntry>();
+                for (int q = 0; q <= 6; q++)
+                    hexes[new HexCoord(q, 0)] = terrain;
+                map.SetData(6, 1f, hexes);
+                HexCoord home = new HexCoord(0, 0);
+                BuildingRegistry.Register(home, new BuildingData
+                {
+                    Owner = owner, Hex = home, IsBase = true,
+                    IsStartingCitadel = true, AirfieldCapacity = 2,
+                });
+                var wing = new ArmyData { Owner = owner, Hex = home, IsAirArmy = true };
+                wing.AddMemberSorted(new UnitData
+                {
+                    Owner = owner, IsAviation = true, MoveMax = 4, MoveCurrent = 4,
+                    TurnsWithoutRefuel = endurance,
+                });
+                ArmyRegistry.Register(wing);
+
+                HexCoord target = new HexCoord(targetDistance, 0);
+                Assert.That(AiAirSortiePlanner.TryPlanSortie(wing, target, map, owner), Is.Null);
+                MultiTurnSortie? route = AiAirSortiePlanner.TryPlanMultiTurnSortie(
+                    wing, target, map, owner);
+                Assert.That(route.HasValue, Is.EqualTo(multiTurnExpected));
+                if (route.HasValue)
+                {
+                    Assert.That(route.Value.RequiredTurns, Is.EqualTo(expectedTurns));
+                    Assert.That(route.Value.RequiredUnlandedEnds, Is.EqualTo(endurance));
+                    Assert.That(route.Value.LandingHex, Is.EqualTo(home));
+                }
+                if (endurance == 2)
+                {
+                    wing.Hex = new HexCoord(4, 0);
+                    wing.Members[0].MoveCurrent = 0;
+                    Assert.That(AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, owner), Is.True);
+                    wing.Members[0].ConsecutiveUnlandedEnds = 1;
+                    Assert.That(AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, owner), Is.True);
+                    wing.Members[0].ConsecutiveUnlandedEnds = 2;
+                    Assert.That(AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, owner), Is.False,
+                        "a third airborne end would trigger fuel damage");
+                }
+            }
+            finally
+            {
+                BuildingRegistry.Clear();
+                ArmyRegistry.Clear();
+                AirSortieRegistry.Clear();
+                Object.DestroyImmediate(mapObject);
+            }
+        }
+
+        [Test]
+        public void StationaryStrike_RequiresActivationButDoesNotRequireMovement()
+        {
+            var owner = new PlayerSetupData();
+            GameObject rootObject = new GameObject("stationary-air-activation-root");
+            GameObject presenterObject = new GameObject("stationary-air-strike-presenter");
+            try
+            {
+                PlayerRootRegistry.Clear();
+                ArmyRegistry.Clear();
+                PlayerRoot root = rootObject.AddComponent<PlayerRoot>();
+                PlayerRootRegistry.Register(owner, root);
+                var wing = new ArmyData { Owner = owner, IsAirArmy = true };
+                wing.AddMemberSorted(new UnitData
+                {
+                    Owner = owner, IsAviation = true, MoveMax = 4, MoveCurrent = 0,
+                    ActivationApCost = 2, LaunchEnergyCost = 3,
+                });
+
+                root.ActionPoints = 2;
+                Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.False);
+                root.AddResource(ResourceType.Energy, 3);
+                Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.True,
+                    "a strike spends no MP but still needs AP and Energy to activate");
+                var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
+                Assert.That(AviationActions.ResolveStationaryStrike(presenter, wing).MoveNext(), Is.False,
+                    "an empty hex cannot consume activation resources");
+                Assert.That(root.ActionPoints, Is.EqualTo(2));
+                Assert.That(root.GetResource(ResourceType.Energy), Is.EqualTo(3));
+                root.ActionPoints = 0;
+                Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.False);
+                wing.MarkActivated();
+                Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.True,
+                    "an already activated wing may strike without paying twice");
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear();
+                ArmyRegistry.Clear();
+                Object.DestroyImmediate(presenterObject);
+                Object.DestroyImmediate(rootObject);
+            }
+        }
+
     }
 }
 #endif

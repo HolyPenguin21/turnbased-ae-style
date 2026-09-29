@@ -267,12 +267,6 @@
         public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
         public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
         public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
-        // How far the enemy's anti-air can reach a wing parked aloft during the enemy's turn: a
-        // ground AA unit moves then reacts within its radius (AntiAirRules.CollectGroundOpportunities).
-        // Every shipped AA mover (AA Crawler / AA Rad Hunter / AA Relic Crawler) has move 3 and
-        // antiAirRadius 1 -> 4. Read only by AiAirSortiePlanner.IsThreatenedAloftEnd.
-        public const int airAloftEnemyAaReach = 4;
-
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,
         //  spec §33 / §34 / §48). Outbound presses toward information with a soft boomerang nudge;
@@ -290,13 +284,6 @@
         // better — so a small score wobble cannot cause airfield A<->B ping-pong on the way home.
         public const int airReconLandingSwitchForwardMargin = 2;   // challenger must be at least this many hexes more forward (NearestKnownEnemyDistance) to take over
         public const int airReconLandingSwitchCostMargin = 3;      // ...or at least this many MP cheaper on the remaining route home
-
-        // Opportunistic air attack (spec §46). AirRecon never launches FOR an attack; after a step
-        // it may strike an honestly-visible target sharing its hex only when the SHARED estimator
-        // (AviationCombatEstimator) is favourable AND a safe landing still provably exists both
-        // before and after the strike. Same threshold shape as AirStrikeTask's own gate.
-        public const float airReconOpportunisticMinDamageFraction = 0.45f; // expected fraction of the target's total HP the strike removes
-        public const float airReconOpportunisticMinKillProbability = 0.30f; // expected chance of removing at least one enemy unit
 
         // =======================================================================================
         //  AIR RECON STRATEGIC ANCHOR + WHOLE-ROUTE SCORING  (AI-AIR-01, spec §1–§5)

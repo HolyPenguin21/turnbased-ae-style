@@ -27,11 +27,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal enum ReconAirPhase { Outbound, Turning, Hold, Return, Landing }
 
-    // AI-AIR-02 — what this sortie is actually for, so telemetry (and a later strike-first
-    // planner) can tell a pure recon flight from one that has already revealed itself with a
-    // strike. Never gates gameplay rules — those stay AviationRules'/AviationActions' job.
-    internal enum ReconAirMissionMode { Recon, Strike, ReconStrike }
-
     internal sealed class ReconAirSortieState
     {
         // Stable per-sortie identity (one launch -> landing arc). Used so AirReconCoverageRegistry
@@ -55,79 +50,20 @@ namespace Game.Ai.V2
         // снизился").
         public float BestOutboundStepScore;
 
-        // Frozen launch profile. The outbound limit is derived once from the group's starting
-        // movement and never from the shrinking CurrentMovement value: at most floor(budget / 2)
-        // outbound, the other half preserved to land the same turn (see OutboundCapFor).
-        public int LaunchMovementBudget;
-        public int OutboundMovementSpent;
-        public int OutboundMovementCap;
-
-        // THE "outbound leg is used up" rule — the refuel-endurance cap has been flown, so the
-        // sortie must turn for home. Read by the step director (live) AND by the read-only phase
-        // projection that decides mandatory recovery, so the two cannot disagree (Recon S1).
-        public bool OutboundCapReached => OutboundMovementSpent >= OutboundMovementCap;
-        public int LaunchSafeUnlandedEnds;
-
-        public void EnsureLaunchProfile(ArmyData airArmy)
-        {
-            if (LaunchMovementBudget > 0 || airArmy == null)
-                return;
-            LaunchMovementBudget = System.Math.Max(0, airArmy.MaxMovement);
-            LaunchSafeUnlandedEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
-            OutboundMovementCap = OutboundCapFor(LaunchMovementBudget);
-            // A state can be reconstructed for an already-airborne wing. Account for movement
-            // already spent this turn instead of granting a second outbound budget.
-            OutboundMovementSpent = System.Math.Max(0,
-                LaunchMovementBudget - System.Math.Max(0, airArmy.CurrentMovement));
-        }
-
-        // THE rule for how deep one recon sortie flies outbound: half its movement out, half back,
-        // landing the SAME turn — for every aircraft. A refuel margin (TurnsWithoutRefuel > 0) is a
-        // recovery safety buffer, not an outbound budget: planning to spend the whole move out and
-        // park aloft put the wing overnight at the deepest point of its route — next to the enemy
-        // Citadel/army it was sent to observe — for the enemy's whole turn, paid a second
-        // activation to come home and kept the aircraft out of service for two turns. Ending a
-        // turn aloft stays possible only as a forced recovery, and then only on a hex outside the
-        // enemy's next-turn anti-air reach (AiAirSortiePlanner.IsThreatenedAloftEnd). Sortie
-        // execution and the AirSweep reach projection both read it.
-        public static int OutboundCapFor(int moveBudget) => System.Math.Max(0, moveBudget) / 2;
-
-        public void RecordOutboundMovement(int movementSpent)
-        {
-            OutboundMovementSpent = System.Math.Min(LaunchMovementBudget,
-                System.Math.Max(0, OutboundMovementSpent + System.Math.Max(0, movementSpent)));
-        }
+        // Endurance is intentionally NOT cached on the sortie. The single source of truth is
+        // AviationRange.SafeUnlandedEndsRemaining(airArmy), derived from each member's
+        // TurnsWithoutRefuel - ConsecutiveUnlandedEnds. Route feasibility is likewise re-derived
+        // live before every step, so Recon never owns a second fuel/range model.
 
         // ===================================================================================
         //  AI-AIR-02 PERSISTENT SORTIE PLAN — the durable bits of the spec's AirSortiePlan that
         //  are not already covered by an existing aviation rule. Endurance itself
         //  (TurnsWithoutRefuel / ConsecutiveUnlandedEnds / HasAirAttackedThisTurn) and landing
-        //  feasibility are NEVER duplicated here — they are read live from AviationRules /
-        //  AiAviationSupport every decision.
+        //  feasibility are never duplicated here — they are read live from AviationRange and
+        //  AiAirSortiePlanner every decision.
         // ===================================================================================
-        public int LaunchTurn = -1;                                 // AI turn the wing actually left the airfield (authoritative)
         public int LastProcessedTurn = -1;                          // last AI turn RunActor processed this sortie
-        public ReconAirMissionMode MissionMode = ReconAirMissionMode.Recon;
-        public bool MustRecoverThisTurn;                            // real endurance deadline reached — Return is a hard priority this turn
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
-
-        // Set only after a confirmed launch/move and consumed by the next admitted actor step.
-        // This makes the post-arrival opportunistic-strike check survive an orchestration boundary
-        // without asking the strategic layer to remember tactical coroutine-local state.
-        public bool ArrivalStrikeCheckPending;
-
-        // Turns elapsed since the wing actually left its airfield: 0 on the launch turn itself,
-        // 1 on its first full airborne turn, and so on. Derived from turn arithmetic — NOT an
-        // incrementing counter — so it can never drift from the real airborne lifetime when a
-        // turn's RunActor pass is skipped (e.g. the launch step consumed all MP so RunActor was
-        // never entered that turn) or entered more than once.
-        public int AirborneTurnsElapsed(int currentTurn)
-        {
-            if (LaunchTurn < 0)
-                return 0;
-            int elapsed = currentTurn - LaunchTurn;
-            return elapsed > 0 ? elapsed : 0;
-        }
 
         // True on the first call of an AI turn this sortie has not been processed in yet — lets the
         // caller re-open a Hold exactly once per turn.

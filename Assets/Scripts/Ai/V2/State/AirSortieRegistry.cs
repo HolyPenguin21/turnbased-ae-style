@@ -27,7 +27,6 @@ namespace Game.Ai.V2
         public HexCoord TargetHex;   // current travel destination: the action hex while Outbound, the landing hex after
         public HexCoord LandingHex;  // owned airfield this sortie is committed to landing at
         public bool Outbound = true; // false from launch for Rebase: destination is its landing
-        public bool IsMultiTurn;
     }
 
     public static class AirSortieRegistry

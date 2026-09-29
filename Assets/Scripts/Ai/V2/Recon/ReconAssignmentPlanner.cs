@@ -344,29 +344,9 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // AIR CANDIDATES. WHICH air actor/airfield executes a funded Observation mission is decided
-        // by the SAME Assignment owner as Ground. Hard invariants: air never satisfies
-        // Explore/GroundTraversal (never reached — caller filters) and never a stealth-Required /
-        // positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
-        // per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
-        // owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
-        // already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
-        // ReconAirCapacityPolicy.EvaluateDetailed — the same primitive capacity sizing uses, so the
-        // pool Assignment considers can never diverge from what the capacity signal promised
-        // Demand.
-        //
-        // Feasibility is proven against THIS mission's actual target, not the generic SlotWouldFly
-        // probe (that stays correct for capacity SIZING, a structural "can anything useful happen"
-        // question): Pick/PickFromStorage is called with the mission's FocusHex (Refresh) or best
-        // reachable vantage (Surveil, AirExisting only) as the mission-focus anchor, and the
-        // resulting step must make GENUINE progress toward that target (strictly closer, or the
-        // target already falls within the resulting vision). RequiredEnergy is populated from the
-        // SAME Pick result.
-        //
-        // Scope: an AirLaunch candidate (no live ArmyData yet) is restricted to Refresh-kind
-        // targets — FocusHex is used directly. Surveil vantage selection
-        // (SurveilVantageSelector.Rank) needs a real ArmySnapshot position/vision, which only
-        // AirExisting has.
+        // AIR CANDIDATES. Recon may bind only already-formed aviation armies.
+        // Feasibility is proven against this AirSweep's actual focus by the same live route/
+        // endurance planner execution will use; no hangar subset or synthetic actor exists here.
         private static void AppendAirCandidates(List<ScoutExecutionCandidate> list, WorldSnapshot snap,
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, ScoutMissionTarget target,
             ISet<int> excludeArmyIds, IReadOnlyList<AirObservationSlot> airPool)
@@ -382,81 +362,53 @@ namespace Game.Ai.V2
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             foreach (AirObservationSlot slot in airPool)
             {
-                if (slot.ActorId.HasValue)
+                void Reject(string why) => AiDebugLog.WriteDeduped(
+                    $"air-cand|{slot.ActorId}|{target.FocusHex}",
+                    $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
+                    + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
+                if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId))
                 {
-                    // Diagnostics only: why an existing (usually airborne) wing got no candidate.
-                    void Reject(string why) => AiDebugLog.WriteDeduped(
-                        $"air-cand|{slot.ActorId}|{target.FocusHex}",
-                        $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
-                        + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
-                    if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
-                    {
-                        Reject("actor_excluded(claimed_elsewhere)");
-                        continue;
-                    }
-                    ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
-                    if (mover == null)
-                    {
-                        Reject("actor_not_in_snapshot");
-                        continue;
-                    }
-                    ArmyData live = ResolveArmy(player, slot.ActorId.Value);
-                    if (live == null)
-                    {
-                        Reject("actor_not_live");
-                        continue;
-                    }
-
-                    // Only AirSweep reaches here (gate above): its anchor IS the focus.
-                    HexCoord anchorTarget = target.FocusHex;
-
-                    var feasDiag = new List<string>();
-                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, anchorTarget, feasDiag);
-                    if (!choice.Feasible)
-                    {
-                        Reject($"infeasible at ({live.Hex.Q},{live.Hex.R}) mp={live.CurrentMovement}: "
-                            + string.Join(" ", feasDiag));
-                        continue;
-                    }
-                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                        + AbilityParams.GetBestRecceRadius(live);
-                    if (!ReconAirStepPlanner.MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
-                    {
-                        Reject($"no_progress best ({choice.ChosenHex.Q},{choice.ChosenHex.R}) "
-                            + $"d={HexGridMath.Distance(choice.ChosenHex, anchorTarget)} vs from "
-                            + $"({live.Hex.Q},{live.Hex.R}) d={HexGridMath.Distance(live.Hex, anchorTarget)} "
-                            + $"vision={vision} | " + string.Join(" ", feasDiag));
-                        continue;
-                    }
-
-                    list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
-                        requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
+                    Reject("actor_excluded(claimed_elsewhere)");
+                    continue;
                 }
-                else
+                ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId);
+                if (mover == null)
                 {
-                    ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                    if (airfield == null)
-                        continue;
-                    List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                    if (subset.Count == 0)
-                        continue;
-
-                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, target.FocusHex);
-                    if (!choice.Feasible)
-                        continue;
-                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                        + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-                    if (!ReconAirStepPlanner.MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
-                        continue;
-
-                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
-                        slot.AirfieldHex, subset, requiredEnergy: choice.LaunchEnergy,
-                        routeScore: choice.RouteScore));
+                    Reject("actor_not_in_snapshot");
+                    continue;
                 }
+                ArmyData live = ResolveArmy(player, slot.ActorId);
+                if (live == null)
+                {
+                    Reject("actor_not_live");
+                    continue;
+                }
+
+                HexCoord anchorTarget = target.FocusHex;
+                var feasDiag = new List<string>();
+                AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                    player, ctx, snap, mode, slot, null, anchorTarget, feasDiag);
+                if (!choice.Feasible)
+                {
+                    Reject($"infeasible at ({live.Hex.Q},{live.Hex.R}) mp={live.CurrentMovement}: "
+                        + string.Join(" ", feasDiag));
+                    continue;
+                }
+                int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                    + AbilityParams.GetBestRecceRadius(live);
+                if (!ReconAirStepPlanner.MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
+                {
+                    Reject($"no_progress best ({choice.ChosenHex.Q},{choice.ChosenHex.R}) "
+                        + $"d={HexGridMath.Distance(choice.ChosenHex, anchorTarget)} vs from "
+                        + $"({live.Hex.Q},{live.Hex.R}) d={HexGridMath.Distance(live.Hex, anchorTarget)} "
+                        + $"vision={vision} | " + string.Join(" ", feasDiag));
+                    continue;
+                }
+
+                list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
+                    1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
+                    requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore,
+                    nextTurnEnergy: choice.NextTurnEnergy, nextTurnAp: choice.NextTurnAp));
             }
         }
 
@@ -691,27 +643,20 @@ namespace Game.Ai.V2
         // The batch solve's CUMULATIVE air constraints, enforced HERE (not just as a
         // per-pool sizing cap) so no combination the solver could pick ever exceeds what a shared
         // physical resource can actually support across the WHOLE batch at once:
-        //   · one actor/subset -> at most one mission (usedArmyIds — pre-existing, ActorKey already
-        //     disambiguates AirLaunch by airfield, so this doubles as "one airfield subset -> at most
-        //     one mission" too).
-        //   · airActorCap — total DISTINCT air actors (AirExisting + AirLaunch) chosen across the
+        //   · one existing actor -> at most one mission (usedArmyIds).
+        //   · airActorCap — total DISTINCT AirExisting actors chosen across the
         //     whole batch never exceeds ReconAirCapacityPolicy.MaxAirReconActorsPerTurn (minus wings
         //     already continuing a prior sortie). Defence in depth on top of the pool already being
         //     sized to this same cap (BuildFeasibleAirPool) — a batch can never pick MORE distinct
         //     air actors than the pool holds, but this makes the invariant explicit and unit-testable
         //     independent of pool construction.
-        //   · airEnergyBudget — the cumulative Energy TWO OR MORE AirLaunch candidates would consume
-        //     together is checked against ONE shared budget, not against the full stockpile
-        //     independently per mission (two launches can be individually but not jointly
-        //     affordable). This is a SOFT, best-effort guard — Provisioning + Generic Funding remain the
-        //     real resource authority (ProvisioningManager.ProvisionAir / ProvisioningSession.
-        //     EnergyClaimed do the authoritative, sequential real check) — this only stops Assignment
-        //     from greedily proposing a combination Provisioning is certain to reject.
+        // Energy affordability is not duplicated in the solver; Provisioning + Generic Funding are
+        // the authoritative sequential resource owners for already-existing wings.
         private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best,
-            float airEnergyBudget, int airActorCap, int groundActorCap,
+            int airActorCap, int groundActorCap,
             IReadOnlyList<HexCoord> fixedGroundFoci,
-            float usedAirLaunchEnergy = 0f, int usedAirActors = 0, int usedGroundActors = 0)
+            int usedAirActors = 0, int usedGroundActors = 0)
         {
             if (i == open.Count)
             {
@@ -726,9 +671,8 @@ namespace Game.Ai.V2
 
             chosen[i] = -1;
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                airEnergyBudget, airActorCap, groundActorCap,
-                fixedGroundFoci,
-                usedAirLaunchEnergy, usedAirActors, usedGroundActors);
+                airActorCap, groundActorCap,
+                fixedGroundFoci, usedAirActors, usedGroundActors);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 ScoutExecutionCandidate cand = cands[i][c];
@@ -779,22 +723,12 @@ namespace Game.Ai.V2
                     if (tooCloseToChosenGround)
                         continue;
                 }
-                bool isAirLaunch = cand.ExecutorKind == ScoutExecutorKind.AirLaunch;
-                float nextAirLaunchEnergy = usedAirLaunchEnergy + (isAirLaunch ? cand.RequiredEnergy : 0f);
-                // Round 8 (Problem 3) — AssignFunded now passes airEnergyBudget = int.MaxValue: Energy
-                // affordability is ProvisioningManager + ResourceAllocator's job alone, never a second
-                // Recon-scoped admission decision here. Guard kept (not deleted) so AssignFromCandidates'
-                // signature and its focused test stay stable; it simply never fires in production.
-                if (isAirLaunch && nextAirLaunchEnergy > airEnergyBudget + AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-
                 usedArmyIds.Add(aid);
                 if (hasGarrisonSource)
                     usedArmyIds.Add(sourceId);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                    airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci,
-                    nextAirLaunchEnergy,
+                    airActorCap, groundActorCap, fixedGroundFoci,
                     usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
                 if (hasGarrisonSource)
@@ -827,7 +761,7 @@ namespace Game.Ai.V2
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
             RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best,
-                airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
+                airActorCap, groundActorCap, fixedGroundFoci);
 
             for (int i = 0; i < open.Count; i++)
                 if (best[i] >= 0)
@@ -1160,13 +1094,12 @@ namespace Game.Ai.V2
                         consumedObjectiveKeys, provisionalWedges, out _, stuckDiag))
                 {
                     airborneWitnessed++;
-                    if (wing.ActorId.HasValue)
-                        reservedActorIds.Add(wing.ActorId.Value);
+                    reservedActorIds.Add(wing.ActorId);
                 }
                 else
                 {
                     airborneStuck++;   // recovery protected / flyable elsewhere, but not observation capacity
-                    ArmyData stuckLive = wing.ActorId.HasValue ? ResolveArmy(player, wing.ActorId.Value) : null;
+                    ArmyData stuckLive = ResolveArmy(player, wing.ActorId);
                     AiDebugLog.WriteDeduped($"air-stuck|{wing.ActorId}",
                         $"[AI][V2][ReconAirCap][Stuck] actor=#{wing.ActorId} "
                         + $"at ({stuckLive?.Hex.Q},{stuckLive?.Hex.R}) mp={stuckLive?.CurrentMovement} "
@@ -1187,17 +1120,14 @@ namespace Game.Ai.V2
                         consumedObjectiveKeys, provisionalWedges, out HexCoord chosenHex, rejectDiag))
                 {
                     launchRejected++;
-                    string who = slot.ActorId.HasValue
-                        ? $"actor=#{slot.ActorId}"
-                        : $"hangar=({slot.AirfieldHex.Q},{slot.AirfieldHex.R})";
+                    string who = $"actor=#{slot.ActorId}";
                     AiDebugLog.WriteDeduped($"air-launch-rejected|{who}",
                         $"[AI][V2][ReconAirCap][LaunchRejected] {who} reasons: {string.Join(" ; ", rejectDiag)}");
                     continue;
                 }
                 spareLaunchWitnessed++;
                 slotsUsed++;
-                if (slot.ActorId.HasValue)
-                    reservedActorIds.Add(slot.ActorId.Value);
+                reservedActorIds.Add(slot.ActorId);
                 if (ctx?.Map != null)
                     provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, chosenHex));
             }
@@ -1218,9 +1148,8 @@ namespace Game.Ai.V2
         // primitives AppendAirCandidates binds a real funded mission with:
         //   · Refresh objective -> anchor = its FocusHex.
         //   · Surveil objective -> anchor = best reachable vantage (needs a live wing position/vision,
-        //     so a not-yet-launched hangar subset is Refresh-only, mirroring AppendAirCandidates'
-        //     round-4 scope note).
-        //   · ReconAirStepPlanner.Pick / PickFromStorage with missionFocusHex = anchor, score must
+        //     so a already-formed wing is evaluated at its live position.
+        //   · ReconAirStepPlanner.Pick with missionFocusHex = anchor, score must
         //     clear MinimumUsefulScore, and the resulting step must MakesGenuineProgress toward the
         //     anchor (strictly closer, or the anchor already falls inside the resulting vision).
         // Objectives already witnessed by an earlier actor this call are struck off (one actor <=
@@ -1248,38 +1177,18 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            ArmyData live = slot.ActorId.HasValue ? ResolveArmy(player, slot.ActorId.Value) : null;
-            ArmySnapshot mover = slot.ActorId.HasValue
-                ? snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value)
-                : null;
-            if (slot.ActorId.HasValue && (live == null || mover == null))
+            ArmyData live = ResolveArmy(player, slot.ActorId);
+            ArmySnapshot mover = snap?.Self?.Armies?
+                .FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId);
+            if (live == null || mover == null)
             {
                 diagnostics?.Add(live == null ? "actor_not_live" : "actor_not_in_snapshot");
                 return false;
             }
 
-            List<UnitData> subset = null;
-            if (!slot.ActorId.HasValue)
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                if (airfield == null)
-                {
-                    diagnostics?.Add("no_airfield");
-                    return false;
-                }
-                subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0)
-                {
-                    diagnostics?.Add("no_launch_subset");
-                    return false;
-                }
-            }
-
             int baseVision = ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;
-            int vision = live != null
-                ? baseVision + AbilityParams.GetBestRecceRadius(live)
-                : baseVision + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-            HexCoord from = live != null ? live.Hex : slot.AirfieldHex;
+            int vision = baseVision + AbilityParams.GetBestRecceRadius(live);
+            HexCoord from = live.Hex;
 
             foreach (ReconObjective o in obsRunnable)
             {

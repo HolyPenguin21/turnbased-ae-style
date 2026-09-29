@@ -259,8 +259,7 @@ namespace Game.Ai.V2
 
                 // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
                 // "changed = transferredMemberCount > 0" rule). MoverArmyId is a synthetic negative
-                // id, same pattern ScoutExecutorKind.AirLaunch already uses for an actor that does
-                // not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
+                // id for an actor that does not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
                 // >= 0 and materializes for real before doing anything else.
                 return ProvisioningResult.Ok(new ProvisionedMission
                 {

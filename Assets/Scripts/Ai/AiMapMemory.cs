@@ -67,12 +67,8 @@ namespace Game.Ai
             // Absent when the army has no hero or its commander is hidden from the observer.
             public WorthIt.SideCommander Commander;
             // True if any member observed in this sighting carries an AntiAirRules-recognized AA
-            // ability — read by AiAviationSupport.KnownAaExposure (AirStrike/AirRecon's own
-            // per-ROUTE risk scan, see that method's own comment; the old global "seen anywhere on
-            // the map" AirRecon gate that used to read this field directly was removed 2026-08-26,
-            // project owner's own spec item 4). Computed once at observation time, same honesty rule
-            // as every other field here — a hidden army's own AA is simply unknown, ordinary fog
-            // risk, not something this flags.
+            // ability — retained as an observed tactical capability. Strategic aviation route
+            // selection does not read it. A hidden army's AA remains unknown under fog of war.
             public bool HasAntiAir;
             // The global turn (see _currentTurn/OnTurnStarted below) this sighting was last
             // actually (re)observed — drives expiry in ExpireStaleSightings. Stamped, not left at

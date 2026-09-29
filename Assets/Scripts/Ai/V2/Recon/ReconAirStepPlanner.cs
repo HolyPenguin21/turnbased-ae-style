@@ -17,10 +17,10 @@ namespace Game.Ai.V2
     //
     // Safety is deliberately delegated to AiAviationSupport: a voluntary step survives only when
     // the shared aviation layer can prove a complete step -> owned-airfield sortie with capacity
-    // and no KNOWN-AA exposure. Multi-turn sorties are admitted only through the existing fuel
-    // simulation, so helicopters may use their real TurnsWithoutRefuel margin while planes keep
-    // the same-turn boomerang invariant. The storage overload uses the exact matching
-    // TryPlan*FromStorage primitives before AviationActions has created an ArmyData.
+    // and a complete recovery route. Multi-turn sorties are admitted only through the existing fuel
+    // simulation, so positive endurance can use multiple turns while zero endurance keeps
+    // the same-turn landing invariant. The storage overload is used only to value a card before
+    // deployment; Recon missions bind existing armies.
     internal static class ReconAirStepPlanner
     {
         internal readonly struct StepChoice
@@ -77,8 +77,7 @@ namespace Game.Ai.V2
             // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only.
             // `missionFocusHex` folds the bound Recon mission's target in as one more anchor.
             AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn, missionFocusHex);
-            // Live, not frozen. A wing launched from storage did not exist in the turn-start
-            // SelfSnapshot, and a composition-changing aviation rule must be reflected immediately.
+            // Read live composition rather than a turn-start snapshot.
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                 + AbilityParams.GetBestRecceRadius(airArmy);
             float activationAp = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationApCost;
@@ -90,7 +89,7 @@ namespace Game.Ai.V2
                 if (!map.TryGetTerrainAt(h, out _))
                     continue;
                 Sortie? sortie =
-                    AiAirSortiePlanner.TryPlanSortiePreferForwardLanding(airArmy, h, map, player);
+                    AiAirSortiePlanner.TryPlanSortie(airArmy, h, map, player);
                 MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
                     multi = AiAirSortiePlanner.TryPlanMultiTurnSortie(airArmy, h, map, player);
@@ -120,39 +119,38 @@ namespace Game.Ai.V2
                 outboundLeg, diagnostics));
         }
 
-        // Storage candidate has no ArmyData yet. Score exactly the first adjacent airborne hex,
-        // but prove the whole sortie using the storage-aware aviation planners. This keeps launch
-        // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
+        // Card valuation only: score the first possible step for aircraft still in storage.
+        // This does not create or provision a Recon mission actor.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
-            AirLaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
+            HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft, WorldSnapshot snapshot, ReconMode mode, int turn,
             AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null,
             List<string> diagnostics = null)
         {
             if (player == null || ctx?.Map == null || snapshot?.Self == null
-                || candidate.ExistingArmy != null || candidate.Aircraft == null || candidate.Aircraft.Count == 0)
+                || aircraft == null || aircraft.Count == 0)
             {
                 diagnostics?.Add("no_pick(storage)");
                 return null;
             }
 
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                + candidate.Aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-            float activationAp = candidate.Aircraft.Sum(u => u != null ? u.ActivationApCost : 0);
-            float activationEnergy = candidate.Aircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
+                + aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            float activationAp = aircraft.Sum(u => u != null ? u.ActivationApCost : 0);
+            float activationEnergy = aircraft.Sum(u => u != null ? u.LaunchEnergyCost : 0);
             AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn, missionFocusHex);
             var choices = new List<StepChoice>();
 
-            foreach (HexCoord h in HexGridMath.Neighbors(candidate.AirfieldHex))
+            foreach (HexCoord h in HexGridMath.Neighbors(airfieldHex))
             {
                 if (!ctx.Map.TryGetTerrainAt(h, out _))
                     continue;
 
                 Sortie? sortie = AiAirSortiePlanner.TryPlanSortieFromStorage(
-                    candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
+                    airfieldHex, aircraft, h, ctx.Map, player);
                 MultiTurnSortie? multi = null;
                 if (!sortie.HasValue)
                     multi = AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
-                        candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
+                        airfieldHex, aircraft, h, ctx.Map, player);
                 if (!sortie.HasValue && !multi.HasValue)
                 {
                     diagnostics?.Add($"({h.Q},{h.R}):no_safe_sortie");
@@ -167,7 +165,7 @@ namespace Game.Ai.V2
                     ? sortie.Value.OutboundPath?.Hexes : multi.Value.PathToAction?.Hexes;
                 IReadOnlyList<HexCoord> ret = sortie.HasValue
                     ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
-                StepChoice? c = BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
+                StepChoice? c = BuildChoice(player, ctx.Map, mode, turn, airfieldHex,
                     h, landing, vision, routeCost, requiredTurns, unlandedEnds, activationAp,
                     activationEnergy, anchors, snapshot, outbound, ret, null, -1, scoringCtx, diagnostics);
                 if (c.HasValue)
@@ -175,7 +173,7 @@ namespace Game.Ai.V2
             }
 
             // A launch is always the first Outbound step.
-            return ChooseBest(MissionBoundChoices(choices, candidate.AirfieldHex, missionFocusHex,
+            return ChooseBest(MissionBoundChoices(choices, airfieldHex, missionFocusHex,
                 vision, outboundLeg: true, diagnostics: diagnostics));
         }
 

@@ -80,6 +80,9 @@ namespace Game.Aviation
 
     public static class AviationRange
     {
+        public static int SafeUnlandedEndsRemaining(UnitData aircraft) => aircraft == null
+            ? 0 : Mathf.Max(0, aircraft.TurnsWithoutRefuel - aircraft.ConsecutiveUnlandedEnds);
+
         // How many MORE times this group can safely end a turn away from an owned airfield right
         // now, before AviationTurnLifecycle.ResolveEndOfTurn's own fuel-damage rule
         // (ConsecutiveUnlandedEnds > TurnsWithoutRefuel) would fire. A plane (TurnsWithoutRefuel==0,
@@ -94,11 +97,23 @@ namespace Game.Aviation
                 return 0;
             int min = int.MaxValue;
             foreach (UnitData unit in aircraft)
-                min = Mathf.Min(min, Mathf.Max(0, unit.TurnsWithoutRefuel - unit.ConsecutiveUnlandedEnds));
+                min = Mathf.Min(min, SafeUnlandedEndsRemaining(unit));
             return min == int.MaxValue ? 0 : min;
         }
 
         public static int SafeUnlandedEndsRemaining(ArmyData airArmy) => SafeUnlandedEndsRemaining(airArmy?.Members);
+
+        // Coarse first-turn outbound budget for valuation before a concrete route is selected.
+        // Zero endurance must preserve enough of the same turn to fly home; positive endurance may
+        // use the full first-turn movement and recover on a later turn. Real step admission never
+        // trusts this estimate — TrySimulateHexSequence / sortie planners prove the whole route.
+        public static int FirstTurnOutboundBudget(IReadOnlyList<UnitData> aircraft)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+                return 0;
+            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            return SafeUnlandedEndsRemaining(aircraft) > 0 ? movement : movement / 2;
+        }
 
         public static IReadOnlyList<HexCoord> CombineRoute(HexPath outbound, HexPath returnPath)
         {

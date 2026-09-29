@@ -97,17 +97,28 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 var strike = new AviationCombatPresenter.AirStrikeResult();
-                wing.PendingAirStrikePolicy = policy;
-                yield return presenter.ResolveAirStrikeAtCurrentHex(wing, wing.Hex,
-                    wing.PendingAirStrikePolicy.Value, strike);
-                wing.PendingAirStrikePolicy = null;
+                yield return AviationActions.ResolveStationaryStrike(presenter, wing, policy, strike);
                 wing.LastAirStrikeHex = wing.Hex;
                 wing.LastAirStrikeAttacked = strike.Attacked;
                 result.CombatChanged |= strike.Attacked;
                 result.AirSupportStrikeSucceeded |= strike.Attacked;
+                // The ground mission owns the wing only through the support strike itself.
+                // Once the strike is resolved, the remaining physical flight is a generic
+                // aviation recovery obligation, not an Attack/Raid lifecycle leg.
+                sortie.Kind = AirSortieKind.Rebase;
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
                 result.ActualActorArmyId = wing.Id;
+
+                // Immediate handoff: the support mission is finished, but the generic aviation
+                // recovery obligation must be allowed to consume the wing's remaining MP THIS turn.
+                // This is essential for TurnsWithoutRefuel=0 and avoids wasting movement for every
+                // endurance value.
+                yield return AviationRebasePlanner.ExecuteContinuation(
+                    player, root, ctx, wing, _ => { });
+                ArmyData recovered = AiV2Util.ResolveArmy(player, wing.Id);
+                if (recovered != null)
+                    result.FinalHex = recovered.Hex;
                 result.StopReason = ExecutionStopReason.StepCompleted;
                 yield break;
             }
@@ -123,7 +134,11 @@ namespace Game.Ai.V2
             HexCoord before = wing.Hex;
             bool enteringTarget = sortie.Outbound && move.TargetHex.Equals(targetHex);
             if (enteringTarget)
+            {
+                wing.LastAirStrikeHex = null;
+                wing.LastAirStrikeAttacked = false;
                 wing.PendingAirStrikePolicy = policy;
+            }
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
             wing.PendingAirStrikePolicy = null;
@@ -133,16 +148,28 @@ namespace Game.Ai.V2
                 result.StepsMoved++;
             result.FinalHex = final;
             result.ActualActorArmyId = pm.MoverArmyId;
-            if (after != null && after.LastAirStrikeHex.HasValue
-                && after.LastAirStrikeHex.Value.Equals(targetHex)
-                && after.LastAirStrikeAttacked)
+            // Reaching the support target ends mission ownership even when no defender was
+            // actually attackable on arrival. A successful automatic arrival strike is reported,
+            // but either way the remaining flight becomes generic recovery immediately.
+            if (after != null && final.Equals(targetHex))
             {
-                result.CombatChanged = true;
-                result.AirSupportStrikeSucceeded = true;
+                bool attacked = after.LastAirStrikeHex.HasValue
+                    && after.LastAirStrikeHex.Value.Equals(targetHex)
+                    && after.LastAirStrikeAttacked;
+                result.CombatChanged |= attacked;
+                result.AirSupportStrikeSucceeded |= attacked;
+                sortie.Kind = AirSortieKind.Rebase;
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
+
+                yield return AviationRebasePlanner.ExecuteContinuation(
+                    player, root, ctx, after, _ => { });
+                after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
+                if (after != null)
+                    result.FinalHex = after.Hex;
             }
-            if (!sortie.Outbound && final.Equals(sortie.LandingHex))
+
+            if (after != null && after.Hex.Equals(sortie.LandingHex))
             {
                 AirSortieRegistry.Remove(player, sortie);
                 result.ReachedGoal = true;

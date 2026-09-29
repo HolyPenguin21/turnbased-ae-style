@@ -3,6 +3,7 @@ using Game.Ai;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
+using Game.Turns;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -33,6 +34,44 @@ namespace Game.Ai.V2
     //  addition without pretending a decision was made.
     // ===========================================================================================
     internal enum AviationSortieType { None, Recon, Combat }
+
+    // One physical cross-turn affordability rule for every aviation caller. It does not decide
+    // whether a sortie is strategically worthwhile; it only proves that, after paying the current
+    // activation, the next activation can be funded from remaining spendable Energy plus the
+    // guaranteed income credited before the next initiative roll, and from the minimum guaranteed
+    // next-turn AP allocation. The actual Energy is then protected from initiative by
+    // PreTurnCapacityAnalysis while the wing remains airborne.
+    internal static class AviationContinuationBudget
+    {
+        internal static float ExpectedEnergyIncome(PlayerSetupData player, HexMap map) =>
+            map != null ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map)) : 0f;
+
+        internal static bool CanGuaranteeNextActivation(PlayerSetupData player, HexMap map,
+            float energyAvailableAfterCurrentActivation, float nextTurnEnergyCost,
+            float nextTurnApCost, out string reason)
+        {
+            reason = null;
+            if (nextTurnEnergyCost <= AiConfigV2.allocatorSliceEpsilon
+                && nextTurnApCost <= AiConfigV2.allocatorSliceEpsilon)
+                return true;
+
+            float projectedNextTurnEnergy = Mathf.Max(0f, energyAvailableAfterCurrentActivation)
+                + AviationContinuationBudget.ExpectedEnergyIncome(player, map);
+            if (nextTurnEnergyCost > projectedNextTurnEnergy + AiConfigV2.allocatorSliceEpsilon)
+            {
+                reason = "insufficient_next_turn_air_energy";
+                return false;
+            }
+
+            int guaranteedNextTurnAp = InitiativeRules.ApForRank(2);
+            if (nextTurnApCost > guaranteedNextTurnAp + AiConfigV2.allocatorSliceEpsilon)
+            {
+                reason = "insufficient_guaranteed_next_turn_ap";
+                return false;
+            }
+            return true;
+        }
+    }
 
     internal readonly struct AviationReservationDecision
     {
@@ -108,10 +147,7 @@ namespace Game.Ai.V2
         // Stage 1 Resource Outlook, shared: Energy available now plus the income horizon.
         internal static float EnergyHeadroom(PlayerSetupData player, HexMap map, float availableEnergy) =>
             Mathf.Max(0f, availableEnergy)
-            + ExpectedEnergyIncome(player, map) * AiConfigV2.aviationReserveIncomeHorizon;
-
-        private static float ExpectedEnergyIncome(PlayerSetupData player, HexMap map) =>
-            map != null ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map)) : 0f;
+            + AviationContinuationBudget.ExpectedEnergyIncome(player, map) * AiConfigV2.aviationReserveIncomeHorizon;
 
         // Deployment-time outlook for a wing not yet in play: can the same Resource Outlook ever
         // fund one launch after the card itself is paid for? Hand/deck pressure is not read here -
@@ -134,7 +170,8 @@ namespace Game.Ai.V2
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            float airSpendableEnergy, int extraCommittedAp)
+            float nextTurnEnergyCost, float nextTurnApCost, float airSpendableEnergy, int extraCommittedAp,
+            float alreadyCommittedNextTurnEnergy = 0f, float alreadyCommittedNextTurnAp = 0f)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
@@ -142,7 +179,7 @@ namespace Game.Ai.V2
             // ---- Stage 1: Resource Outlook ----
             int availableEnergy = Mathf.Max(0, Mathf.FloorToInt(airSpendableEnergy + AiConfigV2.allocatorSliceEpsilon));
 
-            float expectedEnergyIncome = ExpectedEnergyIncome(player, map);
+            float expectedEnergyIncome = AviationContinuationBudget.ExpectedEnergyIncome(player, map);
             float energyHeadroom = EnergyHeadroom(player, map, availableEnergy);
 
             int apStock = Mathf.Max(0, root.ActionPoints);
@@ -187,6 +224,17 @@ namespace Game.Ai.V2
                     handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
                     combatUtility, selectedUtility, 0f, blockedReason);
             }
+
+            // Cross-turn affordability is mission-neutral. Recon feeds its post-current-spend
+            // Energy into the same physical continuation gate Attack/Raid support and Rebase use.
+            if (!AviationContinuationBudget.CanGuaranteeNextActivation(player, map,
+                    spendableEnergy - launchEnergyCost,
+                    alreadyCommittedNextTurnEnergy + nextTurnEnergyCost,
+                    alreadyCommittedNextTurnAp + nextTurnApCost,
+                    out string continuationBlock))
+                return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
+                    handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
+                    combatUtility, selectedUtility, 0f, continuationBlock);
 
             // Soft opportunity term — a marginal sortie is trimmed when spendable Energy is thin
             // relative to near-term income; a healthy runway makes the same sortie cheap. Mirrors

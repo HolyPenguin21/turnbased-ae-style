@@ -50,7 +50,7 @@ namespace Game.Ai.V2
 
         // A launched multi-turn rebase is a physical landing obligation, not a fresh strategic
         // choice. It survives turn boundaries in AirSortieRegistry and is resumed before optional
-        // spending; the exact route, capacity, ownership, AA and fuel proof are still re-derived by
+        // spending; the exact route, capacity, ownership and fuel proof are still re-derived by
         // ContinueSortie on every step.
         // `turn` excludes a continuation that already could not take a step this turn (Recon audit
         // B1, AviationObligationStallRegistry); it is re-tried from the next turn.
@@ -117,6 +117,18 @@ namespace Game.Ai.V2
 
                         int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                         int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+                        if (ap > StrategicSpendability.SpendableAp(player, root, ctx)
+                            + AiConfigV2.allocatorSliceEpsilon)
+                            continue;
+                        float spendableEnergy = StrategicSpendability.SpendableAmount(
+                            player, root, ctx, ResourceType.Energy);
+                        if (energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+                            continue;
+                        if (route.Value.RequiredTurns > 1
+                            && !AviationContinuationBudget.CanGuaranteeNextActivation(
+                                player, ctx.Map, spendableEnergy - energy, energy, ap, out _))
+                            continue;
+
                         TaskScore score = ScoreImprovement(
                             sourceService, destinationService, ap, energy,
                             route.Value.RequiredTurns);
@@ -152,10 +164,33 @@ namespace Game.Ai.V2
                 yield break;
             ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
-                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft)
-                || !AiAirSortiePlanner.TryPlanRebaseFromStorage(plan.SourceHex, plan.Aircraft,
-                    plan.DestinationHex, ctx.Map, player).HasValue)
+                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft))
                 yield break;
+
+            AiAirSortiePlanner.RebaseRoute? liveRoute =
+                AiAirSortiePlanner.TryPlanRebaseFromStorage(plan.SourceHex, plan.Aircraft,
+                    plan.DestinationHex, ctx.Map, player);
+            if (!liveRoute.HasValue)
+                yield break;
+
+            int liveAp = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
+            int liveEnergy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
+            float spendableEnergy = StrategicSpendability.SpendableAmount(
+                player, root, ctx, ResourceType.Energy);
+            if (liveAp > spendableAp + AiConfigV2.allocatorSliceEpsilon
+                || liveEnergy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+            {
+                AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled — AP/Energy held by the resource bank");
+                yield break;
+            }
+            if (liveRoute.Value.RequiredTurns > 1
+                && !AviationContinuationBudget.CanGuaranteeNextActivation(
+                    player, ctx.Map, spendableEnergy - liveEnergy, liveEnergy, liveAp, out string block))
+            {
+                AiDebugLog.Write($"[AI][V2][Aviation][Rebase] cancelled — future activation not guaranteed ({block})");
+                yield break;
+            }
 
             var before = new HashSet<int>(ArmyRegistry.AllForOwner(player).Select(a => a.Id));
             var decision = new AiDecision
@@ -216,6 +251,31 @@ namespace Game.Ai.V2
 
             bool changed = false;
             var trace = new AiMoveExecutionTrace();
+
+            // An airborne recovery/rebase wing does not become pacifist just because its original
+            // mission released it. If it starts this continuation on an enemy-occupied hex and a
+            // landing is still recoverable inside live endurance, take the free stationary strike
+            // first; movement remains untouched and the return continues below.
+            if (!AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                && AviationActions.CanActivateForStationaryStrike(wing)
+                && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player))
+            {
+                AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+                if (presenter != null)
+                {
+                    var strike = new AviationCombatPresenter.AirStrikeResult();
+                    yield return AviationActions.ResolveStationaryStrike(presenter, wing, strike);
+                    if (strike.Attacked)
+                    {
+                        changed = true;
+                        V2StateVersion.Bump();
+                        AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
+                            + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
+                            + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(wing)}");
+                    }
+                }
+            }
+
             int guard = Mathf.Max(1, wing.CurrentMovement + 1);
             while (wing != null && wing.CurrentMovement > 0 && guard-- > 0)
             {
