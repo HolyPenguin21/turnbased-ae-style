@@ -160,8 +160,8 @@ MonoBehaviour:
   - id: 3
     authoredKey: vessels.09.edda-the-conductor
     displayName: Edda the Conductor
-    art: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
-    detailArt: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
+    art: {fileID: 21300000, guid: acedf4127e469c54d92de56eb2d00b59, type: 3}
+    detailArt: {fileID: 21300000, guid: d8184348426f8b54b93b46e5b4f9dd2e, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -204,8 +204,8 @@ MonoBehaviour:
   - id: 4
     authoredKey: vessels.08.thren-the-scholar
     displayName: Thren the Scholar
-    art: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
-    detailArt: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
+    art: {fileID: 21300000, guid: b0d47349fc247a74bb11deda22c26be1, type: 3}
+    detailArt: {fileID: 21300000, guid: daf5b83dfc25ba2438b2edb6feefc105, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -335,8 +335,8 @@ MonoBehaviour:
   - id: 7
     authoredKey: vessels.05.ilex-the-surveyor
     displayName: Ilex the Surveyor
-    art: {fileID: 21300000, guid: b00ee0855fa14acfaef9c1551cae2b01, type: 3}
-    detailArt: {fileID: 21300000, guid: b00ee0855fa14acfaef9c1551cae2b01, type: 3}
+    art: {fileID: 21300000, guid: a614cce712235234eb5a54a1e4ce24fb, type: 3}
+    detailArt: {fileID: 21300000, guid: e8919f2b6e8c88e4faf9b0d7b572c941, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -380,8 +380,8 @@ MonoBehaviour:
   - id: 8
     authoredKey: vessels.06.sol-the-warden
     displayName: Sol the Warden
-    art: {fileID: 21300000, guid: bae9939d2ee04511b9e29a55347fc742, type: 3}
-    detailArt: {fileID: 21300000, guid: bae9939d2ee04511b9e29a55347fc742, type: 3}
+    art: {fileID: 21300000, guid: cee75655fff09514a8de0b85addce953, type: 3}
+    detailArt: {fileID: 21300000, guid: de1a5bedb9e66ef49aa19a7c489e5b0a, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -468,8 +468,8 @@ MonoBehaviour:
   - id: 10
     authoredKey: vessels.10.whisper-scout
     displayName: Whisper Scout
-    art: {fileID: 21300000, guid: 60d1bffbd62b483d8316aa4489ef1acb, type: 3}
-    detailArt: {fileID: 21300000, guid: 60d1bffbd62b483d8316aa4489ef1acb, type: 3}
+    art: {fileID: 21300000, guid: 1a34a550663ab344ca814bf2b0e48f0d, type: 3}
+    detailArt: {fileID: 21300000, guid: 1b2209b9d7f9d22408bf18d2fb6e7410, type: 3}
     faction: 5
     cardType: 1
     apCost: 1
@@ -513,8 +513,8 @@ MonoBehaviour:
   - id: 11
     authoredKey: vessels.11.glass-runner
     displayName: Glass Runner
-    art: {fileID: 21300000, guid: 640e58dcafb249089a7466a26bf6be69, type: 3}
-    detailArt: {fileID: 21300000, guid: 640e58dcafb249089a7466a26bf6be69, type: 3}
+    art: {fileID: 21300000, guid: cfd62e85aaef0dc468d0a4a6d7a25b3b, type: 3}
+    detailArt: {fileID: 21300000, guid: c0982e566af8015498bf9c1713f88490, type: 3}
     faction: 5
     cardType: 1
     apCost: 1
@@ -557,8 +557,8 @@ MonoBehaviour:
   - id: 12
     authoredKey: vessels.12.salvage-drone
     displayName: Salvage Drone
-    art: {fileID: 21300000, guid: 232f855f91e3490492254f0c53bd2641, type: 3}
-    detailArt: {fileID: 21300000, guid: 232f855f91e3490492254f0c53bd2641, type: 3}
+    art: {fileID: 21300000, guid: c95b7976c71bb2e4aa14d68f3a02ec93, type: 3}
+    detailArt: {fileID: 21300000, guid: 30c6a1490948f7142a8392c75c716244, type: 3}
     faction: 5
     cardType: 1
     apCost: 1
@@ -601,8 +601,8 @@ MonoBehaviour:
   - id: 13
     authoredKey: vessels.13.arc-sentry
     displayName: Arc Sentry
-    art: {fileID: 21300000, guid: 45ea3a707ee845efa1714d54fa7b6234, type: 3}
-    detailArt: {fileID: 21300000, guid: 45ea3a707ee845efa1714d54fa7b6234, type: 3}
+    art: {fileID: 21300000, guid: 28869c7719831194b8c6d326c4aad691, type: 3}
+    detailArt: {fileID: 21300000, guid: 7394993431a00b44a8732ee443cfb51e, type: 3}
     faction: 5
     cardType: 1
     apCost: 4
@@ -645,8 +645,8 @@ MonoBehaviour:
   - id: 14
     authoredKey: vessels.14.shard-wanderer
     displayName: Shard Wanderer
-    art: {fileID: 21300000, guid: eba7efd7972a4370bb0a3a525bbf9c08, type: 3}
-    detailArt: {fileID: 21300000, guid: eba7efd7972a4370bb0a3a525bbf9c08, type: 3}
+    art: {fileID: 21300000, guid: b9e09597bbd940d46a35a7df27ffccc0, type: 3}
+    detailArt: {fileID: 21300000, guid: 230baa9dc3256834191852cbd6020bb3, type: 3}
     faction: 5
     cardType: 1
     apCost: 1
@@ -688,8 +688,8 @@ MonoBehaviour:
   - id: 15
     authoredKey: vessels.15.vessel-rifleman
     displayName: Vessel Rifleman
-    art: {fileID: 21300000, guid: 76ee44ed10d648108bf0c7dc14aee9d0, type: 3}
-    detailArt: {fileID: 21300000, guid: 76ee44ed10d648108bf0c7dc14aee9d0, type: 3}
+    art: {fileID: 21300000, guid: 4cc533e9bf2ef354ebea1276d2f81789, type: 3}
+    detailArt: {fileID: 21300000, guid: caa76e0de0b0f6f4792b9a2b2d193d45, type: 3}
     faction: 5
     cardType: 1
     apCost: 1
@@ -731,8 +731,8 @@ MonoBehaviour:
   - id: 16
     authoredKey: vessels.16.bulwark-vessel
     displayName: Bulwark Vessel
-    art: {fileID: 21300000, guid: b0595692d5f94d6b918b42ec9b3dc8c1, type: 3}
-    detailArt: {fileID: 21300000, guid: b0595692d5f94d6b918b42ec9b3dc8c1, type: 3}
+    art: {fileID: 21300000, guid: ba8e4cc459e2dd14e919f8b28405d921, type: 3}
+    detailArt: {fileID: 21300000, guid: cc319ccd30a3f5a49ab5b7449ca95fa5, type: 3}
     faction: 5
     cardType: 1
     apCost: 2
@@ -775,8 +775,8 @@ MonoBehaviour:
   - id: 17
     authoredKey: vessels.17.relay-carrier
     displayName: Relay Carrier
-    art: {fileID: 21300000, guid: dd1eadee6ffe4e47a97c96f13b0ac955, type: 3}
-    detailArt: {fileID: 21300000, guid: dd1eadee6ffe4e47a97c96f13b0ac955, type: 3}
+    art: {fileID: 21300000, guid: 1e6024ece4a8dda4583a77dd3c5e523f, type: 3}
+    detailArt: {fileID: 21300000, guid: f8c9ec906a566f34aba9841682ac6940, type: 3}
     faction: 5
     cardType: 1
     apCost: 2
@@ -819,8 +819,8 @@ MonoBehaviour:
   - id: 18
     authoredKey: vessels.18.bastion-frame
     displayName: Bastion Frame
-    art: {fileID: 21300000, guid: f622b88d994a4f1e94e2de6d5847910b, type: 3}
-    detailArt: {fileID: 21300000, guid: f622b88d994a4f1e94e2de6d5847910b, type: 3}
+    art: {fileID: 21300000, guid: 1079fd23ac6a169498bd7aa5eea5f4ff, type: 3}
+    detailArt: {fileID: 21300000, guid: 9a19f270c97a2254c84854339c9559a8, type: 3}
     faction: 5
     cardType: 1
     apCost: 3
@@ -863,8 +863,8 @@ MonoBehaviour:
   - id: 19
     authoredKey: vessels.19.heavy-sentinel
     displayName: Heavy Sentinel
-    art: {fileID: 21300000, guid: 6db214aeec1d4843a8ec83695e41ee88, type: 3}
-    detailArt: {fileID: 21300000, guid: 6db214aeec1d4843a8ec83695e41ee88, type: 3}
+    art: {fileID: 21300000, guid: e9d55e123bef4a7448d90ccf8070cdcb, type: 3}
+    detailArt: {fileID: 21300000, guid: 81d1e4212164606468902a6a9d8be400, type: 3}
     faction: 5
     cardType: 1
     apCost: 3
@@ -907,8 +907,8 @@ MonoBehaviour:
   - id: 20
     authoredKey: vessels.20.siege-walker
     displayName: Siege Walker
-    art: {fileID: 21300000, guid: 9ecb35b3689f4a98a0c3ee75219197eb, type: 3}
-    detailArt: {fileID: 21300000, guid: 9ecb35b3689f4a98a0c3ee75219197eb, type: 3}
+    art: {fileID: 21300000, guid: a527c8467fb54854998ff7583e9d027d, type: 3}
+    detailArt: {fileID: 21300000, guid: c81547030d04f474cbaca3b6b9928a34, type: 3}
     faction: 5
     cardType: 1
     apCost: 5
@@ -950,8 +950,8 @@ MonoBehaviour:
   - id: 21
     authoredKey: vessels.21.resonance-tank
     displayName: Resonance Tank
-    art: {fileID: 21300000, guid: afc8c0dff0724ee5b9c4105fc20b1499, type: 3}
-    detailArt: {fileID: 21300000, guid: afc8c0dff0724ee5b9c4105fc20b1499, type: 3}
+    art: {fileID: 21300000, guid: 38c671ef955a82543bf1b7e8e26f6067, type: 3}
+    detailArt: {fileID: 21300000, guid: e0723383a0674c54eb343ed8192e3924, type: 3}
     faction: 5
     cardType: 1
     apCost: 4
@@ -993,8 +993,8 @@ MonoBehaviour:
   - id: 22
     authoredKey: vessels.22.monolith
     displayName: Monolith
-    art: {fileID: 21300000, guid: 32373196a7d643cdb86fa56e4fe50456, type: 3}
-    detailArt: {fileID: 21300000, guid: 32373196a7d643cdb86fa56e4fe50456, type: 3}
+    art: {fileID: 21300000, guid: 78d0ecd31c7ab9f4c9c67a4b0cd108b3, type: 3}
+    detailArt: {fileID: 21300000, guid: 238fcf58290242d4b8fffb446bd73dae, type: 3}
     faction: 5
     cardType: 1
     apCost: 5
@@ -1037,8 +1037,8 @@ MonoBehaviour:
   - id: 23
     authoredKey: vessels.23.echo-mortar
     displayName: Echo Mortar
-    art: {fileID: 21300000, guid: 27acf6716bb748a18d93ef52d7017368, type: 3}
-    detailArt: {fileID: 21300000, guid: 27acf6716bb748a18d93ef52d7017368, type: 3}
+    art: {fileID: 21300000, guid: c8e5568a481fc7d4ca2fbf583e9980d4, type: 3}
+    detailArt: {fileID: 21300000, guid: 6d044fbc4c7806b42ae58e516d5ed5ea, type: 3}
     faction: 5
     cardType: 1
     apCost: 3
@@ -1081,8 +1081,8 @@ MonoBehaviour:
   - id: 24
     authoredKey: vessels.24.prism-engine
     displayName: Prism Engine
-    art: {fileID: 21300000, guid: 8e76f397fd7f43e29e56e6b8080bc2de, type: 3}
-    detailArt: {fileID: 21300000, guid: 8e76f397fd7f43e29e56e6b8080bc2de, type: 3}
+    art: {fileID: 21300000, guid: e7898f08ea262af47be635620a2b8254, type: 3}
+    detailArt: {fileID: 21300000, guid: eb054e7ae60fa9b4c971bc7bfcec9c2e, type: 3}
     faction: 5
     cardType: 1
     apCost: 4
@@ -1125,8 +1125,8 @@ MonoBehaviour:
   - id: 25
     authoredKey: vessels.25.harmonic-howitzer
     displayName: Harmonic Howitzer
-    art: {fileID: 21300000, guid: f8c2f878a47c45f0bcc004e17d2b4db9, type: 3}
-    detailArt: {fileID: 21300000, guid: f8c2f878a47c45f0bcc004e17d2b4db9, type: 3}
+    art: {fileID: 21300000, guid: 97fc3c43922680b458e3e1b01f9781f7, type: 3}
+    detailArt: {fileID: 21300000, guid: 219ed894ee6967b409c894aa65e7c418, type: 3}
     faction: 5
     cardType: 1
     apCost: 4
