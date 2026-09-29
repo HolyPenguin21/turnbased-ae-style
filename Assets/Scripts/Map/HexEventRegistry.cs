@@ -55,6 +55,7 @@ namespace Game.Map
             // else). Never populated for an event that's only ever been Explored straight through
             // (it's Consumed before a marker would matter) or never reached at all.
             public HashSet<PlayerSetupData> DiscoveredBy = new HashSet<PlayerSetupData>();
+            public List<RewardEntry> SelectedRewards = new List<RewardEntry>();
             public List<(RewardEntry reward, CardDefinition card)> ResolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
             // Set once the player (or AI) leaves this event unresolved via Skip (see
             // HexSelectionController.Events.cs's own ShowEventChoice) — drives MapEventDisplay's
@@ -82,7 +83,7 @@ namespace Game.Map
 
         public static void Set(HexCoord hex, EventDefinition definition, string guardArmyName,
             List<(CardDefinition, int)> resolvedGuardMembers, PlayerSetupData guardOwner,
-            List<(RewardEntry, CardDefinition)> resolvedCardRewards)
+            List<(RewardEntry, CardDefinition)> resolvedCardRewards, List<RewardEntry> selectedRewards = null)
         {
             ByHex[hex] = new Entry
             {
@@ -90,6 +91,7 @@ namespace Game.Map
                 GuardArmyName = guardArmyName,
                 ResolvedGuardMembers = resolvedGuardMembers ?? new List<(CardDefinition, int)>(),
                 GuardOwner = guardOwner,
+                SelectedRewards = selectedRewards ?? definition?.rewards ?? new List<RewardEntry>(),
                 ResolvedCardRewards = resolvedCardRewards ?? new List<(RewardEntry, CardDefinition)>(),
             };
         }

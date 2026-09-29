@@ -248,13 +248,14 @@ namespace Game.Setup
         // call, "Recommended" option), and never adjacent to another neutral army either (2.1,
         // the user's own call — at least 1 empty hex of gap between any two), otherwise
         // anywhere. Composition is no longer rolled — each placed army is one whole,
-        // hand-authored ArmyDefinition from neutralArmyCatalog.armies, one army per hex (the
-        // user's own call), so at most armies.Count hexes ever get one.
+        // hand-authored ArmyDefinition from neutralArmyCatalog.MapArmies, one per hex;
+        // event-only guards are excluded from these ordinary map rolls.
         private void GenerateNeutralArmies()
         {
             if (map == null || gameConfig == null || neutralArmyCatalog == null || hexSelectionController == null || _neutralPlayer == null)
                 return;
-            if (neutralArmyCatalog.armies == null || neutralArmyCatalog.armies.Count == 0)
+            List<ArmyDefinition> mapArmies = neutralArmyCatalog.MapArmies.ToList();
+            if (mapArmies.Count == 0)
                 return;
 
             HashSet<HexCoord> excluded = BuildCitadelExclusion();
@@ -266,9 +267,9 @@ namespace Game.Setup
             int hexCount = HexCountForRadius(map.FieldRadius);
             int min = Mathf.Max(1, CalibratedCount(3, 12, hexCount));
             int max = Mathf.Max(min, CalibratedCount(5, 15, hexCount));
-            int target = Mathf.Clamp(Random.Range(min, max + 1), 0, Mathf.Min(candidates.Count, neutralArmyCatalog.armies.Count));
+            int target = Mathf.Clamp(Random.Range(min, max + 1), 0, Mathf.Min(candidates.Count, mapArmies.Count));
 
-            List<ArmyDefinition> shuffledArmies = PickRandomDistinct(neutralArmyCatalog.armies, neutralArmyCatalog.armies.Count);
+            List<ArmyDefinition> shuffledArmies = PickRandomDistinct(mapArmies, mapArmies.Count);
 
             var placedHexes = new List<HexCoord>();
             int armyIndex = 0;
@@ -361,7 +362,8 @@ namespace Game.Setup
         {
             if (map == null || neutralArmyCatalog == null || hexSelectionController == null || _neutralPlayer == null)
                 return;
-            if (neutralArmyCatalog.armies == null || neutralArmyCatalog.armies.Count == 0)
+            List<ArmyDefinition> mapArmies = neutralArmyCatalog.MapArmies.ToList();
+            if (mapArmies.Count == 0)
                 return;
 
             var citadelHexes = new HashSet<HexCoord>();
@@ -380,7 +382,7 @@ namespace Game.Setup
                 if (Random.value >= CityRuinsGarrisonChance)
                     continue;
 
-                ArmyDefinition definition = neutralArmyCatalog.armies[Random.Range(0, neutralArmyCatalog.armies.Count)];
+                ArmyDefinition definition = mapArmies[Random.Range(0, mapArmies.Count)];
                 SpawnNeutralArmy(hex, definition);
             }
         }
@@ -545,11 +547,32 @@ namespace Game.Setup
         // HexEventRegistry.Entry.ResolvedCardRewards).
         private void PlaceEvent(HexCoord hex, EventDefinition definition)
         {
+            EventVariant variant = definition.variants != null && definition.variants.Count > 0
+                ? definition.variants[Random.Range(0, definition.variants.Count)] : null;
+            string chosenGuard = variant != null ? variant.guardArmyName : definition.guardArmyName;
+            // Resolve the random resource mix once, at placement. Skip, retreat and a later
+            // revisit must all see the same guard and payout.
+            var chosenRewards = variant != null
+                ? new List<RewardEntry>(variant.rewards ?? new List<RewardEntry>())
+                : new List<RewardEntry>(definition.rewards ?? new List<RewardEntry>());
+            if (variant != null && variant.resourceCount > 0)
+            {
+                var resources = new ResourceYields();
+                for (int i = 0; i < variant.resourceCount; i++)
+                    switch (Random.Range(0, 4))
+                    {
+                        case 0: resources.human++; break;
+                        case 1: resources.energy++; break;
+                        case 2: resources.materials++; break;
+                        default: resources.tech++; break;
+                    }
+                chosenRewards.Insert(0, new RewardEntry { type = RewardType.Resources, resources = resources });
+            }
             string guardArmyName = null;
             var resolvedGuardMembers = new List<(CardDefinition, int)>();
-            if (!string.IsNullOrEmpty(definition.guardArmyName) && neutralArmyCatalog != null)
+            if (!string.IsNullOrEmpty(chosenGuard) && neutralArmyCatalog != null)
             {
-                ArmyDefinition armyDef = neutralArmyCatalog.GetArmy(definition.guardArmyName);
+                ArmyDefinition armyDef = neutralArmyCatalog.GetArmy(chosenGuard);
                 if (armyDef != null)
                 {
                     guardArmyName = armyDef.name;
@@ -563,12 +586,17 @@ namespace Game.Setup
             }
 
             var resolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
-            if (definition.rewards != null)
-                foreach (RewardEntry reward in definition.rewards)
+            if (chosenRewards != null)
+                foreach (RewardEntry reward in chosenRewards)
                     if (reward.type == RewardType.Card)
-                        resolvedCardRewards.Add((reward, eventCatalog.ResolveCard(reward.cardKey)));
+                    {
+                        CardDefinition card = eventCatalog.ResolveCard(reward.cardKey);
+                        if (card != null && (card.cardType == CardType.Unit || card.cardType == CardType.Equipment))
+                            resolvedCardRewards.Add((reward, card));
+                    }
 
-            HexEventRegistry.Set(hex, definition, guardArmyName, resolvedGuardMembers, _neutralPlayer, resolvedCardRewards);
+            HexEventRegistry.Set(hex, definition, guardArmyName, resolvedGuardMembers, _neutralPlayer,
+                resolvedCardRewards, chosenRewards);
         }
 
         // Placeholder pass — no special hexes exist in this project yet. Same idea as

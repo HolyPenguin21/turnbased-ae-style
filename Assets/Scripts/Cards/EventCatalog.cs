@@ -15,8 +15,8 @@ namespace Game.Cards
         Card
     }
 
-    // One reward an event can pay out — an EventDefinition's `rewards` list holds several of
-    // these so an event can grant more than one thing at once (e.g. resources AND a card).
+    // One reward an event can pay out. EventVariant.rewards holds optional card rewards;
+    // its random resource payout is resolved once when the event is placed.
     // Only the field matching `type` is meaningful; drawn as a single row by RewardEntryDrawer
     // (Assets/Editor), which shows/hides `resources` vs `cardKey` based on the popup.
     [System.Serializable]
@@ -30,14 +30,21 @@ namespace Game.Cards
         public string cardKey;
     }
 
+    // One complete outcome tier. The guard and its reward are selected together at map
+    // generation, then kept on the hex for the rest of the game.
+    [System.Serializable]
+    public class EventVariant
+    {
+        [ArmyTag] public string guardArmyName;
+        [Min(0)] public int resourceCount;
+        // Optional card reward, selected with this guard tier.
+        public List<RewardEntry> rewards = new List<RewardEntry>();
+    }
+
     // One random/special-hex event — `name` is shown as this entry's own label in the
     // catalog's `events` list (see EventDefinitionDrawer) instead of Unity's default
-    // "Element N". `guardArmyName` names an army in whichever NeutralArmyCatalog asset exists
-    // in the project (see [ArmyTag]/ArmyTagDrawer) — the force defending this event's reward,
-    // resolved at the point something actually needs to spawn/fight it. Data only: this
-    // catalog doesn't itself place events on the map or grant rewards on capture — see
-    // CitadelSetupController.MapContent.GenerateRandomEvents, the placeholder pass this data
-    // is meant to feed once that's wired up.
+    // "Element N". Three variants carry the light, medium and heavy guard/reward pairs;
+    // CitadelSetupController.MapContent selects one during map generation.
     [System.Serializable]
     public class EventDefinition
     {
@@ -45,8 +52,13 @@ namespace Game.Cards
         public Sprite image;
         [TextArea]
         public string description;
+        // Ordered light / medium / heavy. The map selects one uniformly at placement.
+        public List<EventVariant> variants = new List<EventVariant>();
+        // Legacy fields remain for assets/tests not yet converted to variants.
+        [HideInInspector]
         [ArmyTag]
         public string guardArmyName;
+        [HideInInspector]
         public List<RewardEntry> rewards = new List<RewardEntry>();
     }
 
