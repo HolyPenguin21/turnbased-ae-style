@@ -185,8 +185,8 @@ namespace Game.Ai.V2
                     RaidMissionPhase.AirSupport, null, null, o.WingArmyId, o.LandingHex,
                     o.EtaTurns, o.Ap, o.Resources, 2, currentWin, o.WinAfter, score, default,
                     $"air support #{o.WingArmyId} reaches {o.WinAfter:0.00} "
-                    + $"({(o.SecondStrike ? "two strikes" : "one strike")}) "
-                    + $"with canonical score {score.Value:0.00}");
+                    + $"on the first strike; later strike windows are aviation-owned "
+                    + $"(canonical score {score.Value:0.00})");
                 if (!best.Viable || Compare(option, best) < 0)
                     best = option;
             }
