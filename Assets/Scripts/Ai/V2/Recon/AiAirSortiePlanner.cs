@@ -200,7 +200,7 @@ namespace Game.Ai.V2
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
             return PlanExactRebase(sourceHex, null, aircraft, movement, aircraft.Count,
-                destinationHex, map, owner, allowExistingExposure: false);
+                destinationHex, map, owner);
         }
 
         private static RebaseRoute? TryContinueExactRebase(ArmyData airArmy,
@@ -209,13 +209,12 @@ namespace Game.Ai.V2
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanExactRebase(airArmy.Hex, airArmy, airArmy.Members,
-                airArmy.CurrentMovement, airArmy.Members.Count, destinationHex, map, owner,
-                allowExistingExposure: true);
+                airArmy.CurrentMovement, airArmy.Members.Count, destinationHex, map, owner);
         }
 
         private static RebaseRoute? PlanExactRebase(HexCoord startHex, ArmyData excluding,
             IReadOnlyList<UnitData> aircraft, int firstTurnMovement, int requiredSlots,
-            HexCoord destinationHex, HexMap map, PlayerSetupData owner, bool allowExistingExposure)
+            HexCoord destinationHex, HexMap map, PlayerSetupData owner)
         {
             if (map == null || owner == null || aircraft == null || aircraft.Count == 0
                 || !AviationRules.IsOwnedAirfieldAt(destinationHex, owner)
@@ -249,15 +248,9 @@ namespace Game.Ai.V2
         // sortie back to itself. Zero for an already-airborne army (TryPlanSortie/TryReplan) — it
         // was never part of any airfield's stored container.
         //
-        // Landing choice: known AA is ONE hard filter, and every reachable owned airfield is
-        // weighed by safety-then-forwardness-then-cost before the caller computes the target's own
-        // score, so each candidate TARGET gets back its truly best target+landing pairing (not a
-        // cheapest-path landing locked in early). A landing whose route (either leg) carries ANY
-        // known AA exposure is dropped outright whenever the AA-free set is non-empty — never
-        // merely ranked down — matching TryPlanSortiePreferForwardLanding below. Returns null when
-        // no AA-free candidate reaches within the mover's movement budget this turn — callers must
-        // not offer that target as a launch option; there is deliberately no "fly the unsafe route
-        // anyway" fallback for a launch that has not happened yet.
+        // Landing choice is purely physical: every reachable owned airfield is ranked by
+        // forwardness, then total route cost. Anti-air remains a live gameplay reaction and does
+        // not participate in strategic route admission.
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
             int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
@@ -462,9 +455,6 @@ namespace Game.Ai.V2
         // multi-turn safety net; TryReplan's single-turn search (or holding position) is the only
         // honest option left for it.
         //
-        // AA handling matches TryReplan below: only exposure a candidate route adds BEYOND
-        // KnownAaExposureAt(current hex) can disqualify or rank it down; exposure the army already
-        // stands in is never held against any route, since every route starts there.
         public static MultiTurnSortie? TryReplanMultiTurnReturn(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -516,14 +506,9 @@ namespace Game.Ai.V2
         //
         // TryReplan is ONLY called from ContinueSortie's two "heading home" branches — never from
         // the voluntary launch/outbound path, which keeps its own complete recoverability proof in
-        // PlanSortieCore/TryPlanSortiePreferForwardLanding. Here, exposure already unavoidable from
-        // the army's CURRENT hex (KnownAaExposureAt) is not held against any candidate: a sighting
-        // revealed on arrival covers every path home, and treating it as a hard filter would ground
-        // the aircraft forever. Only exposure a route adds BEYOND that baseline ranks it down
-        // (fewest-extra-exposure first), then shorter path cost, then forward usefulness — never an
-        // outright rejection, so a reachable airfield (capacity/movement permitting) always wins
-        // over holding position. Null means no owned airfield is reachable at all this turn
-        // (capacity/movement), never "reachable but through AA".
+        // PlanSortieCore/TryPlanSortiePreferForwardLanding. The return search ranks reachable
+        // airfields by route cost and then forward usefulness. Null means no owned airfield is
+        // physically reachable this turn.
         // One shared gate for a stationary strike by an already-airborne wing. Striking costs
         // no movement; the only physical requirement is that the current hex is attackable and,
         // after the strike, some owned airfield is still reachable before the live endurance
@@ -574,10 +559,9 @@ namespace Game.Ai.V2
         // Every owned airfield is re-considered fresh on every step, so a safer/more-forward base
         // can win at any point during the outbound leg, not only once the original choice breaks.
         //
-        // Priority: (1) more useful as a forward base (NearestKnownEnemyDistance, shared with TryReplan's tie-break so "more forward"
-        // means the same thing everywhere) outranks (3) lower total round-trip cost. Returns null
-        // whenever no AA-free owned airfield offers a real round trip — the caller's TryReplan
-        // fallback (abandon the target, fly straight home) covers that.
+        // Priority: more useful as a forward base, then lower total round-trip cost. Returns null
+        // whenever no owned airfield offers a real round trip; the caller's TryReplan fallback
+        // abandons the target and flies home.
         public static Sortie? TryPlanSortiePreferForwardLanding(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner || map == null)
