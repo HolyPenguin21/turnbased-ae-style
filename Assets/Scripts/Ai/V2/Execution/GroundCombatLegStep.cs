@@ -137,7 +137,11 @@ namespace Game.Ai.V2
             HexCoord before = wing.Hex;
             bool enteringTarget = sortie.Outbound && move.TargetHex.Equals(targetHex);
             if (enteringTarget)
+            {
+                wing.LastAirStrikeHex = null;
+                wing.LastAirStrikeAttacked = false;
                 wing.PendingAirStrikePolicy = policy;
+            }
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
             wing.PendingAirStrikePolicy = null;

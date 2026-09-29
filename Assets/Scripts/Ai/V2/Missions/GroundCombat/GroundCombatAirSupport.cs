@@ -295,6 +295,12 @@ namespace Game.Ai.V2
                     landing = multi.Value.LandingHex;
                     requiredTurns = multi.Value.RequiredTurns;
                 }
+                else
+                {
+                    failure = ProvisionFailure.NoExecutableStep(
+                        $"wing #{wing.Id} no longer has a recoverable route to the {lane} target");
+                    return false;
+                }
             }
             else
             {

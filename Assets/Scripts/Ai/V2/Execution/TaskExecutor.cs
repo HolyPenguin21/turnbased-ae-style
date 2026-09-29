@@ -78,12 +78,7 @@ namespace Game.Ai.V2
         // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
 
-        // The REAL ArmyId this mission's actor resolved to, when it can differ from
-        // ProvisionedMission.MoverArmyId. Ground matches the provisioned id; Raid stamps that
-        // same real id when the operation starts. Air's AirLaunch is the one case that DOES differ:
-        // Assignment bound the mission to a synthetic per-airfield negative id (no
-        // ArmyData exists yet), and only once the aircraft actually launches does a real ArmyId
-        // exist — that real id belongs in MissionContinuity from then on, not the synthetic key.
+        // The real ArmyId after an actor is materialized or otherwise resolved during execution.
         public int? ActualActorArmyId;
 
         // Spec §1/§7 (review P1 #1) — set by the continuous ground Recon executor when ReachedGoal
@@ -272,8 +267,7 @@ namespace Game.Ai.V2
             int apBefore = root != null ? root.ActionPoints : 0;
             // A deferred Economy garrison-extraction mission
             // carries a SYNTHETIC negative MoverArmyId (ProvisioningManager.
-            // SyntheticGarrisonExtractionActorId) — the same "actor does not exist yet" pattern
-            // ScoutExecutorKind.AirLaunch already uses. Materialization happens HERE, first, before
+            // SyntheticGarrisonExtractionActorId). Materialization happens HERE, first, before
             // Resolve/MissionRevalidator/anything else below ever sees the synthetic id, and is ALSO
             // a terminal step of its own — see the helper's own comment for why this never falls
             // through to movement in the same call.

@@ -274,11 +274,9 @@ namespace Game.Ai.V2
 
                 if (r.Provisioned != null)
                 {
-                    // An AirLaunch is bound to a synthetic per-airfield key until the aircraft
-                    // actually form (ExecutionResult.ActualActorArmyId below). That key is never an
-                    // army: it must not reach Continuity as a durable mover (Recon S5).
-                    o.MoverArmyId = r.Provisioned.ExecutorKind == ScoutExecutorKind.AirLaunch
-                        ? (int?)null : r.Provisioned.MoverArmyId;
+                    // Recon binds an existing army; extraction in other lanes may report the
+                    // materialized actor through ActualActorArmyId after execution.
+                    o.MoverArmyId = r.Provisioned.MoverArmyId;
                     if (r.Provisioned.Kind == MissionKind.Raid)
                     {
                         o.HasRaidPayload = true;
@@ -330,10 +328,7 @@ namespace Game.Ai.V2
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
                     o.FinalHex = e.FinalHex;
-                    // An AirLaunch mission was bound at Assignment time to a
-                    // synthetic per-airfield actor id (no ArmyData existed yet); once execution
-                    // actually launched the aircraft, ActualActorArmyId carries the REAL ArmyId, and
-                    // that is what MissionContinuity must track from now on, not the synthetic key.
+                    // A materialized actor supersedes the provisional mover identity.
                     if (e.ActualActorArmyId.HasValue)
                         o.MoverArmyId = e.ActualActorArmyId;
                     bool raidEngaged = o.MissionKind == MissionKind.Raid

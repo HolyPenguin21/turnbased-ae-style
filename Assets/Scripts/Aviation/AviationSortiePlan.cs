@@ -80,6 +80,9 @@ namespace Game.Aviation
 
     public static class AviationRange
     {
+        public static int SafeUnlandedEndsRemaining(UnitData aircraft) => aircraft == null
+            ? 0 : Mathf.Max(0, aircraft.TurnsWithoutRefuel - aircraft.ConsecutiveUnlandedEnds);
+
         // How many MORE times this group can safely end a turn away from an owned airfield right
         // now, before AviationTurnLifecycle.ResolveEndOfTurn's own fuel-damage rule
         // (ConsecutiveUnlandedEnds > TurnsWithoutRefuel) would fire. A plane (TurnsWithoutRefuel==0,
@@ -94,7 +97,7 @@ namespace Game.Aviation
                 return 0;
             int min = int.MaxValue;
             foreach (UnitData unit in aircraft)
-                min = Mathf.Min(min, Mathf.Max(0, unit.TurnsWithoutRefuel - unit.ConsecutiveUnlandedEnds));
+                min = Mathf.Min(min, SafeUnlandedEndsRemaining(unit));
             return min == int.MaxValue ? 0 : min;
         }
 

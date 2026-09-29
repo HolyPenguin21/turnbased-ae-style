@@ -654,9 +654,9 @@ namespace Game.Ai.V2
         // the authoritative sequential resource owners for already-existing wings.
         private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best,
-            float airEnergyBudget, int airActorCap, int groundActorCap,
+            int airActorCap, int groundActorCap,
             IReadOnlyList<HexCoord> fixedGroundFoci,
-            float unusedAirLaunchEnergy = 0f, int usedAirActors = 0, int usedGroundActors = 0)
+            int usedAirActors = 0, int usedGroundActors = 0)
         {
             if (i == open.Count)
             {
@@ -671,9 +671,8 @@ namespace Game.Ai.V2
 
             chosen[i] = -1;
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                airEnergyBudget, airActorCap, groundActorCap,
-                fixedGroundFoci,
-                unusedAirLaunchEnergy, usedAirActors, usedGroundActors);
+                airActorCap, groundActorCap,
+                fixedGroundFoci, usedAirActors, usedGroundActors);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 ScoutExecutionCandidate cand = cands[i][c];
@@ -729,8 +728,7 @@ namespace Game.Ai.V2
                     usedArmyIds.Add(sourceId);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
-                    airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci,
-                    unusedAirLaunchEnergy,
+                    airActorCap, groundActorCap, fixedGroundFoci,
                     usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
                 if (hasGarrisonSource)
@@ -763,7 +761,7 @@ namespace Game.Ai.V2
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
             RecurseScout(0, open, cands, chosen, new HashSet<int>(), ref bestKey, best,
-                airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
+                airActorCap, groundActorCap, fixedGroundFoci);
 
             for (int i = 0; i < open.Count; i++)
                 if (best[i] >= 0)

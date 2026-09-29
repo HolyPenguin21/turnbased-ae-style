@@ -27,9 +27,8 @@ namespace Game.Ai.V2
         // conservative pre-mutation cost ESTIMATE for the funding envelope; the actual
         // ArmyActions.CreateArmy/ TransferMember mutation (ApplyGarrisonExtraction) runs from
         // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own
-        // beforeStep/afterStep observation window — the same synthetic-actor-id pattern as
-        // ScoutExecutorKind.AirLaunch (see SyntheticGarrisonExtractionActorId below and
-        // MoverArmyId's field comment on ProvisionedMission).
+        // beforeStep/afterStep observation window (see SyntheticGarrisonExtractionActorId below
+        // and MoverArmyId's field comment on ProvisionedMission).
         internal static int SyntheticGarrisonExtractionActorId(int garrisonArmyId) =>
             -(3_000_000 + (garrisonArmyId & 0xFFFFFF));
 

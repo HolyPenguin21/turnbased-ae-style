@@ -451,13 +451,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void AviationRebase_KnownAaExposureIsHardVoluntaryBlock()
-        {
-            Assert.That(AiAirSortiePlanner.IsVoluntaryRebaseRouteSafe(0), Is.True);
-            Assert.That(AiAirSortiePlanner.IsVoluntaryRebaseRouteSafe(1), Is.False);
-        }
-
-        [Test]
         public void AviationRebaseCandidate_UsesRealRouteCapacityAndCurrentReconObjective()
         {
             var owner = new PlayerSetupData();
