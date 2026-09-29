@@ -15,34 +15,33 @@ namespace Game.EditorTests
 {
     public class AiV2EconomyRaidAirIntegrationTests
     {
-        [TestCase(10, 0, 5)]
-        [TestCase(9, 0, 4)]
-        [TestCase(10, 1, 10)]
-        public void ReconOutboundCap_IsFrozenFromLaunchBudgetAndEndurance(
-            int movement, int endurance, int expectedCap)
+        [TestCase(0, 0)]
+        [TestCase(1, 1)]
+        [TestCase(2, 2)]
+        public void AviationEndurance_IsReadDirectlyFromTurnsWithoutRefuel(
+            int endurance, int expectedSafeEnds)
         {
-            ArmyData wing = Wing(movement, endurance);
-            var state = new ReconAirSortieState();
+            ArmyData wing = Wing(10, endurance);
 
-            state.EnsureLaunchProfile(wing);
-            wing.Members[0].MoveCurrent = 1;
-            state.EnsureLaunchProfile(wing);
-
-            Assert.That(state.LaunchMovementBudget, Is.EqualTo(movement));
-            Assert.That(state.OutboundMovementCap, Is.EqualTo(expectedCap));
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(wing), Is.EqualTo(expectedSafeEnds));
         }
 
         [Test]
-        public void ReconOutboundCap_MixedWingUsesMostLimitedEndurance()
+        public void AviationEndurance_MixedWingUsesMostLimitedMember()
         {
-            ArmyData wing = Wing(10, 1);
+            ArmyData wing = Wing(10, 2);
             wing.Members.Add(Aircraft(10, 0, 1));
-            var state = new ReconAirSortieState();
 
-            state.EnsureLaunchProfile(wing);
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(wing), Is.Zero);
+        }
 
-            Assert.That(state.LaunchSafeUnlandedEnds, Is.Zero);
-            Assert.That(state.OutboundMovementCap, Is.EqualTo(5));
+        [Test]
+        public void AviationEndurance_TracksOnlyRealUnlandedEnds()
+        {
+            ArmyData wing = Wing(10, 2);
+            wing.Members[0].ConsecutiveUnlandedEnds = 1;
+
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(wing), Is.EqualTo(1));
         }
 
         [Test]
