@@ -26,7 +26,6 @@ namespace Game.Ai
     public static class AiDebugLog
     {
         private const string RelativePath = "Logs/AiDebug.log";
-        private static string _path;
         // Kept open for the whole session instead of open/append/close per line (see WriteCore) —
         // a single AI turn can log hundreds of lines, and re-opening the file for every one of them
         // was a measured source of main-thread stalls at turn start/end that got worse as the game
@@ -81,9 +80,9 @@ namespace Game.Ai
                 // standalone build — one level up is the project root / build folder either way,
                 // matching where Unity's own Logs/ already lives (see .gitignore's own [Ll]ogs/).
                 string root = Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath;
-                _path = Path.Combine(root, RelativePath);
-                Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
-                _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
+                string path = Path.Combine(root, RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root);
+                _writer = new StreamWriter(path, append: false) { AutoFlush = true };
                 _writer.WriteLine($"=== AI debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
                 Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
@@ -91,7 +90,6 @@ namespace Game.Ai
             catch (Exception e)
             {
                 Debug.LogWarning($"AiDebugLog: couldn't open log file — {e.Message}");
-                _path = null;
                 _writer = null;
             }
         }
@@ -239,7 +237,6 @@ namespace Game.Ai
             {
                 Debug.LogWarning($"AiDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
                 _writer = null;
-                _path = null;
             }
         }
     }
