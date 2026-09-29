@@ -211,8 +211,9 @@ namespace Game.Combat
                     out float score, out float damage, out AiThoughtCategory reason, defenderBonus);
                 score += SplashSpreadBonus(grid, actor, candRow, candCol);
 
+                int loggedDefense = candidate.IsHero ? Mathf.Max(0, candidate.FateMax) : candidate.Defense;
                 BattleDebugLog.Write($"[TargetDiag] candidate {candidate.Name}: hp={candidate.HitPointsCurrent} " +
-                    $"defense={candidate.Defense} ceramicArmor={candidate.HasAbility(UnitAbilities.CeramicArmor)} " +
+                    $"defense={loggedDefense} ceramicArmor={candidate.HasAbility(UnitAbilities.CeramicArmor)} " +
                     $"actorAttack={actor.Attack} damage={damage} score={score} reason={reason} notYetActed={notYetActed}");
 
                 if (score > bestScore)
