@@ -1,0 +1,1315 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b8ee3a273e056e4ea1f2a042382c3fa, type: 3}
+  m_Name: CardCatalog_TheVessels
+  m_EditorClassIdentifier:
+  faction: 5
+  displayName: The Vessels
+  logo: {fileID: 21300000, guid: 461ffe05ef1546b89f48571470da4004, type: 3}
+  cards:
+  - id: 0
+    authoredKey: vessels.00.vessel-citadel
+    displayName: Vessel Citadel
+    art: {fileID: 21300000, guid: 85e9656aac644d5bbd7570b4d6f23d2f, type: 3}
+    detailArt: {fileID: 21300000, guid: 85e9656aac644d5bbd7570b4d6f23d2f, type: 3}
+    faction: 5
+    cardType: 3
+    apCost: 4
+    resourceCost:
+      human: 6
+      energy: 6
+      materials: 6
+      tech: 6
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    fate: 2
+    attack: 0
+    defenseRating: 2
+    resistanceRating: 4
+    range: 0
+    hitPoints: 10
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 8
+    unitTypeTags:
+    grantedAbilities:
+    - Barracks
+    - CollectHuman
+    - CollectEnergy
+    - CollectMaterials
+    - CollectTech
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 1
+    authoredKey: vessels.01.relay-base
+    displayName: Relay Base
+    art: {fileID: 21300000, guid: 5c90d432806949eeb8f0233ca8548e04, type: 3}
+    detailArt: {fileID: 21300000, guid: 5c90d432806949eeb8f0233ca8548e04, type: 3}
+    faction: 5
+    cardType: 3
+    apCost: 4
+    resourceCost:
+      human: 2
+      energy: 3
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 0
+    activationApCost: 0
+    commandRating: 2
+    fate: 2
+    attack: 0
+    defenseRating: 1
+    resistanceRating: 4
+    range: 0
+    hitPoints: 9
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 4
+    unitTypeTags:
+    grantedAbilities:
+    - Barracks
+    - CollectHuman
+    - CollectEnergy
+    - CollectMaterials
+    - CollectTech
+    - ApBonus
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 2
+    authoredKey: vessels.02.mara-the-archivist
+    displayName: Mara the Archivist
+    art: {fileID: 21300000, guid: 5171ac9b3b544dbf9b3de493f9e52298, type: 3}
+    detailArt: {fileID: 21300000, guid: 5171ac9b3b544dbf9b3de493f9e52298, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 8
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - ProduceEnergy
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 3
+    authoredKey: vessels.03.orr-the-keeper
+    displayName: Orr the Keeper
+    art: {fileID: 21300000, guid: 6b5a1805b27443b681d0f864b8074bb7, type: 3}
+    detailArt: {fileID: 21300000, guid: 6b5a1805b27443b681d0f864b8074bb7, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 6
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 4
+    authoredKey: vessels.04.vale-the-machinist
+    displayName: Vale the Machinist
+    art: {fileID: 21300000, guid: de5636e4aa6d4198bfa86d40430a77cc, type: 3}
+    detailArt: {fileID: 21300000, guid: de5636e4aa6d4198bfa86d40430a77cc, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - Assembler
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 5
+    authoredKey: vessels.05.ilex-the-surveyor
+    displayName: Ilex the Surveyor
+    art: {fileID: 21300000, guid: b00ee0855fa14acfaef9c1551cae2b01, type: 3}
+    detailArt: {fileID: 21300000, guid: b00ee0855fa14acfaef9c1551cae2b01, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 4
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - r1s6
+    - Stealth4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 6
+    authoredKey: vessels.06.sol-the-warden
+    displayName: Sol the Warden
+    art: {fileID: 21300000, guid: bae9939d2ee04511b9e29a55347fc742, type: 3}
+    detailArt: {fileID: 21300000, guid: bae9939d2ee04511b9e29a55347fc742, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 7
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - RapidReaction
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 7
+    authoredKey: vessels.07.nyx-the-cartographer
+    displayName: Nyx the Cartographer
+    art: {fileID: 21300000, guid: 56602526c0c04e8f82d8836442c9eb5d, type: 3}
+    detailArt: {fileID: 21300000, guid: 56602526c0c04e8f82d8836442c9eb5d, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 6
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - r1s6
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 8
+    authoredKey: vessels.08.thren-the-scholar
+    displayName: Thren the Scholar
+    art: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
+    detailArt: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - Researcher
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 9
+    authoredKey: vessels.09.edda-the-conductor
+    displayName: Edda the Conductor
+    art: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
+    detailArt: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 8
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - ProduceTech
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 10
+    authoredKey: vessels.10.whisper-scout
+    displayName: Whisper Scout
+    art: {fileID: 21300000, guid: 60d1bffbd62b483d8316aa4489ef1acb, type: 3}
+    detailArt: {fileID: 21300000, guid: 60d1bffbd62b483d8316aa4489ef1acb, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - r1s4
+    - Stealth4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 11
+    authoredKey: vessels.11.glass-runner
+    displayName: Glass Runner
+    art: {fileID: 21300000, guid: 640e58dcafb249089a7466a26bf6be69, type: 3}
+    detailArt: {fileID: 21300000, guid: 640e58dcafb249089a7466a26bf6be69, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - r1s5
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 12
+    authoredKey: vessels.12.salvage-drone
+    displayName: Salvage Drone
+    art: {fileID: 21300000, guid: 232f855f91e3490492254f0c53bd2641, type: 3}
+    detailArt: {fileID: 21300000, guid: 232f855f91e3490492254f0c53bd2641, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    resistanceRating: 3
+    range: 1
+    hitPoints: 3
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - CollectMaterials
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 13
+    authoredKey: vessels.13.arc-sentry
+    displayName: Arc Sentry
+    art: {fileID: 21300000, guid: 45ea3a707ee845efa1714d54fa7b6234, type: 3}
+    detailArt: {fileID: 21300000, guid: 45ea3a707ee845efa1714d54fa7b6234, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - AA
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 14
+    authoredKey: vessels.14.shard-wanderer
+    displayName: Shard Wanderer
+    art: {fileID: 21300000, guid: eba7efd7972a4370bb0a3a525bbf9c08, type: 3}
+    detailArt: {fileID: 21300000, guid: eba7efd7972a4370bb0a3a525bbf9c08, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 2
+    defenseRating: 1
+    resistanceRating: 2
+    range: 1
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 15
+    authoredKey: vessels.15.vessel-rifleman
+    displayName: Vessel Rifleman
+    art: {fileID: 21300000, guid: 76ee44ed10d648108bf0c7dc14aee9d0, type: 3}
+    detailArt: {fileID: 21300000, guid: 76ee44ed10d648108bf0c7dc14aee9d0, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 16
+    authoredKey: vessels.16.bulwark-vessel
+    displayName: Bulwark Vessel
+    art: {fileID: 21300000, guid: b0595692d5f94d6b918b42ec9b3dc8c1, type: 3}
+    detailArt: {fileID: 21300000, guid: b0595692d5f94d6b918b42ec9b3dc8c1, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 2
+    resistanceRating: 2
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000003000000
+    grantedAbilities:
+    - RapidReaction
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 17
+    authoredKey: vessels.17.relay-carrier
+    displayName: Relay Carrier
+    art: {fileID: 21300000, guid: dd1eadee6ffe4e47a97c96f13b0ac955, type: 3}
+    detailArt: {fileID: 21300000, guid: dd1eadee6ffe4e47a97c96f13b0ac955, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 4
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 3
+    defenseRating: 1
+    resistanceRating: 1
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000004000000
+    grantedAbilities:
+    - r1s5
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
+    authoredKey: vessels.18.bastion-frame
+    displayName: Bastion Frame
+    art: {fileID: 21300000, guid: f622b88d994a4f1e94e2de6d5847910b, type: 3}
+    detailArt: {fileID: 21300000, guid: f622b88d994a4f1e94e2de6d5847910b, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 3
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000005000000
+    grantedAbilities:
+    - CeramicArmor
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 19
+    authoredKey: vessels.19.heavy-sentinel
+    displayName: Heavy Sentinel
+    art: {fileID: 21300000, guid: 6db214aeec1d4843a8ec83695e41ee88, type: 3}
+    detailArt: {fileID: 21300000, guid: 6db214aeec1d4843a8ec83695e41ee88, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 2
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000005000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 20
+    authoredKey: vessels.20.siege-walker
+    displayName: Siege Walker
+    art: {fileID: 21300000, guid: 9ecb35b3689f4a98a0c3ee75219197eb, type: 3}
+    detailArt: {fileID: 21300000, guid: 9ecb35b3689f4a98a0c3ee75219197eb, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    resistanceRating: 4
+    range: 1
+    hitPoints: 7
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000005000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 21
+    authoredKey: vessels.21.resonance-tank
+    displayName: Resonance Tank
+    art: {fileID: 21300000, guid: afc8c0dff0724ee5b9c4105fc20b1499, type: 3}
+    detailArt: {fileID: 21300000, guid: afc8c0dff0724ee5b9c4105fc20b1499, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 4
+    resistanceRating: 3
+    range: 2
+    hitPoints: 5
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 22
+    authoredKey: vessels.22.monolith
+    displayName: Monolith
+    art: {fileID: 21300000, guid: 32373196a7d643cdb86fa56e4fe50456, type: 3}
+    detailArt: {fileID: 21300000, guid: 32373196a7d643cdb86fa56e4fe50456, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 2
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    resistanceRating: 3
+    range: 2
+    hitPoints: 8
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000005000000
+    grantedAbilities:
+    - CeramicArmor
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 23
+    authoredKey: vessels.23.echo-mortar
+    displayName: Echo Mortar
+    art: {fileID: 21300000, guid: 27acf6716bb748a18d93ef52d7017368, type: 3}
+    detailArt: {fileID: 21300000, guid: 27acf6716bb748a18d93ef52d7017368, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 1
+    resistanceRating: 2
+    range: 3
+    hitPoints: 2
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - ShockAttack
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 24
+    authoredKey: vessels.24.prism-engine
+    displayName: Prism Engine
+    art: {fileID: 21300000, guid: 8e76f397fd7f43e29e56e6b8080bc2de, type: 3}
+    detailArt: {fileID: 21300000, guid: 8e76f397fd7f43e29e56e6b8080bc2de, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 2
+      tech: 3
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 2
+    resistanceRating: 3
+    range: 3
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - Hyperkinetic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 25
+    authoredKey: vessels.25.harmonic-howitzer
+    displayName: Harmonic Howitzer
+    art: {fileID: 21300000, guid: f8c2f878a47c45f0bcc004e17d2b4db9, type: 3}
+    detailArt: {fileID: 21300000, guid: f8c2f878a47c45f0bcc004e17d2b4db9, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 4
+      materials: 3
+      tech: 4
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 7
+    defenseRating: 2
+    resistanceRating: 3
+    range: 4
+    hitPoints: 3
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000007000000
+    grantedAbilities:
+    - ShockAttack
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 26
+    authoredKey: vessels.26.skimmer
+    displayName: Skimmer
+    art: {fileID: 21300000, guid: f10589a34b774feb9d38204d5e91f829, type: 3}
+    detailArt: {fileID: 21300000, guid: f10589a34b774feb9d38204d5e91f829, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 10
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 7
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 2
+    turnsWithoutRefuel: 1
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - r1s0
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 27
+    authoredKey: vessels.27.gyrocopter
+    displayName: Gyrocopter
+    art: {fileID: 21300000, guid: ea6a44384da346b895e387ff9e80cc48, type: 3}
+    detailArt: {fileID: 21300000, guid: ea6a44384da346b895e387ff9e80cc48, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 2
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 6
+    activationApCost: 1
+    commandRating: 0
+    fate: 2
+    attack: 5
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 2
+    isAviation: 1
+    launchEnergyCost: 1
+    turnsWithoutRefuel: 1
+    antiAirRadius: 2
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities:
+    - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 28
+    authoredKey: vessels.28.dreadnought
+    displayName: Dreadnought
+    art: {fileID: 21300000, guid: 804e049187774e9da157a49745dd42d4, type: 3}
+    detailArt: {fileID: 21300000, guid: 804e049187774e9da157a49745dd42d4, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    resistanceRating: 2
+    range: 3
+    hitPoints: 8
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 3
+    turnsWithoutRefuel: 2
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags:
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  citadelPrefab: {fileID: 300002, guid: d8fd48d92fa14fbc88c7e3e18b67c30e, type: 3}
+  basePrefab: {fileID: 300002, guid: a0008f653f8d4aeeba802c9df01347b0, type: 3}
+  armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
+  airArmyPrefab: {fileID: 400002, guid: 1aadc6f20e4f4b728a04ea132b7b6dbc, type: 3}
+  citadelIcon: {fileID: 21300000, guid: 5f369e0acdc34fe1b8cfcd0fea3bcbb0, type: 3}
+  facilityIcon: {fileID: 21300000, guid: daf65ea81f6748cf96bbba7a6093f479, type: 3}
+  armyNamePool:
+  - Quiet Relay
+  - Shard Patrol
+  - Glass Ward
+  - Echo Column
+  - Silent Circuit
+  - Pale Watch
+  - The Unbroken
+  - Vessel Guard

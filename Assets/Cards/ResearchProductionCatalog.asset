@@ -16,6 +16,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
+  - {fileID: 11400000, guid: c7d27e53b32c458d83fbfe43e8732dee, type: 2}
   researchCards:
   - cardKey: neutral.equipment.bio.plasma-gun
     factionRestriction: 2
@@ -25,6 +26,14 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.science.unit.ashdrifter
     factionRestriction: 2
+  - cardKey: vessels.20.siege-walker
+    factionRestriction: 5
+  - cardKey: vessels.22.monolith
+    factionRestriction: 5
+  - cardKey: vessels.24.prism-engine
+    factionRestriction: 5
+  - cardKey: vessels.28.dreadnought
+    factionRestriction: 5
   productionCards:
   - cardKey: neutral.equipment.bio.flamer
     factionRestriction: 2
@@ -40,3 +49,13 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.armored.double-barrel
     factionRestriction: 2
+  - cardKey: vessels.16.bulwark-vessel
+    factionRestriction: 5
+  - cardKey: vessels.18.bastion-frame
+    factionRestriction: 5
+  - cardKey: vessels.19.heavy-sentinel
+    factionRestriction: 5
+  - cardKey: vessels.23.echo-mortar
+    factionRestriction: 5
+  - cardKey: vessels.25.harmonic-howitzer
+    factionRestriction: 5

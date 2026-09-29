@@ -16,7 +16,75 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 58cbf4fe5396b8e280fa1e6fb63a1aa4, type: 2}
   - {fileID: 11400000, guid: 3799ebf899bf4dd594f39f2871441724, type: 2}
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
+  - {fileID: 11400000, guid: c7d27e53b32c458d83fbfe43e8732dee, type: 2}
   decks:
+  - deckName: The Vessels Starter
+    faction: 5
+    cards:
+    - cardKey: vessels.00.vessel-citadel
+      count: 0
+    - cardKey: vessels.01.relay-base
+      count: 1
+    - cardKey: vessels.02.mara-the-archivist
+      count: 1
+    - cardKey: vessels.03.orr-the-keeper
+      count: 1
+    - cardKey: vessels.04.vale-the-machinist
+      count: 1
+    - cardKey: vessels.05.ilex-the-surveyor
+      count: 1
+    - cardKey: vessels.06.sol-the-warden
+      count: 1
+    - cardKey: vessels.07.nyx-the-cartographer
+      count: 1
+    - cardKey: vessels.08.thren-the-scholar
+      count: 1
+    - cardKey: vessels.09.edda-the-conductor
+      count: 1
+    - cardKey: vessels.10.whisper-scout
+      count: 1
+    - cardKey: vessels.11.glass-runner
+      count: 1
+    - cardKey: vessels.12.salvage-drone
+      count: 1
+    - cardKey: vessels.13.arc-sentry
+      count: 1
+    - cardKey: vessels.14.shard-wanderer
+      count: 3
+    - cardKey: vessels.15.vessel-rifleman
+      count: 2
+    - cardKey: vessels.16.bulwark-vessel
+      count: 0
+    - cardKey: vessels.17.relay-carrier
+      count: 1
+    - cardKey: vessels.18.bastion-frame
+      count: 0
+    - cardKey: vessels.19.heavy-sentinel
+      count: 0
+    - cardKey: vessels.20.siege-walker
+      count: 0
+    - cardKey: vessels.21.resonance-tank
+      count: 1
+    - cardKey: vessels.22.monolith
+      count: 0
+    - cardKey: vessels.23.echo-mortar
+      count: 0
+    - cardKey: vessels.24.prism-engine
+      count: 0
+    - cardKey: vessels.25.harmonic-howitzer
+      count: 0
+    - cardKey: vessels.26.skimmer
+      count: 1
+    - cardKey: vessels.27.gyrocopter
+      count: 1
+    - cardKey: vessels.28.dreadnought
+      count: 0
+    - cardKey: neutral.facility.lab
+      count: 1
+    - cardKey: neutral.facility.factory
+      count: 1
+    - cardKey: neutral.facility.intel
+      count: 1
   - deckName: The Ashen Starter
     faction: 4
     cards:

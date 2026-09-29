@@ -399,6 +399,14 @@ MonoBehaviour:
   - {fileID: 21300000, guid: d07434aa866f1124f8b8d69527df06dc, type: 3}
   logoRenderer: {fileID: 300082}
   logoFrames:
+  - {fileID: 21300000, guid: 0cca0a00c957c5f4ba4a68bd677cf746, type: 3}
+  - {fileID: 21300000, guid: a40b932973e0e4149a4ef77087dbc570, type: 3}
+  - {fileID: 21300000, guid: b6237d1f889f5c340a84d320828ae05c, type: 3}
+  - {fileID: 21300000, guid: 7e5041bc6431fa545a0f500fecf89a5a, type: 3}
+  - {fileID: 21300000, guid: 4ff242dd3b271b443bd5ff9f16b30af4, type: 3}
+  - {fileID: 21300000, guid: cdd02fb8ca0e5014888d434b578fc37d, type: 3}
+  - {fileID: 21300000, guid: eed33d25c58d6fb4980313a0ef8e7a18, type: 3}
+  ashenLogoFrames:
   - {fileID: 21300000, guid: 0831b45422ad3b4438e475a54c462c4c, type: 3}
   - {fileID: 21300000, guid: a3dd4a13e1667b849a939f5ce1e5b6c9, type: 3}
   - {fileID: 21300000, guid: 37916880be73afe428471551b0d4d2d5, type: 3}
@@ -406,7 +414,14 @@ MonoBehaviour:
   - {fileID: 21300000, guid: abe08fd207ed57f459be53353fa5dffd, type: 3}
   - {fileID: 21300000, guid: 2e256afbfd1676547b39a18818abe55a, type: 3}
   - {fileID: 21300000, guid: d86fda9832493744b843103ea96c5ba8, type: 3}
-  ashenLogoFrames: []
+  vesselsLogoFrames:
+  - {fileID: 21300000, guid: 08f9cd2567b3420e9f53382645dadf76, type: 3}
+  - {fileID: 21300000, guid: 00b0ddedb87c44479ec3a7ed71909dee, type: 3}
+  - {fileID: 21300000, guid: 51b8a39015c344c68f50419a2b2315f0, type: 3}
+  - {fileID: 21300000, guid: 5901ecb22b3a489694305a837830a2b8, type: 3}
+  - {fileID: 21300000, guid: 9aa7fac296854a449c72f1383623dbd6, type: 3}
+  - {fileID: 21300000, guid: 70704786a2a44feba0c44a79529eda91, type: 3}
+  - {fileID: 21300000, guid: ddf0b087ea354312b761f589cb882c92, type: 3}
   framesPerSecond: 3.5
   randomizePhase: 1
 --- !u!1 &300050

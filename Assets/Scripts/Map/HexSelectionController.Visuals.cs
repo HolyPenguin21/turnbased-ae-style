@@ -287,6 +287,10 @@ namespace Game.Map
             {
                 snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
                 snapshot.name = source.name + " (Last Seen)";
+                // A remembered marker is a frozen sighting. Its cloned flag animator has no
+                // owner selected, so leaving it running would clear the copied emblem next frame.
+                foreach (MapFlagAnimator flag in snapshot.GetComponentsInChildren<MapFlagAnimator>(true))
+                    flag.enabled = false;
                 visuals[hex] = snapshot;
             }
             snapshot.transform.rotation = source.transform.rotation;

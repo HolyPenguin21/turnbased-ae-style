@@ -499,5 +499,13 @@ MonoBehaviour:
   - {fileID: 21300000, guid: abe08fd207ed57f459be53353fa5dffd, type: 3}
   - {fileID: 21300000, guid: 2e256afbfd1676547b39a18818abe55a, type: 3}
   - {fileID: 21300000, guid: d86fda9832493744b843103ea96c5ba8, type: 3}
+  vesselsLogoFrames:
+  - {fileID: 21300000, guid: 08f9cd2567b3420e9f53382645dadf76, type: 3}
+  - {fileID: 21300000, guid: 00b0ddedb87c44479ec3a7ed71909dee, type: 3}
+  - {fileID: 21300000, guid: 51b8a39015c344c68f50419a2b2315f0, type: 3}
+  - {fileID: 21300000, guid: 5901ecb22b3a489694305a837830a2b8, type: 3}
+  - {fileID: 21300000, guid: 9aa7fac296854a449c72f1383623dbd6, type: 3}
+  - {fileID: 21300000, guid: 70704786a2a44feba0c44a79529eda91, type: 3}
+  - {fileID: 21300000, guid: ddf0b087ea354312b761f589cb882c92, type: 3}
   framesPerSecond: 3.5
   randomizePhase: 1

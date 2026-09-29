@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.Players;
 using Game.Styles;
 using TMPro;
@@ -22,6 +23,7 @@ namespace Game.UI
         {
             Faction.IronConcord,
             Faction.Ashen,
+            Faction.Vessels,
             Faction.Random
         };
 
@@ -29,6 +31,7 @@ namespace Game.UI
         {
             Faction.IronConcord => "Iron Concord",
             Faction.Ashen => "The Ashen",
+            Faction.Vessels => "The Vessels",
             Faction.Random => "Random",
             _ => faction.ToString()
         };
@@ -37,6 +40,8 @@ namespace Game.UI
         [SerializeField] private Image colorSwatch;
         [SerializeField] private TMP_Dropdown colorDropdown;
         [SerializeField] private TMP_Dropdown factionDropdown;
+        [SerializeField] private Image factionLogo;
+        [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         [SerializeField] private TMP_Dropdown controllerDropdown;
         [SerializeField] private Button removeButton;
 
@@ -124,13 +129,22 @@ namespace Game.UI
             factionDropdown.AddOptions(SelectableFactions.Select(FactionLabel).ToList());
             int selectedOption = Array.IndexOf(SelectableFactions, Data.Faction);
             factionDropdown.SetValueWithoutNotify(Mathf.Max(selectedOption, 0));
+            RefreshFactionLogo();
             factionDropdown.onValueChanged.RemoveAllListeners();
             factionDropdown.onValueChanged.AddListener(value =>
             {
                 if (value < 0 || value >= SelectableFactions.Length) return;
                 Data.Faction = SelectableFactions[value];
+                RefreshFactionLogo();
                 _onChanged?.Invoke();
             });
+        }
+
+        private void RefreshFactionLogo()
+        {
+            if (factionLogo == null) return;
+            factionLogo.sprite = startingDeckCatalog?.GetCatalog(Data.Faction)?.logo;
+            factionLogo.enabled = factionLogo.sprite != null;
         }
 
         private void SetupControllerDropdown()

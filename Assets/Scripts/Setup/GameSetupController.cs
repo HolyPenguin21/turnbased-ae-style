@@ -109,7 +109,7 @@ namespace Game.Setup
         // comment) — nothing downstream (CardHandUI's starting hand, AiTurnController's
         // army/card catalog lookups, ...) knows how to resolve it, so it must become a concrete
         // faction exactly once, here, before the Game scene ever sees these players.
-        private static readonly Faction[] RandomizableFactions = { Faction.IronConcord, Faction.Ashen };
+        private static readonly Faction[] RandomizableFactions = { Faction.IronConcord, Faction.Ashen, Faction.Vessels };
 
         private void ResolveRandomFactions()
         {
