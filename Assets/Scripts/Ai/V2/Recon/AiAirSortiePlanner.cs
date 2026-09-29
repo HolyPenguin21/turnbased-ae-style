@@ -196,7 +196,7 @@ namespace Game.Ai.V2
                 return null;
             int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
             return PlanExactRebase(sourceHex, null, aircraft, movement, aircraft.Count,
-                destinationHex, map, owner, allowExistingExposure: false);
+                destinationHex, map, owner);
         }
 
         private static RebaseRoute? TryContinueExactRebase(ArmyData airArmy,
@@ -316,7 +316,7 @@ namespace Game.Ai.V2
         }
 
         // Same landing search as PlanSortieCore (capacity/forward-then-cost ranking,
-        // all through the exact same FreeLandingCapacity/KnownAaExposure/NearestKnownEnemyDistance
+        // all through the exact same FreeLandingCapacity/NearestKnownEnemyDistance
         // helpers) except the round-trip feasibility test is TrySimulateHexSequence's own turn-by-
         // turn simulation instead of a flat "outboundCost + returnCost <= movement" check. Ranks by
         // fewest real turns first (a helicopter that can reach and return in 2 turns always beats
@@ -458,9 +458,8 @@ namespace Game.Ai.V2
         // multi-turn safety net; TryReplan's single-turn search (or holding position) is the only
         // honest option left for it.
         //
-        // AA handling matches TryReplan below: only exposure a candidate route adds BEYOND
-        // KnownAaExposureAt(current hex) can disqualify or rank it down; exposure the army already
-        // stands in is never held against any route, since every route starts there.
+        // Multi-turn recovery is selected only by fuel feasibility, landing capacity, time and
+        // distance. Anti-air is resolved physically by the gameplay reaction system.
         public static MultiTurnSortie? TryReplanMultiTurnReturn(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -510,24 +509,13 @@ namespace Game.Ai.V2
         // reachable THIS turn — callers must stop proposing voluntary aviation movement rather than
         // strand the aircraft on a doomed order.
         //
-        // TryReplan is ONLY called from ContinueSortie's two "heading home" branches — never from
-        // the voluntary launch/outbound path, which keeps its own absolute AA-free hard filter in
-        // PlanSortieCore/TryPlanSortiePreferForwardLanding. Here, exposure already unavoidable from
-        // the army's CURRENT hex (KnownAaExposureAt) is not held against any candidate: a sighting
-        // revealed on arrival covers every path home, and treating it as a hard filter would ground
-        // the aircraft forever. Only exposure a route adds BEYOND that baseline ranks it down
-        // (fewest-extra-exposure first), then shorter path cost, then forward usefulness — never an
-        // outright rejection, so a reachable airfield (capacity/movement permitting) always wins
-        // over holding position. Null means no owned airfield is reachable at all this turn
-        // (capacity/movement), never "reachable but through AA".
+        // Same-turn emergency recovery: choose a reachable owned airfield by shortest route,
+        // then forward usefulness. Anti-air is not a strategic planning filter.
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
                 return null;
-            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
-
             HexCoord? best = null;
-            int bestExposure = int.MaxValue;
             int bestCost = int.MaxValue;
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
