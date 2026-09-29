@@ -668,7 +668,7 @@ namespace Game.Ai.V2
                 + $"(corridor={routeHexes.Count},informative={informativeHexes},novelty={observationNovelty:0.00},"
                 + $"recentOverlap={recentAirCoverageOverlap}) "
                 + $"combat={combatOpp:0.00} -travel={travelCost:0.00} -activation={activationCost:0.00} "
-                + $"-recovery={recoveryRisk:0.00}(aaAdj={aaAdjacentHexes}) -redundancy={redundancy:0.00}"
+                + $"-recovery={recoveryRisk:0.00} -redundancy={redundancy:0.00}"
                 + $"(trail={trailOverlap},lateral={(lateral ? 1 : 0)}) sectorReconActors={x.OtherSectorClaims} "
                 + $"anchor={(anchorKind?.ToString() ?? "none")} => {total:0.00}"
                 + (rejected ? $" [REJECT {reject}]" : string.Empty);
