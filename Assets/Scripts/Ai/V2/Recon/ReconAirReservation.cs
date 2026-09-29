@@ -36,8 +36,11 @@ namespace Game.Ai.V2
         public readonly int LaunchEnergy;   // this candidate's own real launch/activation Energy cost
         public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
         public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
+        public readonly int RequiredTurns;
+        public readonly int NextTurnEnergy; // one activation protected if this candidate ends airborne
 
-        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore, int excludeArmyId, float activationAp = 0f)
+        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore,
+            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1, int nextTurnEnergy = 0)
         {
             ActivationAp = activationAp;
             Feasible = feasible;
@@ -45,6 +48,8 @@ namespace Game.Ai.V2
             LaunchEnergy = launchEnergy;
             RouteScore = routeScore;
             ExcludeArmyId = excludeArmyId;
+            RequiredTurns = requiredTurns;
+            NextTurnEnergy = nextTurnEnergy;
         }
 
         internal static readonly AirStructuralFeasibility No = new AirStructuralFeasibility(false, default, 0, 0f, -1);
@@ -145,7 +150,9 @@ namespace Game.Ai.V2
                 return AirStructuralFeasibility.No;
             }
 
-            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId, choice.Value.ActivationAp);
+            int nextTurnEnergy = choice.Value.RequiredTurns > 1 ? launchEnergy : 0;
+            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score,
+                excludeArmyId, choice.Value.ActivationAp, choice.Value.RequiredTurns, nextTurnEnergy);
         }
 
         // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)
