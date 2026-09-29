@@ -587,6 +587,20 @@ namespace Game.Ai.V2
         // outright rejection, so a reachable airfield (capacity/movement permitting) always wins
         // over holding position. Null means no owned airfield is reachable at all this turn
         // (capacity/movement), never "reachable but through AA".
+        // One shared gate for a stationary strike by an already-airborne wing. Striking costs
+        // no movement; the only physical requirement is that the current hex is attackable and,
+        // after the strike, some owned airfield is still reachable before the live endurance
+        // deadline. Recon, recovery and rebase continuations all use this instead of owning
+        // separate "second strike" rules.
+        public static bool CanStrikeAndRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null
+                || !AviationActions.CanStrikeAtCurrentHex(airArmy))
+                return false;
+            return TryReplan(airArmy, map, owner).HasValue
+                || TryReplanMultiTurnReturn(airArmy, map, owner).HasValue;
+        }
+
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
