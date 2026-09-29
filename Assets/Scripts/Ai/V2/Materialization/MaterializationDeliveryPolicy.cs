@@ -35,6 +35,7 @@ namespace Game.Ai.V2
             InsufficientSafeEscort,
             DeliveryExceedsSiteValue,
             NotCheaperThanReadyHero,
+            AttackFistNotStrengthened,
         }
 
         internal readonly struct DeliveryAssessment
@@ -192,6 +193,26 @@ namespace Game.Ai.V2
                             : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 case CapabilityKind.FieldCombatPower:
                 {
+                    if (demand.AttackFistArmyId.HasValue)
+                    {
+                        int fistId = demand.AttackFistArmyId.Value;
+                        if (p.Deploy.Kind != DeploymentKind.ExistingArmy
+                            || p.Deploy.Army == null || p.Deploy.Army.Id != fistId
+                            || snapshot?.Self?.Armies?.Any(a => a != null
+                                && a.ArmyId == fistId && a.IsStructuralRaidActor) != true)
+                            return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
+                        CardDefinition card = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                        if (card == null || card.isAviation)
+                            return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
+                        var projected = p.Deploy.Army.Members.Select(AiPower.ToPowerUnit).ToList();
+                        AiPower.ProjectedStrategicLine line = AiPower.ProjectMaterialization(p);
+                        AiPower.PowerUnit unit = AiPower.ToPowerUnit(card);
+                        float beforePower = AiPower.EffectiveArmyPower(projected);
+                        projected.Add(new AiPower.PowerUnit(line.BasePower, unit.Tags,
+                            line.Range, unit.IsHero, line.CommandRating));
+                        if (AiPower.EffectiveArmyPower(projected) <= beforePower)
+                            return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
+                    }
                     if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
                     {
                         // The garrison floor counts non-hero bodies only: a hero placed there

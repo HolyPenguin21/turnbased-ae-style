@@ -170,12 +170,16 @@ namespace Game.Ai.V2
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
-            if (!GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out string why, allowCommandHandover,
-                    allowCompleteTransfer: allowCommandHandover))
+            bool improves = lane == "attack"
+                ? GroundCombatReinforcement.ImprovesAttackForce(primary, support, opposition,
+                    defenderHexDefenseBonus, out _)
+                : GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
+                    defenderHexDefenseBonus, out _, allowCommandHandover,
+                    allowCompleteTransfer: allowCommandHandover);
+            if (!improves)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
-                        $"{lane} reinforcement #{support.Id} -> #{primary.Id} would not improve the primary's odds: {why}")));
+                        $"{lane} reinforcement #{support.Id} -> #{primary.Id} cannot strengthen its legal roster")));
 
             if (!atRendezvous)
             {
@@ -291,6 +295,28 @@ namespace Game.Ai.V2
                 primaryBodies, supportBodies, capacity, primary.Members.Count,
                 WorthIt.SideCommander.Of(primary.Commander), opposition, out _, out why,
                 defenderHexDefenseBonus);
+        }
+
+        // The Attack lane needs power delivered into the actual primary, not a new shell
+        // elsewhere on the map or a Monte-Carlo win change that can be zero at saturation.
+        internal static bool ImprovesAttackForce(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string why)
+        {
+            HandoffPlan plan = PlanHandoff(primary, support, opposition, hexBonus,
+                out why, allowCompleteTransfer: true);
+            if (plan == null) return false;
+            var roster = primary.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
+            if (AiPower.EffectiveArmyPower(roster) > AiPower.EffectiveArmyPower(primary.Members))
+                return true;
+            // Once a march has started, a zero-power swap may still add the only weapon
+            // capable of hurting a newly observed defender.
+            var before = primary.Members.Select(WorthIt.FromLiveUnit).ToList();
+            var after = roster.Select(WorthIt.FromLiveUnit).ToList();
+            if (!WorthIt.CanDamageAll(before, opposition, hexBonus)
+                && WorthIt.CanDamageAll(after, opposition, hexBonus))
+                return true;
+            why = "legal handoff does not increase primary power or defender coverage";
+            return false;
         }
 
         // Strike force — THE "hand the support's hero over to lead the primary" rule, exchanges
@@ -573,6 +599,9 @@ namespace Game.Ai.V2
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
+                    MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
+                        && !attackTarget.ForceCommitted
+                        ? 0.80f * session.Snapshot.Self.TotalMilitaryPotential : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -697,6 +726,15 @@ namespace Game.Ai.V2
                             "planned same-hex roster no longer clears the shared WorthIt estimator")));
                 plan.ProjectedWinChance = projectedWin;
             }
+
+            // This is the last pre-mutation force check. A reward or casualty between the
+            // proposal and execution changes fresh admission, while a started campaign keeps
+            // its original commitment and is rechecked for defender coverage above.
+            if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
+                && !AttackObjectiveEvaluator.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
+                    session.Snapshot.Self.TotalMilitaryPotential))
+                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 
             // AI-01 — every check below is priced against `projectedUnits`, the roster that will
             // actually march, and every one of them runs BEFORE the first ArmyActions.TransferMember

@@ -711,6 +711,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                WorldSnapshot snapBeforeDelivery = snap;
                 MaterializationResult play = MaterializationExecutor.Execute(
                     snap, player, root, hand, ctx, plan, commitments,
                     chosenDemand.SpendAuthority);
@@ -764,7 +765,7 @@ namespace Game.Ai.V2
                     snap, player, root, hand, ctx);
                 CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
                 bool operationallyDelivered = CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx, snap, plan,
-                    chosenDemand, inv, afterInv, armyIdsBefore, out float delivered);
+                    chosenDemand, inv, afterInv, armyIdsBefore, out float delivered, beforeSnap: snapBeforeDelivery);
 
                 if (operationallyDelivered
                     && MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
@@ -877,6 +878,7 @@ namespace Game.Ai.V2
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
+                AttackFistArmyId = d.AttackFistArmyId,
                 DeliveryShape = d.DeliveryShape,
                 ConsumerIntentKey = d.ConsumerIntentKey,
                 Explain = d.Explain,
@@ -985,4 +987,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

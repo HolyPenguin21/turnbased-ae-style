@@ -40,6 +40,7 @@ namespace Game.Ai.V2
 
             var armyIdsBefore = new HashSet<int>(snap.Self?.Armies?
                 .Where(a => a != null).Select(a => a.ArmyId) ?? Enumerable.Empty<int>());
+            WorldSnapshot beforeSnap = snap;
             MaterializationResult play = MaterializationExecutor.Execute(snap, player, root, hand, ctx, plan, commitments);
             result.MaterializationAttempts++;
             if (play.Deployed) result.MaterializationsSucceeded++;
@@ -78,7 +79,8 @@ namespace Game.Ai.V2
             CapabilityInventory afterInv = CapabilityInventory.Build(snap, player, commitments);
             float delivered = 0f;
             bool operationalResidual = residual != null && CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(
-                player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
+                player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered,
+                beforeSnap: beforeSnap);
             if (operationalResidual)
             {
                 if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(residual)
@@ -155,4 +157,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

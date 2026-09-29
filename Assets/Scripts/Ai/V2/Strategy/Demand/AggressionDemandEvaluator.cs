@@ -309,12 +309,14 @@ namespace Game.Ai.V2
             ActorCommitments commitments, MissionIntent intent, MissionKind consumerKind,
             string targetLabel, int primaryId, int? supportArmyId, int reinforcementRequestedTurn,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, float gate,
-            System.Func<TaskScore> objectiveScore, List<string> diag)
+            System.Func<TaskScore> objectiveScore, List<string> diag,
+            float minimumArmyPower = 0f)
         {
             string at = $"intent={intent.IntentKey} target={targetLabel} primary={primaryId}";
             GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
                 snap, opposition, primaryId, gate, hexBonus);
-            if (primaryPlan.Feasible)
+            if (primaryPlan.Feasible && (minimumArmyPower <= 0f
+                || primaryPlan.ProjectedPower > minimumArmyPower))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
                     + $"win={primaryPlan.ProjectedWinChance:0.00} reason=primary_clears_its_gate");
@@ -344,17 +346,20 @@ namespace Game.Ai.V2
 
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
             float have = primary?.EffectiveArmyPower ?? 0f;
-            float required = RequiredSitePower(opposition, hexBonus);
+            float required = minimumArmyPower > 0f ? minimumArmyPower : RequiredSitePower(opposition, hexBonus);
             // §11 — enough numeric power that still misses the estimator's gate is a composition
             // gap more power cannot close; it never becomes a phantom +1 FieldCombatPower.
-            if (required - have <= AiConfigV2.allocatorSliceEpsilon)
+            if (minimumArmyPower <= 0f && required - have <= AiConfigV2.allocatorSliceEpsilon)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at} "
                     + $"reason=primary_power_suffices_gate_missed required={required:0.#} have={have:0.#} "
                     + $"hexDef={hexBonus:0.#}");
                 return null;
             }
-            float deficit = required - have;
+            float deficit = minimumArmyPower > 0f
+                ? Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                    required - have + AiConfigV2.allocatorSliceEpsilon)
+                : required - have;
             if (!CanDeliverIndependentFieldArmy(snap, inv))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at} "

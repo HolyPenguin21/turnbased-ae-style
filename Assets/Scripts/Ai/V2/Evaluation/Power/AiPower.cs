@@ -32,13 +32,16 @@ namespace Game.Ai.V2
             public readonly IReadOnlyList<UnitTypeTag> Tags;
             public readonly int Range;
             public readonly bool IsHero;
+            public readonly int CommandRating;
 
-            public PowerUnit(float basePower, IReadOnlyList<UnitTypeTag> tags, int range, bool isHero)
+            public PowerUnit(float basePower, IReadOnlyList<UnitTypeTag> tags, int range, bool isHero,
+                int commandRating = 0)
             {
                 BasePower = basePower;
                 Tags = tags ?? System.Array.Empty<UnitTypeTag>();
                 Range = range;
                 IsHero = isHero;
+                CommandRating = commandRating;
             }
         }
 
@@ -54,7 +57,7 @@ namespace Game.Ai.V2
             if (u.IsHero)
                 line += u.Fate * AiConfigV2.powerHeroFateWeight;
             float p = Mathf.Max(0f, line) * AbilityMultiplier(u.Abilities);
-            return new PowerUnit(p, u.TypeTags.ToList(), u.Range, u.IsHero);
+            return new PowerUnit(p, u.TypeTags.ToList(), u.Range, u.IsHero, u.CommandRating);
         }
 
         public static PowerUnit ToPowerUnit(CardDefinition c)
@@ -68,7 +71,7 @@ namespace Game.Ai.V2
             if (isHero)
                 line += c.fate * AiConfigV2.powerHeroFateWeight;
             float p = Mathf.Max(0f, line) * AbilityMultiplier(c.grantedAbilities);
-            return new PowerUnit(p, c.unitTypeTags, c.range, isHero);
+            return new PowerUnit(p, c.unitTypeTags, c.range, isHero, c.commandRating);
         }
 
         // The ONE projected stat line for a not-yet-
@@ -304,15 +307,17 @@ namespace Game.Ai.V2
         // max; `cap` slots total. Not a true knapsack (that candidate loop is per-slot greedy),
         // but it is an informational comparison scalar, not a battle plan. O(cap^2 * n), run once
         // per AI turn.
-        public static List<PowerUnit> ComposeStack(IReadOnlyList<PowerUnit> pool, int cap)
+        public static List<PowerUnit> ComposeStack(IReadOnlyList<PowerUnit> pool, int cap,
+            PowerUnit? commander = null)
         {
             var pick = new List<PowerUnit>();
+            if (commander.HasValue) pick.Add(commander.Value);
             if (pool == null || pool.Count == 0)
                 return pick;
             cap = Mathf.Max(1, cap);
 
             var remaining = new List<PowerUnit>(pool);
-            bool heroTaken = false;
+            bool heroTaken = commander.HasValue;
             while (pick.Count < cap && remaining.Count > 0)
             {
                 int bestIdx = -1;
@@ -346,12 +351,26 @@ namespace Game.Ai.V2
         public static float BestStackPotential(IReadOnlyList<PowerUnit> available, int cap)
             => EffectiveArmyPower(ComposeStack(available, cap));
 
-        // Whole-game ceiling: the strongest ONE stack the player could ever field, capped at the
-        // most capacious hero anywhere in `pool` (own units + hand + remaining deck). Bounded by
-        // that hero's CommandRating exactly like a real army — NOT an unbounded sum of every card
+        // Current ceiling: the strongest ONE stack from own units, hand and remaining deck.
+        // Each candidate hero sets its own capacity, including the no-hero two-body case — not
+        // a capacity borrowed from a different hero and not an unbounded sum of every card
         // — and composition-aware, so it is "tanks + artillery + skill coverage", never "7 of the
-        // same unit". Drops only when a unit dies or a card leaves the pool, never on mere damage.
-        public static float TotalMilitaryPotential(IReadOnlyList<PowerUnit> pool, int bestHeroCommandRating)
-            => EffectiveArmyPower(ComposeStack(pool, bestHeroCommandRating));
+        // same unit". Live units use their current stats, including current hit points.
+        public static float TotalMilitaryPotential(IReadOnlyList<PowerUnit> pool)
+        {
+            if (pool == null) return 0f;
+            // A hero's own command rating, not another hero's, determines the capacity of
+            // the stack containing it. Enumerate the commander before the greedy body pick.
+            List<PowerUnit> bodies = pool.Where(u => !u.IsHero).ToList();
+            float best = EffectiveArmyPower(ComposeStack(bodies, 2));
+            foreach (PowerUnit hero in pool.Where(u => u.IsHero))
+            {
+                int capacity = hero.CommandRating;
+                if (capacity < 1) continue;
+                List<PowerUnit> roster = ComposeStack(bodies, capacity, hero);
+                best = Mathf.Max(best, EffectiveArmyPower(roster));
+            }
+            return best;
+        }
     }
 }
