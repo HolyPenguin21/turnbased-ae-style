@@ -134,7 +134,7 @@ namespace Game.Ai.V2
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            float airSpendableEnergy, int extraCommittedAp)
+            float nextTurnEnergyCost, float airSpendableEnergy, int extraCommittedAp)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
@@ -187,6 +187,18 @@ namespace Game.Ai.V2
                     handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
                     combatUtility, selectedUtility, 0f, blockedReason);
             }
+
+            // Multi-turn flight commitment: only the NEXT activation is guaranteed here. If the
+            // route ends this turn this is 0. Otherwise the remainder of today's spendable stock,
+            // plus the income guaranteed before next initiative, must cover the next activation.
+            // Once that next turn begins the same live rule is evaluated again before the wing is
+            // allowed to remain airborne for yet another end-turn.
+            float projectedNextTurnEnergy = Mathf.Max(0f, spendableEnergy - launchEnergyCost)
+                + expectedEnergyIncome;
+            if (nextTurnEnergyCost > projectedNextTurnEnergy + AiConfigV2.allocatorSliceEpsilon)
+                return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
+                    handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
+                    combatUtility, selectedUtility, 0f, "insufficient_next_turn_air_energy");
 
             // Soft opportunity term — a marginal sortie is trimmed when spendable Energy is thin
             // relative to near-term income; a healthy runway makes the same sortie cheap. Mirrors
