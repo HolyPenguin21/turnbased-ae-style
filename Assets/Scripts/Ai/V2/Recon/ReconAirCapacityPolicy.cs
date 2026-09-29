@@ -99,18 +99,6 @@ namespace Game.Ai.V2
                && o.Kind == ReconObjectiveKind.AirSweep
                && !o.NeedsStealth;
 
-        // Coarse first-turn reach used only by capacity diagnostics. Physical step admission never
-        // trusts this estimate: ReconAirStepPlanner proves a complete route with AviationRange.
-        // Zero-endurance aircraft must reserve the same turn to come home; positive endurance may
-        // spend the full first-turn movement because the shared range simulator owns later recovery.
-        internal static int SweepReach(IReadOnlyList<UnitData> aircraft)
-        {
-            if (aircraft == null || aircraft.Count == 0)
-                return 0;
-            int move = aircraft.Select(AviationRules.EffectiveMoveMax).DefaultIfEmpty(0).Min();
-            return AviationRange.SafeUnlandedEndsRemaining(aircraft) > 0 ? move : move / 2;
-        }
-
         // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
         // (each step to the neighbour closest to the anchor, deterministic tie-break) for `reach`
         // steps, stopping at the anchor. Air movement is flat-cost, so this IS the outbound leg.
