@@ -38,9 +38,11 @@ namespace Game.Ai.V2
         public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
         public readonly int RequiredTurns;
         public readonly int NextTurnEnergy; // one activation protected if this candidate ends airborne
+        public readonly int NextTurnAp;     // fresh activation AP required on that next turn
 
         public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore,
-            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1, int nextTurnEnergy = 0)
+            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1, int nextTurnEnergy = 0,
+            int nextTurnAp = 0)
         {
             ActivationAp = activationAp;
             Feasible = feasible;
@@ -50,6 +52,7 @@ namespace Game.Ai.V2
             ExcludeArmyId = excludeArmyId;
             RequiredTurns = requiredTurns;
             NextTurnEnergy = nextTurnEnergy;
+            NextTurnAp = nextTurnAp;
         }
 
         internal static readonly AirStructuralFeasibility No = new AirStructuralFeasibility(false, default, 0, 0f, -1);
@@ -72,70 +75,36 @@ namespace Game.Ai.V2
             if (ctx?.Map == null)
                 return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId ?? -1); // bare harness
 
-            ReconAirStepPlanner.StepChoice? choice;
-            int launchEnergy;
-            int excludeArmyId;
-            // R3/R4 review fix — probe with the SAME scoring inputs the executor will hand Pick:
-            // this sortie's own footprint excluded from "recent coverage by another sortie", the
-            // air slots reserved-but-not-launched this pass as sector coverage, the executor's own
-            // per-actor MODE (a durable ReconPatrolState wins over the global RequestedMode), and a
-            // read-only PROJECTION of the sortie's turn-start phase / trail so trail-overlap and
-            // lateral shaping match. Without the last two a continuing Outbound wing scored ~0.30
-            // higher here than in the executor and could be reserved as capacity the executor then
-            // rejects below MinimumUsefulScore.
+            // Recon missions consume only already-formed aviation armies. A null ActorId is a
+            // storage/materialization request and is intentionally not a legal Recon executor.
+            if (!slot.ActorId.HasValue)
+            {
+                diagnostics?.Add("mission_side_air_launch_forbidden");
+                return AirStructuralFeasibility.No;
+            }
+
+            ArmyData wing = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
+            if (wing == null)
+                return AirStructuralFeasibility.No;
+
             var scoringCtx = new AirReconScoringContext { ProvisionalWedgeClaims = provisionalWedges };
-
-            if (slot.ActorId.HasValue)
+            (ReconAirSortieState projected, int excludeSortieId, ReconMode mode) =
+                BuildScoringContextForWing(player, ctx, wing, globalMode);
+            scoringCtx.ExcludeSortieId = excludeSortieId;
+            if (projected != null
+                && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
             {
-                ArmyData wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
-                if (wing == null)
-                    return AirStructuralFeasibility.No;
-
-                (ReconAirSortieState projected, int excludeSortieId, ReconMode mode) =
-                    BuildScoringContextForWing(player, ctx, wing, globalMode);
-                scoringCtx.ExcludeSortieId = excludeSortieId;
-                // R5 review fix — a Hold- or Return-phase wing is NOT Observation capacity. The
-                // executor ignores the AIR-01 forward `Pick` result once the sortie is Return-bound
-                // (it flies PickReturnStep toward the airfield instead) or ends the turn aloft on a
-                // Hold — so a strategic forward hex clearing MinimumUsefulScore here would reserve
-                // ObservationDeficit relief the executor never delivers. The wing still consumes an
-                // air-actor slot; it just does not count toward ReservedAirborneWings.
-                if (projected != null
-                    && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
-                {
-                    diagnostics?.Add($"phase={projected.Phase}");
-                    return AirStructuralFeasibility.No;
-                }
-
-                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx,
-                    missionFocusHex: missionFocusHex, diagnostics: diagnostics);
-                launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
-                excludeArmyId = wing.Id;
+                diagnostics?.Add($"phase={projected.Phase}");
+                return AirStructuralFeasibility.No;
             }
-            else
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                if (airfield == null || airfield.Members.Count < UnityEngine.Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
-                {
-                    diagnostics?.Add($"hangar_below_min_ready({airfield?.Members.Count ?? 0})");
-                    return AirStructuralFeasibility.No;
-                }
-                List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                // Structural only — "enough ready aircraft exist to form a legal Recon subset", NOT
-                // whether Energy exists today to launch it (that is CanAffordLaunch, a hard gate at
-                // Provisioning/execution time, and the strategic worth-it call in
-                // AviationSortieReservationEvaluator).
-                if (subset.Count == 0)
-                {
-                    diagnostics?.Add("no_launch_subset");
-                    return AirStructuralFeasibility.No;
-                }
-                var candidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
-                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx,
-                    missionFocusHex: missionFocusHex, diagnostics: diagnostics);
-                launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
-                excludeArmyId = -1;
-            }
+
+            ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.Pick(
+                player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx,
+                missionFocusHex: missionFocusHex, diagnostics: diagnostics);
+            int launchEnergy = wing.HasActivatedThisTurn ? 0
+                : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
+            int excludeArmyId = wing.Id;
 
             // Structural capacity is not "the scorer returned SOME non-hard-rejected route" — it is
             // "a route the real Assignment/Execution layer would call actionable". Pick() itself does
@@ -150,9 +119,12 @@ namespace Game.Ai.V2
                 return AirStructuralFeasibility.No;
             }
 
-            int nextTurnEnergy = choice.Value.RequiredTurns > 1 ? launchEnergy : 0;
+            bool spansNextTurn = choice.Value.RequiredTurns > 1;
+            int nextTurnEnergy = spansNextTurn ? UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost) : 0;
+            int nextTurnAp = spansNextTurn ? UnityEngine.Mathf.Max(0, wing.ActivationApCost) : 0;
             return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score,
-                excludeArmyId, choice.Value.ActivationAp, choice.Value.RequiredTurns, nextTurnEnergy);
+                excludeArmyId, choice.Value.ActivationAp, choice.Value.RequiredTurns, nextTurnEnergy,
+                nextTurnAp);
         }
 
         // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)
