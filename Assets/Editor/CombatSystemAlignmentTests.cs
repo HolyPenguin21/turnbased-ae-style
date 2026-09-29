@@ -550,7 +550,7 @@ namespace Game.EditorTests
             UnitData melee = Body(a);
             melee.Range = 1;
             UnitData enemy = Body(d);
-            enemy.Range = 4;
+            enemy.Range = 2;
             ownArmy.Members.Add(melee);
             enemyArmy.Members.Add(enemy);
 
