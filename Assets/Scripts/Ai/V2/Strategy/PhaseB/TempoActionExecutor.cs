@@ -124,6 +124,12 @@ namespace Game.Ai.V2
                 if (ncRes.Generated) result.GeneratedCardsSucceeded++;
             }
             exec.Generated |= ncRes.Generated;
+            bool infrastructure = nc.Kind == NonCombatCardPlayer.PlayKind.Base
+                || nc.Kind == NonCombatCardPlayer.PlayKind.Facility;
+            bool equipment = nc.Kind == NonCombatCardPlayer.PlayKind.Equipment;
+            // Attempts count every try, successes only a played card — so "infra X/Y" is honest.
+            if (infrastructure) result.InfrastructureAttempts++;
+            else if (equipment) result.EquipmentAssignmentAttempts++;
             if (!ncRes.Played)
             {
                 exec.FailReason = ncRes.FailReason;
@@ -135,14 +141,10 @@ namespace Game.Ai.V2
             result.MaterializationsSucceeded++;
             result.CardsPlayed++;
             exec.Succeeded = true; exec.Progressed = true; exec.CardPlayed = true;
-            if (nc.Kind == NonCombatCardPlayer.PlayKind.Base || nc.Kind == NonCombatCardPlayer.PlayKind.Facility)
-            {
-                result.InfrastructureAttempts++;
+            if (infrastructure)
                 result.InfrastructureBuilt++;
-            }
-            else if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment)
+            else if (equipment)
             {
-                result.EquipmentAssignmentAttempts++;
                 result.EquipmentAssignmentsSucceeded++;
                 exec.Attached = true;
             }

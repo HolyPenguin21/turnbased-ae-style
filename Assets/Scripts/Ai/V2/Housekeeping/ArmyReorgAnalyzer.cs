@@ -113,6 +113,15 @@ namespace Game.Ai.V2
                     containers.Add(BuildContainer(player, turn, army, commitments, citadelHex, unitByKey, ref nextKey));
                 }
 
+                foreach (ReorgContainer c in containers)
+                {
+                    ArmyData army = armyById[c.ArmyId];
+                    foreach (ReorgContainer other in containers)
+                        foreach (ReorgUnit u in other.Units)
+                            if (army.HasActivationCoverageFor(unitByKey[u.Key]))
+                                c.ActivationCoveredUnitKeys.Add(u.Key);
+                }
+
                 var groupHex = new HexCoord(hexGroup.Key.Q, hexGroup.Key.R);
                 MarkDevelopmentOperators(player, groupHex, containers, unitByKey);
                 var lfg = new LocalForceGroup

@@ -27,8 +27,8 @@ namespace Game.Setup
         // starts with, not a reservation; anyone can still repick via their row's own colour
         // dropdown (PlayerRowUI). Players beyond this bag fall back to a random unused colour,
         // same as before. Indices are into PlayerColorPalette.Colors
-        // (0=Cobalt, 1=Teal, 2=Sage Green).
-        private static readonly int[] DefaultColorIndicesByOrder = { 0, 1, 2 };
+        // (0=Cobalt, 4=Brick Red, 1=Sage Green).
+        private static readonly int[] DefaultColorIndicesByOrder = { 0, 4, 1 };
 
         public List<PlayerSetupData> Players { get; } = new List<PlayerSetupData>();
         public int MinPlayers { get; }

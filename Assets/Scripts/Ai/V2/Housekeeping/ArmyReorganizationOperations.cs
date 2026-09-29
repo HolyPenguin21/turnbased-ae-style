@@ -159,8 +159,7 @@ namespace Game.Ai.V2
 
             // ua enters B, ub enters A. With a zero Housekeeping AP reserve both receivers must be
             // free under ArmyActions' real activated-destination rule.
-            if ((bMeta.HasActivatedThisTurn && ua.ActivationApCost > 0)
-                || (aMeta.HasActivatedThisTurn && ub.ActivationApCost > 0))
+            if (bMeta.ChargesActivationFor(ua) || aMeta.ChargesActivationFor(ub))
                 return null;
 
             var afterA = new List<ReorgUnit>(a);
@@ -194,7 +193,7 @@ namespace Game.Ai.V2
         {
             if (u.IsAviation)
                 return false;
-            if (destMeta.HasActivatedThisTurn && u.ActivationApCost > 0)
+            if (destMeta.ChargesActivationFor(u))
                 return false; // TransferMember would spend AP, which Step 8C does not own.
 
             var after = new List<ReorgUnit>(dest);

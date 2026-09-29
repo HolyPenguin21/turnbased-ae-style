@@ -212,7 +212,7 @@ namespace Game.Ai.V2
             { why = "whole-fold member already moved or missing"; return false; }
             if (units.Any(u => u.IsAviation))
             { why = "aviation unit"; return false; }
-            if (to.HasActivatedThisTurn && units.Any(u => u.ActivationApCost > 0))
+            if (units.Any(u => u.ActivationApCost > 0 && to.RequiresActivationCharge(u)))
             { why = "whole-fold would spend AP on activated destination"; return false; }
             if (!ArmyActions.CanTransferMembers(units, from, to, out why))
                 return false;
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
             // Canonical TransferMember charges the incoming unit's ActivationApCost when the
             // destination has already activated. Housekeeping owns a 0-AP reserve today, so such a
             // candidate is structurally illegal here rather than silently spending another axis's AP.
-            if (to.HasActivatedThisTurn && unit.ActivationApCost > 0)
+            if (unit.ActivationApCost > 0 && to.RequiresActivationCharge(unit))
             { why = "would spend AP on activated destination"; return false; }
             // Mirror ArmyActions.TransferMember's projected-roster capacity rule exactly. A hero
             // may legally join a currently-full no-hero army because its CommandRating raises the
@@ -290,8 +290,8 @@ namespace Game.Ai.V2
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }
             if (unitA.IsAviation || unitB.IsAviation) { why = "aviation unit"; return false; }
             // unitA enters B, unitB enters A. Zero-AP invariant mirrors ArmyActions.CanSwapMembers.
-            if ((armyB.HasActivatedThisTurn && unitA.ActivationApCost > 0)
-                || (armyA.HasActivatedThisTurn && unitB.ActivationApCost > 0))
+            if ((unitA.ActivationApCost > 0 && armyB.RequiresActivationCharge(unitA))
+                || (unitB.ActivationApCost > 0 && armyA.RequiresActivationCharge(unitB)))
             { why = "swap would spend AP on activated destination"; return false; }
             if (!ArmyActions.CanSwapMembers(unitA, armyA, unitB, armyB, out string fail))
             { why = fail; return false; }

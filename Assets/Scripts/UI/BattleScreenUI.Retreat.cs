@@ -63,6 +63,7 @@ namespace Game.UI
             RevertBerserkStacks(survivingArmy);
 
             PerformRetreat(army, survivingArmy, out bool destroyed);
+            Game.Ai.AiMatchStats.RecordRetreat(army.Owner, survivingArmy?.Owner, destroyed);
             string title = destroyed
                 ? (_localArmy == army ? "Your army is destroyed retreating!" : "The enemy army is destroyed retreating!")
                 : (_localArmy == army ? "Your army retreats." : "The enemy retreats.");

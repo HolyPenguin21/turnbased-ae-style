@@ -67,7 +67,14 @@ namespace Game.Ai.V2
         public ReorgPhysicalRole Role;
         public bool IsGarrison;
         public bool HasActivatedThisTurn;
+        // Same-hex units whose activation share THIS army already paid this turn
+        // (ArmyData.HasActivationCoverageFor) — joining back costs no AP.
+        public HashSet<int> ActivationCoveredUnitKeys = new HashSet<int>();
         public List<ReorgUnit> Units = new List<ReorgUnit>();
+
+        // Mirrors ArmyData.RequiresActivationCharge, restricted to units that actually cost AP.
+        public bool ChargesActivationFor(ReorgUnit u) =>
+            HasActivatedThisTurn && u.ActivationApCost > 0 && !ActivationCoveredUnitKeys.Contains(u.Key);
 
         public bool CanDonate;
         public bool CanReceive;

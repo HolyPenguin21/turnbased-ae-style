@@ -75,6 +75,7 @@ namespace Game.Ai.V2.Initiative
                 {
                     AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — suppress "
                         + $"{entry.Plan.DiceToBuy} planned bonus dice: {suppressReason}.");
+                    AiMatchStats.RecordInitiativeSuppressed(entry.Player);
                     continue;
                 }
 
@@ -123,6 +124,7 @@ namespace Game.Ai.V2.Initiative
                         spent[ResourceIndex(resource)]++;
                     applied++;
                 }
+                AiMatchStats.RecordInitiativeBought(entry.Player, applied, spent);
 
                 if (applied != entry.Plan.DiceToBuy)
                     AiDebugLog.Write($"[AI][V2][Initiative] {entry.Player.Nickname} — applied {applied}/{entry.Plan.DiceToBuy} planned dice "
