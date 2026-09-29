@@ -34,20 +34,24 @@ namespace Game.Ai.V2
         public readonly HexCoord ChosenHex;
         public readonly float ActivationAp;
         public readonly int LaunchEnergy;   // this candidate's own real launch/activation Energy cost
+        public readonly int RequiredTurns;   // complete recoverable flight duration from the route proof
         public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
         public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
 
-        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore, int excludeArmyId, float activationAp = 0f)
+        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore,
+            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1)
         {
             ActivationAp = activationAp;
             Feasible = feasible;
             ChosenHex = chosenHex;
             LaunchEnergy = launchEnergy;
+            RequiredTurns = System.Math.Max(1, requiredTurns);
             RouteScore = routeScore;
             ExcludeArmyId = excludeArmyId;
         }
 
-        internal static readonly AirStructuralFeasibility No = new AirStructuralFeasibility(false, default, 0, 0f, -1);
+        internal static readonly AirStructuralFeasibility No =
+            new AirStructuralFeasibility(false, default, 0, 0f, -1);
     }
 
     internal static class ReconAirReservationPrepass
@@ -144,7 +148,9 @@ namespace Game.Ai.V2
                 return AirStructuralFeasibility.No;
             }
 
-            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId, choice.Value.ActivationAp);
+            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy,
+                choice.Value.Score, excludeArmyId, choice.Value.ActivationAp,
+                choice.Value.RequiredTurns);
         }
 
         // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)
