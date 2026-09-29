@@ -114,7 +114,6 @@ namespace Game.Ai.V2
 
             Run(snapshot, player, root, ctx, commitments, result);
             StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
-            TurnResourceTelemetry.LogEnd(player, root, ctx?.TurnNumber ?? 0);
             yield break;
         }
 
