@@ -25,7 +25,7 @@ namespace Game.Ai.V2
     //    · a ready standalone wing is on an owned airfield with NO AiTask and MP left.
     //
     //  EvaluateDetailed() enumerates the concrete air slots (airborne wings, then ready standalone
-    //  wings, then storage launch subsets) plus a loose WorldAnalysis-only fallback count from a
+    //  wings only) plus a loose WorldAnalysis-only fallback count from a
     //  raw-stockpile greedy. It is STRUCTURAL throughout: no hand/deck/income reserve, no
     //  "is spending it worthwhile" judgement. That strategic decision has exactly one owner —
     //  ProvisioningManager.AirSortieReservationAdmission -> AviationSortieReservationEvaluator.
@@ -69,7 +69,7 @@ namespace Game.Ai.V2
         // Executor-operational in-flight recon wings (Controller != null && CurrentMovement > 0),
         // in the executor's own order, each carrying the first-activation AP/Energy it still owes.
         public readonly List<AirObservationSlot> AirborneWings = new List<AirObservationSlot>();
-        // Every ready-standalone-wing then hangar-launch-subset candidate, in the exact order the
+        // Every ready-standalone-wing candidates, in the exact order the
         // executor would try them. NOT budget-filtered and NOT capped — ReconAirReservationPrepass
         // runs the ONE authoritative greedy (cumulative AP/Energy + AIR-01 route + energy policy)
         // so a route-invalid earlier candidate cannot hide a valid later aircraft.
@@ -102,14 +102,16 @@ namespace Game.Ai.V2
                && o.Kind == ReconObjectiveKind.AirSweep
                && !o.NeedsStealth;
 
-        // How far one sortie of these aircraft reaches outbound, by the same-turn round-trip rule
-        // (ReconAirSortieState.OutboundCapFor): half the slowest aircraft's movement.
+        // Coarse first-turn reach used only by capacity diagnostics. Physical step admission never
+        // trusts this estimate: ReconAirStepPlanner proves a complete route with AviationRange.
+        // Zero-endurance aircraft must reserve the same turn to come home; positive endurance may
+        // spend the full first-turn movement because the shared range simulator owns later recovery.
         internal static int SweepReach(IReadOnlyList<UnitData> aircraft)
         {
             if (aircraft == null || aircraft.Count == 0)
                 return 0;
             int move = aircraft.Select(AviationRules.EffectiveMoveMax).DefaultIfEmpty(0).Min();
-            return ReconAirSortieState.OutboundCapFor(move);
+            return AviationRange.SafeUnlandedEndsRemaining(aircraft) > 0 ? move : move / 2;
         }
 
         // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
@@ -219,19 +221,9 @@ namespace Game.Ai.V2
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
-            foreach (HexCoord hex in AiAirSortiePlanner.OwnedAirfieldHexes(player))
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(hex, player);
-                if (airfield == null
-                    || airfield.Members.Count < Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
-                    continue;
-                List<UnitData> subset = SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0)
-                    continue;
-                detail.SpareCandidatesInOrder.Add(new AirObservationSlot(null, hex,
-                    subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
-                    subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
-            }
+            // Recon never materializes aircraft from storage. AirSweep may only use an already
+            // formed ready wing or continue an airborne one. Aircraft creation/formation belongs
+            // to the separate score-driven aviation systems, never to a mission request.
 
             // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route,
             // no strategic reserve — just "how many more sorties do the raw stockpile + slot cap
