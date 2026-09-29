@@ -46,19 +46,16 @@ namespace Game.Ai.V2
         }
     }
 
-    // AI-RECON-01 — the same greedy result as ReconAirObservationCapacity, but with the concrete
-    // slots so ReconAirReservationPrepass can pin specific actors and protect their exact AP/Energy.
+    // Concrete already-formed aviation actor. Recon has no storage-launch slot shape.
     internal readonly struct AirObservationSlot
     {
-        public readonly int? ActorId;       // a ready standalone wing's army id; null for a hangar launch subset
-        public readonly HexCoord AirfieldHex; // the launching airfield when ActorId is null; default otherwise
+        public readonly int ActorId;
         public readonly int Ap;
         public readonly int Energy;
 
-        public AirObservationSlot(int? actorId, HexCoord airfieldHex, int ap, int energy)
+        public AirObservationSlot(int actorId, int ap, int energy)
         {
             ActorId = actorId;
-            AirfieldHex = airfieldHex;
             Ap = ap;
             Energy = energy;
         }
@@ -138,23 +135,6 @@ namespace Game.Ai.V2
             return cur;
         }
 
-        // Mirror of ReconAirExecutor's own storage-subset rule — kept here so both read ONE rule:
-        // the cheapest-to-activate minimum aircraft subset for a single recon sortie, deterministic
-        // tie-break on the canonical storage roster order.
-        internal static List<UnitData> SelectReconLaunchSubset(IReadOnlyList<UnitData> stored)
-        {
-            int want = Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft);
-            return (stored ?? System.Array.Empty<UnitData>())
-                .Select((u, i) => (u, i))
-                .Where(t => t.u != null)
-                .OrderBy(t => t.u.LaunchEnergyCost)
-                .ThenBy(t => t.u.ActivationApCost)
-                .ThenBy(t => t.i)
-                .Take(want)
-                .Select(t => t.u)
-                .ToList();
-        }
-
         // THE two air-recon actor states (D13 — one owner for capacity, Provisioning and flight
         // recovery), explicitly mutually exclusive by the airfield test:
         //   ReadyStandaloneWing — a formed wing on its own airfield, flying no sortie, MP left.
@@ -194,7 +174,7 @@ namespace Game.Ai.V2
                 .Where(a => IsAirborneReconWing(player, a))
                 .OrderBy(a => a.Id))
             {
-                detail.AirborneWings.Add(new AirObservationSlot(a.Id, default,
+                detail.AirborneWings.Add(new AirObservationSlot(a.Id,
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
@@ -207,16 +187,15 @@ namespace Game.Ai.V2
             detail.ApBudgetBase = Mathf.Max(0, root.ActionPoints);
             detail.EnergyBudgetBase = Mathf.Max(0, root.GetResource(ResourceType.Energy));
 
-            // Spare candidates in the EXACT order ReconAirExecutor tries them: ready standalone
-            // wings first (executor sort), then one hangar launch subset per owned airfield in
-            // OwnedAirfieldHexes order. Not budget-filtered / not capped — the prepass owns that.
+            // Ready already-formed standalone wings in executor order. Not budget-filtered or
+            // capped here; Assignment/Provisioning own those decisions.
             foreach (ArmyData a in ownAir
                 .Where(a => IsReadyStandaloneWing(player, a))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost))
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
                 .ThenBy(a => a.Id))
             {
-                detail.SpareCandidatesInOrder.Add(new AirObservationSlot(a.Id, default,
+                detail.SpareCandidatesInOrder.Add(new AirObservationSlot(a.Id,
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
