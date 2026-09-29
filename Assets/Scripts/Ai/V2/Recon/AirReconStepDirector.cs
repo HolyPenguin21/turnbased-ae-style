@@ -313,7 +313,7 @@ namespace Game.Ai.V2
             // No strategic Energy opportunity-cost gate here any more. Whether this sortie is worth
             // its AP/Energy was decided once this turn by ProvisioningManager.AirSortieReservation-
             // Admission (-> AviationSortieReservationEvaluator). This layer only enforces the LIVE
-            // HARD affordability gate (CanIssueMoveNow) plus the route/AA/endurance checks above.
+            // HARD affordability gate (CanIssueMoveNow) plus the route/endurance checks above.
             if (!AiTurnController.CanIssueMoveNow(root, air, ctx.Map, choice.Value.Hex))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} cannot afford/issue first step "
@@ -482,10 +482,7 @@ namespace Game.Ai.V2
             HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
             if (path == null)
                 return false;
-            if (AviationRules.PathMoveCost(air, path) > air.CurrentMovement)
-                return false;
-            int baseline = AiAirSortiePlanner.KnownAaExposureAt(player, air.Hex);
-            return AiAirSortiePlanner.KnownAaExposure(player, path) - baseline <= 0;
+            return AviationRules.PathMoveCost(air, path) <= air.CurrentMovement;
         }
 
         private static int PathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
