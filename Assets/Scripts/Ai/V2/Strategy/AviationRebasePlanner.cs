@@ -117,8 +117,13 @@ namespace Game.Ai.V2
 
                         int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                         int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+                        if (ap > StrategicSpendability.SpendableAp(player, root, ctx)
+                            + AiConfigV2.allocatorSliceEpsilon)
+                            continue;
                         float spendableEnergy = StrategicSpendability.SpendableAmount(
                             player, root, ctx, ResourceType.Energy);
+                        if (energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+                            continue;
                         if (route.Value.RequiredTurns > 1
                             && !AviationContinuationBudget.CanGuaranteeNextActivation(
                                 player, ctx.Map, spendableEnergy - energy, energy, ap, out _))
@@ -170,8 +175,15 @@ namespace Game.Ai.V2
 
             int liveAp = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
             int liveEnergy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
             float spendableEnergy = StrategicSpendability.SpendableAmount(
                 player, root, ctx, ResourceType.Energy);
+            if (liveAp > spendableAp + AiConfigV2.allocatorSliceEpsilon
+                || liveEnergy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
+            {
+                AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled — AP/Energy held by the resource bank");
+                yield break;
+            }
             if (liveRoute.Value.RequiredTurns > 1
                 && !AviationContinuationBudget.CanGuaranteeNextActivation(
                     player, ctx.Map, spendableEnergy - liveEnergy, liveEnergy, liveAp, out string block))

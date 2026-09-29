@@ -515,6 +515,39 @@ namespace Game.EditorTests
                 Assert.That(plan.Route.TotalCost, Is.EqualTo(2));
                 Assert.That(plan.Route.RequiredTurns, Is.EqualTo(1));
 
+                StrategicResourceReservationLedger.BeginTurn(owner, ctx.TurnNumber);
+                StrategicResourceReservationLedger.Upsert(owner, ctx.TurnNumber,
+                    new StrategicResourceReservation
+                    {
+                        Owner = "Economy:base", Reason = StrategicReservationReason.EconomyDeferredBuild,
+                        Resource = StrategicReservedResource.Energy, Amount = 2f,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+                Assert.That(AviationRebasePlanner.BuildPlan(
+                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
+                    "Phase B must leave the bank's Energy for its owner");
+                Assert.That(AviationRebasePlanner.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
+                    Is.False, "a previously selected plan must recheck the bank before launch");
+                Assert.That(root.GetResource(ResourceType.Energy), Is.EqualTo(2));
+                Assert.That(storage.Members, Does.Contain(aircraft));
+                StrategicResourceReservationLedger.ReleaseByReason(owner, ctx.TurnNumber,
+                    StrategicReservationReason.EconomyDeferredBuild);
+                StrategicResourceReservationLedger.Upsert(owner, ctx.TurnNumber,
+                    new StrategicResourceReservation
+                    {
+                        Owner = "Reaction:guard", Reason = StrategicReservationReason.StrategicReactionPass,
+                        Resource = StrategicReservedResource.ActionPoints, Amount = 2f,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+                Assert.That(AviationRebasePlanner.BuildPlan(
+                    new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
+                    "the same guard applies to reserved AP");
+                Assert.That(AviationRebasePlanner.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
+                    Is.False);
+                Assert.That(root.ActionPoints, Is.EqualTo(2));
+                StrategicResourceReservationLedger.ReleaseByReason(owner, ctx.TurnNumber,
+                    StrategicReservationReason.StrategicReactionPass);
+
                 root.ActionPoints = 0;
                 Assert.That(AviationRebasePlanner.BuildPlan(
                     new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null);
@@ -535,6 +568,7 @@ namespace Game.EditorTests
                 ArmyRegistry.Clear();
                 AiMapMemory.Clear();
                 AirSortieRegistry.Clear();
+                StrategicResourceReservationLedger.ClearAll();
                 Object.DestroyImmediate(mapObject);
                 Object.DestroyImmediate(rootObject);
             }
