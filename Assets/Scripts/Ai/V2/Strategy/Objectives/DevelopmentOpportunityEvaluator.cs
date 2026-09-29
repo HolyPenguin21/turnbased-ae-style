@@ -413,11 +413,9 @@ namespace Game.Ai.V2
             // Demand emits one stage per pass and each stage's executor re-checks its own cost.
             ResourceCost operatorResourceCost = operatorCard?.EffectivePlayResourceCost
                 ?? generatedOperator?.GenerationResourceCost ?? deckOperator?.resourceCost;
-            if (capacityTier != null)
-                // The tier is a one-time investment like the facility, priced once on the canonical
-                // AP/resource table (the same price the global-source upgrade path charges).
-                preparationCost += ActionPrice.ToCardScore(ActionPrice.Ap(capacityTier.apCost)
-                    + ActionPrice.Resources(capacityTier.cost, snap));
+            // The tier is a one-time investment like the facility, priced once (the same price the
+            // global-source upgrade path charges).
+            preparationCost += StrategicMaintenancePolicy.CapacityTierPrice(capacityTier, snap);
             ResourceCost stageCost = facility != null
                 ? StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost,
                     capacityTier?.cost)

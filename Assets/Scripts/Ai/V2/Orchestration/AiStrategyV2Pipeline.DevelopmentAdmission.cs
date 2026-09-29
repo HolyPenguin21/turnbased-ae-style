@@ -130,7 +130,14 @@ namespace Game.Ai.V2
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())
-                .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"));
+                .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h =>
+                {
+                    // Level and a free unlocked slot decide whether a facility stage must first
+                    // buy a capacity tier (StrategicMaintenancePolicy.CapacityUnlockTierAt).
+                    BuildingData b = BuildingRegistry.FindAt(h);
+                    return b == null ? $"{h.Q},{h.R}"
+                        : $"{h.Q},{h.R}:{b.Level}:{(b.FindFirstAvailableFacilitySlot() >= 0 ? 1 : 0)}";
+                }));
             // Actor occupancy: preparation builds ActorCommitments over ALL intents, so each kind
             // contributes only the inputs that produce a claim — never intent identity.
             string claims = string.Join(";", (activeIntents ?? new List<MissionIntent>())

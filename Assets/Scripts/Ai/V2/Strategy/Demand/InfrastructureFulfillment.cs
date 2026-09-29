@@ -740,7 +740,8 @@ namespace Game.Ai.V2
                     ResourceCost stageCost = StrategicCardEvaluator.AddResourceCosts(
                         card.EffectivePlayResourceCost, upgradeTier?.cost);
                     int stageAp = card.EffectivePlayApCost + (upgradeTier?.apCost ?? 0);
-                    if (upgradeTier != null && !root.CanSpendActionPoints(stageAp))
+                    if (upgradeTier != null && StrategicSpendability.SpendableAp(player, root, ctx)
+                            + AiConfigV2.allocatorSliceEpsilon < stageAp)
                     {
                         rejected.Add($"{at}:not enough action points for upgrade+facility ({stageAp})");
                         continue;
@@ -820,10 +821,7 @@ namespace Game.Ai.V2
                 NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
                 hand, bestEquipmentUpgrade: 0f);
             // The upgrade is priced once, on the canonical AP/resource price table.
-            float upgradePrice = upgradeTier != null
-                ? ActionPrice.ToCardScore(ActionPrice.Ap(upgradeTier.apCost)
-                    + ActionPrice.Resources(upgradeTier.cost, snap))
-                : 0f;
+            float upgradePrice = StrategicMaintenancePolicy.CapacityTierPrice(upgradeTier, snap);
             float net = use.NetScore - upgradePrice;
             if (net <= AiConfigV2.allocatorSliceEpsilon)
             {

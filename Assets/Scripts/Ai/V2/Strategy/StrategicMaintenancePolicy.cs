@@ -243,7 +243,7 @@ namespace Game.Ai.V2
                         && op.FacilityHex.Equals(b.Hex)));
                 if (bestFacility == null)
                     continue;
-                BaseUpgradeTier tier = NextTier(b, ctx);
+                BaseUpgradeTier tier = CapacityUnlockTierAt(b, ctx);
                 if (tier == null)
                     continue;
                 DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
@@ -308,6 +308,13 @@ namespace Game.Ai.V2
             return NextTier(b, ctx);
         }
 
+        // The one price of buying a capacity tier as a facility's own prerequisite, on the
+        // canonical AP/resource table.
+        internal static float CapacityTierPrice(BaseUpgradeTier tier, WorldSnapshot snap) =>
+            tier == null ? 0f
+                : ActionPrice.ToCardScore(ActionPrice.Ap(tier.apCost)
+                    + ActionPrice.Resources(tier.cost, snap));
+
         internal static bool TryFindCapacityUnlock(CardData facility, PlayerSetupData player,
             AiHandData hand, AiTurnContext ctx, out BuildingData building, out BaseUpgradeTier tier)
         {
@@ -320,7 +327,7 @@ namespace Game.Ai.V2
                 return false;
             foreach (BuildingData b in UnlockableBasesInOrder(bases))
             {
-                BaseUpgradeTier next = NextTier(b, ctx);
+                BaseUpgradeTier next = CapacityUnlockTierAt(b, ctx);
                 if (next == null)
                     continue;
                 building = b;
