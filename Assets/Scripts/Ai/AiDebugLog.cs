@@ -126,6 +126,26 @@ namespace Game.Ai
             WriteCore(message, callerFile, callerMember, callerLine);
         }
 
+        // Compare a whole deterministic diagnostic block as one state. If any line changes the
+        // block is emitted again in full; an unchanged recomputation produces no output.
+        public static void WriteBlockRepeatSuppressed(string dedupKey, IEnumerable<string> messages,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (messages == null) return;
+            var block = new List<string>();
+            foreach (string message in messages)
+                if (!string.IsNullOrEmpty(message)) block.Add(message);
+            string fingerprint = string.Join("\n", block);
+            string fullKey = $"{callerFile}:{callerLine}|block|{dedupKey}";
+            if (_dedupLastByKey.TryGetValue(fullKey, out string last) && last == fingerprint)
+                return;
+            _dedupLastByKey[fullKey] = fingerprint;
+            foreach (string message in block)
+                WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
         // dedupKey identifies WHICH recurring thing this line is about (e.g. a target id, an actor
         // id, an allocator pass name) — distinct keys at the same call site are tracked and printed
         // independently. Only a byte-for-byte-identical repeat of the previous message for that key
