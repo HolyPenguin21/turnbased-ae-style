@@ -43,6 +43,19 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ClearInvalidatesAReusedPlayersStrategicSnapshotRevision()
+        {
+            var player = new PlayerSetupData();
+            AiMapMemory.MarkScoutDanger(player, new HexCoord(1, 1), radius: 1, avoidUntilTurn: 3);
+            int beforeClear = AiMapMemory.KnowledgeVersionFor(player);
+
+            AiMapMemory.Clear();
+
+            Assert.That(AiMapMemory.KnowledgeVersionFor(player), Is.GreaterThan(beforeClear),
+                "A previous session's strategic snapshot must not be reused after memory clears.");
+        }
+
+        [Test]
         public void NoOpVisibilityRefresh_DoesNotInvalidateKnowledgeVersion()
         {
             var player = new PlayerSetupData();

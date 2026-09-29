@@ -413,10 +413,11 @@ namespace Game.Ai
         // here; it adds no subscription, cached snapshot or alternate observation path.
         private static readonly Dictionary<PlayerSetupData, int> KnowledgeVersions =
             new Dictionary<PlayerSetupData, int>();
+        private static int _knowledgeVersionSeed;
 
         public static int KnowledgeVersionFor(PlayerSetupData player) =>
             player != null && KnowledgeVersions.TryGetValue(player, out int version)
-                ? version : 0;
+                ? version : _knowledgeVersionSeed;
 
         private static void BumpKnowledgeVersion(PlayerSetupData player)
         {
@@ -479,6 +480,12 @@ namespace Game.Ai
 
         public static void Clear()
         {
+            // A reused player/snapshot must never see the same revision after a session reset.
+            // Keep the next baseline above every revision issued in the previous session.
+            if (KnowledgeVersions.Count > 0)
+                _knowledgeVersionSeed = System.Math.Max(_knowledgeVersionSeed,
+                    KnowledgeVersions.Values.Max());
+            _knowledgeVersionSeed++;
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
             KnownEventGuards.Clear();

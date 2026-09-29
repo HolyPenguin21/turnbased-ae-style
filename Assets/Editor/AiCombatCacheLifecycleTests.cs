@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
 using Game.Ai;
 using Game.Combat;
 using Game.Core;
