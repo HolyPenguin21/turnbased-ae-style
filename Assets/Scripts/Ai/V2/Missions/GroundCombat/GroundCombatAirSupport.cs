@@ -354,8 +354,8 @@ namespace Game.Ai.V2
 
             if (requiredTurns > 1)
             {
-                nextTurnEnergy = Mathf.Max(0, wing.ActivationEnergyCost);
-                nextTurnAp = Mathf.Max(0, wing.ActivationApCost);
+                nextTurnEnergy = Math.Max(0, wing.ActivationEnergyCost);
+                nextTurnAp = Math.Max(0, wing.ActivationApCost);
                 if (!AviationContinuationBudget.CanGuaranteeNextActivation(
                         player, ctx.Map, energyLeft - energy,
                         session.NextTurnAirEnergyClaimed + nextTurnEnergy,
