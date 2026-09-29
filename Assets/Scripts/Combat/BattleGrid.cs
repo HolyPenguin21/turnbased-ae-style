@@ -112,10 +112,9 @@ namespace Game.Combat
         // already present in that army's own ArmyData.SavedArrangement (see the Arrangement
         // phase in BattleScreenUI) goes straight to its remembered cell; everyone else (a brand
         // new army, or a member added since the layout was last saved) falls back to the plain
-        // default: the hero (if any — always the front of ArmyData.Members, see
-        // AddMemberSorted) into the Back row's reserved slot, every other member filling the
-        // Front row left-to-right and then overflowing into the remaining Back row columns
-        // (1..4) if there are more than 5.
+        // default: every hero into the Back row first (column 0 preferred for the first one),
+        // then ordinary members into the Front row left-to-right and finally any remaining
+        // Back-row cells. Multiple heroes therefore never fall into a Front-row fallback.
         public static BattleGrid FromArmies(ArmyData attacker, ArmyData defender)
         {
             var grid = new BattleGrid();
