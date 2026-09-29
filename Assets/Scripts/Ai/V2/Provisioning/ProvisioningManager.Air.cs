@@ -207,10 +207,27 @@ namespace Game.Ai.V2
             bool existing = exec.ExecutorKind == ScoutExecutorKind.AirExisting;
             string label = existing ? $"actor=#{moverArmyId}" : $"airfield=({airfieldHex.Q},{airfieldHex.R})";
 
+            int recurringAp;
+            int recurringEnergy;
+            if (existing)
+            {
+                ArmyData wing = ResolveArmy(player, moverArmyId);
+                recurringAp = Mathf.Max(0, wing?.ActivationApCost ?? Mathf.CeilToInt(realAp));
+                recurringEnergy = Mathf.Max(0, wing?.ActivationEnergyCost ?? Mathf.CeilToInt(realEnergy));
+            }
+            else
+            {
+                recurringAp = exec.LaunchSubset?.Where(u => u != null).Sum(u => u.ActivationApCost)
+                    ?? Mathf.CeilToInt(realAp);
+                recurringEnergy = exec.LaunchSubset?.Where(u => u != null).Sum(u => u.LaunchEnergyCost)
+                    ?? Mathf.CeilToInt(realEnergy);
+            }
+
             AviationReservationDecision decision = AviationSortieReservationEvaluator.EvaluateRecon(
                 player, root, ctx.Map,
                 Mathf.CeilToInt(Mathf.Max(0f, realAp)),
                 Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
+                recurringAp, recurringEnergy, Mathf.Max(1, exec.EtaTurns),
                 exec.RouteScore,
                 AirSpendableEnergyLeft(player, root, ctx, session),
                 Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)));
