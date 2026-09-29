@@ -16,7 +16,7 @@ namespace ReconAirAssignmentSim
         private static int Main()
         {
             Test_InvalidEarlyAirCandidate_DoesNotHideLaterValidCandidate();
-            Test_TwoAirLaunches_CannotEachConsumeSameEnergyPool();
+            Test_ExistingAirActors_DoNotUseLegacyLaunchEnergyGate();
             Test_AirActorCap_AppliesAcrossWholeBatch();
 
             // Round 7 (Problem 3) — generic multi-resource reprice contract, exercised directly
@@ -50,8 +50,8 @@ namespace ReconAirAssignmentSim
         {
             var ordered = new List<AirObservationSlot>
             {
-                new AirObservationSlot(1, default, 1, 1), // infeasible — earlier in the ordered list
-                new AirObservationSlot(2, default, 1, 1), // feasible — later
+                new AirObservationSlot(1, 1, 1), // infeasible — earlier in the ordered list
+                new AirObservationSlot(2, 1, 1), // feasible — later
             };
 
             List<AirObservationSlot> pool = ReconAssignmentPlanner.BuildFeasibleAirPool(
@@ -64,11 +64,11 @@ namespace ReconAirAssignmentSim
         }
 
         // ---------------------------------------------------------------------------------------
-        //  Test 2 — two AirLaunch candidates (different airfields, so no ActorKey collision) each
-        //  individually fit their OWN 6-Energy cost, but the batch's shared airEnergyBudget (10) can
-        //  only support one of them at once. The solver must not choose both.
+        //  Test 2 — Recon has no AirLaunch candidate shape. Existing wings carry their real Energy
+        //  requirement to Provisioning, and the legacy Assignment airEnergyBudget must not become a
+        //  second resource authority that rejects one of two otherwise distinct actors.
         // ---------------------------------------------------------------------------------------
-        private static void Test_TwoAirLaunches_CannotEachConsumeSameEnergyPool()
+        private static void Test_ExistingAirActors_DoNotUseLegacyLaunchEnergyGate()
         {
             MissionProposal m1 = MakeRefreshProposal(new HexCoord(10, 0), "M1");
             MissionProposal m2 = MakeRefreshProposal(new HexCoord(20, 0), "M2");
@@ -78,10 +78,12 @@ namespace ReconAirAssignmentSim
                 new FundedEntry { Mission = m2, Priority = 1, Tentative = new ResourceVector(1f, 0f, 0f, 0f, 0f) },
             };
 
-            var cand1 = new ScoutExecutionCandidate(null, new HexCoord(10, 0), 1, 1, 0, 0f, 0, false, 1f,
-                ScoutExecutorKind.AirLaunch, new HexCoord(1, 1), null, requiredEnergy: 6f);
-            var cand2 = new ScoutExecutionCandidate(null, new HexCoord(20, 0), 1, 1, 0, 0f, 0, false, 1f,
-                ScoutExecutorKind.AirLaunch, new HexCoord(2, 2), null, requiredEnergy: 6f);
+            var cand1 = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 201, IsAir = true }, new HexCoord(10, 0),
+                1, 1, 0, 0f, 0, false, 1f, ScoutExecutorKind.AirExisting, requiredEnergy: 6f);
+            var cand2 = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 202, IsAir = true }, new HexCoord(20, 0),
+                1, 1, 0, 0f, 0, false, 1f, ScoutExecutorKind.AirExisting, requiredEnergy: 6f);
             var cands = new List<List<ScoutExecutionCandidate>>
             {
                 new List<ScoutExecutionCandidate> { cand1 },
@@ -89,16 +91,10 @@ namespace ReconAirAssignmentSim
             };
 
             ReconAssignmentResult result = ReconAssignmentPlanner.AssignFromCandidates(
-                open, cands, airEnergyBudget: 10f, airActorCap: 10);
+                open, cands, airEnergyBudget: 1f, airActorCap: 10);
 
-            Expect("TwoAirLaunches_CannotEachConsumeSameEnergyPool: at most ONE of the two 6-Energy launches is assigned against a 10-Energy budget",
-                result.Assigned.Count == 1);
-
-            float totalEnergyOfAssigned = 0f;
-            foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in result.Assigned)
-                totalEnergyOfAssigned += kv.Value.RequiredEnergy;
-            Expect("TwoAirLaunches_CannotEachConsumeSameEnergyPool: the assigned candidate's Energy fits the shared budget",
-                totalEnergyOfAssigned <= 10f);
+            Expect("ExistingAirActors_DoNotUseLegacyLaunchEnergyGate: both distinct wings reach Provisioning",
+                result.Assigned.Count == 2);
         }
 
         // ---------------------------------------------------------------------------------------
