@@ -42,8 +42,9 @@ namespace Game.UI
             return portraitSource?.DetailArt;
         }
 
-        public void Show(ArmyData mover, EventDefinition definition, Action onExplore, Action onSkip)
+        public void Show(ArmyData mover, HexEventRegistry.Entry entry, Action onExplore, Action onSkip)
         {
+            EventDefinition definition = entry?.Definition;
             if (definition == null)
                 return;
 
@@ -60,7 +61,7 @@ namespace Game.UI
                 eventArtImage.gameObject.SetActive(definition.image != null);
             }
             if (descriptionText != null)
-                descriptionText.text = definition.description;
+                descriptionText.text = BuildDescription(entry);
 
             if (exploreButton != null)
             {
@@ -79,6 +80,25 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             VisibilityChanged?.Invoke();
+        }
+
+        private static string BuildDescription(HexEventRegistry.Entry entry)
+        {
+            string description = entry?.Definition?.description ?? string.Empty;
+            int targetCount = 0;
+            if (entry?.ResolvedGuardMembers != null)
+                targetCount = entry.ResolvedGuardMembers
+                    .Where(member => member.Item1 != null && member.Item2 > 0)
+                    .Sum(member => member.Item2);
+
+            if (targetCount <= 0)
+                return description;
+
+            string targetLabel = targetCount == 1 ? "target" : "targets";
+            string guardSummary = $"Looks like someone is there: {targetCount} {targetLabel}.";
+            return string.IsNullOrWhiteSpace(description)
+                ? guardSummary
+                : $"{description.TrimEnd()}\n\n{guardSummary}";
         }
 
         public void Hide()
