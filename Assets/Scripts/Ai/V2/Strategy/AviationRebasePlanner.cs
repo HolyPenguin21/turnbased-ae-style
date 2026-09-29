@@ -216,6 +216,30 @@ namespace Game.Ai.V2
 
             bool changed = false;
             var trace = new AiMoveExecutionTrace();
+
+            // An airborne recovery/rebase wing does not become pacifist just because its original
+            // mission released it. If it starts this continuation on an enemy-occupied hex and a
+            // landing is still recoverable inside live endurance, take the free stationary strike
+            // first; movement remains untouched and the return continues below.
+            if (!AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player))
+            {
+                AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+                if (presenter != null)
+                {
+                    var strike = new AviationCombatPresenter.AirStrikeResult();
+                    yield return AviationActions.ResolveStationaryStrike(presenter, wing, strike);
+                    if (strike.Attacked)
+                    {
+                        changed = true;
+                        V2StateVersion.Bump();
+                        AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
+                            + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
+                            + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(wing)}");
+                    }
+                }
+            }
+
             int guard = Mathf.Max(1, wing.CurrentMovement + 1);
             while (wing != null && wing.CurrentMovement > 0 && guard-- > 0)
             {
