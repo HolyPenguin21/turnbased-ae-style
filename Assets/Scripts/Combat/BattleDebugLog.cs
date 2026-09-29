@@ -19,6 +19,9 @@ namespace Game.Combat
     {
         private const string RelativePath = "Logs/BattleDebug.log";
         private static string _path;
+        private static StreamWriter _writer;
+        public static bool LogToUnityConsole = false;
+        public static bool Verbose = false;
         // Per-SESSION battle sequence number (see BeginBattle) — every battle fought this
         // session gets the next number and stays in this one file rather than each battle
         // getting/truncating its own; only BeginSession (below) ever resets this, so a hex that
@@ -29,19 +32,30 @@ namespace Game.Combat
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void BeginSession()
         {
+            CloseSession();
             _battleCounter = 0;
             try
             {
                 string root = Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath;
                 _path = Path.Combine(root, RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
-                File.WriteAllText(_path, $"=== Battle debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}");
+                _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
+                _writer.WriteLine($"=== Battle debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                Application.quitting += CloseSession;
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"BattleDebugLog: couldn't open log file — {e.Message}");
                 _path = null;
+                _writer = null;
             }
+        }
+
+        private static void CloseSession()
+        {
+            try { _writer?.Dispose(); }
+            catch { }
+            _writer = null;
         }
 
         // One header line per battle fought this session (see BattleScreenUI.Show, the one
@@ -71,16 +85,14 @@ namespace Game.Combat
         // as Write() below.
         private static void AppendRaw(string line)
         {
-            Debug.Log(line);
-            if (_path == null)
-                return;
-            try
-            {
-                File.AppendAllText(_path, line);
-            }
+            if (LogToUnityConsole)
+                try { Debug.Log(line); } catch { }
+            if (_writer == null) return;
+            try { _writer.Write(line); }
             catch (Exception e)
             {
                 Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                CloseSession();
                 _path = null;
             }
         }
@@ -92,20 +104,29 @@ namespace Game.Combat
             [CallerFilePath] string callerFile = "",
             [CallerMemberName] string callerMember = "",
             [CallerLineNumber] int callerLine = 0)
+            => WriteCore(message, callerFile, callerMember, callerLine);
+
+        public static void WriteVerbose(string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (!Verbose) return;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        private static void WriteCore(string message, string callerFile, string callerMember, int callerLine)
         {
             string source = string.IsNullOrEmpty(callerFile) ? "?" : Path.GetFileNameWithoutExtension(callerFile);
             string tagged = $"[{source}.{callerMember}:{callerLine}] {message}";
-
-            Debug.Log(tagged);
-            if (_path == null)
-                return;
-            try
-            {
-                File.AppendAllText(_path, $"[{DateTime.Now:HH:mm:ss}] {tagged}{Environment.NewLine}");
-            }
+            if (LogToUnityConsole)
+                try { Debug.Log(tagged); } catch { }
+            if (_writer == null) return;
+            try { _writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {tagged}"); }
             catch (Exception e)
             {
                 Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                CloseSession();
                 _path = null;
             }
         }
