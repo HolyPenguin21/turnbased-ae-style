@@ -29,6 +29,41 @@ namespace Game.EditorTests
                 Is.False);
         }
 
+        [TestCase(0, 10, 5)]
+        [TestCase(1, 10, 10)]
+        [TestCase(2, 5, 5)]
+        public void FirstTurnOutboundBudget_IsDerivedFromEndurance(
+            int turnsWithoutRefuel, int movement, int expected)
+        {
+            var unit = new UnitData
+            {
+                IsAviation = true,
+                TurnsWithoutRefuel = turnsWithoutRefuel,
+                MoveMax = movement,
+                MoveCurrent = movement,
+            };
+            Assert.That(AviationRange.FirstTurnOutboundBudget(
+                new List<UnitData> { unit }), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FutureActivationBudget_UsesCumulativeEnergyAndGuaranteedApFloor()
+        {
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 5f,
+                nextTurnEnergyCost: 5f, nextTurnApCost: 6f, out _), Is.True);
+
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 5f,
+                nextTurnEnergyCost: 6f, nextTurnApCost: 6f, out string energyBlock), Is.False);
+            Assert.That(energyBlock, Is.EqualTo("insufficient_next_turn_air_energy"));
+
+            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
+                null, null, energyAvailableAfterCurrentActivation: 10f,
+                nextTurnEnergyCost: 5f, nextTurnApCost: 7f, out string apBlock), Is.False);
+            Assert.That(apBlock, Is.EqualTo("insufficient_guaranteed_next_turn_ap"));
+        }
+
         [TestCase(0, 0, 0)]
         [TestCase(1, 0, 1)]
         [TestCase(2, 0, 2)]
