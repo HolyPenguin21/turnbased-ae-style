@@ -503,3 +503,20 @@ S-2 (переименование авиационных узлов), S-3 (ре�
 | `ReconAirSortieRegistry`, `ReconPatrolStateRegistry`, `AirReconCoverageRegistry`, `ReconIntelSnapshotRegistry` (C) | R из оценки карт: `NonCombatCardPlayer` → `ReconAssignmentPlanner.MeasureAirCapacity` / `ReconAirStepPlanner.PickFromStorage` | ✅ только чтение; запись в `AirSortieRegistry`/`AiMapMemory` есть лишь в `AiAirSortiePlanner.ContinueSortie`/`LaunchRoutine`, оценка их не вызывает |
 | живые `ArmyRegistry`/`AviationRules.FindAirfieldAt` | R: `MeasureAirCapacity` в Phase B между розыгрышами | ✅ read-after-write: сыгранный самолёт виден следующей оценке сразу; кадр вдобавок заменяется `TempoActionExecutor` → `RefreshOperationalState` |
 | `AiDebugLog` дедуп (Diagnostics) | W: `[ReconAirCap][LaunchRejected]` с ключом `air-launch-rejected|hangar=(q,r)` / `actor=#id` | ✅ scope сбрасывается в `AiV2Trace.BeginMain` на каждого игрока; подавляется только побайтовый повтор |
+
+## 10. Кеш оценок боя `WorthIt` (2026-09-29)
+
+**Где:** `Assets/Scripts/Combat/WorthIt.EstimateCache.cs`. Им пользуются `EstimateCore` (одна армия) и многоармейная ветка `EstimateSequential`.
+
+**Зачем:** за один ход ИИ одни и те же пары сторон пересчитывались Монте-Карло сотни раз: `CombatOpportunityAnalyzer.Analyze` на каждом refresh, `ForceNeedModel` через отпечаток Development, перебор эскорта в `EconomyDemands`. Каждый из этих путей давал рывок 245–457 мс.
+
+**Почему кеш точный:** генератор случайных чисел инициализируется от самих входных данных (`BuildRosterSeed`), а симуляция (`SimulateOneBattle` → `BattleSimulationKernel`, `ChallengeResult`, `FateDuelAi`) ничего, кроме аргументов, не читает. Ключ: seed, все сконвертированные `BattleUnit` обеих сторон по порядку, командиры, Fate, `AbilityMagnitudes`, константы прогонов и раундов. Равный ключ даёт побитно равный результат.
+
+**Время жизни:** только внутри `BeginEstimateCacheScope`/`EndEstimateCacheScope`, то есть на один ход ИИ (`AiTurnController.RunTurn`). Вне этой области ничего не кешируется: реальный бой, UI и тесты работают как раньше. `Begin` всегда очищает кеш. Верхний предел — 50 000 записей.
+
+**При изменении боевых механик:**
+- новое поле в `BattleUnit`, `SideCommander`, `AbilityMagnitudes` или `DefenderProfile` либо новый параметр `SimulateOneBattle` → добавить в ключ или объявить не влияющим на симуляцию. Иначе падает `WorthItEstimateCacheTests`;
+- симуляция должна оставаться чистой функцией аргументов. Если понадобится глобальное состояние или конфиг, это значение должно войти в ключ;
+- если меняется смысл раскладки ключа, повысить `EstimateKeyVersion`.
+
+**Отладка:** `WorthIt.EstimateCacheEnabled = false` — выключатель для A/B-сравнения. `WorthIt.EstimateCacheVerify = true` — каждое попадание пересчитывается и сравнивается, расхождения видны в строке лога. Строка за ход: `[AI][Timing] <игрок>: WorthIt cache hits=… misses=… simulatedMs=… entries=…`.
