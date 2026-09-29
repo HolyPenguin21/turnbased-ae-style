@@ -45,11 +45,8 @@ namespace Game.Ai.V2
             if (GenerateAxis(DesireAxis.Economy))
             {
                 using var __axis = new Game.Core.ProfileScope("AI/Demand.Economy");
-                var timer = System.Diagnostics.Stopwatch.StartNew();
                 demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root,
                     activeIntents, commitments));
-                AiDebugLog.WriteDeduped("economy-timing",
-                    $"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
             {
