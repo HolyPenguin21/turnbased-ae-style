@@ -105,6 +105,10 @@ namespace Game.Ai.V2
                 wing.LastAirStrikeAttacked = strike.Attacked;
                 result.CombatChanged |= strike.Attacked;
                 result.AirSupportStrikeSucceeded |= strike.Attacked;
+                // The ground mission owns the wing only through the support strike itself.
+                // Once the strike is resolved, the remaining physical flight is a generic
+                // aviation recovery obligation, not an Attack/Raid lifecycle leg.
+                sortie.Kind = AirSortieKind.Rebase;
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
                 result.ActualActorArmyId = wing.Id;
@@ -139,6 +143,7 @@ namespace Game.Ai.V2
             {
                 result.CombatChanged = true;
                 result.AirSupportStrikeSucceeded = true;
+                sortie.Kind = AirSortieKind.Rebase;
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
             }
