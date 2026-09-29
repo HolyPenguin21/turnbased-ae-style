@@ -200,7 +200,11 @@ namespace Game.Ai.V2
         {
             ArmyData wing = wingArmyId.HasValue ? AiV2Util.ResolveArmy(player, wingArmyId.Value) : null;
             wingValid = wing != null && AviationRules.IsValidAirArmy(wing);
-            return wingValid && AirSortieRegistry.ForArmy(player, wing) != null;
+            AirSortie sortie = wingValid ? AirSortieRegistry.ForArmy(player, wing) : null;
+            // Ground support owns only the strike leg. Once execution converts the sortie to
+            // Rebase after the strike, the mission releases the wing and generic aviation
+            // obligations own the physical return.
+            return sortie != null && sortie.Kind == AirSortieKind.Strike;
         }
 
         // An airborne strike sortie is a physical landing obligation. When no operation holds its
