@@ -330,7 +330,7 @@ namespace Game.Ai.V2
             [CallerLineNumber] int callerLine = 0)
         {
             AiDebugLog.Write(compact, callerFile, callerMember, callerLine);
-            if (AiDebugLog.Verbose)
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Reservations))
                 AiDebugLog.Write($"[AI][V2][Reservation][STATE] {DebugLine(player, turn)}",
                     callerFile, callerMember, callerLine);
         }
