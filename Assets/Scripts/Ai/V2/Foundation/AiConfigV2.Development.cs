@@ -42,6 +42,10 @@ namespace Game.Ai.V2
         // (operator, output) must fit spendable + this many turns of income. Facility -> hero ->
         // Challenge -> attach naturally spans several turns.
         public const int devChainFundingHorizonTurns = 5;
+        // How many outputs a prepared site is expected to deliver over its life. The PREPARE card
+        // EV charges each output only 1/N of the facility + operator investment (the facility and
+        // its operator stay; every later Challenge reuses them).
+        public const int devFacilityExpectedUses = 3;
         // Success weight of an operator still in the remaining deck (facility stage only): the
         // draw is not certain, so its outputs count at this share.
         public const float devDeckOperatorConfidence = 0.5f;

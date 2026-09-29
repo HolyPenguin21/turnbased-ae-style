@@ -484,7 +484,10 @@ namespace Game.Ai.V2
                     && route != int.MaxValue && route <= actor.CurrentMovement
                     && liveAp + AiConfigV2.allocatorSliceEpsilon
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
-                    && (build.BuildResourceCost == null || build.BuildResourceCost.CanAfford(root));
+                    // Through TurnResourceBook: its own hold and other builds' deferred holds are
+                    // drawable, another owner's completion or the reaction envelope is not.
+                    && StrategicSpendability.FitsSpendableForEconomyCompletion(
+                        player, root, ctx, build.BuildResourceCost, owner);
                 ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,
                     completionThisTurn);
             }
@@ -705,6 +708,7 @@ namespace Game.Ai.V2
                 .ToList();
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             var legal = new List<InfraCandidate>();
+            var rejected = new List<string>();
             foreach ((CardData card, int ordinal) in cards)
             {
                 StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
@@ -713,11 +717,18 @@ namespace Game.Ai.V2
                 {
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
                         continue;
-                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out _))
+                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
+                            out string placeReason))
+                    {
+                        rejected.Add($"{card.Definition.displayName}@({baseHex.Q},{baseHex.R}):{placeReason}");
                         continue;
+                    }
                     if (!StrategicSpendability.FitsSpendableResources(
                             player, root, ctx, card.EffectivePlayResourceCost))
+                    {
+                        rejected.Add($"{card.Definition.displayName}@({baseHex.Q},{baseHex.R}):spendable_resources");
                         continue;
+                    }
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
                     legal.Add(new InfraCandidate
@@ -733,6 +744,9 @@ namespace Game.Ai.V2
                     });
                 }
             }
+            if (legal.Count == 0 && rejected.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   infra — DevelopmentInfrastructure rejected: "
+                    + string.Join(" | ", rejected));
             return BestDevelopmentCandidate(legal);
         }
 

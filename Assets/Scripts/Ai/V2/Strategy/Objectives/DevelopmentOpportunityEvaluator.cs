@@ -32,7 +32,9 @@ namespace Game.Ai.V2
     //  Two currencies, each for its own decision — a PREPARE must pass both:
     //    Ev       — card currency: is the card chain worth its cards (output card score -
     //               Challenge - facility/operator cards, priced by StrategicCardEvaluator, the only
-    //               place a chain is charged for cost). Also read by the capacity-upgrade look-ahead.
+    //               place a chain is charged for cost). The facility/operator investment is spread
+    //               over devFacilityExpectedUses outputs: one output carries only its share.
+    //               Also read by the capacity-upgrade look-ahead.
     //    WorldTaskScore — world-task currency (TaskScore): what the demand/mission competes with
     //               in the allocator next to Raid, Recon and Economy. Intrinsic ForceAmplification
     //               (the need-weighted force the output adds) plus the execution of the world task
@@ -410,9 +412,12 @@ namespace Game.Ai.V2
             float operatorDisplaced = remoteArmyId.HasValue
                 ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmyId.Value) : 0f;
             ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
+            // The facility and its operator are a one-time investment the site then reuses for
+            // every later Challenge; one output carries only its share of that investment.
+            float preparationShare = preparationCost / Mathf.Max(1, AiConfigV2.devFacilityExpectedUses);
 
             int outputs = 0, admitted = 0;
-            float bestValue = float.NegativeInfinity;
+            float bestValue = float.NegativeInfinity, bestEv = float.NegativeInfinity;
             string bestRejected = null;
             var unaffordable = new HashSet<ResourceType>();
             foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
@@ -438,9 +443,9 @@ namespace Game.Ai.V2
                 DevelopmentOpportunity op = card.isAviation
                         || card.cardType == CardType.Unit || card.cardType == CardType.Hero
                     ? PrepareDeployable(card, mode, hex, projectedActor, operatorChance,
-                        preparationCost, snap, inv, occupied, player, root, hand, ctx)
+                        preparationShare, snap, inv, occupied, player, root, hand, ctx)
                     : PrepareEquipment(card, mode, hex, projectedActor, operatorChance,
-                        preparationCost, snap, inv, player, root, hand, ctx);
+                        preparationShare, snap, inv, player, root, hand, ctx);
                 if (op == null)
                     continue;
                 // Every output term is conditional on first winning a generated operator.
@@ -454,6 +459,7 @@ namespace Game.Ai.V2
                 if (op.BaseValue > bestValue)
                 {
                     bestValue = op.BaseValue;
+                    bestEv = op.Ev;
                     bestRejected = card.displayName;
                 }
                 // Card chain worth its cards (card currency) AND a positive world task.
@@ -481,7 +487,7 @@ namespace Game.Ai.V2
             return $"{need} outputs={outputs} admitted={admitted}"
                 + (admitted == 0
                     ? (bestRejected != null
-                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##})"
+                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##} ev={bestEv:0.##} prepShare={preparationShare:0.##})"
                         : unaffordable.Count > 0
                             ? $" reason=chain_unaffordable({ResourceList(unaffordable)})"
                             : " reason=no_valuable_output")
