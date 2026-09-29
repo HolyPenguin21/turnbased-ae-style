@@ -251,7 +251,9 @@ namespace Game.Ai.V2
                         && op.FacilityHex.Equals(b.Hex)
                         // The evaluator already proved the later stages fit projected income;
                         // today only the tier and the facility stage are paid.
-                        && !ResourceBundle.All.Any(t => (tier.cost?.Get(t) ?? 0)
+                        // A stage that already carries its tier is not charged it twice.
+                        && !ResourceBundle.All.Any(t =>
+                            (op.PreparationCapacityTier != null ? 0 : tier.cost?.Get(t) ?? 0)
                             + (op.StageResourceCost?.Get(t) ?? 0)
                             > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     : null;
@@ -294,6 +296,18 @@ namespace Game.Ai.V2
         // A non-Development Facility in hand that is blocked ONLY by slot capacity at every owned
         // Base: the Base/tier whose upgrade unlocks it (same order as FindCapacityUpgrades).
         // Development facilities keep their preparation-witness path above.
+        // Structural form of the same unlock rule for ONE site: the tier that opens a Facility slot
+        // on `b` when every unlocked slot is taken. No AP/resource test — a Development facility
+        // stage prices it into its own stage cost; Execution re-checks affordability.
+        internal static BaseUpgradeTier CapacityUnlockTierAt(BuildingData b, AiTurnContext ctx)
+        {
+            if (b == null || !b.IsBase || !b.HasTieredUnlock
+                || b.FindFirstAvailableFacilitySlot() >= 0
+                || !UnlockableBasesInOrder(new[] { b }).Any())
+                return null;
+            return NextTier(b, ctx);
+        }
+
         internal static bool TryFindCapacityUnlock(CardData facility, PlayerSetupData player,
             AiHandData hand, AiTurnContext ctx, out BuildingData building, out BaseUpgradeTier tier)
         {

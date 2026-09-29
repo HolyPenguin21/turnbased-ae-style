@@ -717,30 +717,54 @@ namespace Game.Ai.V2
                 {
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
                         continue;
+                    string at = $"{card.Definition.displayName}@({baseHex.Q},{baseHex.R})";
+                    BuildingData upgradeBase = null;
+                    BaseUpgradeTier upgradeTier = null;
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
                             out string placeReason))
                     {
-                        rejected.Add($"{card.Definition.displayName}@({baseHex.Q},{baseHex.R}):{placeReason}");
+                        // A full Base is a preparation stage of its own: the admitted opportunity
+                        // bought its tier into the stage; re-derive it from live state here.
+                        if (placeReason == InfrastructureActions.NoFreeFacilitySlotReason
+                            && demand.DevOpportunity?.PreparationCapacityTier != null)
+                        {
+                            upgradeBase = BuildingRegistry.FindAt(baseHex);
+                            upgradeTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(upgradeBase, ctx);
+                        }
+                        if (upgradeTier == null)
+                        {
+                            rejected.Add($"{at}:{placeReason}");
+                            continue;
+                        }
+                    }
+                    ResourceCost stageCost = StrategicCardEvaluator.AddResourceCosts(
+                        card.EffectivePlayResourceCost, upgradeTier?.cost);
+                    int stageAp = card.EffectivePlayApCost + (upgradeTier?.apCost ?? 0);
+                    if (upgradeTier != null && !root.CanSpendActionPoints(stageAp))
+                    {
+                        rejected.Add($"{at}:not enough action points for upgrade+facility ({stageAp})");
                         continue;
                     }
-                    if (!StrategicSpendability.FitsSpendableResources(
-                            player, root, ctx, card.EffectivePlayResourceCost))
+                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost))
                     {
-                        rejected.Add($"{card.Definition.displayName}@({baseHex.Q},{baseHex.R}):spendable_resources");
+                        rejected.Add($"{at}:spendable_resources");
                         continue;
                     }
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
+                    BuildingData buildingToUpgrade = upgradeBase;
+                    BaseUpgradeTier tierToBuy = upgradeTier;
                     legal.Add(new InfraCandidate
                     {
-                        ApCost = selectedCard.EffectivePlayApCost,
-                        ResCost = selectedCard.EffectivePlayResourceCost,
+                        ApCost = stageAp,
+                        ResCost = stageCost,
                         DecisionScore = use.NetScore,
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
-                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
-                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
-                            player, root, hand, ctx, selectedCard, selectedHex),
+                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})"
+                            + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : ""),
+                        Execute = () => PlaceFacilityAfterOptionalUpgrade(
+                            player, root, hand, ctx, selectedCard, selectedHex, buildingToUpgrade, tierToBuy),
                     });
                 }
             }
@@ -822,27 +846,34 @@ namespace Game.Ai.V2
                     + $"@({hex.Q},{hex.R})"
                     + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : "")
                     + $" net={net:0.00}",
-                Execute = () =>
-                {
-                    if (tierToBuy == null)
-                        return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
-                    int apBefore = root.ActionPoints;
-                    if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
-                            player, root, ctx, buildingToUpgrade, tierToBuy))
-                        return BuildingPlayResult.Fail("capacity upgrade refused");
-                    int upgradeVersion = V2StateVersion.Bump();
-                    BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
-                        player, root, hand, ctx, card, hex);
-                    // The upgrade is a real mutation even if the placement then fails.
-                    placed.StateChanged = true;
-                    placed.ApSpent = apBefore - root.ActionPoints;
-                    placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
-                        placed.ResourcesSpent, tierToBuy.cost);
-                    if (placed.StateVersionAfter < upgradeVersion)
-                        placed.StateVersionAfter = upgradeVersion;
-                    return placed;
-                },
+                Execute = () => PlaceFacilityAfterOptionalUpgrade(
+                    player, root, hand, ctx, card, hex, buildingToUpgrade, tierToBuy),
             };
+        }
+
+        // One action: buy `tier` on `building` (when a slot must be unlocked first), then place the
+        // Facility. Shared by every infrastructure path whose facility carries its own capacity
+        // prerequisite (global resource source, Development facility stage).
+        private static BuildingPlayResult PlaceFacilityAfterOptionalUpgrade(PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex,
+            BuildingData building, BaseUpgradeTier tier)
+        {
+            if (tier == null)
+                return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
+            int apBefore = root.ActionPoints;
+            if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
+                return BuildingPlayResult.Fail("capacity upgrade refused");
+            int upgradeVersion = V2StateVersion.Bump();
+            BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
+                player, root, hand, ctx, card, hex);
+            // The upgrade is a real mutation even if the placement then fails.
+            placed.StateChanged = true;
+            placed.ApSpent = apBefore - root.ActionPoints;
+            placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
+                placed.ResourcesSpent, tier.cost);
+            if (placed.StateVersionAfter < upgradeVersion)
+                placed.StateVersionAfter = upgradeVersion;
+            return placed;
         }
 
         // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),

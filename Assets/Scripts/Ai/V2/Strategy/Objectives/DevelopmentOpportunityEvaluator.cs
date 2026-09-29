@@ -60,6 +60,9 @@ namespace Game.Ai.V2
         // PREPARE only: the H/E/M/T THIS pass's stage consumes (facility, else operator; null for a
         // walking hero). The one staged-funding fact — later stages fit projected income instead.
         public ResourceCost StageResourceCost;
+        // PREPARE facility stage only: the Base tier bought with the facility because every
+        // unlocked slot of FacilityHex is taken (already inside StageResourceCost).
+        public BaseUpgradeTier PreparationCapacityTier;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
         // Only an existing, eligible staffed source can mint an operator. The resulting card
@@ -223,6 +226,17 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (!facilityReady && facility == null)
                 return "reason=no_facility_card";
+            // Every unlocked slot of this Base is taken: the next Base tier is this site's first
+            // preparation stage, bought together with the facility (StrategicMaintenancePolicy owns
+            // which tier opens a slot). No unlockable tier left -> the site cannot host it.
+            BaseUpgradeTier capacityTier = null;
+            if (facility != null && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            {
+                capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
+                    BuildingRegistry.FindAt(hex), ctx);
+                if (capacityTier == null)
+                    return "reason=no_facility_slot";
+            }
             ArmyData garrison = ArmyRegistry.AllAt(hex)
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
             CardData operatorCard = actor != null ? null : hand.Hand
@@ -399,7 +413,14 @@ namespace Game.Ai.V2
             // Demand emits one stage per pass and each stage's executor re-checks its own cost.
             ResourceCost operatorResourceCost = operatorCard?.EffectivePlayResourceCost
                 ?? generatedOperator?.GenerationResourceCost ?? deckOperator?.resourceCost;
-            ResourceCost stageCost = facility != null ? facility.EffectivePlayResourceCost
+            if (capacityTier != null)
+                // The tier is a one-time investment like the facility, priced once on the canonical
+                // AP/resource table (the same price the global-source upgrade path charges).
+                preparationCost += ActionPrice.ToCardScore(ActionPrice.Ap(capacityTier.apCost)
+                    + ActionPrice.Resources(capacityTier.cost, snap));
+            ResourceCost stageCost = facility != null
+                ? StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost,
+                    capacityTier?.cost)
                 : actor == null && remote == null ? operatorResourceCost : null;
             List<ResourceType> stageShort = ResourceBundle.All.Where(t => (stageCost?.Get(t) ?? 0)
                 > StrategicSpendability.SpendableAmount(player, root, ctx, t)).ToList();
@@ -429,7 +450,7 @@ namespace Game.Ai.V2
                     continue;
                 outputs++;
                 ResourceCost chainCost = SumCost(facility?.EffectivePlayResourceCost,
-                    operatorResourceCost, card.resourceCost);
+                    operatorResourceCost, card.resourceCost, capacityTier?.cost);
                 List<ResourceType> shortfall = ResourceBundle.All.Where(t => chainCost.Get(t)
                     > StrategicSpendability.SpendableAmount(player, root, ctx, t)
                         + AiConfigV2.devChainFundingHorizonTurns
@@ -467,6 +488,7 @@ namespace Game.Ai.V2
                     || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 op.StageResourceCost = stageCost;
+                op.PreparationCapacityTier = capacityTier;
                 op.PreparationFacilityCard = facility;
                 op.PreparationOperatorCard = operatorCard;
                 op.PreparationOperatorGeneration = generatedOperator;
@@ -482,7 +504,7 @@ namespace Game.Ai.V2
                 result.Add(op);
                 admitted++;
             }
-            string need = $"need[{(facility != null ? "facility" : "")}"
+            string need = $"need[{(capacityTier != null ? "upgrade " : "")}{(facility != null ? "facility" : "")}"
                 + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : deckOperator != null ? " hero-deck" : " hero-generate") : "")}]";
             return $"{need} outputs={outputs} admitted={admitted}"
                 + (admitted == 0
