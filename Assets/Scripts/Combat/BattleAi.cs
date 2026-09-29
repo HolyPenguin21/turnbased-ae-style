@@ -887,9 +887,26 @@ namespace Game.Combat
                 return passAction;
             }
 
-            bool stepExposes = !alreadyExposed && IsExposedToEnemy(grid, step.Value.row, step.Value.col, actor);
             int streak = waitStreak.TryGetValue(actor, out int s) ? s : 0;
             bool forceAdvance = streak >= MaxWaitStreak;
+
+            // A step that doesn't actually close on the nearest enemy (sideways shuffle) is a
+            // stall just like a wait: FindBestAdvanceStep's lookahead simulates the opponent
+            // walking greedily into range, but the real (risk-averse) opponent may shuffle
+            // sideways too, so two ranged units could trade sideways steps forever. Count such
+            // steps toward the same streak and, once it's exhausted, take a real closing step.
+            int curDist = NearestEnemyManhattanDistance(grid, actor, actorRow, actorCol);
+            bool closes = NearestEnemyManhattanDistance(grid, actor, step.Value.row, step.Value.col) < curDist;
+            if (!closes && forceAdvance)
+            {
+                (int row, int col)? toward = FindStepToward(grid, actor, actorRow, actorCol);
+                if (toward.HasValue && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                {
+                    step = toward;
+                    closes = true;
+                }
+            }
+            bool stepExposes = !alreadyExposed && IsExposedToEnemy(grid, step.Value.row, step.Value.col, actor);
             // Close-combat units (Range 1) never hesitates over exposure risk before closing distance — per
             // the user's own call, there's no point in a melee unit hanging back to avoid a
             // single round of return fire when the whole point of the unit is to reach melee
@@ -900,12 +917,12 @@ namespace Game.Combat
             bool isMelee = actor.Range <= 1;
 
             BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: alreadyExposed={alreadyExposed} stepExposes={stepExposes} " +
-                $"waitStreak={streak} forceAdvance={forceAdvance} favorableFight={favorableFight} isMelee={isMelee} " +
+                $"waitStreak={streak} forceAdvance={forceAdvance} favorableFight={favorableFight} isMelee={isMelee} closes={closes} " +
                 $"-> {((isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight) ? "MOVE" : "WAIT")} to {step.Value}");
 
             if (isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight)
             {
-                waitStreak[actor] = 0;
+                waitStreak[actor] = closes ? 0 : streak + 1;
                 return new AiAction
                 {
                     Kind = AiActionKind.Move,
