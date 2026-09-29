@@ -263,9 +263,9 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // The rest of the sortie: a recoverable AA-safe route (unless it continues one), a strike
+        // The rest of the sortie: a recoverable route (unless it continues one), a strike
         // that really moves the lane's fight (`winAgainst`, the same read the lane planned on), and
-        // the AP/Energy the funded envelope and the spendable Energy allow.
+        // the AP/Energy the funded envelope and the spendable Energy allow, including the next activation when the route spans turns.
         internal static bool TryFinishWing(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, AirSupportWing w, HexCoord targetHex,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float knownDefense, float knownAttack,
@@ -277,8 +277,23 @@ namespace Game.Ai.V2
             failure = default;
             ap = 0f;
             energy = 0f;
+            int requiredTurns = 1;
             if (w.Continuing)
+            {
                 landing = w.Active.LandingHex;
+                // Re-prove the remaining flight from the live position. A continuing support wing
+                // is still governed by the same endurance/resource contract as a new sortie.
+                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
+                MultiTurnSortie? multi = sameTurn.HasValue ? null
+                    : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
+                if (sameTurn.HasValue)
+                    landing = sameTurn.Value.LandingHex;
+                else if (multi.HasValue)
+                {
+                    landing = multi.Value.LandingHex;
+                    requiredTurns = multi.Value.RequiredTurns;
+                }
+            }
             else
             {
                 Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
@@ -288,10 +303,11 @@ namespace Game.Ai.V2
                 {
                     landing = default;
                     failure = ProvisionFailure.NoExecutableStep(
-                        $"wing #{wing.Id} has no AA-safe recoverable route to the {lane} target");
+                        $"wing #{wing.Id} has no recoverable route to the {lane} target");
                     return false;
                 }
                 landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
+                requiredTurns = sameTurn.HasValue ? 1 : multi.Value.RequiredTurns;
 
                 opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
                 List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
@@ -326,6 +342,17 @@ namespace Game.Ai.V2
                 failure = ProvisionFailure.MoverContended(
                     $"spendable Energy exhausted: {lane} support wing #{wing.Id} needs {energy:0.##}, "
                     + $"{energyLeft:0.##} left after reservations and earlier claims this pass");
+                return false;
+            }
+
+            if (requiredTurns > 1
+                && !AviationContinuationBudget.CanGuaranteeNextActivation(
+                    player, ctx.Map, energyLeft - energy,
+                    Mathf.Max(0, wing.ActivationEnergyCost),
+                    Mathf.Max(0, wing.ActivationApCost), out string continuationBlock))
+            {
+                failure = ProvisionFailure.NoExecutableStep(
+                    $"{lane} support wing #{wing.Id} cannot guarantee next-turn activation ({continuationBlock})");
                 return false;
             }
             return true;
