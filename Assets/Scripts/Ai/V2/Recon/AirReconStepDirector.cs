@@ -430,10 +430,7 @@ namespace Game.Ai.V2
             HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
             if (path == null)
                 return false;
-            if (AviationRules.PathMoveCost(air, path) > air.CurrentMovement)
-                return false;
-            int baseline = AiAirSortiePlanner.KnownAaExposureAt(player, air.Hex);
-            return AiAirSortiePlanner.KnownAaExposure(player, path) - baseline <= 0;
+            return AviationRules.PathMoveCost(air, path) <= air.CurrentMovement;
         }
 
         private static int PathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
