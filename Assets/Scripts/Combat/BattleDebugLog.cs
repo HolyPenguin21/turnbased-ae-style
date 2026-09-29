@@ -41,6 +41,7 @@ namespace Game.Combat
                 Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
                 _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
                 _writer.WriteLine($"=== Battle debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
             }
             catch (Exception e)
