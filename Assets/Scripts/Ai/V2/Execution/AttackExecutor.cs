@@ -118,7 +118,7 @@ namespace Game.Ai.V2
             // A side strike may fight but must NEVER take a structure: only the terminal step into
             // the Attack's own target carries capture authority (§26/§27). The eligibility gate has
             // already excluded a candidate standing on any known hostile structure
-            // (Base/Citadel/Facility — AttackObjectiveEvaluator.IsKnownHostileAttackSite), so the
+            // (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure), so the
             // contact step is a plain field battle.
             AiGroundMoveAuthority authority = strike.HasValue
                 ? GroundMoveAuthorityPolicy.ForTacticalStrikeStep(next.Value, waypoint)

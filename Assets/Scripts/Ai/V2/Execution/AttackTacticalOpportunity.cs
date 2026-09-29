@@ -171,10 +171,10 @@ namespace Game.Ai.V2
             // not standing on the main objective — that is the assault, not a side strike (§11)
             if (s.Hex.Equals(mainTarget))
                 return false;
-            // not standing on ANY other known hostile structure (Base/Citadel/Facility): winning there
-            // takes the structure, so that fight is a different strategic decision (a second Attack
-            // objective), never a tactical detour (§11/§26).
-            if (AttackObjectiveEvaluator.IsKnownHostileAttackSite(snap, player, s.Hex))
+            // Not standing on ANY known foreign structure, including an extraction-only site.
+            // Winning there could destroy the building even though extraction is not an Attack
+            // objective; a tactical detour must never decide to do that (§11/§26).
+            if (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, s.Hex))
                 return false;
             // not already the objective of a live ActiveDefence response (§11): that lane owns the
             // answer to this army, and Attack must not race it for the same kill.

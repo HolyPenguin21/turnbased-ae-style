@@ -147,43 +147,71 @@ namespace Game.EditorTests
         // ---- §83 B/J: fog of war and owner changes ---------------------------------------
 
         [Test]
-        public void Enumerate_EnemyFacility_IsTargetDefendedOrNot()
+        public void Enumerate_EnemyNonBaseStructure_IsNeverAnAttackTarget()
         {
             var site = new HexCoord(4, 0);
-            List<AttackObjective> open = AttackObjectiveEvaluator.Enumerate(
-                Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase }));
-            Assert.That(open, Has.Count.EqualTo(1),
-                "an undefended enemy Facility is a destroy-it objective (drops the owner's income)");
-            Assert.That(open[0].Target.Kind, Is.EqualTo(AttackTargetKind.Facility));
-
-            List<AttackObjective> defended = AttackObjectiveEvaluator.Enumerate(
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase })), Is.Empty);
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
                 Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
-                    new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) }));
-            Assert.That(defended, Has.Count.EqualTo(1),
-                "a defended Facility stays an Attack objective: winning there destroys it, and "
-                + "ActiveDefence defers that fight to Attack");
-            Assert.That(defended[0].DefenderCount, Is.EqualTo(1),
-                "its garrison/army is the objective's one defender package (§31)");
+                    new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) })), Is.Empty,
+                "a defender does not make a non-Base building an Attack objective");
+        }
+
+        [TestCase(Game.Cards.UnitAbilities.CollectHuman)]
+        [TestCase(Game.Cards.UnitAbilities.CollectEnergy)]
+        [TestCase(Game.Cards.UnitAbilities.CollectMaterials)]
+        [TestCase(Game.Cards.UnitAbilities.CollectTech)]
+        public void Enumerate_ExtractionOnlyFacility_IsNotAnAttackTarget(string extraction)
+        {
+            var site = new HexCoord(4, 0);
+            var building = new AiMapMemory.KnownBuilding(site, Red, false,
+                new[] { extraction }, isBase: false);
+            WorldSnapshot snap = Snap(new[] { building }, new[] { OurBase },
+                new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) });
+
+            Assert.That(AttackObjectiveEvaluator.Enumerate(snap), Is.Empty);
+            Assert.That(ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, site), Is.True,
+                "a tactical detour must still avoid fighting on an extraction site");
         }
 
         [Test]
-        public void EvaluateTarget_Facility_DestroyedIsSuccess()
+        public void Enumerate_IntelCenter_IsNotAnIndependentAttackObjective()
         {
             var site = new HexCoord(4, 0);
-            AttackTargetRef target = AttackTargetRef.For(site, Red, AttackTargetKind.Facility);
+            // Intel Center is a Facility card with ApBonus. Its slot belongs to a Base;
+            // the non-Base record also tests that its ability cannot create a target.
+            var building = new AiMapMemory.KnownBuilding(site, Red, false,
+                new[] { Game.Cards.UnitAbilities.ApBonus },
+                isBase: false);
+
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { building }, new[] { OurBase })), Is.Empty);
+            var baseWithFacilities = new AiMapMemory.KnownBuilding(site, Red, false,
+                new[] { Game.Cards.UnitAbilities.ApBonus },
+                isBase: true);
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { baseWithFacilities }, new[] { OurBase })), Has.Count.EqualTo(1),
+                "the Base remains one objective; its Intel Center is never a separate target");
+        }
+
+        [Test]
+        public void EvaluateTarget_FormerBaseNowNonBase_IsInvalidated()
+        {
+            var site = new HexCoord(4, 0);
+            AttackTargetRef target = AttackTargetRef.For(site, Red, AttackTargetKind.Base);
 
             Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
-                    Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase }), target),
+                    Snap(new[] { B(site, Red) }, new[] { OurBase }), target),
                 Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Continue));
             Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
                     Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase }), target),
-                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Captured),
-                "a Facility no longer remembered after re-observation was destroyed: objective met");
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Invalidated));
             Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
                     Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
                         new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) }), target),
-                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Continue),
-                "a defender arriving is the same objective; the win-chance gate decides the rest");
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Invalidated),
+                "a non-Base building does not preserve an obsolete Attack intent");
         }
 
         [Test]
