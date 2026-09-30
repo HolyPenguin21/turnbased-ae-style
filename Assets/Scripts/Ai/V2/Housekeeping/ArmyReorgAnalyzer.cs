@@ -205,6 +205,7 @@ namespace Game.Ai.V2
                 container.IsMissionReceiver = contract.MayReceive;
                 container.CanReceive = contract.MayReceive;
                 container.CanReorderCommander = contract.MayReorderCommander;
+                container.MayReleaseExcessHeroes = contract.MayReleaseExcessHeroes;
                 if (contract.KeepsMovement && army.Members.Count > 0)
                 {
                     container.MovementFloor = army.CurrentMovement;

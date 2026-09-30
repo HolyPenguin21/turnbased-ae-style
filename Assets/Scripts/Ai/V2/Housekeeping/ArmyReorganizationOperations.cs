@@ -59,7 +59,7 @@ namespace Game.Ai.V2
                     return null;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                     return null;
-                if (!CanAccept(to, u, dstMeta))
+                if (!CanAccept(c, to, u, dstMeta))
                     return null;
 
                 from.Remove(u);
@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                 return null;
             if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                 return null;
-            if (!CanAccept(to, u, dstMeta))
+            if (!CanAccept(c, to, u, dstMeta))
                 return null;
 
             from.Remove(u);
@@ -122,7 +122,7 @@ namespace Game.Ai.V2
                     break;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(donor, u, donorMeta.IsGarrison))
                     break;
-                if (!CanAccept(weak, u, weakMeta))
+                if (!CanAccept(c, weak, u, weakMeta))
                     break;
 
                 var after = donor.Where(x => x != u).ToList();
@@ -195,9 +195,13 @@ namespace Game.Ai.V2
             return c;
         }
 
-        private static bool CanAccept(List<ReorgUnit> dest, ReorgUnit u, ReorgContainer destMeta)
+        private static bool CanAccept(VState state, List<ReorgUnit> dest, ReorgUnit u,
+            ReorgContainer destMeta)
         {
             if (u.IsAviation)
+                return false;
+            if (destMeta.IsMissionReceiver && u.IsHero
+                && !MissionReceiverTakesHero(state, dest, u, destMeta))
                 return false;
             if (destMeta.ChargesActivationFor(u))
                 return false; // TransferMember would spend AP, which Step 8C does not own.

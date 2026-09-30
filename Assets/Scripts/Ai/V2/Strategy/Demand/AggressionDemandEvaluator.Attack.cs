@@ -266,6 +266,47 @@ namespace Game.Ai.V2
             };
         }
 
+        // ATK-F02 — the card-borne ways the exact preparation host can still gain power, each named
+        // by its witness, on the delivery policy's own rule (a legal slot and a real power gain,
+        // MaterializationDeliveryPolicy.StrengthensArmy): a held Unit card (Phase A), a Research/
+        // Production output of a staffed own facility (a closed investment window or short stock is
+        // timing, never impossibility), an undrawn Unit card (Phase B's Draw). Null when the host
+        // stands off an own Base (no card lands there) or no card strengthens it: a positive
+        // Reserve alone is no delivery. Which chain actually runs stays Materialization's choice.
+        internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host)
+        {
+            if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(host.Hex))
+                return null;
+            bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
+                d != null && !d.isAviation
+                && (d.cardType == Game.Cards.CardType.Unit || d.cardType == Game.Cards.CardType.Hero)
+                && host.CanFitAdditionalCard(d)
+                && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
+                    AiPower.EffectiveLine(d, equipped?.equipment));
+
+            foreach (Game.Cards.CardData c in HandFieldCards(snap))
+                if (Strengthens(c.Definition, c.Equipment))
+                    return $"hand_card:{c.Definition.displayName}";
+            DevelopmentReadiness dev = snap.Development;
+            if (dev != null)
+            {
+                foreach (DevelopmentOffering o in dev.Offerings)
+                    if (!o.ProducesEquipment && Strengthens(o.Card))
+                        return $"generation:{o.Card.displayName}@({o.FacilityHex.Q},{o.FacilityHex.R})"
+                            + (DevelopmentInvestmentGate.IsOpenFor(snap.Observer, snap.TurnNumber,
+                                o.Card.resourceCost) ? "" : "(window_closed)");
+                foreach (Game.Cards.CardDefinition d in dev.StaffedOutputs)
+                    if (Strengthens(d))
+                        return $"generation:{d.displayName}(stock_short)";
+            }
+            foreach (Game.Cards.CardDefinition d in snap.Self.Deck
+                ?? (IReadOnlyList<Game.Cards.CardDefinition>)System.Array.Empty<Game.Cards.CardDefinition>())
+                if (Strengthens(d))
+                    return $"undrawn_card:{d.displayName}";
+            return null;
+        }
+
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             List<string> diag, List<AxisDemand> demands)

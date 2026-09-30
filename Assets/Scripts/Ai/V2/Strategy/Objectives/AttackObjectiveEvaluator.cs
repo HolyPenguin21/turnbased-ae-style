@@ -49,11 +49,17 @@ namespace Game.Ai.V2
     //                member), else ArmyActions.CreateArmy (an empty shell). 2 AP when created.
     //   Assemble   — same-hex bodies/hero from legal donors (garrison floors and operators kept)
     //                join the host through the canonical transfer, 0 AP.
+    //   RecruitDonors — ATK-F05: the priced purchase of supports another operation holds
+    //                (GroundCombatDonorPolicy). A FRESH proposal whose TaskScore carries what those
+    //                operations lose (MoverOpportunityCost), never the Hard intent's lifecycle; no
+    //                mutation, 0 AP. Executed, its GatherSupportArmyIds enter the intent
+    //                (AdvanceIntent) and the lender retires on the next pass, as after a fresh gather.
     public enum AttackPreparationStep
     {
         None = 0,
         CreateHost = 1,
         Assemble = 2,
+        RecruitDonors = 3,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the

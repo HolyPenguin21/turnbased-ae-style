@@ -38,7 +38,7 @@ namespace Game.Ai.V2
             List<CardData> handCards = hand?.ToList() ?? new List<CardData>();
             List<CardDefinition> deckCards = deck?.ToList() ?? new List<CardDefinition>();
             Additive(live, handCards, deckCards, out float deployed, out float total);
-            float potential = AiPower.TotalMilitaryPotential(AiPower.MilitaryPool(live, handCards, deckCards));
+            float potential = AiPower.NestedPotentials(live, handCards, deckCards).Total;
 
             ArmyData strongest = null;
             float strongestPower = 0f;

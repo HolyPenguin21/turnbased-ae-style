@@ -31,6 +31,7 @@ namespace Game.Ai.V2
             int garrisonDeficit = 0;
             int legality = 0;
             int operatorExposure = 0;
+            int preparationSlotWaste = 0;
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
@@ -57,6 +58,8 @@ namespace Game.Ai.V2
 
                 if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
+                if (meta.MayReleaseExcessHeroes)
+                    preparationSlotWaste += PreparationSlotWaste(units);
 
                 if (meta.IsGarrison)
                 {
@@ -129,8 +132,9 @@ namespace Game.Ai.V2
                 formationStrengths.Sort((a, b) => b.CompareTo(a));
             }
 
-            return new Outcome(garrisonDeficit, legality, operatorExposure, singles, nonViable,
-                commandWaste, formationDefect, formationStrengths, -composition, s.Transfers.Count);
+            return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
+                singles, nonViable, commandWaste, formationDefect, formationStrengths, -composition,
+                s.Transfers.Count);
         }
 
         // Threat-first defensive profile. For each concrete enemy attacker, reproduce

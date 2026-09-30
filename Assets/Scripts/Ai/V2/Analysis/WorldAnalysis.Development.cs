@@ -58,6 +58,7 @@ namespace Game.Ai.V2
             rd.UpgradeTargetCount = targets;
 
             ResearchProductionCatalog catalog = ctx?.ResearchProductionCatalog;
+            var staffed = new List<CardDefinition>();
 
             foreach (BuildingData b in BuildingRegistry.AllBuildings())
             {
@@ -79,8 +80,12 @@ namespace Game.Ai.V2
                     // Offering enumeration is owned by GenerationSource below. This loop
                     // records readiness only, so Analysis does not keep a second copy of source
                     // eligibility/card/operator logic.
+                    if (hero != null && catalog != null)
+                        staffed.AddRange(ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction)
+                            .Where(card => card != null));
                 }
             }
+            rd.StaffedOutputs = staffed.Distinct().ToList();
 
             if (catalog != null)
             {

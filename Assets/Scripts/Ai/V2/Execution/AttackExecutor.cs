@@ -149,6 +149,17 @@ namespace Game.Ai.V2
             }
 
             result.ActualActorArmyId = host.Id;
+            if (target.PreparationStep == AttackPreparationStep.RecruitDonors)
+            {
+                // ATK-F05 — the purchase won the allocator; the supports join the operation through
+                // Continuity (AdvanceIntent). No world mutation, 0 AP.
+                result.OperationStarted = true;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                AiDebugLog.Write($"{corr} OK donors_recruited host #{host.Id} supports "
+                    + $"[{string.Join(",", target.GatherSupportArmyIds ?? System.Array.Empty<int>())}]; "
+                    + "no mutation, 0 AP");
+                return true;
+            }
             if (target.PreparationStep == AttackPreparationStep.CreateHost || assembly == null
                 || assembly.Transfers.Count == 0)
             {

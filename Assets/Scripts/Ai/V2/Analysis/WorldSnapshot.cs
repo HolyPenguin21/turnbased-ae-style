@@ -98,6 +98,11 @@ namespace Game.Ai.V2
         // CatalogKnown=false means no bound exists (no catalog): nothing may be proven from it.
         public IReadOnlyList<CardDefinition> CatalogOutputs = System.Array.Empty<CardDefinition>();
         public bool CatalogKnown;
+        // What an own facility that already has its operator could mint in its own mode, stock
+        // and investment window ignored (they are timing, not impossibility). Narrower than
+        // CatalogOutputs: no facility or operator is assumed. Read by the Attack preparation's
+        // generation witness (AggressionDemandEvaluator.PreparationHostCardSource).
+        public IReadOnlyList<CardDefinition> StaffedOutputs = System.Array.Empty<CardDefinition>();
 
         public bool AnyFacilityWithHero;   // a facility exists AND carries a qualifying hero (execution-ready)
         public float BestSuccessChance;    // max p over Offerings (0 if none)

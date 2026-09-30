@@ -280,11 +280,12 @@ namespace Game.Ai.V2
             bool hasFront = false, hasReach = false;
             foreach (PowerUnit pu in units)
             {
+                // Bodies only: a hero never fights, so its tags are no type coverage and it is
+                // neither front nor reach.
+                if (pu.IsHero) continue;
                 foreach (UnitTypeTag t in pu.Tags)
                     if (t != UnitTypeTag.Hero)
                         distinctTags.Add(t);
-                // Bodies only: a hero never fights, so it is neither front nor reach.
-                if (pu.IsHero) continue;
                 if (pu.Range <= 1) hasFront = true;
                 else hasReach = true;
             }
@@ -422,6 +423,52 @@ namespace Game.Ai.V2
                 best = Mathf.Max(best, EffectiveArmyPower(roster));
             }
             return best;
+        }
+
+        // The nested ground ceilings of one player's force, on TotalMilitaryPotential's one
+        // commander-in-slot rule: Field = map pool, Units = map + hand/deck bodies (only the
+        // map's own commanders), Total = + hand/deck heroes. A pool that contains a smaller one
+        // is never weaker than it: that stack is still legal in the bigger pool, while the
+        // greedy body pick alone is not monotone under added candidates. So
+        // Field + (Units - Field) + (Total - Units) == Total by construction, and a hero card
+        // raises the ceiling only through the slots its CommandRating opens.
+        public readonly struct ForcePotentials
+        {
+            public readonly float Field, Units, Total;
+
+            public ForcePotentials(float field, float units, float total)
+            {
+                Field = field;
+                Units = units;
+                Total = total;
+            }
+
+            public float UnitsReserve => Units - Field;
+            public float HeroReserve => Total - Units;
+        }
+
+        public static ForcePotentials NestedPotentials(IEnumerable<UnitData> live,
+            IEnumerable<CardData> hand, IEnumerable<CardDefinition> deck)
+        {
+            List<PowerUnit> map = MilitaryPool(live, null, null);
+            // MilitaryPool orders map, hand bodies, deck bodies, hand heroes, deck heroes.
+            List<PowerUnit> cards = MilitaryPool(null, hand, deck);
+            return NestedPotentials(map, cards.Where(u => !u.IsHero).ToList(),
+                cards.Where(u => u.IsHero).ToList());
+        }
+
+        public static ForcePotentials NestedPotentials(IReadOnlyList<PowerUnit> map,
+            IReadOnlyList<PowerUnit> cardBodies, IReadOnlyList<PowerUnit> cardHeroes)
+        {
+            var withBodies = new List<PowerUnit>(map ?? System.Array.Empty<PowerUnit>());
+            withBodies.AddRange(cardBodies ?? System.Array.Empty<PowerUnit>());
+            var full = new List<PowerUnit>(withBodies);
+            full.AddRange(cardHeroes ?? System.Array.Empty<PowerUnit>());
+
+            float field = TotalMilitaryPotential(map);
+            float units = Mathf.Max(field, TotalMilitaryPotential(withBodies));
+            float total = Mathf.Max(units, TotalMilitaryPotential(full));
+            return new ForcePotentials(field, units, total);
         }
     }
 }

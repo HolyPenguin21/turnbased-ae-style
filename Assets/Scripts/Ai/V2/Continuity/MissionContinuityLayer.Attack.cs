@@ -447,10 +447,12 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(a.PrimaryArmyId.Value);
+            // ATK-F05 — Continuity keeps accepted legs and re-plans with FREE armies only (a
+            // completed Raid's unclaimed fallback included); an army another operation holds is
+            // bought only by a fresh, priced proposal that wins the allocator.
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
-                a.PrimaryArmyId, GroundCombatDonorPolicy.BorrowableDonorValues(
-                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
+                a.PrimaryArmyId, null,
                 minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
@@ -548,10 +550,10 @@ namespace Game.Ai.V2
 
             GroundCombatGatherPlan plan = host.MemberCount == 0
                 ? GroundCombatGatherPlan.Infeasible("empty host takes no walking support")
+                // ATK-F05 — free armies only; a bought donor is the planner's priced
+                // RecruitDonors proposal (AggressionMissionPlanner.AppendPreparationRecruit).
                 : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
-                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId,
-                    GroundCombatDonorPolicy.BorrowableDonorValues(snap.Observer == null ? null
-                        : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
+                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId, null,
                     minimumArmyPower: required, allowPartial: true);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
@@ -567,20 +569,26 @@ namespace Game.Ai.V2
             ArmyData liveHost = AiV2Util.ResolveArmy(snap.Observer, hostId);
             bool sameHexStep = liveHost != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, liveHost, unavailable, opposition, hexBonus).Feasible;
-            bool poolLeft = snap.Self.Reserve.Units + snap.Self.Reserve.Hero > AiConfigV2.allocatorSliceEpsilon;
-            if (sameHexStep || poolLeft)
+            // ATK-F02 — a WAIT names its concrete source; a positive Reserve alone is no delivery
+            // into this exact (possibly full) host.
+            string cardSource = sameHexStep ? null
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost);
+            // A support another operation holds is not a WAIT witness: it is bought only by the
+            // priced RecruitDonors proposal, whose execution resets the stall (AdvanceIntent).
+            if (sameHexStep || cardSource != null)
             {
                 intent.LastProtectedTurn = snap.TurnNumber;
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
-                    + $"reserve={snap.Self.Reserve.Units + snap.Self.Reserve.Hero:0.#} gather={plan.Reason}");
+                    + $"witness={cardSource ?? "same_hex_body"} gather={plan.Reason}");
                 return true;
             }
             AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                 $"[AI][V2][Attack][Mobilization] {at} decision=STALL blocker=no_legal_source "
-                + $"(no support, no same-hex body, nothing left in hand/deck: {plan.Reason}); the "
-                + "existing stall lifecycle ends the preparation");
+                + $"(no support, no same-hex body, no hand/deck/generated card strengthens this host"
+                + $"{(snap.Self.BaseHexes?.Contains(host.Hex) == true ? "" : " off an own Base")}: "
+                + $"{plan.Reason}); the existing stall lifecycle ends the preparation");
             return true;
         }
 

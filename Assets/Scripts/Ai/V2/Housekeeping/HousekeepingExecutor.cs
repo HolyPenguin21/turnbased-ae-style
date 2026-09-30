@@ -190,7 +190,8 @@ namespace Game.Ai.V2
         // the receiver may be claimed only while its live contract admits inbound members. Swaps
         // pass inboundOnly=false: both sides give, so both must be free.
         private static bool CommonPreflight(PlayerSetupData player, int turn, ArmyData a, ArmyData b,
-            ActorCommitments commitments, out string why, bool inboundOnly = true)
+            ActorCommitments commitments, out string why, bool inboundOnly = true,
+            UnitData released = null)
         {
             why = null;
             if (a == b) { why = "same container"; return false; }
@@ -202,9 +203,14 @@ namespace Game.Ai.V2
             if (AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
                 || AviationRules.IsAirfield(b) || AviationRules.IsAirArmy(b))
             { why = "aviation container"; return false; }
-            if (ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments) != null)
-            { why = "source is mission-claimed"; return false; }
+            ArmyMutationContract giver = ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments);
             ArmyMutationContract receiver = ArmyReorgAnalyzer.MutationContractFor(player, turn, b, commitments);
+            // ATK-F03 — the one outbound exception: a preparation host lets a non-commander hero
+            // go to a free container (the planner chose it as an excess hero).
+            bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
+                && released != null && released.IsHero && released != a.Commander && receiver == null;
+            if (giver != null && !heroRelease)
+            { why = "source is mission-claimed"; return false; }
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))
             { why = $"destination mission contract {receiver.Label} admits no inbound"; return false; }
             return true;
@@ -256,7 +262,7 @@ namespace Game.Ai.V2
         private static bool PreflightTransfer(PlayerSetupData player, int turn, ArmyData from, ArmyData to,
             UnitData unit, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, turn, from, to, commitments, out why))
+            if (!CommonPreflight(player, turn, from, to, commitments, out why, released: unit))
                 return false;
             if (movedUnits.Contains(unit)) { why = "unit already moved this plan"; return false; }
             if (!from.Members.Contains(unit)) { why = "unit not in source"; return false; }

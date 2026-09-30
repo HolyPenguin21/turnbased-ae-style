@@ -325,11 +325,14 @@ namespace Game.Ai.V2
             }
             GroundCombatAssemblyPlan seed = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, host, excluded, opposition, hexBonus);
-            bool poolLeft = self.Reserve.Units + self.Reserve.Hero > AiConfigV2.allocatorSliceEpsilon;
-            if (!seed.Feasible && !poolLeft)
+            // ATK-F02 — a container is created or reused only for a concrete source: a same-hex
+            // member or a card that would strengthen it (never a bare positive Reserve).
+            string cardSource = seed.Feasible || host == null ? null
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, host);
+            if (!seed.Feasible && cardSource == null)
             {
                 AiDebugLog.WriteDeduped(logKey,
-                    $"{head} decision=HOLD blocker=no_legal_source reason=no_same_hex_member_and_nothing_in_hand_or_deck "
+                    $"{head} decision=HOLD blocker=no_legal_source reason=no_same_hex_member_and_no_card_strengthens_host "
                     + $"({seed.Reason})");
                 return;
             }
@@ -363,18 +366,19 @@ namespace Game.Ai.V2
         private static void AppendPreparationStep(WorldSnapshot snap, AttackObjective objective,
             int? hostId, HexCoord hostHex, AttackPreparationStep step, float ap,
             GroundCombatAssemblyPlan assembly, float hexBonus, List<MissionProposal> proposals,
-            string head, MissionIntent intent = null)
+            string head, MissionIntent intent = null, int[] supports = null,
+            TaskScore? pricedScore = null)
         {
             float win = assembly?.ProjectedWinChance ?? 0f;
-            TaskScore score = intent != null ? default(TaskScore)
+            TaskScore score = pricedScore ?? (intent != null ? default(TaskScore)
                 : TaskScoreEvaluator.WithResponse(objective.TaskScore,
-                    PreparationWin(objective, win), ap, 0f, 1f);
+                    PreparationWin(objective, win), ap, 0f, 1f));
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Gather,
                 Target = objective.Target,
                 PrimaryArmyId = hostId,
-                GatherSupportArmyIds = System.Array.Empty<int>(),
+                GatherSupportArmyIds = supports ?? System.Array.Empty<int>(),
                 DestinationHex = hostHex,
                 DefenderHexDefenseBonus = hexBonus,
                 DefenderCount = objective.DefenderCount,
@@ -494,7 +498,11 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
             if (a.Preparation)
+            {
                 AppendPreparationAssembly(snap, intent, a, host, hexBonus, committed, proposals);
+                if (a.GatherSupportArmyIds.Count == 0)
+                    AppendPreparationRecruit(snap, intent, a, host, hexBonus, committed, proposals);
+            }
             foreach (int supportId in a.GatherSupportArmyIds.ToList())
             {
                 ArmySnapshot support = snap.Self.Armies?.FirstOrDefault(x => x != null
@@ -538,6 +546,51 @@ namespace Game.Ai.V2
             AppendPreparationStep(snap, objective, host.ArmyId, host.Hex,
                 AttackPreparationStep.Assemble, 0f, step, hexBonus, proposals,
                 $"[AI][V2][Attack][Mobilization] {intent.IntentKey}", intent);
+        }
+
+        // ATK-F05 — a live preparation buys supports another operation holds only through the
+        // allocator, like a fresh gather: Continuity re-plans with free armies alone, and this
+        // FRESH proposal (not the Hard intent's lifecycle, no default score) prices the whole
+        // re-plan with what the lenders lose (MoverOpportunityCost = their DisplacementValue).
+        // Until it is funded and executed the donors stay with their operations.
+        private static void AppendPreparationRecruit(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ArmySnapshot host, float hexBonus, ISet<int> committed,
+            List<MissionProposal> proposals)
+        {
+            if (host.MemberCount == 0 || snap.Observer == null)
+                return;
+            Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
+                MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+            if (donorValues.Count == 0)
+                return;
+            var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            unavailable.Remove(host.ArmyId);
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex), hexBonus,
+                a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                host.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
+            List<int> bought = plan.Feasible
+                ? plan.SupportArmyIds.Where(donorValues.ContainsKey).ToList() : new List<int>();
+            if (bought.Count == 0)
+            {
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#recruit",
+                    $"[AI][V2][Attack][Mobilization] {intent.IntentKey} decision=NONE step=RecruitDonors "
+                    + $"host=#{host.ArmyId} reason={(plan.Feasible ? "plan_needs_no_bought_donor" : plan.Reason)}");
+                return;
+            }
+            AttackObjective objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
+                ?? new AttackObjective { Target = a.Target };
+            int eta = Mathf.Max(1, plan.TotalEta);
+            TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
+                PreparationWin(objective, plan.ProjectedWinChance), plan.CurrentTurnAp,
+                AiV2Util.CeilDiv(plan.FutureAp, eta), eta, moverOpportunityCost: plan.DisplacedValue);
+            AppendPreparationStep(snap, objective, host.ArmyId, host.Hex,
+                AttackPreparationStep.RecruitDonors, 0f, null, hexBonus, proposals,
+                $"[AI][V2][Attack][Mobilization] {intent.IntentKey} donors=[{string.Join(",", bought.Select(id => $"#{id}:{F(donorValues[id])}"))}] "
+                + $"supports=[{string.Join(",", plan.SupportArmyIds)}] projected={F(plan.ProjectedPower)} "
+                + $"reachesThreshold={plan.ReachesThreshold}",
+                supports: plan.SupportArmyIds.ToArray(), pricedScore: score);
         }
 
         private static MissionProposal BuildAttackGatherLeg(AttackTargetRef targetRef,

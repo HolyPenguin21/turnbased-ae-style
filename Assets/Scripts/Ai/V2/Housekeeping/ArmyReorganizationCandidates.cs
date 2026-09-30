@@ -154,6 +154,27 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 0.75 ATK-F03 — an Attack preparation host sheds the heroes that only take a fighter
+            // slot (its contract's MayReleaseExcessHeroes): each goes, zero-AP, to a free local
+            // container that legally takes it — the garrison first (OrderedDestinations), never
+            // another claimed receiver. The best commander and every operator stay.
+            foreach (int srcId in armyIds)
+            {
+                ReorgContainer src = state.Meta[srcId];
+                if (!src.MayReleaseExcessHeroes)
+                    continue;
+                foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext))
+                    foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
+                    {
+                        if (state.Meta[dstId].IsMissionReceiver)
+                            continue;
+                        VState released = TryMoveOne(state, srcId, dstId, hero,
+                            "release a hero that only takes a fighter slot of the preparation host");
+                        if (released != null)
+                            yield return released;
+                    }
+            }
+
             // 1. Whole-fold any occupied mutable field container when the transfer is physically
             // legal. Candidate generation owns legality only; policy belongs to Evaluate(). A
             // healthy viable source is therefore allowed to collapse into a stronger local field
@@ -374,6 +395,45 @@ namespace Game.Ai.V2
                 .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .First().unit;
+        }
+
+        // ATK-F03 — a hero shapes a fist only as its commander (AiPower: no power of its own), so
+        // in a preparation host every releasable hero beyond one leader only takes a fighter slot.
+        // Research/Production operators and committed units are never counted or moved.
+        private static int PreparationSlotWaste(List<ReorgUnit> units) =>
+            System.Math.Max(0, (units ?? new List<ReorgUnit>()).Count(u => u != null && u.IsHero
+                && !u.IsDevelopmentOperator && !u.IsCommitted) - 1);
+
+        // The heroes that may leave: neither the current commander nor the one commander
+        // evaluation's best legal leader (HeroRoleEvaluator, the BestCommander the reorder
+        // promotes first; the old commander becomes releasable after that zero-AP reorder).
+        private static List<ReorgUnit> ExcessHeroes(List<ReorgUnit> units, ReorgContainer meta,
+            IReadOnlyList<WorthIt.DefendingArmy> context)
+        {
+            if (units == null || units.Count(u => u != null && u.IsHero) < 2)
+                return new List<ReorgUnit>();
+            ReorgUnit current = units.First(u => u != null && u.IsHero);
+            ReorgUnit lead = BestCommander(units, meta.IsGarrison, context);
+            return units.Where(u => u != null && u.IsHero && !ReferenceEquals(u, lead)
+                    && !ReferenceEquals(u, current) && !u.IsDevelopmentOperator && !u.IsCommitted)
+                .OrderBy(u => u.Key).ToList();
+        }
+
+        // ATK-F03 — a claimed receiver takes a hero only as its better commander: led by the one
+        // commander evaluation's best hero, the roster keeps at least the room for bodies it had.
+        // A hero that would only occupy a fighter slot (Vashti T13: two heroes folded into a 3/7
+        // host, power unchanged, two slots lost) never enters it.
+        private static bool MissionReceiverTakesHero(VState state, List<ReorgUnit> dest,
+            ReorgUnit hero, ReorgContainer meta)
+        {
+            int BodyRoom(List<ReorgUnit> roster) =>
+                ReorgViability.Capacity(roster, meta.IsGarrison) - roster.Count(x => x != null && x.IsHero);
+            var after = new List<ReorgUnit>(dest);
+            ReorgViability.AddMemberSorted(after, hero);
+            ReorgUnit lead = meta.CanReorderCommander || !dest.Any(x => x != null && x.IsHero)
+                ? BestCommander(after, meta.IsGarrison, CommandContext(state))
+                : after.First(x => x != null && x.IsHero);
+            return ReferenceEquals(lead, hero) && BodyRoom(LedBy(after, hero)) >= BodyRoom(dest);
         }
 
         // `units` with `hero` moved to the commander slot (TryReorderCommander's roster order).

@@ -1,9 +1,11 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using UnityEngine;
 using Game.Cards;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -212,13 +214,7 @@ namespace Game.Ai.V2
                         CardDefinition card = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                         if (card == null || card.isAviation)
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
-                        var projected = p.Deploy.Army.Members.Select(AiPower.ToPowerUnit).ToList();
-                        AiPower.ProjectedStrategicLine line = AiPower.ProjectMaterialization(p);
-                        AiPower.PowerUnit unit = AiPower.ToPowerUnit(card);
-                        float beforePower = AiPower.EffectiveArmyPower(projected);
-                        projected.Add(new AiPower.PowerUnit(line.BasePower, unit.Tags,
-                            line.Range, unit.IsHero, line.CommandRating));
-                        if (AiPower.EffectiveArmyPower(projected) <= beforePower)
+                        if (!StrengthensArmy(p.Deploy.Army.Members, card, AiPower.ProjectMaterialization(p)))
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
                     }
                     if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
@@ -286,6 +282,24 @@ namespace Game.Ai.V2
 
         // Army-level: is this already-existing army an operational instance of `demand`'s capability
         // (used to lease armies that satisfied a live strategic demand to Housekeeping).
+        // The one "does this card strengthen that exact army" answer: the army's power with the
+        // card's projected line added, against its power now. A pinned Attack fist's delivery and
+        // the preparation host's card witness (AggressionDemandEvaluator.PreparationHostCardSource)
+        // both read it, so a WAIT never names a card this policy would refuse.
+        internal static bool StrengthensArmy(IEnumerable<UnitData> members, CardDefinition card,
+            AiPower.ProjectedStrategicLine line)
+        {
+            if (card == null || card.isAviation)
+                return false;
+            var projected = (members ?? Enumerable.Empty<UnitData>())
+                .Where(u => u != null).Select(AiPower.ToPowerUnit).ToList();
+            AiPower.PowerUnit unit = AiPower.ToPowerUnit(card);
+            float beforePower = AiPower.EffectiveArmyPower(projected);
+            projected.Add(new AiPower.PowerUnit(line.BasePower, unit.Tags,
+                line.Range, unit.IsHero, line.CommandRating));
+            return AiPower.EffectiveArmyPower(projected) > beforePower;
+        }
+
         internal static bool IsArmyOperationalForDemand(ArmySnapshot army, AxisDemand demand)
         {
             if (army == null || demand == null)

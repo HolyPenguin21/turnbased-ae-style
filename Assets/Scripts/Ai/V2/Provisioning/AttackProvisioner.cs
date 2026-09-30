@@ -227,6 +227,9 @@ namespace Game.Ai.V2
                         + "instead of creating a container"));
             }
 
+            if (target.PreparationStep == AttackPreparationStep.RecruitDonors)
+                return ProvisionRecruit(player, session, funded, target, key, host);
+
             HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
             if (host != null)
                 excluded.Remove(host.Id);
@@ -285,6 +288,59 @@ namespace Game.Ai.V2
                 AttackPreparationAssembly = assembly,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
+                StealthApReserved = false,
+            });
+        }
+
+        // ATK-F05 — the priced donor purchase: the host holds, every planned support is still an own
+        // mobile ground army that no mission used this cycle, and each one held by an operation is
+        // still for sale at a price (GroundCombatDonorPolicy.BorrowableDonorValues). 0 AP; the
+        // supports are claimed for the rest of the cycle so their lender cannot move them after
+        // the sale. Nothing moves here.
+        private static ProvisioningResult ProvisionRecruit(PlayerSetupData player,
+            ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key, ArmyData host)
+        {
+            // Every refusal is Blocked-class (MoverContended): a sale that cannot happen now never
+            // ends the preparation; Continuity and the next plan re-read the world.
+            if (host == null || target.GatherSupportArmyIds == null || target.GatherSupportArmyIds.Length == 0)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "attack donor purchase has no host or no support"));
+            Dictionary<int, float> forSale = GroundCombatDonorPolicy.BorrowableDonorValues(
+                MissionIntentRegistry.GetOrCreate(player).All);
+            HashSet<int> durable = session.ExcludedForGroundCombat(funded.Mission);
+            foreach (int id in target.GatherSupportArmyIds)
+            {
+                ArmyData s = AiV2Util.ResolveArmy(player, id);
+                if (s == null || s.Owner != player || s.Members.Count == 0 || s.IsGarrison || s.IsPrison
+                    || s.IsAirfield || AviationRules.IsAirArmy(s))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} is no longer an own mobile ground army"));
+                if (session.ClaimedArmyIds.Contains(id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} was used by an earlier mission this cycle"));
+                if (durable.Contains(id) && !forSale.ContainsKey(id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} is held by an operation that is not for sale"));
+            }
+            session.ClaimedArmyIds.Add(host.Id);
+            foreach (int id in target.GatherSupportArmyIds)
+                session.ClaimedArmyIds.Add(id);
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"PREPARATION RecruitDonors host #{host.Id} supports "
+                + $"[{string.Join(",", target.GatherSupportArmyIds)}] bought "
+                + $"[{string.Join(",", target.GatherSupportArmyIds.Where(forSale.ContainsKey).Select(id => $"#{id}:{forSale[id]:0.##}"))}] ap 0");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = host.Id,
+                FocusHex = host.Hex,
+                ExecutionHex = host.Hex,
+                AttackTarget = target,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = 0f,
                 StealthApReserved = false,
             });
         }

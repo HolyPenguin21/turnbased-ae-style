@@ -366,7 +366,11 @@ namespace Game.Ai.V2
     //    · MayReorderCommander  — the best legal hero ALREADY in the roster may take command;
     //    · KeepsMovement        — the operation moves on a route: an inbound member must not
     //                             lower the army's remaining or maximum movement (ETA, return
-    //                             leg, interception timing).
+    //                             leg, interception timing);
+    //    · MayReleaseExcessHeroes — ATK-F03, the Attack preparation host only: a hero that is not
+    //                             its best commander (HeroRoleEvaluator) and no Research/Production
+    //                             operator only takes a fighter slot, so it may leave, zero-AP, to
+    //                             a free local container. Nothing else ever leaves a claimed army.
     //  Supports/convoys, air wings, Economy/Development actors and scouts claim with the default
     //  FullyProtected contract: their delivery/operator/stealth/income semantics are not modelled
     //  here, so Housekeeping keeps its hands off them entirely.
@@ -377,14 +381,16 @@ namespace Game.Ai.V2
         public readonly bool MayReceive;
         public readonly bool MayReorderCommander;
         public readonly bool KeepsMovement;
+        public readonly bool MayReleaseExcessHeroes;
 
         private ArmyMutationContract(string label, bool mayReceive, bool mayReorderCommander,
-            bool keepsMovement)
+            bool keepsMovement, bool mayReleaseExcessHeroes = false)
         {
             Label = label;
             MayReceive = mayReceive;
             MayReorderCommander = mayReorderCommander;
             KeepsMovement = keepsMovement;
+            MayReleaseExcessHeroes = mayReleaseExcessHeroes;
         }
 
         public static readonly ArmyMutationContract FullyProtected =
@@ -398,7 +404,8 @@ namespace Game.Ai.V2
         // An Attack mobilization host is being BUILT on its own base: any legal free body helps,
         // and its march speed is decided by the composition it ends up with.
         public static ArmyMutationContract PreparationHost() =>
-            new ArmyMutationContract("Attack:PreparationHost", true, true, false);
+            new ArmyMutationContract("Attack:PreparationHost", true, true, false,
+                mayReleaseExcessHeroes: true);
 
         // Raid / Attack / ActiveDefence primaries, including their return legs.
         public static ArmyMutationContract MovingOperation(string label) =>
@@ -408,6 +415,7 @@ namespace Game.Ai.V2
             other == null ? this : new ArmyMutationContract(Label + "+" + other.Label,
                 MayReceive && other.MayReceive,
                 MayReorderCommander && other.MayReorderCommander,
-                KeepsMovement || other.KeepsMovement);
+                KeepsMovement || other.KeepsMovement,
+                MayReleaseExcessHeroes && other.MayReleaseExcessHeroes);
     }
 }

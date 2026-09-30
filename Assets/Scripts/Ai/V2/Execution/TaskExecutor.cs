@@ -1077,8 +1077,13 @@ namespace Game.Ai.V2
             displacedUnitName = null;
             // The one handoff decision (GroundCombatReinforcement.PlanHandoff) — the same plan the
             // leg's AP was provisioned on — applied as one atomic transfer / exchange.
-            HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
-                commandOpposition, commandHexBonus, out string why, allowCompleteTransfer);
+            // The Attack lane (it passes its fight) runs the one Attack plan (PlanAttackHandoff).
+            string why;
+            HandoffPlan plan = commandOpposition != null
+                ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, commandOpposition,
+                    commandHexBonus, requireChargeNow: true, out why)
+                : GroundCombatReinforcement.PlanHandoff(primary, support,
+                    null, commandHexBonus, out why, allowCompleteTransfer);
             if (plan == null)
             {
                 detail = why;

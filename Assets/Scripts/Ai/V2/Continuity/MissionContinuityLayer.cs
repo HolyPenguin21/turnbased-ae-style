@@ -1724,6 +1724,18 @@ namespace Game.Ai.V2
                         && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
                         && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
                         ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    // ATK-F05 — the one claim transition of a priced donor purchase: the frozen
+                    // supports enter the operation; the lenders retire on the next pass
+                    // ("given to an Attack gather"), their reservations with them.
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.RecruitDonors
+                        && o.AttackTarget.GatherSupportArmyIds != null)
+                    {
+                        foreach (int id in o.AttackTarget.GatherSupportArmyIds)
+                            if (id != ai.PrimaryArmyId && !ai.GatherSupportArmyIds.Contains(id))
+                                ai.GatherSupportArmyIds.Add(id);
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
                 }
                 else
                 {

@@ -91,6 +91,8 @@ namespace Game.Ai.V2
         // swapped or deposited; its own structural defects (singleton / non-viable) count, so a
         // weak mission host is a formation Housekeeping may fix by inbound only.
         public bool IsMissionReceiver;
+        // ATK-F03 — ArmyMutationContract.MayReleaseExcessHeroes (the Attack preparation host).
+        public bool MayReleaseExcessHeroes;
         public string MissionLabel;
         // Commander promotion among heroes already in the roster (free field/garrison containers
         // via CanChangeComposition; mission containers via their contract).

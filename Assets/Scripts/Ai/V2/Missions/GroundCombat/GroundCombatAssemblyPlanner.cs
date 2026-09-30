@@ -407,27 +407,10 @@ namespace Game.Ai.V2
                         && AiPower.EffectiveArmyPowerFromProfiles(projected)
                             > AiPower.EffectiveArmyPowerFromProfiles(before);
                 }
-                CommandHandoverPlan hero = GroundCombatReinforcement.CommandHandover(
-                    host, donor, opponents, defenderHexDefenseBonus, null);
-                if (hero != null)
-                {
-                    var led = host.Members.Except(hero.Displaced).Concat(hero.Incoming).ToList();
-                    if (AiPower.EffectiveArmyPower(led) > AiPower.EffectiveArmyPower(host.Members))
-                        return true;
-                }
-                List<UnitData> sparableUnits = GroundCombatReinforcement.SparableSupportBodies(
-                    donor, allowCompleteTransfer: true);
-                List<UnitData> bodyUnits = host.Members.Where(AiArmyRoles.IsGroundBattleBody).ToList();
-                if (!TryProjectReinforcement(bodyUnits.Select(WorthIt.FromLiveUnit).ToList(),
-                        sparableUnits.Select(WorthIt.FromLiveUnit).ToList(), host.Capacity,
-                        host.Members.Count, WorthIt.SideCommander.Of(host.Commander), opponents,
-                        out _, out _, out _, out List<int> incoming, out int displaced,
-                        defenderHexDefenseBonus, requireWinGain: false))
-                    return false;
-                var roster = new List<UnitData>(host.Members);
-                if (displaced >= 0) roster.Remove(bodyUnits[displaced]);
-                foreach (int index in incoming) roster.Add(sparableUnits[index]);
-                return AiPower.EffectiveArmyPower(roster) > AiPower.EffectiveArmyPower(host.Members);
+                // ATK-F04 — the live armies get the one Attack handoff plan Provisioning and
+                // Execution run, projected for the arrival turn (no charge from today's AP).
+                return GroundCombatReinforcement.PlanAttackHandoff(host, donor, opponents,
+                    defenderHexDefenseBonus, requireChargeNow: false, out _) != null;
             }
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
             // Mirror the live donor rule: Attack may consume one-body supports; other
@@ -586,10 +569,14 @@ namespace Game.Ai.V2
             // support's hero handed over because it leads this fight better
             // (GroundCombatReinforcement.CommandHandover — the handoff applies the same rule; the
             // cheapest such support is kept in the plan for its hero). Its Command sets capacity.
-            List<WorthIt.DefenderProfile> pooledBodies = pool.SelectMany(x => x.Bodies).ToList();
-            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
+            // ATK-F04 — the handoffs run under the host's CURRENT commander (a handoff promotes only
+            // a hero it brings), so the projection's slots are that commander's; the handover is
+            // the one the live plan would find (no pooled prospects), legal as an exchange, and
+            // taken only when it raises the host (GroundCombatReinforcement.PlanAttackHandoff's
+            // rule) — otherwise that support's bodies stay in the ordinary pool below.
+            UnitData lead = host.Commander;
             GatherSupport heroDonor = null;
+            float hostPowerBefore = AiPower.EffectiveArmyPower(host.Members);
             foreach (GatherSupport s in (minimumArmyPower > 0f
                 ? pool.OrderByDescending(x => x.Live.Members.Where(u => u.IsHero)
                         .Select(u => u.CommandRating).DefaultIfEmpty(0).Max())
@@ -597,8 +584,19 @@ namespace Game.Ai.V2
                 : pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)))
             {
                 CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
-                    opposition, defenderHexDefenseBonus, pooledBodies);
-                if (handover == null)
+                    opposition, defenderHexDefenseBonus, null);
+                if (handover == null
+                    || !ArmyActions.CanExchangeMembers(handover.Incoming, s.Live, host, handover.Hero,
+                        handover.Displaced, out _, requireChargeNow: false))
+                    continue;
+                List<UnitData> handed = host.Members.Except(handover.Displaced)
+                    .Concat(handover.Incoming).ToList();
+                bool raises = AiPower.EffectiveArmyPower(handed) > hostPowerBefore
+                    || (!WorthIt.CanDamageAll(host.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                            opposition, defenderHexDefenseBonus)
+                        && WorthIt.CanDamageAll(handed.Select(WorthIt.FromLiveUnit).ToList(),
+                            opposition, defenderHexDefenseBonus));
+                if (!raises)
                     continue;
                 lead = handover.Hero;
                 heroDonor = s;
