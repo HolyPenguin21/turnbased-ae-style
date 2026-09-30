@@ -235,7 +235,9 @@ namespace Game.Ai.V2
         // observation only: the hex must be VISIBLE now and pass the one arrival rule
         // (AiMapMemory.KnownUndefendedForeignStructureAt), the one step must be affordable, and the
         // hex it would end on must not sit under a known enemy it cannot survive — the same
-        // post-action safety gate the weak-Recce attack uses. A Base/Citadel outranks a Facility.
+        // post-action safety gate the weak-Recce attack uses. A Base/Citadel outranks a standalone
+        // site (a physical non-base structure such as an extraction site — never a facility card
+        // inside a base's slot, which is not a map object and not known to any task).
         private static ReconReactionDecision? FindUndefendedStructureOpportunity(PlayerSetupData player,
             HexMap map, ArmyData army)
         {
@@ -267,7 +269,7 @@ namespace Game.Ai.V2
                 return null;
             return new ReconReactionDecision(ReconReactionAction.SabotageStructure, best, null, 1f,
                 bestIsStronghold ? "adjacent undefended enemy Base: take it over"
-                    : "adjacent undefended enemy Facility: destroy it");
+                    : "adjacent undefended enemy standalone site: destroy it");
         }
 
         // §17 acceptable post-combat position — would any OTHER known non-neutral enemy within

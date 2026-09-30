@@ -110,7 +110,7 @@ namespace Game.Ai.V2
             tw.Opponents = opponents;
             tw.AllBuildings = BuildingRegistry.AllBuildings()
                 .Where(b => b != null)
-                .Select(ToBuildingSnapshot)
+                .Select(b => ToBuildingSnapshot(b, player))
                 .ToList();
             return tw;
         }
@@ -211,12 +211,16 @@ namespace Game.Ai.V2
             p != null && p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue
                 ? new HexCoord(p.CitadelHexQ.Value, p.CitadelHexR.Value) : (HexCoord?)null;
 
-        internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
+        // T08 — even the sanctioned TrueWorld view never carries a foreign building's facility
+        // cards: slot contents are copied for the observer's own buildings only. The building
+        // card's own abilities and identity (IsBase / IsStartingCitadel / Defense) stay.
+        internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b, PlayerSetupData observer)
         {
             var abilities = new HashSet<string>();
-            foreach (FacilityData f in b.FacilitySlots)
-                if (f != null)
-                    abilities.UnionWith(f.Abilities);
+            if (b.Owner == observer)
+                foreach (FacilityData f in b.FacilitySlots)
+                    if (f != null)
+                        abilities.UnionWith(f.Abilities);
             return new BuildingSnapshot
             {
                 Hex = b.Hex,

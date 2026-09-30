@@ -29,7 +29,7 @@ namespace Game.EditorTests
                 IsStartingCitadel = false,
             };
 
-            BuildingSnapshot snapshot = WorldAnalysis.ToBuildingSnapshot(building);
+            BuildingSnapshot snapshot = WorldAnalysis.ToBuildingSnapshot(building, building.Owner);
 
             Assert.That(snapshot.IsBase, Is.True);
             Assert.That(snapshot.IsStartingCitadel, Is.False);
@@ -44,11 +44,30 @@ namespace Game.EditorTests
             installed.Abilities.Add(UnitAbilities.Barracks);
             building.FacilitySlots[0] = installed;
 
-            BuildingSnapshot snapshot = WorldAnalysis.ToBuildingSnapshot(building);
+            BuildingSnapshot snapshot = WorldAnalysis.ToBuildingSnapshot(building, building.Owner);
 
             Assert.That(snapshot.HasFacilityAbility(UnitAbilities.Barracks), Is.True);
             Assert.That(snapshot.IsBase, Is.False);
             Assert.That(WorldAnalysis.ClassifyBuildingAsset(snapshot), Is.EqualTo(AssetKind.Facility));
+        }
+
+        // T08 — a foreign building's slot cards never reach a task payload, TrueWorld included;
+        // its identity (IsBase / IsStartingCitadel) does.
+        [Test]
+        public void ForeignBuildingProjection_HidesFacilityCardsButKeepsIdentity()
+        {
+            var owner = new PlayerSetupData();
+            var observer = new PlayerSetupData();
+            var building = new BuildingData { Owner = owner, IsBase = true };
+            var installed = new FacilityData();
+            installed.Abilities.Add(UnitAbilities.Research);
+            building.FacilitySlots[0] = installed;
+
+            BuildingSnapshot foreign = WorldAnalysis.ToBuildingSnapshot(building, observer);
+            Assert.That(foreign.HasFacilityAbility(UnitAbilities.Research), Is.False);
+            Assert.That(foreign.IsBase, Is.True);
+            Assert.That(WorldAnalysis.ToBuildingSnapshot(building, owner)
+                .HasFacilityAbility(UnitAbilities.Research), Is.True);
         }
 
         [Test]
@@ -57,7 +76,7 @@ namespace Game.EditorTests
             var building = new BuildingData { IsBase = true, IsStartingCitadel = true };
 
             Assert.That(WorldAnalysis.ClassifyBuildingAsset(
-                WorldAnalysis.ToBuildingSnapshot(building)), Is.EqualTo(AssetKind.Citadel));
+                WorldAnalysis.ToBuildingSnapshot(building, building.Owner)), Is.EqualTo(AssetKind.Citadel));
         }
 
         [Test]

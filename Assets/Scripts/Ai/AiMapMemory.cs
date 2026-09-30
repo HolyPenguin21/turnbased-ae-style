@@ -257,11 +257,17 @@ namespace Game.Ai
             // world event — an upgrade still keeps the same ability, just a higher UpgradeLevel
             // this snapshot doesn't need), so this stays honestly "as last observed" the same way
             // Owner/IsStartingCitadel already do.
+            // T08 — OWN buildings only: a foreign base's facility cards are internal slot contents
+            // no AI task may know (not targets, not monitoring, not economic reads). Null for a
+            // building another player owned when observed.
             public HashSet<string> FacilityAbilities;
-            // Last-observed physical collection capacity, including the building's own baked-in
-            // Collect ability and every Facility upgrade. Four entries, indexed by ResourceType.
+            // Last-observed physical collection of the hex's resources by this structure — an
+            // observed aggregate EFFECT on the hex, kept for every owner (opponent income floor,
+            // remaining yield at a site), never a list of the cards behind it. Four entries,
+            // indexed by ResourceType.
             public int[] CollectedAmounts;
-            // Last-observed unlocked empty slot count. Unlike TotalFacilitySlots this is the
+            // Last-observed unlocked empty slot count — OWN buildings only (T08); 0 for a foreign
+            // one, whose slot vacancies are internal. Unlike TotalFacilitySlots this is the
             // authoritative answer to whether another Facility could actually be placed now.
             public int FreeFacilitySlots;
             // FIX-05 (2026-09-22) — the building's own last-observed Defense stat. Only a Base
@@ -960,10 +966,16 @@ namespace Game.Ai
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — building at ({hex.Q},{hex.R}) corrected, owner "
                             + $"{(previousBuilding.Owner != null ? previousBuilding.Owner.Nickname : "none")} → "
                             + $"{(building.Owner != null ? building.Owner.Nickname : "none")}.");
-                    var facilityAbilities = new HashSet<string>();
-                    foreach (FacilityData facility in building.FacilitySlots)
-                        if (facility != null)
-                            facilityAbilities.UnionWith(facility.Abilities);
+                    // T08 — slot contents are recorded only for this player's own building.
+                    bool ownBuilding = building.Owner == player;
+                    HashSet<string> facilityAbilities = null;
+                    if (ownBuilding)
+                    {
+                        facilityAbilities = new HashSet<string>();
+                        foreach (FacilityData facility in building.FacilitySlots)
+                            if (facility != null)
+                                facilityAbilities.UnionWith(facility.Abilities);
+                    }
                     var collectedAmounts = new int[UnitAbilities.CollectAbilities.Length];
                     for (int i = 0; i < collectedAmounts.Length; i++)
                         collectedAmounts[i] = building.CollectedAmount((ResourceType)i);
@@ -975,8 +987,10 @@ namespace Game.Ai
                         IsBase = building.IsBase,
                         FacilityAbilities = facilityAbilities,
                         CollectedAmounts = collectedAmounts,
-                        FreeFacilitySlots = Enumerable.Range(0, building.UnlockedFacilitySlots)
-                            .Count(i => building.FacilitySlots[i] == null),
+                        FreeFacilitySlots = ownBuilding
+                            ? Enumerable.Range(0, building.UnlockedFacilitySlots)
+                                .Count(i => building.FacilitySlots[i] == null)
+                            : 0,
                         // FIX-05 — the hex is genuinely visible in this loop, so its structural
                         // defence is exactly as honest an observation as its owner or facilities.
                         Defense = building.Defense,
