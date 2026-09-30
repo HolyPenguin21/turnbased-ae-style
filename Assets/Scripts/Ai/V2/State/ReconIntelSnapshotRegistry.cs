@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
@@ -50,9 +51,13 @@ namespace Game.Ai.V2
                 return;
             if (!ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 ByPlayer[player] = e = new Entry { Turn = turn };
-            e.ByKnowledgeVersion[knowledgeVersion] = lastObserved != null
+            // Repeating a Scan must not rewrite an already-published snapshot identity.
+            if (e.ByKnowledgeVersion.ContainsKey(knowledgeVersion))
+                return;
+            var copy = lastObserved != null
                 ? new Dictionary<HexCoord, int>(lastObserved)
                 : new Dictionary<HexCoord, int>();
+            e.ByKnowledgeVersion[knowledgeVersion] = new ReadOnlyDictionary<HexCoord, int>(copy);
         }
 
         public static bool TryGetLastObservedTurn(WorldSnapshot snapshot, HexCoord hex, out int lastObservedTurn)

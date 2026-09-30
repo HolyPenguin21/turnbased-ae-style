@@ -47,6 +47,7 @@ namespace Game.Ai.V2
         public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Analysis.Scan");
+            AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             var snap = new WorldSnapshot
             {
                 Observer = player,
@@ -107,6 +108,8 @@ namespace Game.Ai.V2
                 || ctx == null || prev.TurnNumber != ctx.TurnNumber)
                 return Scan(player, root, hand, ctx);
 
+            // Stamp before choosing the identity: observation metadata can advance knowledge.
+            AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             int knowledgeVersion = AiMapMemory.KnowledgeVersionFor(player);
             if (prev.KnowledgeVersion == knowledgeVersion)
                 return RefreshOperationalState(prev, player, root, hand, ctx);

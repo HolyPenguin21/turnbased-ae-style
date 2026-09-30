@@ -185,7 +185,7 @@ namespace Game.Ai.V2
             if (ScoutExecutionSafety.StepBlocked(player, h, hidden))
                 return false;
 
-            float detectorRisk = DetectorRisk(player, h);
+            float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
             if (hidden && detectorRisk >= 1f)
                 return false;
 
@@ -290,7 +290,7 @@ namespace Game.Ai.V2
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > movementLeft || ScoutExecutionSafety.StepBlocked(player, h, hidden))
                     continue;
-                float detectorRisk = DetectorRisk(player, h);
+                float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
                 if (hidden && detectorRisk >= 1f)
                     continue;
 
@@ -335,20 +335,6 @@ namespace Game.Ai.V2
             if (visited && mode == ReconMode.Explore)
                 factor *= AiConfigV2.scoutExploredRouteFloor;
             return factor;
-        }
-
-        private static float DetectorRisk(PlayerSetupData player, HexCoord h)
-        {
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { h }, AiConfigV2.frontierEnemyExposureRadius))
-            {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
-                    continue;
-                if (sighting.CanDetectStealthAt(h))
-                    detectors++;
-            }
-            return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
         }
 
         private static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)

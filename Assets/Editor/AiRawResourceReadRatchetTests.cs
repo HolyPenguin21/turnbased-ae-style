@@ -39,7 +39,7 @@ namespace Game.EditorTests
             ["Evaluation/Effects/StrategicEffectRegistry.cs"] = 2,
             ["Execution/CardPlayExecutor.cs"] = 3,
             ["Execution/ReconAirExecutor.cs"] = 34,
-            ["Execution/ReconGroundExecutor.cs"] = 4,
+            ["Execution/ReconGroundExecutor.cs"] = 2,
             ["Execution/TaskExecutor.cs"] = 11,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,

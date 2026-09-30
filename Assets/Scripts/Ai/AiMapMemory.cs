@@ -415,6 +415,10 @@ namespace Game.Ai
             player != null && KnowledgeVersions.TryGetValue(player, out int version)
                 ? version : _knowledgeVersionSeed;
 
+        // Observation metadata (V2 IntelAge) invalidates strategic snapshots, not route blockers.
+        internal static void InvalidateObservedKnowledge(PlayerSetupData player) =>
+            BumpKnowledgeVersion(player);
+
         private static void BumpKnowledgeVersion(PlayerSetupData player)
         {
             if (player == null)
@@ -430,7 +434,7 @@ namespace Game.Ai
                 _map = map;
             if (_subscribed)
                 return;
-            VisionSystem.VisibilityChanged += OnVisibilityChanged;
+            VisionSystem.VisibilityChanged += OnVisionStateChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             // Capture/destruction publishes this BEFORE the former owner's building-derived
             // vision is recomputed away. Consume that honest observation window so fog memory
@@ -453,6 +457,14 @@ namespace Game.Ai
         // intentionally separate from a vision-radius change; the existing snapshot routine is
         // kept as the single source of truth, but no longer runs on every animation step whose
         // reveal area stayed identical.
+        // VisionSystem emits this only when visible/visited sets change. A newly visited empty
+        // hex must refresh MapKnowledge even when object memory and this turn's IntelAge match.
+        private static void OnVisionStateChanged(PlayerSetupData player)
+        {
+            BumpKnowledgeVersion(player);
+            OnVisibilityChanged(player);
+        }
+
         private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
             OnVisibilityChanged(player);

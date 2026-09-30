@@ -280,10 +280,10 @@ namespace Game.Ai.V2
 
             if (exec.RequiresGarrisonExtraction)
             {
-                garrisonArmy = ResolveArmy(player, exec.SourceGarrisonArmyId);
+                garrisonArmy = AiV2Util.ResolveArmy(player, exec.SourceGarrisonArmyId);
                 plannedExtractUnit = garrisonArmy == null
                     ? null : AiArmyRoles.BestSparableGarrisonRecce(player, garrisonArmy);
-                destinationShell = ResolveArmy(player, exec.MaterializationArmyId);
+                destinationShell = AiV2Util.ResolveArmy(player, exec.MaterializationArmyId);
                 // The live re-check goes through the SAME canonical
                 // ReusableArmySelector.IsReusableShell predicate Assignment's own shell search is
                 // built on (owner/controller/prison/garrison/ aviation/commitment-claim). It also
@@ -310,7 +310,7 @@ namespace Game.Ai.V2
             }
             else
             {
-                army = ResolveArmy(player, moverArmyId);
+                army = AiV2Util.ResolveArmy(player, moverArmyId);
                 if (army == null || army.Owner != player || army.Members.Count == 0
                     || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -526,10 +526,6 @@ namespace Game.Ai.V2
                     return true;
             return false;
         }
-
-        // Was byte-identical in ReconAssignmentPlanner and (twice) in this file — moved to AiV2Util.
-        private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }

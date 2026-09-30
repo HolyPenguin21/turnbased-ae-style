@@ -129,7 +129,7 @@ namespace Game.Ai.V2
             if (ctx?.Map == null)
                 return ReconAssignmentCandidateResult.Ok;
 
-            ArmyData live = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == mover.ArmyId);
+            ArmyData live = AiV2Util.ResolveArmy(player, mover.ArmyId);
             if (live == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
 
@@ -281,7 +281,7 @@ namespace Game.Ai.V2
                 {
                     if (ctx?.Map != null)
                     {
-                        ArmyData liveMover = ResolveArmy(player, mover.ArmyId);
+                        ArmyData liveMover = AiV2Util.ResolveArmy(player, mover.ArmyId);
                         if (liveMover == null
                             || SafeStepPathing.FindNextSafeStep(ctx.Map, liveMover, target.FocusHex) == null)
                             continue;
@@ -292,7 +292,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                ArmyData live = ResolveArmy(player, mover.ArmyId);
+                ArmyData live = AiV2Util.ResolveArmy(player, mover.ArmyId);
                 if (live == null) continue;
                 foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
                 {
@@ -377,7 +377,7 @@ namespace Game.Ai.V2
                     Reject("actor_not_in_snapshot");
                     continue;
                 }
-                ArmyData live = ResolveArmy(player, slot.ActorId);
+                ArmyData live = AiV2Util.ResolveArmy(player, slot.ActorId);
                 if (live == null)
                 {
                     Reject("actor_not_live");
@@ -411,7 +411,6 @@ namespace Game.Ai.V2
                     nextTurnEnergy: choice.NextTurnEnergy, nextTurnAp: choice.NextTurnAp));
             }
         }
-
 
         // AssignFunded — best one-to-one actor/execution-candidate assignment across every OPEN
         // funded Scout mission at once (bounded exhaustive search + lexicographic scoring; the
@@ -615,7 +614,7 @@ namespace Game.Ai.V2
                 {
                     bool anyReachable = freeEligible.Any(mv =>
                     {
-                        ArmyData live = ResolveArmy(player, mv.ArmyId);
+                        ArmyData live = AiV2Util.ResolveArmy(player, mv.ArmyId);
                         return live != null
                             && SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null;
                     });
@@ -887,9 +886,6 @@ namespace Game.Ai.V2
         // thin local forwarders so every call site above stays unchanged.
         private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
-        private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
-
         // =======================================================================================
         //  C. MeasureCapacity — Demand's ONE read-only aggregate query. Moved verbatim from
         //  DemandLayer.ComputeReconWitness/SolveReconFlow (spec §5/§9 checklist) — Demand must
@@ -1099,7 +1095,7 @@ namespace Game.Ai.V2
                 else
                 {
                     airborneStuck++;   // recovery protected / flyable elsewhere, but not observation capacity
-                    ArmyData stuckLive = ResolveArmy(player, wing.ActorId);
+                    ArmyData stuckLive = AiV2Util.ResolveArmy(player, wing.ActorId);
                     AiDebugLog.WriteDeduped($"air-stuck|{wing.ActorId}",
                         $"[AI][V2][ReconAirCap][Stuck] actor=#{wing.ActorId} "
                         + $"at ({stuckLive?.Hex.Q},{stuckLive?.Hex.R}) mp={stuckLive?.CurrentMovement} "
@@ -1177,7 +1173,7 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            ArmyData live = ResolveArmy(player, slot.ActorId);
+            ArmyData live = AiV2Util.ResolveArmy(player, slot.ActorId);
             ArmySnapshot mover = snap?.Self?.Armies?
                 .FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId);
             if (live == null || mover == null)

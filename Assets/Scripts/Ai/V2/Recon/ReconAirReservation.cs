@@ -75,8 +75,7 @@ namespace Game.Ai.V2
             if (ctx?.Map == null)
                 return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId); // bare harness
 
-            ArmyData wing = ArmyRegistry.AllForOwner(player)
-                .FirstOrDefault(a => a != null && a.Id == slot.ActorId);
+            ArmyData wing = AiV2Util.ResolveArmy(player, slot.ActorId);
             if (wing == null)
                 return AirStructuralFeasibility.No;
 
@@ -138,8 +137,7 @@ namespace Game.Ai.V2
         {
             int excludeSortieId = ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState real)
                 ? real.SortieId : -1;
-            ReconMode effectiveMode = ReconPatrolStateRegistry.TryGet(player, wing.Id, out ReconPatrolState patrol)
-                ? patrol.Mode : globalMode;
+            ReconMode effectiveMode = AirReconModePolicy.EffectiveMode(player, wing.Id, globalMode);
             return (ProjectScoringSortie(player, ctx, wing), excludeSortieId, effectiveMode);
         }
 
@@ -170,12 +168,8 @@ namespace Game.Ai.V2
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
                 int safeEnds = AviationRange.SafeUnlandedEndsRemaining(wing);
 
-                ReconAirPhase phase = real.Phase;
-                if (phase == ReconAirPhase.Hold)
-                    phase = wouldBeNewTurn
-                        ? (safeEnds > 0 ? ReconAirPhase.Outbound : ReconAirPhase.Return)
-                        : ReconAirPhase.Hold;
-                proj.Phase = phase;
+                proj.Phase = ReconAirSortieLifecycle.PhaseAfterHold(
+                    real.Phase, wouldBeNewTurn, safeEnds);
             }
             else
             {
