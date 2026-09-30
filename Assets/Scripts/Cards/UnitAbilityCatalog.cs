@@ -24,6 +24,22 @@ namespace Game.Cards
     [CreateAssetMenu(fileName = "UnitAbilityCatalog", menuName = "Game/Unit Ability Catalog")]
     public class UnitAbilityCatalog : ScriptableObject
     {
+        // The authored combat catalog is a single project asset. Strategic combat estimators do
+        // not own UI objects, so expose the loaded asset itself rather than duplicating summon
+        // stats/templates in AI code. Battle UI still keeps its serialized reference as before.
+        public static UnitAbilityCatalog Active { get; private set; }
+
+        private void OnEnable()
+        {
+            Active = this;
+        }
+
+        private void OnDisable()
+        {
+            if (Active == this)
+                Active = null;
+        }
+
         [System.Serializable]
         public class AbilityEntry
         {
