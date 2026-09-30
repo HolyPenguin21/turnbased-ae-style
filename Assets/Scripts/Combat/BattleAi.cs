@@ -561,8 +561,8 @@ namespace Game.Combat
 
                 var fateByArmy = new Dictionary<ArmyData, int>
                 {
-                    [ownArmy] = Mathf.Max(0, ownArmy.Commander?.Fate ?? 0),
-                    [enemyArmy] = Mathf.Max(0, enemyArmy.Commander?.Fate ?? 0),
+                    [ownArmy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, ownArmy)?.Fate ?? 0),
+                    [enemyArmy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy)?.Fate ?? 0),
                 };
                 var rng = new System.Random(unchecked(baseSeed + trial * 7919));
 
@@ -692,7 +692,19 @@ namespace Game.Combat
                     ApplySimSplash(grid, hp, actor, target, damage, magnitudes, rng,
                         simulatedAttack, simulatedDefense);
                     if (hp[target] <= 0f && grid.TryFindPosition(target, out int tRow, out int tCol))
+                    {
                         grid.Set(tRow, tCol, null);
+                        // A killed hero stops commanding immediately in the shadow battle. If the
+                        // army has another living hero, that hero becomes Commander for subsequent
+                        // rounds/exchanges and brings its own remaining Fate pool.
+                        if (target.IsHero && fateByArmy != null)
+                        {
+                            ArmyData targetArmy = FindSimulationArmy(target, ownArmy, enemyArmy);
+                            UnitData replacement = BattleTurnOrder.LivingCommanderOnGrid(grid, targetArmy);
+                            if (targetArmy != null)
+                                fateByArmy[targetArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
+                        }
+                    }
                     continue;
                 }
 
