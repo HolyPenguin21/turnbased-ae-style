@@ -38,8 +38,8 @@ namespace Game.Combat
         // reproducible order for logs/tests while preserving Initiative as the primary rule.
         public static List<UnitData> BuildOrder(BattleGrid grid, ArmyData attacker, ArmyData defender, int tieBreakSeed)
         {
-            UnitData attackerHero = attacker?.Commander;
-            UnitData defenderHero = defender?.Commander;
+            UnitData attackerHero = LivingCommanderOnGrid(grid, attacker);
+            UnitData defenderHero = LivingCommanderOnGrid(grid, defender);
 
             var order = new List<UnitData>(grid.AllUnits().Where(u => u.IsGroundCombatant));
             order.Sort((a, b) =>
@@ -51,6 +51,21 @@ namespace Game.Combat
                 return TieBreakKey(a, tieBreakSeed).CompareTo(TieBreakKey(b, tieBreakSeed));
             });
             return order;
+        }
+
+        // Commander is the first living hero that is still physically present in this battle.
+        // This is intentionally grid-aware: shadow simulations remove killed heroes from their
+        // shadow grid without mutating the real ArmyData roster, and a second hero must take over
+        // immediately instead of the dead primary Commander continuing to grant Initiative.
+        public static UnitData LivingCommanderOnGrid(BattleGrid grid, ArmyData army)
+        {
+            if (grid == null || army == null)
+                return null;
+            foreach (UnitData member in army.Members)
+                if (member != null && member.IsHero && member.HitPointsCurrent > 0
+                    && grid.TryFindPosition(member, out _, out _))
+                    return member;
+            return null;
         }
 
         private static int TieBreakKey(UnitData unit, int seed)
@@ -73,8 +88,8 @@ namespace Game.Combat
         public static (UnitData hero, List<(UnitData unit, int initiative)> acting) BuildSideSummary(BattleGrid grid, ArmyData attacker, ArmyData defender, bool attackerSide,
             int tieBreakSeed = 0)
         {
-            UnitData attackerHero = attacker?.Commander;
-            UnitData defenderHero = defender?.Commander;
+            UnitData attackerHero = LivingCommanderOnGrid(grid, attacker);
+            UnitData defenderHero = LivingCommanderOnGrid(grid, defender);
             UnitData hero = attackerSide ? attackerHero : defenderHero;
             ArmyData side = attackerSide ? attacker : defender;
 
