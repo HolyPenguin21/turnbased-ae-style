@@ -332,19 +332,8 @@ namespace Game.Ai.V2
             return bestHex.HasValue && bestRisk < current ? bestHex : null;
         }
 
-        private static float CurrentDetectorRisk(PlayerSetupData player, HexCoord h)
-        {
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { h }, AiConfigV2.frontierEnemyExposureRadius))
-            {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
-                    continue;
-                if (sighting.CanDetectStealthAt(h))
-                    detectors++;
-            }
-            return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
-        }
+        private static float CurrentDetectorRisk(PlayerSetupData player, HexCoord h) =>
+            ScoutRiskModel.LiveDetectorRisk(player, h);
 
         // Fog-honest variant of WorthIt.HexDefenseBonus. AiMapMemory stores the observed defense
         // in KnownBuilding and owns this question for the whole AI, so a remembered Base's

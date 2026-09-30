@@ -258,6 +258,16 @@ namespace Game.Ai.V2
                 homeFactor = Mathf.Clamp(homeFactor, 0.30f, 1.15f);
             }
 
+            // T09 — an ordinary step never walks straight back into the unchanged cause of a
+            // recent escape unless the fresh information there pays for that exact risk.
+            if (ReentryBlocked(player, army, assignment, turn, h, information, detectorRisk,
+                    out string reentry))
+            {
+                AiDebugLog.WriteDeduped($"reentry:{army.Id}:{h.Q},{h.R}:{turn}",
+                    $"[AI][V2][Recon][Ground][Step] actor=#{army.Id} skip=({h.Q},{h.R}) {reentry}");
+                return false;
+            }
+
             float purpose = information + anchorProgress;
             float score = PurposefulStepScore(
                     information, anchorProgress, heading, movementEfficiency)
@@ -304,6 +314,9 @@ namespace Game.Ai.V2
                     local = AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age)
                         ? ReconIntelSnapshotRegistry.Staleness(age)
                         : 0f;
+                // T09 — the forecast honours the same re-entry rule as the step it ranks.
+                if (ReentryBlocked(player, army, assignment, turn, h, local, detectorRisk, out _))
+                    continue;
 
                 int nearbyClaims = ReconPatrolStateRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
                     Math.Max(1, AiConfigV2.scoutTargetMinSeparation));
@@ -337,18 +350,64 @@ namespace Game.Ai.V2
             return factor;
         }
 
-        private static float DetectorRisk(PlayerSetupData player, HexCoord h)
+        private static float DetectorRisk(PlayerSetupData player, HexCoord h) =>
+            ScoutRiskModel.LiveDetectorRisk(player, h);
+
+        // T09 — the one "may an ORDINARY step re-enter the cause of a recent escape" rule, read by
+        // the immediate score and the forecast (the executor only moves to Pick's hex, so the
+        // live gate is the same rule). Emergency reactions (Flee / EvadeDetector) never ask it.
+        //   * Detector escape — while the scout is still hidden, a hex whose live detector risk is
+        //     still >= the risk it escaped is re-entered only when its fresh information is at
+        //     least that risk (heading / anchor progress alone never pay for it).
+        //   * Threat escape — a visible scout does not step back within flee radius of the
+        //     still-known enemy it fled from; that step would only trigger the same Flee again.
+        // The memory ends on expiry (scoutEscapeMemoryTurns), when the cause is gone from honest
+        // memory (detector risk at the escaped hex dropped, the enemy is no longer known there),
+        // or when the scout's own stealth state removes the cause. Never a permanent ban.
+        internal static bool ReentryBlocked(PlayerSetupData player, ArmyData army,
+            ReconPatrolState assignment, int turn, HexCoord h, float information, float detectorRisk,
+            out string reason)
         {
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { h }, AiConfigV2.frontierEnemyExposureRadius))
+            reason = null;
+            ReconEscape escape = assignment?.LastEscape;
+            if (escape == null || army == null)
+                return false;
+            if (turn - escape.Turn > AiConfigV2.scoutEscapeMemoryTurns)
             {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
-                    continue;
-                if (sighting.CanDetectStealthAt(h))
-                    detectors++;
+                assignment.LastEscape = null;
+                return false;
             }
-            return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
+            bool hidden = StealthSystem.IsArmyFullyHidden(army);
+            if (escape.Cause == ReconEscapeCause.Detector)
+            {
+                if (ScoutRiskModel.LiveDetectorRisk(player, escape.FromHex) < escape.Risk - 0.0001f)
+                {
+                    assignment.LastEscape = null;
+                    return false;
+                }
+                if (!hidden || detectorRisk < escape.Risk - 0.0001f
+                    || information >= detectorRisk)
+                    return false;
+                reason = $"reason=recent_detector_escape from=({escape.FromHex.Q},{escape.FromHex.R}) "
+                    + $"risk={detectorRisk:0.00}>={escape.Risk:0.00} info={information:0.00}";
+                return true;
+            }
+            if (!escape.ThreatArmyId.HasValue)
+                return false;
+            AiMapMemory.KnownEnemySighting? threat = null;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (s.ArmyId == escape.ThreatArmyId.Value) { threat = s; break; }
+            if (!threat.HasValue || HexGridMath.Distance(threat.Value.Hex, escape.FromHex)
+                    > Math.Max(1, AiConfig.scoutFleeRadius))
+            {
+                assignment.LastEscape = null;
+                return false;
+            }
+            if (hidden || HexGridMath.Distance(h, threat.Value.Hex) > Math.Max(1, AiConfig.scoutFleeRadius))
+                return false;
+            reason = $"reason=recent_threat_escape threat=#{escape.ThreatArmyId.Value} "
+                + $"at=({threat.Value.Hex.Q},{threat.Value.Hex.R})";
+            return true;
         }
 
         private static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)

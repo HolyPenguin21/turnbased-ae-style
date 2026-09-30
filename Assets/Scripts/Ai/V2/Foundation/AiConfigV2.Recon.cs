@@ -199,6 +199,10 @@
         //     scout. Immediate A->B->A reversal is the strongest penalty; re-treading the recent
         //     trail is next; an ordinary older-visited route is weighted most lightly (its floor).
         public const int scoutTrailLength = 8;
+        // T09 — how long a ground scout remembers WHY it just escaped (EvadeDetector / Flee) so an
+        // ordinary step does not walk straight back into the same unchanged cause. Bounded: the
+        // memory also ends as soon as the cause is gone from honest memory.
+        public const int scoutEscapeMemoryTurns = 2;
         public const float scoutImmediateReversalFactor = 0.55f;   // multiply route value on a reversal
         public const float scoutRecentTrailPenaltyPerHex = 0.18f;  // 1/(1 + p*hits)
         public const float scoutExploredRouteFloor = 0.72f;        // fully-visited route keeps this fraction

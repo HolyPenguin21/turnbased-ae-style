@@ -342,6 +342,7 @@ namespace Game.Ai.V2
             HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
             HashSet<int> knownNeutralIds = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
             HexCoord beforeHex = army.Hex;
+            float riskBefore = ScoutRiskModel.LiveDetectorRisk(player, beforeHex);
             ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
                 beforeHex, next.Value, actionWhy);
             var move = AiDecision.Move(army, next.Value,
@@ -369,6 +370,19 @@ namespace Game.Ai.V2
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                 ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,
                     beforeHex, endHex);
+                // T09 — remember why this safety step left beforeHex (ordinary steps read it).
+                if (reaction.Action == ReconReactionAction.EvadeDetector
+                    || reaction.Action == ReconReactionAction.Flee)
+                    ReconPatrolStateRegistry.RecordEscape(player, pm.MoverArmyId, new ReconEscape
+                    {
+                        FromHex = beforeHex,
+                        Cause = reaction.Action == ReconReactionAction.Flee
+                            ? ReconEscapeCause.Threat : ReconEscapeCause.Detector,
+                        Risk = riskBefore,
+                        ThreatArmyId = reaction.Action == ReconReactionAction.Flee
+                            ? reaction.TargetArmyId : null,
+                        Turn = ctx.TurnNumber,
+                    });
             }
             result.FinalHex = endHex;
 

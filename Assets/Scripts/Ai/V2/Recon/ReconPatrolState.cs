@@ -25,6 +25,25 @@ namespace Game.Ai.V2
         public int LastProgressTurn;
         public int LastModeSwitchTurn;
         public int LastStrategicReassignmentTurn;
+
+        // T09 — the last safety escape this actor actually executed (a Recon reaction step that
+        // moved it): where it left, why, and the cause's honest fingerprint. Read by the ordinary
+        // step (ReconGroundStepPlanner.ReentryBlocked) so it does not walk back into the same
+        // unchanged cause; never read by an emergency reaction. Null = no live escape.
+        public ReconEscape LastEscape;
+    }
+
+    public enum ReconEscapeCause { Detector, Threat }
+
+    public sealed class ReconEscape
+    {
+        public HexCoord FromHex;
+        public ReconEscapeCause Cause;
+        // Detector: the live detector risk at FromHex when it escaped (ScoutRiskModel).
+        public float Risk;
+        // Threat: the known enemy army it fled from.
+        public int? ThreatArmyId;
+        public int Turn;
     }
 
     public static class ReconPatrolStateRegistry
@@ -153,6 +172,17 @@ namespace Game.Ai.V2
                     && HexGridMath.Distance(a.StrategicAnchor, hex) <= radius)
                     count++;
             return count;
+        }
+
+        // T09 — called by ReconGroundExecutor after an EvadeDetector / Flee step really moved.
+        public static void RecordEscape(PlayerSetupData player, int armyId, ReconEscape escape)
+        {
+            if (escape == null || !TryGet(player, armyId, out ReconPatrolState assignment))
+                return;
+            assignment.LastEscape = escape;
+            AiDebugLog.Write($"[AI][V2][Recon][Escape] actor=#{armyId} cause={escape.Cause} "
+                + $"from=({escape.FromHex.Q},{escape.FromHex.R}) risk={escape.Risk:0.00} "
+                + $"threat={(escape.ThreatArmyId.HasValue ? "#" + escape.ThreatArmyId.Value : "-")} turn={escape.Turn}");
         }
 
         public static void MarkProgress(PlayerSetupData player, int armyId, int turn)
