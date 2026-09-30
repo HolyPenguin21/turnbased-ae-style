@@ -263,7 +263,9 @@ namespace Game.Ai
             public HashSet<string> FacilityAbilities;
             // Last-observed physical collection of the hex's resources by this structure — an
             // observed aggregate EFFECT on the hex, kept for every owner (opponent income floor,
-            // remaining yield at a site), never a list of the cards behind it. Four entries,
+            // remaining yield at a site), never a list of the cards behind it. The player sees
+            // this per-hex collection on a foreign building in the UI (owner decision, T08), so
+            // it is honest observation, not facility-card knowledge. Four entries,
             // indexed by ResourceType.
             public int[] CollectedAmounts;
             // Last-observed unlocked empty slot count — OWN buildings only (T08); 0 for a foreign
