@@ -54,9 +54,8 @@ namespace Game.Ai.V2
                 // Acceptance telemetry intentionally exposes only the already-sanitized shape of
                 // the signal. Never log enemy ids, exact hexes, strength, composition or stealth.
                 int activeSectors = weights.Count(kv => kv.Value > 0f);
-                Debug.LogFormat(
-                    "[AI][V2][Recon][Acceptance] scenario=coarse-direction-pressure status=PASS signal=coarse activeSectors={0}",
-                    activeSectors);
+                AiDebugLog.Write(
+                    $"[AI][V2][Recon][Acceptance] scenario=coarse-direction-pressure status=PASS signal=coarse activeSectors={activeSectors}");
             }
 
             PlayerSetupData self = ResolveSelf(snapshot);
