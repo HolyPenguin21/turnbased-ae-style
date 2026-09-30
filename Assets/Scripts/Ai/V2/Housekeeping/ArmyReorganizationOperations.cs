@@ -181,9 +181,9 @@ namespace Game.Ai.V2
 
             // §P1 — a garrison side of the swap must keep its defensive power reserve (same
             // "only if currently above it" semantics as GarrisonMayRelease).
-            if (aMeta.IsGarrison && !GarrisonRosterKeepsReserve(a, afterA))
+            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, afterA, aMeta))
                 return null;
-            if (bMeta.IsGarrison && !GarrisonRosterKeepsReserve(b, afterB))
+            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, afterB, bMeta))
                 return null;
 
             a.Clear(); a.AddRange(afterA);
@@ -222,31 +222,22 @@ namespace Game.Ai.V2
             if (u.IsDevelopmentOperator)
                 return false;
             if (u.IsHero)
-            {
-                if (garrison.Count <= 1)
-                    return false;
-            }
-            else
-            {
-                int remainingNonHero = garrison.Count(x => x.IsGroundCombatant) - 1;
-                if (remainingNonHero < meta.GarrisonNonHeroFloor)
-                    return false;
-            }
-            // §P1 — headcount is not enough: a garrison that currently HOLDS a real defensive
-            // power reserve must not be dropped below it by a zero-AP reorg move (a small,
-            // already-below-reserve second base is still governed by the headcount floor above,
-            // exactly as before).
-            return GarrisonRosterKeepsReserve(garrison, garrison.Where(x => x != u).ToList());
+                return garrison.Count > 1;
+            // The one garrison spare rule (AiArmyRoles.SpareableBodies): a power floor, one body
+            // always stays, the strongest bodies are the ones that may go.
+            List<ReorgUnit> bodies = garrison.Where(x => x != null && x.IsGroundCombatant).ToList();
+            return AiArmyRoles.SpareableBodies(bodies,
+                    set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor)
+                .Contains(bodies.IndexOf(u));
         }
 
-        // §P1 — true when `after` (the garrison's projected roster) still holds the defensive
-        // power reserve, OR the garrison was already below it before the move (then only the
-        // headcount floor governs, unchanged behaviour).
-        private static bool GarrisonRosterKeepsReserve(List<ReorgUnit> before, List<ReorgUnit> after)
+        // A swap changes a garrison's roster without emptying it: it may not end below both its
+        // floor and what it held before.
+        private static bool GarrisonRosterKeepsFloor(List<ReorgUnit> before, List<ReorgUnit> after,
+            ReorgContainer meta)
         {
-            if (ReorgViability.EffectivePower(before) < AiConfigV2.housekeepingGarrisonReservePower)
-                return true;
-            return ReorgViability.EffectivePower(after) >= AiConfigV2.housekeepingGarrisonReservePower;
+            float was = ReorgViability.EffectivePower(before);
+            return ReorgViability.EffectivePower(after) + 0.001f >= System.Math.Min(was, meta.GarrisonPowerFloor);
         }
     }
 }

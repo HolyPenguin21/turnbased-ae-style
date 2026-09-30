@@ -283,16 +283,6 @@ namespace Game.Ai.V2
                 return false;
             if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
-            // §P1 — a garrison that currently holds a real defensive power reserve must not be
-            // dropped below it by a zero-AP structural move.
-            if (from.IsGarrison)
-            {
-                float beforePower = AiPower.EffectiveArmyPower(from.Members);
-                if (beforePower >= AiConfigV2.housekeepingGarrisonReservePower
-                    && AiPower.EffectiveArmyPower(from.Members.Where(m => m != unit))
-                        < AiConfigV2.housekeepingGarrisonReservePower)
-                { why = "garrison power reserve"; return false; }
-            }
             return true;
         }
 
@@ -317,16 +307,7 @@ namespace Game.Ai.V2
                 { why = "garrison swap must send a hero out"; return false; }
                 if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
                 { why = "garrison hero release breaks security"; return false; }
-                // §P1 — a garrison that currently holds its defensive power reserve must not be
-                // dropped below it by the swap either (strong hero out, weak body in).
-                float garrBefore = AiPower.EffectiveArmyPower(garr.Members);
-                if (garrBefore >= AiConfigV2.housekeepingGarrisonReservePower)
-                {
-                    var garrAfter = garr.Members.Where(m => m != leaving).ToList();
-                    garrAfter.Add(entering);
-                    if (AiPower.EffectiveArmyPower(garrAfter) < AiConfigV2.housekeepingGarrisonReservePower)
-                    { why = "garrison power reserve"; return false; }
-                }
+                // A hero (no power) leaves and a body enters: the garrison's defence never drops.
             }
             if (movedUnits.Contains(unitA) || movedUnits.Contains(unitB)) { why = "swap member already moved this plan"; return false; }
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }

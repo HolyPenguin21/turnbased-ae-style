@@ -84,7 +84,10 @@ namespace Game.Ai.V2
         public bool CanReceive;
         public bool CanChangeComposition;
         public bool SingletonExempt;
+        // Bodies a garrison must hold (1) and the defence power it keeps when it releases one
+        // (AiArmyRoles.GarrisonDefenceFloor / SpareableBodies — the same rule every donor reads).
         public int GarrisonNonHeroFloor;
+        public float GarrisonPowerFloor;
 
         // T05 — a claimed operation container whose ActorCommitments contract lets it take free
         // same-hex members (ArmyMutationContract.MayReceive). It never donates, is never folded,

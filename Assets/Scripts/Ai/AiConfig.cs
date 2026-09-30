@@ -34,6 +34,12 @@ namespace Game.Ai
         public const float economyEscortMinWinChance = 0.6f;
         public const int secureBaseMinNonHeroUnits = 2;
         public const int secureCitadelMinNonHeroUnits = 2;
+        // Garrison defence floor (user decision 2026-09-30): the non-hero power a garrison keeps is
+        // this share of the player's whole ground force (map + hand + deck, aviation excluded —
+        // PlayerForceAnalysis' additive scale); at least one body always stays. Read by
+        // AiArmyRoles.CanSpareGarrisonMembers (every V2 donor), Housekeeping and held-base demand.
+        public const float garrisonDefenceShareCitadel = 0.10f;
+        public const float garrisonDefenceShareBase = 0.05f;
 
         // Economy / management physical capacity.
         public const int garrisonReservedSlots = 1;

@@ -125,12 +125,17 @@ namespace Game.Ai.V2
                 if (garrison == null
                     || !armies.Any(a => a != null && a.IsStructuralRaidActor && a.Hex.Equals(baseHex)))
                     continue;
-                int floor = baseHex.Equals(snap.Self.Citadel)
-                    ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
-                int missing = floor - (garrison.Members?.Count ?? 0);
-                if (missing <= 0)
+                // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
+                // ground force: at least one body and the Citadel / Base share of power.
+                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Self.AvailablePower,
+                    baseHex.Equals(snap.Self.Citadel));
+                int bodies = garrison.Members?.Count ?? 0;
+                float desired = bodies == 0
+                    ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
+                    : floor - garrison.EffectiveArmyPower;
+                if (desired <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
-                float desired = missing * AiConfigV2.combatPowerPerBodyEstimate;
+                string missing = $"{desired:0.#}";
                 TaskScore score = BuildHeldBaseGarrisonScore();
                 diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
                     + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
@@ -149,7 +154,7 @@ namespace Game.Ai.V2
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"garrison the held base ({baseHex.Q},{baseHex.R}) from hand: "
-                        + $"{missing} body short of its floor {floor}; task={score.Value:0.##}",
+                        + $"{missing} power short of its floor {floor:0.#}; task={score.Value:0.##}",
                 });
             }
         }

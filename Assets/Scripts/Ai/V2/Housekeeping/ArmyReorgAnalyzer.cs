@@ -224,9 +224,11 @@ namespace Game.Ai.V2
             if (army.IsGarrison)
             {
                 bool isCitadel = army.Hex.Equals(citadelHex);
-                container.GarrisonNonHeroFloor = isCitadel
-                    ? AiConfig.secureCitadelMinNonHeroUnits
-                    : AiConfig.secureBaseMinNonHeroUnits;
+                // 2026-09-30 — one body always stays; the defence itself is a power floor read
+                // only when a body leaves (a small shortfall bought for a strong attacker is
+                // legal, so it is never a deficit Housekeeping refills).
+                container.GarrisonNonHeroFloor = 1;
+                container.GarrisonPowerFloor = AiArmyRoles.GarrisonDefenceFloor(player, isCitadel);
             }
 
             return container;
