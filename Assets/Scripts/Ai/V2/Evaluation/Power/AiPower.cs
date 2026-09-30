@@ -17,9 +17,11 @@ namespace Game.Ai.V2
     //  whether a specific fight is winnable still goes through WorthIt's Monte Carlo
     //  (ThreatModel.AttackWinChance). Two separate tools, on purpose.
     //
-    //  UnitPower(u)     = (atk*wA + def*wD + hp*wHP + init*wINI + res*wRES [+ fate*wFATE]) * abilityMult
-    //  ArmyPower        = Σ UnitPower over members (heroes INCLUDED here, unlike WorthIt)
+    //  UnitPower(u)     = (atk*wA + def*wD + hp*wHP + init*wINI + res*wRES) * abilityMult; 0 for a
+    //                     hero — a hero is the army's container (CommandRating slots), not a body
+    //  ArmyPower        = Σ UnitPower over the bodies in the slots
     //  EffectiveArmyPower = ArmyPower * (compoFloor + (1-compoFloor) * CompositionQuality)
+    //  CompositionQuality reads the bodies only (type coverage, front/reach balance).
     // ===========================================================================================
     public static class AiPower
     {
@@ -47,7 +49,37 @@ namespace Game.Ai.V2
 
         // ---- per-unit -----------------------------------------------------------------------
 
+        // A hero is the army's CONTAINER, not a combat equivalent of a body: heroes never act in
+        // a ground battle (WorthIt), so their combat power is 0. A hero shapes an army's power
+        // only through its slots (CommandRating = capacity, filled by bodies whose power sums).
+        // Its indirect bonuses (initiative, battle Fate, command choice) belong to
+        // HeroRoleEvaluator, never to this scalar.
         public static PowerUnit ToPowerUnit(UnitData u)
+        {
+            float p = u.IsHero ? 0f : StatLinePower(u);
+            return new PowerUnit(p, u.TypeTags.ToList(), u.Range, u.IsHero, u.CommandRating);
+        }
+
+        public static PowerUnit ToPowerUnit(CardDefinition c)
+        {
+            bool isHero = c.cardType == CardType.Hero;
+            float p = 0f;
+            if (!isHero)
+            {
+                float line = c.attack * AiConfigV2.powerAttackWeight
+                           + c.defenseRating * AiConfigV2.powerDefenseWeight
+                           + c.hitPoints * AiConfigV2.powerHitPointsWeight
+                           + c.initiative * AiConfigV2.powerInitiativeWeight
+                           + c.resistanceRating * AiConfigV2.powerResistanceWeight;
+                p = Mathf.Max(0f, line) * AbilityMultiplier(c.grantedAbilities);
+            }
+            return new PowerUnit(p, c.unitTypeTags, c.range, isHero, c.commandRating);
+        }
+
+        // The unit's own stat line (hero Fate included) — the value of its hit points and stats
+        // as a unit, NOT army combat power. Only for readers pricing the unit itself, e.g. the
+        // repair of a wounded hero (StrategicMaintenancePolicy); army strength reads ToPowerUnit.
+        public static float StatLinePower(UnitData u)
         {
             float line = u.Attack * AiConfigV2.powerAttackWeight
                        + u.Defense * AiConfigV2.powerDefenseWeight
@@ -56,22 +88,7 @@ namespace Game.Ai.V2
                        + u.Resistance * AiConfigV2.powerResistanceWeight;
             if (u.IsHero)
                 line += u.Fate * AiConfigV2.powerHeroFateWeight;
-            float p = Mathf.Max(0f, line) * AbilityMultiplier(u.Abilities);
-            return new PowerUnit(p, u.TypeTags.ToList(), u.Range, u.IsHero, u.CommandRating);
-        }
-
-        public static PowerUnit ToPowerUnit(CardDefinition c)
-        {
-            float line = c.attack * AiConfigV2.powerAttackWeight
-                       + c.defenseRating * AiConfigV2.powerDefenseWeight
-                       + c.hitPoints * AiConfigV2.powerHitPointsWeight
-                       + c.initiative * AiConfigV2.powerInitiativeWeight
-                       + c.resistanceRating * AiConfigV2.powerResistanceWeight;
-            bool isHero = c.cardType == CardType.Hero;
-            if (isHero)
-                line += c.fate * AiConfigV2.powerHeroFateWeight;
-            float p = Mathf.Max(0f, line) * AbilityMultiplier(c.grantedAbilities);
-            return new PowerUnit(p, c.unitTypeTags, c.range, isHero, c.commandRating);
+            return Mathf.Max(0f, line) * AbilityMultiplier(u.Abilities);
         }
 
         // The ONE projected stat line for a not-yet-
@@ -149,10 +166,11 @@ namespace Game.Ai.V2
                 line += S(EquipmentStat.Fate) * AiConfigV2.powerHeroFateWeight;
 
             // No grants: keep ToPowerUnit as the canonical basePower (avoids any drift from the
-            // stat-block recompute above).
-            float basePower = anyGrant
-                ? Mathf.Max(0f, line) * AbilityMultiplier(abilities)
-                : ToPowerUnit(c).BasePower;
+            // stat-block recompute above). A hero card carries no combat power (see ToPowerUnit).
+            float basePower = c.cardType == CardType.Hero ? 0f
+                : anyGrant
+                    ? Mathf.Max(0f, line) * AbilityMultiplier(abilities)
+                    : ToPowerUnit(c).BasePower;
 
             return new ProjectedStrategicLine(basePower,
                 S(EquipmentStat.Attack), S(EquipmentStat.Defense), S(EquipmentStat.Resistance),
@@ -208,6 +226,12 @@ namespace Game.Ai.V2
             var pus = new List<PowerUnit>(profiles.Count);
             foreach (WorthIt.DefenderProfile p in profiles)
             {
+                // A defending hero never acts in the battle either: no combat power.
+                if (p.IsHero)
+                {
+                    pus.Add(new PowerUnit(0f, p.TypeTags, 1, true));
+                    continue;
+                }
                 float line = p.Attack * AiConfigV2.powerAttackWeight
                            + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
                            + p.HitPoints * AiConfigV2.powerHitPointsWeight
@@ -244,8 +268,8 @@ namespace Game.Ai.V2
 
         // ---- composition ------------------------------------------------------------------
 
-        // [0..1] — how well-rounded a roster is: distinct type tags present, a front/reach mix,
-        // and a hero. A lone unit or an all-one-type stack scores low (but never 0 — see
+        // [0..1] — how well-rounded a roster's BODIES are: distinct type tags present and a
+        // front/reach mix (a hero is neither). A lone unit or an all-one-type stack scores low (but never 0 — see
         // EffectiveArmyPower's compoFloor).
         public static float CompositionQuality(IReadOnlyCollection<PowerUnit> units)
         {
@@ -253,28 +277,28 @@ namespace Game.Ai.V2
                 return 0f;
 
             var distinctTags = new HashSet<UnitTypeTag>();
-            bool hasFront = false, hasReach = false, hasHero = false;
+            bool hasFront = false, hasReach = false;
             foreach (PowerUnit pu in units)
             {
                 foreach (UnitTypeTag t in pu.Tags)
                     if (t != UnitTypeTag.Hero)
                         distinctTags.Add(t);
-                if (pu.IsHero) hasHero = true;
+                // Bodies only: a hero never fights, so it is neither front nor reach.
+                if (pu.IsHero) continue;
                 if (pu.Range <= 1) hasFront = true;
                 else hasReach = true;
             }
 
             float typeCoverage = Mathf.Clamp01(distinctTags.Count / (float)Mathf.Max(1, AiConfigV2.compoTypeCoverageTarget));
             float rangeBalance = (hasFront && hasReach) ? 1f : (hasFront || hasReach) ? 0.5f : 0f;
-            float heroPresent = hasHero ? 1f : 0f;
 
-            float wSum = AiConfigV2.compoWeightTypeCoverage + AiConfigV2.compoWeightRangeBalance
-                       + AiConfigV2.compoWeightHeroPresent;
+            // A hero shapes an army only through its slots (ToPowerUnit): its presence is not a
+            // composition quality of the fighting bodies either.
+            float wSum = AiConfigV2.compoWeightTypeCoverage + AiConfigV2.compoWeightRangeBalance;
             if (wSum < 0.0001f)
                 return 0f;
             return (AiConfigV2.compoWeightTypeCoverage * typeCoverage
-                  + AiConfigV2.compoWeightRangeBalance * rangeBalance
-                  + AiConfigV2.compoWeightHeroPresent * heroPresent) / wSum;
+                  + AiConfigV2.compoWeightRangeBalance * rangeBalance) / wSum;
         }
 
         public static float EffectiveArmyPower(IReadOnlyCollection<PowerUnit> units)

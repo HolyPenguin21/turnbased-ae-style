@@ -39,7 +39,6 @@ namespace Game.Ai.V2
         public const float compoFloor = 0.55f;
         public const float compoWeightTypeCoverage = 0.45f; // distinct UnitTypeTags present / target
         public const float compoWeightRangeBalance = 0.30f;  // has both a front (range 1) and a reach unit
-        public const float compoWeightHeroPresent = 0.25f;
         public const int compoTypeCoverageTarget = 3;        // distinct damage-relevant tags that count as "full"
 
         // =======================================================================================

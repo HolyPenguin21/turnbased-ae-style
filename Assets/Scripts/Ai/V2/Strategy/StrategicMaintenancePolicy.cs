@@ -93,7 +93,9 @@ namespace Game.Ai.V2
                     / (float)Mathf.Max(1, unit.HitPointsMax);
                 int apCost = UnitRepair.ApCost(unit);
                 float apOpportunityCost = ActionPrice.ToCardScore(apCost);
-                float unitPower = AiPower.UnitPower(unit);
+                // The unit's own stat line: a hero carries no army combat power
+                // (AiPower.ToPowerUnit) but its hit points are still worth restoring.
+                float unitPower = AiPower.StatLinePower(unit);
                 float restoredPower = unitPower * hpFraction;
                 float weighted = restoredPower * AiConfigV2.repairPowerValueWeight;
                 // Restored combat power on AiPower's own per-unit scale (AiPower.UnitPower — the
