@@ -182,6 +182,16 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // T06 — a proven-unreachable target asks for nothing and does not shadow a
+                // lower-value target Phase A can actually serve. It stays in honest knowledge and is
+                // re-read from the next snapshot (new card/output/equipment, changed defence).
+                if (readiness.ProvenUnreachableWithinKnownPool)
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={o.Target.DiagnosticLabel} "
+                        + $"reason=proven_unreachable_within_known_pool detail=\"{readiness.UnreachableReason}\"");
+                    continue;
+                }
+
                 // Preserve the first (highest-value) assembly gap only as a fallback. An assembly
                 // gap cannot be fulfilled by Phase A; it must not hide a lower-value objective
                 // whose missing Hero/FieldCombatPower Phase A can actually deliver this pass.
@@ -326,6 +336,16 @@ namespace Game.Ai.V2
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
                     + $"support={supportArmyId.Value} reason=reinforcement_already_assigned_or_en_route");
+                return null;
+            }
+            // T06 — no support army built from the known pool could ever cover this opposition:
+            // asking for one would be an endless target-specific request. The operation keeps its
+            // own lifecycle (Continuity's recovery/return rules decide what the primary does).
+            if (CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, opposition, hexBonus,
+                    out string unreachable))
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP {at} "
+                    + $"reason=proven_unreachable_within_known_pool detail=\"{unreachable}\"");
                 return null;
             }
             if (reinforcementRequestedTurn == snap.TurnNumber)

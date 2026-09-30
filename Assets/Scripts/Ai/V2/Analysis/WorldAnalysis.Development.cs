@@ -83,6 +83,16 @@ namespace Game.Ai.V2
             }
 
             if (catalog != null)
+            {
+                rd.CatalogKnown = true;
+                rd.CatalogOutputs = DevModes
+                    .SelectMany(mode => ResearchProductionSystem.OfferedCards(catalog, mode, player.Faction))
+                    .Where(card => card != null)
+                    .Distinct()
+                    .ToList();
+            }
+
+            if (catalog != null)
                 foreach (GenerationStep g in GenerationSource.Enumerate(
                     player, root, ctx, hand, null, null, analysisView: true))
                 {

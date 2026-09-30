@@ -75,6 +75,154 @@ namespace Game.Ai.V2
     {
         private const int NoHeroStackCapacity = 2;
 
+        // ---------------------------------------------------------------------------------------
+        //  T06 — "can the KNOWN pool ever field an army that clears this fight's coverage gate?"
+        // ---------------------------------------------------------------------------------------
+        //  Coverage (WorthIt.CanDamageAll: every defender has at least one attacker able to damage
+        //  it) is a hard part of the one ground-combat gate (GroundCombatFeasibility.Clears), and
+        //  it is monotone in the attacker set: a roster drawn from a pool can only cover what the
+        //  WHOLE pool covers. So "the whole optimistic pool cannot cover" is a strict proof that no
+        //  army built from it ever clears — unlike RequiredPower (a margin) or a Monte Carlo 0.
+        //  The pool ignores claims, MP, AP, resources, capacity, investment windows and where a
+        //  facility stands (those are timing, never impossibility):
+        //    · every own ground unit on the map (garrisons included), as it stands now;
+        //    · every Unit card in hand (with its attached equipment) and in the remaining deck;
+        //    · every Unit the faction's Research/Production can mint (DevelopmentReadiness.CatalogOutputs);
+        //    · each of those again under every known equipment grant (hand, deck, attached,
+        //      catalog), applied on top — an over-estimate, which only makes a proof rarer;
+        //    · the RaiseTheRots summon when a pool unit can raise it.
+        //  Future random rewards are not assumed. No catalog, or a summoner whose summon template
+        //  is unknown, means no upper bound: nothing is proven. Cached per snapshot (a new world
+        //  state is a new WorldSnapshot).
+        private sealed class PoolBox
+        {
+            public List<WorthIt.DefenderProfile> Attackers;
+            public bool Bounded;
+            public string Summary;
+        }
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot, PoolBox>
+            PoolCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot, PoolBox>();
+
+        internal static bool ProvenUncoverableWithinKnownPool(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string reason)
+        {
+            reason = null;
+            if (snap?.Self == null || opposition == null || opposition.Count == 0)
+                return false;
+            PoolBox pool = PoolCache.GetValue(snap, BuildKnownPool);
+            if (!pool.Bounded)
+                return false;
+            if (WorthIt.CanDamageAll(pool.Attackers, opposition, hexBonus))
+                return false;
+            foreach (WorthIt.DefendingArmy army in opposition)
+                foreach (WorthIt.DefenderProfile d in army.Units ?? System.Array.Empty<WorthIt.DefenderProfile>())
+                {
+                    if (!d.IsGroundCombatant)
+                        continue;
+                    float extra = army.DefenseBonus(hexBonus);
+                    if (pool.Attackers.Any(a => a.IsGroundCombatant && WorthIt.CanDamage(a, d, extra)))
+                        continue;
+                    reason = $"no_known_pool_unit_damages_defender(A{d.Attack:0.#}/D{d.Defense:0.#}"
+                        + $"+{extra:0.#}{(d.HasCeramicArmor ? "/ceramic" : "")}"
+                        + $"{(d.TypeTags != null && d.TypeTags.Count > 0 ? "/" + string.Join("+", d.TypeTags) : "")}) "
+                        + $"pool={pool.Summary}";
+                    return true;
+                }
+            reason = $"known_pool_misses_coverage pool={pool.Summary}";
+            return true;
+        }
+
+        private static PoolBox BuildKnownPool(WorldSnapshot snap)
+        {
+            var attackers = new List<WorthIt.DefenderProfile>();
+            var grants = new List<EquipmentGrant>();
+            int map = 0, hand = 0, deck = 0, outputs = 0;
+
+            void Grant(CardDefinition d)
+            {
+                if (d != null && d.cardType == CardType.Equipment && d.equipment != null)
+                    grants.Add(d.equipment);
+            }
+
+            foreach (ArmySnapshot a in snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)System.Array.Empty<ArmySnapshot>())
+            {
+                if (a == null || a.IsPrison || a.Members == null) continue;
+                foreach (WorthIt.DefenderProfile m in a.Members)
+                    if (m.IsGroundCombatant) { attackers.Add(m); map++; }
+            }
+            foreach (CardData c in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            {
+                CardDefinition d = c?.Definition;
+                if (d == null) continue;
+                Grant(d);
+                if (c.Equipment != null) Grant(c.Equipment);
+                if (d.cardType != CardType.Unit) continue;
+                attackers.Add(c.Equipment?.equipment != null
+                    ? Equipped(AiPower.ToDefenderProfile(d), c.Equipment.equipment)
+                    : AiPower.ToDefenderProfile(d));
+                hand++;
+            }
+            foreach (CardDefinition d in snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
+            {
+                if (d == null) continue;
+                Grant(d);
+                if (d.cardType != CardType.Unit) continue;
+                attackers.Add(AiPower.ToDefenderProfile(d));
+                deck++;
+            }
+            DevelopmentReadiness dev = snap.Development;
+            bool bounded = dev != null && dev.CatalogKnown;
+            foreach (CardDefinition d in dev?.CatalogOutputs ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
+            {
+                if (d == null) continue;
+                Grant(d);
+                if (d.cardType != CardType.Unit) continue;
+                attackers.Add(AiPower.ToDefenderProfile(d));
+                outputs++;
+            }
+
+            int baseCount = attackers.Count;
+            for (int i = 0; i < baseCount; i++)
+                foreach (EquipmentGrant g in grants)
+                    attackers.Add(Equipped(attackers[i], g));
+
+            if (attackers.Any(a => a.Abilities != null && a.Abilities.Contains(UnitAbilities.RaiseTheRots)))
+            {
+                CardDefinition summon = UnitAbilityCatalog.Active?.ResolveRaiseTheRotsCard();
+                if (summon == null)
+                    bounded = false;
+                else
+                    attackers.Add(AiPower.ToDefenderProfile(summon));
+            }
+
+            return new PoolBox
+            {
+                Attackers = attackers,
+                Bounded = bounded,
+                Summary = $"map{map}/hand{hand}/deck{deck}/outputs{outputs}/equipment{grants.Count}"
+                    + (bounded ? "" : "/unbounded"),
+            };
+        }
+
+        // `p` with one equipment grant applied on top (attack and abilities are what coverage reads).
+        private static WorthIt.DefenderProfile Equipped(WorthIt.DefenderProfile p, EquipmentGrant g)
+        {
+            var stats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = Mathf.RoundToInt(p.Attack),
+                [EquipmentStat.Defense] = Mathf.RoundToInt(p.Defense),
+                [EquipmentStat.HitPoints] = Mathf.RoundToInt(p.HitPoints),
+                [EquipmentStat.Initiative] = p.Initiative,
+            };
+            PredictedEquipmentState pred = EquipmentSystem.Predict(g, stats, p.Abilities);
+            int S(EquipmentStat s) => pred.Stats != null && pred.Stats.TryGetValue(s, out int v) ? v : stats[s];
+            IReadOnlyList<string> abilities = pred.Abilities ?? EquipmentSystem.EffectiveAbilities(p.Abilities, g);
+            return new WorthIt.DefenderProfile(S(EquipmentStat.Defense),
+                abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags, S(EquipmentStat.Attack),
+                S(EquipmentStat.HitPoints), S(EquipmentStat.Initiative), abilities, p.MaxHitPoints,
+                p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned);
+        }
+
         public static CombatOpportunityReport Analyze(WorldSnapshot snap)
         {
             using var __profile = new Game.Core.ProfileScope("AI/CombatOpportunity.Analyze");

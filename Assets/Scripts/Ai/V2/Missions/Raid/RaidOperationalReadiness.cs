@@ -26,8 +26,17 @@ namespace Game.Ai.V2
         public string PowerReason;
         public string AssemblyReason;
         public string ReadyReason;
+        // T06 — the whole known pool (CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool)
+        // can never cover these defenders, so no Hero/FieldCombatPower request can help this
+        // target. Recomputed from every fresh snapshot: a new card, output, equipment or a change
+        // in the known defence re-opens it; there is no blacklist. Claims, MP and resources never
+        // make a target unreachable — they stay NeedsPower / NeedsAssembly (timing).
+        public bool ProvenUnreachableWithinKnownPool;
+        public string UnreachableReason;
 
         public bool ReadyExecutable => ReadyPlan != null && ReadyPlan.Feasible;
+        // Not ready now, but nothing proves the known pool cannot get there.
+        public bool AttainableWithKnownPool => !ReadyExecutable && !ProvenUnreachableWithinKnownPool;
 
         public static RaidOperationalReadiness Evaluate(WorldSnapshot snap, AggressionObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ActorCommitments commitments,
@@ -47,9 +56,13 @@ namespace Game.Ai.V2
             // §11 — NeedsPower means an ACTUAL numeric power deficiency, nothing else. A structural
             // assembly failure with sufficient numeric power is NeedsAssembly, and never inflates
             // a phantom +1 FieldCombatPower request.
-            bool needsPower = numericDeficit > AiConfigV2.allocatorSliceEpsilon;
-            bool needsHero = !executable && !needsPower && inventory.AvailableHeroes <= 0;
-            bool needsAssembly = !executable && !needsPower && !needsHero;
+            string unreachableReason = null;
+            bool unreachable = !executable
+                && CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap,
+                    opposition, hexBonus, out unreachableReason);
+            bool needsPower = !unreachable && numericDeficit > AiConfigV2.allocatorSliceEpsilon;
+            bool needsHero = !executable && !unreachable && !needsPower && inventory.AvailableHeroes <= 0;
+            bool needsAssembly = !executable && !unreachable && !needsPower && !needsHero;
 
             return new RaidOperationalReadiness
             {
@@ -61,6 +74,8 @@ namespace Game.Ai.V2
                 NeedsPower = needsPower,
                 NeedsHero = needsHero,
                 NeedsAssembly = needsAssembly,
+                ProvenUnreachableWithinKnownPool = unreachable,
+                UnreachableReason = unreachableReason,
                 PowerReason = "free_field_power_below_requirement",
                 AssemblyReason = needsHero
                     ? "no_raid_eligible_hero_anywhere"
