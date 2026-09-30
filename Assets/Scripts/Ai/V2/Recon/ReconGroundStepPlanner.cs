@@ -314,8 +314,14 @@ namespace Game.Ai.V2
                     local = AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age)
                         ? ReconIntelSnapshotRegistry.Staleness(age)
                         : 0f;
-                // T09 — the forecast honours the same re-entry rule as the step it ranks.
-                if (ReentryBlocked(player, army, assignment, turn, h, local, detectorRisk, out _))
+                // T09 — the forecast honours the same re-entry rule as the step it ranks, fed the
+                // same information figure TryScoreImmediate gives it (Refresh adds the fresh-
+                // neighbour term there).
+                float ruleInformation = assignment.Mode == ReconMode.Explore ? local
+                    : local + AiConfigV2.scoutStepRefreshFreshNeighborWeight
+                        * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
+                if (ReentryBlocked(player, army, assignment, turn, h, ruleInformation, detectorRisk,
+                        out _))
                     continue;
 
                 int nearbyClaims = ReconPatrolStateRegistry.OtherNearbyAnchorClaims(player, army.Id, h,
