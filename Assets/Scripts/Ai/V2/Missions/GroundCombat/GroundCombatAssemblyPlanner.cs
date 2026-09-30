@@ -496,7 +496,16 @@ namespace Game.Ai.V2
                 : free;
 
             GroundCombatGatherPlan best = null;
-            string why = "no free field army can host a gather";
+            // T10 — every host's own refusal is kept (not only the last one), and an empty host
+            // list names why the field armies are not free (same predicates as EligibleArmies).
+            string why = hosts.Count == 0
+                ? (pinnedHostArmyId.HasValue
+                    ? $"pinned host #{pinnedHostArmyId.Value} is not a usable field army"
+                    : "no free field army can host a gather ("
+                        + GroundCombatActorEligibility.ExclusionSummary(snap, excludeArmyIds,
+                            requireMovementNow) + ")")
+                : null;
+            var refusals = new List<string>();
             foreach (ArmySnapshot hostSnap in hosts)
             {
                 GroundCombatGatherPlan p = PlanGatherForHost(snap, opposition, defenderHexDefenseBonus,
@@ -505,7 +514,7 @@ namespace Game.Ai.V2
                     allowPartial && pinnedHostArmyId.HasValue);
                 if (!p.Feasible)
                 {
-                    why = p.Reason;
+                    refusals.Add(p.Reason);
                     continue;
                 }
                 if (best == null || (minimumArmyPower > 0f
@@ -516,6 +525,10 @@ namespace Game.Ai.V2
                             && p.ProjectedWinChance > best.ProjectedWinChance + 0.001f))))
                     best = p;
             }
+            if (best == null && refusals.Count > 0)
+                why = refusals.Count == 1 ? refusals[0]
+                    : $"{refusals.Count} hosts refused: " + string.Join(" | ", refusals.Take(3))
+                        + (refusals.Count > 3 ? $" | +{refusals.Count - 3} more" : "");
             return best ?? GroundCombatGatherPlan.Infeasible(why);
         }
 
@@ -565,7 +578,8 @@ namespace Game.Ai.V2
             }
             if (pool.Count == 0)
                 return GroundCombatGatherPlan.Infeasible(
-                    $"gather host #{host.Id}: no other free field army has a body to spare");
+                    $"gather host #{host.Id}: no other free field army has a body to spare "
+                    + $"(candidates={supportSnaps.Count})");
 
             // The PEAK formation's commander (its bodies plus the pool — HeroRoleEvaluator): the
             // host's own best hero (the assault transaction promotes it before the march), or a
@@ -686,12 +700,18 @@ namespace Game.Ai.V2
                         break;
                     // Name the gate that actually failed: the strict power threshold is not a
                     // win-chance inequality (T10).
+                    // T10 — name the gate that actually failed. The win-chance path fails on
+                    // coverage (a known defender no roster unit can damage) or on the win bar;
+                    // "win 1.00 < 0.60" must never stand for a coverage failure.
                     return GroundCombatGatherPlan.Infeasible(minimumArmyPower > 0f
                         ? $"gather host #{host.Id}: no remaining support raises the formation "
                             + $"(projectedPower {power:0.#} must be > requiredPower {minimumArmyPower:0.#}"
-                            + $" strict; coverage {(coverageOk ? "ok" : "missing")})"
-                        : $"gather host #{host.Id}: no remaining support improves the formation "
-                            + $"(win {win:0.00} < {winChanceGate:0.00})");
+                            + $" strict; coverage {(cover ? "ok" : "missing")})"
+                        : !cover
+                            ? $"gather host #{host.Id}: no remaining support closes coverage "
+                                + $"(a known defender no pooled body can damage; win {win:0.00})"
+                            : $"gather host #{host.Id}: no remaining support improves the formation "
+                                + $"(win {win:0.00} < gate {winChanceGate:0.00})");
                 }
 
                 // The live units the projection moved: a fill appends them, a swap exchanges one

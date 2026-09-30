@@ -44,5 +44,28 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
                 .ToList();
+
+        // T10 — diagnostics only: why each own structural field army is NOT in EligibleArmies,
+        // by the same predicates in the same order (claimed by another operation, no MP left this
+        // turn, pinned stronghold defender). Never read by a decision.
+        internal static string ExclusionSummary(WorldSnapshot snap, ISet<int> excludeArmyIds,
+            bool requireMovementNow)
+        {
+            int structural = 0, claimed = 0, spent = 0, pinned = 0;
+            foreach (ArmySnapshot a in snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+            {
+                if (a == null || !a.IsStructuralRaidActor)
+                    continue;
+                structural++;
+                if (requireMovementNow && a.CurrentMovement <= 0)
+                    spent++;
+                else if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
+                    claimed++;
+                else if (requireMovementNow
+                    && ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a))
+                    pinned++;
+            }
+            return $"fieldArmies={structural} claimed={claimed} noMp={spent} pinnedDefender={pinned}";
+        }
     }
 }
