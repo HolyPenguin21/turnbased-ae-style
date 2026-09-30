@@ -35,6 +35,7 @@ namespace Game.Ai.V2
             var res = new HousekeepingExecResult();
             if (plan == null || plan.IsEmpty || analysis == null || player == null || ctx == null)
                 return res;
+            int turn = ctx.TurnNumber;
 
             var movedUnits = new HashSet<UnitData>();
 
@@ -78,7 +79,7 @@ namespace Game.Ai.V2
                     if (staleBatch)
                         break;
 
-                    if (!PreflightWholeFold(player, from, to, batchUnits, commitments,
+                    if (!PreflightWholeFold(player, turn, from, to, batchUnits, commitments,
                             movedUnits, out string foldWhy))
                     {
                         Fail(res, plan, $"preflight rejected whole-fold #{from.Id}->#{to.Id} ({foldWhy})");
@@ -110,9 +111,14 @@ namespace Game.Ai.V2
                         Fail(res, plan, $"reorder rejected #{from.Id} ({unit.Name}) — container no longer owned/registered");
                         break;
                     }
-                    if (commitments != null && commitments.IsArmyClaimed(from.Id))
+                    // T05 — the same contract the planner read: a claimed container reorders only
+                    // when its operation allows commander promotion.
+                    ArmyMutationContract reorderContract =
+                        ArmyReorgAnalyzer.MutationContractFor(player, turn, from, commitments);
+                    if (reorderContract != null && !reorderContract.MayReorderCommander)
                     {
-                        Fail(res, plan, $"reorder rejected #{from.Id} — became mission-claimed");
+                        Fail(res, plan, $"reorder rejected #{from.Id} — mission contract "
+                            + $"{reorderContract.Label} keeps its commander");
                         break;
                     }
                     if (!from.TryReorderCommander(unit, out string reorderFail))
@@ -132,7 +138,7 @@ namespace Game.Ai.V2
                         Fail(res, plan, $"stale swap reference (u{t.SwapUnitKey})");
                         break;
                     }
-                    if (!PreflightSwap(player, from, unit, to, other, commitments, movedUnits, out string why))
+                    if (!PreflightSwap(player, turn, from, unit, to, other, commitments, movedUnits, out string why))
                     {
                         Fail(res, plan, $"preflight rejected swap {unit.Name} #{from.Id}<->{other.Name} #{to.Id} ({why})");
                         break;
@@ -152,7 +158,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                if (!PreflightTransfer(player, from, to, unit, commitments, movedUnits, out string transferWhy))
+                if (!PreflightTransfer(player, turn, from, to, unit, commitments, movedUnits, out string transferWhy))
                 {
                     Fail(res, plan, $"preflight rejected {unit.Name} #{from.Id}->#{to.Id} ({transferWhy})");
                     break;
@@ -180,8 +186,11 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2]   housekeeping {plan.HexKey} — ABORT: {detail}");
         }
 
-        private static bool CommonPreflight(PlayerSetupData player, ArmyData a, ArmyData b,
-            ActorCommitments commitments, out string why)
+        // T05 — `a` gives, `b` receives. The giver must be free (a claimed container never donates);
+        // the receiver may be claimed only while its live contract admits inbound members. Swaps
+        // pass inboundOnly=false: both sides give, so both must be free.
+        private static bool CommonPreflight(PlayerSetupData player, int turn, ArmyData a, ArmyData b,
+            ActorCommitments commitments, out string why, bool inboundOnly = true)
         {
             why = null;
             if (a == b) { why = "same container"; return false; }
@@ -193,16 +202,39 @@ namespace Game.Ai.V2
             if (AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
                 || AviationRules.IsAirfield(b) || AviationRules.IsAirArmy(b))
             { why = "aviation container"; return false; }
-            if (commitments != null && (commitments.IsArmyClaimed(a.Id) || commitments.IsArmyClaimed(b.Id)))
-            { why = "a container became mission-claimed"; return false; }
+            if (ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments) != null)
+            { why = "source is mission-claimed"; return false; }
+            ArmyMutationContract receiver = ArmyReorgAnalyzer.MutationContractFor(player, turn, b, commitments);
+            if (receiver != null && (!inboundOnly || !receiver.MayReceive))
+            { why = $"destination mission contract {receiver.Label} admits no inbound"; return false; }
             return true;
         }
 
-        private static bool PreflightWholeFold(PlayerSetupData player, ArmyData from, ArmyData to,
+        // T05 — live twin of the planner's CanAccept movement floor: a route-bound operation
+        // (contract.KeepsMovement) must not be slowed by the members joining it.
+        private static bool KeepsOperationMovement(PlayerSetupData player, int turn, ArmyData to,
+            IReadOnlyList<UnitData> incoming, ActorCommitments commitments, out string why)
+        {
+            why = null;
+            ArmyMutationContract contract = ArmyReorgAnalyzer.MutationContractFor(player, turn, to, commitments);
+            if (contract == null || !contract.KeepsMovement || to.Members.Count == 0)
+                return true;
+            var projected = new List<UnitData>(to.Members);
+            projected.AddRange(incoming);
+            if (ArmyData.ComputeCurrentMovement(projected) < to.CurrentMovement
+                || ArmyData.ComputeMaxMovement(projected) < to.MaxMovement)
+            {
+                why = $"would slow mission army ({contract.Label})";
+                return false;
+            }
+            return true;
+        }
+
+        private static bool PreflightWholeFold(PlayerSetupData player, int turn, ArmyData from, ArmyData to,
             IReadOnlyList<UnitData> units, ActorCommitments commitments,
             HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, from, to, commitments, out why))
+            if (!CommonPreflight(player, turn, from, to, commitments, out why))
                 return false;
             if (from.IsGarrison)
             { why = "whole-fold cannot consume a garrison"; return false; }
@@ -216,13 +248,15 @@ namespace Game.Ai.V2
             { why = "whole-fold would spend AP on activated destination"; return false; }
             if (!ArmyActions.CanTransferMembers(units, from, to, out why))
                 return false;
+            if (!KeepsOperationMovement(player, turn, to, units, commitments, out why))
+                return false;
             return true;
         }
 
-        private static bool PreflightTransfer(PlayerSetupData player, ArmyData from, ArmyData to, UnitData unit,
-            ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
+        private static bool PreflightTransfer(PlayerSetupData player, int turn, ArmyData from, ArmyData to,
+            UnitData unit, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, from, to, commitments, out why))
+            if (!CommonPreflight(player, turn, from, to, commitments, out why))
                 return false;
             if (movedUnits.Contains(unit)) { why = "unit already moved this plan"; return false; }
             if (!from.Members.Contains(unit)) { why = "unit not in source"; return false; }
@@ -239,6 +273,8 @@ namespace Game.Ai.V2
             if (ArmyData.ComputeCapacity(projected, to.IsGarrison) < projected.Count)
             { why = "destination would exceed projected capacity"; return false; }
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
+            if (!KeepsOperationMovement(player, turn, to, new[] { unit }, commitments, out why))
+                return false;
             if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
             // §P1 — a garrison that currently holds a real defensive power reserve must not be
@@ -254,10 +290,10 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool PreflightSwap(PlayerSetupData player, ArmyData armyA, UnitData unitA,
+        private static bool PreflightSwap(PlayerSetupData player, int turn, ArmyData armyA, UnitData unitA,
             ArmyData armyB, UnitData unitB, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, armyA, armyB, commitments, out why))
+            if (!CommonPreflight(player, turn, armyA, armyB, commitments, out why, inboundOnly: false))
                 return false;
             // A garrison may participate on one side when a hero leaves it. The field-side member
             // may be either a body (forming a previously heroless army) OR another hero (returning

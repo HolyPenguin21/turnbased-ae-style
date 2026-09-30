@@ -71,6 +71,17 @@ namespace Game.Ai.V2
             || !lastHandled.TryGetValue(axis, out string previous)
             || previous != fingerprint;
 
+        // T03 — one axis's demand family by stable consumer identity (consumer intent, capability,
+        // pinned host, target hex) plus its amount: the re-admission log's old→new line.
+        internal static string DemandIdentityDigest(IEnumerable<AxisDemand> demands, DesireAxis axis) =>
+            string.Join(";", (demands ?? Enumerable.Empty<AxisDemand>())
+                .Where(d => d != null && d.RequestingAxis == axis)
+                .Select(d => $"{d.ConsumerIntentKey?.ToString() ?? "-"}:{d.Capability}"
+                    + $":{d.AttackFistArmyId?.ToString() ?? "-"}"
+                    + $":{(d.TargetHex.HasValue ? $"{d.TargetHex.Value.Q},{d.TargetHex.Value.R}" : "-")}"
+                    + $"={d.DesiredAmount.ToString("0.#", CultureInfo.InvariantCulture)}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+
         internal static bool RefreshDevelopmentOpportunities(ISet<DesireAxis> dirtyAxes) =>
             dirtyAxes != null && dirtyAxes.Contains(DesireAxis.Development);
 
@@ -256,7 +267,7 @@ namespace Game.Ai.V2
                             root, ctx);
                     // T03 — Aggression carries its own inputs (AiStrategyV2Pipeline.AggressionAdmission.cs).
                     if (axis == DesireAxis.Aggression)
-                        return AggressionAdmissionFingerprint(snapshot, player, hand?.MutationVersion ?? -1);
+                        return AggressionAdmissionFingerprint(snapshot, player);
                     // Economy only from here on (Development returned above). The key carries what
                     // Economy's decision reads and nothing that ticks on every executed step: no
                     // global state version, and position/movement/activation only for armies the
@@ -449,8 +460,6 @@ namespace Game.Ai.V2
                     });
                     if (dirtyAxes.Count == 0)
                         return false;
-                    Dictionary<DesireAxis, string> admittedFingerprints = dirtyAxes
-                        .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
@@ -460,6 +469,14 @@ namespace Game.Ai.V2
                         player, snapshot, reconObjectives, aggressionObjectives);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
+                    // T03 — the baseline is the input Generate actually evaluates: taken after
+                    // continuity resolved (a completed target, a handed-off donor), before any
+                    // follow-up delivery. Post-delivery state is judged by the delta it publishes,
+                    // never pre-declared as already considered.
+                    Dictionary<DesireAxis, string> admittedFingerprints = dirtyAxes
+                        .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
+                    Dictionary<DesireAxis, string> demandsBefore = dirtyAxes.ToDictionary(axis => axis,
+                        axis => DemandIdentityDigest(demands, axis));
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
                         actorCommitments, player, ctx, root, dirtyAxes);
@@ -508,6 +525,14 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission "
                         + $"axes={string.Join(",", dirtyAxes)} triggers={reasons} "
                         + $"changed={(followup.StateChanged ? 1 : 0)}");
+                    foreach (DesireAxis axis in dirtyAxes)
+                    {
+                        string after = DemandIdentityDigest(regenerated, axis);
+                        AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission demands axis={axis} "
+                            + (after == demandsBefore[axis]
+                                ? $"unchanged count={regenerated.Count(d => d?.RequestingAxis == axis)}"
+                                : $"old=[{demandsBefore[axis]}] new=[{after}]"));
+                    }
                     return followup.StateChanged;
                 }
 

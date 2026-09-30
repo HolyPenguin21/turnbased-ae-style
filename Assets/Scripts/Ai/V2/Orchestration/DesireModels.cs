@@ -59,11 +59,18 @@ namespace Game.Ai.V2
                     // route, support reachability and recovery/return base come from our own Base
                     // network. A Base built, captured, lost, discovered or observed under a new
                     // owner must therefore re-admit Aggression, not wait for the next turn.
+                    // T03 — Hand: a Unit/Hero/Equipment card arriving mid-turn (event reward)
+                    // decides whether a field-power shortage is deliverable and which chain covers
+                    // it; the Aggression fingerprint keys on exactly those cards. Capability is not
+                    // needed: every Capability publisher also publishes Actor (an own army's
+                    // combat profile, ChangedActorIds ⊇ ChangedCapabilityActorIds), Infrastructure
+                    // or Hand. Resources stay out — money moves feasibility, not the shortage.
                     return StrategicInvalidationReason.Contact
                         | StrategicInvalidationReason.Actor
                         | StrategicInvalidationReason.EventState
                         | StrategicInvalidationReason.Threat
-                        | StrategicInvalidationReason.Infrastructure;
+                        | StrategicInvalidationReason.Infrastructure
+                        | StrategicInvalidationReason.Hand;
                 case DesireAxis.Economy:
                     // Economy feasibility depends on where a Hero-led builder is NOW, not only
                     // on newly discovered resources. A Recon step can deliver that builder onto

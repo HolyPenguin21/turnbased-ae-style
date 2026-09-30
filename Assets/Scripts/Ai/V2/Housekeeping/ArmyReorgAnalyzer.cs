@@ -171,6 +171,8 @@ namespace Game.Ai.V2
                     Range = pu.Range,
                     TypeTags = pu.Tags.ToList(),
                     ActivationApCost = u.ActivationApCost,
+                    MoveCurrent = AviationRules.EffectiveMoveCurrent(u),
+                    MoveMax = u.MoveMax,
                     HasRecce = AbilityParams.UnitHasAnyRecce(u),
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
@@ -190,12 +192,33 @@ namespace Game.Ai.V2
             container.CanReceive = mutable && !protectedOwner;
             container.CanDonate = container.CanChangeComposition
                 && (container.Role == ReorgPhysicalRole.NormalFieldArmy || container.Role == ReorgPhysicalRole.Garrison);
+            container.CanReorderCommander = container.CanChangeComposition;
+
+            // T05 — a claimed operation protects its FUNCTION, not a frozen roster: its contract
+            // (ActorCommitments, the one claim authority) says whether free members may join,
+            // whether its commander may be promoted and whether its route speed is binding.
+            if (protectedOwner)
+            {
+                ArmyMutationContract contract = MutationContractFor(player, turn, army, commitments)
+                    ?? ArmyMutationContract.FullyProtected;
+                container.MissionLabel = contract.Label;
+                container.IsMissionReceiver = contract.MayReceive;
+                container.CanReceive = contract.MayReceive;
+                container.CanReorderCommander = contract.MayReorderCommander;
+                if (contract.KeepsMovement && army.Members.Count > 0)
+                {
+                    container.MovementFloor = army.CurrentMovement;
+                    container.MaxMovementFloor = army.MaxMovement;
+                }
+            }
 
             // Empty reusable field containers are not permanently singleton-exempt: once the
             // virtual plan fills one, it is an ordinary field formation and must satisfy the same
-            // structural rules as every other field army.
+            // structural rules as every other field army. A mission receiver is scored like one
+            // too (it can only be fixed by inbound members).
             container.SingletonExempt = container.Role != ReorgPhysicalRole.NormalFieldArmy
-                && container.Role != ReorgPhysicalRole.EmptyReusableArmy;
+                && container.Role != ReorgPhysicalRole.EmptyReusableArmy
+                && !container.IsMissionReceiver;
 
             if (army.IsGarrison)
             {
@@ -306,6 +329,26 @@ namespace Game.Ai.V2
         }
 
         private static int CeilDiv(int value, int divisor) => AiV2Util.CeilDiv(value, divisor);
+
+        // T05 — the claim's contract, intersected with a strategic capability lease (a leased,
+        // unclaimed army may be reinforced but never taken apart). Null for a free army.
+        // Same precedence as ClassifyRole: a garrison is a garrison whatever leased it (a card
+        // played into it), and a leased scout / collector keeps its solo shape (no inbound).
+        internal static ArmyMutationContract MutationContractFor(PlayerSetupData player, int turn,
+            ArmyData army, ActorCommitments commitments)
+        {
+            if (army == null || army.IsGarrison)
+                return null;
+            ArmyMutationContract claimed = commitments != null && commitments.IsArmyClaimed(army.Id)
+                ? commitments.MutationContractOf(army.Id) ?? ArmyMutationContract.FullyProtected
+                : null;
+            if (!StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id))
+                return claimed;
+            ArmyMutationContract lease = AiArmyRoles.IsSoloRecce(army) || AiArmyRoles.IsSoloCollector(army)
+                ? ArmyMutationContract.FullyProtected
+                : ArmyMutationContract.Leased;
+            return claimed == null ? lease : claimed.Intersect(lease);
+        }
 
         private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, int turn, ArmyData army,
             ActorCommitments commitments)

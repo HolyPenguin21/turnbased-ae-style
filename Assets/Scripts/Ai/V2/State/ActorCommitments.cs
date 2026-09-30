@@ -36,7 +36,28 @@ namespace Game.Ai.V2
         // exactly like any other id.
         public bool IsArmyClaimed(int armyId) => _claimedArmyIds.Contains(armyId);
 
-        public void Claim(int armyId) => _claimedArmyIds.Add(armyId);
+        // A claim with no stated contract protects the whole container (no inbound, no outbound,
+        // no commander change) — the conservative default for every lane that has not said what
+        // its function needs.
+        public void Claim(int armyId) => Claim(armyId, ArmyMutationContract.FullyProtected);
+
+        // T05 — the claim plus the minimum its operation needs preserved, as Housekeeping reads
+        // it (ArmyReorgAnalyzer, HousekeepingExecutor). An army claimed by two operations keeps
+        // only what BOTH allow.
+        public void Claim(int armyId, ArmyMutationContract contract)
+        {
+            _claimedArmyIds.Add(armyId);
+            _contracts[armyId] = _contracts.TryGetValue(armyId, out ArmyMutationContract prior)
+                ? prior.Intersect(contract) : contract;
+        }
+
+        private readonly Dictionary<int, ArmyMutationContract> _contracts =
+            new Dictionary<int, ArmyMutationContract>();
+
+        // What an operation lets zero-AP Housekeeping do to its claimed container. Unclaimed
+        // armies have no contract (null) — they are ordinary free formations.
+        public ArmyMutationContract MutationContractOf(int armyId) =>
+            _contracts.TryGetValue(armyId, out ArmyMutationContract c) ? c : null;
 
         // T01 — hosts of a live Attack mobilization preparation (AttackIntent.Preparation, Gather).
         // Claimed like every other operation actor; kept separately only so the ONE pinned card
@@ -129,7 +150,7 @@ namespace Game.Ai.V2
                             && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
                         if (returningPrimary != null)
                         {
-                            c.Claim(actorId);
+                            c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}"));
                             AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                                 $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                                 + $"reason={raid.Phase}_actor_still_matches_ground_container_gate");
@@ -145,7 +166,7 @@ namespace Game.Ai.V2
 
                     if (GroundCombatActorStillValid(actorId, snap, out string reason))
                     {
-                        c.Claim(actorId);
+                        c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid?.Phase}"));
                         AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                             $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                             + "reason=actor_still_matches_raid_provisioning_gate");
@@ -173,7 +194,9 @@ namespace Game.Ai.V2
                         : GroundCombatActorStillValid(actorId, snap, out _));
                     if (valid)
                     {
-                        c.Claim(actorId);
+                        c.Claim(actorId, preparing
+                            ? ArmyMutationContract.PreparationHost()
+                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"));
                         if (preparing)
                             c._preparationHostIds.Add(actorId);
                     }
@@ -191,7 +214,8 @@ namespace Game.Ai.V2
                         ? GroundContainerStillValid(actorId, snap)
                         : GroundCombatActorStillValid(actorId, snap, out _);
                     if (valid)
-                        c.Claim(actorId);
+                        c.Claim(actorId, ArmyMutationContract.MovingOperation(
+                            $"ActiveDefence:{i.ActiveDefence?.Phase}"));
                     continue;
                 }
 
@@ -327,5 +351,63 @@ namespace Game.Ai.V2
                 return false;
             return true;
         }
+    }
+
+    // ===========================================================================================
+    //  ARMY MUTATION CONTRACT  (T05)
+    // ===========================================================================================
+    //  The minimum a live operation needs Housekeeping to preserve in its claimed container —
+    //  function and ownership, not a frozen roster. Built only by ActorCommitments.FromIntents
+    //  (the one claim authority) from the intent that claims the army; rebuilt with it, so a
+    //  finished mission leaves no contract and its army is an ordinary free formation again.
+    //    · MayReceive           — free same-hex bodies/heroes may join (never makes it donate:
+    //                             a claimed container gives nothing away, is never folded,
+    //                             swapped or deposited into a garrison);
+    //    · MayReorderCommander  — the best legal hero ALREADY in the roster may take command;
+    //    · KeepsMovement        — the operation moves on a route: an inbound member must not
+    //                             lower the army's remaining or maximum movement (ETA, return
+    //                             leg, interception timing).
+    //  Supports/convoys, air wings, Economy/Development actors and scouts claim with the default
+    //  FullyProtected contract: their delivery/operator/stealth/income semantics are not modelled
+    //  here, so Housekeeping keeps its hands off them entirely.
+    // ===========================================================================================
+    public sealed class ArmyMutationContract
+    {
+        public readonly string Label;
+        public readonly bool MayReceive;
+        public readonly bool MayReorderCommander;
+        public readonly bool KeepsMovement;
+
+        private ArmyMutationContract(string label, bool mayReceive, bool mayReorderCommander,
+            bool keepsMovement)
+        {
+            Label = label;
+            MayReceive = mayReceive;
+            MayReorderCommander = mayReorderCommander;
+            KeepsMovement = keepsMovement;
+        }
+
+        public static readonly ArmyMutationContract FullyProtected =
+            new ArmyMutationContract("protected", false, false, true);
+
+        // Leased operational capability (StrategicCapabilityLeaseRegistry): fresh materialized
+        // force with no route yet — it may be reinforced, never taken apart.
+        public static readonly ArmyMutationContract Leased =
+            new ArmyMutationContract("lease", true, true, false);
+
+        // An Attack mobilization host is being BUILT on its own base: any legal free body helps,
+        // and its march speed is decided by the composition it ends up with.
+        public static ArmyMutationContract PreparationHost() =>
+            new ArmyMutationContract("Attack:PreparationHost", true, true, false);
+
+        // Raid / Attack / ActiveDefence primaries, including their return legs.
+        public static ArmyMutationContract MovingOperation(string label) =>
+            new ArmyMutationContract(label, true, true, true);
+
+        public ArmyMutationContract Intersect(ArmyMutationContract other) =>
+            other == null ? this : new ArmyMutationContract(Label + "+" + other.Label,
+                MayReceive && other.MayReceive,
+                MayReorderCommander && other.MayReorderCommander,
+                KeepsMovement || other.KeepsMovement);
     }
 }

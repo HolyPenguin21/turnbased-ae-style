@@ -48,6 +48,10 @@ namespace Game.Ai.V2
         public int Range;
         public IReadOnlyList<UnitTypeTag> TypeTags = Array.Empty<UnitTypeTag>();
         public int ActivationApCost;
+        // T05 — this member's remaining / maximum movement (ArmyData's slowest-member rule), so
+        // an inbound member of a moving operation is checked against its route before planning.
+        public int MoveCurrent;
+        public int MoveMax;
         public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
@@ -82,8 +86,28 @@ namespace Game.Ai.V2
         public bool SingletonExempt;
         public int GarrisonNonHeroFloor;
 
+        // T05 — a claimed operation container whose ActorCommitments contract lets it take free
+        // same-hex members (ArmyMutationContract.MayReceive). It never donates, is never folded,
+        // swapped or deposited; its own structural defects (singleton / non-viable) count, so a
+        // weak mission host is a formation Housekeeping may fix by inbound only.
+        public bool IsMissionReceiver;
+        public string MissionLabel;
+        // Commander promotion among heroes already in the roster (free field/garrison containers
+        // via CanChangeComposition; mission containers via their contract).
+        public bool CanReorderCommander;
+        // Route-bound operation: an inbound member must keep at least this remaining / maximum
+        // movement (the army's values at analysis time). -1 = no floor.
+        public int MovementFloor = -1;
+        public int MaxMovementFloor = -1;
+
         public bool IsMutableGround =>
             Role == ReorgPhysicalRole.NormalFieldArmy || Role == ReorgPhysicalRole.EmptyReusableArmy;
+
+        // A ground field container that may take members: a free one, or a mission receiver.
+        public bool IsFieldReceiver => (IsMutableGround && CanReceive) || IsMissionReceiver;
+
+        // A field formation whose own singleton / viability / strength the planner scores.
+        public bool IsScoredField => (IsMutableGround && CanChangeComposition) || IsMissionReceiver;
 
         public int MemberCount => Units.Count;
     }
@@ -146,7 +170,7 @@ namespace Game.Ai.V2
             bool benchedCombatHero = Containers.Any(c => c.CanChangeComposition && c.Units.Any(u =>
                 u != null && u.IsHero && u.HeroRole != HeroOperationalRole.SupportOperator
                 && (c.IsGarrison ? c.Units.Count > 1 : c.Units.Count == 1)));
-            bool leadershipDefect = Containers.Any(c => c.IsMutableGround && c.CanChangeComposition
+            bool leadershipDefect = Containers.Any(c => c.IsScoredField
                 && !c.SingletonExempt && c.Units.Count >= 2 && ReorgViability.IsViable(c.Units)
                 && (c.Units.All(u => !u.IsHero)
                     || c.Units.FirstOrDefault(u => u.IsHero)?.HeroRole == HeroOperationalRole.SupportOperator));
@@ -156,7 +180,7 @@ namespace Game.Ai.V2
             int viableMutableFields = 0;
             foreach (ReorgContainer c in Containers)
             {
-                if (!c.IsMutableGround || !c.CanChangeComposition)
+                if (!c.IsScoredField)
                     continue;
 
                 if (c.Units.Count > 0 &&
@@ -203,11 +227,11 @@ namespace Game.Ai.V2
             units != null && units.Count == 1 && units[0].IsGroundCombatant;
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
-            c != null && !c.SingletonExempt && c.IsMutableGround && IsSingletonShape(c.Units);
+            c != null && !c.SingletonExempt && c.IsScoredField && IsSingletonShape(c.Units);
 
         // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
         public static bool HasCommanderChoice(ReorgContainer c) =>
-            c != null && c.CanChangeComposition && c.Units.Count(u => u != null && u.IsHero) >= 2;
+            c != null && c.CanReorderCommander && c.Units.Count(u => u != null && u.IsHero) >= 2;
 
         // Mirrors ArmyData.ComputeCapacity exactly: preserve roster order, first hero wins; for a
         // no-hero roster ask the canonical gameplay function for its default instead of duplicating

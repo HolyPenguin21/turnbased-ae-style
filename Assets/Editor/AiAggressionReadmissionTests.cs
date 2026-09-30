@@ -33,8 +33,16 @@ namespace Game.EditorTests
             },
         };
 
-        private static string Key(WorldSnapshot snap, PlayerSetupData player, int hand = 3) =>
-            Pipeline.AggressionAdmissionFingerprint(snap, player, hand);
+        private static string Key(WorldSnapshot snap, PlayerSetupData player) =>
+            Pipeline.AggressionAdmissionFingerprint(snap, player);
+
+        private static Game.Cards.CardData Card(Game.Cards.CardType type, string name)
+        {
+            var def = new Game.Cards.CardDefinition();
+            def.cardType = type;
+            def.displayName = name;
+            return new Game.Cards.CardData(def);
+        }
 
         [Test]
         public void ScoutStep_DoesNotReadmitAggression()
@@ -66,12 +74,39 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void PeakOrHandChange_ReadmitsAggression()
+        public void PeakChange_ReadmitsAggression()
         {
             var player = new PlayerSetupData();
             string before = Key(Snapshot(Field(), Scout()), player);
             Assert.That(Key(Snapshot(Field(), Scout(), peak: 75f), player), Is.Not.EqualTo(before));
-            Assert.That(Key(Snapshot(Field(), Scout()), player, hand: 4), Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void GroundCardArrival_ReadmitsAggression_OtherCardDoesNot()
+        {
+            var player = new PlayerSetupData();
+            WorldSnapshot snap = Snapshot(Field(), Scout());
+            snap.Self.Hand = new Game.Cards.CardData[0];
+            string before = Key(snap, player);
+            snap.Self.Hand = new[] { Card(Game.Cards.CardType.Base, "Outpost") };
+            Assert.That(Key(snap, player), Is.EqualTo(before));
+            snap.Self.Hand = new[] { Card(Game.Cards.CardType.Unit, "Spearmen") };
+            Assert.That(Key(snap, player), Is.Not.EqualTo(before));
+            Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)
+                .HasFlag(StrategicInvalidationReason.Hand), Is.True);
+            Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)
+                .HasFlag(StrategicInvalidationReason.Resources), Is.False);
+        }
+
+        [Test]
+        public void SameBodyCountStrongerArmy_ReadmitsAggression()
+        {
+            var player = new PlayerSetupData();
+            ArmySnapshot field = Field();
+            WorldSnapshot snap = Snapshot(field, Scout());
+            string before = Key(snap, player);
+            field.EffectiveArmyPower = 26f;
+            Assert.That(Key(snap, player), Is.Not.EqualTo(before));
         }
     }
 }

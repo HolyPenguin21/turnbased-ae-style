@@ -151,6 +151,12 @@ namespace Game.Ai.V2
             ReorgUnit ua = a.FirstOrDefault(x => x.Key == unitA.Key);
             ReorgUnit ub = b.FirstOrDefault(x => x.Key == unitB.Key);
 
+            // T05 — a claimed operation container never gives a member away, so it is never a
+            // side of an exchange (its contract admits inbound only).
+            if (aMeta.Role == ReorgPhysicalRole.ProtectedMissionArmy
+                || bMeta.Role == ReorgPhysicalRole.ProtectedMissionArmy)
+                return null;
+
             if (ua == null || ub == null || ua.IsCommitted || ub.IsCommitted
                 || ua.IsDevelopmentOperator || ub.IsDevelopmentOperator
                 || ua.IsAviation || ub.IsAviation
@@ -195,6 +201,11 @@ namespace Game.Ai.V2
                 return false;
             if (destMeta.ChargesActivationFor(u))
                 return false; // TransferMember would spend AP, which Step 8C does not own.
+            // T05 — a route-bound operation keeps its speed: the army moves at its slowest member.
+            if (destMeta.MovementFloor >= 0 && u.MoveCurrent < destMeta.MovementFloor)
+                return false;
+            if (destMeta.MaxMovementFloor >= 0 && u.MoveMax < destMeta.MaxMovementFloor)
+                return false;
 
             var after = new List<ReorgUnit>(dest);
             ReorgViability.AddMemberSorted(after, u);

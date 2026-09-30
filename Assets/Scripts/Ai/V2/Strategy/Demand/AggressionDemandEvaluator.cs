@@ -479,23 +479,49 @@ namespace Game.Ai.V2
         }
 
         // §6 — "is there, in principle, a way to physically field a SEPARATE support army": a free
-        // ready field army, a reusable empty shell, or a deployable unit/hero card in hand. Pure
-        // read; it never claims anything. When this is false the caller DEFERS (bounded) instead of
-        // inventing a phantom power request nothing could ever satisfy.
+        // ready field army, a reusable empty shell, a deployable unit/hero card in hand, or (T04)
+        // a Research/Production output that mints a ground Unit/Hero this turn — the snapshot's
+        // GenerationSource offerings, inside the investment window the real chain is held to.
+        // Which of them actually covers the shortage stays MaterializationChainEnumerator's
+        // choice. Pure read; it never claims anything. When this is false the caller DEFERS
+        // (bounded) instead of inventing a phantom power request nothing could ever satisfy.
         internal static bool CanDeliverIndependentFieldArmy(WorldSnapshot snap, CapabilityInventory inv)
         {
             if (inv != null && inv.RaidAvailableFieldPower > AiConfigV2.allocatorSliceEpsilon)
                 return true;
             if (inv != null && inv.ReusableEmptyArmies != null && inv.ReusableEmptyArmies.Count > 0)
                 return true;
+            if (HandFieldCards(snap).Any())
+                return true;
+            return GroundGenerationOffers(snap).Any();
+        }
+
+        // The held Unit/Hero cards CanDeliverIndependentFieldArmy counts — the only hand input of
+        // the Aggression demand, so the Aggression admission fingerprint keys on exactly these.
+        internal static IEnumerable<Game.Cards.CardData> HandFieldCards(WorldSnapshot snap)
+        {
             foreach (Game.Cards.CardData c in snap?.Self?.Hand
                 ?? (IReadOnlyList<Game.Cards.CardData>)System.Array.Empty<Game.Cards.CardData>())
             {
                 Game.Cards.CardType? t = c?.Definition?.cardType;
                 if (t == Game.Cards.CardType.Unit || t == Game.Cards.CardType.Hero)
-                    return true;
+                    yield return c;
             }
-            return false;
+        }
+
+        // The Research/Production offerings that can mint a ground Unit/Hero now (T04). Read by
+        // CanDeliverIndependentFieldArmy and by the Aggression admission fingerprint.
+        internal static IEnumerable<DevelopmentOffering> GroundGenerationOffers(WorldSnapshot snap)
+        {
+            foreach (DevelopmentOffering o in snap?.Development?.Offerings
+                ?? (IReadOnlyList<DevelopmentOffering>)System.Array.Empty<DevelopmentOffering>())
+            {
+                Game.Cards.CardDefinition def = o.Card;
+                if (!o.ProducesEquipment && def != null && !def.isAviation
+                    && (def.cardType == Game.Cards.CardType.Unit || def.cardType == Game.Cards.CardType.Hero)
+                    && DevelopmentInvestmentGate.IsOpenFor(snap.Observer, snap.TurnNumber, def.resourceCost))
+                    yield return o;
+            }
         }
 
         // Gates cooldowns for a fresh/incumbent ASSAULT attempt on this target. Delegates to

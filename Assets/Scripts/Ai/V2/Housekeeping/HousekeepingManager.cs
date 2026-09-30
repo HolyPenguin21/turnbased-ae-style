@@ -196,7 +196,13 @@ namespace Game.Ai.V2
 
         private static string FormatProjectedContainer(ReorgContainer container,
             ArmyReorgAnalysis analysis) =>
-            $"#{container.ArmyId}/{container.Role}[{string.Join(",", container.Units.Select(u => FormatProjectedUnit(u, analysis)))}]";
+            $"#{container.ArmyId}/{container.Role}"
+            + (container.MissionLabel != null
+                ? $"({container.MissionLabel}{(container.IsMissionReceiver ? ",inbound" : ",locked")}"
+                    + (container.MovementFloor >= 0 ? $",mp>={container.MovementFloor}/{container.MaxMovementFloor}" : "")
+                    + ")"
+                : "")
+            + $"[{string.Join(",", container.Units.Select(u => FormatProjectedUnit(u, analysis)))}]";
 
         private static string FormatProjectedUnit(ReorgUnit unit, ArmyReorgAnalysis analysis)
         {
@@ -257,7 +263,8 @@ namespace Game.Ai.V2
                 if (c.Role == ReorgPhysicalRole.ProtectedMissionArmy && c.MemberCount <= 1)
                 {
                     AiDebugLog.Write($"[AI][V2] housekeeping {plan.HexKey} — singleton #{c.ArmyId} "
-                        + "protected reason=StrategicCapabilityLease/mission");
+                        + $"protected reason=StrategicCapabilityLease/mission contract={c.MissionLabel} "
+                        + $"inbound={(c.IsMissionReceiver ? "allowed_no_legal_free_member" : "locked")}");
                     continue;
                 }
 

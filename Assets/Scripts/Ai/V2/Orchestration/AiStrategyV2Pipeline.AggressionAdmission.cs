@@ -21,13 +21,18 @@ namespace Game.Ai.V2
     //     because the loop's intent list is only refreshed at the next admission;
     //   * honest knowledge (AiMapMemory revision), the threat contacts built from it and every
     //     asset threat ActiveDefence answers (severity, enemy / response ETA);
-    //   * the force ceiling, bases, held Citadel, the reserve hand/deck can still add, the hand
-    //     version (CanDeliverIndependentFieldArmy) and the allocator's live cooldowns.
+    //   * the force ceiling, bases, held Citadel, the reserve hand/deck can still add, the held
+    //     Unit/Hero/Equipment cards (the only hand inputs of the demand and of its field-power
+    //     chains — drawing a Base or Economy card does not re-run the lane), the open ground
+    //     Research/Production outputs (CanDeliverIndependentFieldArmy) and the allocator's live
+    //     cooldowns.
+    // Resources are deliberately absent: money changes whether a chain is affordable, never the
+    // measured shortage, and the existing funding path re-reads the ledger when it plays.
     // Intel ages (SeenTurn) only change at a turn boundary, which rebuilds everything anyway.
     public static partial class Pipeline
     {
         internal static string AggressionAdmissionFingerprint(WorldSnapshot snapshot,
-            PlayerSetupData player, int handVersion)
+            PlayerSetupData player)
         {
             if (snapshot?.Self == null)
                 return $"axis={DesireAxis.Aggression}|none";
@@ -62,6 +67,17 @@ namespace Game.Ai.V2
                 + string.Join(";", (snapshot.Threat?.Threats ?? System.Array.Empty<AssetThreatSnapshot>())
                     .Select(WorldAnalysis.ThreatKey)
                     .OrderBy(x => x, System.StringComparer.Ordinal));
+            string generation = string.Join(",", AggressionDemandEvaluator.GroundGenerationOffers(snapshot)
+                .Select(o => $"{o.Card.displayName}:{o.Mode}@{o.FacilityHex.Q},{o.FacilityHex.R}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            string handCards = string.Join(",", (self.Hand
+                    ?? (IReadOnlyList<Game.Cards.CardData>)System.Array.Empty<Game.Cards.CardData>())
+                .Where(c => c?.Definition != null && (c.Definition.cardType == Game.Cards.CardType.Unit
+                    || c.Definition.cardType == Game.Cards.CardType.Hero
+                    || c.Definition.cardType == Game.Cards.CardType.Equipment))
+                .Select(c => $"{c.Definition.displayName}+{c.Equipment?.displayName}"
+                    + (c.ResearchProductionCreated ? "*" : ""))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
             string bases = string.Join(";", (self.BaseHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
                 .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
             return $"axis={DesireAxis.Aggression}"
@@ -70,7 +86,8 @@ namespace Game.Ai.V2
                 + $"|reserve={(self.Reserve.Units + self.Reserve.Hero).ToString("0.##", inv)}"
                 + $"|share={self.DeployedPower.ToString("0.##", inv)}/{self.AvailablePower.ToString("0.##", inv)}"
                 + $"|citadel={(self.HoldsStartingCitadel ? 1 : 0)}|bases={bases}"
-                + $"|hand={handVersion}"
+                + $"|hand={handCards}"
+                + $"|gen={generation}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}";
         }

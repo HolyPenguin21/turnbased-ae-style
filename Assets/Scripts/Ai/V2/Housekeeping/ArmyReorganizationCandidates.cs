@@ -43,7 +43,7 @@ namespace Game.Ai.V2
             foreach (int armyId in armyIds)
             {
                 ReorgContainer meta = state.Meta[armyId];
-                if (!meta.CanChangeComposition)
+                if (!meta.CanReorderCommander)
                     continue;
                 List<ReorgUnit> units = state.Roster[armyId];
                 if (units.Count(u => u != null && u.IsHero) < 2)
@@ -107,7 +107,7 @@ namespace Game.Ai.V2
             foreach (int dstId in armyIds)
             {
                 ReorgContainer dst = state.Meta[dstId];
-                if (!IsFieldContainer(dst) || !dst.CanReceive)
+                if (!dst.IsFieldReceiver)
                     continue;
                 List<ReorgUnit> dstUnits = state.Roster[dstId];
                 if (dstUnits.Any(u => u.IsHero) || dstUnits.Count(u => u.IsGroundCombatant) < 2
@@ -241,7 +241,7 @@ namespace Game.Ai.V2
             foreach (int weakId in armyIds)
             {
                 ReorgContainer weak = state.Meta[weakId];
-                if (!IsFieldContainer(weak) || !weak.CanReceive)
+                if (!weak.IsFieldReceiver)
                     continue;
                 List<ReorgUnit> weakUnits = state.Roster[weakId];
                 if (weakUnits.Count == 0 || ReorgViability.IsViable(weakUnits) || weak.SingletonExempt)
@@ -283,7 +283,7 @@ namespace Game.Ai.V2
                     if (dstId == srcId)
                         continue;
                     ReorgContainer dst = state.Meta[dstId];
-                    if (!IsFieldContainer(dst) || !dst.CanReceive
+                    if (!dst.IsFieldReceiver
                         || !ReorgViability.IsViable(state.Roster[dstId]))
                         continue;
 
@@ -414,7 +414,7 @@ namespace Game.Ai.V2
                 if (!c.CanReceive)
                     continue;
                 if (c.IsGarrison) { garrison = id; continue; }
-                if (!IsFieldContainer(c))
+                if (!c.IsFieldReceiver)
                     continue;
                 if (state.Roster[id].Count == 0) { shells.Add(id); continue; }
                 if (ReorgViability.IsViable(state.Roster[id])) viable.Add(id);

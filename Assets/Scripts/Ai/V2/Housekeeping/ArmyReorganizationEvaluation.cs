@@ -55,7 +55,7 @@ namespace Game.Ai.V2
                 if (!meta.IsGarrison)
                     operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
-                if (meta.CanChangeComposition)
+                if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
 
                 if (meta.IsGarrison)
@@ -82,14 +82,17 @@ namespace Game.Ai.V2
                 // EmptyReusableArmy is neutral: once filled it is evaluated as a normal field
                 // formation, but while empty it contributes neither a defect nor a zero-strength
                 // entry that would pressure the planner to seed it.
-                if (!IsFieldContainer(meta) || !meta.CanChangeComposition || units.Count == 0)
+                // T05 — a mission receiver is scored as the field formation it is (its defects
+                // can only be fixed by inbound members), but a hero in it is never "benched":
+                // a claimed container gives nobody away.
+                if (!meta.IsScoredField || units.Count == 0)
                     continue;
 
                 if (!meta.SingletonExempt && ReorgViability.IsSingletonShape(units))
                     singles++;
 
                 bool loneHero = units.Count == 1 && units[0].IsHero;
-                if (loneHero && units[0].HeroRole != HeroOperationalRole.SupportOperator)
+                if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator)
                     benchedCombatCapable++;
 
                 if (ReorgViability.IsViable(units))
