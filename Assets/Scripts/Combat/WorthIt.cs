@@ -251,6 +251,7 @@ namespace Game.Combat
             public float Hp;
             public bool IsHero;
             public int HeroFate;
+            public bool IsSummoned;
 
             public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
@@ -289,6 +290,7 @@ namespace Game.Combat
                     MaxHp = Mathf.Max(hp, p.MaxHitPoints),
                     IsHero = p.IsHero,
                     HeroFate = p.FateMax,
+                    IsSummoned = p.IsSummoned,
                 });
             }
             return list;
@@ -316,8 +318,30 @@ namespace Game.Combat
                     MaxHp = Mathf.Max(1f, m.HitPointsMax),
                     IsHero = m.IsHero,
                     HeroFate = Mathf.Max(0, m.FateMax),
+                    IsSummoned = m.IsSummoned,
                 });
             return list;
+        }
+
+        private static void AppendFreshBattleSummons(List<BattleUnit> side, int initiativeBonus)
+        {
+            if (side == null || side.Any(u => u.IsSummoned))
+                return;
+            UnitAbilityCatalog catalog = UnitAbilityCatalog.Active;
+            CardDefinition template = catalog != null ? catalog.ResolveRaiseTheRotsCard() : null;
+            if (template == null)
+                return;
+
+            int summoners = side.Count(u => u.Hp > 0f && !u.IsSummoned
+                && u.Abilities != null && u.Abilities.Contains(UnitAbilities.RaiseTheRots));
+            int count = Mathf.Min(Mathf.Max(0, BattleGrid.Columns * 2 - side.Count),
+                summoners * Mathf.Max(0, catalog.raiseTheRotsUnitsPerSummoner));
+            if (count <= 0)
+                return;
+
+            DefenderProfile profile = ProfileFromCard(template);
+            for (int i = 0; i < count; i++)
+                side.AddRange(ToBattleUnits(new[] { profile }, 0f, initiativeBonus));
         }
 
         // Aggregate-roster mirror of BattleScreenUI.Combat.cs's ResolveSplashSkills for
@@ -788,7 +812,7 @@ namespace Game.Combat
                     var survivorStats = new List<BattleUnit>(attackers.Count);
                     for (int i = 0; i < attackers.Count; i++)
                     {
-                        if (attackers[i].Hp <= 0f)
+                        if (attackers[i].Hp <= 0f || attackers[i].IsSummoned)
                             continue;
                         BattleUnit u = attackers[i];
                         u.Attack = entryStats[i].Attack;
@@ -798,6 +822,11 @@ namespace Game.Combat
                     }
                     attackers = survivors;
                     entryStats = survivorStats;
+                    if (ai + 1 < order.Count)
+                    {
+                        AppendFreshBattleSummons(attackers, attackerCommander.Initiative);
+                        entryStats = new List<BattleUnit>(attackers);
+                    }
                 }
                 if (result > 0)
                 {
