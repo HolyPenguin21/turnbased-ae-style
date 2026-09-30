@@ -104,6 +104,21 @@ namespace Game.EditorTests
             Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
                 Does.StartWith("generation:").And.Contain("stock_short"));
         }
+
+        [Test]
+        public void StaffedOutput_OutOfReachWithinTheFundingHorizon_IsNoWitness()
+        {
+            WorldSnapshot snap = Snap(null, null);
+            CardDefinition costly = Unit(6);
+            costly.resourceCost = new ResourceCost { tech = 3 };
+            snap.Development.StaffedOutputs = new[] { costly };
+            // No Tech in stock and no Tech income: the Challenge never becomes affordable.
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
+                Is.Null);
+            snap.Self.PerTurnIncome = new ResourceBundle { Tech = 1f };
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
+                Does.StartWith("generation:"));
+        }
     }
 }
 #endif

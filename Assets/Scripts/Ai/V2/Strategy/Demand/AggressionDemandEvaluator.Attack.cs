@@ -296,8 +296,11 @@ namespace Game.Ai.V2
                         return $"generation:{o.Card.displayName}@({o.FacilityHex.Q},{o.FacilityHex.R})"
                             + (DevelopmentInvestmentGate.IsOpenFor(snap.Observer, snap.TurnNumber,
                                 o.Card.resourceCost) ? "" : "(window_closed)");
+                // Short stock is timing only while the Challenge fits today's spendable stock plus
+                // devChainFundingHorizonTurns of income (the Development PREPARE rule); a resource
+                // the player does not earn keeps it out of reach, so it is no WAIT witness.
                 foreach (Game.Cards.CardDefinition d in dev.StaffedOutputs)
-                    if (Strengthens(d))
+                    if (Strengthens(d) && FundableWithinHorizon(snap, d.resourceCost))
                         return $"generation:{d.displayName}(stock_short)";
             }
             foreach (Game.Cards.CardDefinition d in snap.Self.Deck
@@ -305,6 +308,20 @@ namespace Game.Ai.V2
                 if (Strengthens(d))
                     return $"undrawn_card:{d.displayName}";
             return null;
+        }
+
+        private static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost)
+        {
+            if (cost == null)
+                return true;
+            // The owner-aware spendable stock Analysis already netted (never the raw stockpile);
+            // no Economy snapshot counts as nothing spendable.
+            ResourceBundle spendable = snap.Economy?.SpendableStockpile ?? default;
+            foreach (Game.Economy.ResourceType t in ResourceBundle.All)
+                if (cost.Get(t) > spendable.Get(t) + AiConfigV2.devChainFundingHorizonTurns
+                        * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t)) + AiConfigV2.allocatorSliceEpsilon)
+                    return false;
+            return true;
         }
 
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
