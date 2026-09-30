@@ -265,6 +265,16 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.ArmyId)
                 .FirstOrDefault();
             PlayerSetupData player = snap.Observer;
+            HexCoord? hostStaging = fieldHost == null ? (HexCoord?)null
+                : AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex, fieldHost);
+            if (fieldHost != null && !hostStaging.HasValue)
+            {
+                AiDebugLog.WriteDeduped(logKey,
+                    $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=no_own_base_reachable_by_host");
+                return;
+            }
+            if (fieldHost != null)
+                citadel = hostStaging.Value;
             if (fieldHost != null && !fieldHost.Hex.Equals(citadel))
             {
                 // The host walks to the staging Base first; supports gather there afterwards.
@@ -518,7 +528,7 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
             HexCoord? staging = a.Preparation
-                ? AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex) : null;
+                ? AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex, host) : null;
             if (a.Preparation && staging.HasValue && !host.Hex.Equals(staging.Value)
                 && host.MemberCount > 0)
             {

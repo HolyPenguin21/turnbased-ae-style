@@ -159,10 +159,18 @@ namespace Game.Ai.V2
         // The own Base a mobilization preparation assembles on: of every held own Base
         // (SelfSnapshot.BaseHexes, starting Citadel included) the one nearest to the target; ties
         // go to the starting Citadel, then Q, R. Null when no own Base is held. Recomputed every
-        // pass, so a lost Base simply moves the staging point.
-        internal static HexCoord? PreparationStagingBase(WorldSnapshot snap, HexCoord targetHex)
+        // pass, so a lost Base simply moves the staging point. With a `host` whose route facts
+        // Analysis measured (a structural field army, ArmySnapshot.ReachableOwnBaseHexes) only a
+        // Base it can really reach qualifies — an unreachable staging point would otherwise hold
+        // the preparation in WAIT forever.
+        internal static HexCoord? PreparationStagingBase(WorldSnapshot snap, HexCoord targetHex,
+            ArmySnapshot host = null)
         {
             IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
+            if (host != null && host.IsStructuralRaidActor && bases != null)
+                bases = bases.Where(h => h.Equals(host.Hex)
+                    || (host.ReachableOwnBaseHexes != null && host.ReachableOwnBaseHexes.Contains(h)))
+                    .ToList();
             if (bases == null || bases.Count == 0)
                 return null;
             HexCoord citadel = snap.Self.Citadel;

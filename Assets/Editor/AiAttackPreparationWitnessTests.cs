@@ -154,6 +154,23 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1)),
                 Is.Null);
         }
+
+        // A structural host only stages on an own Base it can reach (ReachableOwnBaseHexes);
+        // no reachable Base -> no staging point (the preparation stalls instead of waiting forever).
+        [Test]
+        public void StagingBase_ForAHost_IsOnlyAReachableBase()
+        {
+            WorldSnapshot snap = Snap(null, null);
+            var forward = new HexCoord(0, 0);
+            snap.Self.BaseHexes = new List<HexCoord> { Citadel, forward };
+            var host = new ArmySnapshot { ArmyId = 5, Hex = new HexCoord(-3, 2), IsStructuralRaidActor = true,
+                ReachableOwnBaseHexes = new[] { Citadel } };
+            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1), host),
+                Is.EqualTo(Citadel));
+            host.ReachableOwnBaseHexes = new HexCoord[0];
+            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1), host),
+                Is.Null);
+        }
     }
 }
 #endif
