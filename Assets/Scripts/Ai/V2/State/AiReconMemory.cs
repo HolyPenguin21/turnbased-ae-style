@@ -54,7 +54,7 @@ namespace Game.Ai.V2
 
         // Called once per V2 scan with current honest sightings. This is also the canonical Recon
         // observation seam: first stamp CURRENT visibility into live IntelAge, then immediately
-        // freeze a per-turn strategic copy. Downstream strategy/mission planning reads only that
+        // freeze a per-knowledge-revision strategic copy. Downstream strategy/mission planning reads only that
         // frozen copy; tactical execution may continue to update AiReconIntelMemory after moves.
         public static void Observe(PlayerSetupData player, int turn, int knowledgeVersion,
             IEnumerable<AiMapMemory.KnownEnemySighting> currentSightings)

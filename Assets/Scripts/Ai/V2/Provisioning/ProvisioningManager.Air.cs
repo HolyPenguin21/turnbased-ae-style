@@ -48,7 +48,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "air missions may use only an already-formed aviation army"));
 
-            ArmyData wing = ResolveArmy(player, exec.Army.ArmyId);
+            ArmyData wing = AiV2Util.ResolveArmy(player, exec.Army.ArmyId);
             if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
                 || wing.CurrentMovement <= 0)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -157,11 +157,11 @@ namespace Game.Ai.V2
         // evaluator, no per-turn reservation registry — recomputed every turn.
         // The Energy an air claim (Recon sortie, Raid AirSupport) may still take this pass. Air is
         // non-Economy spending, so it must fit StrategicSpendability — owner-aware ledger holds
-        // (EconomyDeferredBuild/Completion, reaction envelope) and unpaid mandatory-recovery
-        // activation (the ONE model of what airborne wings owe) are off limits — minus
+        // (EconomyDeferredBuild/Completion, reaction envelope) are off limits — minus
         // session.EnergyClaimed: Provisioning never mutates world
         // resources, so sequential air claims in one pass would otherwise each see the same stock.
         // Only air missions set ClaimedEnergy, so this never double-counts an Economy ledger row.
+        // Mandatory aviation recovery is settled before card play and owns no bank hold.
         internal static float AirSpendableEnergyLeft(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session) =>
             StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)

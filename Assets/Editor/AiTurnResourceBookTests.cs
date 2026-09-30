@@ -26,6 +26,101 @@ namespace Game.EditorTests
         };
 
         [Test]
+        public void LedgerWriteDetachesCallerAndReadDetachesInspection()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 7;
+            var row = new StrategicResourceReservation
+            {
+                Owner = "buildA", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                Resource = Materials, Amount = 3f,
+                ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            };
+            try
+            {
+                StrategicResourceReservationLedger.Upsert(player, turn, row);
+                row.Amount = 9f;
+                row.Owner = "other";
+                var read = StrategicResourceReservationLedger.Rows(player, turn);
+                Assert.That(read[0].Owner, Is.EqualTo("buildA"));
+                Assert.That(read[0].Amount, Is.EqualTo(3f));
+                read[0].Amount = 20f;
+                Assert.That(TurnResourceBook.Free(10f,
+                    TurnResourceBook.LedgerClaims(player, turn), Materials, default), Is.EqualTo(7f));
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
+        [Test]
+        public void UpsertReleaseAndExpiryAreIsolatedByOwnerPlayerAndTurn()
+        {
+            var a = new PlayerSetupData();
+            var b = new PlayerSetupData();
+            const int turn = 7;
+            try
+            {
+                StrategicResourceReservation Row(string owner, float amount) => new StrategicResourceReservation
+                {
+                    Owner = owner, Reason = StrategicReservationReason.StrategicReactionPass,
+                    Resource = Materials, Amount = amount,
+                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                };
+                StrategicResourceReservationLedger.Upsert(a, turn, Row("one", 2f));
+                StrategicResourceReservationLedger.Upsert(a, turn, Row("one", 3f));
+                StrategicResourceReservationLedger.Upsert(a, turn, Row("two", 4f));
+                StrategicResourceReservationLedger.Upsert(b, turn, Row("one", 5f));
+                Assert.That(StrategicResourceReservationLedger.Rows(a, turn), Has.Count.EqualTo(2));
+                Assert.That(StrategicResourceReservationLedger.Active(a, turn, Materials), Is.EqualTo(7f));
+                StrategicResourceReservationLedger.ReleaseByOwner(a, turn, "one");
+                Assert.That(StrategicResourceReservationLedger.Active(a, turn, Materials), Is.EqualTo(4f));
+                Assert.That(StrategicResourceReservationLedger.Active(b, turn, Materials), Is.EqualTo(5f));
+                Assert.That(StrategicResourceReservationLedger.Active(a, turn + 1, Materials), Is.Zero);
+                StrategicResourceReservationLedger.ExpireStage(a, turn, StrategicReservationExpiry.EndOfReaction);
+                Assert.That(StrategicResourceReservationLedger.Active(a, turn, Materials), Is.Zero);
+                Assert.That(StrategicResourceReservationLedger.Active(b, turn, Materials), Is.EqualTo(5f));
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
+        [Test]
+        public void OptionalStealthCannotUseReactionApButCanUseReleasedAp()
+        {
+            var claims = new[] { Claim("reaction", ResourceClaimKind.Reaction, Ap, 2f) };
+            var input = new OptionalStealthInputs
+            {
+                ApRemaining = (int)TurnResourceBook.Free(3f, claims, Ap, default),
+                MandatoryApClaims = 1f, StealthApCost = 1,
+                LegDetectionRisk = 1f, RouteAccessBenefit = 1f,
+            };
+            Assert.That(ScoutOptionalStealthPolicy.Evaluate(input).Decision,
+                Is.EqualTo(OptionalStealthDecision.Skip));
+            input.ApRemaining = (int)TurnResourceBook.Free(3f,
+                System.Array.Empty<ResourceClaim>(), Ap, default);
+            Assert.That(ScoutOptionalStealthPolicy.Evaluate(input).Decision,
+                Is.EqualTo(OptionalStealthDecision.Enter));
+        }
+
+        [Test]
+        public void ProvisioningAcknowledgementClaimsResourcesOncePerMission()
+        {
+            var session = new ProvisioningSession(new WorldSnapshot());
+            var mission = new ProvisionedMission
+            {
+                MoverArmyId = 17, ClaimedAp = 2f, ClaimedEnergy = 3f,
+                ClaimedNextTurnAirAp = 1f, ClaimedNextTurnAirEnergy = 4f,
+            };
+            var key = default(StableMissionKey);
+            session.RegisterSuccess(key, mission);
+            session.RegisterSuccess(key, mission);
+            Assert.That(session.Successful, Has.Count.EqualTo(1));
+            Assert.That(session.ApClaimed, Is.EqualTo(2f));
+            Assert.That(session.EnergyClaimed, Is.EqualTo(3f));
+            Assert.That(session.NextTurnAirApClaimed, Is.EqualTo(1f));
+            Assert.That(session.NextTurnAirEnergyClaimed, Is.EqualTo(4f));
+            Assert.That(session.ClaimedArmyIds, Does.Contain(17));
+        }
+
+        [Test]
         public void NoAuthority_SeesEveryClaim()
         {
             Assert.That(TurnResourceBook.Free(10f, Claims, Materials, default), Is.EqualTo(5f));

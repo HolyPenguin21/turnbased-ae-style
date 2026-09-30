@@ -39,7 +39,7 @@ namespace Game.EditorTests
             ["Evaluation/Effects/StrategicEffectRegistry.cs"] = 2,
             ["Execution/CardPlayExecutor.cs"] = 3,
             ["Execution/ReconAirExecutor.cs"] = 34,
-            ["Execution/ReconGroundExecutor.cs"] = 4,
+            ["Execution/ReconGroundExecutor.cs"] = 2,
             // +1 (T01): the preparation step measures its physical AP delta like every lane.
             ["Execution/TaskExecutor.cs"] = 12,
             ["Housekeeping/HousekeepingManager.cs"] = 6,

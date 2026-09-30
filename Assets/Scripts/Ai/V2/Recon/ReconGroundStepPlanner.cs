@@ -185,7 +185,7 @@ namespace Game.Ai.V2
             if (ScoutExecutionSafety.StepBlocked(player, h, hidden))
                 return false;
 
-            float detectorRisk = DetectorRisk(player, h);
+            float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
             if (hidden && detectorRisk >= 1f)
                 return false;
 
@@ -300,7 +300,7 @@ namespace Game.Ai.V2
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > movementLeft || ScoutExecutionSafety.StepBlocked(player, h, hidden))
                     continue;
-                float detectorRisk = DetectorRisk(player, h);
+                float detectorRisk = ScoutRiskModel.DetectorRiskLive(player, h);
                 if (hidden && detectorRisk >= 1f)
                     continue;
 
@@ -356,9 +356,6 @@ namespace Game.Ai.V2
             return factor;
         }
 
-        private static float DetectorRisk(PlayerSetupData player, HexCoord h) =>
-            ScoutRiskModel.LiveDetectorRisk(player, h);
-
         // T09 — the one "may an ORDINARY step re-enter the cause of a recent escape" rule, read by
         // the immediate score and the forecast (the executor only moves to Pick's hex, so the
         // live gate is the same rule). Emergency reactions (Flee / EvadeDetector) never ask it.
@@ -386,7 +383,7 @@ namespace Game.Ai.V2
             bool hidden = StealthSystem.IsArmyFullyHidden(army);
             if (escape.Cause == ReconEscapeCause.Detector)
             {
-                if (ScoutRiskModel.LiveDetectorRisk(player, escape.FromHex) < escape.Risk - 0.0001f)
+                if (ScoutRiskModel.DetectorRiskLive(player, escape.FromHex) < escape.Risk - 0.0001f)
                 {
                     assignment.LastEscape = null;
                     return false;

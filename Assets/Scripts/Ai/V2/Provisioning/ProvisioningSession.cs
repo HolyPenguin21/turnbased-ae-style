@@ -57,6 +57,10 @@ namespace Game.Ai.V2
 
         public void RegisterSuccess(StableMissionKey k, ProvisionedMission m)
         {
+            // Success pins this mission for the pass. A retry/repack may acknowledge it again,
+            // but must not reserve its AP/Energy a second time while the keyed result stays single.
+            if (_successful.ContainsKey(k))
+                return;
             _successful[k] = m;
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;

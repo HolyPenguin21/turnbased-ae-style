@@ -34,6 +34,16 @@ namespace Game.Ai.V2
         internal static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
 
+        // Sighting identity for before/after discovery queries (enemy and neutral alike).
+        // Army id 0 is valid; repeated sightings collapse to one identity.
+        internal static HashSet<int> KnownArmyIds(IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> sightings)
+        {
+            var ids = new HashSet<int>();
+            foreach (Game.Ai.AiMapMemory.KnownEnemySighting sighting in sightings)
+                ids.Add(sighting.ArmyId);
+            return ids;
+        }
+
         // Turns an army needs to cover `distance`: this turn's remaining movement first, then its
         // full movement per turn (a distance within reach is one turn).
         internal static int TurnsToCover(ArmySnapshot army, int distance)

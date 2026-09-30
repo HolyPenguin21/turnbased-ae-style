@@ -136,7 +136,7 @@ namespace Game.Ai.V2
             var structuralIdleGroundScouts = new HashSet<int>();
             foreach (ArmySnapshot a in armies)
             {
-                if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                if (!ScoutMoverSelector.IsGroundScout(a))
                     continue;
                 if (claimed.Contains(a.ArmyId)
                     || cap.GenericGroundLaneActors.Contains(a.ArmyId)

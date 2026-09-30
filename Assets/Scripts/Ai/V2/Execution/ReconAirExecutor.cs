@@ -131,7 +131,7 @@ namespace Game.Ai.V2
 
             foreach (int id in plan.ReadyActorIds)
             {
-                ArmyData air = Resolve(player, id);
+                ArmyData air = AiV2Util.ResolveArmy(player, id);
                 plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
                 if (pm != null && air != null && ObjectiveSatisfied(player, pm))
                 {
@@ -235,7 +235,7 @@ namespace Game.Ai.V2
             if (plan.ReadyActorIds.Count > 0)
             {
                 int id = plan.ReadyActorIds[0];
-                ArmyData air = Resolve(player, id);
+                ArmyData air = AiV2Util.ResolveArmy(player, id);
                 plan.ReadyMissionByActorId.TryGetValue(id, out ProvisionedMission pm);
                 if (pm == null)
                     yield break;
@@ -399,7 +399,7 @@ namespace Game.Ai.V2
             AiTurnContext ctx, WorldSnapshot snapshot, int armyId, AirReconExecutionResult result,
             HexCoord? missionFocusHex, ExecutionResult perMissionResult, ActorStepControl control)
         {
-            ArmyData air = Resolve(player, armyId);
+            ArmyData air = AiV2Util.ResolveArmy(player, armyId);
             if (air == null || !AviationRules.IsValidAirArmy(air) || air.Controller == null)
             {
                 ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
@@ -486,7 +486,7 @@ namespace Game.Ai.V2
                 control.CommandAttempted = true;
                 yield return ExecuteOpportunisticStrike(
                     player, ctx, air, sortie, result, perMissionResult);
-                ArmyData afterHoldStrike = Resolve(player, armyId);
+                ArmyData afterHoldStrike = AiV2Util.ResolveArmy(player, armyId);
                 if (afterHoldStrike == null || !AviationRules.IsValidAirArmy(afterHoldStrike)
                     || afterHoldStrike.Controller == null)
                 {
@@ -511,8 +511,8 @@ namespace Game.Ai.V2
                     didAttack => attacked = didAttack);
                 if (attacked)
                     ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = attacked && Resolve(player, armyId) != null;
-                control.StopReason = Resolve(player, armyId) == null
+                control.CanContinue = attacked && AiV2Util.ResolveArmy(player, armyId) != null;
+                control.StopReason = AiV2Util.ResolveArmy(player, armyId) == null
                     ? ExecutionStopReason.MoverLost
                     : attacked
                     ? ExecutionStopReason.StepCompleted
@@ -547,7 +547,7 @@ namespace Game.Ai.V2
                 control.MovedAny = true;
                 if (perMissionResult != null) perMissionResult.StepsMoved++;
                 ReconAirSortieLifecycle.Apply(sortie, d);
-                ArmyData afterReturn = Resolve(player, armyId);
+                ArmyData afterReturn = AiV2Util.ResolveArmy(player, armyId);
                 if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
                 ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                 control.CanContinue = true;
@@ -582,7 +582,7 @@ namespace Game.Ai.V2
             result.RecordMove();
             control.MovedAny = true;
             if (perMissionResult != null) perMissionResult.StepsMoved++;
-            ArmyData afterStep = Resolve(player, armyId);
+            ArmyData afterStep = AiV2Util.ResolveArmy(player, armyId);
             if (afterStep != null)
                 sortie.RecordStep(afterStep.Hex);
             ReconAirSortieLifecycle.Apply(sortie, d);
@@ -597,7 +597,7 @@ namespace Game.Ai.V2
             ExecutionResult perMissionResult, ActorStepControl control,
             ExecutionStopReason stop)
         {
-            ArmyData settled = Resolve(player, armyId);
+            ArmyData settled = AiV2Util.ResolveArmy(player, armyId);
             if (!control.MovedAny && settled != null
                 && AviationRules.IsOwnedAirfieldAt(settled.Hex, player))
                 ReconAirSortieRegistry.Retire(player, armyId);
@@ -629,8 +629,8 @@ namespace Game.Ai.V2
 
             AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
                 + "decision=STRIKE reason=legal_and_recoverable");
-            HashSet<int> enemyBefore = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-            HashSet<int> neutralBefore = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            HashSet<int> enemyBefore = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralBefore = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownNeutralSightings(player));
             var strike = new AviationCombatPresenter.AirStrikeResult();
             yield return AviationActions.ResolveStationaryStrike(presenter, air, strike);
             onResolved?.Invoke(strike.Attacked);
@@ -643,7 +643,7 @@ namespace Game.Ai.V2
                     perMissionResult.CombatChanged = true;
             }
 
-            ArmyData afterStrike = Resolve(player, air.Id);
+            ArmyData afterStrike = AiV2Util.ResolveArmy(player, air.Id);
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             RecordDiscoveries(player, ctx.TurnNumber, air.Id, enemyBefore, neutralBefore);
             AirReconStepDirector.ResolveAfterStrike(player, ctx, afterStrike, sortie, strike.Attacked);
@@ -654,13 +654,13 @@ namespace Game.Ai.V2
         {
             HexCoord before = air.Hex;
             bool visitedBefore = VisionSystem.IsVisited(player, next);
-            HashSet<int> enemyBefore = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-            HashSet<int> neutralBefore = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            HashSet<int> enemyBefore = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralBefore = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownNeutralSightings(player));
             var decision = AiDecision.Move(air, next, reason, 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-            ArmyData live = Resolve(player, air.Id);
+            ArmyData live = AiV2Util.ResolveArmy(player, air.Id);
             HexCoord after = live != null ? live.Hex : trace.EndHex;
             if (!after.Equals(before))
                 onMoved?.Invoke();
@@ -723,23 +723,12 @@ namespace Game.Ai.V2
                     AirReconCoverageRegistry.Record(player, h, ctx.TurnNumber, sortieId);
         }
 
-        private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
-
-        private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
-        {
-            var ids = new HashSet<int>();
-            foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
-                ids.Add(sighting.ArmyId);
-            return ids;
-        }
-
         private static void RecordDiscoveries(PlayerSetupData player, int turn, int actorId,
             HashSet<int> enemyBefore, HashSet<int> neutralBefore)
         {
-            int[] enemies = KnownIds(AiMapMemory.AllKnownEnemySightings(player))
+            int[] enemies = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player))
                 .Where(id => enemyBefore == null || !enemyBefore.Contains(id)).ToArray();
-            int[] neutrals = KnownIds(AiMapMemory.AllKnownNeutralSightings(player))
+            int[] neutrals = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownNeutralSightings(player))
                 .Where(id => neutralBefore == null || !neutralBefore.Contains(id)).ToArray();
             if (enemies.Length > 0)
             {

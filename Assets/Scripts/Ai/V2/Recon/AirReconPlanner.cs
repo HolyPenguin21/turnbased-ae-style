@@ -54,8 +54,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                ArmyData wing = ArmyRegistry.AllForOwner(player)
-                    .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                ArmyData wing = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
                 if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Controller == null
                     || wing.CurrentMovement <= 0)
                 {

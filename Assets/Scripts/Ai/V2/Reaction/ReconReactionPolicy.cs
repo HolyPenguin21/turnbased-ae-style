@@ -77,7 +77,7 @@ namespace Game.Ai.V2
             if (flee.HasValue)
                 return Log(army, assignment, flee.Value);
 
-            if (inStealth && CurrentDetectorRisk(player, army.Hex) > 0f)
+            if (inStealth && ScoutRiskModel.DetectorRiskLive(player, army.Hex) > 0f)
             {
                 HexCoord? evade = PickLowerDetectorRiskStep(player, map, army);
                 if (evade.HasValue)
@@ -158,7 +158,7 @@ namespace Game.Ai.V2
 
                 float fromThreat = HexGridMath.Distance(h, threatHex);
                 float toFriendly = HexGridMath.Distance(h, fallback);
-                float detector = CurrentDetectorRisk(player, h);
+                float detector = ScoutRiskModel.DetectorRiskLive(player, h);
                 int freshNeighbors = 0;
                 foreach (HexCoord n in HexGridMath.Neighbors(h))
                     if (map.TryGetTerrainAt(n, out _) && !VisionSystem.IsVisited(player, n))
@@ -235,9 +235,7 @@ namespace Game.Ai.V2
         // observation only: the hex must be VISIBLE now and pass the one arrival rule
         // (AiMapMemory.KnownUndefendedForeignStructureAt), the one step must be affordable, and the
         // hex it would end on must not sit under a known enemy it cannot survive — the same
-        // post-action safety gate the weak-Recce attack uses. A Base/Citadel outranks a standalone
-        // site (a physical non-base structure such as an extraction site — never a facility card
-        // inside a base's slot, which is not a map object and not known to any task).
+        // post-action safety gate the weak-Recce attack uses. A Base/Citadel outranks a Facility.
         private static ReconReactionDecision? FindUndefendedStructureOpportunity(PlayerSetupData player,
             HexMap map, ArmyData army)
         {
@@ -269,7 +267,7 @@ namespace Game.Ai.V2
                 return null;
             return new ReconReactionDecision(ReconReactionAction.SabotageStructure, best, null, 1f,
                 bestIsStronghold ? "adjacent undefended enemy Base: take it over"
-                    : "adjacent undefended enemy standalone site: destroy it");
+                    : "adjacent undefended enemy Facility: destroy it");
         }
 
         // §17 acceptable post-combat position — would any OTHER known non-neutral enemy within
@@ -295,7 +293,7 @@ namespace Game.Ai.V2
         private static HexCoord? PickLowerDetectorRiskStep(PlayerSetupData player, HexMap map,
             ArmyData army)
         {
-            float current = CurrentDetectorRisk(player, army.Hex);
+            float current = ScoutRiskModel.DetectorRiskLive(player, army.Hex);
             HexCoord? bestHex = null;
             float bestRisk = current;
             int bestCost = int.MaxValue;
@@ -309,7 +307,7 @@ namespace Game.Ai.V2
                     || ScoutExecutionSafety.StepBlocked(player, army, h))
                     continue;
 
-                float risk = CurrentDetectorRisk(player, h);
+                float risk = ScoutRiskModel.DetectorRiskLive(player, h);
                 if (risk > bestRisk + 0.0001f)
                     continue;
                 // EvadeDetector does not own capture: the same default noncapturing safe-route
@@ -331,9 +329,6 @@ namespace Game.Ai.V2
 
             return bestHex.HasValue && bestRisk < current ? bestHex : null;
         }
-
-        private static float CurrentDetectorRisk(PlayerSetupData player, HexCoord h) =>
-            ScoutRiskModel.LiveDetectorRisk(player, h);
 
         // Fog-honest variant of WorthIt.HexDefenseBonus. AiMapMemory stores the observed defense
         // in KnownBuilding and owns this question for the whole AI, so a remembered Base's

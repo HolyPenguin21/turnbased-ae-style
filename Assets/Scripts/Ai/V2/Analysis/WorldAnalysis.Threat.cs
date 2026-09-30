@@ -43,7 +43,7 @@ namespace Game.Ai.V2
                 });
             }
 
-            var liveArmyIds = new HashSet<int>(snap.Known.EnemySightings.Select(s => s.ArmyId));
+            var liveArmyIds = AiV2Util.KnownArmyIds(snap.Known.EnemySightings);
             foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds)
                 .Where(o => !o.IsGarrison))
             {

@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                     continue;
 
                 int dist = HexGridMath.Distance(mover.Hex, h);
-                int eta = mover.CurrentMovement >= dist ? 1 : 1 + CeilDiv(dist - mover.CurrentMovement, budget);
+                int eta = ScoutCostModel.TravelTurns(mover.CurrentMovement, dist, budget);
                 result.Add(new SurveilVantageCandidate(h, ScoutRiskModel.DetectorRisk(snap, h), standOff, dist, eta));
             }
 
@@ -102,6 +102,5 @@ namespace Game.Ai.V2
             return result;
         }
 
-        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }

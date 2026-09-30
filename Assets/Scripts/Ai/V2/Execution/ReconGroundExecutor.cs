@@ -64,7 +64,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            ArmyData initialArmy = Resolve(player, pm.MoverArmyId);
+            ArmyData initialArmy = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             int iterations = 0;
             int maxIterations = Math.Max(2, (initialArmy?.CurrentMovement ?? 0) + 4);
             var runtime = new StepRuntime();
@@ -122,7 +122,7 @@ namespace Game.Ai.V2
             out PreparedStep prepared)
         {
             prepared = null;
-            ArmyData army = Resolve(player, pm?.MoverArmyId ?? -1);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1);
             if (army == null || ctx?.Map == null || pm == null || result == null)
             {
                 if (result != null)
@@ -208,7 +208,7 @@ namespace Game.Ai.V2
             IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot,
             PreparedStep prepared, StepRuntime runtime, StepControl control)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
+            ArmyData army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
             {
                 control.StopReason = ExecutionStopReason.MoverLost;
@@ -339,10 +339,10 @@ namespace Game.Ai.V2
                     next.Value, assignment.StrategicAnchor, mandatoryClaims);
             }
 
-            HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-            HashSet<int> knownNeutralIds = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            HashSet<int> knownEnemyIds = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> knownNeutralIds = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownNeutralSightings(player));
             HexCoord beforeHex = army.Hex;
-            float riskBefore = ScoutRiskModel.LiveDetectorRisk(player, beforeHex);
+            float riskBefore = ScoutRiskModel.DetectorRiskLive(player, beforeHex);
             ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
                 beforeHex, next.Value, actionWhy);
             var move = AiDecision.Move(army, next.Value,
@@ -360,7 +360,7 @@ namespace Game.Ai.V2
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
             result.EnteredStealth |= trace.EnteredStealthThisStep;
 
-            army = Resolve(player, pm.MoverArmyId);
+            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             bool moved = !endHex.Equals(beforeHex);
             if (moved)
@@ -412,8 +412,8 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-            HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            HashSet<int> enemyNow = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralNow = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownNeutralSightings(player));
             int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
             int[] newNeutralIds = neutralNow.Where(id => !knownNeutralIds.Contains(id)).ToArray();
 
@@ -442,7 +442,7 @@ namespace Game.Ai.V2
             IReadOnlyList<ProvisionedMission> queue, int missionIndex, bool summarize)
         {
             if (result == null) return;
-            result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
+            result.FinalHex = AiV2Util.ResolveArmy(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm?.Mission?.AttemptId}] {pm?.Key} actor=#{pm?.MoverArmyId ?? -1} "
@@ -478,23 +478,12 @@ namespace Game.Ai.V2
                 // be re-focused next turn, not retired. Surveil completion is a genuine done.
                 result.DurableRoleContinues = ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
                     pm.ScoutKind, pm.Mission?.FromDurableIntent == true,
-                    AiArmyRoles.IsSoloRecce(Resolve(player, pm.MoverArmyId)),
+                    AiArmyRoles.IsSoloRecce(AiV2Util.ResolveArmy(player, pm.MoverArmyId)),
                     result.StepsMoved > 0 || result.EnteredStealth);
                 AiDebugLog.Write($"[AI][V2][Recon][Objective] [{pm.Mission?.AttemptId}] {pm.Key} "
                     + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} met; "
                     + $"durableRoleContinues={(result.DurableRoleContinues ? 1 : 0)}");
             }
-        }
-
-        private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            AiV2Util.ResolveArmy(player, armyId);
-
-        private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
-        {
-            var set = new HashSet<int>();
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                set.Add(s.ArmyId);
-            return set;
         }
 
         private static bool ExitArmyStealth(ArmyData army)
@@ -559,12 +548,13 @@ namespace Game.Ai.V2
             RouteTopologyBenefits(player, army, nextHex, strategicAnchor,
                 out float routeAccess, out float routeShorten);
 
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
             var eval = ScoutOptionalStealthPolicy.Evaluate(new OptionalStealthInputs
             {
                 LegDetectionRisk = knownRouteRisk,
                 MoverAlreadyHidden = false,
                 MoverIsStrategicBody = army.Members.Any(m => m.IsHero),
-                ApRemaining = root.ActionPoints,
+                ApRemaining = Mathf.FloorToInt(spendableAp),
                 StealthApCost = stealthAp,
                 MandatoryApClaims = mandatoryApClaims,
                 DrawAvailable = drawAvailable,
@@ -574,9 +564,9 @@ namespace Game.Ai.V2
                 RouteShorteningBenefit = routeShorten,
             });
 
-            float slack = Mathf.Max(0f, root.ActionPoints - Mathf.Max(0f, mandatoryApClaims));
+            float slack = Mathf.Max(0f, spendableAp - Mathf.Max(0f, mandatoryApClaims));
             AiDebugLog.Write($"[AI][V2][Recon][Stealth] [{pm.Mission?.AttemptId}] actor=#{army.Id} {eval.ToCompact()} "
-                + $"ap={root.ActionPoints} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
+                + $"ap={root.ActionPoints} spendable={spendableAp.ToString("0.##", CultureInfo.InvariantCulture)} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
                 + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)} draw={(drawAvailable ? 1 : 0)}");
 
             if (eval.Decision != OptionalStealthDecision.Enter

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.HexGrid;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -20,18 +21,10 @@ namespace Game.Ai.V2
         public static float DetectorRisk(WorldSnapshot snap, HexCoord hex) =>
             DetectorRisk(snap?.Known?.EnemySightings, hex);
 
-        // T09 — the same number read LIVE from honest AiMapMemory for one step: the ground step
-        // planner, the Recon reaction and the escape memory all use this, never private copies.
-        // Non-neutral sightings only (a neutral never rolls a stealth challenge on a scout).
-        public static float LiveDetectorRisk(Game.Players.PlayerSetupData player, HexCoord hex)
-        {
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.KnownEnemySightingsNear(
-                         player, new[] { hex }, AiConfigV2.frontierEnemyExposureRadius))
-                if (s.Owner != null && !s.Owner.IsNeutral && s.CanDetectStealthAt(hex))
-                    detectors++;
-            return Mathf.Clamp01(detectors / Mathf.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
-        }
+        // AllKnownEnemySightings excludes neutral/ownerless encounters, exactly as the old
+        // near-memory consumers did. CountDetectors owns the radius gate for live and frozen data.
+        public static float DetectorRiskLive(PlayerSetupData player, HexCoord hex) =>
+            DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
 
         // The same number from any honest sighting list — the frozen snapshot above, or live
         // AiMapMemory at execution time (ReconGroundExecutor's optional-stealth leg risk).

@@ -31,26 +31,12 @@ namespace Game.Ai.V2
                 return Empty(weights);
 
             HexCoord origin = snapshot.Self.Citadel;
-            IReadOnlyList<ArmySnapshot> enemies = snapshot.TrueWorld?.EnemyArmies;
-            int enemyCount = 0;
-            if (enemies != null)
-            {
-                foreach (ArmySnapshot enemy in enemies)
-                {
-                    if (enemy == null)
-                        continue;
-                    // Every true-world army contributes EXACTLY one base unit. Hidden strength,
-                    // roster, AA, Recce and stealth are deliberately ignored.
-                    weights[Sector(origin, enemy.Hex)] += 1f;
-                    enemyCount++;
-                }
-            }
+            IReadOnlyDictionary<ReconSector, float> concentration = EnemyConcentration(snapshot, origin, out int enemyCount);
+            foreach (KeyValuePair<ReconSector, float> kv in concentration)
+                weights[kv.Key] = kv.Value;
 
             if (enemyCount > 0)
             {
-                foreach (ReconSector s in weights.Keys.ToList())
-                    weights[s] /= enemyCount;
-
                 // Acceptance telemetry intentionally exposes only the already-sanitized shape of
                 // the signal. Never log enemy ids, exact hexes, strength, composition or stealth.
                 int activeSectors = weights.Count(kv => kv.Value > 0f);
@@ -59,16 +45,9 @@ namespace Game.Ai.V2
             }
 
             PlayerSetupData self = ResolveSelf(snapshot);
-            ReconSector? knownCitadel = null;
-            if (snapshot.Known?.Buildings != null)
-            {
-                AiMapMemory.KnownBuilding? citadel = snapshot.Known.Buildings
-                    .Where(b => b.IsStartingCitadel && b.Owner != null && b.Owner != self)
-                    .Select(b => (AiMapMemory.KnownBuilding?)b)
-                    .FirstOrDefault();
-                if (citadel.HasValue)
-                    knownCitadel = Sector(origin, citadel.Value.Hex);
-            }
+            AiMapMemory.KnownBuilding? citadel = KnownEnemyCitadel(snapshot, self);
+            ReconSector? knownCitadel = citadel.HasValue
+                ? Sector(origin, citadel.Value.Hex) : (ReconSector?)null;
 
             var watch = new HashSet<ReconSector>();
             foreach (KeyValuePair<ReconSector, float> kv in weights)
@@ -85,6 +64,35 @@ namespace Game.Ai.V2
                 OwnAssetWatchDirections = watch,
             };
         }
+
+        // Sanitized concentration only: one vote per army, normalized across occupied sectors.
+        // Preserve encounter order for air-anchor ordering; no hidden identity or strength escapes.
+        internal static IReadOnlyDictionary<ReconSector, float> EnemyConcentration(
+            WorldSnapshot snapshot, HexCoord origin, out int enemyCount)
+        {
+            var counts = new Dictionary<ReconSector, float>();
+            enemyCount = 0;
+            if (snapshot?.TrueWorld?.EnemyArmies != null)
+                foreach (ArmySnapshot enemy in snapshot.TrueWorld.EnemyArmies)
+                {
+                    if (enemy == null) continue;
+                    ReconSector sector = Sector(origin, enemy.Hex);
+                    counts.TryGetValue(sector, out float count);
+                    counts[sector] = count + 1f;
+                    enemyCount++;
+                }
+            if (enemyCount > 0)
+                foreach (ReconSector sector in counts.Keys.ToList())
+                    counts[sector] /= enemyCount;
+            return counts;
+        }
+
+        // The first honestly known enemy citadel. Caller retains its own observer resolution.
+        internal static AiMapMemory.KnownBuilding? KnownEnemyCitadel(WorldSnapshot snapshot, PlayerSetupData self) =>
+            snapshot?.Known?.Buildings?
+                .Where(b => b.IsStartingCitadel && b.Owner != null && b.Owner != self)
+                .Select(b => (AiMapMemory.KnownBuilding?)b)
+                .FirstOrDefault();
 
         public static ReconSector Sector(HexCoord from, HexCoord to)
         {
