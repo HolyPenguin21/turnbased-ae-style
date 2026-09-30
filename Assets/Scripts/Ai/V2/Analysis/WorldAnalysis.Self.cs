@@ -187,7 +187,7 @@ namespace Game.Ai.V2
             self.BestStackPotential = AiPower.TotalMilitaryPotential(
                 mapPool.Concat(handUnits).Concat(handHeroes).ToList());
             self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(
-                withUnits.Concat(handHeroes).Concat(deckHeroes).ToList());
+                AiPower.MilitaryPool(ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck));
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)
@@ -394,10 +394,7 @@ namespace Game.Ai.V2
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
                 IsMobileEconomyBuilder = isOwn && AiArmyRoles.IsHeroLed(a),
-                IsStructuralRaidActor = isOwn
-                    && !a.IsPrison && !a.IsGarrison && !a.IsAirArmy && !a.IsAirfield
-                    && !AiArmyRoles.IsSoloRecce(a) && !AiArmyRoles.IsSoloHeroAwaitingEscort(a)
-                    && a.Members.Count > 0,
+                IsStructuralRaidActor = isOwn && AiArmyRoles.IsStructuralGroundCombatActor(a),
                 IsHidden = isOwn && StealthSystem.IsArmyFullyHidden(a),
                 CanEnterStealth = isOwn && a.Members.Any(StealthSystem.CanEnterStealth),
                 StealthLevel = isOwn
