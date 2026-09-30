@@ -362,8 +362,10 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // 2) an empty reusable shell already standing on the own starting Citadel.
-            ArmyData shell = player == null ? null : ReusableArmySelector.FindReusableAt(player, citadel, null);
+            // 2) a free lone-hero army on the staging Base (its hero already gives the capacity,
+            //    0 AP), else an empty reusable shell standing there.
+            ArmyData shell = player == null ? null : LoneHeroHostAt(player, citadel, excluded)
+                ?? ReusableArmySelector.FindReusableAt(player, citadel, null);
             if (shell != null && excluded.Contains(shell.Id))
                 shell = null;
             // 3) otherwise a container created on the Citadel, seeded when a legal member is there.
@@ -429,6 +431,20 @@ namespace Game.Ai.V2
             ArmySnapshot host = PreparationFieldHost(snap, excluded, staging);
             return host == null ? (-1, 0f) : (host.ArmyId, Mathf.Max(0f, objective.TaskScore.Value));
         }
+
+        // 2026-09-30 — a free field army holding one hero and nothing else on the staging Base:
+        // the widest command first. A garrison hero or a facility operator is never a host.
+        private static ArmyData LoneHeroHostAt(PlayerSetupData player, HexCoord hex, ISet<int> excluded) =>
+            ArmyRegistry.AllForOwner(player)
+                .Where(a => a != null && a.Hex.Equals(hex) && !a.IsGarrison && !a.IsPrison
+                    && !a.IsAirfield && !a.IsAirArmy && a.Members.Count == 1
+                    && a.Members[0] != null && a.Members[0].IsHero
+                    && !AiArmyRoles.IsGarrisonHero(a.Members[0])
+                    && !AiArmyRoles.IsFacilityOperator(player, hex, a.Members[0])
+                    && (excluded == null || !excluded.Contains(a.Id)))
+                .OrderByDescending(a => a.Members[0].CommandRating)
+                .ThenBy(a => a.Id)
+                .FirstOrDefault();
 
         // Location-only knowledge is no evidence that the fight is winnable: its WinChance slot
         // stays empty (never "observed empty" = 1). An observed site uses the estimator's answer.
