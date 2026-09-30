@@ -537,6 +537,66 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void Guarded_HeroInBackRow_ReceivesFormationDefense()
+        {
+            var owner = new PlayerSetupData { Nickname = "A" };
+            var army = new ArmyData { Owner = owner, Name = "A" };
+            var hero = new UnitData { Owner = owner, IsHero = true, FateMax = 4, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var guard = Body(owner);
+            army.Members.Add(hero);
+            army.Members.Add(guard);
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 2, hero);
+            grid.Set(BattleGrid.AttackerFrontRow, 2, guard);
+
+            Assert.That(BattleProtectionRules.GetGuardedDefenseBonus(grid, hero, battleDefender: null),
+                Is.EqualTo(BattleProtectionRules.GuardedDefenseBonus));
+        }
+
+        [Test]
+        public void TurnOrder_UsesNextLivingHeroAfterCommanderLeavesGrid()
+        {
+            var owner = new PlayerSetupData { Nickname = "A" };
+            var enemyOwner = new PlayerSetupData { Nickname = "D" };
+            var army = new ArmyData { Owner = owner, Name = "A" };
+            var enemy = new ArmyData { Owner = enemyOwner, Name = "D" };
+            var commander = new UnitData { Owner = owner, IsHero = true, Initiative = 5, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var secondHero = new UnitData { Owner = owner, IsHero = true, Initiative = 2, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var body = Body(owner);
+            body.Initiative = 3;
+            army.Members.Add(commander);
+            army.Members.Add(secondHero);
+            army.Members.Add(body);
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 0, commander);
+            grid.Set(BattleGrid.AttackerBackRow, 1, secondHero);
+            grid.Set(BattleGrid.AttackerFrontRow, 0, body);
+
+            Assert.That(BattleTurnOrder.LivingCommanderOnGrid(grid, army), Is.SameAs(commander));
+            grid.Set(BattleGrid.AttackerBackRow, 0, null);
+            Assert.That(BattleTurnOrder.LivingCommanderOnGrid(grid, army), Is.SameAs(secondHero));
+        }
+
+        [Test]
+        public void WorthIt_LiveHeroProfile_IsPassiveTargetWithFateDefense()
+        {
+            var owner = new PlayerSetupData { Nickname = "A" };
+            var hero = new UnitData
+            {
+                Owner = owner, IsHero = true, Defense = 99, FateMax = 4, Fate = 4,
+                Attack = 0, Initiative = 3, HitPointsCurrent = 5, HitPointsMax = 5,
+            };
+
+            WorthIt.DefenderProfile profile = WorthIt.FromLiveUnit(hero);
+
+            Assert.That(profile.IsHero, Is.True);
+            Assert.That(profile.IsGroundCombatant, Is.False);
+            Assert.That(profile.Defense, Is.EqualTo(4),
+                "hero tactical defense must come from FateMax, never the ordinary Defense stat");
+            Assert.That(profile.FateMax, Is.EqualTo(4));
+        }
+
+        [Test]
         public void FinalizeEncounter_HeroPlusSummons_PreservesHeroArmyAsSurvivor()
         {
             var attackerOwner = new PlayerSetupData { Nickname = "A" };
