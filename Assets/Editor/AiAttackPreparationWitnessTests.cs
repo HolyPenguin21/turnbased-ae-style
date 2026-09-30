@@ -79,17 +79,22 @@ namespace Game.EditorTests
                 Does.StartWith("hand_card:"));
         }
 
-        // Vex T14-T22: a native Recce unit ("Hooded", r1s4) is never FieldCombatPower for Phase A,
-        // so it can never be the card this WAIT is waiting for.
+        // Vex T14-T22 ("Hooded", r1s4): a native Recce unit is a combat body for the Attack
+        // preparation host (user decision 30.09) — a witness here — while every other
+        // FieldCombatPower demand still keeps scouts for Recon.
         [Test]
-        public void RecceUnit_IsNoWitness()
+        public void RecceUnit_FightsForThePreparationHostOnly()
         {
             CardDefinition scout = Unit(6);
             scout.displayName = "Hooded";
             scout.grantedAbilities = new List<string> { "r1s4", "RapidReaction", "Stealth4" };
-            WorldSnapshot snap = Snap(new[] { new CardData(scout) }, new[] { scout });
+            WorldSnapshot snap = Snap(new[] { new CardData(scout) }, null);
             Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
-                Is.Null);
+                Does.StartWith("hand_card:Hooded"));
+            Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(scout.grantedAbilities,
+                CardType.Unit, CapabilityKind.FieldCombatPower), Is.False);
+            Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(scout.grantedAbilities,
+                CardType.Unit, CapabilityKind.FieldCombatPower, recceMayFight: true), Is.True);
         }
 
         [Test]

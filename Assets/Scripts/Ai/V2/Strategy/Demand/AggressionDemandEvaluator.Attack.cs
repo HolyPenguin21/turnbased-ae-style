@@ -278,15 +278,15 @@ namespace Game.Ai.V2
             if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
                 || !snap.Self.BaseHexes.Contains(host.Hex))
                 return null;
-            // The same capability gate the chain enumeration applies to FieldCombatPower
-            // (MaterializationChainMatching): a card Phase A never plays as combat power — a
-            // native Recce unit (Vex T14-T22: "Hooded") — is no witness either.
+            // The same capability gate the chain enumeration applies to the preparation host's
+            // FieldCombatPower demand (MaterializationChainMatching, recceMayFight): a card Phase A
+            // never plays into this host is no witness.
             bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
                 d != null && !d.isAviation
                 && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
                 && MaterializationChainMatching.AbilitiesSatisfyCapability(
                     MaterializationChainMatching.EffectiveAbilities(d, equipped), d.cardType,
-                    CapabilityKind.FieldCombatPower)
+                    CapabilityKind.FieldCombatPower, recceMayFight: true)
                 && host.CanFitAdditionalCard(d)
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
                     AiPower.EffectiveLine(d, equipped?.equipment));

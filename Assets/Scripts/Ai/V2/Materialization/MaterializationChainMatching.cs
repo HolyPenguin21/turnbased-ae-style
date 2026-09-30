@@ -43,8 +43,11 @@ namespace Game.Ai.V2
         // requiredResourceType is only consulted for CollectorCapability (the ONE resource type
         // the demand's known hex actually needs — see DemandLayer.Economy's collector block);
         // every other case ignores it, matching every existing call site that omits it.
+        // `recceMayFight` — the Attack preparation host (AxisDemand.AttackFistIsPreparationHost):
+        // a native Recce unit is a combat body for THAT fist (an improved scout may outfight most
+        // cards); every other FieldCombatPower demand keeps scouts for Recon.
         internal static bool AbilitiesSatisfyCapability(IReadOnlyList<string> abilities, CardType type,
-            CapabilityKind kind, ResourceType? requiredResourceType = null)
+            CapabilityKind kind, ResourceType? requiredResourceType = null, bool recceMayFight = false)
         {
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(abilities);
             switch (kind)
@@ -54,7 +57,7 @@ namespace Game.Ai.V2
                 // Native Recce Heroes remain excluded from Phase-A generic Hero demands above.
                 case CapabilityKind.Hero: return type == CardType.Hero;
                 case CapabilityKind.FieldCombatPower:
-                    return !recce && (type == CardType.Unit || type == CardType.Hero);
+                    return (recceMayFight || !recce) && (type == CardType.Unit || type == CardType.Hero);
                 case CapabilityKind.CollectorCapability:
                     return requiredResourceType.HasValue && abilities != null
                         && abilities.Contains(UnitAbilities.CollectAbilityFor(requiredResourceType.Value));
