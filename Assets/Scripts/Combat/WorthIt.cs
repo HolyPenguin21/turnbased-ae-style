@@ -801,9 +801,11 @@ namespace Game.Combat
                 for (int ai = 0; ai < order.Count; ai++)
                 {
                     DefendingArmy a = order[ai];
+                    int commanderIndex = FirstLivingHeroIndex(attackers);
+                    int refreshedAttackerFate = commanderIndex >= 0 ? attackers[commanderIndex].HeroFate : 0;
                     result = SimulateOneBattle(attackers,
                         new List<BattleUnit>(defenderTemplates[ai]), rng,
-                        attackerCommander.Fate, a.Commander.Fate, magnitudes);
+                        refreshedAttackerFate, a.Commander.Fate, magnitudes);
                     if (result <= 0)
                         break;
                     // Wounds carry into the next battle; in-battle stat changes (Berserk) do not —
@@ -824,7 +826,10 @@ namespace Game.Combat
                     entryStats = survivorStats;
                     if (ai + 1 < order.Count)
                     {
-                        AppendFreshBattleSummons(attackers, attackerCommander.Initiative);
+                        int nextCommanderIndex = FirstLivingHeroIndex(attackers);
+                        int nextCommanderInitiative = nextCommanderIndex >= 0
+                            ? attackers[nextCommanderIndex].Initiative : 0;
+                        AppendFreshBattleSummons(attackers, nextCommanderInitiative);
                         entryStats = new List<BattleUnit>(attackers);
                     }
                 }
