@@ -66,6 +66,30 @@ namespace Game.Combat
         private static List<DefenderProfile> TacticalTargetsOf(IEnumerable<DefenderProfile> profiles) =>
             profiles == null ? new List<DefenderProfile>() : profiles.Where(p => p.IsGroundCombatant || p.IsHero).ToList();
 
+        private static List<DefenderProfile> WithBattleSummons(IEnumerable<DefenderProfile> source)
+        {
+            var roster = TacticalTargetsOf(source);
+            UnitAbilityCatalog catalog = UnitAbilityCatalog.Active;
+            CardDefinition template = catalog != null ? catalog.ResolveRaiseTheRotsCard() : null;
+            if (template == null || catalog.raiseTheRotsUnitsPerSummoner <= 0)
+                return roster;
+
+            int summoners = roster.Count(p => p.Abilities != null
+                && p.Abilities.Contains(UnitAbilities.RaiseTheRots));
+            int freeDeploymentCells = Mathf.Max(0, BattleGrid.Columns * 2 - roster.Count);
+            int count = Mathf.Min(freeDeploymentCells,
+                summoners * Mathf.Max(0, catalog.raiseTheRotsUnitsPerSummoner));
+            for (int i = 0; i < count; i++)
+                roster.Add(ProfileFromCard(template));
+            return roster;
+        }
+
+        private static DefenderProfile ProfileFromCard(CardDefinition card) =>
+            new DefenderProfile(card.defenseRating,
+                card.grantedAbilities != null && card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
+                card.unitTypeTags, card.attack, card.hitPoints, card.initiative,
+                card.grantedAbilities, card.hitPoints, isGroundCombatant: true);
+
         // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
         // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is
         // what a REAL fight on this hex would actually roll against, not just the army's own raw
@@ -581,19 +605,24 @@ namespace Game.Combat
             float hexDefenseBonus = 0f, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null)
         {
-            enemyUnits = TacticalTargetsOf(enemyUnits);
+            enemyUnits = WithBattleSummons(enemyUnits);
             if (!enemyUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
             SideCommander attackerCommander = SideCommander.Of(attacker?.Commander);
             List<BattleUnit> baseline = ToAttackerBattleUnits(attacker, attackerCommander.Initiative);
+            var liveProfiles = TacticalTargetsOf(attacker.Members).Select(FromLiveUnit).ToList();
+            List<DefenderProfile> liveWithSummons = WithBattleSummons(liveProfiles);
+            if (liveWithSummons.Count > liveProfiles.Count)
+                baseline.AddRange(ToBattleUnits(
+                    liveWithSummons.Skip(liveProfiles.Count).ToList(), 0f, attackerCommander.Initiative));
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
             // Seeded off the same FromLiveUnit-derived profile the live roster represents — real
             // MaxHp still comes from ToAttackerBattleUnits above (a wounded attacker's true max is
             // not recoverable from DefenderProfile.HitPoints, which only ever carries CURRENT hp).
-            var seedProfiles = TacticalTargetsOf(attacker.Members).Select(FromLiveUnit).ToList();
+            var seedProfiles = liveWithSummons;
             int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus,
                 attackerCommander, defenderCommander);
             return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed,
@@ -610,8 +639,8 @@ namespace Game.Combat
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null)
         {
-            attackerUnits = TacticalTargetsOf(attackerUnits);
-            defenderUnits = TacticalTargetsOf(defenderUnits);
+            attackerUnits = WithBattleSummons(attackerUnits);
+            defenderUnits = WithBattleSummons(defenderUnits);
             if (!defenderUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
@@ -677,7 +706,7 @@ namespace Game.Combat
             float hexDefenseBonus, AbilityMagnitudes? magnitudes = null)
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
-                .Select(a => new DefendingArmy(TacticalTargetsOf(a.Units), a.Commander,
+                .Select(a => new DefendingArmy(WithBattleSummons(a.Units), a.Commander,
                     a.DefenseBonusOverride))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
@@ -688,7 +717,7 @@ namespace Game.Combat
                         armies[0].DefenseBonus(hexDefenseBonus), attackerCommander,
                         armies[0].Commander, magnitudes);
 
-            attackerUnits = TacticalTargetsOf(attackerUnits);
+            attackerUnits = WithBattleSummons(attackerUnits);
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
