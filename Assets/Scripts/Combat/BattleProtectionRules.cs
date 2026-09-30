@@ -20,7 +20,7 @@ namespace Game.Combat
 
         public static int GetGuardedDefenseBonus(BattleGrid grid, UnitData unit, ArmyData battleDefender)
         {
-            if (grid == null || unit == null || !unit.IsGroundCombatant
+            if (grid == null || unit == null || (!unit.IsGroundCombatant && !unit.IsHero)
                 || !grid.TryFindPosition(unit, out int row, out int col))
                 return 0;
 

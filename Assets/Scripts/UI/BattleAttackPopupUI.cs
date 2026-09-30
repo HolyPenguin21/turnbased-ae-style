@@ -262,8 +262,8 @@ namespace Game.UI
         // (BattleScreenUI) already has the grid to look these up from.
         // attackerPoolSize/defenderPoolSize (optional): only BeginCaptureKill needs to override
         // these — its pools are _hunterDicePool/the target hero's own Fate, nothing to do with
-        // Attack/Defense (see BeginCaptureKill's own comment). Ground Combat's default (attacker.
-        // Attack / defender.Defense + defenderTerrainBonus + defenderConstructionBonus) matches
+        // Attack/Defense (see BeginCaptureKill's own comment). Ground Combat's default is attacker.
+        // Attack versus defender.Defense (or hero.FateMax) + battlefield defense bonuses, matching
         // exactly what OnRollClicked itself rolls against, just surfaced before Roll Die is even
         // clicked (see the user's own request to see each side's pool size up front, not just its
         // post-roll success count).
@@ -319,7 +319,9 @@ namespace Game.UI
                 titleText.text = "GROUND COMBAT";
 
             _attackerDicePoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
-            _defenderDicePoolSize = defenderPoolSize ?? ((defender?.Defense ?? 0) + defenderBonusDice);
+            int defenderBaseDefense = defender == null ? 0
+                : (defender.IsHero ? Mathf.Max(0, defender.FateMax) : defender.Defense);
+            _defenderDicePoolSize = defenderPoolSize ?? (defenderBaseDefense + defenderBonusDice);
 
             attackerRow?.Setup(attacker, attackerHero, attackerLogo);
             defenderRow?.Setup(defender, defenderHero, defenderLogo);
@@ -327,7 +329,7 @@ namespace Game.UI
             defenderRow?.SetFateDisplay(_defenderFateRemaining);
             attackerRow?.SetDicePoolSize(_attackerDicePoolSize);
             defenderRow?.SetDicePoolSize(_defenderDicePoolSize,
-                defenderTerrainBonus, defenderConstructionBonus, defender?.Defense ?? 0, defenderFormationBonus);
+                defenderTerrainBonus, defenderConstructionBonus, defenderBaseDefense, defenderFormationBonus);
             attackerRow?.SetSpendInteractable(false);
             defenderRow?.SetSpendInteractable(false);
             if (rollButton != null)

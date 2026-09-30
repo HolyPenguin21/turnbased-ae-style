@@ -116,10 +116,9 @@ namespace Game.Units
         // CardDefinition.commandRating at spawn time, same as MoveMax/ActivationApCost.
         public bool IsHero;
 
-        // THE one rule for "does this unit fight in a ground battle" — heroes never take a turn in
-        // the Tactical Battle Module (BattleTurnOrder) and are never a Ground Combat target. Every
-        // battle participant filter and every win-chance estimate (WorthIt) reads this, so a
-        // planner can never count a hero as a fighting body that the real battle then ignores.
+        // Whether this unit takes an action in a Ground Combat round. Heroes remain passive
+        // command pieces in BattleTurnOrder, but they ARE valid targets while present on the
+        // tactical grid; their base defense against a normal attack is FateMax.
         public bool IsGroundCombatant => !IsHero;
         public int CommandRating;
 

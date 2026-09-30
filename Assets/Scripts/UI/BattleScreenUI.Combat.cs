@@ -40,7 +40,7 @@ namespace Game.UI
 
         private void BeginAttack(UnitData attacker, UnitData defender)
         {
-            if (attackPopup == null || attacker == null || defender == null || !defender.IsGroundCombatant)
+            if (attackPopup == null || attacker == null || defender == null)
                 return;
 
             // Identity (whose hero, whose Fate, whose movement gets zeroed) must come from actual
@@ -61,8 +61,9 @@ namespace Game.UI
             // Strategic movement commitment is a battle-state mutation, not UI work.
             _battleEngine?.CommitGroundAttack(attacker);
 
-            // Heroes are command/support pieces during ordinary Ground Combat and are only
-            // resolved through the Capture/Kill flow once their side has no combatants left.
+            // Heroes on the tactical grid are ordinary attack targets. Their base defense pool
+            // is FateMax (resolved by BattleAttackPopupUI/BattleCombatOdds); Capture/Kill remains
+            // a separate post-combat/hero-only encounter mechanic.
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero,
                 ResolveCatalog(attacker.Owner)?.logo, ResolveCatalog(defender.Owner)?.logo,
                 roll => OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll),

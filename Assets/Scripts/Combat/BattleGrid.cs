@@ -112,10 +112,9 @@ namespace Game.Combat
         // already present in that army's own ArmyData.SavedArrangement (see the Arrangement
         // phase in BattleScreenUI) goes straight to its remembered cell; everyone else (a brand
         // new army, or a member added since the layout was last saved) falls back to the plain
-        // default: the hero (if any — always the front of ArmyData.Members, see
-        // AddMemberSorted) into the Back row's reserved slot, every other member filling the
-        // Front row left-to-right and then overflowing into the remaining Back row columns
-        // (1..4) if there are more than 5.
+        // default: every hero into the Back row first (column 0 preferred for the first one),
+        // then ordinary members into the Front row left-to-right and finally any remaining
+        // Back-row cells. Multiple heroes therefore never fall into a Front-row fallback.
         public static BattleGrid FromArmies(ArmyData attacker, ArmyData defender)
         {
             var grid = new BattleGrid();
@@ -144,15 +143,26 @@ namespace Game.Combat
                     unplaced.Add(member);
             }
 
-            int frontCol = 0;
-            int backCol = 1; // column 0 of the back row is the hero slot by default
+            // Place every hero before ordinary units. Heroes are legal only in the Back row,
+            // so a second (or later) hero must never fall through the generic Front-first
+            // fallback. Column 0 remains only the first/default hero preference.
+            int heroCol = HeroColumn;
             foreach (UnitData member in unplaced)
             {
-                if (member.IsHero && grid.Get(backRow, HeroColumn) == null)
-                {
-                    grid.Set(backRow, HeroColumn, member);
+                if (!member.IsHero)
                     continue;
-                }
+                while (heroCol < Columns && grid.Get(backRow, heroCol) != null)
+                    heroCol++;
+                if (heroCol < Columns)
+                    grid.Set(backRow, heroCol++, member);
+            }
+
+            int frontCol = 0;
+            int backCol = 0;
+            foreach (UnitData member in unplaced)
+            {
+                if (member.IsHero)
+                    continue;
                 while (frontCol < Columns && grid.Get(frontRow, frontCol) != null)
                     frontCol++;
                 while (backCol < Columns && grid.Get(backRow, backCol) != null)
@@ -161,8 +171,9 @@ namespace Game.Combat
                     grid.Set(frontRow, frontCol++, member);
                 else if (backCol < Columns)
                     grid.Set(backRow, backCol++, member);
-                // Beyond 5 front + 4 back slots there's nowhere left on this grid — not reachable
-                // today (ArmyData.Capacity caps well under 9), so no overflow handling.
+                // Beyond the two deployment rows there is nowhere left on this grid. Hero slots
+                // are never borrowed from the Front row; an invalid oversized roster stays
+                // visibly incomplete rather than violating BattlePlacementRules.
             }
         }
     }

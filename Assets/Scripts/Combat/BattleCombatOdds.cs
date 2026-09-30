@@ -32,7 +32,9 @@ namespace Game.Combat
                 return default;
 
             int attackDice = Mathf.Max(0, attackDiceOverride ?? attacker.Attack);
-            int defenseDice = Mathf.Max(0, (defenderDefenseOverride ?? defender.Defense) + defenderBonusDice);
+            int baseDefense = defenderDefenseOverride
+                ?? (defender.IsHero ? Mathf.Max(0, defender.FateMax) : defender.Defense);
+            int defenseDice = Mathf.Max(0, baseDefense + defenderBonusDice);
             float expected = 0f;
             float hitProbability = 0f;
             float killProbability = 0f;
