@@ -79,6 +79,19 @@ namespace Game.EditorTests
                 Does.StartWith("hand_card:"));
         }
 
+        // Vex T14-T22: a native Recce unit ("Hooded", r1s4) is never FieldCombatPower for Phase A,
+        // so it can never be the card this WAIT is waiting for.
+        [Test]
+        public void RecceUnit_IsNoWitness()
+        {
+            CardDefinition scout = Unit(6);
+            scout.displayName = "Hooded";
+            scout.grantedAbilities = new List<string> { "r1s4", "RapidReaction", "Stealth4" };
+            WorldSnapshot snap = Snap(new[] { new CardData(scout) }, new[] { scout });
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
+                Is.Null);
+        }
+
         [Test]
         public void FullHost_TakesNoCard()
         {
