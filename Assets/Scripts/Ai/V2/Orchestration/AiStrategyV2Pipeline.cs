@@ -165,6 +165,7 @@ namespace Game.Ai.V2
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
             AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
+            AiFrameLog.Forces(snapshot, actorCommitments);
 
             // DemandLayer measures air capacity itself via ReconAssignmentPlanner.MeasureAirCapacity
             //     (the same canonical capacity owner ground uses), recomputed fresh every call — no

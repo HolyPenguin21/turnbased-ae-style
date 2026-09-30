@@ -36,10 +36,13 @@ namespace Game.Ai.V2
         //   [AI][V2][TaskScore] Kryll T7 Raid <key> eff=13.1 | value=13.1 | benefit 19.1 (...)
         //     | cost 6.0 (...) | risk 0.0 | opportunity 0.0
         // Once per task and turn unless its score changes (deduped on the task key).
+        // Always on (not gated by frameLogEnabled): the per-candidate TaskScore breakdown of every
+        // mission competition, deduplicated per mission key, so a Raid / Attack / Defence choice
+        // can be audited from the ordinary AiDebug.log (T07 calibration).
         public static void TaskScores(Game.Players.PlayerSetupData player, int turn,
             IEnumerable<MissionProposal> missions)
         {
-            if (!AiConfigV2.frameLogEnabled || missions == null)
+            if (missions == null)
                 return;
             foreach (MissionProposal m in missions)
             {
@@ -56,6 +59,33 @@ namespace Game.Ai.V2
         }
 
         private static string N1(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+
+        // Always on: one line per own army at the start of the turn — where the forces are, what
+        // they hold and who owns them — so a stalled operation can be read from the ordinary log.
+        // Diagnostics only; never read by a decision.
+        public static void Forces(WorldSnapshot snap, ActorCommitments commitments)
+        {
+            Game.Players.PlayerSetupData player = snap?.Observer;
+            IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
+            if (player == null || armies == null)
+                return;
+            foreach (ArmySnapshot a in armies.Where(x => x != null).OrderBy(x => x.ArmyId))
+            {
+                Game.Map.ArmyData live = AiV2Util.ResolveArmy(player, a.ArmyId);
+                string role = a.IsPrison ? "prison" : a.IsGarrison ? "garrison" : a.IsAir ? "air"
+                    : a.IsSoloRecce ? "scout" : a.MemberCount == 0 ? "empty"
+                    : a.IsStructuralRaidActor ? "field" : "field-weak";
+                string members = live == null ? "?" : string.Join(",", live.Members
+                    .Select(u => u.IsHero ? u.Name + "*" : u.Name));
+                string owner = commitments != null && commitments.IsArmyClaimed(a.ArmyId)
+                    ? (commitments.MutationContractOf(a.ArmyId)?.Label ?? "claimed")
+                    : "free";
+                AiDebugLog.Write($"[AI][V2][Forces] {player.Nickname} T{snap.TurnNumber} #{a.ArmyId} "
+                    + $"\"{live?.Name ?? "?"}\" ({a.Hex.Q},{a.Hex.R}) {role} "
+                    + $"{a.MemberCount}/{a.Capacity} power={N1(a.EffectiveArmyPower)} "
+                    + $"mp={a.CurrentMovement}/{a.MaxMovement} owner={owner} [{members}]");
+            }
+        }
 
         public static void GameState(WorldSnapshot snap, AiHandData hand)
         {
