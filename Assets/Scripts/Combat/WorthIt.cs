@@ -118,6 +118,9 @@ namespace Game.Combat
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.HitPoints);
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.MaxHitPoints);
                 hash = hash * 31 + p.Initiative;
+                hash = hash * 31 + (p.IsGroundCombatant ? 1 : 0);
+                hash = hash * 31 + (p.IsHero ? 1 : 0);
+                hash = hash * 31 + p.FateMax;
                 foreach (UnitTypeTag tag in p.TypeTags.OrderBy(t => (int)t))
                     hash = hash * 31 + (int)tag;
                 foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
