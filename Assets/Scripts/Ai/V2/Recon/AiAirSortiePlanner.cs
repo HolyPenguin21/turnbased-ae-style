@@ -448,6 +448,42 @@ namespace Game.Ai.V2
             && (TryReplan(airArmy, map, owner).HasValue
                 || TryReplanMultiTurnReturn(airArmy, map, owner).HasValue);
 
+        // Physical same-turn landing proof and path queries used by return selection and
+        // Recon's landing hysteresis. Policy decides when to switch; this owner proves the route.
+        public static bool CanReturnThisTurnTo(PlayerSetupData player, HexMap map, ArmyData air, HexCoord landing) =>
+            CanReturnThisTurnTo(player, map, air, landing, out _);
+
+        public static bool CanReturnThisTurnTo(PlayerSetupData player, HexMap map, ArmyData air,
+            HexCoord landing, out int routeCost)
+        {
+            routeCost = int.MaxValue;
+            if (!AviationRules.IsOwnedAirfieldAt(landing, player))
+                return false;
+            if (FreeLandingCapacity(landing, player, air) < air.Members.Count)
+                return false;
+            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
+            if (path == null)
+                return false;
+            routeCost = AviationRules.PathMoveCost(air, path);
+            return routeCost <= air.CurrentMovement;
+        }
+
+        public static int ReturnPathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
+        {
+            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
+            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
+        }
+
+        public static HexCoord? FirstRouteStep(HexMap map, HexCoord from, HexCoord to)
+        {
+            if (from.Equals(to)) return to;
+            HexPath path = HexPathfinder.FindPath(map, from, to, flatCost: true);
+            return FirstRouteStep(path);
+        }
+
+        public static HexCoord? FirstRouteStep(HexPath path) =>
+            path != null && path.Hexes.Count > 1 ? path.Hexes[1] : (HexCoord?)null;
+
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -457,13 +493,7 @@ namespace Game.Ai.V2
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
-                    continue;
-                HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
-                if (path == null)
-                    continue;
-                int cost = AviationRules.PathMoveCost(airArmy, path);
-                if (cost > airArmy.CurrentMovement)
+                if (!CanReturnThisTurnTo(owner, map, airArmy, landing, out int cost))
                     continue;
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || cost < bestCost

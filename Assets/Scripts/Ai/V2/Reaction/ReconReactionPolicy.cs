@@ -77,7 +77,7 @@ namespace Game.Ai.V2
             if (flee.HasValue)
                 return Log(army, assignment, flee.Value);
 
-            if (inStealth && CurrentDetectorRisk(player, army.Hex) > 0f)
+            if (inStealth && ScoutRiskModel.DetectorRiskLive(player, army.Hex) > 0f)
             {
                 HexCoord? evade = PickLowerDetectorRiskStep(player, map, army);
                 if (evade.HasValue)
@@ -158,7 +158,7 @@ namespace Game.Ai.V2
 
                 float fromThreat = HexGridMath.Distance(h, threatHex);
                 float toFriendly = HexGridMath.Distance(h, fallback);
-                float detector = CurrentDetectorRisk(player, h);
+                float detector = ScoutRiskModel.DetectorRiskLive(player, h);
                 int freshNeighbors = 0;
                 foreach (HexCoord n in HexGridMath.Neighbors(h))
                     if (map.TryGetTerrainAt(n, out _) && !VisionSystem.IsVisited(player, n))
@@ -293,7 +293,7 @@ namespace Game.Ai.V2
         private static HexCoord? PickLowerDetectorRiskStep(PlayerSetupData player, HexMap map,
             ArmyData army)
         {
-            float current = CurrentDetectorRisk(player, army.Hex);
+            float current = ScoutRiskModel.DetectorRiskLive(player, army.Hex);
             HexCoord? bestHex = null;
             float bestRisk = current;
             int bestCost = int.MaxValue;
@@ -307,7 +307,7 @@ namespace Game.Ai.V2
                     || ScoutExecutionSafety.StepBlocked(player, army, h))
                     continue;
 
-                float risk = CurrentDetectorRisk(player, h);
+                float risk = ScoutRiskModel.DetectorRiskLive(player, h);
                 if (risk > bestRisk + 0.0001f)
                     continue;
                 // EvadeDetector does not own capture: the same default noncapturing safe-route
@@ -328,20 +328,6 @@ namespace Game.Ai.V2
             }
 
             return bestHex.HasValue && bestRisk < current ? bestHex : null;
-        }
-
-        private static float CurrentDetectorRisk(PlayerSetupData player, HexCoord h)
-        {
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in
-                     AiMapMemory.KnownEnemySightingsNear(player, new[] { h }, AiConfigV2.frontierEnemyExposureRadius))
-            {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
-                    continue;
-                if (sighting.CanDetectStealthAt(h))
-                    detectors++;
-            }
-            return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
         }
 
         // Fog-honest variant of WorthIt.HexDefenseBonus. AiMapMemory stores the observed defense

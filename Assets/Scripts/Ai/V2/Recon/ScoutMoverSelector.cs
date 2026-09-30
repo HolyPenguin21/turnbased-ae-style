@@ -112,6 +112,10 @@ namespace Game.Ai.V2
 
     public static class ScoutMoverSelector
     {
+        // Structural ground actor shape, shared by strategic sizing and executable enumeration.
+        public static bool IsGroundScout(ArmySnapshot a) =>
+            a != null && a.IsSoloRecce && !a.IsPrison && !a.IsAir && a.MemberCount > 0;
+
         // Two named stealth-capability rules (kept distinct on purpose):
         //   StealthReadyThisTurn — can serve a stealth-Required job NOW: already hidden, or can
         //     still slip into stealth before its first move (an activated scout cannot).
@@ -159,7 +163,7 @@ namespace Game.Ai.V2
                 : System.Array.Empty<int>();
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                if (!IsGroundScout(a))
                     continue;
                 if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
@@ -187,7 +191,7 @@ namespace Game.Ai.V2
             bool needStealth = target.Stealth == StealthRequirement.Required;
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
-                if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
+                if (!IsGroundScout(a))
                     continue;
                 if (needStealth && !(a.IsHidden || a.StealthLevel > 0))
                     continue;
@@ -222,7 +226,7 @@ namespace Game.Ai.V2
                     continue;
                 if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
                     continue;
-                ArmyData live = ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x.Id == a.ArmyId);
+                ArmyData live = AiV2Util.ResolveArmy(player, a.ArmyId);
                 if (live == null)
                     continue;
                 UnitData sparable = AiArmyRoles.BestSparableGarrisonRecce(player, live);

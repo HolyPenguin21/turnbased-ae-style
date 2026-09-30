@@ -89,8 +89,8 @@ namespace Game.Ai.V2
             // historical threats in Analysis for strategic pressure and Recon information needs.
             // AiReconMemory.Historical excludes IDs already in Known.EnemySightings, so an ID
             // membership check identifies precisely the source contract the provisioner uses.
-            var interceptableIds = new HashSet<int>(snap?.Known?.EnemySightings?
-                .Select(s => s.ArmyId) ?? Enumerable.Empty<int>());
+            var interceptableIds = AiV2Util.KnownArmyIds(snap?.Known?.EnemySightings
+                ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
 
             foreach (IGrouping<int, AssetThreatSnapshot> group in threats
                 .Where(t => IsHonestPositionedHostile(t)

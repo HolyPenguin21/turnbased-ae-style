@@ -67,7 +67,7 @@ namespace Game.Ai.V2
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : fleetBudget;
 
             int dist = HexGridMath.Distance(mover.Hex, executionHex);
-            int eta = mover.CurrentMovement >= dist ? 1 : 1 + CeilDiv(dist - mover.CurrentMovement, budget);
+            int eta = TravelTurns(mover.CurrentMovement, dist, budget);
             int effAp = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
             bool hidden = mover.IsHidden;
             float required = effAp + (stealthRequired && !hidden ? AiConfigV2.scoutOptionalStealthAp : 0f);
@@ -81,6 +81,12 @@ namespace Game.Ai.V2
                 AlreadyHidden = hidden,
             };
         }
+
+        // Shared ETA arithmetic for pair pricing and vantage ranking. Callers retain their
+        // distinct fallback budgets (fleet movement for pricing, one hex for vantage ranking).
+        internal static int TravelTurns(int remainingMovement, int distance, int movementPerTurn) =>
+            remainingMovement >= distance ? 1
+                : 1 + AiV2Util.CeilDiv(distance - remainingMovement, movementPerTurn);
 
         private readonly struct PlannedGroundCost
         {

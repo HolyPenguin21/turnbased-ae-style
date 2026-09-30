@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.HexGrid;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -19,6 +20,11 @@ namespace Game.Ai.V2
     {
         public static float DetectorRisk(WorldSnapshot snap, HexCoord hex) =>
             DetectorRisk(snap?.Known?.EnemySightings, hex);
+
+        // AllKnownEnemySightings excludes neutral/ownerless encounters, exactly as the old
+        // near-memory consumers did. CountDetectors owns the radius gate for live and frozen data.
+        public static float DetectorRiskLive(PlayerSetupData player, HexCoord hex) =>
+            DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
 
         // The same number from any honest sighting list — the frozen snapshot above, or live
         // AiMapMemory at execution time (ReconGroundExecutor's optional-stealth leg risk).

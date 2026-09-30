@@ -19,6 +19,11 @@ namespace Game.Ai.V2
     {
         internal static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot) =>
             ReconMode.Refresh;
+        // Durable mode precedence is shared by read-only capability projection and execution.
+        internal static ReconMode EffectiveMode(PlayerSetupData player, int armyId, ReconMode requested) =>
+            ReconPatrolStateRegistry.TryGet(player, armyId, out ReconPatrolState patrol)
+                ? patrol.Mode : requested;
+
     }
 
     // ARCH-02 review r4 — the explicit lifecycle owner for a wing's ReconAirSortieState. The
@@ -46,6 +51,12 @@ namespace Game.Ai.V2
             bool hasDeparted) =>
             sortie != null && atAirfield && hasDeparted
             && sortie.Phase == ReconAirPhase.Return;
+
+        // One Hold re-opening rule for the live director and its read-only scorer projection.
+        internal static ReconAirPhase PhaseAfterHold(ReconAirPhase phase, bool newTurn, int safeEnds) =>
+            phase == ReconAirPhase.Hold && newTurn
+                ? (safeEnds > 0 ? ReconAirPhase.Outbound : ReconAirPhase.Return)
+                : phase;
 
         // Mark this AI turn as processed for the sortie (Hold-reopen-once semantics). Executor-owned.
         internal static bool BeginTurn(ReconAirSortieState sortie, int turn) => sortie.BeginTurn(turn);
@@ -205,9 +216,8 @@ namespace Game.Ai.V2
                         + $"safeEnds={safeUnlandedEnds} reason={sortie.LastDecisionReason}");
                     return StepDecision.HoldEndTurn("hold set earlier this turn");
                 }
-                ReconAirPhase resume = safeUnlandedEnds > 0
-                    ? ReconAirPhase.Outbound
-                    : ReconAirPhase.Return;
+                ReconAirPhase resume = ReconAirSortieLifecycle.PhaseAfterHold(
+                    workingPhase, newTurn, safeUnlandedEnds);
                 if (resume == ReconAirPhase.Return)
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold->Return "
                         + $"reason=endurance_deadline safeEnds={safeUnlandedEnds}");
@@ -222,9 +232,8 @@ namespace Game.Ai.V2
                 return StepDecision.Strike("recoverable strike at current hex");
 
             // ---- normal forward / return flow --------------------------------------------------
-            ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
-            if (ReconPatrolStateRegistry.TryGet(player, armyId, out ReconPatrolState existing))
-                mode = existing.Mode;
+            ReconMode mode = AirReconModePolicy.EffectiveMode(player, armyId,
+                AirReconModePolicy.RequestedMode(player, snapshot));
 
             ReconAirStepPlanner.StepChoice? choice =
                 ReconAirStepPlanner.Pick(player, ctx, air, snapshot, mode, ctx.TurnNumber, sortie,
@@ -393,7 +402,7 @@ namespace Game.Ai.V2
             {
                 landing = ApplyLandingHysteresis(player, map, air, sortie, sameTurn.Value, out string h);
                 reason = "same-turn safest return" + h;
-                return FirstStep(map, air.Hex, landing);
+                return AiAirSortiePlanner.FirstRouteStep(map, air.Hex, landing);
             }
 
             MultiTurnSortie? multi = AiAirSortiePlanner.TryReplanMultiTurnReturn(air, map, player);
@@ -403,11 +412,11 @@ namespace Game.Ai.V2
                 reason = $"multi-turn safest return t{multi.Value.RequiredTurns}" + h;
                 if (landing.Equals(multi.Value.LandingHex))
                 {
-                    HexPath p = multi.Value.PathFromActionToLanding;
-                    if (p != null && p.Hexes.Count > 1)
-                        return p.Hexes[1];
+                    HexCoord? first = AiAirSortiePlanner.FirstRouteStep(multi.Value.PathFromActionToLanding);
+                    if (first.HasValue)
+                        return first;
                 }
-                return FirstStep(map, air.Hex, landing);
+                return AiAirSortiePlanner.FirstRouteStep(map, air.Hex, landing);
             }
             return null;
         }
@@ -429,7 +438,7 @@ namespace Game.Ai.V2
                 reason = $" landing=keep({candidate.Q},{candidate.R})";
                 return candidate;
             }
-            if (!ReturnLandingStillViable(player, map, air, sortie.ChosenLandingHex))
+            if (!AiAirSortiePlanner.CanReturnThisTurnTo(player, map, air, sortie.ChosenLandingHex))
             {
                 reason = $" landing=switch(prev_unreachable ({sortie.ChosenLandingHex.Q},{sortie.ChosenLandingHex.R}) "
                     + $"-> ({candidate.Q},{candidate.R}))";
@@ -438,8 +447,8 @@ namespace Game.Ai.V2
 
             int prevForward = AiAirSortiePlanner.NearestKnownEnemyDistance(player, sortie.ChosenLandingHex);
             int newForward = AiAirSortiePlanner.NearestKnownEnemyDistance(player, candidate);
-            int prevCost = PathCostOrMax(map, air, sortie.ChosenLandingHex);
-            int newCost = PathCostOrMax(map, air, candidate);
+            int prevCost = AiAirSortiePlanner.ReturnPathCostOrMax(map, air, sortie.ChosenLandingHex);
+            int newCost = AiAirSortiePlanner.ReturnPathCostOrMax(map, air, candidate);
             bool muchMoreForward = prevForward != int.MaxValue && newForward != int.MaxValue
                 && prevForward - newForward >= AiConfigV2.airReconLandingSwitchForwardMargin;
             bool muchCheaper = prevCost - newCost >= AiConfigV2.airReconLandingSwitchCostMargin;
@@ -453,29 +462,5 @@ namespace Game.Ai.V2
             return sortie.ChosenLandingHex;
         }
 
-        private static bool ReturnLandingStillViable(PlayerSetupData player, HexMap map, ArmyData air, HexCoord landing)
-        {
-            if (!AviationRules.IsOwnedAirfieldAt(landing, player))
-                return false;
-            if (AiAirSortiePlanner.FreeLandingCapacity(landing, player, air) < air.Members.Count)
-                return false;
-            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
-            if (path == null)
-                return false;
-            return AviationRules.PathMoveCost(air, path) <= air.CurrentMovement;
-        }
-
-        private static int PathCostOrMax(HexMap map, ArmyData air, HexCoord landing)
-        {
-            HexPath path = HexPathfinder.FindPath(map, air.Hex, landing, flatCost: true);
-            return path != null ? AviationRules.PathMoveCost(air, path) : int.MaxValue;
-        }
-
-        private static HexCoord? FirstStep(HexMap map, HexCoord from, HexCoord to)
-        {
-            if (from.Equals(to)) return to;
-            HexPath path = HexPathfinder.FindPath(map, from, to, flatCost: true);
-            return path != null && path.Hexes.Count > 1 ? path.Hexes[1] : (HexCoord?)null;
-        }
     }
 }

@@ -139,36 +139,20 @@ namespace Game.Ai.V2
             }
 
             // --- 1. Enemy concentration (sanitized cheat: one base unit per true-world army). ----
-            IReadOnlyList<ArmySnapshot> trueEnemies = snapshot.TrueWorld?.EnemyArmies;
-            if (trueEnemies != null && trueEnemies.Count > 0)
+            IReadOnlyDictionary<ReconSector, float> concentration =
+                ReconDirectionModel.EnemyConcentration(snapshot, origin, out _);
+            foreach (KeyValuePair<ReconSector, float> kv in concentration)
             {
-                var bySector = new Dictionary<ReconSector, int>();
-                int counted = 0;
-                foreach (ArmySnapshot e in trueEnemies)
-                {
-                    if (e == null) continue;
-                    ReconSector s = ReconDirectionModel.Sector(origin, e.Hex);
-                    bySector.TryGetValue(s, out int c);
-                    bySector[s] = c + 1;
-                    counted++;
-                }
-                foreach (KeyValuePair<ReconSector, int> kv in bySector)
-                {
-                    float frac = counted > 0 ? kv.Value / (float)counted : 0f;
-                    float w = AiConfigV2.airReconAnchorConcentrationWeight * frac;
-                    anchors.Add(new AirReconStrategicAnchor(AirReconAnchorKind.EnemyConcentration,
-                        kv.Key, w, default, false));
-                    AddPressure(kv.Key, w);
-                }
+                float w = AiConfigV2.airReconAnchorConcentrationWeight * kv.Value;
+                anchors.Add(new AirReconStrategicAnchor(AirReconAnchorKind.EnemyConcentration,
+                    kv.Key, w, default, false));
+                AddPressure(kv.Key, w);
             }
 
             // --- 2. Enemy Citadel — formally known, else real sector as a hidden directional bias.
             ReconSector? citadelSector = null;
             float citadelConfidence = 0f;
-            AiMapMemory.KnownBuilding? knownCitadel = snapshot.Known?.Buildings?
-                .Where(b => b.IsStartingCitadel && b.Owner != null && b.Owner != self)
-                .Select(b => (AiMapMemory.KnownBuilding?)b)
-                .FirstOrDefault();
+            AiMapMemory.KnownBuilding? knownCitadel = ReconDirectionModel.KnownEnemyCitadel(snapshot, self);
             if (knownCitadel.HasValue)
             {
                 citadelSector = ReconDirectionModel.Sector(origin, knownCitadel.Value.Hex);
