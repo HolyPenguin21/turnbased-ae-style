@@ -191,20 +191,11 @@ namespace Game.Ai.V2
                     if (KnownThreatsAffectingEconomyRoute(snap, route.Hexes).Count > 0)
                         continue;
 
-                    HexCoord? safeReturn = null;
-                    int returnCost = int.MaxValue;
-                    foreach (HexCoord home in snap.Self.BaseHexes
-                                 ?? System.Array.Empty<HexCoord>())
-                    {
-                        int cost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
-                            site.Hex, home, collector.MaxMovement);
-                        if (cost < returnCost)
-                        {
-                            returnCost = cost;
-                            safeReturn = home;
-                        }
-                    }
-                    if (!safeReturn.HasValue || returnCost == int.MaxValue)
+                    IReadOnlyDictionary<HexCoord, int> homes = EconomyHomeRoutes(player,
+                        ctx, site.Hex, collector.MaxMovement, snap.Self.BaseHexes);
+                    HexCoord? safeReturn = MissionContinuityLayer.SelectEconomyHome(snap,
+                        site.Hex, homes);
+                    if (!safeReturn.HasValue)
                         continue;
 
                     int capacity = Mathf.RoundToInt(collector.CollectionCapacity.Get(site.ResourceType));
@@ -509,6 +500,29 @@ namespace Game.Ai.V2
             && ownBases.Min(h => HexGridMath.Distance(h, candidate))
                 >= AiConfigV2.economyBaseMinSpacing;
 
+        internal static IReadOnlyDictionary<HexCoord, int> EconomyHomeRoutes(
+            PlayerSetupData player, AiTurnContext ctx, HexCoord from, int maxMovement,
+            IReadOnlyList<HexCoord> bases)
+        {
+            var costs = new Dictionary<HexCoord, int>();
+            if (ctx?.Map == null || player == null) return costs;
+            foreach (HexCoord home in bases ?? System.Array.Empty<HexCoord>())
+            {
+                int cost = SafeStepPathing.FindSafePathCost(ctx.Map, player, from, home, maxMovement);
+                if (cost != int.MaxValue) costs[home] = cost;
+            }
+            return costs;
+        }
+
+        private static int EconomyMaximumStepCost(AiTurnContext ctx, IReadOnlyList<HexCoord> path)
+        {
+            int maximum = 0;
+            foreach (HexCoord hex in path.Skip(1))
+                maximum = Mathf.Max(maximum, ctx.Map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
+                    ? Mathf.Max(1, entry.moveCost) : 1);
+            return maximum;
+        }
+
         internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
             WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,
             ArmySnapshot projectedArmy = null)
@@ -536,6 +550,12 @@ namespace Game.Ai.V2
                     UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison);
                     if (sparableHero == null)
                         continue;
+                    ProvisioningManager.GarrisonExtractionCandidate extraction =
+                        ProvisioningManager.ResolveGarrisonExtractionCandidate(player, liveGarrison,
+                            commitments: null, session: null, root: null,
+                            ecoApEnvelopeRemaining: float.MaxValue);
+                    if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
+                        continue;
                     if (army.Hex.Equals(target))
                     {
                         // A garrison is NEVER a mobile hero army. Even when it already occupies
@@ -550,6 +570,7 @@ namespace Game.Ai.V2
                             EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
                             HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                             IsOnTarget = true, RequiresGarrisonExtraction = true,
+                            ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
                             PathHexes = new[] { target },
                             RouteThreats = KnownThreatsAffectingEconomyRoute(snap, new[] { target }),
                         });
@@ -574,7 +595,8 @@ namespace Game.Ai.V2
                         int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
                             ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
                         if (garrisonReturnCost == int.MaxValue)
-                            garrisonReturnCost = HexGridMath.Distance(target, army.Hex);
+                            garrisonReturnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                                target, army.Hex, sparableHero.MoveMax);
 
                         result.Add(new EconomyBuilderRouteSnapshot
                         {
@@ -590,6 +612,8 @@ namespace Game.Ai.V2
                             HasActiveEconomyCommitment = false,
                             IsOnTarget = false,
                             RequiresGarrisonExtraction = true,
+                            ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
+                            MaximumStepCost = EconomyMaximumStepCost(ctx, garrisonRoute.Hexes),
                             PathHexes = garrisonRoute.Hexes.ToList(),
                             RouteThreats = KnownThreatsAffectingEconomyRoute(
                                 snap, garrisonRoute.Hexes),
@@ -623,7 +647,8 @@ namespace Game.Ai.V2
                 int returnCost = SafeStepPathing.FindNearestBaseReturnCost(
                     ctx.Map, player, target, snap.Self.BaseHexes, army.MaxMovement);
                 if (returnCost == int.MaxValue)
-                    returnCost = HexGridMath.Distance(target, army.Hex);
+                    returnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                        target, army.Hex, army.MaxMovement);
                 result.Add(new EconomyBuilderRouteSnapshot
                 {
                     ArmyId = army.ArmyId,
@@ -637,6 +662,7 @@ namespace Game.Ai.V2
                     EffectiveArmyPower = army.EffectiveArmyPower,
                     HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                     IsOnTarget = army.Hex.Equals(target),
+                    MaximumStepCost = EconomyMaximumStepCost(ctx, route.Hexes),
                     PathHexes = route.Hexes.ToList(),
                     RouteThreats = KnownThreatsAffectingEconomyRoute(
                         snap, route.Hexes),

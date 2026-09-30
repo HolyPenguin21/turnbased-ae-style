@@ -70,6 +70,13 @@ namespace Game.Ai.V2
                     a.ReachableOwnBaseHexes = reachable;
                 }
 
+            // Economy consumes exact physical home costs, including solo collectors. Keep the
+            // combat return-policy facts above unchanged: its fallback contract is different.
+            foreach (ArmySnapshot actor in self.Armies.Where(a => !a.IsAir && !a.IsAirfield
+                         && !a.IsGarrison && !a.IsPrison))
+                actor.EconomyHomeRouteCosts = EconomyHomeRoutes(player, ctx,
+                    actor.Hex, actor.MaxMovement, baseHexes);
+
             self.FieldPower = self.Armies.Where(a => !a.IsGarrison).Sum(a => a.EffectiveArmyPower);
             self.GarrisonPower = self.Armies.Where(a => a.IsGarrison).Sum(a => a.EffectiveArmyPower);
             self.TotalPower = self.FieldPower + self.GarrisonPower;
@@ -331,7 +338,7 @@ namespace Game.Ai.V2
             self.DeployableCombatBodies = nonHeroBodies;
         }
 
-        private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
+        internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {
             var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
             bool allHidden = !isOwn && a.Members.Count > 0
@@ -376,6 +383,13 @@ namespace Game.Ai.V2
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
                 RecoveryMembers = a.Members.Select((u, index) => ToRaidRecoveryMember(
                     a, u, index, viewer, isOwn)).ToList(),
+                NonHeroRuntimeIds = isOwn ? nonHero.Select(u => u.RuntimeId).ToList() : System.Array.Empty<int>(),
+                NonHeroCurrentMovement = nonHero.Select(u => AviationRules.EffectiveMoveCurrent(u)).ToList(),
+                EconomyRosterProtected = isOwn && MissionIntentRegistry.GetOrCreate(a.Owner).All.Any(i => i != null
+                    && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
+                    && i.PreferredMoverArmyId == a.Id),
+                HeroCurrentMovement = a.Members.Where(u => u.IsHero)
+                    .Select(AviationRules.EffectiveMoveCurrent).DefaultIfEmpty(a.CurrentMovement).Min(),
                 NonHeroActivationApCosts = nonHero.Select(u => u.ActivationApCost).ToList(),
                 NonHeroMoveMax = nonHero.Select(u => u.MoveMax).ToList(),
                 NonHeroIsAviation = nonHero.Select(u => u.IsAviation).ToList(),

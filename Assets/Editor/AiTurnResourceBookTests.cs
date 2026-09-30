@@ -51,6 +51,37 @@ namespace Game.EditorTests
             finally { StrategicResourceReservationLedger.ClearAll(); }
         }
 
+        [TestCase(StrategicReservedResource.ActionPoints)]
+        [TestCase(StrategicReservedResource.Human)]
+        [TestCase(StrategicReservedResource.Energy)]
+        [TestCase(StrategicReservedResource.Materials)]
+        [TestCase(StrategicReservedResource.Tech)]
+        public void BookReadsUpdatedHoldAndReleaseImmediately(StrategicReservedResource resource)
+        {
+            var player = new PlayerSetupData();
+            const int turn = 8;
+            var request = new StrategicResourceReservation
+            {
+                Owner = "build", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                Resource = resource, Amount = 3f, ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            };
+            try
+            {
+                float Free(SpendAuthority authority = default) => TurnResourceBook.Free(10f,
+                    TurnResourceBook.LedgerClaims(player, turn), resource, authority);
+                StrategicResourceReservationLedger.Upsert(player, turn, request);
+                Assert.That(Free(), Is.EqualTo(7f));
+                Assert.That(Free(new SpendAuthority("build", false)), Is.EqualTo(10f));
+                request.Amount = 5f;
+                Assert.That(Free(), Is.EqualTo(7f), "editing the request is not a bank write");
+                StrategicResourceReservationLedger.Upsert(player, turn, request);
+                Assert.That(Free(), Is.EqualTo(5f));
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, "build");
+                Assert.That(Free(), Is.EqualTo(10f));
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
         [Test]
         public void UpsertReleaseAndExpiryAreIsolatedByOwnerPlayerAndTurn()
         {

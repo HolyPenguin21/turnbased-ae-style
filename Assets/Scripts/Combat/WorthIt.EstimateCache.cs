@@ -28,13 +28,14 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 1;
+        private const int EstimateKeyVersion = 2;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real
         // struct fields by reflection, so adding a field without deciding its key fate fails a test.
         internal static readonly string[] EstimateKeyBattleUnitFields =
-            { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp" };
+            { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
+                "IsHero", "HeroFate", "IsSummoned" };
         internal static readonly string[] EstimateKeySideCommanderFields =
             { "Present", "Initiative", "Fate" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
@@ -42,15 +43,16 @@ namespace Game.Combat
             "CriticalDamageMultiplier", "HyperkineticBonusDamage", "CeramicArmorReduction",
             "PyrokineticBonusDamage", "BerserkAttackGain", "BerserkDefenseLoss",
         };
-        // DefenderProfile reaches the simulation only through ToBattleUnits (and CombatantsOf's
+        // DefenderProfile reaches the simulation only through ToBattleUnits (and TacticalTargetsOf's
         // filter, which decides WHICH units are converted), so its simulated fields are covered by
         // the BattleUnit key. The rest are read elsewhere, never by the simulation.
         internal static readonly string[] EstimateKeyDefenderProfileSimulatedFields =
-            { "Attack", "Defense", "HitPoints", "MaxHitPoints", "Initiative", "Abilities", "TypeTags" };
+            { "Attack", "Defense", "HitPoints", "MaxHitPoints", "Initiative", "Abilities", "TypeTags",
+                "IsHero", "FateMax", "IsSummoned" };
         internal static readonly string[] EstimateKeyDefenderProfileNonSimulatedFields =
         {
             "HasCeramicArmor",   // CanDamage only; the simulation reads CeramicArmor from Abilities
-            "IsGroundCombatant", // CombatantsOf filter, applied before conversion
+            "IsGroundCombatant", // TacticalTargetsOf filter, applied before conversion
         };
         // Parameter lists the key was built against (same test).
         internal static readonly string[] EstimateKeySimulateOneBattleParameters =
@@ -165,6 +167,9 @@ namespace Game.Combat
                 buf.Add(u.Initiative);
                 buf.Add(BitConverter.SingleToInt32Bits(u.Hp));
                 buf.Add(BitConverter.SingleToInt32Bits(u.MaxHp));
+                buf.Add(u.IsHero ? 1 : 0);
+                buf.Add(u.HeroFate);
+                buf.Add(u.IsSummoned ? 1 : 0);
                 int abilities = u.Abilities?.Count ?? -1;
                 buf.Add(abilities);
                 for (int i = 0; i < abilities; i++)

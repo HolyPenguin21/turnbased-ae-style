@@ -835,13 +835,7 @@ namespace Game.Ai.V2
         private static bool IsCommittedEconomyBuild(
             IReadOnlyList<MissionIntent> activeIntents, AxisDemand demand)
         {
-            if (activeIntents == null || demand?.TargetHex == null)
-                return false;
-            EconomyTaskKind kind = DemandLayer.EconomyBuildKind(demand);
-            return activeIntents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
-                && i.Economy.Kind == kind
-                && (kind != EconomyTaskKind.FoundBase || i.Economy.BuildCard == null
-                    || i.Economy.BuildCard == demand.EconomyBuildCard));
+            return MissionContinuityLayer.HasEconomyBuildCommitment(activeIntents, demand);
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)

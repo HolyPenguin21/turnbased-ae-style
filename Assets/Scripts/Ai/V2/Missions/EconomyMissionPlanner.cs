@@ -320,16 +320,18 @@ namespace Game.Ai.V2
                 MoverKnown = actor != null && routeWitness.HasValue,
             };
             bool completionThisTurn = false;
+            bool travelNeeded = false;
+            bool activated = false;
             float activation = 0f;
             if (actor != null && routeWitness.HasValue)
             {
                 EconomyBuilderRouteSnapshot route = routeWitness.Value;
                 int distance = route.TravelCost;
                 int movement = route.CurrentMovement;
-                bool travelNeeded = distance > 0;
+                travelNeeded = distance > 0;
                 completionThisTurn = distance <= movement;
-                activation = travelNeeded && !route.HasActivatedThisTurn
-                    ? route.ActivationApCost : 0f;
+                activation = route.ActivationApCost;
+                activated = route.HasActivatedThisTurn;
                 r.EstimatedDistance = distance;
                 r.EtaTurns = completionThisTurn ? 0
                     : UnityEngine.Mathf.CeilToInt(
@@ -337,10 +339,9 @@ namespace Game.Ai.V2
                             / (float)UnityEngine.Mathf.Max(1, route.MaxMovement));
             }
 
-            float ap = UnityEngine.Mathf.Max(0f, activation
-                + (completionThisTurn
-                    ? UnityEngine.Mathf.Max(t.BuildApCost, t.MinimumFollowupAp)
-                    : 0f));
+            float ap = DemandLayer.EconomyCurrentStageAp(currentBuilder?.PreparationApCost ?? 0f,
+                activation, activated, travelNeeded, completionThisTurn,
+                t.BuildApCost, t.MinimumFollowupAp);
             r.ApMinimum = r.ApDesired = r.ApMaximum = ap;
 
             // A multi-turn delivery is funded for the step it can execute now. Full build resources

@@ -211,6 +211,13 @@ namespace Game.Ai.V2
         public IReadOnlyList<int> NonHeroActivationApCosts = System.Array.Empty<int>();
         public IReadOnlyList<int> NonHeroMoveMax = System.Array.Empty<int>();
         public IReadOnlyList<bool> NonHeroIsAviation = System.Array.Empty<bool>();
+        // Identity and remaining MP are frozen in the same order as Members.
+        public IReadOnlyList<int> NonHeroRuntimeIds = System.Array.Empty<int>();
+        public IReadOnlyList<int> NonHeroCurrentMovement = System.Array.Empty<int>();
+        public int HeroCurrentMovement;
+        public bool EconomyRosterProtected;
+        // Null means no route witness was published; an empty map means none is reachable.
+        public IReadOnlyDictionary<HexCoord, int> EconomyHomeRouteCosts;
         public int HeroActivationApCost;
         public int HeroMoveMax;
         // True when a hero in this army is HeroRoleEvaluator's SupportOperator/"home" vocation
@@ -704,6 +711,9 @@ namespace Game.Ai.V2
         // CanSpareGarrisonMember + ArmyActions.TransferMember, same as the Raid donor path) before
         // it can be treated as a mover. Every existing row leaves this false by construction.
         public bool RequiresGarrisonExtraction;
+        public float ExtractionApCost;
+        public bool ExtractionContainerAvailable;
+        public int MaximumStepCost;
         // Exact fog-honest route selected by SafeStepPathing. Demand consumes the associated
         // route threats instead of reconstructing a wider geometric corridor from endpoints.
         public IReadOnlyList<HexCoord> PathHexes;

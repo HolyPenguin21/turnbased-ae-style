@@ -123,6 +123,34 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void DifferentHeroRolesWithSameSeed_DoNotShareCachedEstimate()
+        {
+            // +1 IsHero and -31 FateMax cancel in AccumulateProfileHash. The exact cache key
+            // must distinguish these rosters even when the seed cannot.
+            var body = new WorthIt.DefenderProfile(0, false, attack: 2, hitPoints: 4,
+                initiative: 2, fateMax: 31);
+            var hero = new WorthIt.DefenderProfile(0, false, attack: 2, hitPoints: 4,
+                initiative: 2, isHero: true, fateMax: 0);
+            var ordinary = new List<WorthIt.DefenderProfile> { Unit(2, 2, 3), body };
+            var heroic = new List<WorthIt.DefenderProfile> { Unit(2, 2, 3), hero };
+            var defenders = Defenders();
+            MethodInfo seed = typeof(WorthIt).GetMethod("BuildRosterSeed",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            object Seed(List<WorthIt.DefenderProfile> roster) => seed.Invoke(null,
+                new object[] { roster, defenders, 1f, default(WorthIt.SideCommander), default(WorthIt.SideCommander) });
+            Assert.That(Seed(ordinary), Is.EqualTo(Seed(heroic)));
+            var expected = WorthIt.Estimate(heroic, defenders, 1f);
+            WorthIt.BeginEstimateCacheScope();
+            WorthIt.Estimate(ordinary, defenders, 1f);
+            var actual = WorthIt.Estimate(heroic, defenders, 1f);
+            var stats = WorthIt.EndEstimateCacheScope();
+            Assert.That(stats.Misses, Is.EqualTo(2));
+            Assert.That(stats.Hits, Is.Zero);
+            Assert.That(actual.WinChance, Is.EqualTo(expected.WinChance));
+            Assert.That(actual.ExpectedSurvivingHpRatioOnWin, Is.EqualTo(expected.ExpectedSurvivingHpRatioOnWin));
+        }
+
+        [Test]
         public void EverySimulatedInputChangeMissesTheCache()
         {
             WorthIt.BeginEstimateCacheScope();

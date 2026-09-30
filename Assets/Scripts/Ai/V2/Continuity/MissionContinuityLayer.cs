@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -19,27 +19,39 @@ namespace Game.Ai.V2
         internal static HexCoord? SelectEconomyRecoveryTarget(WorldSnapshot snap,
             PlayerSetupData player, ArmySnapshot actor, bool avoidCurrentHex = false)
         {
-            if (snap?.Self?.BaseHexes == null || actor == null || player == null)
-                return null;
-            // ATK §20/§53 — one own-Base identity owner for EVERY consumer, Economy recovery
-            // included. Self.BaseHexes is current truth; a remembered KnownBuilding.Owner could
-            // send a retreating builder to a base we had already lost, or hide one we had just
-            // built or captured.
-            IEnumerable<HexCoord> candidates = snap.Self.BaseHexes;
-            if (avoidCurrentHex && candidates.Any(h => !h.Equals(actor.Hex)))
-                candidates = candidates.Where(h => !h.Equals(actor.Hex));
-            HexCoord citadel = snap.Self.Citadel;
-            List<HexCoord> ordered = candidates
-                .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
-                .ThenBy(h => BaseThreatSeverityAt(snap, h))
-                .ThenByDescending(h => h.Equals(citadel) ? 1 : 0)
-                .ThenBy(h => h.Q).ThenBy(h => h.R).ToList();
-            if (ordered.Count > 0)
-                return ordered[0];
-            return player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
-                ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value)
-                : (HexCoord?)null;
+            if (actor == null || player == null) return null;
+            return SelectEconomyHome(snap, actor.Hex, actor.EconomyHomeRouteCosts, avoidCurrentHex);
         }
+
+        // Economy chooses the closest physically reachable shelter. Combat's "most active base"
+        // ranking intentionally has a different purpose and keeps its separate owner.
+        internal static HexCoord? SelectEconomyHome(WorldSnapshot snap, HexCoord from,
+            IReadOnlyDictionary<HexCoord, int> routeCosts, bool avoidCurrentHex = false)
+        {
+            if (snap?.Self?.BaseHexes == null || routeCosts == null) return null;
+            IEnumerable<HexCoord> candidates = snap.Self.BaseHexes.Where(h =>
+                routeCosts.TryGetValue(h, out int cost) && cost < int.MaxValue);
+            if (avoidCurrentHex && candidates.Any(h => !h.Equals(from)))
+                candidates = candidates.Where(h => !h.Equals(from));
+            return candidates.OrderBy(h => routeCosts[h])
+                .ThenBy(h => BaseThreatSeverityAt(snap, h))
+                .ThenByDescending(h => h.Equals(snap.Self.Citadel))
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .Select(h => (HexCoord?)h).FirstOrDefault();
+        }
+
+        // Exact obligation identity, distinct from the coarser site lease. The optional card is
+        // an unpinned durable choice; resource type always distinguishes extraction obligations.
+        internal static bool MatchesEconomyBuild(MissionIntent intent, EconomyTaskKind kind,
+            HexCoord hex, ResourceType? resource, CardData card) => HoldsEconomyBuildSite(intent, hex)
+                && intent.Economy.Kind == kind
+                && (kind == EconomyTaskKind.FoundBase || intent.Economy.ResourceType == resource)
+                && (intent.Economy.BuildCard == null || intent.Economy.BuildCard == card);
+
+        internal static bool HasEconomyBuildCommitment(IReadOnlyList<MissionIntent> intents,
+            AxisDemand demand) => demand?.TargetHex != null && intents != null
+                && intents.Any(i => MatchesEconomyBuild(i, DemandLayer.EconomyBuildKind(demand),
+                    demand.TargetHex.Value, demand.EconomyResourceType, demand.EconomyBuildCard));
 
         internal static bool RequiresEconomyBuilderRecovery(EconomyTaskKind completedKind,
             MissionIntent lender, bool underImmediateThreat, bool alreadyProtected,
@@ -342,6 +354,10 @@ namespace Game.Ai.V2
 
         // ATK §20/§53 — same single own-Base identity owner as SelectEconomyRecoveryTarget and
         // SelectReturnBase above.
+        // Existing home ownership and current safe-route availability are different facts.
+        // Keep an owned home through transient blockers; Provisioning retries its movement.
+        // When ownership is lost, SelectEconomyHome requires a reachable replacement witness.
+
         private static bool IsProtectedEconomyHex(WorldSnapshot snap,
             PlayerSetupData player, HexCoord hex) =>
             snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Contains(hex);
@@ -552,24 +568,7 @@ namespace Game.Ai.V2
                         active.Add(intent);
                         continue;
                     }
-                    if (ei?.Kind == EconomyTaskKind.ReturnCollector)
-                    {
-                        bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
-                        bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
-                        if (completed || actor == null || !targetValid)
-                        {
-                            RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
-                            AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire return "
-                                + $"{intent.IntentKey} arrived={(completed ? 1 : 0)}");
-                            continue;
-                        }
-                        // Economy audit B3 — a transient capability suspension is re-tested every
-                        // pass (the planner only proposes Active intents); AdvanceIntent ages it.
-                        ResumeTransientSuspension(intent);
-                        active.Add(intent);
-                        continue;
-                    }
-                    if (ei?.Kind == EconomyTaskKind.ReturnBuilder)
+                    if (ei?.Kind == EconomyTaskKind.ReturnBuilder || ei?.Kind == EconomyTaskKind.ReturnCollector)
                     {
                         bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
                         bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
@@ -580,6 +579,8 @@ namespace Game.Ai.V2
                             {
                                 MissionIntentKey oldKey = intent.IntentKey;
                                 ei.TargetHex = retarget.Value;
+                                ei.SafeReturnHex = retarget.Value;
+                                intent.StallTurns = 0;
                                 completed = actor.Hex.Equals(ei.TargetHex);
                                 intent.IntentKey = completed ? oldKey : MissionIntentKey.For(intent);
                                 if (!completed && !oldKey.Equals(intent.IntentKey))
@@ -1331,9 +1332,11 @@ namespace Game.Ai.V2
             state.TryGet(o.IntentKey, out MissionIntent intent);
 
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
-            bool returnBuilderOutcome = o.MissionKind == MissionKind.Economy
+            bool returnRecoveryOutcome = o.MissionKind == MissionKind.Economy
                 && (o.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
-                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
+                    || o.EconomyTarget.Kind == EconomyTaskKind.ReturnCollector
+                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder
+                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnCollector);
             AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
                 + (o.ObjectiveSatisfied ? " satisfied" : "")
                 + (o.StructuralFailure ? " structural" : "")
@@ -1508,9 +1511,9 @@ namespace Game.Ai.V2
 
             if (o.StructuralFailure)
             {
-                if (returnBuilderOutcome && intent != null)
+                if (returnRecoveryOutcome && intent != null)
                 {
-                    KeepReturnBuilder(state, intent, o, turn);
+                    KeepEconomyReturn(state, intent, o, turn);
                     return;
                 }
                 RetireOutcomeIntent(state, intent, o, turn);
@@ -1522,9 +1525,9 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Failed)
             {
-                if (returnBuilderOutcome && intent != null)
+                if (returnRecoveryOutcome && intent != null)
                 {
-                    KeepReturnBuilder(state, intent, o, turn);
+                    KeepEconomyReturn(state, intent, o, turn);
                     return;
                 }
                 if (intent != null)
@@ -1535,9 +1538,9 @@ namespace Game.Ai.V2
 
             if (o.MissionKind == MissionKind.Economy && !o.MadeProgress)
             {
-                if (returnBuilderOutcome && intent != null)
+                if (returnRecoveryOutcome && intent != null)
                 {
-                    KeepReturnBuilder(state, intent, o, turn);
+                    KeepEconomyReturn(state, intent, o, turn);
                     return;
                 }
                 // A no-progress Economy outcome ends its outbound commitment only on a PROVEN
@@ -2124,13 +2127,31 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // ReturnBuilder is preserved through every transient failure (a lost shelter is re-targeted
+        // Economy return legs are preserved through every transient failure (a lost shelter is re-targeted
         // by ResolveActive, a blocked way home may clear) — but only while it still gets home:
         // a builder that has not advanced for commitmentMaxTurns is released, its lender resumed,
         // instead of holding the hero (and the lender) forever. Economy audit S1.
-        private static void KeepReturnBuilder(MissionIntentState state, MissionIntent intent,
+        private static void KeepEconomyReturn(MissionIntentState state, MissionIntent intent,
             MissionTurnOutcome o, int turn)
         {
+            // Preserve the collector's existing bounded capability retry contract. Lost-home
+            // failure stays alive until fresh ResolveActive can retarget and reset the stall.
+            if (intent.Economy?.Kind == EconomyTaskKind.ReturnCollector)
+            {
+                // A vanished home needs fresh ownership/route facts, not another capability
+                // strike against the actor. ResolveActive either retargets or retires it.
+                if (o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated
+                    || o.StopReason == ExecutionStopReason.TargetInvalidated)
+                {
+                    intent.Status = IntentStatus.Active;
+                    intent.Suspended = SuspendReason.None;
+                    intent.LastReconciledTurn = turn;
+                    return;
+                }
+                AdvanceIntent(intent, o, turn, state, AiAllocatorStateRegistry.GetOrCreate(state.Owner));
+                if (ShouldReap(intent, turn)) RetireEconomyIntent(state, intent, o, turn);
+                return;
+            }
             if (turn - intent.LastProgressTurn >= AiConfigV2.commitmentMaxTurns)
             {
                 AiDebugLog.Write($"[AI][V2][Economy][Recovery] release {intent.IntentKey} — no progress "

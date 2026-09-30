@@ -1,4 +1,4 @@
-﻿#if UNITY_INCLUDE_TESTS
+#if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
@@ -846,6 +846,8 @@ namespace Game.EditorTests
                 // metadata beside it. "The shelter was lost and only altBase remains" is therefore
                 // stated here, not by editing remembered structures.
                 snapshot.Self.BaseHexes = new List<HexCoord> { altBase };
+                snapshot.Self.Armies[0].EconomyHomeRouteCosts =
+                    new Dictionary<HexCoord, int> { [altBase] = 3 };
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snapshot);
 
@@ -2443,13 +2445,17 @@ namespace Game.EditorTests
                 ArmyRegistry.Register(garrison);
                 DemandLayer.EconomyBuilderChoice frozen = DemandLayer.AssessEconomyArmy(
                     oldSnapshot, target, route, army, 1f, includeReturn: false);
+                // A fresh Analysis witness publishes the newly available container. Demand never
+                // queries the live registry behind an existing immutable snapshot.
+                EconomyBuilderRouteSnapshot freshRoute = route;
+                freshRoute.ExtractionContainerAvailable = true;
                 DemandLayer.EconomyBuilderChoice fresh = DemandLayer.AssessEconomyArmy(
-                    new WorldSnapshot(), target, route, army, 1f, includeReturn: false);
+                    new WorldSnapshot(), target, freshRoute, army, 1f, includeReturn: false);
 
-                Assert.That(frozen, Is.SameAs(missing),
+                Assert.That(frozen.Suitability, Is.EqualTo(missing.Suitability),
                     "an old snapshot must keep its own assessment after the live registry changes");
                 Assert.That(fresh.Suitability, Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready),
-                    "a new snapshot must re-read the available live extraction container");
+                    "a new Analysis witness must publish the available extraction container");
             }
             finally
             {
@@ -3067,7 +3073,8 @@ namespace Game.EditorTests
         public void EconomyRecoveryTarget_ExcludesFacilityOnlyHex()
         {
             var player = new Game.Players.PlayerSetupData();
-            var actor = new ArmySnapshot { ArmyId = 4, Hex = new HexCoord(0, 0) };
+            var actor = new ArmySnapshot { ArmyId = 4, Hex = new HexCoord(0, 0),
+                EconomyHomeRouteCosts = new Dictionary<HexCoord, int> { [new HexCoord(2, 0)] = 2 } };
             var snap = new WorldSnapshot
             {
                 Self = new SelfSnapshot
