@@ -412,18 +412,18 @@ namespace Game.Ai.V2
                     if (AiPower.EffectiveArmyPower(led) > AiPower.EffectiveArmyPower(host.Members))
                         return true;
                 }
-                List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(
+                List<UnitData> sparableUnits = GroundCombatReinforcement.SparableSupportBodies(
                     donor, allowCompleteTransfer: true);
                 List<UnitData> bodyUnits = host.Members.Where(AiArmyRoles.IsGroundBattleBody).ToList();
                 if (!TryProjectReinforcement(bodyUnits.Select(WorthIt.FromLiveUnit).ToList(),
-                        sparable.Select(WorthIt.FromLiveUnit).ToList(), host.Capacity,
+                        sparableUnits.Select(WorthIt.FromLiveUnit).ToList(), host.Capacity,
                         host.Members.Count, WorthIt.SideCommander.Of(host.Commander), opponents,
                         out _, out _, out _, out List<int> incoming, out int displaced,
                         defenderHexDefenseBonus, requireWinGain: false))
                     return false;
                 var roster = new List<UnitData>(host.Members);
                 if (displaced >= 0) roster.Remove(bodyUnits[displaced]);
-                foreach (int index in incoming) roster.Add(sparable[index]);
+                foreach (int index in incoming) roster.Add(sparableUnits[index]);
                 return AiPower.EffectiveArmyPower(roster) > AiPower.EffectiveArmyPower(host.Members);
             }
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
