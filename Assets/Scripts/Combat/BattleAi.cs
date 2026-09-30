@@ -1110,7 +1110,6 @@ namespace Game.Combat
             float bestDamage = -1f;
             int bestDistance = int.MaxValue;
             bool bestCloses = false;
-            bool bestCloses = false;
 
             for (int i = 0; i < 4; i++)
             {
@@ -1248,6 +1247,7 @@ namespace Game.Combat
             (int row, int col)? bestStep = null;
             float bestDamage = -1f;
             int bestDistance = int.MaxValue;
+            bool bestCloses = false;
 
             for (int i = 0; i < 4; i++)
             {
