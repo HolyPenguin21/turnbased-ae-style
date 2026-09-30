@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Aviation;
 using Game.Cards;
@@ -69,6 +70,9 @@ namespace Game.UI
         // their own deck from it via their own PlayerSetupData.Faction, rather than everyone
         // sharing one hardcoded catalog+deckIndices pair.
         public StartingDeckCatalog StartingDeckCatalog => startingDeckCatalog;
+        // The real human hand, even while the spectator UI is showing an AI hand.
+        public IEnumerable<CardData> HumanHand => _cards.Select(card => card.Data);
+        public IReadOnlyList<CardDefinition> HumanRemainingDeck => _remainingDeck;
         public int StartingHandSize => startingHandSize;
         public int DrawApCost => drawApCost;
 

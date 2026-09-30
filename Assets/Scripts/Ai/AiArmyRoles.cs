@@ -174,6 +174,11 @@ namespace Game.Ai
             return IsHeroLedCombatArmy(army) && army.Members.Count == 1;
         }
 
+        // Structural field-force rule shared by Analysis snapshots and match diagnostics.
+        public static bool IsStructuralGroundCombatActor(ArmyData army) =>
+            army != null && !army.IsPrison && !army.IsGarrison && !army.IsAirArmy && !army.IsAirfield
+            && !IsSoloRecce(army) && !IsSoloHeroAwaitingEscort(army) && army.Members.Count > 0;
+
         // Guards a second-base garrison's own defenders from ever being pulled below secure by a
         // Raid/Defence/reorg donor pull (project owner's own report: a fresh base's garrison could
         // get seeded, then immediately stripped back down by ordinary recruitment, leaving an
