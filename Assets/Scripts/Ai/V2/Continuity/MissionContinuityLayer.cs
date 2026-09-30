@@ -669,10 +669,12 @@ namespace Game.Ai.V2
                 {
                     // ATK §24/§25 — the Attack lane's own lifecycle answers live in
                     // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
-                    // Audit F7 — a Gather re-plan may not recruit another intent's actor, nor an
-                    // army still walking home on a Return fallback (its leg would pin it).
+                    // Audit F7 — a Gather re-plan may not recruit another intent's actor. T07 — an
+                    // army walking home on a completed Raid's Return fallback is NOT another
+                    // intent's actor (the fallback has no commitment protection and no claim); if
+                    // the gather recruits it, its fallback is retired below in this same pass.
                     attackGatherUnavailable = attackGatherUnavailable
-                        ?? AttackGatherUnavailable(state, raidClaims);
+                        ?? new HashSet<int>(raidClaims ?? new HashSet<int>());
                     if (!ResolveAttackIntent(player, snap, intent, intent.Attack,
                             attackGatherUnavailable, out bool captured))
                     {
@@ -782,6 +784,26 @@ namespace Game.Ai.V2
 
                 if (intent.Status == IntentStatus.Active)
                     active.Add(intent);
+            }
+
+            // T07 — a live Attack gather re-planned above may just have recruited the actor of a
+            // completed Raid's Return fallback. Hand it over in this same pass (the rule the
+            // pre-loop "given to gather" retirement applies next pass): the fallback leg is
+            // retired, so the army never has two owners and never walks home instead.
+            var recruitedNow = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            foreach (MissionIntent fallback in state.All.Where(i => i?.Raid != null
+                && i.Raid.CompletedTargetAwaitingFreshDecision && i.Raid.PrimaryArmyId.HasValue
+                && recruitedNow.Contains(i.Raid.PrimaryArmyId.Value)
+                && !dead.Contains(i.IntentKey)).ToList())
+            {
+                dead.Add(fallback.IntentKey);
+                active.Remove(fallback);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {fallback.IntentKey} return "
+                    + $"fallback retired: its army #{fallback.Raid.PrimaryArmyId} joins a live Attack "
+                    + "gather after completing its Raid target");
             }
 
             foreach (MissionIntentKey k in dead)
@@ -1972,19 +1994,6 @@ namespace Game.Ai.V2
         // completed Raid target's Return. When that actor is bound to a new ground-combat
         // operation the fallback leg is retired, never kept as a second owner of the same army.
         // (An ActiveDefence Return is a real, claimed withdrawal — not a fallback.)
-        private static HashSet<int> AttackGatherUnavailable(MissionIntentState state,
-            ISet<int> claims)
-        {
-            var unavailable = claims == null ? new HashSet<int>() : new HashSet<int>(claims);
-            foreach (MissionIntent i in state.All)
-            {
-                if (i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
-                    && i.Raid.PrimaryArmyId.HasValue)
-                    unavailable.Add(i.Raid.PrimaryArmyId.Value);
-            }
-            return unavailable;
-        }
-
         private static void RetireReturnFallbacksForActor(MissionIntentState state,
             int? actorId, string reason)
         {
