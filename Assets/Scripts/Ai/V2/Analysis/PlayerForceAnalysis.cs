@@ -80,11 +80,13 @@ namespace Game.Ai.V2
             return own;
         }
 
+        // Ground force only (user decision 2026-09-30): aviation never joins the ground stack the
+        // Attack threshold is measured on, so it neither delays nor opens the mobilization share.
         private static void Additive(List<UnitData> live, List<CardData> hand,
             List<CardDefinition> deck, out float deployed, out float available)
         {
-            deployed = live.Sum(AiPower.UnitPower);
-            available = AiPower.MilitaryPool(live, hand, deck, groundOnly: false)
+            deployed = live.Where(u => !u.IsAviation).Sum(AiPower.UnitPower);
+            available = AiPower.MilitaryPool(live, hand, deck, groundOnly: true)
                 .Sum(u => u.BasePower);
         }
     }
