@@ -58,6 +58,14 @@ namespace Game.Combat
         private static List<DefenderProfile> CombatantsOf(IEnumerable<DefenderProfile> profiles) =>
             profiles == null ? new List<DefenderProfile>() : profiles.Where(p => p.IsGroundCombatant).ToList();
 
+        // Tactical battle has two different concepts now: actors and targets. Heroes never act,
+        // but while combatants are still fighting they are ordinary attackable board targets.
+        private static List<UnitData> TacticalTargetsOf(IEnumerable<UnitData> units) =>
+            units == null ? new List<UnitData>() : units.Where(u => u != null && (u.IsGroundCombatant || u.IsHero)).ToList();
+
+        private static List<DefenderProfile> TacticalTargetsOf(IEnumerable<DefenderProfile> profiles) =>
+            profiles == null ? new List<DefenderProfile>() : profiles.Where(p => p.IsGroundCombatant || p.IsHero).ToList();
+
         // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
         // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is
         // what a REAL fight on this hex would actually roll against, not just the army's own raw
@@ -210,6 +218,8 @@ namespace Game.Combat
             public IReadOnlyList<UnitTypeTag> TypeTags;
             public int Initiative;
             public float Hp;
+            public bool IsHero;
+            public int HeroFate;
 
             public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
@@ -243,9 +253,11 @@ namespace Game.Combat
                     Defense = p.Defense + extraDefense,
                     Abilities = p.Abilities,
                     TypeTags = p.TypeTags,
-                    Initiative = p.Initiative + initiativeBonus,
+                    Initiative = p.IsHero ? p.Initiative : p.Initiative + initiativeBonus,
                     Hp = hp,
                     MaxHp = Mathf.Max(hp, p.MaxHitPoints),
+                    IsHero = p.IsHero,
+                    HeroFate = p.FateMax,
                 });
             }
             return list;
@@ -261,16 +273,18 @@ namespace Game.Combat
             var list = new List<BattleUnit>();
             if (attacker == null)
                 return list;
-            foreach (UnitData m in CombatantsOf(attacker.Members))
+            foreach (UnitData m in TacticalTargetsOf(attacker.Members))
                 list.Add(new BattleUnit
                 {
                     Attack = m.Attack,
-                    Defense = m.Defense,
+                    Defense = m.IsHero ? Mathf.Max(0, m.FateMax) : m.Defense,
                     Abilities = m.Abilities.ToList(),
                     TypeTags = m.TypeTags.ToList(),
-                    Initiative = m.Initiative + initiativeBonus,
+                    Initiative = m.IsHero ? m.Initiative : m.Initiative + initiativeBonus,
                     Hp = Mathf.Max(1f, m.HitPointsCurrent),
                     MaxHp = Mathf.Max(1f, m.HitPointsMax),
+                    IsHero = m.IsHero,
+                    HeroFate = Mathf.Max(0, m.FateMax),
                 });
             return list;
         }
@@ -340,6 +354,50 @@ namespace Game.Combat
             return false;
         }
 
+        private static bool AnyCombatantAlive(List<BattleUnit> units)
+        {
+            foreach (BattleUnit u in units)
+                if (!u.IsHero && u.Hp > 0f)
+                    return true;
+            return false;
+        }
+
+        private static int FirstLivingHeroIndex(List<BattleUnit> units)
+        {
+            for (int i = 0; i < units.Count; i++)
+                if (units[i].IsHero && units[i].Hp > 0f)
+                    return i;
+            return -1;
+        }
+
+        private static void TransferCommanderAfterHeroDeath(List<BattleUnit> side, int deadHeroIndex,
+            ref int sideFate)
+        {
+            if (deadHeroIndex < 0 || deadHeroIndex >= side.Count || !side[deadHeroIndex].IsHero)
+                return;
+
+            // Only the first living hero is Commander. If another hero was targeted first, command
+            // does not change. If Commander died, remove its Initiative bonus from every actor and
+            // immediately transfer command/Fate to the next living hero.
+            int firstAlive = FirstLivingHeroIndex(side);
+            int oldBonus = side[deadHeroIndex].Initiative;
+            if (firstAlive >= 0 && firstAlive < deadHeroIndex)
+                return;
+
+            int newBonus = firstAlive >= 0 ? side[firstAlive].Initiative : 0;
+            sideFate = firstAlive >= 0 ? side[firstAlive].HeroFate : 0;
+            int delta = newBonus - oldBonus;
+            for (int i = 0; i < side.Count; i++)
+            {
+                BattleUnit u = side[i];
+                if (!u.IsHero)
+                {
+                    u.Initiative += delta;
+                    side[i] = u;
+                }
+            }
+        }
+
         // One full battle: rounds of shuffle-then-sort-by-Initiative turn order, every living
         // actor rolling real dice against a random living enemy, until one side has nobody left or
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
@@ -362,11 +420,11 @@ namespace Game.Combat
                 int bi = b.isAttacker ? attackers[b.index].Initiative : defenders[b.index].Initiative;
                 return bi.CompareTo(ai);
             };
-            for (int round = 0; round < MaxSimulatedRounds && AnyAlive(attackers) && AnyAlive(defenders); round++)
+            for (int round = 0; round < MaxSimulatedRounds && AnyCombatantAlive(attackers) && AnyCombatantAlive(defenders); round++)
             {
                 order.Clear();
-                for (int i = 0; i < attackers.Count; i++) order.Add((true, i));
-                for (int i = 0; i < defenders.Count; i++) order.Add((false, i));
+                for (int i = 0; i < attackers.Count; i++) if (!attackers[i].IsHero) order.Add((true, i));
+                for (int i = 0; i < defenders.Count; i++) if (!defenders[i].IsHero) order.Add((false, i));
 
                 // Shuffle first (random Initiative tie-break, same reasoning BattleTurnOrder's own
                 // class comment gives for why equal Initiative shouldn't always resolve the same
@@ -429,6 +487,13 @@ namespace Game.Combat
                     }
 
                     enemyList[targetIndex] = target;
+                    if (target.IsHero && target.Hp <= 0f)
+                    {
+                        if (turn.isAttacker)
+                            TransferCommanderAfterHeroDeath(defenders, targetIndex, ref defenderFate);
+                        else
+                            TransferCommanderAfterHeroDeath(attackers, targetIndex, ref attackerFate);
+                    }
 
                     // UnitAbilities.Splash / Scorcher — this roster model has no positions, so
                     // "neighbours" is approximated as random OTHER living enemies. No-op for an
@@ -440,8 +505,8 @@ namespace Game.Combat
                 }
             }
 
-            bool attackersAlive = AnyAlive(attackers);
-            bool defendersAlive = AnyAlive(defenders);
+            bool attackersAlive = AnyCombatantAlive(attackers);
+            bool defendersAlive = AnyCombatantAlive(defenders);
             if (attackersAlive && !defendersAlive) return 1;
             if (defendersAlive && !attackersAlive) return -1;
             return 0;
@@ -471,7 +536,7 @@ namespace Game.Combat
         public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
-                unit.HitPointsMax, unit.IsGroundCombatant);
+                unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax);
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -513,19 +578,19 @@ namespace Game.Combat
             float hexDefenseBonus = 0f, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null)
         {
-            enemyUnits = CombatantsOf(enemyUnits);
-            if (enemyUnits.Count == 0)
+            enemyUnits = TacticalTargetsOf(enemyUnits);
+            if (!enemyUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
             SideCommander attackerCommander = SideCommander.Of(attacker?.Commander);
             List<BattleUnit> baseline = ToAttackerBattleUnits(attacker, attackerCommander.Initiative);
-            if (baseline.Count == 0)
+            if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
             // Seeded off the same FromLiveUnit-derived profile the live roster represents — real
             // MaxHp still comes from ToAttackerBattleUnits above (a wounded attacker's true max is
             // not recoverable from DefenderProfile.HitPoints, which only ever carries CURRENT hp).
-            var seedProfiles = CombatantsOf(attacker.Members).Select(FromLiveUnit).ToList();
+            var seedProfiles = TacticalTargetsOf(attacker.Members).Select(FromLiveUnit).ToList();
             int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus,
                 attackerCommander, defenderCommander);
             return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed,
@@ -542,9 +607,9 @@ namespace Game.Combat
             SideCommander attackerCommander = default, SideCommander defenderCommander = default,
             AbilityMagnitudes? magnitudes = null)
         {
-            attackerUnits = CombatantsOf(attackerUnits);
-            defenderUnits = CombatantsOf(defenderUnits);
-            if (defenderUnits.Count == 0)
+            attackerUnits = TacticalTargetsOf(attackerUnits);
+            defenderUnits = TacticalTargetsOf(defenderUnits);
+            if (!defenderUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
@@ -831,14 +896,18 @@ namespace Game.Combat
             // only ever describe fighting bodies (remembered enemies, cards, projections) leave the
             // default true. Every WorthIt estimator filters on it — see CombatantsOf.
             public readonly bool IsGroundCombatant;
+            public readonly bool IsHero;
+            public readonly int FateMax;
 
             public DefenderProfile(float defense, bool hasCeramicArmor, IReadOnlyList<UnitTypeTag> typeTags = null,
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
                 IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
-                bool isGroundCombatant = true)
+                bool isGroundCombatant = true, bool isHero = false, int fateMax = 0)
             {
                 IsGroundCombatant = isGroundCombatant;
-                Defense = defense;
+                IsHero = isHero;
+                FateMax = Mathf.Max(0, fateMax);
+                Defense = isHero ? Mathf.Max(0, fateMax) : defense;
                 HasCeramicArmor = hasCeramicArmor;
                 TypeTags = typeTags ?? System.Array.Empty<UnitTypeTag>();
                 Attack = attack;
