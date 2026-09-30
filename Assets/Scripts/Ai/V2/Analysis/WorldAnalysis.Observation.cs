@@ -328,7 +328,9 @@ namespace Game.Ai.V2
             return !ak.SequenceEqual(bk);
         }
 
-        private static string ThreatKey(AssetThreatSnapshot t)
+        // The one identity of an asset threat: the Threat invalidation above and the Aggression
+        // admission fingerprint (Pipeline.AggressionAdmissionFingerprint) compare the same key.
+        internal static string ThreatKey(AssetThreatSnapshot t)
         {
             if (t == null) return "-";
             int contactId = t.Contact?.Army?.ArmyId ?? 0;

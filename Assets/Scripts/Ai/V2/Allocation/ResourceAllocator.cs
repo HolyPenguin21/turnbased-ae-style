@@ -370,6 +370,12 @@ namespace Game.Ai.V2
         }
         public void StartCooldown(StableMissionKey k, int untilTurn) =>
             StartCooldown(k, Mathf.Max(0, untilTurn - AiConfigV2.allocatorRejectCooldownTurns), untilTurn, "LegacySeed");
+        // Live cooldown keys at `turn`, ordered — an admission-fingerprint input (a cooldown
+        // started mid-turn blocks a Raid target the Aggression demand would otherwise name).
+        public string CooldownDigest(int turn) => string.Join(";", _cooldowns
+            .Where(kv => turn <= kv.Value.UntilTurn)
+            .Select(kv => kv.Key.ToString())
+            .OrderBy(x => x, System.StringComparer.Ordinal));
         public void PurgeExpired(int turn)
         {
             var dead = _cooldowns.Where(kv => kv.Value.UntilTurn < turn).Select(kv => kv.Key).ToList();

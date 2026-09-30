@@ -254,6 +254,9 @@ namespace Game.Ai.V2
                         return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
                             root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand, player,
                             root, ctx);
+                    // T03 — Aggression carries its own inputs (AiStrategyV2Pipeline.AggressionAdmission.cs).
+                    if (axis == DesireAxis.Aggression)
+                        return AggressionAdmissionFingerprint(snapshot, player, hand?.MutationVersion ?? -1);
                     // Economy only from here on (Development returned above). The key carries what
                     // Economy's decision reads and nothing that ticks on every executed step: no
                     // global state version, and position/movement/activation only for armies the
@@ -318,7 +321,8 @@ namespace Game.Ai.V2
                 }
 
                 foreach (DesireAxis axis in demandAxes.Where(a =>
-                             a == DesireAxis.Economy || a == DesireAxis.Development))
+                             a == DesireAxis.Economy || a == DesireAxis.Development
+                             || a == DesireAxis.Aggression))
                     lastStrategicAdmissionFingerprint[axis] =
                         StrategicAdmissionFingerprint(axis);
 
@@ -366,9 +370,14 @@ namespace Game.Ai.V2
                     operationalReasons = pending.Reasons & operationalMask;
                     strategicReasons = StrategicInvalidationReason.None;
                     dirtyStrategicAxes = new HashSet<DesireAxis>();
+                    // T03 — Aggression's shortages (Raid/Attack reinforcement, the Attack preparation
+                    // host, ActiveDefence) re-enter on its existing mask like Economy/Development:
+                    // otherwise fresh objectives and admission run beside a stale capability
+                    // request for the rest of the turn. Its fingerprint drops re-entries whose
+                    // inputs did not change (a scout's step, a walk that moved no demand input).
                     foreach (DesireAxis axis in new[]
                              {
-                                 DesireAxis.Economy, DesireAxis.Development,
+                                 DesireAxis.Economy, DesireAxis.Development, DesireAxis.Aggression,
                              })
                     {
                         StrategicInvalidationReason axisReasons = pending.Reasons
@@ -430,7 +439,12 @@ namespace Game.Ai.V2
                             lastStrategicAdmissionFingerprint, axis, fingerprint);
                         if (unchanged)
                             AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission skipped "
-                                + $"axis={axis} reason=settled_state_unchanged fingerprint={fingerprint}");
+                                + $"axis={axis} reason=settled_state_unchanged fingerprint="
+                                // Aggression's key lists every army/intent/threat and is checked
+                                // after almost every step: log its digest, not the whole key.
+                                + (axis == DesireAxis.Aggression
+                                    ? $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}"
+                                    : fingerprint));
                         return unchanged;
                     });
                     if (dirtyAxes.Count == 0)
