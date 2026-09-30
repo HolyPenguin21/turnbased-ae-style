@@ -76,6 +76,17 @@ namespace Game.EditorTests
                 Snapshot(deck: new[] { AttackEquipment(16) }), Wall, 0f, out _), Is.False, "equipment");
         }
 
+        // The live hand may already have lost a card whose unit the frozen Armies do not show yet:
+        // the proof reads the frozen PoolCards, never the live lists.
+        [Test]
+        public void FrozenPoolCards_WinOverLiveHand()
+        {
+            WorldSnapshot snap = Snapshot();
+            snap.Self.PoolCards = new[] { (UnitCard(20), (CardDefinition)null, true) };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(
+                snap, Wall, 0f, out _), Is.False);
+        }
+
         [Test]
         public void NoGenerationBound_ProvesNothing()
         {

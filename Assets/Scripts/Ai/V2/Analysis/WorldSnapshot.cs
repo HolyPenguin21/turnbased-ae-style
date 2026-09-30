@@ -498,6 +498,11 @@ namespace Game.Ai.V2
         public int ActionPoints;
 
         public IReadOnlyList<CardData> Hand;
+        // T06 — hand (card + attached equipment) and remaining deck FROZEN at build time, coherent
+        // with the frozen Armies above. Hand/Deck are the live AiHandData lists: a card played
+        // after the build is gone from them while its unit is not yet in Armies, so a known-pool
+        // proof must never read them directly. Null in hand-built test snapshots (then Hand/Deck).
+        public IReadOnlyList<(CardDefinition Card, CardDefinition Equipment, bool InHand)> PoolCards;
         public IReadOnlyList<CardDefinition> Deck;   // still-drawable pool (multiset, order unknown)
         public int HandCapacity;
         public bool HasFreeHandSlot;
@@ -580,7 +585,9 @@ namespace Game.Ai.V2
     public sealed class OpponentSnapshot
     {
         public PlayerSetupData Player;
-        public ResourceBundle PerTurnIncome;
+        // T08 — no PerTurnIncome here: an opponent's true income is computed from its facility
+        // cards. Opponent income is known only through ObservedOpponentIncomeFloor (observed
+        // per-hex collection).
         public ResourceBundle Stockpile;
         public int ArmyCount;
         public float ArmyPower;

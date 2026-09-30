@@ -49,11 +49,8 @@ namespace Game.EditorTests
                 {
                     Opponents = new[]
                     {
-                        new OpponentSnapshot
-                        {
-                            Player = opponent,
-                            PerTurnIncome = new ResourceBundle { Energy = 99f },
-                        },
+                        // T08 — OpponentSnapshot carries no true income at all.
+                        new OpponentSnapshot { Player = opponent },
                     },
                 },
             };
@@ -76,8 +73,9 @@ namespace Game.EditorTests
                 },
             };
 
+            // T08 — the rival's true income is not in the snapshot at all (no
+            // OpponentSnapshot.PerTurnIncome); with nothing observed the floor stays zero.
             float before = ObservedIncome(snap, opponent, ResourceType.Energy);
-            snap.TrueWorld.Opponents[0].PerTurnIncome = new ResourceBundle { Energy = 1000f };
             float after = ObservedIncome(snap, opponent, ResourceType.Energy);
 
             Assert.That(before, Is.Zero);
@@ -97,9 +95,8 @@ namespace Game.EditorTests
             float before = ObservedIncome(snap, opponent, ResourceType.Energy);
             Assert.That(before, Is.EqualTo(3f));
 
-            // Simulate a rival's unobserved expansion: TrueWorld changes, the observer's
-            // frozen knowledge does not. The lower bound must stay unchanged.
-            snap.TrueWorld.Opponents[0].PerTurnIncome = new ResourceBundle { Energy = 800f };
+            // A rival's unobserved expansion cannot reach the snapshot (T08: no true income in
+            // OpponentSnapshot); only re-observation below changes the floor.
             Assert.That(ObservedIncome(snap, opponent, ResourceType.Energy), Is.EqualTo(before));
 
             // Recon actually observes the resource-site change: the next snapshot has an

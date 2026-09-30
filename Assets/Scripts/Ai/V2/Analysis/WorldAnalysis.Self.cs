@@ -83,6 +83,10 @@ namespace Game.Ai.V2
 
             self.Hand = hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>();
             self.Deck = hand?.RemainingDeck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>();
+            self.PoolCards = self.Hand.Where(c => c?.Definition != null)
+                .Select(c => (c.Definition, c.Equipment, true))
+                .Concat(self.Deck.Where(d => d != null).Select(d => (d, (CardDefinition)null, false)))
+                .ToList();
             self.HandCapacity = hand?.Capacity ?? 0;
             self.HasFreeHandSlot = hand?.HasFreeSlot ?? false;
 

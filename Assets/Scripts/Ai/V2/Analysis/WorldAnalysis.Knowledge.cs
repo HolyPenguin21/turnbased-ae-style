@@ -97,10 +97,7 @@ namespace Game.Ai.V2
                         ArmyPower = snaps.Sum(s => s.EffectiveArmyPower),
                     };
                     foreach (ResourceType t in ResourceBundle.All)
-                    {
-                        opp.PerTurnIncome.Add(t, IncomeProjection.IncomeFor(p, t, ctx.Map));
                         opp.Stockpile.Add(t, pr != null ? pr.GetResource(t) : 0);
-                    }
                     opponents.Add(opp);
                 }
             }

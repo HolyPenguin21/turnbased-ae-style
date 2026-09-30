@@ -150,25 +150,24 @@ namespace Game.Ai.V2
                 foreach (WorthIt.DefenderProfile m in a.Members)
                     if (m.IsGroundCombatant) { attackers.Add(m); map++; }
             }
-            foreach (CardData c in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            // The frozen card view (SelfSnapshot.PoolCards), coherent with the frozen Armies:
+            // the live Hand/Deck lists may already miss a card whose unit Armies does not show yet.
+            IEnumerable<(CardDefinition Card, CardDefinition Equipment, bool InHand)> cards =
+                snap.Self.PoolCards
+                ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                    .Where(c => c?.Definition != null)
+                    .Select(c => (c.Definition, c.Equipment, true))
+                    .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
+                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, false)));
+            foreach ((CardDefinition d, CardDefinition equipment, bool inHand) in cards)
             {
-                CardDefinition d = c?.Definition;
-                if (d == null) continue;
                 Grant(d);
-                if (c.Equipment != null) Grant(c.Equipment);
+                if (equipment != null) Grant(equipment);
                 if (d.cardType != CardType.Unit) continue;
-                attackers.Add(c.Equipment?.equipment != null
-                    ? Equipped(AiPower.ToDefenderProfile(d), c.Equipment.equipment)
+                attackers.Add(equipment?.equipment != null
+                    ? Equipped(AiPower.ToDefenderProfile(d), equipment.equipment)
                     : AiPower.ToDefenderProfile(d));
-                hand++;
-            }
-            foreach (CardDefinition d in snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
-            {
-                if (d == null) continue;
-                Grant(d);
-                if (d.cardType != CardType.Unit) continue;
-                attackers.Add(AiPower.ToDefenderProfile(d));
-                deck++;
+                if (inHand) hand++; else deck++;
             }
             DevelopmentReadiness dev = snap.Development;
             bool bounded = dev != null && dev.CatalogKnown;
