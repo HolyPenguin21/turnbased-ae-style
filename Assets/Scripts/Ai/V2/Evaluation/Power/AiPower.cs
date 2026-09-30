@@ -300,6 +300,33 @@ namespace Game.Ai.V2
 
         // ---- potentials ------------------------------------------------------------------
 
+        // Shared live/card pool for Attack and the player data panel. Preserve Analysis's
+        // map, hand bodies, deck bodies, hand heroes, deck heroes ordering for greedy ties.
+        public static List<PowerUnit> MilitaryPool(IEnumerable<UnitData> live,
+            IEnumerable<CardData> hand, IEnumerable<CardDefinition> deck, bool groundOnly = true)
+        {
+            var result = new List<PowerUnit>();
+            if (live != null)
+                foreach (UnitData unit in live)
+                    if (unit != null && !unit.IsPrisoner && (!groundOnly || !unit.IsAviation))
+                        result.Add(ToPowerUnit(unit));
+
+            List<CardDefinition> handCards = hand?.Select(c => c?.Definition).ToList()
+                ?? new List<CardDefinition>();
+            List<CardDefinition> deckCards = deck?.ToList() ?? new List<CardDefinition>();
+            void Add(IEnumerable<CardDefinition> cards, CardType kind)
+            {
+                foreach (CardDefinition card in cards)
+                    if (card != null && card.cardType == kind && (!groundOnly || !card.isAviation))
+                        result.Add(ToPowerUnit(card));
+            }
+            Add(handCards, CardType.Unit);
+            Add(deckCards, CardType.Unit);
+            Add(handCards, CardType.Hero);
+            Add(deckCards, CardType.Hero);
+            return result;
+        }
+
         // Composition-aware greedy stack build. Repeatedly adds whichever remaining candidate
         // maximises the resulting EffectiveArmyPower — and EffectiveArmyPower already folds in the
         // composition multiplier, so an all-one-type stack naturally pulls in a different type /
