@@ -45,6 +45,9 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.AirSupport:
                     return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
                 // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
+                // T01 — a host-side preparation step has no support; it binds / fills the host.
+                case AttackMissionPhase.Gather when target.PreparationStep != AttackPreparationStep.None:
+                    return ProvisionPreparation(player, root, session, funded, target, key, eps);
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
                     return ProvisionReinforcement(player, root, ctx, session, funded, target, key, eps);
@@ -176,6 +179,114 @@ namespace Game.Ai.V2
                 ClaimedAp = assault.ActualAp,
                 StealthApReserved = false,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
+        }
+
+        // T01 — a preparation host step. Re-validates the frozen decision against the live world and
+        // this cycle's claims, prices it (2 AP only when a container is really created, 0 for a
+        // reuse or a same-hex join) and pins the exact transfers. No mutation here: the step is
+        // Execution's one canonical action (AttackExecutor.RunPreparationStep).
+        private static ProvisioningResult ProvisionPreparation(PlayerSetupData player, PlayerRoot root,
+            ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key, float eps)
+        {
+            WorldSnapshot snap = session.Snapshot;
+            AttackObjectiveEvaluator.AttackTargetStatus status =
+                AttackObjectiveEvaluator.EvaluateTarget(snap, target.Target);
+            if (status == AttackObjectiveEvaluator.AttackTargetStatus.Captured)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    $"attack target {target.Target.DiagnosticLabel} is already ours"));
+            if (status == AttackObjectiveEvaluator.AttackTargetStatus.Invalidated)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Attack structure"));
+
+            HexCoord hex = target.DestinationHex;
+            ArmyData host = null;
+            if (target.PrimaryArmyId.HasValue)
+            {
+                host = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
+                if (host == null || host.Owner != player || host.IsGarrison || host.IsPrison
+                    || host.IsAirfield || AviationRules.IsAirArmy(host) || !host.Hex.Equals(hex))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"attack preparation host #{target.PrimaryArmyId.Value} is gone, moved or no "
+                        + "longer an own ground field container"));
+                if (session.ClaimedArmyIds.Contains(host.Id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack preparation host #{host.Id} was claimed by an earlier mission this cycle"));
+            }
+            else
+            {
+                // A container is created only on the player's OWN starting Citadel, and never
+                // beside an empty shell that could be reused instead.
+                if (snap?.Self == null || !snap.Self.HoldsStartingCitadel || !hex.Equals(snap.Self.Citadel))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"attack preparation: ({hex.Q},{hex.R}) is not the held own starting Citadel"));
+                ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, null);
+                if (shell != null && !session.ClaimedArmyIds.Contains(shell.Id))
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        $"attack preparation: reusable shell #{shell.Id} stands on the Citadel; reuse it "
+                        + "instead of creating a container"));
+            }
+
+            HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
+            if (host != null)
+                excluded.Remove(host.Id);
+            ArmyData planned = host;
+            if (planned == null)
+            {
+                planned = ArmyData.CreateVisualSnapshot();
+                planned.Hex = hex;
+                planned.Owner = player;
+                planned.IsGarrison = false;
+            }
+            GroundCombatAssemblyPlan assembly = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                snap, planned, excluded, AttackObjectiveEvaluator.KnownSiteOpposition(snap, target.Target.Hex),
+                target.DefenderHexDefenseBonus);
+            if (!assembly.Feasible)
+                assembly = null;
+            if (target.PreparationStep == AttackPreparationStep.Assemble && assembly == null)
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                    $"attack preparation host #{host?.Id}: no legal same-hex body raises it any more"));
+            if (assembly != null
+                && assembly.Transfers.Any(t => session.ClaimedArmyIds.Contains(t.DonorArmyId)))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "attack preparation donor was claimed by an earlier mission this cycle"));
+
+            float ap = host == null ? ArmyActions.CreateArmyApCost : 0f;
+            float envelope = funded.Tentative.Ap;
+            if (ap > envelope + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    $"attack preparation needs {N(ap)} AP to create its host, envelope is {N(envelope)}"));
+            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            if (ap > turnApLeft + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: attack preparation needs {N(ap)}, {N(turnApLeft)} left"));
+
+            if (host != null)
+                session.ClaimedArmyIds.Add(host.Id);
+            if (assembly != null)
+                foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
+                    session.ClaimedArmyIds.Add(t.DonorArmyId);
+
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"PREPARATION {target.PreparationStep} host "
+                + $"{(host != null ? $"#{host.Id} ({host.Members.Count}/{host.Capacity})" : "new")} at "
+                + $"({hex.Q},{hex.R}) ap {N(ap)} transfers="
+                + (assembly == null ? "none"
+                    : string.Join(",", assembly.Transfers.Select(t => $"{t.Unit?.Name}<-#{t.DonorArmyId}"))));
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = host?.Id ?? -1,
+                FocusHex = hex,
+                ExecutionHex = hex,
+                AttackTarget = target,
+                AttackPreparationAssembly = assembly,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+                StealthApReserved = false,
+            });
         }
 
         private static ProvisioningResult ProvisionWalkHome(PlayerSetupData player, PlayerRoot root,

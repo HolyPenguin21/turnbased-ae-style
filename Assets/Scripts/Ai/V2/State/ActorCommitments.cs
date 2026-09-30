@@ -38,6 +38,13 @@ namespace Game.Ai.V2
 
         public void Claim(int armyId) => _claimedArmyIds.Add(armyId);
 
+        // T01 — hosts of a live Attack mobilization preparation (AttackIntent.Preparation, Gather).
+        // Claimed like every other operation actor; kept separately only so the ONE pinned card
+        // delivery may still reach this exact claimed (possibly empty) container
+        // (PlacementSelector, MaterializationDeliveryPolicy). Never a second occupancy truth.
+        private readonly HashSet<int> _preparationHostIds = new HashSet<int>();
+        public bool IsPreparationHost(int armyId) => _preparationHostIds.Contains(armyId);
+
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
             WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
@@ -155,11 +162,21 @@ namespace Game.Ai.V2
                 if (i.Kind == MissionKind.Attack)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;
+                    // T01 — a preparation host keeps its role while it is still an own ground field
+                    // container, weak, hero-only or empty: Housekeeping must not fold it away and
+                    // no other lane may take it; the claim is released with the intent.
+                    bool preparing = attack != null && attack.Preparation
+                        && attack.Phase == AttackMissionPhase.Gather;
                     bool valid = attack != null && (attack.Phase == AttackMissionPhase.RecoveryReturn
                         ? GroundContainerStillValid(actorId, snap)
+                        : preparing ? PreparationHostStillValid(actorId, snap)
                         : GroundCombatActorStillValid(actorId, snap, out _));
                     if (valid)
+                    {
                         c.Claim(actorId);
+                        if (preparing)
+                            c._preparationHostIds.Add(actorId);
+                    }
                     continue;
                 }
 
@@ -255,6 +272,22 @@ namespace Game.Ai.V2
                 return false;
             }
             return true;
+        }
+
+        // T01 — the one validity rule of a preparation host (commitments, Continuity): an own
+        // ground FIELD container — never a garrison, prison, airfield or air army — whose roster
+        // may be empty (a claimed shell) or weak. Not a combat-eligibility test.
+        internal static bool PreparationHostStillValid(int armyId, WorldSnapshot snap)
+        {
+            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == armyId);
+            if (actor == null || actor.Owner == null || actor.IsPrison || actor.IsAir
+                || actor.IsGarrison)
+                return false;
+            ArmyData live = ArmyRegistry.AllForOwner(actor.Owner)
+                .FirstOrDefault(a => a != null && a.Id == armyId);
+            return live != null && !live.IsPrison && !live.IsGarrison && !live.IsAirfield
+                && !live.IsAirArmy;
         }
 
         // A support/return actor only has to be a live, non-air, non-empty ground container —

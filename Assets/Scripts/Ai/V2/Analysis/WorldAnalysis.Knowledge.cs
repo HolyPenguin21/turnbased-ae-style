@@ -170,16 +170,12 @@ namespace Game.Ai.V2
         internal static bool TryEnemyCitadelAnchor(WorldSnapshot snap, out HexCoord anchor)
         {
             anchor = default;
-            if (snap?.Self == null || snap.TrueWorld == null)
+            if (snap?.Self == null)
                 return false;
             HexCoord home = snap.Self.Citadel;
             bool found = false;
-            foreach (OpponentSnapshot o in snap.TrueWorld.Opponents ?? new List<OpponentSnapshot>())
+            foreach (var (citadel, _) in SanctionedEnemyCitadels(snap))
             {
-                if (o?.Player == null || o.Player.IsEliminated
-                    || !o.Player.CitadelHexQ.HasValue || !o.Player.CitadelHexR.HasValue)
-                    continue;
-                var citadel = new HexCoord(o.Player.CitadelHexQ.Value, o.Player.CitadelHexR.Value);
                 if (!found || HexGridMath.Distance(home, citadel) < HexGridMath.Distance(home, anchor))
                 {
                     anchor = citadel;
@@ -188,6 +184,32 @@ namespace Game.Ai.V2
             }
             return found;
         }
+
+        // The owner-approved knowledge exception, in one place: every live opponent's STARTING
+        // Citadel coordinates together with that opponent (its original owner). Nothing else
+        // crosses the fog here — not its defenders, current owner, facilities or upgrades.
+        // Attack reads it for location-only objectives (AttackObjectiveEvaluator), the aviation
+        // sweep and the strike force's observation need through TryEnemyCitadelAnchor above.
+        internal static IEnumerable<(HexCoord Hex, PlayerSetupData Owner)> SanctionedEnemyCitadels(
+            WorldSnapshot snap)
+        {
+            if (snap?.TrueWorld?.Opponents == null)
+                yield break;
+            foreach (OpponentSnapshot o in snap.TrueWorld.Opponents)
+                if (o?.Player != null && o.Player != snap.Observer
+                    && IsSanctionedEnemyCitadel(o.Player, CitadelOf(o.Player)))
+                    yield return (CitadelOf(o.Player).Value, o.Player);
+        }
+
+        // Is `hex` the sanctioned starting-Citadel location of `owner` (a live, non-neutral
+        // opponent)? The live and snapshot Attack target checks both ask exactly this.
+        internal static bool IsSanctionedEnemyCitadel(PlayerSetupData owner, HexCoord? hex) =>
+            owner != null && !owner.IsNeutral && !owner.IsEliminated && hex.HasValue
+            && CitadelOf(owner) is HexCoord citadel && citadel.Equals(hex.Value);
+
+        private static HexCoord? CitadelOf(PlayerSetupData p) =>
+            p != null && p.CitadelHexQ.HasValue && p.CitadelHexR.HasValue
+                ? new HexCoord(p.CitadelHexQ.Value, p.CitadelHexR.Value) : (HexCoord?)null;
 
         internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
         {

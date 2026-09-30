@@ -30,6 +30,8 @@ namespace Game.Ai.V2
             // into an existing one (see AxisDemand.CapabilityKind.CollectorCapability).
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability
                 || demand.Capability == CapabilityKind.CollectorCapability;
+            // T01 — a live Attack preparation's claimed empty host is offered only to its own demand.
+            int? preparationShell = demand.AttackFistIsPreparationHost ? demand.AttackFistArmyId : null;
             Game.Economy.ResourceType? requiredResourceType = demand.EconomyResourceType;
             bool Excluded(CardData c) => c != null
                 && ((excludeCards != null && excludeCards.Contains(c))
@@ -61,7 +63,8 @@ namespace Game.Ai.V2
                 if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability, requiredResourceType)
                     && MaterializationChainMatching.MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
                 {
-                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
+                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly,
+                            preparationShellId: preparationShell))
                         candidates.Add(MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct, demand,
                             card, i, null, -1, opt, baseAbilities));
                 }
@@ -81,7 +84,8 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
-                        foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
+                        foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly,
+                            preparationShellId: preparationShell))
                             candidates.Add(MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy, demand,
                                 card, i, eq, j, opt, projected));
                     }
@@ -108,7 +112,8 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
-                        foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly))
+                        foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly,
+                            preparationShellId: preparationShell))
                             candidates.Add(MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
                                 demand, g, baseInHand: host, baseIdx: i, generatedIsEquipment: true, opt: opt,
                                 projected: projected));
@@ -121,7 +126,8 @@ namespace Game.Ai.V2
                         || !MaterializationChainMatching.MatchesCapabilityDef(gd, demand.Capability))
                         continue;
                     IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);
-                    List<PlacementOption> genOpts = PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly);
+                    List<PlacementOption> genOpts = PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly,
+                            preparationShellId: preparationShell);
                     if (genOpts.Count == 0) continue;
 
                     if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability, requiredResourceType)

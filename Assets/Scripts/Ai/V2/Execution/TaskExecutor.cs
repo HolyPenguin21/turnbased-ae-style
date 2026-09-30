@@ -281,6 +281,17 @@ namespace Game.Ai.V2
                     ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
             }
+            // T01 — an Attack preparation host step (possibly creating its own container) runs
+            // before the mover is resolved, exactly like the deferred Economy extraction above.
+            if (AttackExecutor.TryRunPreparationStep(player, ctx, pm, result, snapshot))
+            {
+                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
             if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
                     setNeedsReplan: singleStepOnly, logMoverGone: !singleStepOnly,
                     singleStepOnly ? "mover gone before atomic execution" : "mover gone before execution",

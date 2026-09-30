@@ -474,6 +474,24 @@ namespace Game.Ai
                 OnVisibilityChanged(player);
         }
 
+        private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> RefutedStartingCitadels =
+            new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
+
+        private static HashSet<HexCoord> RefutedStartingCitadelsFor(PlayerSetupData player)
+        {
+            if (!RefutedStartingCitadels.TryGetValue(player, out HashSet<HexCoord> set))
+                RefutedStartingCitadels[player] = set = new HashSet<HexCoord>();
+            return set;
+        }
+
+        private static bool IsOpponentStartingCitadel(PlayerSetupData player, HexCoord hex)
+        {
+            foreach (PlayerSetupData p in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+                if (p != null && p != player && p.CitadelHexQ == hex.Q && p.CitadelHexR == hex.R)
+                    return true;
+            return false;
+        }
+
         public static void Clear()
         {
             // A reused player/snapshot must never see the same revision after a session reset.
@@ -486,6 +504,7 @@ namespace Game.Ai
             EnemySightings.Clear();
             KnownEventGuards.Clear();
             KnownBuildings.Clear();
+            RefutedStartingCitadels.Clear();
             ScoutDangerZones.Clear();
             AirReconTargets.Clear();
             RaidPlanRejected.Clear();
@@ -977,6 +996,14 @@ namespace Game.Ai
                         buildingsChanged = true;
                         knowledgeChanged = true;
                     }
+                    // T01 — the first honest look at an opponent's sanctioned starting-Citadel
+                    // coordinates finding NO structure refutes the location-only Attack objective
+                    // (AttackObjectiveEvaluator reads MapKnowledge.EverSeenHexSet). Nothing in the
+                    // memory itself changes then, so without this revision the snapshot would keep
+                    // its stale ever-seen set for the rest of the turn. Once per hex per session.
+                    else if (IsOpponentStartingCitadel(player, hex)
+                        && RefutedStartingCitadelsFor(player).Add(hex))
+                        knowledgeChanged = true;
                     buildings.Remove(hex);
                 }
             }

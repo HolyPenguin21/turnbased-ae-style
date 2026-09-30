@@ -879,6 +879,7 @@ namespace Game.Ai.V2
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 AttackFistArmyId = d.AttackFistArmyId,
+                AttackFistIsPreparationHost = d.AttackFistIsPreparationHost,
                 DeliveryShape = d.DeliveryShape,
                 ConsumerIntentKey = d.ConsumerIntentKey,
                 Explain = d.Explain,

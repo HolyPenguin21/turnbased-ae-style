@@ -39,6 +39,23 @@ namespace Game.Ai.V2
         AirSupport = 6,
     }
 
+    // T01 — the mobilization preparation inside the ONE Gather phase (no new phase, no second
+    // assembly system). A preparation Gather may run around a weak, hero-only or still-empty own
+    // field host at the own starting Citadel until the host strictly clears the dynamic 80% peak;
+    // its ordinary support legs stay plain Gather legs. The two steps below have no walking
+    // support of their own:
+    //   CreateHost — bind the one preparation container: reuse an empty shell standing on the
+    //                own Citadel, else ArmyActions.CreateArmyWithMember (first legal same-hex
+    //                member), else ArmyActions.CreateArmy (an empty shell). 2 AP when created.
+    //   Assemble   — same-hex bodies/hero from legal donors (garrison floors and operators kept)
+    //                join the host through the canonical transfer, 0 AP.
+    public enum AttackPreparationStep
+    {
+        None = 0,
+        CreateHost = 1,
+        Assemble = 2,
+    }
+
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
     // Provisioning/Execution stages read and never re-derive — no target re-pick, no base re-pick,
     // no strategic re-scoring below this point.
@@ -72,6 +89,10 @@ namespace Game.Ai.V2
         // other field of this leg instead of reaching into intent state mid-step. 0 (the struct
         // default) means "never": turn numbering starts at 1.
         public int OpportunisticStrikeTurn;
+        // T01 — every leg of a mobilization preparation carries it (AttackIntent.Preparation);
+        // PreparationStep names the host-side step, None for an ordinary support leg.
+        public bool Preparation;
+        public AttackPreparationStep PreparationStep;
     }
 
     // ===========================================================================================
@@ -90,7 +111,10 @@ namespace Game.Ai.V2
     //  Knowledge boundary (§19/§20/§65): targets come ONLY from snap.Known.Buildings — this player's
     //  own honest structural memory. BuildingRegistry, TrueWorld and global ArmyRegistry sweeps are
     //  never read here; a Base nobody has ever seen is not a target, and a Base last seen under Red
-    //  stays a Red target until it is genuinely re-observed.
+    //  stays a Red target until it is genuinely re-observed. The one sanctioned exception (T01):
+    //  every live opponent's STARTING Citadel coordinates + original owner
+    //  (WorldAnalysis.SanctionedEnemyCitadels) are a location-only objective until that hex is
+    //  first observed; its defenders stay unknown and it never becomes a sighting or a threat.
     // ===========================================================================================
     public sealed class AttackObjective
     {
@@ -109,6 +133,11 @@ namespace Game.Ai.V2
         public int IntelAgeTurns;
         public TaskScore TaskScore;
         public float BaseValue => TaskScore.Value;
+        // T01 — a sanctioned location-only starting Citadel: its coordinates and original owner
+        // are allowed knowledge, but the site itself was never observed. Opposition is UNKNOWN
+        // (not "observed empty"): preparation may aim at it, a march may not start until Recon
+        // has actually seen the site (ObservationNeeds publishes it).
+        public bool LocationOnly;
 
         public HexCoord Hex => Target.Hex;
         public string ObjectiveId => $"Attack#{Target.DiagnosticLabel}";
@@ -155,6 +184,29 @@ namespace Game.Ai.V2
                     + $"defenderPower={F(objective.TargetPower)} intelAge={objective.IntelAgeTurns}");
             }
 
+            // T01 — the sanctioned starting-Citadel coordinates (WorldAnalysis.SanctionedEnemyCitadels)
+            // are an Attack objective before anyone has looked at them. Honest knowledge always
+            // wins: a remembered record is the objective above, and a hex this player has EVER seen
+            // without such a record was observed destroyed / captured / absent — the coordinates
+            // never resurrect it. Location-only knowledge never becomes a defender package, a
+            // sighting or a threat: Known.Buildings, Threat and ForceNeed never see it.
+            foreach (var (citadelHex, owner) in WorldAnalysis.SanctionedEnemyCitadels(snap))
+            {
+                if (buildings.Any(b => b.Hex.Equals(citadelHex))
+                    || (snap.Self.BaseHexes != null && snap.Self.BaseHexes.Contains(citadelHex))
+                    || EverObserved(snap, citadelHex))
+                    continue;
+                AttackObjective located = Build(snap, player,
+                    new AiMapMemory.KnownBuilding(citadelHex, owner, isStartingCitadel: true,
+                        facilityAbilities: null),
+                    hasDirection, directionAnchor, directionTarget);
+                located.LocationOnly = true;
+                result.Add(located);
+                AiDebugLog.WriteDeduped(located.Target.DiagnosticLabel,
+                    $"[AI][V2][Attack][Objective] decision=ACCEPT target={located.Target.DiagnosticLabel} "
+                    + $"task={F(located.BaseValue)} knowledge=starting-location-only defenders=unknown");
+            }
+
             result.Sort((a, b) =>
             {
                 int c = b.BaseValue.CompareTo(a.BaseValue);
@@ -199,17 +251,40 @@ namespace Game.Ai.V2
             AiMapMemory.KnownBuilding? remembered = null;
             foreach (AiMapMemory.KnownBuilding b in buildings)
                 if (b.Hex.Equals(target.Hex)) { remembered = b; break; }
-            return StatusFromMemory(target, remembered);
+            return StatusFromMemory(target, remembered, EverObserved(snap, target.Hex));
         }
+
+        // T01 — the target stands on sanctioned starting-Citadel coordinates this player has never
+        // observed: a legal preparation objective whose defenders are UNKNOWN. The march waits for
+        // a real observation (the Gather keeps the fist; ObservationNeeds asks Recon).
+        public static bool IsLocationOnly(WorldSnapshot snap, AttackTargetRef target)
+        {
+            if (!target.HasValue || snap?.Self == null)
+                return false;
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
+                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
+            return !buildings.Any(b => b.Hex.Equals(target.Hex))
+                && IsUnobservedSanctionedCitadel(target, EverObserved(snap, target.Hex));
+        }
+
+        private static bool EverObserved(WorldSnapshot snap, HexCoord hex) =>
+            snap?.MapKnowledge?.EverSeenHexSet?.Contains(hex) == true;
+
+        private static bool IsUnobservedSanctionedCitadel(AttackTargetRef target, bool everObserved) =>
+            !everObserved && target.Kind == AttackTargetKind.Citadel
+            && WorldAnalysis.IsSanctionedEnemyCitadel(target.ExpectedOwner, target.Hex);
 
         // The one memory-side rule both overloads share. AiMapMemory only drops a building record
         // when the hex was genuinely re-observed without it, so "no longer remembered" is honest:
         //   Base/Citadel target — gone means it is no longer the thing we set out to capture.
+        //   never observed, sanctioned starting-Citadel coordinates of the expected owner
+        //                        -> CONTINUE (location-only; the first real observation decides)
         private static AttackTargetStatus StatusFromMemory(AttackTargetRef target,
-            AiMapMemory.KnownBuilding? remembered)
+            AiMapMemory.KnownBuilding? remembered, bool everObserved)
         {
             if (!remembered.HasValue)
-                return AttackTargetStatus.Invalidated;
+                return IsUnobservedSanctionedCitadel(target, everObserved)
+                    ? AttackTargetStatus.Continue : AttackTargetStatus.Invalidated;
             AiMapMemory.KnownBuilding b = remembered.Value;
             if (!b.IsBase && !b.IsStartingCitadel)
                 return AttackTargetStatus.Invalidated;
@@ -233,7 +308,8 @@ namespace Game.Ai.V2
             if (live != null && live.Owner == player && (live.IsBase || live.IsStartingCitadel))
                 return AttackTargetStatus.Captured;
 
-            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex));
+            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex),
+                VisionSystem.HasEverSeen(player, target.Hex));
         }
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------
@@ -407,6 +483,14 @@ namespace Game.Ai.V2
         // intentional: an army at exactly four fifths still prepares.
         internal static bool ForceReady(float attackArmyPower, float currentDeckPeakPower) =>
             currentDeckPeakPower > 0f && attackArmyPower > 0.80f * currentDeckPeakPower;
+
+        // Mobilization opens a new Attack preparation (never a march): at least four fifths of the
+        // additive live + hand + remaining-deck force is already on the map (PlayerForceAnalysis
+        // scale, aviation and garrisons included). Inclusive on purpose, unlike ForceReady; written
+        // as 5·deployed >= 4·available so exactly four fifths (144 of 180) is not lost to the
+        // binary rounding of 0.8f.
+        internal static bool MobilizationOpen(float deployedPower, float availablePower) =>
+            availablePower > 0f && 5f * deployedPower >= 4f * availablePower;
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as
         // "age unknown", i.e. maximally stale, never as "observed on turn 0".

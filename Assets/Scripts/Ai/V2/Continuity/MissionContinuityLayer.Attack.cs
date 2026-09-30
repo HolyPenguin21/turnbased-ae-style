@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -67,6 +68,21 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — recovering "
                         + $"primary #{a.PrimaryArmyId} is no longer a ground container");
+                    return false;
+                }
+            }
+            else if (a.Preparation && a.Phase == AttackMissionPhase.Gather)
+            {
+                // T01 — a preparation host is legitimately weak, hero-only or an empty shell: it is
+                // never sent to RecoveryReturn for not being a combat actor yet. Only a host that
+                // stopped being an own ground field container ends the preparation (its claims are
+                // released with the intent; a replacement is a fresh decision).
+                if (!a.PrimaryArmyId.HasValue
+                    || !ActorCommitments.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
+                {
+                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} retired — "
+                        + $"preparation host #{a.PrimaryArmyId} is no longer an own ground field "
+                        + "container; claims released");
                     return false;
                 }
             }
@@ -385,6 +401,8 @@ namespace Game.Ai.V2
         private static bool ResolveAttackGather(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> unavailableArmyIds)
         {
+            if (a.Preparation)
+                return ResolveAttackPreparation(snap, intent, a, unavailableArmyIds);
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
@@ -452,6 +470,120 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // T01 — the mobilization preparation inside the Gather phase. The host (PrimaryArmyId)
+        // stays; supports that no longer raise it leave; it becomes an ordinary Assault only when it
+        // strictly clears the CURRENT peak with known coverage (AttackPrimaryClearsTarget re-reads
+        // TotalMilitaryPotential every pass, so a reward before the march raises the bar) and the
+        // target has really been observed. Waiting for movement, AP, a same-hex step or a pinned
+        // card delivery is a legal continuation (protected from the stall clock); with no legal
+        // continuation left the existing stall lifecycle ends it — no private timer.
+        private static bool ResolveAttackPreparation(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ISet<int> unavailableArmyIds)
+        {
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            int hostId = a.PrimaryArmyId.Value;
+            ArmySnapshot host = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == hostId);
+            var unavailable = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            unavailable.Remove(hostId);
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
+                + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
+                + $"ideal={snap.Self.TotalMilitaryPotential:0.#} required>{required:0.#}";
+
+            // An empty shell has nothing invested in it: a free field army that can host the fist
+            // supersedes it (the shell stays a reusable, paid container).
+            if (host.MemberCount == 0 && GroundCombatActorEligibility.EligibleArmies(snap, unavailable,
+                    requireMovementNow: false).Any(x => x.ArmyId != hostId))
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired — empty preparation "
+                    + "shell superseded by a free field army; the next pass re-selects the host");
+                return false;
+            }
+
+            List<int> dropped = a.GatherSupportArmyIds.Where(id =>
+            {
+                ArmySnapshot s = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == id);
+                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                    || host.MemberCount == 0
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
+                        allowCommandHandover: true, allowCompleteTransfer: true);
+            }).ToList();
+            if (dropped.Count > 0)
+            {
+                a.GatherSupportArmyIds.RemoveAll(dropped.Contains);
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} support(s) "
+                    + $"[{string.Join(",", dropped)}] lost or no longer raise the host");
+            }
+
+            bool locationOnly = AttackObjectiveEvaluator.IsLocationOnly(snap, a.Target);
+            if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
+                && AttackPrimaryClearsTarget(snap, a))
+            {
+                if (!locationOnly)
+                {
+                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
+                        + $"(fist strictly > 80% of the current peak, coverage "
+                        + $"{(a.CoversAllDefenders ? "ok" : "missing")}); Gather -> Assault, released "
+                        + $"supports [{string.Join(",", a.GatherSupportArmyIds)}]");
+                    a.GatherSupportArmyIds.Clear();
+                    a.Preparation = false;
+                    a.Phase = AttackMissionPhase.Assault;
+                    return true;
+                }
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#unknown",
+                    $"[AI][V2][Attack][Mobilization] {at} decision=HOLD blocker=unknown_defenders "
+                    + $"target={a.Target.DiagnosticLabel} knowledge=starting-location-only; the march "
+                    + "waits for a real observation (ObservationNeeds -> Recon)");
+                intent.LastProtectedTurn = snap.TurnNumber;
+                return true;
+            }
+            if (a.GatherSupportArmyIds.Count > 0)
+            {
+                intent.LastProtectedTurn = snap.TurnNumber;
+                return true;
+            }
+
+            GroundCombatGatherPlan plan = host.MemberCount == 0
+                ? GroundCombatGatherPlan.Infeasible("empty host takes no walking support")
+                : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
+                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId,
+                    GroundCombatDonorPolicy.BorrowableDonorValues(snap.Observer == null ? null
+                        : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
+                    minimumArmyPower: required, allowPartial: true);
+            if (plan.Feasible && plan.SupportArmyIds.Count > 0)
+            {
+                a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
+                intent.StallTurns = 0;
+                intent.LastProtectedTurn = snap.TurnNumber;
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} re-planned supports "
+                    + $"[{string.Join(",", plan.SupportArmyIds)}] projected={plan.ProjectedPower:0.#} "
+                    + $"reachesThreshold={plan.ReachesThreshold} gatherTurns={plan.GatherTurns}");
+                return true;
+            }
+
+            ArmyData liveHost = AiV2Util.ResolveArmy(snap.Observer, hostId);
+            bool sameHexStep = liveHost != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                snap, liveHost, unavailable, opposition, hexBonus).Feasible;
+            bool poolLeft = snap.Self.Reserve.Units + snap.Self.Reserve.Hero > AiConfigV2.allocatorSliceEpsilon;
+            if (sameHexStep || poolLeft)
+            {
+                intent.LastProtectedTurn = snap.TurnNumber;
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
+                    $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
+                    + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
+                    + $"reserve={snap.Self.Reserve.Units + snap.Self.Reserve.Hero:0.#} gather={plan.Reason}");
+                return true;
+            }
+            AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
+                $"[AI][V2][Attack][Mobilization] {at} decision=STALL blocker=no_legal_source "
+                + $"(no support, no same-hex body, nothing left in hand/deck: {plan.Reason}); the "
+                + "existing stall lifecycle ends the preparation");
+            return true;
+        }
+
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
         // and the SAME honest hex-defence read the mission layer used, with known defender coverage; before the march it also checks the current force threshold.
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
@@ -509,6 +641,7 @@ namespace Game.Ai.V2
                 Phase = t.Phase,
                 OperationStarted = true,
                 AssaultStarted = t.Phase == AttackMissionPhase.Assault,
+                Preparation = t.Preparation && t.Phase == AttackMissionPhase.Gather,
                 PrimaryArmyId = t.PrimaryArmyId ?? o.MoverArmyId,
                 // A Gather leg's mover is one of several supports, never the Reinforcement support.
                 SupportArmyId = t.Phase == AttackMissionPhase.Gather ? null : t.SupportArmyId,
@@ -540,6 +673,7 @@ namespace Game.Ai.V2
                 + $"phase {payload.Phase}"
                 + (payload.Phase == AttackMissionPhase.Gather
                     ? $", gather supports [{string.Join(",", payload.GatherSupportArmyIds)}]" : "")
+                + (payload.Preparation ? $", mobilization preparation via {t.PreparationStep}" : "")
                 + ")");
         }
 

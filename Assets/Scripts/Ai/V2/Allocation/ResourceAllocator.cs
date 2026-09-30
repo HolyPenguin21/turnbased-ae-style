@@ -160,11 +160,12 @@ namespace Game.Ai.V2
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.SupportReturn,
                         at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
                 // One key per gather support: parallel legs of one operation never share a
-                // provisioning/cooldown slot; the host rides along as ActorId.
+                // provisioning/cooldown slot; the host rides along as ActorId. A T01 host-side
+                // preparation step (no support) is told apart by its step kind.
                 case AttackMissionPhase.Gather:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Gather,
                         at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R,
-                        actorId: at.PrimaryArmyId ?? 0);
+                        actorId: at.PrimaryArmyId ?? 0, detailId: (int)at.PreparationStep);
                 // One key per support wing sortie.
                 case AttackMissionPhase.AirSupport:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.AirSupport,

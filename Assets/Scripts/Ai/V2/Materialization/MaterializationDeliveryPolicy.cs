@@ -196,10 +196,18 @@ namespace Game.Ai.V2
                     if (demand.AttackFistArmyId.HasValue)
                     {
                         int fistId = demand.AttackFistArmyId.Value;
-                        if (p.Deploy.Kind != DeploymentKind.ExistingArmy
-                            || p.Deploy.Army == null || p.Deploy.Army.Id != fistId
-                            || snapshot?.Self?.Armies?.Any(a => a != null
-                                && a.ArmyId == fistId && a.IsStructuralRaidActor) != true)
+                        // T01 — a preparation host may be weak or an empty claimed shell: the card
+                        // must land in that exact own ground field container (ExistingArmy, or the
+                        // shell itself), not in a structural combat actor elsewhere.
+                        bool fistShapeOk = demand.AttackFistIsPreparationHost
+                            ? (p.Deploy.Kind == DeploymentKind.ExistingArmy
+                                    || p.Deploy.Kind == DeploymentKind.ReusableShell)
+                                && snapshot?.Self?.Armies?.Any(a => a != null && a.ArmyId == fistId
+                                    && !a.IsGarrison && !a.IsPrison && !a.IsAir) == true
+                            : p.Deploy.Kind == DeploymentKind.ExistingArmy
+                                && snapshot?.Self?.Armies?.Any(a => a != null
+                                    && a.ArmyId == fistId && a.IsStructuralRaidActor) == true;
+                        if (!fistShapeOk || p.Deploy.Army == null || p.Deploy.Army.Id != fistId)
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
                         CardDefinition card = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                         if (card == null || card.isAviation)

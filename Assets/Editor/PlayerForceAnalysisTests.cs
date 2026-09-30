@@ -98,6 +98,31 @@ namespace Game.EditorTests
             Assert.That(force.ForceReady, Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(80f, 100f), Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(80.01f, 100f), Is.True);
+            Assert.That(force.DeployedPercent, Is.Zero);
+            Assert.That(force.MobilizationOpen, Is.False);
+        }
+
+        [Test]
+        public void MobilizationOpensAtFourFifthsInclusiveWhileAssaultStaysStrict()
+        {
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(144f, 180f), Is.True);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(143.9f, 180f), Is.False);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(0f, 0f), Is.False);
+            Assert.That(AttackObjectiveEvaluator.ForceReady(56f, 70f), Is.False);
+            Assert.That(AttackObjectiveEvaluator.ForceReady(56.1f, 70f), Is.True);
+        }
+
+        [Test]
+        public void DeployedShareCountsMapAgainstMapPlusHandPlusDeck()
+        {
+            var player = new PlayerSetupData();
+            var field = Army(player, Body());
+            var unit = new CardDefinition { cardType = CardType.Unit, attack = 10 };
+            var force = PlayerForceAnalysis.Calculate(player, new[] { field },
+                new[] { new CardData(unit) }, new[] { unit });
+            Assert.That(force.DeployedPercent,
+                Is.EqualTo(100f * force.DeployedPower / force.TotalAvailablePower).Within(1e-4f));
+            Assert.That(force.DeployedPower, Is.LessThan(force.TotalAvailablePower));
         }
     }
 }

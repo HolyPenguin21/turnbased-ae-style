@@ -48,6 +48,8 @@ namespace Game.Ai.V2
                 ?? default;
 
             self.Citadel = citadel;
+            self.HoldsStartingCitadel = canonicalCitadel.HasValue
+                && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
             self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx))).ToList();
 
@@ -188,6 +190,8 @@ namespace Game.Ai.V2
                 mapPool.Concat(handUnits).Concat(handHeroes).ToList());
             self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(
                 AiPower.MilitaryPool(ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck));
+            PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
+                out self.DeployedPower, out self.AvailablePower);
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)

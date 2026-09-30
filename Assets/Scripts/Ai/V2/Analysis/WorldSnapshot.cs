@@ -439,6 +439,9 @@ namespace Game.Ai.V2
     public sealed class SelfSnapshot
     {
         public HexCoord Citadel;
+        // True while Citadel is this player's own STARTING Citadel (not the fallback first Base
+        // after it was lost). The Attack preparation host is created only there.
+        public bool HoldsStartingCitadel;
         public IReadOnlyList<HexCoord> BaseHexes;
         public IReadOnlyList<ArmySnapshot> Armies;
 
@@ -462,6 +465,14 @@ namespace Game.Ai.V2
         // deck, composition-adjusted. "If we can't get stronger than this even in theory, there
         // is nothing left to wait for before striking the enemy citadel."
         public float TotalMilitaryPotential;
+
+        // Additive force share (PlayerForceAnalysis: Σ AiPower.UnitPower, aviation and garrisons
+        // included, prisoners excluded) — a different scale from the one-stack measures above.
+        // Deployed: live bodies on the map; Available: those plus Unit/Hero cards in hand and
+        // remaining deck. Attack mobilization opens on this pair
+        // (AttackObjectiveEvaluator.MobilizationOpen); it never admits a march.
+        public float DeployedPower;
+        public float AvailablePower;
 
         // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
         public float FistPower;

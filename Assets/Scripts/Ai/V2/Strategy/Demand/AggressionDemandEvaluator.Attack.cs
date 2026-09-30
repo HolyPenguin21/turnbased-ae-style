@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -17,9 +18,12 @@ namespace Game.Ai.V2
     //      to Reinforcement on (one owner), so a delivered support is really used — and no
     //      existing free army could fix that by joining it;
     //    * strike force step 4 — the best known Base/Citadel objective that no army can take even
-    //      at the current force threshold, while cards in hand could still strengthen the fist
+    //      at the current force threshold, pinned to the free fist on an own Base
     //      (AppendUnboundAttackDemand). The target is a real, known structure, so this names a
-    //      real objective, not an invented war (§43).
+    //      real objective, not an invented war (§43). Which card / generated output covers it is
+    //      Materialization's choice (T04: no hand-only prerequisite here);
+    //    * T01 — a live mobilization preparation whose host is below the current 80% peak once
+    //      every existing troop that could join it is used (PreparationHostShortage).
     //
     //  Explicitly NOT shortages (§41):
     //    * an army is already committed elsewhere      -> actor contention, the allocator's problem
@@ -52,6 +56,16 @@ namespace Game.Ai.V2
                 {
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
                         + $"reason=attack_in_{ai.Phase.ToString().ToLowerInvariant()}_phase");
+                    continue;
+                }
+
+                // T01 — a preparation host asks for NEW power only after the troops already on the
+                // map are exhausted (supports, free armies, same-hex bodies).
+                if (ai.Phase == AttackMissionPhase.Gather && ai.Preparation)
+                {
+                    AxisDemand prep = PreparationHostShortage(snap, commitments, i, ai, diag);
+                    if (prep != null)
+                        demands.Add(prep);
                     continue;
                 }
 
@@ -145,10 +159,129 @@ namespace Game.Ai.V2
         // same-hex package nor cross-hex gather can take it above the current force threshold.
         // A card already in hand can strengthen the free fist through Phase A; an undrawn card
         // remains Phase B's Draw responsibility.
+        // T01 — the measured shortage of a live preparation host: the current 80% peak minus the
+        // host's own power, pinned to that exact container (a stronger unrelated army never
+        // closes it). Existing troops are gathered first; a host that no card can reach (not on
+        // an own Base) waits for walking supports. The chain (hand card, generated output or
+        // none) is MaterializationChainEnumerator's choice, never decided here.
+        private static AxisDemand PreparationHostShortage(WorldSnapshot snap,
+            ActorCommitments commitments, MissionIntent intent, AttackIntent ai, List<string> diag)
+        {
+            string at = $"intent={intent.IntentKey} target={ai.Target.DiagnosticLabel} "
+                + $"host={ai.PrimaryArmyId} reason=";
+            if (!ai.PrimaryArmyId.HasValue || commitments == null
+                || !commitments.IsPreparationHost(ai.PrimaryArmyId.Value))
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP {at}preparation_host_not_claimed");
+                return null;
+            }
+            int hostId = ai.PrimaryArmyId.Value;
+            ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == hostId);
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float have = host?.EffectiveArmyPower ?? 0f;
+            if (host == null || have > required)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}preparation_host_clears_power "
+                    + $"have={have:0.#} required>{required:0.#}");
+                return null;
+            }
+            if (ai.GatherSupportArmyIds.Count > 0)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}existing_supports_en_route "
+                    + $"supports=[{string.Join(",", ai.GatherSupportArmyIds)}]");
+                return null;
+            }
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex);
+            HashSet<int> claimed = commitments.ClaimedArmyIdSet;
+            claimed.Remove(hostId);
+            // §41 — the SAME partial gather the preparation plans with, as a capability question:
+            // a free army that could raise the host (even with its MP spent this turn) is timing,
+            // and one held by another accepted operation is contention — neither is production.
+            if (host.MemberCount > 0)
+            {
+                Dictionary<int, float> donors = GroundCombatDonorPolicy.BorrowableDonorValues(
+                    snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+                GroundCombatGatherPlan free = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
+                    hexBonus, ai.Target.Hex, claimed, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    hostId, donors, requireMovementNow: false, minimumArmyPower: required,
+                    allowPartial: true);
+                if (free.Feasible && free.SupportArmyIds.Count > 0)
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}existing_army_can_join_host "
+                        + $"supports=[{string.Join(",", free.SupportArmyIds)}] (movement/timing, not a shortage)");
+                    return null;
+                }
+                GroundCombatGatherPlan contended = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
+                    hexBonus, ai.Target.Hex, new HashSet<int>(), GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    hostId, null, requireMovementNow: false, minimumArmyPower: required, allowPartial: true);
+                // Contention only when the busy armies would really complete the fist; a partial
+                // lift held elsewhere does not excuse a measured shortage.
+                if (contended.Feasible && contended.ReachesThreshold && contended.SupportArmyIds.Count > 0)
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP {at}preparation_supports_contended "
+                        + $"physical=[{string.Join(",", contended.SupportArmyIds)}]");
+                    return null;
+                }
+            }
+            ArmyData live = snap.Observer == null ? null : AiV2Util.ResolveArmy(snap.Observer, hostId);
+            if (live != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(snap, live, claimed,
+                    opposition, hexBonus).Feasible)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}same_hex_assembly_pending");
+                return null;
+            }
+            if (snap.Self.BaseHexes == null || !snap.Self.BaseHexes.Contains(host.Hex))
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at}preparation_host_not_on_own_base "
+                    + $"hex=({host.Hex.Q},{host.Hex.R})");
+                return null;
+            }
+            float deficit = Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                required - have + AiConfigV2.allocatorSliceEpsilon);
+            TaskScore score = AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default;
+            diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE {at}preparation_host_below_threshold "
+                + $"capability=FieldCombatPower shape=Any desired={deficit:0.#} have={have:0.#} "
+                + $"required>{required:0.#} roster={host.MemberCount}/{host.Capacity} task={score.Value:0.##}");
+            return new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                DeliveryShape = CapabilityDeliveryShape.Any,
+                ConsumerIntentKey = intent.IntentKey,
+                ConsumerMissionKind = MissionKind.Attack,
+                DesiredAmount = deficit,
+                RequiredCapabilityPower = deficit,
+                AttackFistArmyId = hostId,
+                AttackFistIsPreparationHost = true,
+                RequiredTraits = TraitPreference.None,
+                MinimumFollowupAp = 0f,
+                TargetHex = host.Hex,
+                WorldTaskScore = score,
+                Value = score.Value,
+                Explain = $"attack {ai.Target.DiagnosticLabel}: preparation host #{hostId} "
+                    + $"({have:0.#} of >{required:0.#}) — no existing troop can join it; strengthen "
+                    + $"this exact host; task={score.Value:0.##}",
+            };
+        }
+
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             List<string> diag, List<AxisDemand> demands)
         {
+            // T01 — one fist at a time: a live preparation owns the shortage (its own pinned
+            // demand above); a second free-fist request would dilute the force.
+            MissionIntent preparing = (activeIntents ?? System.Array.Empty<MissionIntent>())
+                .FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                    && i.Kind == MissionKind.Attack && i.Attack != null && i.Attack.Preparation
+                    && i.Attack.Phase == AttackMissionPhase.Gather);
+            if (preparing != null)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP intent={preparing.IntentKey} "
+                    + "reason=unbound_attack_owned_by_live_preparation");
+                return;
+            }
             AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap)
                 .FirstOrDefault(o => !(activeIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i != null
                         && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
@@ -221,17 +354,10 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // Hand and remaining deck are different: Phase A can materialize a card already
-            // held; Phase B's Draw candidate handles cards that still need to be drawn.
-            if (snap.Self.Hand == null || !snap.Self.Hand.Any(h => h?.Definition != null
-                && !h.Definition.isAviation
-                && (h.Definition.cardType == Game.Cards.CardType.Unit
-                    || h.Definition.cardType == Game.Cards.CardType.Hero)))
-            {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
-                    + "reason=attack_ground_card_still_in_deck_or_unavailable");
-                return;
-            }
+            // T04 — the measured shortage is published whatever the hand holds: which source can
+            // cover it (a held card, an allowed generated output, or no legal chain) is
+            // MaterializationChainEnumerator's decision in Phase A. A card still in the remaining
+            // deck stays Phase B's Draw work; Draw never stands in for a generated output.
 
             ArmySnapshot fist = snap.Self.Armies?
                 .Where(a => a != null && a.IsStructuralRaidActor
@@ -241,8 +367,14 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (fist == null)
             {
+                // T01 — with no free fist on an own Base the mobilization preparation is the path
+                // (it creates/reuses the host on the Citadel); this demand names nobody.
+                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self.DeployedPower,
+                    snap.Self.AvailablePower);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
-                    + "reason=no_free_base_fist_for_direct_card_delivery");
+                    + "reason=no_free_base_fist_for_direct_card_delivery "
+                    + $"mobilization={(open ? "open:preparation_owns_host" : "closed")} "
+                    + $"deployed={snap.Self.DeployedPower:0.#} available={snap.Self.AvailablePower:0.#}");
                 return;
             }
             float required = 0.80f * snap.Self.TotalMilitaryPotential;

@@ -53,6 +53,11 @@ namespace Game.Ai.V2
         // Reinforcement only: the support army is already standing on the primary's hex, so this
         // step is the ATOMIC roster handoff and must perform no movement.
         public bool AttackHandoffReady;
+        // T01 — a host-side preparation step (AttackTarget.PreparationStep): the exact same-hex
+        // transfers Provisioning validated against its claims (null when a creation has no first
+        // member / a reuse only binds the shell). Execution applies precisely these; it never
+        // re-plans. MoverArmyId is -1 while the container does not exist yet (CreateHost).
+        public GroundCombatAssemblyPlan AttackPreparationAssembly;
         public EconomyMissionTarget EconomyTarget;
         public DevelopmentMissionTarget DevelopmentTarget;
         public string ReservationOwner;

@@ -1,8 +1,12 @@
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
 using Game.Aviation;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -64,6 +68,150 @@ namespace Game.Ai.V2
 
             yield return RunAssaultStep(player, ctx, pm, result, army, target, snapshot);
         }
+
+        // T01 — a host-side preparation step (AttackTarget.PreparationStep). Runs before the
+        // mover is resolved because a CreateHost step has no container yet (pm.MoverArmyId -1).
+        // Exactly one canonical action: CreateArmyWithMember with the pinned first member, else
+        // CreateArmy (one empty shell), else binding the already-existing shell (no mutation); or
+        // an Assemble transaction applying precisely the transfers Provisioning pinned, rolled back
+        // as a whole on any rejection. The outcome says what really happened in the world.
+        // Returns false when `pm` is not a preparation step.
+        internal static bool TryRunPreparationStep(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
+        {
+            if (pm == null || pm.Kind != MissionKind.Attack
+                || pm.AttackTarget.Phase != AttackMissionPhase.Gather
+                || pm.AttackTarget.PreparationStep == AttackPreparationStep.None)
+                return false;
+
+            AttackMissionTarget target = pm.AttackTarget;
+            HexCoord hex = target.DestinationHex;
+            pm.ExecutionHex = hex;
+            result.StartHex = hex;
+            result.FinalHex = hex;
+            GroundCombatAssemblyPlan assembly = pm.AttackPreparationAssembly;
+            string corr = $"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack preparation";
+
+            ArmyData host = target.PrimaryArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+            if (target.PrimaryArmyId.HasValue && (host == null || host.Owner != player
+                || host.IsGarrison || host.IsPrison || host.IsAirfield || AviationRules.IsAirArmy(host)
+                || !host.Hex.Equals(hex)))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                AiDebugLog.Write($"{corr} REJECTED host #{target.PrimaryArmyId} gone/moved; world unchanged");
+                return true;
+            }
+
+            if (host == null)
+            {
+                FactionCardCatalog catalog = ctx?.StartingDeckCatalog?.GetCatalog(player.Faction);
+                GroundCombatAssemblyTransfer seed = assembly?.Transfers.FirstOrDefault();
+                string why = null;
+                if (seed != null)
+                {
+                    ArmyData donor = AiV2Util.ResolveArmy(player, seed.DonorArmyId);
+                    bool legal = donor != null && donor.Members.Contains(seed.Unit)
+                        && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(seed.Unit)
+                        && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, seed.Unit));
+                    host = legal
+                        ? ArmyActions.CreateArmyWithMember(player, hex, catalog, donor, seed.Unit,
+                            ctx?.HexSelection, out why)
+                        : null;
+                    if (!legal) why = $"first member {seed.Unit?.Name} can no longer leave #{seed.DonorArmyId}";
+                }
+                else
+                {
+                    host = ArmyActions.CreateArmy(player, hex, catalog, ctx?.HexSelection);
+                    if (host == null) why = "CreateArmy rejected (AP or catalog)";
+                }
+                if (host == null)
+                {
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    AiDebugLog.Write($"{corr} REJECTED CreateHost at ({hex.Q},{hex.R}): {why}; "
+                        + "world unchanged, no AP spent");
+                    return true;
+                }
+                pm.MoverArmyId = host.Id;
+                result.ActualActorArmyId = host.Id;
+                result.ActorMaterialized = true;
+                result.OperationStarted = true;
+                result.CombatChanged = seed != null;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                AiDebugLog.Write($"{corr} OK {(seed != null ? "host_created_with_member" : "shell_created")} "
+                    + $"#{host.Id} at ({hex.Q},{hex.R}) roster {host.Members.Count}/{host.Capacity}"
+                    + (seed != null ? $" first={seed.Unit.Name}<-#{seed.DonorArmyId}" : " (no combat capability delivered)")
+                    + $" power={AiPower.EffectiveArmyPower(host.Members):0.#}");
+                MarkChanged(player, ctx, host.Id);
+                return true;
+            }
+
+            result.ActualActorArmyId = host.Id;
+            if (target.PreparationStep == AttackPreparationStep.CreateHost || assembly == null
+                || assembly.Transfers.Count == 0)
+            {
+                // Reuse of an existing claimed-to-be shell: the operation starts by holding it.
+                result.OperationStarted = true;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                AiDebugLog.Write($"{corr} OK host_reused #{host.Id} at ({hex.Q},{hex.R}) roster "
+                    + $"{host.Members.Count}/{host.Capacity}; no mutation, 0 AP");
+                return true;
+            }
+
+            float before = AiPower.EffectiveArmyPower(host.Members);
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
+            {
+                ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
+                string why = donor == null ? "donor missing" : null;
+                bool legal = donor != null && donor.Hex.Equals(host.Hex) && donor.Members.Contains(t.Unit)
+                    && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(t.Unit)
+                    && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit));
+                if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
+                {
+                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "attack preparation");
+                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    // An incomplete rollback left bodies in the host: that IS a world change.
+                    result.CombatChanged = remaining > 0;
+                    result.OperationStarted = remaining > 0;
+                    AiDebugLog.Write($"{corr} REJECTED Assemble into #{host.Id} on {t.Unit?.Name} "
+                        + $"<-#{t.DonorArmyId}: {why ?? "no longer legal"}; rollback="
+                        + $"{(rollbackOk ? "OK" : "FAILED")} remainingTransfers={remaining}");
+                    if (remaining > 0)
+                        MarkChanged(player, ctx, host.Id);
+                    return true;
+                }
+                applied.Add(t);
+            }
+
+            // The formation is led by its best legal commander (HeroRoleEvaluator, the shared rule),
+            // a zero-AP reorder.
+            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
+                target.DefenderHexDefenseBonus);
+            if (lead != null && lead != host.Commander)
+                host.TryReorderCommander(lead, out _);
+            result.OperationStarted = true;
+            result.CombatChanged = true;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+            AiDebugLog.Write($"{corr} OK member_transferred host #{host.Id} +{applied.Count} "
+                + $"[{string.Join(",", applied.Select(x => $"{x.Unit.Name}<-#{x.DonorArmyId}"))}] "
+                + $"roster {host.Members.Count}/{host.Capacity} commander={host.Commander?.Name ?? "none"} "
+                + $"power {before:0.#} -> {AiPower.EffectiveArmyPower(host.Members):0.#}");
+            MarkChanged(player, ctx, host.Id);
+            return true;
+        }
+
+        // The host's roster really changed: publish it so the SAME turn's bounded cycle re-reads
+        // this Attack against the new host (as the reinforcement handoff does).
+        private static void MarkChanged(PlayerSetupData player, AiTurnContext ctx, int hostId) =>
+            StrategicInterruptRegistry.Mark(player, ctx?.TurnNumber ?? 0,
+                StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
+                actorIds: new[] { hostId });
 
         // §24/§26 — march on the target and, on the terminal step, take it.
         private static IEnumerator RunAssaultStep(PlayerSetupData player, AiTurnContext ctx,

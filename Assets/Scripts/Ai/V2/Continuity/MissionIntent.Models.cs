@@ -358,6 +358,11 @@ namespace Game.Ai.V2
         // Gather support movement starts the intent, but the force threshold remains live
         // until the primary actually starts the assault march.
         public bool AssaultStarted;
+        // T01 — opened by the mobilization trigger (AttackObjectiveEvaluator.MobilizationOpen):
+        // a Gather around a host that may still be weak, hero-only or an empty shell on the own
+        // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;
+        // it becomes an ordinary Assault only once the host strictly clears the current peak.
+        public bool Preparation;
         public int? PrimaryArmyId { get; set; }
         public int? SupportArmyId { get; set; }
         // Gather phase only: supports still walking to (or about to hand off at) the primary.

@@ -40,12 +40,15 @@ namespace Game.EditorTests
             ["Execution/CardPlayExecutor.cs"] = 3,
             ["Execution/ReconAirExecutor.cs"] = 34,
             ["Execution/ReconGroundExecutor.cs"] = 4,
-            ["Execution/TaskExecutor.cs"] = 11,
+            // +1 (T01): the preparation step measures its physical AP delta like every lane.
+            ["Execution/TaskExecutor.cs"] = 12,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
             ["Materialization/MaterializationExecutor.cs"] = 25,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             ["Orchestration/AiStrategyV2Pipeline.cs"] = 6,
+            // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
+            ["Provisioning/AttackProvisioner.cs"] = 1,
             ["Provisioning/GroundCombatAssaultTransaction.cs"] = 3,
             ["Provisioning/ProvisioningManager.Air.cs"] = 1,
             ["Provisioning/ProvisioningManager.Development.cs"] = 1,

@@ -121,6 +121,10 @@ namespace Game.Ai.V2
         // Unbound Attack only: the actual free field army this hand card must strengthen.
         // A separate purchased container does not satisfy this request.
         public int? AttackFistArmyId;
+        // T01 — AttackFistArmyId names the claimed host of a live Attack mobilization preparation
+        // (ActorCommitments.IsPreparationHost): it may still be weak, hero-only or an empty shell,
+        // so delivery checks the exact claimed container instead of a structural combat actor.
+        public bool AttackFistIsPreparationHost;
         public bool IsPersistenceDeferred;
 
         // For an Economy Hero-prerequisite demand (the builder hero a pending build still needs):

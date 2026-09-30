@@ -211,7 +211,10 @@ namespace Game.Ai.V2
                     ?.EffectiveArmyPower ?? 0f;
                 float current = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id)
                     ?.EffectiveArmyPower ?? 0f;
-                delivered = beforeSnap != null && plan?.Deploy.Kind == DeploymentKind.ExistingArmy
+                // T01 — a preparation shell receives its card as the shell itself.
+                delivered = beforeSnap != null && (plan?.Deploy.Kind == DeploymentKind.ExistingArmy
+                        || demand.AttackFistIsPreparationHost
+                            && plan?.Deploy.Kind == DeploymentKind.ReusableShell)
                     && plan.Deploy.Army?.Id == id
                     ? Mathf.Max(0f, current - previous) : 0f;
             }

@@ -34,7 +34,7 @@ namespace Game.Ai.V2
     {
         public static List<PlacementOption> BuildOptions(WorldSnapshot snap, PlayerSetupData player,
             CardDefinition def, ActorCommitments commitments, bool soloOnly,
-            bool phaseBSurplus = false)
+            bool phaseBSurplus = false, int? preparationShellId = null)
         {
             var opts = new List<PlacementOption>();
             if (def == null || snap?.Self?.BaseHexes == null || player == null)
@@ -53,6 +53,13 @@ namespace Game.Ai.V2
                 if (shell != null && (!phaseBSurplus
                     || !IsProtectedFromPhaseBSurplus(player, snap.TurnNumber, shell, commitments)))
                     opts.Add(new PlacementOption(hex, DeploymentKind.ReusableShell, shell));
+                // T01 — the empty shell a live Attack preparation claims is not reusable by others;
+                // only that preparation's own pinned demand offers it (`preparationShellId`).
+                if (preparationShellId.HasValue && !phaseBSurplus)
+                    foreach (ArmyData prepShell in own)
+                        if (prepShell.Id == preparationShellId.Value && prepShell.Hex.Equals(hex)
+                            && ReusableArmySelector.IsReusableShell(prepShell, player, null))
+                            opts.Add(new PlacementOption(hex, DeploymentKind.ReusableShell, prepShell));
                 opts.Add(new PlacementOption(hex, DeploymentKind.NewArmy, null));
 
                 if (soloOnly)

@@ -2,6 +2,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -42,7 +44,7 @@ namespace Game.Ai.V2
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx,
                             deferredThisPass);
                     else if (a.Phase == AttackMissionPhase.Gather)
-                        AppendAttackGather(snap, intent, a, proposals, ctx);
+                        AppendAttackGather(snap, intent, a, committed, proposals, ctx);
                     // Strike force step 5 — donors that already handed over walk home beside
                     // whatever the operation itself does.
                     foreach (AttackGatherReturn r in a.GatherReturns)
@@ -53,7 +55,9 @@ namespace Game.Ai.V2
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
-            foreach (AttackObjective objective in AttackObjectiveEvaluator.Enumerate(snap))
+            List<AttackObjective> objectives = AttackObjectiveEvaluator.Enumerate(snap);
+            bool attackProposed = false;
+            foreach (AttackObjective objective in objectives)
             {
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
@@ -62,6 +66,15 @@ namespace Game.Ai.V2
                 // offer it a fresh assault against the same target this pass.
                 if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault)
                     continue;
+                // T01 — sanctioned coordinates are not an observed defender package: a march on a
+                // never-observed site is not proposed (Recon observes it; mobilization may prepare).
+                if (objective.LocationOnly)
+                {
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
+                        $"[AI][V2][Attack][Assembly] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                        + "blocker=unknown_defenders knowledge=starting-location-only");
+                    continue;
+                }
 
                 int? pinnedActor = incumbent?.Attack?.PrimaryArmyId;
                 var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
@@ -93,7 +106,10 @@ namespace Game.Ai.V2
                     // may still be formed by free armies spread over several hexes: gather them.
                     if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, proposals))
+                    {
+                        attackProposed = true;
                         continue;
+                    }
                     // §24 — a started operation whose primary can no longer clear the site is a
                     // REINFORCEMENT decision, not a dead objective. Continuity moves the phase;
                     // the planner only refrains from proposing an impossible assault.
@@ -177,10 +193,228 @@ namespace Game.Ai.V2
                 }
 
                 proposals.Add(proposal);
+                attackProposed = true;
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                     $"[AI][V2][Attack][Admission] decision=PROPOSE target={objective.Target.DiagnosticLabel} "
                     + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
             }
+
+            TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
+                attackProposed);
+        }
+
+        // ---- T01: the mobilization trigger and the first preparation step -----------------------
+        //
+        // Opens ONE new preparation when the additive share of the force already on the map reaches
+        // four fifths (AttackObjectiveEvaluator.MobilizationOpen over SelfSnapshot.DeployedPower /
+        // AvailablePower) and no Attack operation is live. It never admits a march: the prepared
+        // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
+        // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting
+        // Citadel. Host order: an existing free field army (anywhere) > an empty reusable shell on
+        // the own starting Citadel > a container created there (CreateArmyWithMember when a legal
+        // same-hex first member exists, else one empty shell while hand/deck can still fill it).
+        // The first executed step creates the durable Gather intent (§70); funding stays the one
+        // allocator's decision — nothing is spent or claimed here.
+        private static void TryAppendAttackPreparation(WorldSnapshot snap,
+            List<AttackObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
+            ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
+            bool attackProposed)
+        {
+            SelfSnapshot self = snap.Self;
+            bool open = AttackObjectiveEvaluator.MobilizationOpen(self.DeployedPower, self.AvailablePower);
+            string share = $"deployed={F(self.DeployedPower)} available={F(self.AvailablePower)} "
+                + $"share={(self.AvailablePower > 0f ? 100f * self.DeployedPower / self.AvailablePower : 0f):0.00}% "
+                + $"gate>=80% open={(open ? 1 : 0)}";
+            MissionIntent live = activeIntents?.FirstOrDefault(i => i != null
+                && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack && i.Attack != null
+                && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault
+                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+            string skip = !open ? "trigger_closed"
+                : live != null ? $"operation_live:{live.IntentKey}"
+                : attackProposed ? "direct_assault_or_gather_proposed"
+                : objectives.Count == 0 ? "no_attack_objective"
+                : !self.HoldsStartingCitadel ? "own_starting_citadel_lost" : null;
+            string logKey = $"mobilization#{snap.Observer?.ColorIndex}";
+            if (skip != null)
+            {
+                AiDebugLog.WriteDeduped(logKey,
+                    $"[AI][V2][Attack][Mobilization] decision=NONE {share} reason={skip}");
+                return;
+            }
+
+            AttackObjective objective = objectives[0];
+            HexCoord citadel = self.Citadel;
+            float required = 0.80f * self.TotalMilitaryPotential;
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, objective.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
+            var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            string head = $"[AI][V2][Attack][Mobilization] target={objective.Target.DiagnosticLabel} "
+                + $"knowledge={(objective.LocationOnly ? "starting-location-only" : "observed")} {share} "
+                + $"ideal={F(self.TotalMilitaryPotential)} required>{F(required)}";
+
+            // 1) an existing free field army hosts the fist wherever it stands.
+            ArmySnapshot fieldHost = GroundCombatActorEligibility.EligibleArmies(snap, excluded,
+                    requireMovementNow: false)
+                .OrderByDescending(a => a.EffectiveArmyPower)
+                .ThenByDescending(a => a.Hex.Equals(citadel))
+                .ThenBy(a => a.ArmyId)
+                .FirstOrDefault();
+            PlayerSetupData player = snap.Observer;
+            if (fieldHost != null)
+            {
+                Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
+                    player == null ? null : MissionIntentRegistry.GetOrCreate(player).All);
+                GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
+                    hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
+                // The lead leg is a FREE army (a bought donor stays with its operation until the
+                // intent this step creates retires it), exactly as the fresh gather's lead.
+                ArmySnapshot lead = gather.Feasible
+                    ? gather.SupportArmyIds
+                        .Where(id => !donorValues.ContainsKey(id))
+                        .Select(id => self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id))
+                        .FirstOrDefault(s => s != null && (s.Hex.Equals(fieldHost.Hex) || s.CurrentMovement > 0))
+                    : null;
+                if (lead != null)
+                {
+                    int eta = Mathf.Max(1, gather.TotalEta);
+                    TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
+                        PreparationWin(objective, gather.ProjectedWinChance), gather.CurrentTurnAp,
+                        AiV2Util.CeilDiv(gather.FutureAp, eta), eta,
+                        moverOpportunityCost: gather.DisplacedValue);
+                    MissionProposal proposal = BuildAttackGatherLeg(objective.Target, fieldHost, lead,
+                        gather.SupportArmyIds, hexBonus, objective.DefenderCount,
+                        gather.ProjectedWinChance, gather.CoversAllDefenders, 0, score, null);
+                    MarkPreparation(proposal, AttackPreparationStep.None);
+                    proposals.Add(proposal);
+                    AiDebugLog.WriteDeduped(logKey,
+                        $"{head} decision=PROPOSE step=support_gather host=#{fieldHost.ArmyId} "
+                        + $"fist={F(fieldHost.EffectiveArmyPower)} lead=#{lead.ArmyId} "
+                        + $"supports=[{string.Join(",", gather.SupportArmyIds)}] projected={F(gather.ProjectedPower)} "
+                        + $"reachesThreshold={gather.ReachesThreshold} ap={gather.TotalAp} score={F(score.Value)}");
+                    return;
+                }
+                ArmyData liveField = player == null ? null : AiV2Util.ResolveArmy(player, fieldHost.ArmyId);
+                GroundCombatAssemblyPlan fieldStep = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                    snap, liveField, excluded, opposition, hexBonus);
+                if (fieldStep.Feasible)
+                {
+                    AppendPreparationStep(snap, objective, fieldHost.ArmyId, fieldHost.Hex,
+                        AttackPreparationStep.Assemble, 0f, fieldStep, hexBonus, proposals, head);
+                    return;
+                }
+                AiDebugLog.WriteDeduped(logKey,
+                    $"{head} decision=HOLD host=#{fieldHost.ArmyId} fist={F(fieldHost.EffectiveArmyPower)} "
+                    + $"reason=no_support_or_same_hex_body_raises_host gather={gather.Reason ?? "no_movable_lead"} "
+                    + "(a card for this fist is the unbound Attack demand's request)");
+                return;
+            }
+
+            // 2) an empty reusable shell already standing on the own starting Citadel.
+            ArmyData shell = player == null ? null : ReusableArmySelector.FindReusableAt(player, citadel, null);
+            if (shell != null && excluded.Contains(shell.Id))
+                shell = null;
+            // 3) otherwise a container created on the Citadel, seeded when a legal member is there.
+            ArmyData host = shell;
+            if (host == null && player != null)
+            {
+                host = ArmyData.CreateVisualSnapshot();
+                host.Hex = citadel;
+                host.Owner = player;
+                host.IsGarrison = false;
+            }
+            GroundCombatAssemblyPlan seed = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                snap, host, excluded, opposition, hexBonus);
+            bool poolLeft = self.Reserve.Units + self.Reserve.Hero > AiConfigV2.allocatorSliceEpsilon;
+            if (!seed.Feasible && !poolLeft)
+            {
+                AiDebugLog.WriteDeduped(logKey,
+                    $"{head} decision=HOLD blocker=no_legal_source reason=no_same_hex_member_and_nothing_in_hand_or_deck "
+                    + $"({seed.Reason})");
+                return;
+            }
+            if (shell != null)
+            {
+                AppendPreparationStep(snap, objective, shell.Id, citadel,
+                    seed.Feasible ? AttackPreparationStep.Assemble : AttackPreparationStep.CreateHost,
+                    0f, seed.Feasible ? seed : null, hexBonus, proposals, head);
+                return;
+            }
+            AppendPreparationStep(snap, objective, null, citadel, AttackPreparationStep.CreateHost,
+                ArmyActions.CreateArmyApCost, seed.Feasible ? seed : null, hexBonus, proposals, head);
+        }
+
+        // Location-only knowledge is no evidence that the fight is winnable: its WinChance slot
+        // stays empty (never "observed empty" = 1). An observed site uses the estimator's answer.
+        private static float PreparationWin(AttackObjective objective, float projectedWin) =>
+            objective.LocationOnly ? 0f : projectedWin;
+
+        private static void MarkPreparation(MissionProposal proposal, AttackPreparationStep step)
+        {
+            AttackMissionTarget t = (AttackMissionTarget)proposal.Target;
+            t.Preparation = true;
+            t.PreparationStep = step;
+            proposal.Target = t;
+        }
+
+        // A host-side preparation step (CreateHost / Assemble): no walking actor. `hostId` null =
+        // the container does not exist yet. The allocator funds exactly `ap` (2 AP for a creation,
+        // 0 for a reuse / same-hex join); Provisioning re-validates, Execution performs it.
+        private static void AppendPreparationStep(WorldSnapshot snap, AttackObjective objective,
+            int? hostId, HexCoord hostHex, AttackPreparationStep step, float ap,
+            GroundCombatAssemblyPlan assembly, float hexBonus, List<MissionProposal> proposals,
+            string head, MissionIntent intent = null)
+        {
+            float win = assembly?.ProjectedWinChance ?? 0f;
+            TaskScore score = intent != null ? default(TaskScore)
+                : TaskScoreEvaluator.WithResponse(objective.TaskScore,
+                    PreparationWin(objective, win), ap, 0f, 1f);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.Gather,
+                Target = objective.Target,
+                PrimaryArmyId = hostId,
+                GatherSupportArmyIds = System.Array.Empty<int>(),
+                DestinationHex = hostHex,
+                DefenderHexDefenseBonus = hexBonus,
+                DefenderCount = objective.DefenderCount,
+                ProjectedWinChance = win,
+                CoversAllDefenders = assembly?.CoversAllDefenders ?? false,
+                EstimatedEta = 1,
+                Preparation = true,
+                PreparationStep = step,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = score.Value,
+                Score = score,
+                LocalAdmissionScore = score.Value,
+                PreferredMoverArmyId = hostId,
+                FromDurableIntent = intent != null,
+                DurableFundingTier = intent?.Funding ?? CommitmentTier.None,
+                // No existing mover is required for a creation: the step makes the container.
+                Requirements = new MissionRequirements
+                {
+                    MoverKnown = hostId.HasValue,
+                    RequiresArmy = hostId.HasValue,
+                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                    EtaTurns = 1, EstimatedDistance = 0,
+                },
+                Explain = $"Attack {objective.Target.DiagnosticLabel} preparation {step} host "
+                    + $"{(hostId.HasValue ? $"#{hostId.Value}" : "new")} at ({hostHex.Q},{hostHex.R}) "
+                    + $"ap {F(ap)} task {F(score.Value)}",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            proposals.Add(proposal);
+            string transfers = assembly == null ? "none"
+                : string.Join(",", assembly.Transfers.Select(x => $"{x.Unit?.Name}<-#{x.DonorArmyId}"));
+            AiDebugLog.WriteDeduped(intent != null ? intent.IntentKey + "#prep"
+                    : $"mobilization#{snap.Observer?.ColorIndex}",
+                $"{head} decision=PROPOSE step={step} host={(hostId.HasValue ? $"#{hostId.Value}" : "new")} "
+                + $"hex=({hostHex.Q},{hostHex.R}) ap={F(ap)} transfers=[{transfers}] "
+                + $"projected={F(assembly?.ProjectedPower ?? 0f)} score={F(score.Value)}");
         }
 
         // Audit F7 — the first leg of a fresh cross-hex gather. The whole operation is priced here
@@ -249,7 +483,7 @@ namespace Game.Ai.V2
         // walks to it (or hands over once there) in parallel. Lifecycle work of a Hard operation,
         // so, like the Reinforcement convoy, the intrinsic score stays neutral.
         private static void AppendAttackGather(WorldSnapshot snap, MissionIntent intent,
-            AttackIntent a, List<MissionProposal> proposals, AiTurnContext ctx)
+            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;
@@ -259,6 +493,8 @@ namespace Game.Ai.V2
                 return;
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
+            if (a.Preparation)
+                AppendPreparationAssembly(snap, intent, a, host, hexBonus, committed, proposals);
             foreach (int supportId in a.GatherSupportArmyIds.ToList())
             {
                 ArmySnapshot support = snap.Self.Armies?.FirstOrDefault(x => x != null
@@ -266,13 +502,42 @@ namespace Game.Ai.V2
                 // Nothing to do this turn: an idle proposal would only fail NoExecutableStep.
                 if (support == null || (!support.Hex.Equals(host.Hex) && support.CurrentMovement <= 0))
                     continue;
-                proposals.Add(BuildAttackGatherLeg(a.Target, host, support, a.GatherSupportArmyIds,
+                MissionProposal leg = BuildAttackGatherLeg(a.Target, host, support, a.GatherSupportArmyIds,
                     hexBonus, defenderCount, a.ProjectedWinChance, a.CoversAllDefenders,
-                    a.LastOpportunisticStrikeTurn, default(TaskScore), intent));
+                    a.LastOpportunisticStrikeTurn, default(TaskScore), intent);
+                if (a.Preparation)
+                    MarkPreparation(leg, AttackPreparationStep.None);
+                proposals.Add(leg);
             }
             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                 $"[AI][V2][Attack][Gather] decision=CONTINUE {intent.IntentKey} host={host.ArmyId} "
                 + $"supports=[{string.Join(",", a.GatherSupportArmyIds)}]");
+        }
+
+        // T01 — the durable same-hex step of a live preparation: legal same-hex bodies that raise
+        // the host join it (garrison floors / operators / claims respected by the one planner).
+        // Lifecycle work of the Hard operation: neutral intrinsic score, 0 AP.
+        private static void AppendPreparationAssembly(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ArmySnapshot host, float hexBonus, ISet<int> committed,
+            List<MissionProposal> proposals)
+        {
+            PlayerSetupData player = snap.Observer;
+            ArmyData live = player == null ? null : AiV2Util.ResolveArmy(player, host.ArmyId);
+            if (live == null)
+                return;
+            var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            unavailable.Remove(host.ArmyId);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            GroundCombatAssemblyPlan step = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
+                snap, live, unavailable, opposition, hexBonus);
+            if (!step.Feasible)
+                return;
+            AttackObjective objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
+                ?? new AttackObjective { Target = a.Target };
+            AppendPreparationStep(snap, objective, host.ArmyId, host.Hex,
+                AttackPreparationStep.Assemble, 0f, step, hexBonus, proposals,
+                $"[AI][V2][Attack][Mobilization] {intent.IntentKey}", intent);
         }
 
         private static MissionProposal BuildAttackGatherLeg(AttackTargetRef targetRef,
