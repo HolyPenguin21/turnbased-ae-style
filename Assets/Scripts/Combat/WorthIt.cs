@@ -613,7 +613,7 @@ namespace Game.Combat
                 return new BattleEstimate(1f, 1f, 0f);
 
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
-            if (baseline.Count == 0)
+            if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
             int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus,
@@ -674,9 +674,9 @@ namespace Game.Combat
             float hexDefenseBonus, AbilityMagnitudes? magnitudes = null)
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
-                .Select(a => new DefendingArmy(CombatantsOf(a.Units), a.Commander,
+                .Select(a => new DefendingArmy(TacticalTargetsOf(a.Units), a.Commander,
                     a.DefenseBonusOverride))
-                .Where(a => a.Units.Count > 0)
+                .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
             if (armies.Count <= 1)
                 return armies.Count == 0
@@ -685,9 +685,9 @@ namespace Game.Combat
                         armies[0].DefenseBonus(hexDefenseBonus), attackerCommander,
                         armies[0].Commander, magnitudes);
 
-            attackerUnits = CombatantsOf(attackerUnits);
+            attackerUnits = TacticalTargetsOf(attackerUnits);
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
-            if (baseline.Count == 0)
+            if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
             // Strongest defender first, judged against the fresh attacker (stable for equal odds).
@@ -730,7 +730,7 @@ namespace Game.Combat
             SideCommander attackerCommander, AbilityMagnitudes magnitudes)
         {
             var rng = new System.Random(seed);
-            float startHp = baseline.Sum(u => u.Hp);
+            float startHp = baseline.Where(u => !u.IsHero).Sum(u => u.Hp);
             int wins = 0, draws = 0, criticalOnWin = 0;
             float survivingRatioSum = 0f;
             for (int t = 0; t < MonteCarloTrials; t++)
@@ -766,8 +766,8 @@ namespace Game.Combat
                 if (result > 0)
                 {
                     wins++;
-                    survivingRatioSum += startHp > 0f ? attackers.Sum(u => Mathf.Max(0f, u.Hp)) / startHp : 0f;
-                    if (attackers.Any(u => u.Hp > 0f && u.Hp <= u.MaxHp / 2f))
+                    survivingRatioSum += startHp > 0f ? attackers.Where(u => !u.IsHero).Sum(u => Mathf.Max(0f, u.Hp)) / startHp : 0f;
+                    if (attackers.Any(u => !u.IsHero && u.Hp > 0f && u.Hp <= u.MaxHp / 2f))
                         criticalOnWin++;
                 }
                 else if (result == 0) draws++;
