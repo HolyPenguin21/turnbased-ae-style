@@ -2,7 +2,7 @@
 
 База: актуальный remote `master`, `d686cf4d5ca70da156e1ad7721f7bf9e2f88ec6d`.
 Рабочая ветка: `audit/economy-rule-ownership`. Исходные checkout не изменялись;
-для работы создан отдельный worktree. Merge и push не выполнялись.
+для работы создан отдельный worktree. После повторной проверки изменения доставлены в master.
 
 ## Flow и обязанности
 
@@ -155,4 +155,4 @@
 - Прежняя версия: 861 тест, 653 passed, 208 failed. Исправленная: 861 тест, 658 passed, 203 failed. **Новых регрессий среди ранее проходивших тестов: 0.** Пять ранее падавших проверок исправлены (две Economy, collision и два cache completeness guards).
 - Банк: **19/19**; WorthIt cache: **11/11**; player route-cache isolation: **4/4**; Economy ownership: **28 managed passed**, ещё 2 новых integration cases требуют native Unity.
 - Полный прогон не является зелёным Unity EditMode suite: здесь нет native Unity engine, а baseline содержит и другие прежние падения. Новые интеграционные проверки projected movement `(0)` и `(1)` компилируются, но останавливаются при создании `GameObject`; их результат должен быть подтверждён в Unity.
-- Push/merge не выполнялись.
+- Изменения и этот отчёт доставлены в master быстрым переходом без изменения других файлов.
