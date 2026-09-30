@@ -94,7 +94,7 @@ namespace Game.Ai.V2
                     // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
                     // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
                     // never trusting a hero identity carried across from an earlier phase.
-                    ArmyData g = ResolveArmy(player, x.Route.ArmyId);
+                    ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
                     UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g);
                     if (sparable == null) return "no_sparable_hero";
@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                         return "no_safe_path";
                     return null;
                 }
-                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
@@ -124,7 +124,7 @@ namespace Game.Ai.V2
                 float? ShortfallAp, string Detail) EvaluateGarrisonCandidate(
                     DemandLayer.EconomyBuilderChoice candidate)
             {
-                ArmyData g = ResolveArmy(player, candidate.Route.ArmyId);
+                ArmyData g = AiV2Util.ResolveArmy(player, candidate.Route.ArmyId);
                 if (g == null)
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
@@ -229,7 +229,7 @@ namespace Game.Ai.V2
                     builderChoice = candidate;
                     break;
                 }
-                ArmyData a = ResolveArmy(player, candidate.Route.ArmyId);
+                ArmyData a = AiV2Util.ResolveArmy(player, candidate.Route.ArmyId);
                 if (a == null)
                     continue;
                 builderChoice = candidate;
@@ -287,7 +287,7 @@ namespace Game.Ai.V2
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
                 {
                     int preferredId = m.PreferredMoverArmyId.Value;
-                    ArmyData preferredArmy = ResolveArmy(player, preferredId);
+                    ArmyData preferredArmy = AiV2Util.ResolveArmy(player, preferredId);
 
                     if (preferredArmy == null)
                         return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
@@ -327,7 +327,7 @@ namespace Game.Ai.V2
                                 plan = EvaluateGarrisonCandidate(x).Detail;
                             else
                             {
-                                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                                ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                                 EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
                                     session.Snapshot, standingIntents, key, target, x, a, a.Id,
                                     ecoApEnvelopeRemaining, rawApRemaining);
@@ -450,7 +450,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"preferred return builder #{preferredId.Value} is no longer eligible"));
 
-            ArmyData actor = ResolveArmy(player, preferredId.Value);
+            ArmyData actor = AiV2Util.ResolveArmy(player, preferredId.Value);
             if (actor == null || actor.Owner != player
                 || !actor.Members.Any(u => u != null && u.IsHero))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -510,7 +510,7 @@ namespace Game.Ai.V2
                     || frozen.CollectionCapacity.Get(target.ResourceType.Value) <= 0f)))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"collector #{actorId.Value} is no longer eligible"));
-            ArmyData actor = ResolveArmy(player, actorId.Value);
+            ArmyData actor = AiV2Util.ResolveArmy(player, actorId.Value);
             if (actor == null || actor.Owner != player || actor.IsAirArmy || actor.IsAirfield
                 || actor.IsGarrison || actor.IsPrison)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(

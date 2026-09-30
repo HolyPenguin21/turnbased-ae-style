@@ -304,6 +304,7 @@ namespace Game.EditorTests
         [Test]
         public void BothExecutors_UseSharedDiscoveryAndCompletionRules()
         {
+            AssertCalls(typeof(ReconGroundExecutor), "MaybeEnterOptionalStealth", typeof(StrategicSpendability), "SpendableAp");
             AssertCalls(typeof(ReconGroundExecutor), "RunPreparedStep", typeof(AiV2Util), "KnownArmyIds");
             AssertCalls(typeof(ReconAirExecutor), "RecordDiscoveries", typeof(AiV2Util), "KnownArmyIds");
             AssertCalls(typeof(ReconGroundExecutor), "RefreshObjectiveSatisfied", typeof(ScoutObjectiveEvaluator), "IsSatisfiedLive");

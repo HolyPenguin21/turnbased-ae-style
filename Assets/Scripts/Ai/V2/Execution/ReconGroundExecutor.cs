@@ -534,12 +534,13 @@ namespace Game.Ai.V2
             RouteTopologyBenefits(player, army, nextHex, strategicAnchor,
                 out float routeAccess, out float routeShorten);
 
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
             var eval = ScoutOptionalStealthPolicy.Evaluate(new OptionalStealthInputs
             {
                 LegDetectionRisk = knownRouteRisk,
                 MoverAlreadyHidden = false,
                 MoverIsStrategicBody = army.Members.Any(m => m.IsHero),
-                ApRemaining = root.ActionPoints,
+                ApRemaining = Mathf.FloorToInt(spendableAp),
                 StealthApCost = stealthAp,
                 MandatoryApClaims = mandatoryApClaims,
                 DrawAvailable = drawAvailable,
@@ -549,9 +550,9 @@ namespace Game.Ai.V2
                 RouteShorteningBenefit = routeShorten,
             });
 
-            float slack = Mathf.Max(0f, root.ActionPoints - Mathf.Max(0f, mandatoryApClaims));
+            float slack = Mathf.Max(0f, spendableAp - Mathf.Max(0f, mandatoryApClaims));
             AiDebugLog.Write($"[AI][V2][Recon][Stealth] [{pm.Mission?.AttemptId}] actor=#{army.Id} {eval.ToCompact()} "
-                + $"ap={root.ActionPoints} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
+                + $"ap={root.ActionPoints} spendable={spendableAp.ToString("0.##", CultureInfo.InvariantCulture)} mandatory={mandatoryApClaims.ToString("0.##", CultureInfo.InvariantCulture)} "
                 + $"slack={slack.ToString("0.##", CultureInfo.InvariantCulture)} draw={(drawAvailable ? 1 : 0)}");
 
             if (eval.Decision != OptionalStealthDecision.Enter

@@ -97,11 +97,10 @@ namespace Game.Ai.V2
             // deferred state. Completion AP is owned exclusively by EconomyBuildCompletion after
             // Provisioning has proved that this concrete actor can finish now. Treat an attempted
             // deferred AP write as a zero-upsert so an older row is removed rather than leaked.
-            if (r.Reason == StrategicReservationReason.EconomyDeferredBuild
-                && r.Resource == StrategicReservedResource.ActionPoints)
-                r.Amount = 0f;
+            float amount = r.Reason == StrategicReservationReason.EconomyDeferredBuild
+                && r.Resource == StrategicReservedResource.ActionPoints ? 0f : r.Amount;
 
-            if (r.Amount <= 0f)
+            if (amount <= 0f)
             {
                 if (existing != null)
                 {
@@ -112,15 +111,21 @@ namespace Game.Ai.V2
             }
             if (existing != null)
             {
-                if (Mathf.Approximately(existing.Amount, r.Amount) && existing.ExpirationStage == r.ExpirationStage)
+                if (Mathf.Approximately(existing.Amount, amount) && existing.ExpirationStage == r.ExpirationStage)
                     return;
-                existing.Amount = r.Amount;
+                existing.Amount = amount;
                 existing.ExpirationStage = r.ExpirationStage;
                 LogChange(player, turn, $"[AI][V2][Reservation] UPDATE {existing}");
                 return;
             }
-            e.Reservations.Add(r);
-            LogChange(player, turn, $"[AI][V2][Reservation] ADD {r}");
+            // Own the value: a caller may reuse its request without changing the stored hold.
+            var owned = new StrategicResourceReservation
+            {
+                Owner = r.Owner, Reason = r.Reason, Resource = r.Resource,
+                Amount = amount, ExpirationStage = r.ExpirationStage,
+            };
+            e.Reservations.Add(owned);
+            LogChange(player, turn, $"[AI][V2][Reservation] ADD {owned}");
         }
 
         // Σ of this turn's rows for one resource — an inspection primitive (tests, diagnostics).

@@ -6,6 +6,49 @@ Working branch: `refactor/recon-duplicate-srp-audit`.
 Implementation and audit are ready for review. Full Unity EditMode verification is still pending;
 this report does not mark the task's all-tests-pass Definition of Done as met.
 
+## Follow-up review: cache reads/writes and resource bank
+
+The follow-up expands the initial behavior-preserving consolidation with targeted correctness fixes.
+Rule costs, risk weights, AP/Energy prices, endurance and memory lifetimes are unchanged.
+
+| Area | Finding | Correction / checked boundary |
+|---|---|---|
+| Remaining lookup wrapper | ProvisioningManager still forwarded live resolution, including Recon callers | Removed the wrapper; the shared partial's callers use AiV2Util directly |
+| Frozen intel write | Capture could overwrite an already-published player/turn/revision identity | Capture is write-once for that identity; a changed observation uses a new revision |
+| Frozen intel read | IReadOnlyDictionary exposed a mutable Dictionary | Published copies are detached ReadOnlyDictionary values; live Snapshot is also read-only |
+| Empty-hex observation | IntelAge could change without any object-content difference, leaving KnowledgeVersion unchanged | Changed observation stamps invalidate the existing player-scoped knowledge version; repeated same-turn stamps do not |
+| Visited/visible map facts | Visiting an already-visible empty hex did not change content or IntelAge, so MapKnowledge could remain stale | The existing VisionSystem change event invalidates knowledge explicitly; content-only notifications retain equality-based invalidation |
+| Snapshot capture order | Stamping visibility can now advance the version | Scan and RefreshStrategicKnowledge stamp before selecting the frozen identity; Observe's repeat stamp is idempotent |
+| Bank write ownership | The ledger retained the caller's mutable reservation object and normalized deferred AP by mutating it | Upsert stores its own row and normalizes a local amount; inspection reads were already detached |
+| Optional stealth | Discretionary stealth used raw AP minus mission claims, bypassing other bank holds | Policy input and final slack use StrategicSpendability's free AP, while mandatory mission costs remain protected |
+| Repeated provisioning acknowledgement | A keyed success remained single but cumulative current/next-turn AP/Energy grew on every registration | A successful mission is pinned and acknowledged only once per session |
+
+Reviewed the funding → funded assignment → provisioning → execution → replan chain. ResourceAllocator
+nets owner-aware ledger holds against funded/locked Economy draws, and repricing reports both the
+AP and Energy shortfall. Air admission deducts same-pass Energy claims from strategic spendability,
+and tracks next-turn AP/Energy promises separately. Provisioning does not charge world resources;
+execution does. After execution the pipeline refreshes facts and creates the next planning cycle.
+Mandatory aviation recovery is settled before card play, rather than held a second time by this bank.
+Owner release, upsert, expiry, turn/player isolation, deferred/completion priority and owner-draw
+netting are covered by the existing bank tests plus the added regression cases.
+
+Reviewed SafeStepPathing's read/write boundaries: cache identity includes map/pathing version,
+player-scoped blocker-memory revision, route endpoints and movement limit; returned route witnesses
+are copied. IntelAge/map-visit invalidation intentionally advances strategic knowledge without
+invalidating the blocker cache. No route-cache ownership change was needed.
+
+Four failures were first reproduced in the managed harness: same-revision overwrite, mutable
+published read, missing empty-hex observation invalidation, and reservation request aliasing. All
+four pass after the fixes. Eight cases were added in the existing cache/bank fixtures; all 22
+cache/bank cases pass. The ownership fixture also asserts that optional stealth calls the bank seam.
+
+Final reference compilation and managed test compilation succeed (zero errors); git diff --check
+passes. Full managed differential run: 776 cases, 524 passes, 252 failures, no skips. All 490
+passing master-baseline cases remain passing; 33 of the 37 added cases pass. The previously skipped
+source-read ratchet now runs and passes. The same 248 pre-existing harness failures remain, plus the
+four new native-Unity recovery cases from the initial consolidation. Full Unity verification below
+remains required; the managed result is not an all-green Unity test run.
+
 ## Findings and ownership changes
 
 | Rule | Before | After | Authoritative owner |

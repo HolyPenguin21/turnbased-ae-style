@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -43,8 +44,16 @@ namespace Game.Ai.V2
 
             CurrentTurnByPlayer[player] = currentTurn;
             Dictionary<HexCoord, int> store = StoreFor(player);
+            bool changed = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
+            {
+                if (!store.TryGetValue(hex, out int previous) || previous != currentTurn)
+                    changed = true;
                 store[hex] = currentTurn;
+            }
+            // Empty hexes also carry IntelAge. Content equality cannot invalidate this metadata.
+            if (changed)
+                AiMapMemory.InvalidateObservedKnowledge(player);
         }
 
         public static bool TryGetLastObservedTurn(PlayerSetupData player, HexCoord hex, out int lastObservedTurn)
@@ -67,13 +76,13 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Immutable-by-convention copy for a frozen strategic snapshot. Callers cannot mutate the
+        // Detached read-only copy for a frozen strategic snapshot. Callers cannot mutate the
         // live registry through the returned dictionary.
         public static IReadOnlyDictionary<HexCoord, int> Snapshot(PlayerSetupData player)
         {
             if (player == null || !LastObservedByPlayer.TryGetValue(player, out Dictionary<HexCoord, int> store))
-                return new Dictionary<HexCoord, int>();
-            return new Dictionary<HexCoord, int>(store);
+                return new ReadOnlyDictionary<HexCoord, int>(new Dictionary<HexCoord, int>());
+            return new ReadOnlyDictionary<HexCoord, int>(new Dictionary<HexCoord, int>(store));
         }
 
         private static Dictionary<HexCoord, int> StoreFor(PlayerSetupData player)
@@ -94,7 +103,11 @@ namespace Game.Ai.V2
             if (player == null || !CurrentTurnByPlayer.TryGetValue(player, out int turn)
                 || !VisionSystem.IsVisible(player, hex))
                 return;
-            StoreFor(player)[hex] = turn;
+            Dictionary<HexCoord, int> store = StoreFor(player);
+            if (store.TryGetValue(hex, out int previous) && previous == turn)
+                return;
+            store[hex] = turn;
+            AiMapMemory.InvalidateObservedKnowledge(player);
         }
     }
 }
