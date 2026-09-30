@@ -548,6 +548,22 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // The fist assembles on its staging Base (the own Base nearest to the target): a host
+            // standing elsewhere walks there first (the planner's MoveHost leg); supports are
+            // planned only once it has arrived. No own Base left -> the ordinary stall lifecycle.
+            HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex);
+            if (host.MemberCount > 0 && (!staging.HasValue || !host.Hex.Equals(staging.Value)))
+            {
+                if (staging.HasValue)
+                    intent.LastProtectedTurn = snap.TurnNumber;
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
+                    $"[AI][V2][Attack][Mobilization] {at} decision="
+                    + (staging.HasValue
+                        ? $"WAIT next=host_to_staging staging=({staging.Value.Q},{staging.Value.R})"
+                        : "STALL blocker=no_own_base"));
+                return true;
+            }
+
             GroundCombatGatherPlan plan = host.MemberCount == 0
                 ? GroundCombatGatherPlan.Infeasible("empty host takes no walking support")
                 // ATK-F05 — free armies only; a bought donor is the planner's priced

@@ -46,6 +46,9 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.GatherReturn:
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
+                case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
+                    yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
+                    yield break;
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
                     yield return RunReinforcementStep(player, ctx, pm, result, army, snapshot);
@@ -81,7 +84,8 @@ namespace Game.Ai.V2
         {
             if (pm == null || pm.Kind != MissionKind.Attack
                 || pm.AttackTarget.Phase != AttackMissionPhase.Gather
-                || pm.AttackTarget.PreparationStep == AttackPreparationStep.None)
+                || pm.AttackTarget.PreparationStep == AttackPreparationStep.None
+                || pm.AttackTarget.PreparationStep == AttackPreparationStep.MoveHost)
                 return false;
 
             AttackMissionTarget target = pm.AttackTarget;

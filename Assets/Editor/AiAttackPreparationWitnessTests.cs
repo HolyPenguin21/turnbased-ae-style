@@ -137,6 +137,23 @@ namespace Game.EditorTests
             Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, Host(Citadel, Body(4))),
                 Does.StartWith("generation:"));
         }
+
+        // User decision 30.09: the fist assembles on the own Base nearest to the target, the
+        // starting Citadel only breaks a tie.
+        [Test]
+        public void StagingBase_IsTheOwnBaseNearestTheTarget()
+        {
+            WorldSnapshot snap = Snap(null, null);
+            var forward = new HexCoord(0, 0);
+            snap.Self.BaseHexes = new List<HexCoord> { Citadel, forward };
+            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1)),
+                Is.EqualTo(forward));
+            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(-6, 4)),
+                Is.EqualTo(Citadel));
+            snap.Self.BaseHexes = new List<HexCoord>();
+            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1)),
+                Is.Null);
+        }
     }
 }
 #endif

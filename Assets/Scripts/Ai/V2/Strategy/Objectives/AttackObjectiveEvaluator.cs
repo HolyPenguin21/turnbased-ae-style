@@ -60,6 +60,10 @@ namespace Game.Ai.V2
         CreateHost = 1,
         Assemble = 2,
         RecruitDonors = 3,
+        // User decision 30.09: the fist is assembled on an own Base (PreparationStagingBase), where
+        // cards and generated outputs land in it directly. A host standing elsewhere first walks
+        // there (a plain Transit of the host, the walk-home leg's machinery).
+        MoveHost = 4,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -152,6 +156,23 @@ namespace Game.Ai.V2
 
     public static class AttackObjectiveEvaluator
     {
+        // The own Base a mobilization preparation assembles on: of every held own Base
+        // (SelfSnapshot.BaseHexes, starting Citadel included) the one nearest to the target; ties
+        // go to the starting Citadel, then Q, R. Null when no own Base is held. Recomputed every
+        // pass, so a lost Base simply moves the staging point.
+        internal static HexCoord? PreparationStagingBase(WorldSnapshot snap, HexCoord targetHex)
+        {
+            IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
+            if (bases == null || bases.Count == 0)
+                return null;
+            HexCoord citadel = snap.Self.Citadel;
+            return bases
+                .OrderBy(h => HexGridMath.Distance(h, targetHex))
+                .ThenByDescending(h => h.Equals(citadel))
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .First();
+        }
+
         // ---- enumeration --------------------------------------------------------------------
 
         public static List<AttackObjective> Enumerate(WorldSnapshot snap)

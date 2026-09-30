@@ -46,6 +46,18 @@ namespace Game.Ai.V2
                     return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
                 // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
                 // T01 — a host-side preparation step has no support; it binds / fills the host.
+                // The preparation host walking to its staging Base: the walk-home leg's validation.
+                // Already there is Blocked-class, never "satisfied" (that would end the operation).
+                case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
+                {
+                    ArmyData walker = target.PrimaryArmyId.HasValue
+                        ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+                    if (walker != null && walker.Hex.Equals(target.DestinationHex))
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"attack preparation host #{walker.Id} already stands on its staging Base"));
+                    return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
+                        target.PrimaryArmyId, "preparation host");
+                }
                 case AttackMissionPhase.Gather when target.PreparationStep != AttackPreparationStep.None:
                     return ProvisionPreparation(player, root, session, funded, target, key, eps);
                 case AttackMissionPhase.Reinforcement:
@@ -215,11 +227,12 @@ namespace Game.Ai.V2
             }
             else
             {
-                // A container is created only on the player's OWN starting Citadel, and never
-                // beside an empty shell that could be reused instead.
-                if (snap?.Self == null || !snap.Self.HoldsStartingCitadel || !hex.Equals(snap.Self.Citadel))
+                // A container is created only on the preparation's staging Base (the own Base
+                // nearest to the target), and never beside an empty shell that could be reused.
+                HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, target.Target.Hex);
+                if (!staging.HasValue || !hex.Equals(staging.Value))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                        $"attack preparation: ({hex.Q},{hex.R}) is not the held own starting Citadel"));
+                        $"attack preparation: ({hex.Q},{hex.R}) is not the staging own Base"));
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, null);
                 if (shell != null && !session.ClaimedArmyIds.Contains(shell.Id))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(

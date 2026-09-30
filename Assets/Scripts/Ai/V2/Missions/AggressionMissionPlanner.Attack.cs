@@ -210,9 +210,12 @@ namespace Game.Ai.V2
         // AvailablePower) and no Attack operation is live. It never admits a march: the prepared
         // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
         // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting
-        // Citadel. Host order: an existing free field army (anywhere) > an empty reusable shell on
-        // the own starting Citadel > a container created there (CreateArmyWithMember when a legal
-        // same-hex first member exists, else one empty shell while hand/deck can still fill it).
+        // Citadel. The fist is assembled on the own Base nearest to the target
+        // (AttackObjectiveEvaluator.PreparationStagingBase), where cards land in it directly.
+        // Host order: an existing free field army (one already on the staging Base first; one
+        // elsewhere first walks there — MoveHost) > an empty reusable shell on the staging Base >
+        // a container created there (CreateArmyWithMember when a legal same-hex first member
+        // exists, else one empty shell while hand/deck can still fill it).
         // The first executed step creates the durable Gather intent (§70); funding stays the one
         // allocator's decision — nothing is spent or claimed here.
         private static void TryAppendAttackPreparation(WorldSnapshot snap,
@@ -233,7 +236,8 @@ namespace Game.Ai.V2
                 : live != null ? $"operation_live:{live.IntentKey}"
                 : attackProposed ? "direct_assault_or_gather_proposed"
                 : objectives.Count == 0 ? "no_attack_objective"
-                : !self.HoldsStartingCitadel ? "own_starting_citadel_lost" : null;
+                : !AttackObjectiveEvaluator.PreparationStagingBase(snap, objectives[0].Hex).HasValue
+                    ? "no_own_base" : null;
             string logKey = $"mobilization#{snap.Observer?.ColorIndex}";
             if (skip != null)
             {
@@ -243,14 +247,15 @@ namespace Game.Ai.V2
             }
 
             AttackObjective objective = objectives[0];
-            HexCoord citadel = self.Citadel;
+            HexCoord citadel = AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex).Value;
             float required = 0.80f * self.TotalMilitaryPotential;
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, objective.Hex);
             IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             string head = $"[AI][V2][Attack][Mobilization] target={objective.Target.DiagnosticLabel} "
                 + $"knowledge={(objective.LocationOnly ? "starting-location-only" : "observed")} {share} "
-                + $"ideal={F(self.TotalMilitaryPotential)} required>{F(required)}";
+                + $"ideal={F(self.TotalMilitaryPotential)} required>{F(required)} "
+                + $"staging=({citadel.Q},{citadel.R})";
 
             // 1) an existing free field army hosts the fist wherever it stands.
             ArmySnapshot fieldHost = GroundCombatActorEligibility.EligibleArmies(snap, excluded,
@@ -260,6 +265,21 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.ArmyId)
                 .FirstOrDefault();
             PlayerSetupData player = snap.Observer;
+            if (fieldHost != null && !fieldHost.Hex.Equals(citadel))
+            {
+                // The host walks to the staging Base first; supports gather there afterwards.
+                if (fieldHost.CurrentMovement <= 0)
+                {
+                    AiDebugLog.WriteDeduped(logKey,
+                        $"{head} decision=HOLD host=#{fieldHost.ArmyId} reason=host_has_no_movement_to_reach_staging");
+                    return;
+                }
+                AppendPreparationStep(snap, objective, fieldHost.ArmyId, citadel,
+                    AttackPreparationStep.MoveHost,
+                    fieldHost.HasActivatedThisTurn ? 0f : fieldHost.ActivationApCost, null, hexBonus,
+                    proposals, head);
+                return;
+            }
             if (fieldHost != null)
             {
                 Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
@@ -497,7 +517,23 @@ namespace Game.Ai.V2
                 return;
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
-            if (a.Preparation)
+            HexCoord? staging = a.Preparation
+                ? AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex) : null;
+            if (a.Preparation && staging.HasValue && !host.Hex.Equals(staging.Value)
+                && host.MemberCount > 0)
+            {
+                // The durable host walks on to the staging Base (lifecycle leg, neutral score).
+                if (host.CurrentMovement > 0)
+                {
+                    AttackObjective tracked = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
+                        ?? new AttackObjective { Target = a.Target };
+                    AppendPreparationStep(snap, tracked, host.ArmyId, staging.Value,
+                        AttackPreparationStep.MoveHost,
+                        host.HasActivatedThisTurn ? 0f : host.ActivationApCost, null, hexBonus,
+                        proposals, $"[AI][V2][Attack][Mobilization] {intent.IntentKey}", intent);
+                }
+            }
+            else if (a.Preparation)
             {
                 AppendPreparationAssembly(snap, intent, a, host, hexBonus, committed, proposals);
                 if (a.GatherSupportArmyIds.Count == 0)
