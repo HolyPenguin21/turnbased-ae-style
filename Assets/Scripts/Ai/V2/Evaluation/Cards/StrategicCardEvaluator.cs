@@ -1489,19 +1489,22 @@ namespace Game.Ai.V2
 
             // Signed deltas are essential: an override that gains Attack but destroys Defense,
             // movement or Fate is not a free upgrade.
-            float combatDelta =
-                (After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
+            // A hero is the army's container, not a fighter (AiPower.ToPowerUnit): its Attack /
+            // Defense / HP / Initiative / Resistance, Range and damage abilities are worth nothing
+            // here — only battle Fate, and below its Command / movement / activation / roles.
+            // Not a ban: such gear is still attachable, it just never looks like an upgrade.
+            float combatDelta = isHero
+                ? (After(EquipmentStat.Fate) - before[EquipmentStat.Fate]) * AiConfigV2.powerHeroFateWeight
+                : (After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
                 + (After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
                 + (After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
                 + (After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
                 + (After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
-            if (isHero)
-                combatDelta += (After(EquipmentStat.Fate) - before[EquipmentStat.Fate])
-                               * AiConfigV2.powerHeroFateWeight;
 
             float tactical = 0f;
             tactical += (After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
-            tactical += (After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
+            if (!isHero)
+                tactical += (After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
             tactical += (before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
             tactical += (After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
             tactical += EquipmentRoleDelta(hostAbilities, predicted.Abilities,
@@ -1511,7 +1514,7 @@ namespace Game.Ai.V2
             int lostAbilities = hostAbilities?.Count(a =>
                 predicted.Abilities == null || !predicted.Abilities.Contains(a)) ?? 0;
             float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate)
-                + (addedAbilities - lostAbilities) * 0.15f;
+                + (isHero ? 0f : (addedAbilities - lostAbilities) * 0.15f);
 
             // The whole delta keeps its [-1.5, 1.5] bound; both parts shrink proportionally.
             float raw = combat + tactical;
