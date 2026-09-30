@@ -17,7 +17,8 @@ namespace Game.Map
 
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
         {
-            if (owner == null || catalog == null)
+            if (owner == null || catalog == null || hexSelectionController?.Map == null
+                || !hexSelectionController.Map.CanEnter(hex))
                 return null;
 
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
@@ -34,6 +35,8 @@ namespace Game.Map
             HexSelectionController hexSelectionController, out string failReason)
         {
             failReason = null;
+            if (hexSelectionController?.Map == null || !hexSelectionController.Map.CanEnter(hex))
+            { failReason = "Terrain cannot host a ground army."; return null; }
             if (owner == null || catalog == null || source == null || member == null
                 || source.Owner != owner || source.IsPrison || member.IsAviation
                 || !source.Hex.Equals(hex))
@@ -190,6 +193,9 @@ namespace Game.Map
             {
                 deploymentHex = targetArmy.Hex;
             }
+
+            if (hexSelectionController.Map == null || !hexSelectionController.Map.CanEnter(deploymentHex))
+            { failReason = "Terrain cannot host deployment."; return false; }
 
             // Ground deployment requires an OWN building with the card's declared ability.
             // Aviation remains Airfield-only.

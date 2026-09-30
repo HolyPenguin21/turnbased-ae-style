@@ -72,6 +72,17 @@ namespace Game.Map
             Dictionary<HexCoord, int> assignment = AssignTerrainTypes(allCoords);
 
             List<TextureVariantSlot> variantSlots = BuildVariantSlots(out List<int>[] slotIndicesByType);
+            List<PlacedComplex> complexes = PlaceComplexes(allCoords, assignment);
+            var complexSlots = new Dictionary<HexCoord, (int slot, int rotation)>();
+            foreach (PlacedComplex complex in complexes)
+            {
+                complex.FirstSlot = variantSlots.Count;
+                for (int i = 0; i < complex.Cells.Length; i++)
+                {
+                    complexSlots[complex.Cells[i]] = (variantSlots.Count, complex.Rotation);
+                    variantSlots.Add(new TextureVariantSlot(complex.TypeIndex, complex.Template.parts[i].frames[0]));
+                }
+            }
 
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
@@ -101,9 +112,20 @@ namespace Game.Map
                 Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
                 int typeIndex = assignment[coord];
                 HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, assignment, chosenTexture);
-                int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
+                int variantSlot = complexSlots.TryGetValue(coord, out var complexVisual)
+                    ? complexVisual.slot : PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
+                int firstVertex = uvs.Count;
                 chosenTexture[coord] = variantSlots[variantSlot].Texture;
                 HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha);
+                // Rotate only the UVs. Alpha/geometry on ALL six edges stays untouched.
+                if (complexSlots.ContainsKey(coord) && complexVisual.rotation != 0)
+                    for (int vertex = firstVertex; vertex < uvs.Count; vertex++)
+                    {
+                        Vector2 uv = uvs[vertex] - new Vector2(0.5f, 0.5f);
+                        float angle = -complexVisual.rotation * Mathf.PI / 3f;
+                        uvs[vertex] = new Vector2(0.5f + uv.x * Mathf.Cos(angle) - uv.y * Mathf.Sin(angle),
+                            0.5f + uv.x * Mathf.Sin(angle) + uv.y * Mathf.Cos(angle));
+                    }
                 hexData[coord] = _activeBiome.terrainTypes[typeIndex];
 
                 if (!boundsInitialized) { bounds = new Bounds(center, Vector3.zero); boundsInitialized = true; }
@@ -152,6 +174,27 @@ namespace Game.Map
             MeshRenderer mapRenderer = GetComponent<MeshRenderer>();
             mapRenderer.sharedMaterials = _materialInstances.ToArray();
             mapRenderer.sortingOrder = MapSortingOrder.Map;
+            var animationGroups = new List<MapTerrainAnimator.Group>();
+            foreach (PlacedComplex complex in complexes)
+            {
+                int count = complex.Cells.Length;
+                var materials = new Material[count];
+                var frames = new Texture2D[count][];
+                for (int i = 0; i < count; i++)
+                {
+                    materials[i] = _materialInstances[complex.FirstSlot + i];
+                    frames[i] = complex.Template.parts[i].frames;
+                }
+                animationGroups.Add(new MapTerrainAnimator.Group
+                {
+                    Materials = materials, Frames = frames,
+                    FramesPerSecond = complex.Template.framesPerSecond,
+                    Phase = Random.Range(0, frames[0].Length),
+                });
+            }
+            MapTerrainAnimator animator = GetComponent<MapTerrainAnimator>();
+            if (animator == null) animator = gameObject.AddComponent<MapTerrainAnimator>();
+            animator.Configure(animationGroups, _materialInstances.ToArray());
 
             GenerateGround(groundBounds);
 
@@ -224,7 +267,9 @@ namespace Game.Map
 
             var poolIndices = new List<int>();
             for (int i = 0; i < terrainTypes.Count; i++)
-                if (i != mountainIndex)
+                if (i != mountainIndex && terrainTypes[i].baselineWeight > 0f
+                    && !_activeBiome.complexes.Any(t => t != null
+                        && string.Equals(t.terrainName, terrainTypes[i].terrainName, System.StringComparison.OrdinalIgnoreCase)))
                     poolIndices.Add(i);
             if (poolIndices.Count == 0)
                 poolIndices.Add(0); // safety net so an all-mountain list can't crash generation
@@ -357,6 +402,43 @@ namespace Game.Map
                     return candidate;
             }
             return null;
+        }
+
+        private sealed class PlacedComplex
+        {
+            public TerrainComplexTemplate Template;
+            public HexCoord[] Cells;
+            public int Rotation;
+            public int TypeIndex;
+            public int FirstSlot;
+        }
+
+        private List<PlacedComplex> PlaceComplexes(List<HexCoord> allCoords, Dictionary<HexCoord, int> assignment)
+        {
+            var result = new List<PlacedComplex>();
+            var claimed = new HashSet<HexCoord>();
+            foreach (TerrainComplexTemplate template in _activeBiome.complexes)
+            {
+                int typeIndex = template == null ? -1 : IndexOfTerrainNamed(template.terrainName);
+                if (typeIndex < 0 || !template.IsValid()) continue;
+                for (int instance = 0; instance < template.count; instance++)
+                    for (int attempt = 0; attempt < template.placementAttempts; attempt++)
+                    {
+                        HexCoord origin = allCoords[Random.Range(0, allCoords.Count)];
+                        int rotation = template.rotations[Random.Range(0, template.rotations.Length)];
+                        bool Protected(HexCoord h) => BuildingRegistry.FindAt(h) != null
+                            || ArmyRegistry.AllAt(h).Any() || HexEventRegistry.FindAt(h) != null
+                            || HexResourceBonusRegistry.GetBonus(h) != null;
+                        if (!TerrainComplexPlacement.TryValidate(template, origin, rotation, assignment,
+                            _activeBiome.terrainTypes, typeIndex, claimed, Protected, out HexCoord[] cells)) continue;
+                        // All rejection paths above leave the original assignment unchanged.
+                        foreach (HexCoord h in cells) { assignment[h] = typeIndex; claimed.Add(h); }
+                        result.Add(new PlacedComplex
+                        { Template = template, Cells = cells, Rotation = rotation, TypeIndex = typeIndex });
+                        break;
+                    }
+            }
+            return result;
         }
 
         // --- Texture variants (one submesh per texture actually in use, not per terrain type) --

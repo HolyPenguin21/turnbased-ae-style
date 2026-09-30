@@ -30,12 +30,13 @@ namespace Game.Terrain
         public ResourceYields resourceYields = new ResourceYields();
 
         // How many move points a unit spends entering this hex (e.g. Desert = 1, SandDunes =
-        // 2, Mountains = expensive but never blocked outright). Every on-map hex is passable in
-        // principle, but an army stops short the moment it can't fully afford the next hex's
-        // cost (see ArmyController.MoveRoutine) — this cost is the only friction a terrain type
-        // can impose.
+        // 2, Mountains = expensive but passable). A ground army must also satisfy
+        // blocksGroundMovement before paying this cost; aviation always pays one MP.
         [Min(1)]
         public int moveCost = 1;
+
+        // Existing terrain, including mountains, remains passable by default.
+        public bool blocksGroundMovement;
 
         // Added to the DEFENDING side's dice pool only, in any Ground Combat fought on a hex of
         // this type (see BattleScreenUI.Combat.cs's BeginAttack) — the manual's own terrain

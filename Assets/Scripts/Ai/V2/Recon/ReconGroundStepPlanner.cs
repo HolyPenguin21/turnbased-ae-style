@@ -169,7 +169,7 @@ namespace Game.Ai.V2
             out StepChoice choice)
         {
             choice = default;
-            if (!map.TryGetTerrainAt(h, out var terrain))
+            if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
                 return false;
 
             int moveCost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
@@ -295,7 +295,7 @@ namespace Game.Ai.V2
             float best = 0f;
             foreach (HexCoord h in HexGridMath.Neighbors(from))
             {
-                if (seen.Contains(h) || !map.TryGetTerrainAt(h, out var terrain))
+                if (seen.Contains(h) || !map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > movementLeft || ScoutExecutionSafety.StepBlocked(player, h, hidden))

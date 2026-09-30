@@ -812,12 +812,12 @@ namespace Game.Combat
                 && battleHexBuilding.HasAbility(UnitAbilities.Barracks);
 
             HexCoord? target = FindNearestOwnBarracksHex(army.Owner, battleHex, battleHexIsOwnBarracks);
-            if (target.HasValue && TryPickNeighborToward(map, battleHex, target.Value, out destination))
+            if (target.HasValue && TryPickNeighborToward(map, army, battleHex, target.Value, out destination))
                 return true;
 
             var options = new List<HexCoord>();
             foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
-                if (map.TryGetTerrainAt(candidate, out _))
+                if (map.CanEnter(candidate, army))
                     options.Add(candidate);
             if (options.Count == 0)
                 return false;
@@ -1066,7 +1066,7 @@ namespace Game.Combat
             return best;
         }
 
-        private static bool TryPickNeighborToward(HexMap map, HexCoord battleHex, HexCoord target,
+        private static bool TryPickNeighborToward(HexMap map, ArmyData army, HexCoord battleHex, HexCoord target,
             out HexCoord destination)
         {
             destination = default;
@@ -1074,7 +1074,7 @@ namespace Game.Combat
             bool found = false;
             foreach (HexCoord candidate in HexGridMath.Neighbors(battleHex))
             {
-                if (!map.TryGetTerrainAt(candidate, out _))
+                if (!map.CanEnter(candidate, army))
                     continue;
                 int dist = HexGridMath.Distance(candidate, target);
                 if (dist < bestDist)

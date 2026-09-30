@@ -19,6 +19,23 @@ namespace Game.Map
 
         private readonly Dictionary<HexCoord, TerrainTypeEntry> _hexData = new Dictionary<HexCoord, TerrainTypeEntry>();
 
+        // The single terrain-entry rule, shared by route search, execution and placement.
+        public bool CanEnter(HexCoord coord, bool airborne = false) =>
+            TryGetTerrainAt(coord, out TerrainTypeEntry entry) && entry != null
+            && (airborne || !entry.blocksGroundMovement);
+
+        public bool CanEnter(HexCoord coord, ArmyData army) =>
+            army != null && CanEnter(coord, Game.Aviation.AviationRules.IsAirArmy(army));
+
+        // Runtime terrain edits must go through the data owner to invalidate routes.
+        public bool SetTerrainAt(HexCoord coord, TerrainTypeEntry entry)
+        {
+            if (entry == null || !_hexData.ContainsKey(coord)) return false;
+            _hexData[coord] = entry;
+            PathingVersion++;
+            return true;
+        }
+
         public int FieldRadius => fieldRadius;
         public float OuterRadius => outerRadius;
         // SetData can replace the terrain on the SAME HexMap instance. Reference identity alone

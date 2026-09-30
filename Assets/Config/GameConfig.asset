@@ -508,6 +508,80 @@ MonoBehaviour:
           tech: 0
         moveCost: 2
         defenseModifier: 1
+      - terrainName: Acid lake
+        texture: {fileID: 2800000, guid: 005d68e88d2e5d6bb377f0885891503b, type: 3}
+        alternativeTextures: []
+        baselineWeight: 0
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 1
+        blocksGroundMovement: 1
+        defenseModifier: 0
+      - terrainName: Deep canyon
+        texture: {fileID: 2800000, guid: 3552ab8d62fa5637afcdd771ad69f833, type: 3}
+        alternativeTextures: []
+        baselineWeight: 0
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 1
+        blocksGroundMovement: 1
+        defenseModifier: 0
+      complexes:
+      - name: Acid lake pair
+        terrainName: Acid lake
+        count: 2
+        placementAttempts: 64
+        framesPerSecond: 3
+        rotations: 000000000100000002000000030000000400000005000000
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 005d68e88d2e5d6bb377f0885891503b, type: 3}
+          - {fileID: 2800000, guid: 5733e8ffc80b5ca2a718eb5c8a4f9e0a, type: 3}
+          - {fileID: 2800000, guid: c0ffaecdcbf95b508c6f252117015e54, type: 3}
+          - {fileID: 2800000, guid: 2f70c5ae1beb501a9c9d6a71b8869df5, type: 3}
+          - {fileID: 2800000, guid: ef23a7265c8f58e6beeaf02ec856da96, type: 3}
+          - {fileID: 2800000, guid: 123a640688eb51e4ab51afcc2c7a8246, type: 3}
+          - {fileID: 2800000, guid: 895acce0bd2d5a85be6acaed713ab69d, type: 3}
+        - offset: {x: 1, y: 0}
+          frames:
+          - {fileID: 2800000, guid: fe2eb6bcc34453988f017e8c93dc786c, type: 3}
+          - {fileID: 2800000, guid: 73172c9195855a8981ab6788d6813d28, type: 3}
+          - {fileID: 2800000, guid: 8c76ff6d2f895875ae92be90a3d2a42d, type: 3}
+          - {fileID: 2800000, guid: 292be4285a9558fa99c58f7aaaf4d8b2, type: 3}
+          - {fileID: 2800000, guid: 0928f271467f596bb6988249840acb7b, type: 3}
+          - {fileID: 2800000, guid: 35b67812a6dc505d8e3deee892ccad35, type: 3}
+          - {fileID: 2800000, guid: 083c3727c842518a9e05402a77fd03c3, type: 3}
+      - name: Canyon snake
+        terrainName: Deep canyon
+        count: 1
+        placementAttempts: 64
+        framesPerSecond: 3
+        rotations: 000000000100000002000000030000000400000005000000
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 3552ab8d62fa5637afcdd771ad69f833, type: 3}
+        - offset: {x: 1, y: 0}
+          frames:
+          - {fileID: 2800000, guid: dd4dd410ae8c5662963b3bc248a7c0be, type: 3}
+        - offset: {x: 1, y: 1}
+          frames:
+          - {fileID: 2800000, guid: a82257277d2f52bebdee123439bd0de7, type: 3}
       mountainsTerrainName: Mountains
       mountainRangeCount: 3
       mountainRangeLength: 2

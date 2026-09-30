@@ -66,8 +66,9 @@ namespace Game.Ai.V2
             if (fleetBudget <= 0) fleetBudget = 1;
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : fleetBudget;
 
-            int dist = HexGridMath.Distance(mover.Hex, executionHex);
-            int eta = TravelTurns(mover.CurrentMovement, dist, budget);
+            int dist = AiV2Util.TravelCost(snap, mover, executionHex,
+                mover.IsHidden || (stealthRequired && ScoutMoverSelector.StealthReadyThisTurn(mover)));
+            int eta = dist == int.MaxValue ? int.MaxValue : TravelTurns(mover.CurrentMovement, dist, budget);
             int effAp = mover.HasActivatedThisTurn ? 0 : mover.ActivationApCost;
             bool hidden = mover.IsHidden;
             float required = effAp + (stealthRequired && !hidden ? AiConfigV2.scoutOptionalStealthAp : 0f);
@@ -182,6 +183,7 @@ namespace Game.Ai.V2
                 }
 
                 ScoutPairCost pair = PairCost(snap, mover, executionHex, stealthRequired);
+                if (pair.Distance == int.MaxValue) continue;
                 candidates.Add(new PlannedGroundCost(mover, pair));
             }
 

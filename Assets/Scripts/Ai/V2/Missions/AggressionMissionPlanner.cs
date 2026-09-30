@@ -375,7 +375,6 @@ namespace Game.Ai.V2
                 c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
                 && c.Position.HasValue);
             if (actor == null || contact == null) return;
-            int distance = HexGridMath.Distance(actor.Hex, objective.Target.LastKnownHex);
             // Price and time the force this plan will ACTUALLY field, exactly as the Raid lane
             // does. ActiveDefence shares GroundCombatAssemblyPlanner
             // with Raid, so its plan may recruit same-hex bodies too; costing the untouched
@@ -385,6 +384,8 @@ namespace Game.Ai.V2
             // figure rather than invent a second cost model.
             int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
                 ?? actor.MaxMovement;
+            int distance = AiV2Util.TravelCost(snap, actor, objective.Target.LastKnownHex, maxMovement: projectedMove);
+            if (distance == int.MaxValue) return;
             int eta = AiV2Util.CeilDiv(distance,
                 UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
             TaskScore actorScore = ActiveDefenceObjectiveEvaluator.WithResponse(objective,

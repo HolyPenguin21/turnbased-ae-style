@@ -12,6 +12,7 @@ namespace Game.Economy
     {
         public static ResourceYields GetEffectiveYield(TerrainTypeEntry terrain, ResourceYields bonus)
         {
+            if (terrain?.blocksGroundMovement == true) return new ResourceYields();
             ResourceYields baseYield = terrain?.resourceYields ?? new ResourceYields();
             return bonus != null ? baseYield.Add(bonus) : baseYield;
         }

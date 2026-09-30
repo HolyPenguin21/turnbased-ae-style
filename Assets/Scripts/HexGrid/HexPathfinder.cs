@@ -120,7 +120,7 @@ namespace Game.HexGrid
             Func<HexCoord, bool> avoidHex = null, Func<HexCoord, bool> blockHex = null,
             bool flatCost = false)
         {
-            if (map == null)
+            if (map == null || !map.CanEnter(start, flatCost) || !map.CanEnter(destination, flatCost))
                 return null;
             if (start.Equals(destination))
                 return new HexPath(new List<HexCoord> { start }, 0);
@@ -153,7 +153,7 @@ namespace Game.HexGrid
                 foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                 {
                     var next = new HexCoord(current.Q + dq, current.R + dr);
-                    if (!map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
+                    if (!map.CanEnter(next, flatCost) || !map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
                         continue;
                     if (blockHex != null && blockHex(next))
                         continue;
@@ -203,7 +203,7 @@ namespace Game.HexGrid
         // so cost(A -> B) cannot be inferred from cost(B -> A).
         public static Dictionary<HexCoord, int> FindCosts(HexMap map,
             IEnumerable<HexCoord> sources, Func<HexCoord, bool> blockHex = null,
-            int? maxMovement = null, bool reverse = false)
+            int? maxMovement = null, bool reverse = false, bool flatCost = false)
         {
             var costs = new Dictionary<HexCoord, int>();
             if (map == null || sources == null)
@@ -211,7 +211,7 @@ namespace Game.HexGrid
             var sourceSet = new HashSet<HexCoord>();
             var frontier = new Frontier();
             foreach (HexCoord start in sources)
-                if (map.TryGetTerrainAt(start, out TerrainTypeEntry _) && sourceSet.Add(start))
+                if (map.CanEnter(start, flatCost) && sourceSet.Add(start))
                 {
                     costs[start] = 0;
                     frontier.AddOrDecrease(start, 0, 0f);
@@ -227,7 +227,7 @@ namespace Game.HexGrid
                 if (reverse)
                 {
                     map.TryGetTerrainAt(current, out TerrainTypeEntry currentEntry);
-                    reverseStepCost = Mathf.Max(1, currentEntry.moveCost);
+                    reverseStepCost = flatCost ? 1 : Mathf.Max(1, currentEntry.moveCost);
                     // Even a destination-exempt base cannot be ENTERED if its terrain costs
                     // more than the mover can ever pay; standing on it still costs zero.
                     if (maxMovement.HasValue && reverseStepCost > maxMovement.Value)
@@ -236,9 +236,9 @@ namespace Game.HexGrid
                 foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                 {
                     var next = new HexCoord(current.Q + dq, current.R + dr);
-                    if (!map.TryGetTerrainAt(next, out TerrainTypeEntry nextEntry))
+                    if (!map.CanEnter(next, flatCost) || !map.TryGetTerrainAt(next, out TerrainTypeEntry nextEntry))
                         continue;
-                    int stepCost = reverse ? reverseStepCost : Mathf.Max(1, nextEntry.moveCost);
+                    int stepCost = flatCost ? 1 : reverse ? reverseStepCost : Mathf.Max(1, nextEntry.moveCost);
                     if (!reverse && maxMovement.HasValue && stepCost > maxMovement.Value)
                         continue;
                     int newCost = currentCost + stepCost;

@@ -513,13 +513,6 @@ namespace Game.Map
                 NotifyMoveBlocked(army, $"Not enough resources to move {army.Name} ({army.ActivationApCost} AP, {energyCost} Energy needed).");
                 return MoveOrderResult.InsufficientActionPoints;
             }
-            if (needsActivation)
-            {
-                ownerRoot.SpendActionPoints(army.ActivationApCost);
-                if (energyCost > 0)
-                    ownerRoot.AddResource(ResourceType.Energy, -energyCost);
-                army.MarkActivated();
-            }
 
             HexCoord originHex = army.Hex;
             ArmyController movingArmy = controller;
@@ -693,6 +686,18 @@ namespace Game.Map
                     StealthSystem.RunChecksForArrival(army, hex, stealthMoveEventSeen);
                     lastStealthCheckedHex = hex;
                     return stopForContact;
+                },
+                beforeFirstStep: () =>
+                {
+                    if (army.HasActivatedThisTurn) return true;
+                    int ap = army.ActivationApCost;
+                    int energy = army.ActivationEnergyCost;
+                    if (!ownerRoot.CanSpendActionPoints(ap)
+                        || ownerRoot.GetResource(ResourceType.Energy) < energy) return false;
+                    ownerRoot.SpendActionPoints(ap);
+                    if (energy > 0) ownerRoot.AddResource(ResourceType.Energy, -energy);
+                    army.MarkActivated();
+                    return true;
                 },
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
                 onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),

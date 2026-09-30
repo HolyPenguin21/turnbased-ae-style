@@ -126,7 +126,7 @@ namespace Game.Map
 
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            if (map == null || owner == null || definition == null)
+            if (map == null || !map.CanEnter(hex) || owner == null || definition == null)
                 return null;
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
@@ -195,7 +195,7 @@ namespace Game.Map
 
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            if (definition == null || owner == null || gameConfig == null || turnController == null)
+            if (map == null || !map.CanEnter(hex) || definition == null || owner == null || gameConfig == null || turnController == null)
                 return false;
             if (!HasOwnHeroArmyAt(hex, owner))
             {

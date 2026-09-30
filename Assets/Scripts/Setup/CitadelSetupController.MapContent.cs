@@ -89,7 +89,7 @@ namespace Game.Setup
             // this pass touches needs the same per-hex redraw CitadelSetupController.
             // FinalizePlayer already does for its own citadel bonus, or the icon never appears.
             MapResourceDisplay resourceDisplay = map.GetComponent<MapResourceDisplay>();
-            var mapHexes = new HashSet<HexCoord>(map.AllCoords);
+            var mapHexes = new HashSet<HexCoord>(map.AllCoords.Where(h => map.CanEnter(h)));
             var nearZone = new HashSet<HexCoord>();
 
             foreach (PlayerSetupData player in citadelPlayers)
@@ -121,7 +121,7 @@ namespace Game.Setup
                 }
             }
 
-            List<HexCoord> outsideCandidates = map.AllCoords
+            List<HexCoord> outsideCandidates = map.AllCoords.Where(h => map.CanEnter(h))
                 .Where(h => !nearZone.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null)
                 .ToList();
             int farTarget = citadelPlayers.Count * 2;
@@ -260,7 +260,7 @@ namespace Game.Setup
 
             HashSet<HexCoord> excluded = BuildCitadelExclusion();
             excluded.UnionWith(BuildCityRuinsExclusion());
-            List<HexCoord> candidates = map.AllCoords.Where(h => !excluded.Contains(h)).ToList();
+            List<HexCoord> candidates = map.AllCoords.Where(h => map.CanEnter(h) && !excluded.Contains(h)).ToList();
             if (candidates.Count == 0)
                 return;
 
@@ -393,6 +393,7 @@ namespace Game.Setup
         // all (see PlaceEvent's own comment on why), so unlike before this always gets a marker.
         private ArmyData SpawnNeutralArmy(HexCoord hex, ArmyDefinition definition)
         {
+            if (!map.CanEnter(hex)) return null;
             var army = new ArmyData { Name = definition.name, Hex = hex, Owner = _neutralPlayer };
             ArmyRegistry.Register(army);
 
@@ -477,7 +478,7 @@ namespace Game.Setup
             List<HexCoord> guaranteedHexes = ruinsHexes.Concat(armyHexes).ToList();
             var guaranteedSet = new HashSet<HexCoord>(guaranteedHexes);
 
-            List<HexCoord> candidates = map.AllCoords
+            List<HexCoord> candidates = map.AllCoords.Where(h => map.CanEnter(h))
                 .Where(h => !excluded.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedSet.Contains(h))
                 .ToList();
             if (candidates.Count == 0 && guaranteedHexes.Count == 0)
@@ -547,6 +548,7 @@ namespace Game.Setup
         // HexEventRegistry.Entry.ResolvedCardRewards).
         private void PlaceEvent(HexCoord hex, EventDefinition definition)
         {
+            if (!map.CanEnter(hex)) return;
             EventVariant variant = definition.variants != null && definition.variants.Count > 0
                 ? definition.variants[Random.Range(0, definition.variants.Count)] : null;
             string chosenGuard = variant != null ? variant.guardArmyName : definition.guardArmyName;

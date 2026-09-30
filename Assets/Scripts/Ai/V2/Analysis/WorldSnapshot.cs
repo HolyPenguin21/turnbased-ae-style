@@ -45,6 +45,8 @@ namespace Game.Ai.V2
         // observed content or Recon route knowledge changes; Analysis uses it to avoid rebuilding the
         // whole knowledge/map projection for operational-only mutations.
         public int KnowledgeVersion;
+        public Game.Map.HexMap Map;
+        public int MapPathingVersion;
 
         public SelfSnapshot Self;
         public KnownSnapshot Known;

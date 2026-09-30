@@ -156,7 +156,8 @@ namespace Game.Map
             System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null,
             System.Action<HexCoord, HexCoord> onStepStarted = null,
             System.Action<HexCoord, HexCoord> onStepCompleted = null,
-            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null)
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync = null,
+            System.Func<bool> beforeFirstStep = null)
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
@@ -167,7 +168,7 @@ namespace Game.Map
             _currentHex = Data.Hex;
             ResetTransform(map, resolveOffset(Data.Hex));
             StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly,
-                onStepStarted, onStepCompleted, resolveStepAsync));
+                onStepStarted, onStepCompleted, resolveStepAsync, beforeFirstStep));
         }
 
         // shouldStopEarly is called once per hex actually entered (never the origin), AFTER this
@@ -186,12 +187,16 @@ namespace Game.Map
             System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly,
             System.Action<HexCoord, HexCoord> onStepStarted,
             System.Action<HexCoord, HexCoord> onStepCompleted,
-            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync)
+            System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync,
+            System.Func<bool> beforeFirstStep)
         {
             List<UnitData> members = Data.Members;
+            bool started = false;
             for (int i = 1; i < path.Count; i++)
             {
                 HexCoord next = path[i];
+                if (!map.CanEnter(next, Data) || HexGridMath.Distance(_currentHex, next) != 1)
+                    break;
                 map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
                 int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
                 int cost = AviationRules.MovementCost(Data, terrainCost);
@@ -202,6 +207,9 @@ namespace Game.Map
                         sharedMoveCurrent = AviationRules.EffectiveMoveCurrent(members[m]);
                 if (sharedMoveCurrent < cost)
                     break;
+                // Activation is committed only once a legal, affordable first entry exists.
+                if (!started && beforeFirstStep != null && !beforeFirstStep()) break;
+                started = true;
 
                 foreach (UnitData member in members)
                 {
@@ -260,6 +268,7 @@ namespace Game.Map
                 return false;
 
             HexCoord next = path[currentIndex + 1];
+            if (!map.CanEnter(next, army)) return false;
             map.TryGetTerrainAt(next, out TerrainTypeEntry entry);
             int terrainCost = entry != null ? Mathf.Max(1, entry.moveCost) : 1;
             int nextCost = AviationRules.MovementCost(army, terrainCost);

@@ -53,6 +53,22 @@ namespace Game.Ai.V2
             return distance <= remaining ? 1 : 1 + (distance - remaining + move - 1) / move;
         }
 
+        // Route cost for a snapshot actor. Geometric distances are suitable for vision/risk,
+        // never as a replacement for an unreachable route on a real map.
+        internal static int TravelCost(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
+            bool arrivesHidden = false, int? maxMovement = null)
+        {
+            if (actor == null) return int.MaxValue;
+            // Synthetic analysis fixtures have no map; live Scan always supplies it.
+            if (snap?.Map == null) return HexGridMath.Distance(actor.Hex, target);
+            int budget = maxMovement ?? actor.MaxMovement;
+            bool Block(HexCoord h) => !actor.IsAir &&
+                ((!h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true)
+                || (snap.Map.TryGetTerrainAt(h, out var entry) && entry.moveCost > budget));
+            return HexPathfinder.FindPath(snap.Map, actor.Hex, target, blockHex: Block,
+                flatCost: actor.IsAir)?.TotalCost ?? int.MaxValue;
+        }
+
         // Ceiling integer division, guarded against a non-positive divisor. Identical body in six
         // independent cost/threat-model files.
         internal static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;

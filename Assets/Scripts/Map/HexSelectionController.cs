@@ -33,6 +33,7 @@ namespace Game.Map
     {
         [SerializeField] private Camera targetCamera;
         [SerializeField] private HexMap map;
+        public HexMap Map => map;
         [SerializeField] private HexShaderHighlight highlight;
         [SerializeField] private HexInfoPanelUI infoPanel;
         [SerializeField] private GameConfig gameConfig;
@@ -789,7 +790,7 @@ namespace Game.Map
             if (human != null && human.IsHuman && gameConfig.extractionFacilityCards != null
                 && (buildingHere == null || buildingHere.Owner == human)
                 && BattleInitiator.FindEnemyAt(coord, human) == null
-                && HasOwnHeroArmyAt(coord, human))
+                && map.CanEnter(coord) && HasOwnHeroArmyAt(coord, human))
             {
                 foreach (ResourceType type in AllResourceTypes)
                 {

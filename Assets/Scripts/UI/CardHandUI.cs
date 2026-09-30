@@ -687,9 +687,10 @@ namespace Game.UI
 
         // Shared by the live drag-hover preview above and the actual drop attempt in
         // TryDeployUnitOrHero, so the two can never disagree about what counts as a valid target.
-        private static bool IsValidDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
+        private bool IsValidDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
         {
-            return IsUnitOrHero(definition)
+            return hexSelection?.Map != null && hexSelection.Map.CanEnter(hex)
+                && IsUnitOrHero(definition)
                 && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, definition);
         }
 
@@ -702,9 +703,10 @@ namespace Game.UI
         // system exists in the game yet. A visible enemy army on the hex blocks it too, same as
         // extraction facilities (see RefreshResourceActionRow) — building requires an
         // uncontested hex.
-        private static bool IsValidBaseDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
+        private bool IsValidBaseDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
         {
-            if (definition == null || definition.cardType != CardType.Base)
+            if (hexSelection?.Map == null || !hexSelection.Map.CanEnter(hex)
+                || definition == null || definition.cardType != CardType.Base)
                 return false;
             if (!HexSelectionController.HasOwnHeroArmyAt(hex, player))
                 return false;

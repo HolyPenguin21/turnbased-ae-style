@@ -34,6 +34,7 @@ namespace Game.Terrain
     public class BiomeTerrainSet
     {
         public List<TerrainTypeEntry> terrainTypes = new List<TerrainTypeEntry>();
+        public List<TerrainComplexTemplate> complexes = new List<TerrainComplexTemplate>();
         public string mountainsTerrainName = "Mountains";
         public int mountainRangeCount = 2;
         public int mountainRangeLength = 4;
@@ -64,6 +65,7 @@ namespace Game.Terrain
         // resources, it's purely a matter of how much (see TerrainTypeEntry.resourceYields).
         [Header("Terrain Types")]
         public List<TerrainTypeEntry> terrainTypes = new List<TerrainTypeEntry>();
+        public List<TerrainComplexTemplate> complexes = new List<TerrainComplexTemplate>();
 
         // Mountains are the one type still placed by a dedicated rule instead of the baseline
         // weighted pool — they form a few connected chains rather than scattering as single
@@ -107,6 +109,7 @@ namespace Game.Terrain
             return new BiomeTerrainSet
             {
                 terrainTypes = terrainTypes,
+                complexes = complexes,
                 mountainsTerrainName = mountainsTerrainName,
                 mountainRangeCount = mountainRangeCount,
                 mountainRangeLength = mountainRangeLength,

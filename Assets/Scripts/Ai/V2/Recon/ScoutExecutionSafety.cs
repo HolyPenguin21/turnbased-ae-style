@@ -26,7 +26,8 @@ namespace Game.Ai.V2
     public static class ScoutExecutionSafety
     {
         public static bool StepBlocked(PlayerSetupData player, HexCoord hex, bool moverFullyHidden)
-            => AiMapMemory.IsScoutDangerous(player, hex)
+            => AiMapMemory.GroundTerrainBlocked(hex)
+               || AiMapMemory.IsScoutDangerous(player, hex)
                || AiMapMemory.KnownGroundArrival(player, hex, moverFullyHidden).HasOutcome;
 
         public static bool StepBlocked(PlayerSetupData player, ArmyData mover, HexCoord hex)

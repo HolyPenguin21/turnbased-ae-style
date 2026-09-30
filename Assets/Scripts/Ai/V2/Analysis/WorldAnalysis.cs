@@ -53,6 +53,8 @@ namespace Game.Ai.V2
                 Observer = player,
                 TurnNumber = ctx.TurnNumber,
                 KnowledgeVersion = AiMapMemory.KnowledgeVersionFor(player),
+                Map = ctx.Map,
+                MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
@@ -73,7 +75,8 @@ namespace Game.Ai.V2
             // Snapshot ownership is explicit. Never reuse Known/MapKnowledge captured for a
             // different observer (or a different turn) merely because a caller supplied it.
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
-                || ctx == null || prev.TurnNumber != ctx.TurnNumber)
+                || ctx == null || prev.TurnNumber != ctx.TurnNumber
+                || prev.Map != ctx.Map || prev.MapPathingVersion != (ctx.Map != null ? ctx.Map.PathingVersion : -1))
                 return Scan(player, root, hand, ctx);
             // Some callers refresh only operational facts between Phase-B actions. A play may
             // also reveal a site or defender: never pair fresh Self with a stale Known cache.
@@ -85,6 +88,8 @@ namespace Game.Ai.V2
                 Observer = player,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = prev.KnowledgeVersion,
+                Map = prev.Map,
+                MapPathingVersion = prev.MapPathingVersion,
                 Known = prev.Known,
                 MapKnowledge = prev.MapKnowledge,
             };
@@ -105,7 +110,8 @@ namespace Game.Ai.V2
         {
             using var __profile = new Game.Core.ProfileScope("AI/Analysis.RefreshStrategicKnowledge");
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
-                || ctx == null || prev.TurnNumber != ctx.TurnNumber)
+                || ctx == null || prev.TurnNumber != ctx.TurnNumber
+                || prev.Map != ctx.Map || prev.MapPathingVersion != (ctx.Map != null ? ctx.Map.PathingVersion : -1))
                 return Scan(player, root, hand, ctx);
 
             // Stamp before choosing the identity: observation metadata can advance knowledge.
@@ -119,6 +125,8 @@ namespace Game.Ai.V2
                 Observer = player,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = knowledgeVersion,
+                Map = ctx.Map,
+                MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);

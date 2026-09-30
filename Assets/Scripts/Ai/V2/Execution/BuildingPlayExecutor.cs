@@ -50,7 +50,7 @@ namespace Game.Ai.V2
             if (requireCardInHand && !hand.Hand.Contains(card))
             { reason = "card not in hand"; return false; }
             return InfrastructureActions.CanFoundBase(card.Definition, hex, player,
-                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason);
+                card.EffectivePlayApCost, card.EffectivePlayResourceCost, out reason, ctx.Map);
         }
 
         public static bool CanPlaceFacilityAt(PlayerSetupData player, AiHandData hand, AiTurnContext ctx,

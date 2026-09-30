@@ -275,7 +275,7 @@ namespace Game.Ai.V2
             // scout passes) and exported separately as VisibleArrivalBlockedHexes. HardBlocked is
             // only what blocks EVERY scout.
             bool HardBlocked(HexCoord h) =>
-                !OnMap(h) || AiMapMemory.IsScoutDangerous(player, h);
+                !map.CanEnter(h) || AiMapMemory.IsScoutDangerous(player, h);
             bool VisibleArrivalBlocked(HexCoord h) => visibleArrivalBlocked.Contains(h);
             // Exposure and detection are ScoutRiskModel's one rule (a garrison detects but cannot
             // engage — audit F1).

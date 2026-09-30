@@ -150,7 +150,8 @@ namespace Game.Ai.V2
 
             foreach (HexCoord h in HexGridMath.HexesInRange(army.Hex, radius))
             {
-                if (h.Equals(army.Hex) || !map.TryGetTerrainAt(h, out _))
+                if (h.Equals(army.Hex) || !map.CanEnter(h, army)
+                    || SafeStepPathing.FindSafePathCost(map, army, h) == int.MaxValue)
                     continue;
                 // The one Recon step rule, for the scout as it is now (a flee never enters stealth).
                 if (ScoutExecutionSafety.StepBlocked(player, army, h))
@@ -196,7 +197,7 @@ namespace Game.Ai.V2
             float bestWin = AttackOpportunityWinChance;
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!VisionSystem.IsVisible(player, h))
+                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h))
                     continue;
                 ArmyData target = BattleInitiator.FindEnemyAt(h, army);
                 if (target == null || target.Owner == null || target.Owner.IsNeutral
@@ -244,7 +245,7 @@ namespace Game.Ai.V2
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex)
                 .OrderBy(x => x.Q).ThenBy(x => x.R))
             {
-                if (!VisionSystem.IsVisible(player, h) || !map.TryGetTerrainAt(h, out var terrain))
+                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, h);
                 if (!building.HasValue || building.Value.Owner == null
@@ -300,7 +301,7 @@ namespace Game.Ai.V2
 
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!map.TryGetTerrainAt(h, out var terrain))
+                if (!map.CanEnter(h, army) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > army.CurrentMovement

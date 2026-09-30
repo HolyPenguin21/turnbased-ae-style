@@ -233,6 +233,7 @@ namespace Game.Setup
 
         private void FinalizePlayer(PlayerSetupData player, HexCoord hex)
         {
+            if (map == null || !map.CanEnter(hex)) return;
             player.CitadelHexQ = hex.Q;
             player.CitadelHexR = hex.R;
 
@@ -469,6 +470,7 @@ namespace Game.Setup
             var result = new List<HexCoord>();
             foreach (HexCoord coord in map.AllCoords)
             {
+                if (!map.CanEnter(coord)) continue;
                 int edgeDistance = map.FieldRadius - HexGridMath.Distance(origin, coord);
                 if (edgeDistance > gameConfig.maxEdgeDistance)
                     continue;
@@ -522,7 +524,7 @@ namespace Game.Setup
         // movement or placement any more, just cost more to move through.
         private bool IsSelectable(HexCoord coord)
         {
-            return map.TryGetTerrainAt(coord, out _);
+            return map.CanEnter(coord);
         }
 
         private void SpawnRegionHighlight(PlayerSetupData player, HexCoord coord)

@@ -382,6 +382,7 @@ namespace Game.Ai
 
         private static bool _subscribed;
         private static HexMap _map;
+        public static bool GroundTerrainBlocked(HexCoord hex) => _map != null && !_map.CanEnter(hex);
         // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
         // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
         // EnemySighting.SeenTurn (see that field's own comment). Not a live reference, just a

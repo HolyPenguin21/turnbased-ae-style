@@ -52,9 +52,11 @@ namespace Game.Map
         }
 
         public static bool CanFoundBase(CardDefinition definition, HexCoord hex, PlayerSetupData owner,
-            int apCost, ResourceCost resourceCost, out string reason)
+            int apCost, ResourceCost resourceCost, out string reason, HexMap map = null)
         {
             reason = null;
+            if (map != null && !map.CanEnter(hex))
+            { reason = "terrain cannot host infrastructure"; return false; }
             if (definition == null || definition.cardType != CardType.Base || owner == null)
             { reason = "not a Base card"; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
@@ -76,9 +78,9 @@ namespace Game.Map
         public static InfrastructureBuildOutcome TryFoundBase(HexSelectionController hexSelection,
             CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost)
         {
-            if (hexSelection == null)
-                return InfrastructureBuildOutcome.Fail("no hex controller");
-            if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason))
+            if (hexSelection == null || hexSelection.Map == null || !hexSelection.Map.CanEnter(hex))
+                return InfrastructureBuildOutcome.Fail("terrain cannot host infrastructure");
+            if (!CanFoundBase(definition, hex, owner, apCost, resourceCost, out string reason, hexSelection.Map))
                 return InfrastructureBuildOutcome.Fail(reason);
 
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);

@@ -85,7 +85,8 @@ namespace Game.Ai.V2
                 if (snap.MapKnowledge.IsBlockedForScout(h, arrivesHidden))
                     continue;
 
-                int dist = HexGridMath.Distance(mover.Hex, h);
+                int dist = AiV2Util.TravelCost(snap, mover, h, arrivesHidden);
+                if (dist == int.MaxValue) continue;
                 int eta = ScoutCostModel.TravelTurns(mover.CurrentMovement, dist, budget);
                 result.Add(new SurveilVantageCandidate(h, ScoutRiskModel.DetectorRisk(snap, h), standOff, dist, eta));
             }

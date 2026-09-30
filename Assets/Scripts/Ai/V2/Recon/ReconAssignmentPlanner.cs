@@ -287,6 +287,7 @@ namespace Game.Ai.V2
                             continue;
                     }
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
+                    if (pc.Distance == int.MaxValue) continue;
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
                     continue;
@@ -299,6 +300,7 @@ namespace Game.Ai.V2
                     if (SafeStepPathing.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
                         continue;
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired);
+                    if (pc.Distance == int.MaxValue) continue;
                     list.Add(new ScoutExecutionCandidate(mover, v.ExecutionHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, v.DetectionRisk, v.StandOff, pc.AlreadyHidden, pc.RequiredAp));
                     break;
@@ -334,6 +336,7 @@ namespace Game.Ai.V2
                             ctx.Map, player, g.Mover.Hex, target.FocusHex, g.Mover.MaxMovement) == null)
                         continue;
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, g.Mover, target.FocusHex, stealthRequired);
+                    if (pc.Distance == int.MaxValue) continue;
                     list.Add(new ScoutExecutionCandidate(g.Mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp,
                         sourceGarrisonArmyId: g.Mover.ArmyId, materializationArmyId: g.Shell.Id));

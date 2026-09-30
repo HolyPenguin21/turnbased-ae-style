@@ -124,11 +124,12 @@ namespace Game.Ai.V2
                 if (actor == null)
                     continue;
 
-                int distance = HexGridMath.Distance(actor.Hex, objective.Hex);
                 // Price and time the force this plan will ACTUALLY field, through the same
                 // projections Raid and ActiveDefence use — never a host-only figure.
                 int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
                     ?? actor.MaxMovement;
+                int distance = AiV2Util.TravelCost(snap, actor, objective.Hex, maxMovement: projectedMove);
+                if (distance == int.MaxValue) continue;
                 int eta = AiV2Util.CeilDiv(distance,
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
@@ -769,7 +770,8 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.ArmyId)
                 .FirstOrDefault();
             float ap = priced != null && !priced.HasActivatedThisTurn ? priced.ActivationApCost : 0f;
-            int distance = priced == null ? 0 : HexGridMath.Distance(priced.Hex, primary.Hex);
+            int distance = priced == null ? 0 : AiV2Util.TravelCost(snap, priced, primary.Hex);
+            if (distance == int.MaxValue) return;
             int eta = priced == null ? 1
                 : AiV2Util.CeilDiv(distance, Mathf.Max(1, priced.MaxMovement));
 
