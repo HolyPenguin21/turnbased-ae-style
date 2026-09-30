@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 
@@ -13,6 +13,8 @@ namespace Game.Ai.V2
             // 0. Required development operators belong under the strongest on-hex defence.
             // This is a contextual relocation into the existing garrison, not a permanent role;
             // the operator remains on the facility hex and all transfer/capacity/AP rules still apply.
+            // 2026-09-30 (user decision) — so does every garrison hero (Support type tag) standing
+            // in a free field container on a hex with an own garrison.
             int operatorGarrisonId = armyIds.FirstOrDefault(id => state.Meta[id].IsGarrison);
             if (state.Meta.TryGetValue(operatorGarrisonId, out ReorgContainer operatorGarrison)
                 && operatorGarrison.IsGarrison && operatorGarrison.CanReceive)
@@ -23,11 +25,13 @@ namespace Game.Ai.V2
                     if (!IsFieldContainer(src) || !src.CanDonate)
                         continue;
                     foreach (ReorgUnit u in state.Roster[srcId]
-                                 .Where(x => x != null && x.IsDevelopmentOperator)
+                                 .Where(x => x != null && (x.IsDevelopmentOperator || x.IsGarrisonHero))
                                  .OrderBy(x => x.Key))
                     {
                         VState moved = TryMoveOne(state, srcId, operatorGarrisonId, u,
-                            "protect Research/Production operator in local garrison",
+                            u.IsDevelopmentOperator
+                                ? "protect Research/Production operator in local garrison"
+                                : "return a garrison hero to the local garrison",
                             allowDevelopmentOperator: true);
                         if (moved != null)
                             yield return moved;

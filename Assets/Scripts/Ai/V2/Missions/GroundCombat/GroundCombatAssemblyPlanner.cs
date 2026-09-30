@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using Game.Map;
@@ -40,6 +40,9 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public float ProjectedPower;
+        // 2026-09-30 — the plan takes a garrison hero (AiArmyRoles.IsGarrisonHero) as its
+        // fallback commander; the proposal carries its price (GarrisonHeroFallbackCost).
+        public bool UsesGarrisonHero;
         // The win-chance gate this plan was admitted at (set where the plan is built against a
         // gate): any later re-check of the same plan asks the same question, never a stricter one.
         public float WinChanceGate;
@@ -1028,17 +1031,25 @@ namespace Game.Ai.V2
             // A lone-hero container is intentionally left to Housekeeping first: Provisioning's
             // canonical raid transaction never empties donor containers, so the planner must not
             // promise a transfer the executor will reject.
+            // 2026-09-30 (user decision) — in a preparation the hero is taken for its CAPACITY: a
+            // heroless host is capped at the bare container's slots and can never grow to the
+            // Attack threshold, so a hero that raises the capacity is progress even though a hero
+            // adds no power of its own. A lone-hero army may hand its hero over (preparation only).
+            bool garrisonHeroTaken = false;
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
                 (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host,
-                    excludeArmyIds, opposition, defenderHexDefenseBonus);
+                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
-                    if (ArmyData.ComputeCapacity(withHero, host.IsGarrison) >= withHero.Count
-                        && (!preparation || AiPower.EffectiveArmyPower(withHero)
-                            > AiPower.EffectiveArmyPower(projectedUnits)))
+                    int capacityWith = ArmyData.ComputeCapacity(withHero, host.IsGarrison);
+                    if (capacityWith >= withHero.Count
+                        && (!preparation
+                            || capacityWith > ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
+                            || AiPower.EffectiveArmyPower(withHero) > AiPower.EffectiveArmyPower(projectedUnits)))
                     {
+                        garrisonHeroTaken = AiArmyRoles.IsGarrisonHero(hero);
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
@@ -1113,12 +1124,18 @@ namespace Game.Ai.V2
 
             if (preparation)
             {
-                if (selected.Count == 0 || AiPower.EffectiveArmyPower(projectedUnits) <= hostPower)
+                bool capacityRaised = ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
+                    > ArmyData.ComputeCapacity(host.Members, host.IsGarrison);
+                if (selected.Count == 0
+                    || (AiPower.EffectiveArmyPower(projectedUnits) <= hostPower && !capacityRaised))
                     return GroundCombatAssemblyPlan.Infeasible(
-                        $"preparation host #{host.Id}: no legal same-hex body raises its power");
+                        $"preparation host #{host.Id}: no legal same-hex body raises its power "
+                        + "and no hero raises its capacity");
                 GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits),
                     opposition, minWinChance, defenderHexDefenseBonus, out float pWin, out bool pCover);
-                return FinishAssembly(host, selected, pWin, pCover, minWinChance, projectedUnits);
+                GroundCombatAssemblyPlan prep = FinishAssembly(host, selected, pWin, pCover, minWinChance, projectedUnits);
+                prep.UsesGarrisonHero = garrisonHeroTaken;
+                return prep;
             }
 
             // The hero alone (no bodies available/needed) may already clear.

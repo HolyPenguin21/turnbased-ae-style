@@ -1,4 +1,4 @@
-#if UNITY_INCLUDE_TESTS
+﻿#if UNITY_INCLUDE_TESTS
 using System.Linq;
 using Game.Ai.V2;
 using Game.Cards;
@@ -104,10 +104,10 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void MobilizationOpensAtFourFifthsInclusiveWhileAssaultStaysStrict()
+        public void MobilizationOpensAtThreeQuartersInclusiveWhileAssaultStaysStrict()
         {
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(144f, 180f), Is.True);
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(143.9f, 180f), Is.False);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(135f, 180f), Is.True);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(134.9f, 180f), Is.False);
             Assert.That(AttackObjectiveEvaluator.MobilizationOpen(0f, 0f), Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(56f, 70f), Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(56.1f, 70f), Is.True);

@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -117,7 +117,8 @@ namespace Game.Ai.V2
                 {
                     ArmyData donor = AiV2Util.ResolveArmy(player, seed.DonorArmyId);
                     bool legal = donor != null && donor.Members.Contains(seed.Unit)
-                        && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(seed.Unit)
+                        && GroundCombatDonorPolicy.LeavesDonorLegal(donor, preparation: true)
+                        && donor.CanLeaveWithoutOvercrowding(seed.Unit)
                         && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, seed.Unit));
                     host = legal
                         ? ArmyActions.CreateArmyWithMember(player, hex, catalog, donor, seed.Unit,
@@ -182,7 +183,8 @@ namespace Game.Ai.V2
                 ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
                 string why = donor == null ? "donor missing" : null;
                 bool legal = donor != null && donor.Hex.Equals(host.Hex) && donor.Members.Contains(t.Unit)
-                    && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(t.Unit)
+                    && GroundCombatDonorPolicy.LeavesDonorLegal(donor, preparation: true)
+                    && donor.CanLeaveWithoutOvercrowding(t.Unit)
                     && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit));
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
@@ -57,6 +57,11 @@ namespace Game.Ai.V2
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
             List<AttackObjective> objectives = AttackObjectiveEvaluator.Enumerate(snap);
             bool attackProposed = false;
+            // 2026-09-30 (user decision) — at most ONE live Attack operation per player: while one
+            // is live no fresh objective is offered, and of several fresh candidates only the best
+            // reaches the allocator (it could otherwise fund two operations in one pass).
+            MissionIntent liveOperation = LiveAttackOperation(activeIntents);
+            var freshCandidates = new List<MissionProposal>();
             foreach (AttackObjective objective in objectives)
             {
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
@@ -66,6 +71,13 @@ namespace Game.Ai.V2
                 // offer it a fresh assault against the same target this pass.
                 if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault)
                     continue;
+                if (incumbent == null && liveOperation != null)
+                {
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
+                        $"[AI][V2][Attack][Assembly] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                        + $"blocker=operation_live:{liveOperation.IntentKey}");
+                    continue;
+                }
                 // T01 — sanctioned coordinates are not an observed defender package: a march on a
                 // never-observed site is not proposed (Recon observes it; mobilization may prepare).
                 if (objective.LocationOnly)
@@ -105,7 +117,7 @@ namespace Game.Ai.V2
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be formed by free armies spread over several hexes: gather them.
                     if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
-                            hexBonus, excluded, proposals))
+                            hexBonus, excluded, freshCandidates))
                     {
                         attackProposed = true;
                         continue;
@@ -192,22 +204,36 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                proposals.Add(proposal);
+                (incumbent == null ? freshCandidates : proposals).Add(proposal);
                 attackProposed = true;
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                     $"[AI][V2][Attack][Admission] decision=PROPOSE target={objective.Target.DiagnosticLabel} "
                     + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
             }
 
+            MissionProposal bestFresh = freshCandidates
+                .OrderByDescending(p => p.Score?.Value ?? p.BaseValue)
+                .FirstOrDefault();
+            if (bestFresh != null)
+                proposals.Add(bestFresh);
+
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
                 attackProposed);
         }
 
+        // The player's one live Attack operation (a Gather — preparation included —, Assault or
+        // Reinforcement), or null. Return legs of a finished fight are not an operation.
+        internal static MissionIntent LiveAttackOperation(IReadOnlyList<MissionIntent> activeIntents) =>
+            activeIntents?.FirstOrDefault(i => i != null
+                && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack && i.Attack != null
+                && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault
+                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+
         // ---- T01: the mobilization trigger and the first preparation step -----------------------
         //
-        // Opens ONE new preparation when the additive share of the force already on the map reaches
-        // four fifths (AttackObjectiveEvaluator.MobilizationOpen over SelfSnapshot.DeployedPower /
-        // AvailablePower) and no Attack operation is live. It never admits a march: the prepared
+        // Opens ONE new preparation when the mobilization gate is open (AttackObjectiveEvaluator
+        // .MobilizationOpen: the deployed share reaches three quarters, or the field bodies can
+        // already form the strike army) and no Attack operation is live. It never admits a march: the prepared
         // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
         // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting
         // Citadel. The fist is assembled on the own Base nearest to the target
@@ -224,14 +250,15 @@ namespace Game.Ai.V2
             bool attackProposed)
         {
             SelfSnapshot self = snap.Self;
-            bool open = AttackObjectiveEvaluator.MobilizationOpen(self.DeployedPower, self.AvailablePower);
+            bool open = AttackObjectiveEvaluator.MobilizationOpen(self);
+            bool byShare = AttackObjectiveEvaluator.MobilizationOpen(self.DeployedPower, self.AvailablePower);
+            bool byField = AttackObjectiveEvaluator.FieldStrikeForceReady(self.FieldStrikePotential,
+                self.TotalMilitaryPotential);
             string share = $"deployed={F(self.DeployedPower)} available={F(self.AvailablePower)} "
                 + $"share={(self.AvailablePower > 0f ? 100f * self.DeployedPower / self.AvailablePower : 0f):0.00}% "
-                + $"gate>=80% open={(open ? 1 : 0)}";
-            MissionIntent live = activeIntents?.FirstOrDefault(i => i != null
-                && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack && i.Attack != null
-                && (i.Attack.Phase == AttackMissionPhase.Gather || i.Attack.Phase == AttackMissionPhase.Assault
-                    || i.Attack.Phase == AttackMissionPhase.Reinforcement));
+                + $"gate>=75% fieldStrike={F(self.FieldStrikePotential)} gate>{F(0.80f * self.TotalMilitaryPotential)} "
+                + $"open={(open ? (byShare && byField ? "share+field" : byShare ? "share" : "field") : "0")}";
+            MissionIntent live = LiveAttackOperation(activeIntents);
             string skip = !open ? "trigger_closed"
                 : live != null ? $"operation_live:{live.IntentKey}"
                 : attackProposed ? "direct_assault_or_gather_proposed"
@@ -258,12 +285,7 @@ namespace Game.Ai.V2
                 + $"staging=({citadel.Q},{citadel.R})";
 
             // 1) an existing free field army hosts the fist wherever it stands.
-            ArmySnapshot fieldHost = GroundCombatActorEligibility.EligibleArmies(snap, excluded,
-                    requireMovementNow: false)
-                .OrderByDescending(a => a.EffectiveArmyPower)
-                .ThenByDescending(a => a.Hex.Equals(citadel))
-                .ThenBy(a => a.ArmyId)
-                .FirstOrDefault();
+            ArmySnapshot fieldHost = PreparationFieldHost(snap, excluded, citadel);
             PlayerSetupData player = snap.Observer;
             HexCoord? hostStaging = fieldHost == null ? (HexCoord?)null
                 : AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex, fieldHost);
@@ -377,6 +399,37 @@ namespace Game.Ai.V2
                 ArmyActions.CreateArmyApCost, seed.Feasible ? seed : null, hexBonus, proposals, head);
         }
 
+        // The free field army a preparation hosts its fist in: the strongest, the one already on
+        // the staging Base first among equals. Also read by ActiveDefence, which pays the
+        // preparation's value to take this army before the preparation claims it.
+        internal static ArmySnapshot PreparationFieldHost(WorldSnapshot snap, ISet<int> excluded,
+            HexCoord? staging) =>
+            GroundCombatActorEligibility.EligibleArmies(snap, excluded, requireMovementNow: false)
+                .OrderByDescending(a => a.EffectiveArmyPower)
+                .ThenByDescending(a => staging.HasValue && a.Hex.Equals(staging.Value))
+                .ThenBy(a => a.ArmyId)
+                .FirstOrDefault();
+
+        // 2026-09-30 (user decision) — the army a preparation about to open would host in, and
+        // what taking it elsewhere costs (the best Attack objective's TaskScore): the mobilization
+        // gate is open, no Attack operation is live, and an objective with a staging Base exists.
+        // (-1, 0) otherwise. A live preparation's host is claimed and never offered at all.
+        internal static (int armyId, float value) PendingPreparationHost(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed)
+        {
+            if (snap?.Self == null || !AttackObjectiveEvaluator.MobilizationOpen(snap.Self)
+                || LiveAttackOperation(activeIntents) != null)
+                return (-1, 0f);
+            AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap).FirstOrDefault();
+            HexCoord? staging = objective == null ? (HexCoord?)null
+                : AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex);
+            if (!staging.HasValue)
+                return (-1, 0f);
+            var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            ArmySnapshot host = PreparationFieldHost(snap, excluded, staging);
+            return host == null ? (-1, 0f) : (host.ArmyId, Mathf.Max(0f, objective.TaskScore.Value));
+        }
+
         // Location-only knowledge is no evidence that the fight is winnable: its WinChance slot
         // stays empty (never "observed empty" = 1). An observed site uses the estimator's answer.
         private static float PreparationWin(AttackObjective objective, float projectedWin) =>
@@ -402,7 +455,9 @@ namespace Game.Ai.V2
             float win = assembly?.ProjectedWinChance ?? 0f;
             TaskScore score = pricedScore ?? (intent != null ? default(TaskScore)
                 : TaskScoreEvaluator.WithResponse(objective.TaskScore,
-                    PreparationWin(objective, win), ap, 0f, 1f));
+                    PreparationWin(objective, win), ap, 0f, 1f,
+                    moverOpportunityCost: ActionPrice.GarrisonHeroFallback(
+                        assembly?.UsesGarrisonHero == true)));
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Gather,

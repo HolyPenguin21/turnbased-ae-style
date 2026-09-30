@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
@@ -438,8 +438,7 @@ namespace Game.Ai.V2
             {
                 // T01 — with no free fist on an own Base the mobilization preparation is the path
                 // (it creates/reuses the host on the Citadel); this demand names nobody.
-                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self.DeployedPower,
-                    snap.Self.AvailablePower);
+                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
                     + "reason=no_free_base_fist_for_direct_card_delivery "
                     + $"mobilization={(open ? "open:preparation_owns_host" : "closed")} "

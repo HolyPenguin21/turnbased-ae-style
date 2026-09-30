@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -55,7 +55,8 @@ namespace Game.Ai.V2
             {
                 ReorgUnit u = from.FirstOrDefault(x => x.Key == original.Key);
                 if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
-                    || u.IsDevelopmentOperator || u.IsAviation)
+                    || u.IsDevelopmentOperator || u.IsAviation
+                    || (srcMeta.IsGarrison && u.IsGarrisonHero))
                     return null;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                     return null;
@@ -159,6 +160,7 @@ namespace Game.Ai.V2
 
             if (ua == null || ub == null || ua.IsCommitted || ub.IsCommitted
                 || ua.IsDevelopmentOperator || ub.IsDevelopmentOperator
+                || (aMeta.IsGarrison && ua.IsGarrisonHero) || (bMeta.IsGarrison && ub.IsGarrisonHero)
                 || ua.IsAviation || ub.IsAviation
                 || c.MovedUnitKeys.Contains(ua.Key) || c.MovedUnitKeys.Contains(ub.Key))
                 return null;
@@ -219,7 +221,7 @@ namespace Game.Ai.V2
         private static bool GarrisonMayRelease(List<ReorgUnit> garrison, ReorgUnit u,
             ReorgContainer meta)
         {
-            if (u.IsDevelopmentOperator)
+            if (u.IsDevelopmentOperator || u.IsGarrisonHero)
                 return false;
             if (u.IsHero)
                 return garrison.Count > 1;

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
@@ -54,7 +54,8 @@ namespace Game.Ai.V2
                 if (ReorgViability.Capacity(units, meta.IsGarrison) < units.Count)
                     legality++;
                 if (!meta.IsGarrison)
-                    operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
+                    operatorExposure += units.Count(u => u != null
+                        && (u.IsDevelopmentOperator || u.IsGarrisonHero));
 
                 if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
@@ -95,7 +96,8 @@ namespace Game.Ai.V2
                     singles++;
 
                 bool loneHero = units.Count == 1 && units[0].IsHero;
-                if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator)
+                if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator
+                    && !units[0].IsGarrisonHero)
                     benchedCombatCapable++;
 
                 if (ReorgViability.IsViable(units))

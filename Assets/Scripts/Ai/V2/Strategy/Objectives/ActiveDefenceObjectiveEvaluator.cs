@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -109,6 +109,15 @@ namespace Game.Ai.V2
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
                         + "reason=enemy_on_known_foreign_structure attack_owner_required");
+                    continue;
+                }
+                // 2026-09-30 (user decision) — a contact that cannot take or damage what it
+                // approaches is no defence target: ActiveDefence does not chase every sighting.
+                if (chosen.PotentialDamage <= 0f)
+                {
+                    AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
+                        $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
+                        + "reason=no_potential_damage_to_any_asset");
                     continue;
                 }
                 TaskScore score = BuildActiveDefenceScore(snap, chosen);
@@ -395,10 +404,14 @@ namespace Game.Ai.V2
             // PotentialDamage is the chance the contact takes the asset (a 0..1 FRACTION of
             // Asset.Value). The damage kept off is that fraction of this asset's value on the
             // Citadel scale: a scout that would take an Extractor is not a Citadel-sized loss.
+            // 2026-09-30 (user decision) — the asset's relevance and the threat's direction are
+            // worth defending only in the measure the contact can actually hurt it: both are
+            // weighted by the same PotentialDamage, so a passing weak contact is a cheap target.
+            float damage = Mathf.Clamp01(t.PotentialDamage);
             return new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm * damage),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(
-                    1f / (1f + t.EnemyEta.GetValueOrDefault())),
+                    damage / (1f + t.EnemyEta.GetValueOrDefault())),
                 preventedDamage: TaskScoreEvaluator.PreventedDamage(
                     t.PotentialDamage * Mathf.Clamp01(assetNorm)),
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(

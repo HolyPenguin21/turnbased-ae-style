@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -220,6 +220,31 @@ namespace Game.Ai
             => CanSpareGarrisonMembers(player, source,
                 unit == null ? null : new[] { unit }, allowCitadelEmergency);
 
+        // 2026-09-30 (user decision) — a garrison hero: a hero whose card carries the Support type
+        // tag (ApBonus, Researcher and Assembler heroes are authored with it). Its place is the
+        // garrison: Housekeeping keeps it there and never pulls it out, and an active task takes
+        // it only as a priced fallback (GarrisonHeroFallbackCost) when no other hero qualifies.
+        public static bool IsGarrisonHero(UnitData unit) =>
+            unit != null && unit.IsHero && unit.TypeTags.Contains(UnitTypeTag.Support);
+
+        // A hero that operates an own Research/Production facility on `hex`: the facility's
+        // role hero standing there (ResearchProductionSystem.FindActors — the same source the
+        // facility's own eligibility and ArmyReorgAnalyzer.MarkDevelopmentOperators read).
+        public static bool IsFacilityOperator(PlayerSetupData player, HexCoord hex, UnitData unit)
+        {
+            if (player == null || unit == null || !unit.IsHero)
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                return false;
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+                if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                    && unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                    return true;
+            return false;
+        }
+
         // Batch form is the canonical safety check for atomic ground-combat assembly. Checking
         // candidates one-by-one against the unchanged source could approve several removals that
         // collectively cross the protected garrison floor.
@@ -237,6 +262,11 @@ namespace Game.Ai
                 return true;
 
             if (source.Members.Count - selected.Count < 1)
+                return false;
+
+            // 2026-09-30 (user decision) — a hero serving this hex's Research/Production facility
+            // is never released, by anyone: one rule for Economy, Development, Raid and Attack.
+            if (selected.Any(u => IsFacilityOperator(player, source.Hex, u)))
                 return false;
 
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
@@ -401,26 +431,15 @@ namespace Game.Ai
             if (player == null || garrison == null || !garrison.IsGarrison)
                 return null;
 
-            HashSet<UnitData> operators = null;
-            BuildingData building = BuildingRegistry.FindAt(garrison.Hex);
-            if (building != null && building.Owner == player)
-            {
-                foreach (ResearchProductionMode mode in new[]
-                         { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                {
-                    if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
-                        continue;
-                    operators ??= new HashSet<UnitData>();
-                    operators.UnionWith(ResearchProductionSystem.FindActors(player, garrison.Hex, mode));
-                }
-            }
-
+            // Facility operators are refused by CanSpareGarrisonMember itself.
             return garrison.Members
                 .Where(u => u != null && u.IsHero
                     && (requiredRole == null || u.HasAbility(requiredRole))
-                    && (operators == null || !operators.Contains(u))
                     && CanSpareGarrisonMember(player, garrison, u))
-                .OrderByDescending(u => u.MoveMax)
+                // A garrison hero leaves for Economy only when no other hero qualifies; Development
+                // (a required role) asks for exactly those heroes.
+                .OrderBy(u => requiredRole == null && IsGarrisonHero(u))
+                .ThenByDescending(u => u.MoveMax)
                 .ThenByDescending(u => u.CommandRating)
                 .ThenBy(u => u.Name)
                 .FirstOrDefault();

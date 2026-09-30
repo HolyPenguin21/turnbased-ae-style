@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Core;
@@ -131,6 +131,41 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // 2026-09-30 (user decision) — mobilization start (B): the strongest ONE stack the bodies
+        // already on the field could form (AiPower.TotalMilitaryPotential, one commander-in-slot
+        // rule). Counted: ground bodies of every field army, busy ones included (a Raid or an
+        // ActiveDefence finishes and its army comes back), and the bodies a garrison may spare
+        // above its defence floor (AiArmyRoles.SpareableBodies). Not counted: aviation, lone
+        // scouts (active reconnaissance), prisoners and the garrison's mandatory defence. Heroes
+        // bring only their slots (their power is 0); a facility operator commands nothing.
+        internal static float FieldStrikePotential(PlayerSetupData player, IEnumerable<ArmyData> ownArmies,
+            float groundAvailablePower)
+        {
+            var pool = new List<AiPower.PowerUnit>();
+            HexCoord citadel = AiTurnController.GarrisonHexFor(player);
+            foreach (ArmyData a in ownArmies ?? Enumerable.Empty<ArmyData>())
+            {
+                if (a == null || a.IsPrison || a.IsAirfield || AviationRules.IsAirArmy(a)
+                    || AiArmyRoles.IsSoloRecce(a))
+                    continue;
+                List<UnitData> bodies = a.Members
+                    .Where(u => u != null && !u.IsPrisoner && AiArmyRoles.IsGroundBattleBody(u)).ToList();
+                if (a.IsGarrison)
+                {
+                    HashSet<int> spare = AiArmyRoles.SpareableBodies(bodies,
+                        set => AiPower.EffectiveArmyPower(set.ToList()),
+                        AiArmyRoles.GarrisonDefenceFloor(groundAvailablePower, a.Hex.Equals(citadel)));
+                    bodies = bodies.Where((u, i) => spare.Contains(i)).ToList();
+                }
+                pool.AddRange(bodies.Select(AiPower.ToPowerUnit));
+                pool.AddRange(a.Members
+                    .Where(u => u != null && u.IsHero && !u.IsPrisoner && !u.IsAviation
+                        && !AiArmyRoles.IsFacilityOperator(player, a.Hex, u))
+                    .Select(AiPower.ToPowerUnit));
+            }
+            return AiPower.TotalMilitaryPotential(pool);
+        }
+
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
 
@@ -190,6 +225,7 @@ namespace Game.Ai.V2
             self.TotalMilitaryPotential = ceilings.Total;
             PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
                 out self.DeployedPower, out self.AvailablePower);
+            self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)

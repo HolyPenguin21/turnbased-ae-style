@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -58,6 +58,9 @@ namespace Game.Ai.V2
         // Turn-local contextual duty: this exact hero is the minimum operator set needed by a
         // Research/Production facility on the current hex. Not a persistent strategic role.
         public bool IsDevelopmentOperator;
+        // 2026-09-30 (user decision) — a garrison hero (AiArmyRoles.IsGarrisonHero: the card's
+        // Support type tag). Housekeeping moves it into the local garrison and never out of it.
+        public bool IsGarrisonHero => IsHero && TypeTags != null && TypeTags.Contains(UnitTypeTag.Support);
         // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
         // diagnostics but are excluded from Ground Combat roster estimates.
         public WorthIt.DefenderProfile CombatProfile;
@@ -167,13 +170,14 @@ namespace Game.Ai.V2
             ReorgContainer localGarrison = Garrison;
             if (localGarrison != null && localGarrison.CanReceive
                 && Containers.Any(c => !c.IsGarrison && c.IsMutableGround
-                    && c.Units.Any(u => u != null && u.IsDevelopmentOperator)))
+                    && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
                 return true;
 
             // §9 — a heroless OR support-led viable field formation plus a benched combat hero
             // that could lead it is worth a planning pass even if nothing else is degraded.
             bool benchedCombatHero = Containers.Any(c => c.CanChangeComposition && c.Units.Any(u =>
                 u != null && u.IsHero && u.HeroRole != HeroOperationalRole.SupportOperator
+                && !(c.IsGarrison && u.IsGarrisonHero)
                 && (c.IsGarrison ? c.Units.Count > 1 : c.Units.Count == 1)));
             bool leadershipDefect = Containers.Any(c => c.IsScoredField
                 && !c.SingletonExempt && c.Units.Count >= 2 && ReorgViability.IsViable(c.Units)

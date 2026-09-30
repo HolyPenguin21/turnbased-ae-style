@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -484,6 +484,9 @@ namespace Game.Ai.V2
         // (AttackObjectiveEvaluator.MobilizationOpen); it never admits a march.
         public float DeployedPower;
         public float AvailablePower;
+        // Mobilization start (B), one-stack scale: the strongest single army the bodies already
+        // on the field could form (WorldAnalysis.FieldStrikePotential).
+        public float FieldStrikePotential;
 
         // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
         public float FistPower;
