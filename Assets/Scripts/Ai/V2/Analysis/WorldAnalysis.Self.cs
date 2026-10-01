@@ -135,18 +135,21 @@ namespace Game.Ai.V2
         // already on the field could form (AiPower.TotalMilitaryPotential, one commander-in-slot
         // rule). Counted: ground bodies of every field army, busy ones included (a Raid or an
         // ActiveDefence finishes and its army comes back), and the bodies a garrison may spare
-        // above its defence floor (AiArmyRoles.SpareableBodies). Not counted: aviation, lone
-        // scouts (active reconnaissance), prisoners and the garrison's mandatory defence. Heroes
+        // above its defence floor (AiArmyRoles.SpareableBodies). Not counted: aviation, explicit
+        // scouts (lone scouts and armies a Scout mission holds — the same set AttackForcePool
+        // leaves out, so the gate compares like with like), prisoners and the garrison's
+        // mandatory defence. Heroes
         // bring only their slots (their power is 0); a facility operator commands nothing.
         internal static float FieldStrikePotential(PlayerSetupData player, IEnumerable<ArmyData> ownArmies,
             float groundAvailablePower)
         {
             var pool = new List<AiPower.PowerUnit>();
             HexCoord citadel = AiTurnController.GarrisonHexFor(player);
+            HashSet<int> scouts = AttackForcePool.ScoutMissionArmyIds(player);
             foreach (ArmyData a in ownArmies ?? Enumerable.Empty<ArmyData>())
             {
                 if (a == null || a.IsPrison || a.IsAirfield || AviationRules.IsAirArmy(a)
-                    || AiArmyRoles.IsSoloRecce(a))
+                    || AiArmyRoles.IsSoloRecce(a) || scouts.Contains(a.Id))
                     continue;
                 List<UnitData> bodies = a.Members
                     .Where(u => u != null && !u.IsPrisoner && AiArmyRoles.IsGroundBattleBody(u)).ToList();

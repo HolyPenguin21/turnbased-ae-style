@@ -195,6 +195,39 @@ namespace Game.EditorTests
             Assert.That(withRaid, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
         }
 
+        // 2026-10-01 (user decision) — both Attack force measures read one army set: an army on
+        // a Raid counts (it comes back), an army a Scout mission holds does not, on either side.
+        [Test]
+        public void AttackForceMeasures_CountRaidArmies_LeaveOutScoutMissionArmies_OnBothSides()
+        {
+            try
+            {
+                var raid = Army(new HexCoord(0, 0), Hero("Hank", 6), Body("Tank", 8), Body("Crawler", 4));
+                var scouting = Army(new HexCoord(3, 3), Hero("Vera", 4), Body("Rifle", 7));
+                MissionIntentRegistry.GetOrCreate(Us).Put(new MissionIntent
+                {
+                    Kind = MissionKind.Raid, Status = IntentStatus.Active,
+                    Objective = new RaidIntent { PrimaryArmyId = raid.Id },
+                });
+                MissionIntentRegistry.GetOrCreate(Us).Put(new MissionIntent
+                {
+                    Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                    Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+                    PreferredMoverArmyId = scouting.Id,
+                });
+
+                float field = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f);
+                float peak = AttackForcePool.Build(Us, new SelfSnapshot { AvailablePower = 100f }).Peak;
+
+                Assert.That(field, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
+                Assert.That(peak, Is.EqualTo(field).Within(1e-3f));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
         // ---- one live Attack operation -------------------------------------------------------
 
         [Test]
