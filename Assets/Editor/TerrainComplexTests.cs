@@ -51,9 +51,9 @@ namespace Game.EditorTests
             parts = offsets.Select(o => new TerrainComplexPart { offset = o, frames = new[] { _texture } }).ToArray(),
         };
         private Dictionary<HexCoord, int> Assignment() => _map.AllCoords.ToDictionary(h => h, h => 0);
-        private bool Validate(TerrainComplexTemplate t, HexCoord origin, int rotation, Dictionary<HexCoord, int> data,
+        private bool Validate(TerrainComplexTemplate t, HexCoord origin, Dictionary<HexCoord, int> data,
             HashSet<HexCoord> claimed, Func<HexCoord, bool> reserved, out HexCoord[] cells) =>
-            TerrainComplexPlacement.TryValidate(t, origin, rotation, data, new[] { _desert, _lake }, 1,
+            TerrainComplexPlacement.TryValidate(t, origin, data, new[] { _desert, _lake }, 1,
                 claimed, reserved, out cells);
 
         [Test] public void ComplexTotalIsSplitByTemplateShares()
@@ -151,48 +151,52 @@ namespace Game.EditorTests
         [Test] public void PairAcceptedAndValidationDoesNotMutateData()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0)); var data = Assignment();
-            Assert.That(Validate(t, _origin, 0, data, new HashSet<HexCoord>(), null, out var cells), Is.True);
+            Assert.That(Validate(t, _origin, data, new HashSet<HexCoord>(), null, out var cells), Is.True);
             Assert.That(cells.Length, Is.EqualTo(2));
             Assert.That(data.Values.All(x => x == 0), Is.True);
         }
         [Test] public void OutOfMapPairRejectedAtomically()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0)); var data = Assignment();
-            Assert.That(Validate(t, new HexCoord(3, 0), 0, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
+            Assert.That(Validate(t, new HexCoord(3, 0), data, new HashSet<HexCoord>(), null, out var cells), Is.False);
             Assert.That(cells, Is.Null); Assert.That(data.Values.All(x => x == 0), Is.True);
         }
         [Test] public void ReservedCellRejectsWholeComplex()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
-            Assert.That(Validate(t, _origin, 0, Assignment(), new HashSet<HexCoord>(), h => h.Q == 1, out var cells), Is.False);
+            Assert.That(Validate(t, _origin, Assignment(), new HashSet<HexCoord>(), h => h.Q == 1, out var cells), Is.False);
             Assert.That(cells, Is.Null);
         }
         [Test] public void OverlapRejectsWholeComplex()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
-            Assert.That(Validate(t, _origin, 0, Assignment(), new HashSet<HexCoord> { _origin }, null, out _), Is.False);
+            Assert.That(Validate(t, _origin, Assignment(), new HashSet<HexCoord> { _origin }, null, out _), Is.False);
         }
         [Test] public void ProtectedTerrainIsNotOverwritten()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0)); var data = Assignment();
             data[_origin] = 1;
-            Assert.That(Validate(t, _origin, 0, data, new HashSet<HexCoord>(), null, out _), Is.False);
+            Assert.That(Validate(t, _origin, data, new HashSet<HexCoord>(), null, out _), Is.False);
         }
         [Test] public void ComplexThatCutsNarrowBridgeIsRejected()
         {
             var data = new Dictionary<HexCoord, int>();
             foreach (int q in new[] { -2, -1, 0, 1, 2 }) data[new HexCoord(q, 0)] = 0;
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
-            Assert.That(Validate(t, _origin, 0, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
+            Assert.That(Validate(t, _origin, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
             Assert.That(cells, Is.Null);
         }
-        [Test] public void SnakeTriangleAndWreckChainSupportAllSixRotations()
+        [Test] public void AuthoredFootprintIsTranslatedWithoutRotation()
         {
-            foreach (var t in new[] { Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1)),
-                Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(0, 1)),
-                Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(2, 0)) })
-                for (int rotation = 0; rotation < 6; rotation++)
-                    Assert.That(Validate(t, _origin, rotation, Assignment(), new HashSet<HexCoord>(), null, out var cells), Is.True);
+            var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1));
+            var origin = new HexCoord(-1, 0);
+            Assert.That(Validate(t, origin, Assignment(), new HashSet<HexCoord>(), null, out var cells), Is.True);
+            Assert.That(cells, Is.EqualTo(new[]
+            {
+                new HexCoord(-1, 0),
+                new HexCoord(0, 0),
+                new HexCoord(0, 1),
+            }));
         }
         [Test] public void InvalidDisconnectedOrDuplicateShapesRejected()
         {
@@ -250,14 +254,17 @@ namespace Game.EditorTests
         {
             var config = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>("Assets/Config/GameConfig.asset");
             Assert.That(config, Is.Not.Null);
-            Assert.That(config.mapGeneration.complexCount, Is.EqualTo(5), "Total that reproduces the authored 2/1/1/1 shares.");
             BuildingRegistry.Clear(); ArmyRegistry.Clear(); HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear();
             var generator = _object.AddComponent<HexMapGenerator>();
             Type type = typeof(HexMapGenerator);
             type.GetField("gameConfig", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config);
             var randomState = UnityEngine.Random.state;
+            int configuredComplexCount = config.mapGeneration.complexCount;
             try
             {
+                // The live config may intentionally disable complexes (0). This test enables the
+                // authored 2/1/1/1 set only for its own duration, then restores the user's value.
+                config.mapGeneration.complexCount = 5;
                 foreach (Biome biome in new[] { Biome.Arid, Biome.Desert })
                 {
                     var palette = config.mapGeneration.ResolveBiome(biome);
@@ -268,7 +275,6 @@ namespace Game.EditorTests
                         Assert.That(template.IsValid(), Is.True);
                         Assert.That(template.parts.Length, Is.EqualTo(template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field" ? 2 : 3));
                         Assert.That(template.count, Is.EqualTo(template.terrainName == "Acid lake" ? 2 : 1));
-                        Assert.That(template.rotations, Is.EquivalentTo(new[] { 0, 1, 2, 3, 4, 5 }));
                         Assert.That(template.allowedTerrainNames.All(n => palette.terrainTypes.Any(t => t.terrainName == n && !t.blocksGroundMovement)), Is.True);
                         Assert.That(template.parts.All(p => p.frames.Length == ((template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field") ? 7 : 1)), Is.True);
                     }
@@ -302,7 +308,11 @@ namespace Game.EditorTests
                         }
                 }
             }
-            finally { UnityEngine.Random.state = randomState; }
+            finally
+            {
+                config.mapGeneration.complexCount = configuredComplexCount;
+                UnityEngine.Random.state = randomState;
+            }
         }
         [Test] public void ZeroComplexCountPlacesNoComplexes()
         {

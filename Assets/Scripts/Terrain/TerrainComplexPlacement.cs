@@ -40,21 +40,19 @@ namespace Game.Terrain
 
         // Validate the entire footprint and resulting ground graph before any assignment.
         // The caller commits all returned cells together; failure returns no partial footprint.
-        public static bool TryValidate(TerrainComplexTemplate template, HexCoord origin, int rotation,
+        public static bool TryValidate(TerrainComplexTemplate template, HexCoord origin,
             IReadOnlyDictionary<HexCoord, int> assignment, IReadOnlyList<TerrainTypeEntry> types,
             int terrainIndex, HashSet<HexCoord> claimed, Func<HexCoord, bool> protectedHex,
             out HexCoord[] cells)
         {
             cells = null;
-            if (template == null || !template.IsValid() || terrainIndex < 0 || terrainIndex >= types.Count
-                || !Array.Exists(template.rotations, x => x == rotation)) return false;
+            if (template == null || !template.IsValid() || terrainIndex < 0 || terrainIndex >= types.Count) return false;
             var footprint = new HashSet<HexCoord>();
             var candidates = new HexCoord[template.parts.Length];
             for (int i = 0; i < candidates.Length; i++)
             {
                 var offset = template.parts[i].offset;
-                HexCoord relative = TerrainComplexTemplate.Rotate(new HexCoord(offset.x, offset.y), rotation);
-                HexCoord h = new HexCoord(origin.Q + relative.Q, origin.R + relative.R);
+                HexCoord h = new HexCoord(origin.Q + offset.x, origin.R + offset.y);
                 if (!assignment.TryGetValue(h, out int existing) || claimed.Contains(h)
                     || (protectedHex != null && protectedHex(h)) || !footprint.Add(h)
                     || !Array.Exists(template.allowedTerrainNames, name =>

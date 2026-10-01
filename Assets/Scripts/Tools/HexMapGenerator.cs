@@ -73,13 +73,13 @@ namespace Game.Map
 
             List<TextureVariantSlot> variantSlots = BuildVariantSlots(out List<int>[] slotIndicesByType);
             List<PlacedComplex> complexes = PlaceComplexes(allCoords, assignment);
-            var complexSlots = new Dictionary<HexCoord, (int slot, int rotation)>();
+            var complexSlots = new Dictionary<HexCoord, int>();
             foreach (PlacedComplex complex in complexes)
             {
                 complex.FirstSlot = variantSlots.Count;
                 for (int i = 0; i < complex.Cells.Length; i++)
                 {
-                    complexSlots[complex.Cells[i]] = (variantSlots.Count, complex.Rotation);
+                    complexSlots[complex.Cells[i]] = variantSlots.Count;
                     variantSlots.Add(new TextureVariantSlot(complex.TypeIndex, complex.Template.parts[i].frames[0]));
                 }
             }
@@ -112,20 +112,10 @@ namespace Game.Map
                 Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
                 int typeIndex = assignment[coord];
                 HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, assignment, chosenTexture);
-                int variantSlot = complexSlots.TryGetValue(coord, out var complexVisual)
-                    ? complexVisual.slot : PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
-                int firstVertex = uvs.Count;
+                int variantSlot = complexSlots.TryGetValue(coord, out int complexSlot)
+                    ? complexSlot : PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
                 chosenTexture[coord] = variantSlots[variantSlot].Texture;
                 HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha);
-                // Rotate only the UVs. Alpha/geometry on ALL six edges stays untouched.
-                if (complexSlots.ContainsKey(coord) && complexVisual.rotation != 0)
-                    for (int vertex = firstVertex; vertex < uvs.Count; vertex++)
-                    {
-                        Vector2 uv = uvs[vertex] - new Vector2(0.5f, 0.5f);
-                        float angle = -complexVisual.rotation * Mathf.PI / 3f;
-                        uvs[vertex] = new Vector2(0.5f + uv.x * Mathf.Cos(angle) - uv.y * Mathf.Sin(angle),
-                            0.5f + uv.x * Mathf.Sin(angle) + uv.y * Mathf.Cos(angle));
-                    }
                 hexData[coord] = _activeBiome.terrainTypes[typeIndex];
 
                 if (!boundsInitialized) { bounds = new Bounds(center, Vector3.zero); boundsInitialized = true; }
@@ -409,7 +399,6 @@ namespace Game.Map
         {
             public TerrainComplexTemplate Template;
             public HexCoord[] Cells;
-            public int Rotation;
             public int TypeIndex;
             public int FirstSlot;
         }
@@ -441,16 +430,15 @@ namespace Game.Map
                     for (int attempt = 0; attempt < template.placementAttempts; attempt++)
                     {
                         HexCoord origin = allCoords[Random.Range(0, allCoords.Count)];
-                        int rotation = template.rotations[Random.Range(0, template.rotations.Length)];
                         bool Protected(HexCoord h) => BuildingRegistry.FindAt(h) != null
                             || ArmyRegistry.AllAt(h).Any() || HexEventRegistry.FindAt(h) != null
                             || HexResourceBonusRegistry.GetBonus(h) != null;
-                        if (!TerrainComplexPlacement.TryValidate(template, origin, rotation, assignment,
+                        if (!TerrainComplexPlacement.TryValidate(template, origin, assignment,
                             _activeBiome.terrainTypes, typeIndex, claimed, Protected, out HexCoord[] cells)) continue;
                         // All rejection paths above leave the original assignment unchanged.
                         foreach (HexCoord h in cells) { assignment[h] = typeIndex; claimed.Add(h); }
                         result.Add(new PlacedComplex
-                        { Template = template, Cells = cells, Rotation = rotation, TypeIndex = typeIndex });
+                        { Template = template, Cells = cells, TypeIndex = typeIndex });
                         placed = true;
                         break;
                     }
