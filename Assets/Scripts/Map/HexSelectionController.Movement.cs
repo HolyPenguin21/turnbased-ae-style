@@ -84,10 +84,12 @@ namespace Game.Map
                 return;
             }
 
-            if (_lastPreviewedHover.HasValue && _lastPreviewedHover.Value.Equals(hoverCoord.Value))
-                return; // same hex as last frame — nothing changed, don't re-run pathfinding
+            if (_lastPreviewedHover.HasValue && _lastPreviewedHover.Value.Equals(hoverCoord.Value)
+                && _lastPreviewedPathingVersion == map.PathingVersion)
+                return; // same hex and terrain revision — nothing changed, don't re-run pathfinding
 
             _lastPreviewedHover = hoverCoord;
+            _lastPreviewedPathingVersion = map.PathingVersion;
 
             // flatCost for an air army — an aircraft pays a flat 1 MP per hex regardless of
             // terrain (see AviationRules.MovementCost, what ArmyController.MoveRoutine actually

@@ -103,13 +103,16 @@ namespace Game.Terrain
         // desertOverride once it has at least one terrain type assigned.
         public BiomeTerrainSet ResolveBiome(Biome biome)
         {
-            if (biome == Biome.Desert && desertOverride.terrainTypes.Count > 0)
+            if (biome == Biome.Desert && desertOverride?.terrainTypes?.Count > 0)
+            {
+                desertOverride.complexes ??= new List<TerrainComplexTemplate>();
                 return desertOverride;
+            }
 
             return new BiomeTerrainSet
             {
                 terrainTypes = terrainTypes,
-                complexes = complexes,
+                complexes = complexes ?? new List<TerrainComplexTemplate>(),
                 mountainsTerrainName = mountainsTerrainName,
                 mountainRangeCount = mountainRangeCount,
                 mountainRangeLength = mountainRangeLength,

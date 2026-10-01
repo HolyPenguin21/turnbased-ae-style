@@ -160,10 +160,7 @@ namespace Game.Ai.V2
                 float fromThreat = HexGridMath.Distance(h, threatHex);
                 float toFriendly = HexGridMath.Distance(h, fallback);
                 float detector = ScoutRiskModel.DetectorRiskLive(player, h);
-                int freshNeighbors = 0;
-                foreach (HexCoord n in HexGridMath.Neighbors(h))
-                    if (map.TryGetTerrainAt(n, out _) && !VisionSystem.IsVisited(player, n))
-                        freshNeighbors++;
+                int freshNeighbors = ReconGroundStepPlanner.FreshNeighborCount(player, map, h);
                 float futureRecon = freshNeighbors / 6f;
                 int backtrack = ScoutTrailRegistry.RecentTrailHits(player, army.Id, new[] { h });
 

@@ -1007,6 +1007,7 @@ namespace Game.Ai.V2
 
         public bool CanDamage;             // can the contact's force actually hurt this asset
         public int? EnemyEta;              // turns for the contact to reach the asset
+        public int? EnemyApproachCost;     // terrain-route MP remaining, conservative for stale contacts
         public int? ResponseEta;           // nearest own ground arrival; NOT proof of combat sufficiency
         public float AttackWinChance;      // WorthIt full-roster MC — contact as attacker
         public float PotentialDamage;      // expected value lost if it lands (0..1 fraction of Asset.Value)
@@ -1031,7 +1032,7 @@ namespace Game.Ai.V2
         public IReadOnlyDictionary<int, EnemyContactSnapshot> ReconContactByArmyId;
         // AI-behaviour label ONLY — no game "siege" state exists. "A force I can't beat is at the
         // gates": an enemy within AiConfigV2.siegeRadius (3) of a Citadel/Base (or <=1 turn out)
-        // whose attack would probably win, OR'd with V1 AiDefencePlanner.IsUnderSiege for parity.
+        // whose attack would probably win, using terrain-route approach rather than geometry.
         public bool UnderSiege;
     }
 }

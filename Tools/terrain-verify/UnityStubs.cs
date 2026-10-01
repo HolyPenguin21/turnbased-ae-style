@@ -23,6 +23,7 @@ namespace UnityEngine
     public class Shader : Object { public static Shader Find(string n)=>new Shader(); }
     public class Material : Object { public Texture2D mainTexture; public Material(Shader s) {} }
     public readonly struct Vector2Int { public readonly int x,y; public Vector2Int(int x,int y){this.x=x;this.y=y;} }
+    public struct Color { public float r,g,b,a; public Color(float r,float g,float b,float a=1){this.r=r;this.g=g;this.b=b;this.a=a;} }
     public struct Vector3
     {
         public float x,y,z; public Vector3(float x,float y,float z){this.x=x;this.y=y;this.z=z;}
@@ -44,6 +45,7 @@ namespace UnityEngine
     public static class Time { public static double timeAsDouble; public static float deltaTime=1f/60; }
     public static class Application { public static bool isPlaying; }
     public class SerializeField:Attribute{} public class RequireComponent:Attribute{public RequireComponent(params Type[] t){}}
+    public class HeaderAttribute:Attribute{public HeaderAttribute(string n){}}
     public class MinAttribute:Attribute{public MinAttribute(float n){}} public class RangeAttribute:Attribute{public RangeAttribute(float a,float b){}}
 }
 namespace Game.Players { public class PlayerSetupData {} }

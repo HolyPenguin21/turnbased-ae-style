@@ -209,6 +209,7 @@ namespace Game.Ai.V2
             && a.MemberCount == b.MemberCount
             && a.AttackSum == b.AttackSum && a.DefenseSum == b.DefenseSum
             && a.HasAntiAir == b.HasAntiAir
+            && a.IsAir == b.IsAir && a.MaxMovement == b.MaxMovement
             && a.RecceRadius == b.RecceRadius
             && a.RecceSpotStrength == b.RecceSpotStrength
             && a.SeenTurn == b.SeenTurn
@@ -336,7 +337,7 @@ namespace Game.Ai.V2
             int contactId = t.Contact?.Army?.ArmyId ?? 0;
             HexCoord assetHex = t.Asset != null ? t.Asset.Hex : default;
             return $"{contactId}:{t.Asset?.Kind}:{assetHex.Q},{assetHex.R}:"
-                + $"{t.EnemyEta}:{t.ResponseEta}:{t.CanDamage}:"
+                + $"{t.EnemyEta}:{t.EnemyApproachCost}:{t.ResponseEta}:{t.CanDamage}:"
                 + t.Severity.ToString("R", CultureInfo.InvariantCulture);
         }
 

@@ -75,6 +75,14 @@ namespace UnityEngine.InputSystem
 }
 namespace UnityEditor
 {
+    public class MenuItem : System.Attribute { public MenuItem(string name) {} }
+    public static class AssetDatabase
+    {
+        public static T LoadAssetAtPath<T>(string path) where T : UnityEngine.Object =>
+            throw new System.NotSupportedException("Asset loading requires Unity Editor.");
+        public static string[] FindAssets(string filter) => new string[0];
+        public static string GUIDToAssetPath(string guid) => guid;
+    }
     public static class EditorApplication { public static bool isPlaying; public static void ExitPlaymode() { } }
     public class SerializedProperty { public string propertyPath, name, displayName; public int intValue; public float floatValue; public bool boolValue; public string stringValue; public int enumValueIndex; public string[] enumNames; public string[] enumDisplayNames; public UnityEngine.Object objectReferenceValue; public SerializedPropertyType propertyType;
         public SerializedProperty FindPropertyRelative(string n) => null; public bool isExpanded; public int arraySize; public SerializedProperty GetArrayElementAtIndex(int i) => null; }

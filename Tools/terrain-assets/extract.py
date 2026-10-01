@@ -5,10 +5,15 @@ adjacent hex edges agree even though each texture remains a separate file.
 """
 from pathlib import Path
 import math
+import argparse
 from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser()
+parser.add_argument('--biome', choices=['Desert', 'AridSteppe'], default='Desert')
+args = parser.parse_args()
 SOURCE = Path(__file__).resolve().parent / 'Sources'
-OUT = ROOT / 'Assets/Textures/Terrain/Desert/Complexes'
+if args.biome == 'AridSteppe': SOURCE = SOURCE / 'AridSteppe'
+OUT = ROOT / 'Assets/Textures/Terrain' / args.biome / 'Complexes'
 OUT.mkdir(parents=True, exist_ok=True)
 
 def extract(square, x, y, radius, output):
@@ -29,3 +34,17 @@ canyon = Image.open(SOURCE/'Canyon_Source.png').convert('RGB')
 for part,(x,y) in enumerate([(.35,.75),(.65,.75-math.sqrt(3)*.1),(.65,.75-math.sqrt(3)*.3)],1):
     extract(canyon,x,y,.2,OUT/f'Canyon_Part{part}.png')
 print('Extracted 14 lake frames and 3 canyon parts:', OUT)
+
+# New complexes use the same continuous source sampling as lakes/canyons.
+atlas = Image.open(SOURCE/'BoilingMud_7PhaseSource.png').convert('RGB')
+assert atlas.width == atlas.height and atlas.width % 3 == 0
+size = atlas.width // 3
+for frame in range(7):
+    col, row = frame % 3, frame // 3
+    square = atlas.crop((col*size, row*size, (col+1)*size, (row+1)*size))
+    for part, (x,y) in enumerate([(.32,.62), (.64,.62-math.sqrt(3)*radius/2)], 1):
+        extract(square,x,y,radius,OUT/f'BoilingMud_Part{part}_{frame:02}.png')
+wreck = Image.open(SOURCE/'GiantMachineWreck_Source.png').convert('RGB')
+for part in range(3):
+    extract(wreck,.20+.30*part,.72-math.sqrt(3)*.1*part,.2,OUT/f'GiantMachineWreck_Part{part+1}.png')
+print('Extracted 14 mud frames and 3 wreck parts:', OUT)

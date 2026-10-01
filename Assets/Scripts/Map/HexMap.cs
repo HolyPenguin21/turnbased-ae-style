@@ -27,10 +27,15 @@ namespace Game.Map
         public bool CanEnter(HexCoord coord, ArmyData army) =>
             army != null && CanEnter(coord, Game.Aviation.AviationRules.IsAirArmy(army));
 
-        // Runtime terrain edits must go through the data owner to invalidate routes.
+        // Data preparation only (including tests). There is no gameplay terrain-edit feature:
+        // the generated combined mesh and its animation groups have a fixed layout. Reject
+        // edits once that layout is published rather than silently desynchronizing its view.
+        private bool _terrainLayoutPublished;
+        public void PublishTerrainLayout() => _terrainLayoutPublished = true;
+
         public bool SetTerrainAt(HexCoord coord, TerrainTypeEntry entry)
         {
-            if (entry == null || !_hexData.ContainsKey(coord)) return false;
+            if (_terrainLayoutPublished || entry == null || !_hexData.ContainsKey(coord)) return false;
             _hexData[coord] = entry;
             PathingVersion++;
             return true;

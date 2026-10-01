@@ -31,7 +31,6 @@ namespace Game.Ai.V2
     //    - AiDefencePlanner.DynamicPatrolUrgencyScore             -> NOT ported. Its job (a Patrol
     //      urgency score) is replaced by continuous AssetThreatSnapshot.Severity; Patrol/Intercept
     //      mission value is MissionLayer's problem, from expected Severity reduction.
-    //    - AiDefencePlanner.IsUnderSiege                          -> OR'd into ThreatModel.UnderSiege
     //
     //  CHEAT BOUNDARY: cheat data lives only in TrueWorld and in Cheat-sourced EnemyContactSnapshots.
     //  A Cheat contact is structurally forbidden a Position (see MakeCheatContact) — spec-18 as a

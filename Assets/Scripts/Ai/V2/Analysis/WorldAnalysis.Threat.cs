@@ -118,27 +118,38 @@ namespace Game.Ai.V2
 
             var threats = new List<AssetThreatSnapshot>();
             List<ArmySnapshot> ownFieldForResponse = snap.Self.Armies
-                .Where(a => !a.IsPrison && a.MemberCount > 0).ToList();
+                .Where(a => !a.IsPrison && !a.IsGarrison && !a.IsAirfield && a.MemberCount > 0).ToList();
+            var responseCosts = ownFieldForResponse.ToDictionary(a => a.ArmyId,
+                a => HexPathfinder.FindCosts(ctx.Map, new[] { a.Hex },
+                    maxMovement: Mathf.Max(1, a.MaxMovement), flatCost: a.IsAir));
 
             foreach (EnemyContactSnapshot c in contacts)
             {
+                // Public terrain only; no live enemy registry or hidden occupancy blockers.
+                Dictionary<HexCoord, int> approachCosts = c.Position.HasValue
+                    ? HexPathfinder.FindCosts(ctx.Map, new[] { c.Position.Value },
+                        maxMovement: Mathf.Max(1, c.Army.MaxMovement), flatCost: c.Army.IsAir)
+                    : new Dictionary<HexCoord, int>();
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
+                    int? approachCost = ContactApproachCost(ctx.Map, c, asset.Hex, snap.TurnNumber, approachCosts);
+                    // A current observation with no terrain route is not an arriving threat.
+                    // Historical contacts remain conservative because they may have moved.
+                    if (c.Knowledge == ContactKnowledge.Exact && !approachCost.HasValue) continue;
                     bool canDamage = WorthIt.CanDamageAll(c.Army.Members,
                         WorthIt.UnitsOf(asset.Opposition), asset.HexDefenseBonus);
                     float winChance = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander,
                         asset.Opposition, asset.HexDefenseBonus).WinChance;
 
                     int? enemyEta = null;
-                    if (c.Position.HasValue)
-                        enemyEta = CeilDiv(HexGridMath.Distance(c.Position.Value, asset.Hex),
-                            Mathf.Max(AiConfigV2.etaFallbackMoveBudget, c.Army.MaxMovement));
+                    if (approachCost.HasValue)
+                        enemyEta = CeilDiv(approachCost.Value, Mathf.Max(1, c.Army.MaxMovement));
 
                     int? responseEta = null;
                     foreach (ArmySnapshot r in ownFieldForResponse)
                     {
-                        int e = CeilDiv(HexGridMath.Distance(r.Hex, asset.Hex),
-                            Mathf.Max(AiConfigV2.etaFallbackMoveBudget, r.MaxMovement));
+                        if (!responseCosts[r.ArmyId].TryGetValue(asset.Hex, out int cost)) continue;
+                        int e = CeilDiv(cost, Mathf.Max(1, r.MaxMovement));
                         if (!responseEta.HasValue || e < responseEta.Value)
                             responseEta = e;
                     }
@@ -153,6 +164,7 @@ namespace Game.Ai.V2
                         Contact = c,
                         CanDamage = canDamage,
                         EnemyEta = enemyEta,
+                        EnemyApproachCost = approachCost,
                         ResponseEta = responseEta,
                         AttackWinChance = winChance,
                         PotentialDamage = potentialDamage,
@@ -163,18 +175,38 @@ namespace Game.Ai.V2
             }
             model.Threats = threats;
 
-            bool derivedSiege = threats.Any(t =>
-                (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base)
-                && t.AttackWinChance >= AiConfigV2.siegeEnemyWinChanceThreshold
-                && ((t.Contact.Position.HasValue
-                        && HexGridMath.Distance(t.Contact.Position.Value, t.Asset.Hex) <= AiConfigV2.siegeRadius)
-                    || (t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.siegeEnemyEtaTurns)));
+            bool derivedSiege = threats.Any(IsSiegeThreat);
             model.UnderSiege = derivedSiege;
             model.CitadelThreatSeverity = MaxSeverity(threats, AssetKind.Citadel);
             model.BaseThreatSeverity = MaxSeverity(threats, AssetKind.Base);
 
             return model;
         }
+
+        // Cost to the asset from the last honest location, discounted by the maximum advance
+        // since that observation. A current contact uses the real terrain route; a historical
+        // contact whose old origin is now blocked/unreachable falls back to geometric proximity.
+        // This models uncertainty, never the enemy's actual hidden position or planned route.
+        internal static int? ContactApproachCost(HexMap map, EnemyContactSnapshot contact,
+            HexCoord destination, int turn, Dictionary<HexCoord, int> costs = null)
+        {
+            if (map == null || contact?.Army == null || !contact.Position.HasValue) return null;
+            int movement = Mathf.Max(1, contact.Army.MaxMovement);
+            costs ??= HexPathfinder.FindCosts(map, new[] { contact.Position.Value },
+                maxMovement: movement, flatCost: contact.Army.IsAir);
+            bool reachable = costs.TryGetValue(destination, out int cost);
+            if (contact.Knowledge == ContactKnowledge.Exact) return reachable ? cost : (int?)null;
+            if (!reachable) cost = HexGridMath.Distance(contact.Position.Value, destination);
+            long possibleAdvance = (long)contact.AgeTurns(turn) * movement;
+            return (int)System.Math.Max(0L, cost - possibleAdvance);
+        }
+
+        internal static bool IsSiegeThreat(AssetThreatSnapshot threat) =>
+            threat?.Asset != null
+            && (threat.Asset.Kind == AssetKind.Citadel || threat.Asset.Kind == AssetKind.Base)
+            && threat.AttackWinChance >= AiConfigV2.siegeEnemyWinChanceThreshold
+            && ((threat.EnemyApproachCost.HasValue && threat.EnemyApproachCost.Value <= AiConfigV2.siegeRadius)
+                || (threat.EnemyEta.HasValue && threat.EnemyEta.Value <= AiConfigV2.siegeEnemyEtaTurns));
 
         private static float MaxSeverity(IEnumerable<AssetThreatSnapshot> threats, AssetKind kind) =>
             threats.Where(t => t.Asset.Kind == kind).Select(t => t.Severity)
@@ -205,7 +237,8 @@ namespace Game.Ai.V2
                 AttackSum = o.AttackSum,
                 DefenseSum = o.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
-                MaxMovement = 1,
+                IsAir = o.IsAir,
+                MaxMovement = o.MaxMovement,
                 Members = members,
             };
         }
@@ -227,7 +260,8 @@ namespace Game.Ai.V2
                 AttackSum = s.AttackSum,
                 DefenseSum = s.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
-                MaxMovement = 1,
+                IsAir = s.IsAir,
+                MaxMovement = s.MaxMovement,
                 Members = members,
             };
         }

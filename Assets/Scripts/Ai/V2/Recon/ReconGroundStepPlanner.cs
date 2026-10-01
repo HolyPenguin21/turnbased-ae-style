@@ -153,7 +153,7 @@ namespace Game.Ai.V2
                 foreach (HexCoord a in anchors)
                     foreach (HexCoord h in HexGridMath.HexesInRange(a, radius))
                     {
-                        if (!counted.Add(h) || !map.TryGetTerrainAt(h, out _))
+                        if (!counted.Add(h) || !map.CanEnter(h))
                             continue;
                         inRing++;
                         if (!VisionSystem.IsVisited(player, h) && !AiMapMemory.IsScoutDangerous(player, h))
@@ -413,11 +413,11 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)
+        internal static int FreshNeighborCount(PlayerSetupData player, HexMap map, HexCoord center)
         {
             int count = 0;
             foreach (HexCoord n in HexGridMath.Neighbors(center))
-                if (map.TryGetTerrainAt(n, out _)
+                if (map.CanEnter(n)
                     && !VisionSystem.IsVisited(player, n)
                     && !AiMapMemory.IsScoutDangerous(player, n))
                     count++;

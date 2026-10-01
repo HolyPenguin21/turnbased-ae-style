@@ -91,6 +91,8 @@ namespace Game.Ai
             // elapsed turns (see OnTurnStarted) and is corrected only by re-observing its hex, the
             // same "видимость с памятью" rule neutral sightings and KnownBuildings follow.
             public bool IsGarrison;
+            public bool IsAir;
+            public int MaxMovement;
         }
 
         public readonly struct KnownEnemySighting
@@ -121,14 +123,18 @@ namespace Game.Ai
             // Building-bound garrison (see EnemySighting.IsGarrison). Consumers that model a
             // roaming threat skip it; consumers that price a site's defender package keep it.
             public readonly bool IsGarrison;
+            public readonly bool IsAir;
+            public readonly int MaxMovement;
             // The observed commander (see EnemySighting.Commander).
             public readonly WorthIt.SideCommander Commander;
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
                 IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0,
                 int seenTurn = 0, int armyId = 0, bool isGarrison = false,
-                WorthIt.SideCommander commander = default)
+                WorthIt.SideCommander commander = default, bool isAir = false, int maxMovement = 1)
             {
+                IsAir = isAir;
+                MaxMovement = System.Math.Max(1, maxMovement);
                 IsGarrison = isGarrison;
                 Commander = commander;
                 ArmyId = armyId;
@@ -719,7 +725,8 @@ namespace Game.Ai
                 || a.DefenseSum != b.DefenseSum || a.AttackSum != b.AttackSum
                 || a.HasAntiAir != b.HasAntiAir || a.SeenTurn != b.SeenTurn
                 || a.RecceRadius != b.RecceRadius || a.RecceSpotStrength != b.RecceSpotStrength
-                || a.IsGarrison != b.IsGarrison || !a.Commander.Equals(b.Commander))
+                || a.IsGarrison != b.IsGarrison || a.IsAir != b.IsAir
+                || a.MaxMovement != b.MaxMovement || !a.Commander.Equals(b.Commander))
                 return false;
             return SameProfiles(a.Defenders, b.Defenders);
         }
@@ -859,6 +866,12 @@ namespace Game.Ai
                     var nextSighting = new EnemySighting
                     {
                         ArmyId = enemy.Id,
+                        // Only visible members supply movement facts. Hidden roster changes are
+                        // never read; the observed budget is a conservative fastest possibility.
+                        IsAir = !enemy.IsGarrison && !enemy.IsAirfield && !enemy.IsPrison
+                            && enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player)).All(m => m.IsAviation),
+                        MaxMovement = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
+                            .Select(Game.Aviation.AviationRules.EffectiveMoveMax).DefaultIfEmpty(1).Min(),
                         Hex = hex,
                         Owner = enemy.Owner,
                         Name = enemy.Name,
@@ -1098,7 +1111,7 @@ namespace Game.Ai
                 if (IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -1114,7 +1127,7 @@ namespace Game.Ai
                 if (!IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -1131,7 +1144,7 @@ namespace Game.Ai
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -1148,7 +1161,7 @@ namespace Game.Ai
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison, sighting.Commander, sighting.IsAir, sighting.MaxMovement);
             return null;
         }
 
