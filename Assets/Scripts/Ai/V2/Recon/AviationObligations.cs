@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -21,6 +22,22 @@ namespace Game.Ai.V2
             player != null && ctx != null
             && (AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber).Count > 0
                 || ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx).Count > 0);
+
+        // The activation AP the pending obligations will spend this turn. The order above protects
+        // it from card play; a spend made before that order (the turn-start hand refill) must
+        // leave it untouched itself.
+        internal static int ActivationAp(PlayerSetupData player, AiTurnContext ctx)
+        {
+            if (player == null || ctx == null)
+                return 0;
+            var wings = new HashSet<ArmyData>(AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber));
+            wings.UnionWith(ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx));
+            int ap = 0;
+            foreach (ArmyData wing in wings)
+                if (wing != null && !wing.HasActivatedThisTurn)
+                    ap += System.Math.Max(0, wing.ActivationApCost);
+            return ap;
+        }
     }
 
     // The strategic axes whose re-admission waited for aviation obligations. Pure bookkeeping so
