@@ -167,10 +167,11 @@ namespace Game.EditorTests
             Assert.That(Validate(t, _origin, 0, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
             Assert.That(cells, Is.Null);
         }
-        [Test] public void SnakeAndTriangleSupportAllSixRotations()
+        [Test] public void SnakeTriangleAndWreckChainSupportAllSixRotations()
         {
             foreach (var t in new[] { Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1)),
-                Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(0, 1)) })
+                Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(0, 1)),
+                Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(2, 0)) })
                 for (int rotation = 0; rotation < 6; rotation++)
                     Assert.That(Validate(t, _origin, rotation, Assignment(), new HashSet<HexCoord>(), null, out var cells), Is.True);
         }
@@ -240,14 +241,16 @@ namespace Game.EditorTests
                 foreach (Biome biome in new[] { Biome.Arid, Biome.Desert })
                 {
                     var palette = config.mapGeneration.ResolveBiome(biome);
-                    Assert.That(palette.complexes.Count, Is.EqualTo(2));
+                    Assert.That(palette.complexes.Count, Is.EqualTo(4));
                     Assert.That(palette.terrainTypes.Single(t => t.terrainName == "Mountains").blocksGroundMovement, Is.False);
                     foreach (var template in palette.complexes)
                     {
                         Assert.That(template.IsValid(), Is.True);
+                        Assert.That(template.parts.Length, Is.EqualTo(template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field" ? 2 : 3));
+                        Assert.That(template.count, Is.EqualTo(template.terrainName == "Acid lake" ? 2 : 1));
                         Assert.That(template.rotations, Is.EquivalentTo(new[] { 0, 1, 2, 3, 4, 5 }));
                         Assert.That(template.allowedTerrainNames.All(n => palette.terrainTypes.Any(t => t.terrainName == n && !t.blocksGroundMovement)), Is.True);
-                        Assert.That(template.parts.All(p => p.frames.Length == (template.terrainName == "Acid lake" ? 7 : 1)), Is.True);
+                        Assert.That(template.parts.All(p => p.frames.Length == ((template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field") ? 7 : 1)), Is.True);
                     }
                     type.GetField("_activeBiome", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, palette);
                     foreach (MapSize size in Enum.GetValues(typeof(MapSize)))

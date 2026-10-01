@@ -34,6 +34,14 @@ def render(parts,name):
         tx=np.clip(np.rint(ux*(texture.shape[1]-1)).astype(int),0,texture.shape[1]-1)
         ty=np.clip(np.rint((1-uy)*(texture.shape[0]-1)).astype(int),0,texture.shape[0]-1)
         rgb[y0:y1,x0:x1]=rgb[y0:y1,x0:x1]*(1-alpha[...,None])+texture[ty,tx]*alpha[...,None]
-    Image.fromarray(np.clip(rgb,0,255).astype('uint8')).save(OUT/(args.biome.lower()+'-'+name))
+    result=Image.fromarray(np.clip(rgb,0,255).astype('uint8'))
+    if name is not None: result.save(OUT/(args.biome.lower()+'-'+name))
+    return result
 render({(0,0):('Complexes/AcidLake_Part1_00.png',0),(1,0):('Complexes/AcidLake_Part2_00.png',0)},'lake-offline-diagnostic.png')
 render({(0,-1):('Complexes/Canyon_Part1.png',0),(1,-1):('Complexes/Canyon_Part2.png',0),(1,0):('Complexes/Canyon_Part3.png',0)},'canyon-offline-diagnostic.png')
+
+mud=[]
+for frame in range(7):
+    mud.append(render({(0,0):(f'Complexes/BoilingMud_Part1_{frame:02}.png',0),(1,0):(f'Complexes/BoilingMud_Part2_{frame:02}.png',0)},'mud-frame-00-offline.png' if frame == 0 else None))
+mud[0].save(OUT/(args.biome.lower()+'-mud-offline-animation.gif'),save_all=True,append_images=mud[1:],duration=333,loop=0)
+render({(-1,0):('Complexes/GiantMachineWreck_Part1.png',0),(0,0):('Complexes/GiantMachineWreck_Part2.png',0),(1,0):('Complexes/GiantMachineWreck_Part3.png',0)},'wreck-offline-diagnostic.png')

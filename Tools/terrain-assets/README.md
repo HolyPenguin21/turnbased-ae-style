@@ -28,3 +28,16 @@ python3 Tools/terrain-assets/preview.py --biome AridSteppe
 The default remains Desert. `preview.py` prefixes generated diagnostic names by biome.
 See `Docs/terrain-complexes/arid-obstacle-fix-report.md` for prompts, ownership, validation
 and the separate Unity acceptance work.
+
+Boiling mud and giant machine wreck use separate built-in imagegen sources for each biome.
+Exact prompts are in `Sources/MudAndWreck-Prompts.md`. Mud has seven atlas phases and two
+synchronous parts; the static wreck samples a straight three-hex chain. Both use the existing
+hex mesh fade, including their internal edges. Each template requests one placement and
+allows six rotations on Desert, Sand dunes or Rock desert. Replacement textures/frames
+are configured per biome in GameConfig; no runtime code or extra terrain store is needed.
+
+```sh
+python3 Tools/terrain-assets/validate.py
+```
+
+Validation additionally needs PyYAML. Offline mud GIFs show all seven phases, not Unity capture.
