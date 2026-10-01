@@ -565,6 +565,7 @@ namespace Game.Combat
                     [enemyArmy] = Mathf.Max(0, BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy)?.Fate ?? 0),
                 };
                 var rng = new System.Random(unchecked(baseSeed + trial * 7919));
+                var previousPositions = new Dictionary<UnitData, Vector2Int>();
 
                 for (int round = 0; round < rounds; round++)
                 {
@@ -573,7 +574,8 @@ namespace Game.Combat
                     RunOneRound(grid, hp, order, magnitudes, null, smartAdvance: true,
                         battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                         rng: rng, fateByArmy: fateByArmy, simulatedAttack: simulatedAttack,
-                        simulatedDefense: simulatedDefense, ownArmy: ownArmy, enemyArmy: enemyArmy);
+                        simulatedDefense: simulatedDefense, ownArmy: ownArmy, enemyArmy: enemyArmy,
+                        previousPositions: previousPositions);
                     if (!IsSimulationCombatCapable(grid, hp, ownArmy)
                         || !IsSimulationCombatCapable(grid, hp, enemyArmy))
                         break;
@@ -640,7 +642,8 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes, Dictionary<UnitData, float> damageDealtByUnit, bool smartAdvance = false,
             ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0, System.Random rng = null,
             Dictionary<ArmyData, int> fateByArmy = null, Dictionary<UnitData, int> simulatedAttack = null,
-            Dictionary<UnitData, int> simulatedDefense = null, ArmyData ownArmy = null, ArmyData enemyArmy = null)
+            Dictionary<UnitData, int> simulatedDefense = null, ArmyData ownArmy = null, ArmyData enemyArmy = null,
+            Dictionary<UnitData, Vector2Int> previousPositions = null)
         {
             var suppressed = new HashSet<UnitData>();
             for (int i = 0; i < order.Count; i++)
@@ -729,6 +732,20 @@ namespace Game.Combat
                     : FindStepToward(grid, actor, row, col);
                 if (step != null)
                 {
+                    int curDist = NearestEnemyManhattanDistance(grid, actor, row, col);
+                    if (previousPositions != null
+                        && previousPositions.TryGetValue(actor, out Vector2Int previous)
+                        && previous.x == step.Value.row && previous.y == step.Value.col)
+                    {
+                        (int row, int col)? toward = FindStepToward(grid, actor, row, col);
+                        if (toward.HasValue
+                            && (toward.Value.row != previous.x || toward.Value.col != previous.y)
+                            && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                            step = toward;
+                    }
+
+                    if (previousPositions != null)
+                        previousPositions[actor] = new Vector2Int(row, col);
                     grid.Set(row, col, null);
                     grid.Set(step.Value.row, step.Value.col, actor);
                 }
@@ -928,7 +945,8 @@ namespace Game.Combat
         public static AiAction ChooseAction(BattleGrid grid, UnitData actor, Dictionary<UnitData, int> waitStreak,
             ArmyData ownArmy, ArmyData enemyArmy, AbilityMagnitudes magnitudes,
             List<UnitData> turnOrder, int turnIndex, bool favorableFight = false,
-            ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0)
+            ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0,
+            Dictionary<UnitData, Vector2Int> previousPositions = null)
         {
             var passAction = new AiAction { Kind = AiActionKind.Pass, Reason = AiThoughtCategory.CautiousWait };
             if (grid == null || actor == null || waitStreak == null
@@ -994,6 +1012,25 @@ namespace Game.Combat
                     closes = true;
                 }
             }
+
+            // Break the common ranged A->B->A oscillation immediately instead of waiting for
+            // MaxWaitStreak. A reversal remains legal when there is no real closing alternative,
+            // so this cannot strand a unit that only has one escape/path cell.
+            if (previousPositions != null
+                && previousPositions.TryGetValue(actor, out Vector2Int previous)
+                && previous.x == step.Value.row && previous.y == step.Value.col)
+            {
+                (int row, int col)? toward = FindStepToward(grid, actor, actorRow, actorCol);
+                if (toward.HasValue
+                    && (toward.Value.row != previous.x || toward.Value.col != previous.y)
+                    && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                {
+                    step = toward;
+                    closes = true;
+                    if (BattleDebugLog.Verbose)
+                        BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: immediate reversal ({actorRow},{actorCol})->({previous.x},{previous.y}) rejected; closing via {step.Value}");
+                }
+            }
             bool stepExposes = !alreadyExposed && IsExposedToEnemy(grid, step.Value.row, step.Value.col, actor);
             // Close-combat units (Range 1) never hesitates over exposure risk before closing distance — per
             // the user's own call, there's no point in a melee unit hanging back to avoid a
@@ -1010,6 +1047,8 @@ namespace Game.Combat
             if (isMelee || alreadyExposed || !stepExposes || forceAdvance || favorableFight)
             {
                 waitStreak[actor] = closes ? 0 : streak + 1;
+                if (previousPositions != null)
+                    previousPositions[actor] = new Vector2Int(actorRow, actorCol);
                 return new AiAction
                 {
                     Kind = AiActionKind.Move,
