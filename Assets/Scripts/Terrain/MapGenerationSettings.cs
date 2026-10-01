@@ -67,6 +67,11 @@ namespace Game.Terrain
         public List<TerrainTypeEntry> terrainTypes = new List<TerrainTypeEntry>();
         public List<TerrainComplexTemplate> complexes = new List<TerrainComplexTemplate>();
 
+        // Total terrain complexes on one generated map, whichever biome is active. 0 disables
+        // complex generation entirely. Each template's own `count` is only its share of this
+        // total (see TerrainComplexPlacement.AllocateInstances).
+        [Min(0)] public int complexCount = 5;
+
         // Mountains are the one type still placed by a dedicated rule instead of the baseline
         // weighted pool — they form a few connected chains rather than scattering as single
         // hexes, so this name lookup pulls them out of the pool the same way Ruins/Wasteland

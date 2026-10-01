@@ -56,6 +56,25 @@ namespace Game.EditorTests
             TerrainComplexPlacement.TryValidate(t, origin, rotation, data, new[] { _desert, _lake }, 1,
                 claimed, reserved, out cells);
 
+        [Test] public void ComplexTotalIsSplitByTemplateShares()
+        {
+            var shares = new[] { 2, 1, 1, 1 };
+            Assert.That(TerrainComplexPlacement.AllocateInstances(shares, 5, n => 0), Is.EqualTo(new[] { 2, 1, 1, 1 }));
+            Assert.That(TerrainComplexPlacement.AllocateInstances(shares, 10, n => 0), Is.EqualTo(new[] { 4, 2, 2, 2 }));
+            Assert.That(TerrainComplexPlacement.AllocateInstances(shares, 0, n => 0), Is.EqualTo(new[] { 0, 0, 0, 0 }));
+            Assert.That(TerrainComplexPlacement.AllocateInstances(new[] { 0, 0 }, 3, n => 0), Is.EqualTo(new[] { 0, 0 }));
+            Assert.That(TerrainComplexPlacement.AllocateInstances(new[] { 0, 1 }, 3, n => 0), Is.EqualTo(new[] { 0, 3 }));
+            var rng = new System.Random(7);
+            var seen = new HashSet<int>();
+            for (int run = 0; run < 200; run++)
+            {
+                int[] two = TerrainComplexPlacement.AllocateInstances(shares, 2, n => rng.Next(n));
+                Assert.That(two.Sum(), Is.EqualTo(2));
+                Assert.That(two.All(c => c <= 1), Is.True, "Remainders are handed out one per template.");
+                for (int i = 0; i < two.Length; i++) if (two[i] > 0) seen.Add(i);
+            }
+            Assert.That(seen.Count, Is.EqualTo(4), "Ties in the remainder vary between maps.");
+        }
         [Test] public void OldTerrainIncludingMountainsRemainsPassable()
         {
             _map.SetTerrainAt(_origin, new TerrainTypeEntry { terrainName = "Mountains", moveCost = 3 });
@@ -231,6 +250,7 @@ namespace Game.EditorTests
         {
             var config = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>("Assets/Config/GameConfig.asset");
             Assert.That(config, Is.Not.Null);
+            Assert.That(config.mapGeneration.complexCount, Is.EqualTo(5), "Total that reproduces the authored 2/1/1/1 shares.");
             BuildingRegistry.Clear(); ArmyRegistry.Clear(); HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear();
             var generator = _object.AddComponent<HexMapGenerator>();
             Type type = typeof(HexMapGenerator);
@@ -283,6 +303,30 @@ namespace Game.EditorTests
                 }
             }
             finally { UnityEngine.Random.state = randomState; }
+        }
+        [Test] public void ZeroComplexCountPlacesNoComplexes()
+        {
+            var config = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>("Assets/Config/GameConfig.asset");
+            BuildingRegistry.Clear(); ArmyRegistry.Clear(); HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear();
+            var generator = _object.AddComponent<HexMapGenerator>();
+            Type type = typeof(HexMapGenerator);
+            type.GetField("gameConfig", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config);
+            type.GetField("_activeBiome", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config.mapGeneration.ResolveBiome(Biome.Arid));
+            type.GetField("_activeRadius", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, (int)MapSize.Huge);
+            int authored = config.mapGeneration.complexCount;
+            try
+            {
+                config.mapGeneration.complexCount = 0;
+                var coords = HexGridMath.HexesInRange(_origin, (int)MapSize.Huge).ToList();
+                var assignment = (Dictionary<HexCoord, int>)type.GetMethod("AssignTerrainTypes", BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Invoke(generator, new object[] { coords });
+                var before = new Dictionary<HexCoord, int>(assignment);
+                var placed = (IList)type.GetMethod("PlaceComplexes", BindingFlags.NonPublic | BindingFlags.Instance)
+                    .Invoke(generator, new object[] { coords, assignment });
+                Assert.That(placed.Count, Is.Zero);
+                Assert.That(assignment, Is.EquivalentTo(before));
+            }
+            finally { config.mapGeneration.complexCount = authored; }
         }
         private void VisitAllGroundExcept(PlayerSetupData owner, params HexCoord[] except)
         {

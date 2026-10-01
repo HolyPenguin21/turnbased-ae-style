@@ -473,6 +473,7 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 1
       defenseModifier: 0
+    complexCount: 5
     complexes:
     - name: Arid acid lake pair
       terrainName: Acid lake
