@@ -83,9 +83,11 @@ namespace Game.Ai.V2
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(marginalByResource),
                 payback: hasUsefulGain ? TaskScoreEvaluator.Payback(paybackTurns) : 0f,
                 airfield: TaskScoreEvaluator.Airfield(facts.Airfield),
-                // BaseSiteValue.GlobalEffect is already authored in TaskScore units.
+                // BaseSiteValue.GlobalEffect is a card-score value (StrategicEffectRegistry);
+                // taken as TaskScore it priced a Base's +2 AP/turn at ~0.6 instead of ~5.6
+                // (playtest 2026-10-01 #5).
                 globalCardEffect: TaskScoreEvaluator.GlobalCardEffectScoreUnits(
-                    facts.GlobalEffect),
+                    ActionPrice.CardScoreToTaskScore(facts.GlobalEffect)),
                 frontProgress: TaskScoreEvaluator.FrontProgress(site.ForwardProgressValue),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
@@ -412,7 +414,7 @@ namespace Game.Ai.V2
                     continue;
 
                 float global = TaskScoreEvaluator.GlobalCardEffectScoreUnits(
-                    StrategicCardEvaluator.GlobalEffectValue(s, def));
+                    ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.GlobalEffectValue(s, def)));
                 var score = new TaskScore(globalCardEffect: global);
                 AiDebugLog.WriteDeduped($"global-source|{def.authoredKey}|{capability}",
                     $"[AI][V2][Economy][GlobalSource] decision=CREATE card={def.displayName} "

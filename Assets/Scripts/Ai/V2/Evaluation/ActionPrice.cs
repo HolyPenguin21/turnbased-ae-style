@@ -85,6 +85,12 @@ namespace Game.Ai.V2
         internal static float GarrisonHeroFallback(bool usesGarrisonHero) =>
             usesGarrisonHero ? ToTaskScore(AiConfigV2.garrisonHeroFallbackApEquivalent) : 0f;
 
+        // A card-score value (StrategicCardEvaluator / StrategicEffectRegistry units) read on the
+        // TaskScore scale: the same AP-equivalent through the other currency. A TaskScore slot fed
+        // from a card evaluator converts here, never by taking the card number as it is.
+        internal static float CardScoreToTaskScore(float cardScore) =>
+            ToTaskScore(Mathf.Max(0f, cardScore) / Mathf.Max(0.0001f, AiConfigV2.cardScorePerApEquivalent));
+
         // Inverse, for a planner that must rank an already-scored loss against AP.
         internal static float FromTaskScore(float scoreUnits) =>
             Mathf.Max(0f, scoreUnits) / Mathf.Max(0.0001f, AiConfigV2.taskScorePerApEquivalent);

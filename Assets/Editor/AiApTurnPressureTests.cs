@@ -68,6 +68,17 @@ namespace Game.EditorTests
             // Real scarcity makes one more AP fully valuable.
             Assert.That(EffectEvaluationContext.ResolveMarginalApUtility(Snap(24f), null), Is.EqualTo(1f));
         }
+
+        [Test]
+        public void CardScore_ReadsOnTheTaskScoreScale_ThroughTheSameApEquivalent()
+        {
+            // One AP-equivalent on the card scale is one AP-equivalent on the TaskScore scale.
+            Assert.That(ActionPrice.CardScoreToTaskScore(AiConfigV2.cardScorePerApEquivalent),
+                Is.EqualTo(AiConfigV2.taskScorePerApEquivalent).Within(1e-4f));
+            // Playtest #5: a Base's +2 AP/turn effect of 0.84 card points is ~5.6 TaskScore points.
+            Assert.That(ActionPrice.CardScoreToTaskScore(0.84f), Is.EqualTo(5.6f).Within(0.01f));
+            Assert.That(ActionPrice.CardScoreToTaskScore(-1f), Is.Zero);
+        }
     }
 }
 #endif
