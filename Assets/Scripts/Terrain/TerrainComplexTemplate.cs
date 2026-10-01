@@ -18,6 +18,7 @@ namespace Game.Terrain
     {
         public string name;
         public string terrainName;
+        // Relative share of MapGenerationSettings.complexCount, not an absolute instance count.
         [Min(0)] public int count = 1;
         [Min(1)] public int placementAttempts = 64;
         [Min(0.01f)] public float framesPerSecond = 3f;

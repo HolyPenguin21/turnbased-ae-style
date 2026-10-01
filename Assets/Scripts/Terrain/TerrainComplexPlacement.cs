@@ -1,11 +1,43 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 
 namespace Game.Terrain
 {
     public static class TerrainComplexPlacement
     {
+        // Splits `total` instances across templates in proportion to their shares (largest
+        // remainder). Ties in the remainder go in random order, so a small total still varies
+        // which templates appear. A zero share never receives an instance.
+        public static int[] AllocateInstances(IReadOnlyList<int> shares, int total, Func<int, int> randomBelow)
+        {
+            var result = new int[shares.Count];
+            long shareSum = 0;
+            foreach (int share in shares) shareSum += Math.Max(0, share);
+            if (total <= 0 || shareSum == 0) return result;
+            var remainders = new long[shares.Count];
+            int assigned = 0;
+            for (int i = 0; i < shares.Count; i++)
+            {
+                long scaled = (long)total * Math.Max(0, shares[i]);
+                result[i] = (int)(scaled / shareSum);
+                remainders[i] = scaled % shareSum;
+                assigned += result[i];
+            }
+            var order = new int[shares.Count];
+            for (int i = 0; i < order.Length; i++) order[i] = i;
+            for (int i = order.Length - 1; i > 0; i--)
+            {
+                int j = randomBelow(i + 1);
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+            // OrderByDescending is stable: equal remainders keep the shuffled order.
+            int[] ranked = order.OrderByDescending(i => remainders[i]).ToArray();
+            for (int k = 0; k < total - assigned; k++) result[ranked[k]]++;
+            return result;
+        }
+
         // Validate the entire footprint and resulting ground graph before any assignment.
         // The caller commits all returned cells together; failure returns no partial footprint.
         public static bool TryValidate(TerrainComplexTemplate template, HexCoord origin, int rotation,

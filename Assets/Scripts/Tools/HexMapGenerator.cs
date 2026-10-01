@@ -418,6 +418,7 @@ namespace Game.Map
         {
             var result = new List<PlacedComplex>();
             var claimed = new HashSet<HexCoord>();
+            var valid = new List<(TerrainComplexTemplate template, int typeIndex)>();
             foreach (TerrainComplexTemplate template in _activeBiome.complexes)
             {
                 int typeIndex = template == null ? -1 : IndexOfTerrainNamed(template.terrainName);
@@ -426,7 +427,15 @@ namespace Game.Map
                     Debug.LogWarning($"HexMapGenerator: skipped invalid complex '{template?.name ?? "null"}'.");
                     continue;
                 }
-                for (int instance = 0; instance < template.count; instance++)
+                valid.Add((template, typeIndex));
+            }
+            // Settings.complexCount is the map's total; each template's count is its share of it.
+            int[] instances = TerrainComplexPlacement.AllocateInstances(
+                valid.Select(v => v.template.count).ToList(), Settings.complexCount, n => Random.Range(0, n));
+            for (int t = 0; t < valid.Count; t++)
+            {
+                (TerrainComplexTemplate template, int typeIndex) = valid[t];
+                for (int instance = 0; instance < instances[t]; instance++)
                 {
                     bool placed = false;
                     for (int attempt = 0; attempt < template.placementAttempts; attempt++)
