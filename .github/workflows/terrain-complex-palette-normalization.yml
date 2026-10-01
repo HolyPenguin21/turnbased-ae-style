@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: terrain-complex-palette-normalization
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   normalize:
@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: asset/terrain-complex-palette-normalization
-          fetch-depth: 0
+          fetch-depth: 1
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -36,12 +36,12 @@ jobs:
       - name: Install image tooling
         run: python -m pip install --disable-pip-version-check pillow numpy pyyaml
 
-      - name: Restore authored source PNGs from branch base
+      - name: Restore authored source PNGs from verified branch base
         shell: bash
         run: |
-          git fetch origin master:refs/remotes/origin/master
-          BASE_SHA="$(git merge-base HEAD origin/master)"
-          echo "Using authored source base: $BASE_SHA"
+          BASE_SHA="c3d52f46ad99cc06f4772b702e4e9b38efbc96c4"
+          echo "Using verified authored source base: $BASE_SHA"
+          git fetch --depth=1 origin "$BASE_SHA"
           git checkout "$BASE_SHA" -- \
             Assets/Textures/Terrain/AridSteppe/Complexes \
             Assets/Textures/Terrain/Desert/Complexes
