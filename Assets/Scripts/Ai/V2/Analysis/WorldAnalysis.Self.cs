@@ -106,7 +106,7 @@ namespace Game.Ai.V2
                 .Any(m => m != null && m.IsHero
                     && (m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)));
 
-            BuildApActionEconomy(self, player, ownArmies);
+            BuildApActionEconomy(self, player, ownArmies, hand, ctx);
 
             BuildForceMeasures(self, player, ownArmies);
 
@@ -315,7 +315,7 @@ namespace Game.Ai.V2
         // H/E/M/T security read. Also counts the non-hero bodies a hero's Command could realistically
         // put to use.
         private static void BuildApActionEconomy(SelfSnapshot self, PlayerSetupData player,
-            List<ArmyData> ownArmies)
+            List<ArmyData> ownArmies, AiHandData hand, AiTurnContext ctx)
         {
             int recurringApSources = 0;
             foreach (ArmyData a in ownArmies)
@@ -376,6 +376,10 @@ namespace Game.Ai.V2
                 EstimatedCardApDemand = cardApDemand,
                 EstimatedDevelopmentApDemand = devDemand,
                 EstimatedAirApDemand = airDemand,
+                EstimatedDrawApDemand = Mathf.Min(hand?.RemainingDeck?.Count ?? 0,
+                    Mathf.Max(0, AiConfigV2.handReplenishTargetCards - (hand?.Hand?.Count ?? 0)))
+                    * (ctx?.DrawApCost ?? 0),
+                WitnessedApDemand = ctx != null ? ApTurnPressure.WitnessedDemand(player, ctx.TurnNumber) : null,
             };
             self.DeployableCombatBodies = nonHeroBodies;
         }

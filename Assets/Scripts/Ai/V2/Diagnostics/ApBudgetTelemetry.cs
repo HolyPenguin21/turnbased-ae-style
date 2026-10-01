@@ -12,7 +12,8 @@ namespace Game.Ai.V2
     //  AP BUDGET TELEMETRY — diagnostics only, decides nothing
     // ===========================================================================================
     //  Groundwork for the AP scarcity price (2026-10-01, user decision: log first, switch on
-    //  after a playtest). One [AI][V2][ApBudget] line pair per turn:
+    //  after a playtest). The turn's measurement itself is ApTurnPressure (State); this class
+    //  only logs it. One [AI][V2][ApBudget] line pair per turn:
     //    · start: what the existing AP model (ApActionEconomySnapshot ->
     //      EffectEvaluationContext.ResolveUsefulApDemand / ResolveMarginalApUtility) believes;
     //    · end:   what really happened — AP spent on task steps, draws and the rest; the AP demand
@@ -52,13 +53,14 @@ namespace Game.Ai.V2
             if (ape == null)
                 return;
             float structural = ape.EstimatedArmyApDemand + ape.EstimatedCardApDemand
-                + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand;
+                + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand + ape.EstimatedDrawApDemand;
             float useful = EffectEvaluationContext.ResolveUsefulApDemand(snap, null);
             float marginal = EffectEvaluationContext.ResolveMarginalApUtility(snap, null);
             AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{turn} start — AP {startAp} | model demand: "
                 + $"armies {F(ape.EstimatedArmyApDemand)} cards {F(ape.EstimatedCardApDemand)} "
-                + $"dev {F(ape.EstimatedDevelopmentApDemand)} air {F(ape.EstimatedAirApDemand)} (draws not modelled) "
-                + $"= {F(structural)} x conf {F(AiConfigV2.apStructuralDemandConfidence)} -> useful {F(useful)} "
+                + $"dev {F(ape.EstimatedDevelopmentApDemand)} air {F(ape.EstimatedAirApDemand)} "
+                + $"draws {F(ape.EstimatedDrawApDemand)} = structural {F(structural)} | witnessed (last turns) "
+                + (ape.WitnessedApDemand.HasValue ? F(ape.WitnessedApDemand.Value) : "none") + $" -> useful {F(useful)} "
                 + $"| ratio {F(useful / Mathf.Max(1f, ape.BaseActionPoints))} marginalApUtil {F(marginal)}");
         }
 
@@ -77,55 +79,24 @@ namespace Game.Ai.V2
             });
         }
 
-        internal static void End(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, int cardsDrawn, IReadOnlyList<DeferredEntry> lastDeferred)
+        internal static void End(PlayerSetupData player, AiTurnContext ctx, int cardsDrawn, ApTurnMeasure m)
         {
-            if (player == null || root == null || ctx == null
+            if (player == null || ctx == null
                 || !ByPlayer.TryGetValue(player, out Turn t) || t.Number != ctx.TurnNumber)
                 return;
 
-            int endAp = root.ActionPoints;
-            int spent = Mathf.Max(0, t.StartAp - endAp);
             float steps = t.Steps.Sum(s => s.Ap);
             int draws = cardsDrawn * ctx.DrawApCost;
-            float other = Mathf.Max(0f, spent - steps - draws);
-
-            // Unmet demand. Each term is an honest "would have spent AP on this" reading, not a
-            // judgement of whether it was the best use.
-            int handCount = hand?.Hand?.Count ?? 0;
-            int deckCount = hand?.RemainingDeck?.Count ?? 0;
-            int drawsShort = Mathf.Min(deckCount,
-                Mathf.Max(0, AiConfigV2.handReplenishTargetCards - handCount));
-            float drawsUnmet = drawsShort * ctx.DrawApCost;
-            float cardsUnmet = 0f;
-            int cardsAffordable = 0;
-            if (hand?.Hand != null)
-                foreach (CardData c in hand.Hand)
-                {
-                    int ap = c != null ? CardCostRules.PlayAp(c) : 0;
-                    if (ap <= 0)
-                        continue;
-                    var cost = CardCostRules.PlayResources(c);
-                    if (cost != null && !StrategicSpendability.FitsSpendableResources(player, root, ctx, cost))
-                        continue;
-                    cardsAffordable++;
-                    cardsUnmet += ap;
-                }
-            List<DeferredEntry> budget = (lastDeferred ?? System.Array.Empty<DeferredEntry>())
-                .Where(d => d?.Mission?.Requirements != null && d.Reason == DeferReason.InsufficientBudget)
-                .ToList();
-            float missionsUnmet = budget.Sum(d => d.Mission.Requirements.ApDesired);
-
-            float unmet = drawsUnmet + cardsUnmet + missionsUnmet;
-            float pressure = t.StartAp > 0 ? (spent + unmet) / t.StartAp : 0f;
-            float multiplier = Mathf.Clamp(pressure, AiConfigV2.apScarcityMultiplierMin,
+            float other = Mathf.Max(0f, m.Spent - steps - draws);
+            float multiplier = Mathf.Clamp(m.Pressure, AiConfigV2.apScarcityMultiplierMin,
                 AiConfigV2.apScarcityMultiplierMax);
 
-            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} end — AP {t.StartAp}->{endAp} "
-                + $"| spent {spent}: task steps {F(steps)}, draws {draws} ({cardsDrawn}), cards, reaction & other {F(other)} "
-                + $"| unmet {F(unmet)}: draws to {AiConfigV2.handReplenishTargetCards} cards {F(drawsUnmet)} ({drawsShort}), "
-                + $"affordable hand cards {F(cardsUnmet)} ({cardsAffordable}), budget-deferred missions "
-                + $"{F(missionsUnmet)} ({budget.Count}) | pressure {F(pressure)} -> multiplier {F(multiplier)}");
+            AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} end — AP {m.StartAp}->{m.EndAp} "
+                + $"| spent {m.Spent}: task steps {F(steps)}, draws {draws} ({cardsDrawn}), cards, reaction & other {F(other)} "
+                + $"| unmet {F(m.Unmet)}: draws to {AiConfigV2.handReplenishTargetCards} cards {F(m.DrawsUnmet)} ({m.DrawsShort}), "
+                + $"affordable hand cards {F(m.CardsUnmet)} ({m.CardsAffordable}), budget-deferred missions "
+                + $"{F(m.MissionsUnmet)} ({m.MissionsDeferred}) | demand {F(m.Demand)} pressure {F(m.Pressure)} "
+                + $"-> multiplier {F(multiplier)}");
 
             // Which executed steps the multiplier would have priced to <= 0. The extra price is
             // (multiplier - 1) per AP actually spent, on the TaskScore scale (1 point = 1 AP).

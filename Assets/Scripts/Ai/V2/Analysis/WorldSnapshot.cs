@@ -408,6 +408,11 @@ namespace Game.Ai.V2
         public float EstimatedCardApDemand;        // Σ EffectivePlayApCost over AP-costing hand cards
         public float EstimatedDevelopmentApDemand; // apDevActionApProxy if a dev facility + operator are both present
         public float EstimatedAirApDemand;         // apAirSortieApProxy per structurally-available recon-air sortie/wing
+        public float EstimatedDrawApDemand;        // draws up to handReplenishTargetCards x draw AP (deck permitting)
+        // The witnessed fact behind the guesses above: the mean AP the last turns really wanted
+        // (spent + unmet, ApTurnPressure). null before the first measured turn. Preferred by
+        // EffectEvaluationContext.ResolveUsefulApDemand over the structural fallback.
+        public float? WitnessedApDemand;
     }
 
     // Where a force element is now: already on the map, in hand, or still in the deck.

@@ -1317,8 +1317,11 @@ namespace Game.Ai.V2
                 + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
                 + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
-            ApBudgetTelemetry.End(player, root, hand, ctx,
-                StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, allocation.Deferred);
+            ApTurnMeasure apMeasure = ApTurnPressure.Measure(player, root, hand, ctx,
+                initiativeStartAp, allocation.Deferred);
+            ApTurnPressure.Record(player, ctx.TurnNumber, apMeasure);
+            ApBudgetTelemetry.End(player, ctx,
+                StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
             yield return null;
         }
 

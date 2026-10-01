@@ -398,12 +398,19 @@ namespace Game.Ai.V2
         // from the real candidate set (StrategicManager Phase A/B). When it is absent the fallback is
         // the raw STRUCTURAL demand components, scaled by apStructuralDemandConfidence because
         // structural workload is only an upper bound, never proof every action is useful.
+        //
+        // 2026-10-01 — the AP the last turns really wanted (ApTurnPressure, spent + unmet) is a
+        // witnessed fact too, and a broader one: the evaluation-time workload covers card plays
+        // only, never draws or budget-deferred missions. It replaces the structural guess
+        // outright and is a floor under the evaluation-time figure.
         internal static float ResolveUsefulApDemand(WorldSnapshot snap, float? witnessed)
         {
-            if (witnessed.HasValue)
-                return Mathf.Max(0f, witnessed.Value);
-
             ApActionEconomySnapshot ape = snap?.Self?.ApEconomy;
+            float? history = ape?.WitnessedApDemand;
+            if (witnessed.HasValue)
+                return Mathf.Max(Mathf.Max(0f, witnessed.Value), history ?? 0f);
+            if (history.HasValue)
+                return Mathf.Max(0f, history.Value);
             return ape == null ? 0f : StructuralFallbackApDemand(ape);
         }
 
@@ -429,7 +436,8 @@ namespace Game.Ai.V2
             if (ape == null)
                 return 0f;
             return (ape.EstimatedArmyApDemand + ape.EstimatedCardApDemand
-                    + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand)
+                    + ape.EstimatedDevelopmentApDemand + ape.EstimatedAirApDemand
+                    + ape.EstimatedDrawApDemand)
                    * AiConfigV2.apStructuralDemandConfidence;
         }
 
