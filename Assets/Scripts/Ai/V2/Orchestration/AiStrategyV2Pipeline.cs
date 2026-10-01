@@ -126,6 +126,7 @@ namespace Game.Ai.V2
             ForceBaselineRegistry.RecordStart(player, snapshot.Self.TotalMilitaryPotential);
             AiFrameLog.GameState(snapshot, hand);
             AiFrameLog.WorldAnalysis(snapshot);
+            ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, snapshot);
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
@@ -770,6 +771,7 @@ namespace Game.Ai.V2
                     }
 
                     ProvisionedMission selected = null;
+                    bool selectedIsCommitment = false;
                     StableMissionKey selectedKey = default;
                     var attemptedKeys = new HashSet<StableMissionKey>();
                     // Two independent bounded budgets, not one shared counter: a Scout batch that
@@ -872,6 +874,7 @@ namespace Game.Ai.V2
                         if (provisionResult.Success)
                         {
                             selected = provisionResult.Provisioned;
+                            selectedIsCommitment = selectedFunding.IsCommitment;
                             cycleProvisioning.RegisterSuccess(selectedKey, selected);
                             cycleSession.RegisterProvisionSuccess(selectedFunding,
                                 selected.ClaimedAp, selected.ClaimedPhysical);
@@ -969,6 +972,8 @@ namespace Game.Ai.V2
                     {
                         cycleLedger.RecordExecution(er);
                         allExecuted.Add(er);
+                        ApBudgetTelemetry.RecordStep(player, ctx.TurnNumber, selected.Mission,
+                            selectedIsCommitment, er.ApSpent);
                     }
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
@@ -1312,6 +1317,8 @@ namespace Game.Ai.V2
                 + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
                 + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
+            ApBudgetTelemetry.End(player, root, hand, ctx,
+                StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, allocation.Deferred);
             yield return null;
         }
 

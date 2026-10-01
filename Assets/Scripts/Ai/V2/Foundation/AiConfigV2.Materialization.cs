@@ -277,7 +277,11 @@
         // armies, live recon, Development and a full hand still binds on AP.
         public const float apMarginalUtilRampLo = 0.60f;   // usefulApDemand / apAvailable at/under this -> one more AP is worth ~nothing (AP regularly idle)
         public const float apMarginalUtilRampHi = 1.20f;   // ...and at/over this -> fully valuable (AP is the binding constraint)
-        public const float apMarginalUtilFloor  = 0.10f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
+        public const float apMarginalUtilFloor  = 0.10f;
+        // AP scarcity price (2026-10-01): (AP spent + unmet AP demand) / AP available, clamped.
+        // Diagnostics only for now (ApBudgetTelemetry); no score reads it yet.
+        public const float apScarcityMultiplierMin = 0.5f;
+        public const float apScarcityMultiplierMax = 2.0f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
         public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
         public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
         // Structural-fallback path only (a call with no owner-witnessed workload — sims, bare tests,

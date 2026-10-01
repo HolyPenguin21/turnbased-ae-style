@@ -31,6 +31,7 @@ namespace Game.EditorTests
             ["Continuity/MissionRevalidator.cs"] = 2,
             ["Diagnostics/AiFrameLog.cs"] = 2,
             ["Diagnostics/AiV2Trace.cs"] = 2,
+            ["Diagnostics/ApBudgetTelemetry.cs"] = 1,
             ["Diagnostics/MaterializationDiagnostics.cs"] = 3,
             ["Diagnostics/TurnResourceTelemetry.cs"] = 15,
             ["Evaluation/ActionPrice.cs"] = 1,
