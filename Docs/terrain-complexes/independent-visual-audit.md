@@ -8,69 +8,69 @@ Every configured ordinary terrain texture (main + alternatives) is used. Backgro
 
 - Ordinary configured references: **24**.
 - Placement-compatible references: **16**.
-- Placement-reference edge-score envelope: p95 **0.659**, max **0.673**.
-- Edge luminance: 0.2472..0.2598 (med 0.2526).
-- Edge contrast: 0.0604..0.0924 (med 0.0808).
-- Edge saturation: 0.4177..0.4277 (med 0.4216).
-- Edge hue: 67.5570..68.7557 (med 67.9994).
-- Edge warmth (OKLab b): 0.0594..0.0621 (med 0.0603).
-- Edge detail density: 0.0118..0.0157 (med 0.0118).
+- Placement-reference edge-score envelope: p95 **0.433**, max **0.438**.
+- Edge luminance: 0.2488..0.2535 (med 0.2519).
+- Edge contrast: 0.0395..0.0565 (med 0.0500).
+- Edge saturation: 0.4177..0.4251 (med 0.4207).
+- Edge hue: 67.4774..68.6633 (med 67.9353).
+- Edge warmth (OKLab b): 0.0595..0.0610 (med 0.0602).
+- Edge detail density: 0.0078..0.0157 (med 0.0118).
 
 | Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |
 |---|---:|---:|---:|---|---|---|---|---|---|---|
-| AcidLake | 14 | 1.091 | 1.189 | AcidLake_Part2_00.png | 0.2159..0.2249 (med 0.2191) | 0.0479..0.0622 (med 0.0562) | 0.4074..0.4155 (med 0.4106) | 73.3905..75.7100 (med 74.2970) | 0.0578..0.0585 (med 0.0580) | 0.0000..0.0000 (med 0.0000) |
+| AcidLake | 14 | 1.609 | 1.793 | AcidLake_Part1_06.png | 0.2291..0.2585 (med 0.2417) | 0.1650..0.2005 (med 0.1821) | 0.4207..0.4294 (med 0.4246) | 66.9487..68.5946 (med 67.9235) | 0.0589..0.0609 (med 0.0600) | 0.0118..0.0157 (med 0.0137) |
 
 **AcidLake animation continuity (edge/background):**
 
-- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0087, chroma=0.0007, saturation=0.0049, warmth=0.0006
-- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0069, chroma=0.0006, saturation=0.0030, warmth=0.0005
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0076, chroma=0.0008, warmth=0.0003
+- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0074, chroma=0.0016, saturation=0.0044, warmth=0.0013
+- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0073, chroma=0.0011, saturation=0.0043, warmth=0.0009
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0227, chroma=0.0025, warmth=0.0019
 - Visual sheet: aridsteppe-acidlake-audit.png
-| Canyon | 3 | 0.905 | 1.045 | Canyon_Part2.png | 0.2475..0.2531 (med 0.2501) | 0.1224..0.1619 (med 0.1307) | 0.4228..0.4251 (med 0.4235) | 67.6342..67.7711 (med 67.7142) | 0.0597..0.0604 (med 0.0604) | 0.0275..0.0314 (med 0.0275) |
+| Canyon | 3 | 0.598 | 0.662 | Canyon_Part2.png | 0.2446..0.2478 (med 0.2449) | 0.0703..0.0876 (med 0.0746) | 0.4294..0.4327 (med 0.4321) | 67.0498..67.1174 (med 67.0588) | 0.0606..0.0613 (med 0.0612) | 0.0235..0.0235 (med 0.0235) |
 - Visual sheet: aridsteppe-canyon-audit.png
-| BoilingMud | 14 | 1.179 | 1.244 | BoilingMud_Part1_06.png | 0.2218..0.2405 (med 0.2281) | 0.1067..0.1319 (med 0.1178) | 0.4024..0.4201 (med 0.4092) | 67.3475..67.7183 (med 67.5215) | 0.0538..0.0567 (med 0.0550) | 0.0118..0.0235 (med 0.0157) |
+| BoilingMud | 14 | 1.317 | 1.466 | BoilingMud_Part2_05.png | 0.2388..0.2526 (med 0.2463) | 0.1425..0.1710 (med 0.1519) | 0.4155..0.4371 (med 0.4264) | 67.2815..67.9296 (med 67.6644) | 0.0580..0.0606 (med 0.0595) | 0.0314..0.0314 (med 0.0314) |
 
 **BoilingMud animation continuity (edge/background):**
 
-- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0095, chroma=0.0019, saturation=0.0091, warmth=0.0019
-- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0167, chroma=0.0015, saturation=0.0048, warmth=0.0015
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0101, chroma=0.0021, warmth=0.0020
+- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0100, chroma=0.0012, saturation=0.0107, warmth=0.0011
+- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0041, chroma=0.0009, saturation=0.0109, warmth=0.0010
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0095, chroma=0.0023, warmth=0.0021
 - Visual sheet: aridsteppe-boilingmud-audit.png
-| GiantMachineWreck | 3 | 0.983 | 1.100 | GiantMachineWreck_Part2.png | 0.2500..0.2681 (med 0.2604) | 0.1228..0.1608 (med 0.1453) | 0.4207..0.4236 (med 0.4220) | 67.8499..68.3342 (med 68.0978) | 0.0601..0.0615 (med 0.0613) | 0.0235..0.0275 (med 0.0235) |
+| GiantMachineWreck | 3 | 0.711 | 0.791 | GiantMachineWreck_Part2.png | 0.2486..0.2605 (med 0.2570) | 0.0884..0.1042 (med 0.0927) | 0.4260..0.4321 (med 0.4294) | 67.6491..68.1872 (med 67.9699) | 0.0607..0.0622 (med 0.0620) | 0.0235..0.0275 (med 0.0235) |
 - Visual sheet: aridsteppe-giantmachinewreck-audit.png
 
 ## Desert
 
 - Ordinary configured references: **24**.
 - Placement-compatible references: **16**.
-- Placement-reference edge-score envelope: p95 **0.596**, max **0.617**.
-- Edge luminance: 0.4364..0.4514 (med 0.4404).
-- Edge contrast: 0.0480..0.0884 (med 0.0693).
-- Edge saturation: 0.4670..0.4783 (med 0.4751).
-- Edge hue: 69.8147..71.2444 (med 70.4303).
-- Edge warmth (OKLab b): 0.0841..0.0865 (med 0.0856).
+- Placement-reference edge-score envelope: p95 **0.384**, max **0.389**.
+- Edge luminance: 0.4362..0.4419 (med 0.4380).
+- Edge contrast: 0.0313..0.0518 (med 0.0412).
+- Edge saturation: 0.4698..0.4771 (med 0.4749).
+- Edge hue: 69.7132..71.0149 (med 70.2658).
+- Edge warmth (OKLab b): 0.0846..0.0860 (med 0.0854).
 - Edge detail density: 0.0078..0.0118 (med 0.0118).
 
 | Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |
 |---|---:|---:|---:|---|---|---|---|---|---|---|
-| AcidLake | 14 | 1.500 | 1.667 | AcidLake_Part2_05.png | 0.3621..0.3763 (med 0.3685) | 0.0869..0.1253 (med 0.1046) | 0.4794..0.4850 (med 0.4822) | 72.3634..73.7784 (med 73.1519) | 0.0816..0.0827 (med 0.0825) | 0.0039..0.0039 (med 0.0039) |
+| AcidLake | 14 | 1.500 | 1.753 | AcidLake_Part1_02.png | 0.4211..0.4386 (med 0.4319) | 0.1588..0.2091 (med 0.1840) | 0.4761..0.4810 (med 0.4775) | 70.3803..70.9439 (med 70.5097) | 0.0839..0.0864 (med 0.0854) | 0.0078..0.0118 (med 0.0098) |
 
 **AcidLake animation continuity (edge/background):**
 
-- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0109, chroma=0.0004, saturation=0.0032, warmth=0.0002
-- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0079, chroma=0.0010, saturation=0.0034, warmth=0.0009
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0138, chroma=0.0015, warmth=0.0009
+- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0057, chroma=0.0014, saturation=0.0031, warmth=0.0013
+- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0033, chroma=0.0007, saturation=0.0037, warmth=0.0006
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0173, chroma=0.0025, warmth=0.0022
 - Visual sheet: desert-acidlake-audit.png
-| Canyon | 3 | 0.707 | 0.818 | Canyon_Part1.png | 0.4313..0.4421 (med 0.4376) | 0.0983..0.1299 (med 0.1044) | 0.4766..0.4776 (med 0.4771) | 70.3795..70.6368 (med 70.5141) | 0.0854..0.0862 (med 0.0857) | 0.0157..0.0157 (med 0.0157) |
+| Canyon | 3 | 0.468 | 0.534 | Canyon_Part1.png | 0.4310..0.4388 (med 0.4362) | 0.0581..0.0753 (med 0.0587) | 0.4791..0.4798 (med 0.4793) | 70.2769..70.5141 (med 70.4326) | 0.0858..0.0863 (med 0.0860) | 0.0118..0.0157 (med 0.0157) |
 - Visual sheet: desert-canyon-audit.png
-| BoilingMud | 14 | 1.659 | 1.942 | BoilingMud_Part2_04.png | 0.4176..0.4330 (med 0.4283) | 0.1668..0.2177 (med 0.1915) | 0.4663..0.4771 (med 0.4751) | 70.3247..70.6044 (med 70.3985) | 0.0819..0.0851 (med 0.0843) | 0.0196..0.0235 (med 0.0216) |
+| BoilingMud | 14 | 1.215 | 1.454 | BoilingMud_Part2_04.png | 0.4231..0.4454 (med 0.4302) | 0.1238..0.1858 (med 0.1568) | 0.4686..0.4828 (med 0.4759) | 69.7781..70.6338 (med 70.3135) | 0.0825..0.0862 (med 0.0848) | 0.0235..0.0314 (med 0.0275) |
 
 **BoilingMud animation continuity (edge/background):**
 
-- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0035, chroma=0.0004, saturation=0.0017, warmth=0.0004
-- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0070, chroma=0.0022, saturation=0.0074, warmth=0.0020
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0114, chroma=0.0031, warmth=0.0028
+- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0049, chroma=0.0018, saturation=0.0070, warmth=0.0018
+- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0048, chroma=0.0009, saturation=0.0041, warmth=0.0009
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0180, chroma=0.0036, warmth=0.0037
 - Visual sheet: desert-boilingmud-audit.png
-| GiantMachineWreck | 3 | 0.715 | 0.845 | GiantMachineWreck_Part2.png | 0.4428..0.4458 (med 0.4456) | 0.0816..0.1263 (med 0.0955) | 0.4775..0.4796 (med 0.4780) | 70.4452..70.6802 (med 70.5756) | 0.0864..0.0870 (med 0.0867) | 0.0118..0.0157 (med 0.0118) |
+| GiantMachineWreck | 3 | 0.610 | 0.704 | GiantMachineWreck_Part2.png | 0.4410..0.4540 (med 0.4480) | 0.0673..0.0831 (med 0.0763) | 0.4796..0.4823 (med 0.4819) | 70.4018..70.6341 (med 70.6032) | 0.0868..0.0883 (med 0.0871) | 0.0118..0.0157 (med 0.0118) |
 - Visual sheet: desert-giantmachinewreck-audit.png
 
