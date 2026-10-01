@@ -30,6 +30,8 @@ namespace Game.Ai.V2
         // Building-bound garrison (AiMapMemory.KnownEnemySighting.IsGarrison) — a site defender,
         // never a roaming threat contact.
         public bool IsGarrison;
+        public bool IsAir;
+        public int MaxMovement = 1;
         // The observed commander (AiMapMemory.KnownEnemySighting.Commander).
         public WorthIt.SideCommander Commander;
     }
@@ -89,6 +91,8 @@ namespace Game.Ai.V2
                         RecceRadius = s.RecceRadius,
                         RecceSpotStrength = s.RecceSpotStrength,
                         IsGarrison = s.IsGarrison,
+                        IsAir = s.IsAir,
+                        MaxMovement = s.MaxMovement,
                         Commander = s.Commander,
                     };
                 }

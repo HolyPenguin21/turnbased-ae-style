@@ -61,11 +61,8 @@ namespace Game.Ai.V2
         // ThreatModel.UnderSiege — the AI-behaviour label (there is NO game "siege" state) for
         // "an enemy force I cannot currently beat is at the gates of my citadel/base, so drop
         // scouting/raiding/economy and consolidate". Same shape as V1 AiDefencePlanner.
-        // IsUnderSiege but with V2's own tighter radius: a known enemy within siegeRadius of a
-        // Citadel/Base asset (or <= siegeEnemyEtaTurns out) whose attack on it would probably WIN.
-        // NOTE: V1's own IsUnderSiege (AiConfig.siegeRadius = 4) is still OR'd into
-        // ThreatModel.UnderSiege for behaviour parity, so the effective trigger is min(this, V1)
-        // until the V1 branch is retired.
+        // Uses terrain-route MP proximity (or <= siegeEnemyEtaTurns), discounted for
+        // possible movement since a stale observation. Aviation uses flat per-hex cost.
         public const int siegeRadius = 3;
         public const float siegeEnemyWinChanceThreshold = 0.5f;
         public const int siegeEnemyEtaTurns = 1;

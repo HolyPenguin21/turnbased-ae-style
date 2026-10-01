@@ -199,6 +199,7 @@ namespace Game.Map
             GenerateGround(groundBounds);
 
             GetComponent<HexMap>().SetData(_activeRadius, Settings.outerRadius, hexData);
+            GetComponent<HexMap>().PublishTerrainLayout();
 
             // Shows every hex's own resource yield right away, before any citadel exists —
             // MapResourceDisplay (not this generator, which self-destructs) owns updating it
@@ -420,8 +421,14 @@ namespace Game.Map
             foreach (TerrainComplexTemplate template in _activeBiome.complexes)
             {
                 int typeIndex = template == null ? -1 : IndexOfTerrainNamed(template.terrainName);
-                if (typeIndex < 0 || !template.IsValid()) continue;
+                if (typeIndex < 0 || !template.IsValid())
+                {
+                    Debug.LogWarning($"HexMapGenerator: skipped invalid complex '{template?.name ?? "null"}'.");
+                    continue;
+                }
                 for (int instance = 0; instance < template.count; instance++)
+                {
+                    bool placed = false;
                     for (int attempt = 0; attempt < template.placementAttempts; attempt++)
                     {
                         HexCoord origin = allCoords[Random.Range(0, allCoords.Count)];
@@ -435,8 +442,14 @@ namespace Game.Map
                         foreach (HexCoord h in cells) { assignment[h] = typeIndex; claimed.Add(h); }
                         result.Add(new PlacedComplex
                         { Template = template, Cells = cells, Rotation = rotation, TypeIndex = typeIndex });
+                        placed = true;
                         break;
                     }
+                    if (!placed)
+                        Debug.LogWarning($"HexMapGenerator: skipped whole complex '{template.name}' instance {instance + 1} "
+                            + $"after {template.placementAttempts} attempts (footprint, protected terrain/content or ground connectivity). "
+                            + $"radius={_activeRadius}.");
+                }
             }
             return result;
         }

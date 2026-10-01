@@ -5,7 +5,7 @@
     <Compile Include="../../Assets/Scripts/Economy/ResourceType.cs;../../Assets/Scripts/Economy/ResourceYields.cs;../../Assets/Scripts/Economy/HexResourceCalculator.cs" />
     <Compile Include="../../Assets/Editor/TerrainComplexTests.cs" />
     <Compile Include="../../Assets/Scripts/HexGrid/HexCoord.cs;../../Assets/Scripts/HexGrid/HexGridMath.cs;../../Assets/Scripts/HexGrid/HexPath.cs;../../Assets/Scripts/HexGrid/HexPathfinder.cs" />
-    <Compile Include="../../Assets/Scripts/Terrain/TerrainTypeEntry.cs;../../Assets/Scripts/Terrain/TerrainComplexTemplate.cs;../../Assets/Scripts/Terrain/TerrainComplexPlacement.cs" />
+    <Compile Include="../../Assets/Scripts/Terrain/TerrainTypeEntry.cs;../../Assets/Scripts/Terrain/TerrainComplexTemplate.cs;../../Assets/Scripts/Terrain/TerrainComplexPlacement.cs;../../Assets/Scripts/Terrain/MapGenerationSettings.cs" />
     <Compile Include="../../Assets/Scripts/Map/HexMap.cs;../../Assets/Scripts/Map/MapTerrainAnimator.cs;../../Assets/Scripts/Map/ArmyController.cs;../../Assets/Scripts/Ai/SafeStepPathing.cs" />
     <PackageReference Include="NUnit" Version="3.14.0" />
   </ItemGroup>

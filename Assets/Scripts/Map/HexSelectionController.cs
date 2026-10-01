@@ -108,6 +108,7 @@ namespace Game.Map
         private ArmyController _selectedArmy;
         private MoveArrowMarker _pathArrow;
         private HexCoord? _lastPreviewedHover;
+        private int _lastPreviewedPathingVersion = -1;
         // The hex SelectHex last showed info for — kept around purely so a re-run can be
         // triggered without re-deriving it: the Army Viewer's Closed event fires after the
         // player creates/renames an army from inside the modal, and the button row/info panel

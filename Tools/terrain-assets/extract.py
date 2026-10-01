@@ -5,10 +5,15 @@ adjacent hex edges agree even though each texture remains a separate file.
 """
 from pathlib import Path
 import math
+import argparse
 from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
+parser = argparse.ArgumentParser()
+parser.add_argument('--biome', choices=['Desert', 'AridSteppe'], default='Desert')
+args = parser.parse_args()
 SOURCE = Path(__file__).resolve().parent / 'Sources'
-OUT = ROOT / 'Assets/Textures/Terrain/Desert/Complexes'
+if args.biome == 'AridSteppe': SOURCE = SOURCE / 'AridSteppe'
+OUT = ROOT / 'Assets/Textures/Terrain' / args.biome / 'Complexes'
 OUT.mkdir(parents=True, exist_ok=True)
 
 def extract(square, x, y, radius, output):
