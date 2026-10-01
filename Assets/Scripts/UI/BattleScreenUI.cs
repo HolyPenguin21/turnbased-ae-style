@@ -235,6 +235,9 @@ namespace Game.UI
         // Anti-stalling counter for BattleAi.ChooseAction — how many turns in a row a given AI
         // unit has waited instead of advancing (see BattleAi's own MaxWaitStreak).
         private readonly Dictionary<UnitData, int> _aiWaitStreak = new Dictionary<UnitData, int>();
+        // Previous origin cell for each AI unit's last move. BattleAi uses this to reject an
+        // immediate A->B->A reversal when a genuine closing step is available.
+        private readonly Dictionary<UnitData, Vector2Int> _aiPreviousPositions = new Dictionary<UnitData, Vector2Int>();
         // This round's own BattleAi.RetreatAssessment.FavorableForAdvance for whichever AI army
         // ConsiderAiRetreat actually assessed (see TryAssessSideRetreat) — read by
         // AutoActAfterDelay so ChooseAction knows the SAME projection that cleared this army to
@@ -711,7 +714,7 @@ namespace Game.UI
             bool favorableFight = ownArmy != null && _aiFavorableThisRound.TryGetValue(ownArmy, out bool favorable) && favorable;
             BattleAi.AiAction action = _battleEngine != null
                 ? _battleEngine.ChooseAiAction(actor, _aiWaitStreak, ownArmy, enemyArmy,
-                    _turnOrder, _turnIndex, favorableFight, map)
+                    _turnOrder, _turnIndex, favorableFight, map, _aiPreviousPositions)
                 : default;
             ShowAiThought(actor, action.Reason, action.Target?.Name);
 
