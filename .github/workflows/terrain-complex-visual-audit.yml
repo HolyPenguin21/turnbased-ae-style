@@ -1,15 +1,10 @@
 name: Terrain complex visual audit
 
 on:
-  push:
-    branches:
-      - asset/terrain-complex-palette-normalization
-    paths:
-      - Tools/terrain-assets/audit_clusters.py
-      - .github/workflows/terrain-complex-visual-audit.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   audit:
@@ -37,18 +32,3 @@ jobs:
 
       - name: Check patch
         run: git diff --check
-
-      - name: Commit audit diagnostics
-        shell: bash
-        run: |
-          git config user.name "terrain-visual-audit-bot"
-          git config user.email "terrain-visual-audit-bot@users.noreply.github.com"
-          git add Docs/terrain-complexes/independent-visual-audit.md
-          git add Docs/terrain-complexes/*-reference-terrain-sheet.png
-          git add Docs/terrain-complexes/*-current-clusters-audit.png
-          if git diff --cached --quiet; then
-            echo "No visual audit changes."
-            exit 0
-          fi
-          git commit -m "Add independent terrain cluster visual audit"
-          git push origin HEAD:asset/terrain-complex-palette-normalization

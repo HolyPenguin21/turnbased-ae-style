@@ -1,7 +1,9 @@
 """Independent visual/pixel audit for terrain-complex assets.
 
 Read-only for runtime PNGs. Compares every cluster asset against every ordinary configured
-terrain texture in its biome, including alternativeTextures.
+terrain texture in its biome, including alternativeTextures. The report focuses on the
+terrain-like background in the outer regular-hex band, while the generated per-group sheets
+make the full authored feature and every animation frame available for visual review.
 """
 from __future__ import annotations
 
@@ -10,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from normalize_clusters import (
     CHANNEL_FLOOR,
@@ -19,6 +21,7 @@ from normalize_clusters import (
     PLACEMENT_TERRAINS,
     TERRAIN_ROOT,
     guid_map,
+    hex_norm_map,
     load_config,
     palette_for,
     rgb_to_oklab,
@@ -27,7 +30,8 @@ from normalize_clusters import (
 )
 
 SIDE = 128
-THUMB = 132
+REF_THUMB = 82
+GROUP_THUMB = 92
 
 
 @dataclass
@@ -40,7 +44,12 @@ class PixelStats:
     detail: float
     edge_score: float
     edge_luma: float
+    edge_contrast: float
+    edge_saturation: float
+    edge_hue_deg: float
     edge_chroma: float
+    edge_warmth: float
+    edge_detail: float
 
 
 def configured_refs(config: dict, biome: str, guids: dict[str, Path]):
@@ -83,38 +92,26 @@ def sat_values(rgb: np.ndarray) -> np.ndarray:
     return np.where(hi > 1e-6, (hi - lo) / hi, 0.0)
 
 
-def hex_outer_ring(side: int, inner: float = 0.72) -> np.ndarray:
-    yy, xx = np.mgrid[0:side, 0:side]
-    x = (xx + 0.5) / side
-    y = (yy + 0.5) / side
-
-    def inside(scale: float):
-        cx, cy = 0.5, 0.5
-        xs = (x - cx) / scale + cx
-        ys = (y - cy) / scale + cy
-        dx = np.abs(xs - 0.5)
-        return (
-            (dx <= 0.5)
-            & (ys >= np.maximum(0.0, 2.0 * dx - 0.5))
-            & (ys <= np.minimum(1.0, 1.5 - 2.0 * dx))
-        )
-
-    return inside(1.0) & ~inside(inner)
-
-
 def terrain_like_subset(lab: np.ndarray, target_center: np.ndarray, target_spread: np.ndarray,
-                        keep_fraction: float = 0.50):
+                        keep_fraction: float = 0.56):
     norm = (lab - target_center) / np.maximum(target_spread, CHANNEL_FLOOR)
     dist = np.sqrt(np.sum(norm * norm, axis=1))
-    n = max(16, int(len(dist) * keep_fraction))
-    n = min(n, len(dist))
+    n = max(16, min(len(dist), int(round(len(dist) * keep_fraction))))
     idx = np.argpartition(dist, n - 1)[:n]
     return idx, dist[idx]
 
 
+def local_detail_map(rgb: np.ndarray) -> np.ndarray:
+    gray = np.rint(np.clip(luma(rgb), 0.0, 1.0) * 255.0).astype(np.uint8)
+    image = Image.fromarray(gray, "L")
+    blur = np.asarray(image.filter(ImageFilter.GaussianBlur(radius=1.15)), dtype=np.float64) / 255.0
+    return np.abs(gray.astype(np.float64) / 255.0 - blur)
+
+
 def image_stats(path: Path, placement_style) -> PixelStats:
     rgb, alpha = read_rgba(path)
-    visible = alpha > 0.10
+    norm = hex_norm_map(rgb.shape[0])
+    visible = (alpha > 0.10) & (norm <= 1.0)
     vals = rgb[visible]
     ys = luma(rgb)
     yv = ys[visible]
@@ -126,25 +123,26 @@ def image_stats(path: Path, placement_style) -> PixelStats:
 
     p10, p90 = np.percentile(yv, [10, 90])
     contrast = float(p90 - p10)
+    detail_map = local_detail_map(rgb)
+    detail = float(np.median(detail_map[visible]))
 
-    dx = np.abs(np.diff(ys, axis=1))
-    dy = np.abs(np.diff(ys, axis=0))
-    mx = visible[:, 1:] & visible[:, :-1]
-    my = visible[1:, :] & visible[:-1, :]
-    detail = float(0.5 * (dx[mx].mean() + dy[my].mean()))
-
-    ring = hex_outer_ring(rgb.shape[0]) & visible
+    ring = (norm >= 0.66) & (norm <= 1.0) & (alpha > 0.10)
     ring_rgb = rgb[ring]
+    ring_detail = detail_map[ring]
     if len(ring_rgb) < 32:
         ring_rgb = vals
+        ring_detail = detail_map[visible]
     ring_lab = rgb_to_oklab(ring_rgb)
     idx, d = terrain_like_subset(
-        ring_lab, placement_style.center, placement_style.spread, keep_fraction=0.50
+        ring_lab, placement_style.center, placement_style.spread, keep_fraction=0.56
     )
     terrain_ring_rgb = ring_rgb[idx]
     terrain_ring_lab = ring_lab[idx]
+    terrain_ring_detail = ring_detail[idx]
     ring_y = luma(terrain_ring_rgb.reshape(-1, 1, 3)).reshape(-1)
+    ring_sat = sat_values(terrain_ring_rgb)
     ring_center = np.median(terrain_ring_lab, axis=0)
+    rp10, rp90 = np.percentile(ring_y, [10, 90])
 
     return PixelStats(
         luma=float(np.median(yv)),
@@ -155,7 +153,12 @@ def image_stats(path: Path, placement_style) -> PixelStats:
         detail=detail,
         edge_score=float(np.mean(d)),
         edge_luma=float(np.median(ring_y)),
+        edge_contrast=float(rp90 - rp10),
+        edge_saturation=float(np.median(ring_sat)),
+        edge_hue_deg=float(math.degrees(math.atan2(ring_center[2], ring_center[1]))),
         edge_chroma=float(math.hypot(ring_center[1], ring_center[2])),
+        edge_warmth=float(ring_center[2]),
+        edge_detail=float(np.median(terrain_ring_detail)),
     )
 
 
@@ -164,13 +167,12 @@ def fmt_range(vals):
     return f"{vals.min():.4f}..{vals.max():.4f} (med {np.median(vals):.4f})"
 
 
-def draw_thumb(canvas, draw, path: Path, x: int, y: int, label: str, font):
+def draw_thumb(canvas, draw, path: Path, x: int, y: int, size: int, label: str, font):
     with Image.open(path) as src:
-        thumb = src.convert("RGB")
-        thumb.thumbnail((THUMB, THUMB), Image.Resampling.LANCZOS)
+        thumb = src.convert("RGB").resize((size, size), Image.Resampling.LANCZOS)
     canvas.paste(thumb, (x, y))
-    draw.rectangle((x, y, x + THUMB - 1, y + THUMB - 1), outline=(85, 85, 85))
-    draw.text((x, y + THUMB + 3), label[:25], fill=(235, 235, 235), font=font)
+    draw.rectangle((x, y, x + size - 1, y + size - 1), outline=(85, 85, 85))
+    draw.text((x, y + size + 3), label[:20], fill=(235, 235, 235), font=font)
 
 
 def reference_sheet(biome: str, refs):
@@ -194,43 +196,60 @@ def reference_sheet(biome: str, refs):
             x = 12 + col * cell_w
             yy = y + row * cell_h
             label = path.name + (" [main]" if primary else "")
-            draw_thumb(canvas, draw, path, x, yy, label, font)
+            draw_thumb(canvas, draw, path, x, yy, 132, label, font)
         y += math.ceil(len(items) / cols) * cell_h + 8
     return canvas.crop((0, 0, canvas.width, y + 4))
 
 
-def cluster_sheet(biome: str, placement_refs):
-    cols = 7
-    cell_w, cell_h = 154, 158
-    placement_rows = math.ceil(len(placement_refs) / cols)
-    group_rows = 0
-    cdir = TERRAIN_ROOT / biome / "Complexes"
-    for group, (pattern, _) in GROUPS.items():
-        n = len(list(cdir.glob(pattern)))
-        group_rows += 1 + math.ceil(n / cols)
-    rows = 2 + placement_rows + group_rows
-    canvas = Image.new("RGB", (cols * cell_w + 24, rows * cell_h + 36), (30,30,30))
+def group_sheet(biome: str, group: str, placement_refs, paths: list[Path], stats: list[PixelStats]):
+    width = 786
+    canvas = Image.new("RGB", (width, 700), (30, 30, 30))
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.load_default()
     y = 10
-    draw.text((12, y), f"{biome} - placement refs then CURRENT cluster PNGs", fill=(245,245,245), font=font)
-    y += 24
-    draw.text((12, y), "PLACEMENT REFERENCES: Desert / Sand dunes / Rock desert", fill=(255,220,150), font=font)
-    y += 18
-    for i, (terrain, path, primary) in enumerate(placement_refs):
-        row, col = divmod(i, cols)
-        draw_thumb(canvas, draw, path, 12 + col*cell_w, y + row*cell_h, path.name, font)
-    y += placement_rows * cell_h + 8
+    draw.text((12, y), f"{biome} / {group} - placement references + every runtime PNG",
+              fill=(245,245,245), font=font)
+    y += 20
+    edge_scores = [s.edge_score for s in stats]
+    draw.text((12, y), f"edge score mean {np.mean(edge_scores):.3f}, max {max(edge_scores):.3f}",
+              fill=(210,230,255), font=font)
+    y += 22
 
-    for group, (pattern, _) in GROUPS.items():
-        paths = sorted(cdir.glob(pattern))
-        draw.text((12, y), group, fill=(180,230,255), font=font)
-        y += 18
-        for i, path in enumerate(paths):
-            row, col = divmod(i, cols)
-            draw_thumb(canvas, draw, path, 12 + col*cell_w, y + row*cell_h, path.name, font)
-        y += math.ceil(len(paths) / cols) * cell_h + 8
-    return canvas.crop((0, 0, canvas.width, y + 4))
+    draw.text((12, y), "PLACEMENT REFERENCES (all main + alternatives)", fill=(255,220,150), font=font)
+    y += 16
+    ref_cols = 8
+    ref_cell_w, ref_cell_h = 96, 106
+    for i, (_, path, _) in enumerate(placement_refs):
+        row, col = divmod(i, ref_cols)
+        draw_thumb(canvas, draw, path, 10 + col*ref_cell_w, y + row*ref_cell_h,
+                   REF_THUMB, path.stem[:14], font)
+    y += math.ceil(len(placement_refs)/ref_cols)*ref_cell_h + 10
+
+    draw.text((12, y), "CLUSTER PNGS", fill=(180,230,255), font=font)
+    y += 16
+    cols = 7
+    cell_w, cell_h = 108, 118
+    for i, path in enumerate(paths):
+        row, col = divmod(i, cols)
+        draw_thumb(canvas, draw, path, 10 + col*cell_w, y + row*cell_h,
+                   GROUP_THUMB, path.stem.replace(group + "_", "")[:16], font)
+    y += math.ceil(len(paths)/cols)*cell_h + 8
+
+    draw.text((12, y), "Edge/background medians: L / contrast / saturation / hue / warmth / detail",
+              fill=(215,215,215), font=font)
+    y += 15
+    for i, (path, s) in enumerate(zip(paths, stats)):
+        if i >= 8:
+            break
+        draw.text(
+            (12, y),
+            f"{path.stem[-12:]:>12}  {s.edge_luma:.3f} / {s.edge_contrast:.3f} / "
+            f"{s.edge_saturation:.3f} / {s.edge_hue_deg:.1f} / {s.edge_warmth:.3f} / {s.edge_detail:.3f}",
+            fill=(200,200,200), font=font
+        )
+        y += 13
+
+    return canvas.crop((0, 0, width, min(canvas.height, y + 8)))
 
 
 def animation_metrics(paths: list[Path], placement_style):
@@ -248,8 +267,10 @@ def animation_metrics(paths: list[Path], placement_style):
         stats = [image_stats(p, placement_style) for p in frames]
         dl = [abs(stats[i+1].edge_luma - stats[i].edge_luma) for i in range(len(stats)-1)]
         dc = [abs(stats[i+1].edge_chroma - stats[i].edge_chroma) for i in range(len(stats)-1)]
-        ds = [abs(stats[i+1].saturation - stats[i].saturation) for i in range(len(stats)-1)]
-        out.append((part, max(dl, default=0), max(dc, default=0), max(ds, default=0)))
+        ds = [abs(stats[i+1].edge_saturation - stats[i].edge_saturation) for i in range(len(stats)-1)]
+        dw = [abs(stats[i+1].edge_warmth - stats[i].edge_warmth) for i in range(len(stats)-1)]
+        out.append((part, max(dl, default=0), max(dc, default=0),
+                    max(ds, default=0), max(dw, default=0)))
     return out
 
 
@@ -257,14 +278,19 @@ def main():
     config = load_config()
     guids = guid_map()
     DOCS.mkdir(parents=True, exist_ok=True)
+    for stale in DOCS.glob("*-current-clusters-audit.png"):
+        stale.unlink()
+
     lines = [
         "# Independent terrain cluster visual audit",
         "",
-        "Generated from the actual PNGs on the feature branch. This audit does not read or trust palette-normalization-report.md.",
+        "Generated from the actual runtime PNGs after normalization. This audit does not read or trust "
+        "palette-normalization-report.md.",
         "",
-        "The comparison set contains every configured ordinary terrain texture (main + alternatives). "
-        "Edge score uses only the terrain-like half of pixels in the outer regular-hex band, so the "
-        "intentional acid/mud/canyon/wreck feature itself does not dominate the background-continuity check.",
+        "Every configured ordinary terrain texture (main + alternatives) is used. Background metrics "
+        "sample the terrain-like portion of the outer regular-hex band, because that is the area that "
+        "must continue naturally into a neighbouring ordinary hex. Full-image metrics are retained only "
+        "as a secondary check for global brightness/contrast/shadows.",
         "",
     ]
 
@@ -278,8 +304,9 @@ def main():
         self_p95 = float(np.percentile(self_scores, 95))
         self_max = float(np.max(self_scores))
 
-        reference_sheet(biome, refs).save(DOCS / f"{biome.lower()}-reference-terrain-sheet.png")
-        cluster_sheet(biome, placement).save(DOCS / f"{biome.lower()}-current-clusters-audit.png")
+        reference_sheet(biome, refs).save(
+            DOCS / f"{biome.lower()}-reference-terrain-sheet.png", optimize=True
+        )
 
         lines += [
             f"## {biome}",
@@ -287,13 +314,15 @@ def main():
             f"- Ordinary configured references: **{len(refs)}**.",
             f"- Placement-compatible references: **{len(placement)}**.",
             f"- Placement-reference edge-score envelope: p95 **{self_p95:.3f}**, max **{self_max:.3f}**.",
-            f"- Placement luminance range: {fmt_range([s.luma for _,_,s in placement_stats])}.",
-            f"- Placement contrast range: {fmt_range([s.contrast for _,_,s in placement_stats])}.",
-            f"- Placement saturation range: {fmt_range([s.saturation for _,_,s in placement_stats])}.",
-            f"- Placement detail-density range: {fmt_range([s.detail for _,_,s in placement_stats])}.",
+            f"- Edge luminance: {fmt_range([s.edge_luma for _,_,s in placement_stats])}.",
+            f"- Edge contrast: {fmt_range([s.edge_contrast for _,_,s in placement_stats])}.",
+            f"- Edge saturation: {fmt_range([s.edge_saturation for _,_,s in placement_stats])}.",
+            f"- Edge hue: {fmt_range([s.edge_hue_deg for _,_,s in placement_stats])}.",
+            f"- Edge warmth (OKLab b): {fmt_range([s.edge_warmth for _,_,s in placement_stats])}.",
+            f"- Edge detail density: {fmt_range([s.edge_detail for _,_,s in placement_stats])}.",
             "",
-            "| Group | Files | edge mean | edge max | worst file | L range | contrast range | saturation range | detail range |",
-            "|---|---:|---:|---:|---|---|---|---|---|",
+            "| Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |",
+            "|---|---:|---:|---:|---|---|---|---|---|---|---|",
         ]
 
         cdir = TERRAIN_ROOT / biome / "Complexes"
@@ -302,44 +331,50 @@ def main():
             if len(paths) != expected:
                 raise RuntimeError(f"{biome}/{group}: expected {expected}, got {len(paths)}")
             vals = [(p, image_stats(p, placement_style)) for p in paths]
-            scores = [s.edge_score for _, s in vals]
-            worst_p, worst_s = max(vals, key=lambda x: x[1].edge_score)
+            stats = [s for _, s in vals]
+            scores = [s.edge_score for s in stats]
+            worst_p, _ = max(vals, key=lambda x: x[1].edge_score)
             lines.append(
                 f"| {group} | {len(paths)} | {np.mean(scores):.3f} | {max(scores):.3f} | "
-                f"{worst_p.name} | {fmt_range([s.luma for _,s in vals])} | "
-                f"{fmt_range([s.contrast for _,s in vals])} | "
-                f"{fmt_range([s.saturation for _,s in vals])} | "
-                f"{fmt_range([s.detail for _,s in vals])} |"
+                f"{worst_p.name} | {fmt_range([s.edge_luma for s in stats])} | "
+                f"{fmt_range([s.edge_contrast for s in stats])} | "
+                f"{fmt_range([s.edge_saturation for s in stats])} | "
+                f"{fmt_range([s.edge_hue_deg for s in stats])} | "
+                f"{fmt_range([s.edge_warmth for s in stats])} | "
+                f"{fmt_range([s.edge_detail for s in stats])} |"
+            )
+
+            sheet_name = f"{biome.lower()}-{group.lower()}-audit.png"
+            group_sheet(biome, group, placement, paths, stats).save(
+                DOCS / sheet_name, optimize=True, compress_level=9
             )
 
             anim = animation_metrics(paths, placement_style)
             if anim:
                 lines += ["", f"**{group} animation continuity (edge/background):**", ""]
-                for part, dl, dc, ds in anim:
+                for part, dl, dc, ds, dw in anim:
                     lines.append(
                         f"- {part}: max adjacent-frame delta edge luminance={dl:.4f}, "
-                        f"delta edge chroma={dc:.4f}, delta saturation={ds:.4f}"
+                        f"chroma={dc:.4f}, saturation={ds:.4f}, warmth={dw:.4f}"
                     )
 
             p1 = sorted(cdir.glob(f"{group}_Part1_*.png"))
             p2 = sorted(cdir.glob(f"{group}_Part2_*.png"))
             if p1 and len(p1) == len(p2):
-                diffs_l, diffs_c = [], []
+                diffs_l, diffs_c, diffs_w = [], [], []
                 for a, b in zip(p1, p2):
                     sa, sb = image_stats(a, placement_style), image_stats(b, placement_style)
                     diffs_l.append(abs(sa.edge_luma - sb.edge_luma))
                     diffs_c.append(abs(sa.edge_chroma - sb.edge_chroma))
+                    diffs_w.append(abs(sa.edge_warmth - sb.edge_warmth))
                 lines.append(
                     f"- Part1-to-Part2 same-frame agreement: max delta edge luminance={max(diffs_l):.4f}, "
-                    f"max delta edge chroma={max(diffs_c):.4f}"
+                    f"chroma={max(diffs_c):.4f}, warmth={max(diffs_w):.4f}"
                 )
 
-        lines += [
-            "",
-            f"Visual sheets: {biome.lower()}-reference-terrain-sheet.png and "
-            f"{biome.lower()}-current-clusters-audit.png.",
-            "",
-        ]
+            lines.append(f"- Visual sheet: {sheet_name}")
+
+        lines += [""]
 
     (DOCS / "independent-visual-audit.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))

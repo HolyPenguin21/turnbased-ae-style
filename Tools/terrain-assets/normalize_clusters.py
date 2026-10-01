@@ -1,9 +1,14 @@
-"""Normalize authored terrain-complex colors against each biome's existing terrain set.
+"""Normalize authored terrain-complex colours against each biome's terrain set.
 
-The runtime hex mesh owns clipping/alpha; this tool changes RGB only. It derives one shared
-OKLab transform per complex family and biome, so animation frames cannot acquire per-frame
-color flicker. The target is built from every ordinary terrain texture in that biome, while the seam fit
-strongly prioritizes Desert / Sand dunes / Rock desert because complexes can only be placed there.
+The tool changes RGB only. Dimensions and alpha stay byte-for-byte stable.
+A shared OKLab transform is fitted per biome/complex family from terrain-like pixels in the
+outer hex band. The transform is then applied adaptively: ordinary ground is corrected
+strongly (especially near the hex edge), while distinctive feature pixels such as acid,
+mud, canyon interiors and wreck metal receive only a very small correction.
+
+A second, tightly capped residual pass equalises terrain-like background between parts and
+animation frames. It is background-only and uses the same target for the whole group, so it
+removes colour/brightness flicker without altering the authored animation geometry.
 
 Requires: Pillow, NumPy, PyYAML.
 """
@@ -54,14 +59,11 @@ M1_INV = np.array([
     [-0.0041960863, -0.7034186147, 1.7076147010],
 ], dtype=np.float64)
 
-CHANNEL_FLOOR = np.array([0.025, 0.012, 0.012], dtype=np.float64)
-# Background soil on the authored complexes starts substantially darker than the biome
-# references (especially Desert AcidLake). The original 0.11 L cap was reached before
-# the terrain edge entered the real reference envelope. The stronger limits are safe
-# because transform_rgb now applies them primarily to source-like ground pixels.
-SHIFT_LIMIT = np.array([0.18, 0.070, 0.070], dtype=np.float64)
-SCALE_MIN = np.array([0.80, 0.78, 0.78], dtype=np.float64)
-SCALE_MAX = np.array([1.20, 1.22, 1.22], dtype=np.float64)
+CHANNEL_FLOOR = np.array([0.022, 0.010, 0.010], dtype=np.float64)
+SHIFT_LIMIT = np.array([0.16, 0.070, 0.070], dtype=np.float64)
+SCALE_MIN = np.array([0.62, 0.70, 0.70], dtype=np.float64)
+SCALE_MAX = np.array([1.20, 1.18, 1.18], dtype=np.float64)
+RESIDUAL_LIMIT = np.array([0.014, 0.006, 0.006], dtype=np.float64)
 
 
 @dataclass
@@ -157,11 +159,31 @@ def robust_stats(values: np.ndarray) -> StyleStats:
     return StyleStats(center=center, spread=spread)
 
 
+def hex_norm_map(side: int) -> np.ndarray:
+    """0 in the centre, about 1 on a flat-top regular-hex boundary."""
+    yy, xx = np.mgrid[0:side, 0:side]
+    x = ((xx + 0.5) / side - 0.5) * 2.0
+    y = ((yy + 0.5) / side - 0.5) * 2.0
+    p0 = np.abs(x)
+    p1 = np.abs(0.5 * x + (math.sqrt(3) / 2.0) * y)
+    p2 = np.abs(0.5 * x - (math.sqrt(3) / 2.0) * y)
+    return np.maximum.reduce([p0, p1, p2])
+
+
+def regular_hex_mask(side: int, scale: float = 1.0) -> np.ndarray:
+    return hex_norm_map(side) <= scale
+
+
+def smoothstep(a: float, b: float, x: np.ndarray) -> np.ndarray:
+    t = np.clip((x - a) / max(b - a, 1e-9), 0.0, 1.0)
+    return t * t * (3.0 - 2.0 * t)
+
+
 def sample_image(path: Path, side: int = 96) -> np.ndarray:
     with Image.open(path) as src:
         rgba = src.convert("RGBA").resize((side, side), Image.Resampling.LANCZOS)
     arr = np.asarray(rgba, dtype=np.float64) / 255.0
-    mask = arr[..., 3] > 0.10
+    mask = (arr[..., 3] > 0.10) & regular_hex_mask(side, 1.0)
     rgb = arr[..., :3][mask]
     if rgb.size == 0:
         raise RuntimeError(f"No visible pixels: {path}")
@@ -182,117 +204,126 @@ def texture_style(paths: Iterable[Path]) -> StyleStats:
 
 
 def blended_target(all_style: StyleStats, placement_style: StyleStats) -> StyleStats:
-    # Complexes can only be generated on Desert / Sand dunes / Rock desert, so those
-    # textures define the seam-matching target. Keep a small contribution from every
-    # ordinary texture to remain inside the biome's overall palette.
     return StyleStats(
-        center=0.15 * all_style.center + 0.85 * placement_style.center,
-        spread=np.maximum(0.15 * all_style.spread + 0.85 * placement_style.spread, CHANNEL_FLOOR),
+        center=0.20 * all_style.center + 0.80 * placement_style.center,
+        spread=np.maximum(0.20 * all_style.spread + 0.80 * placement_style.spread, CHANNEL_FLOOR),
     )
 
 
-def hex_outer_ring(side: int, inner: float = 0.70) -> np.ndarray:
-    """Approximate the visible outer band of the pointy-top runtime hex mesh."""
-    yy, xx = np.mgrid[0:side, 0:side]
-    x = (xx + 0.5) / side
-    y = (yy + 0.5) / side
-
-    def inside(scale: float) -> np.ndarray:
-        cx = cy = 0.5
-        xs = (x - cx) / scale + cx
-        ys = (y - cy) / scale + cy
-        dx = np.abs(xs - 0.5)
-        return (
-            (dx <= 0.5)
-            & (ys >= np.maximum(0.0, 2.0 * dx - 0.5))
-            & (ys <= np.minimum(1.0, 1.5 - 2.0 * dx))
-        )
-
-    return inside(1.0) & ~inside(inner)
+def terrain_like_subset(lab: np.ndarray, target: StyleStats, keep_fraction: float) -> np.ndarray:
+    norm = (lab - target.center) / np.maximum(target.spread, CHANNEL_FLOOR)
+    dist = np.sqrt(np.sum(norm * norm, axis=1))
+    n = max(32, min(len(dist), int(round(len(dist) * keep_fraction))))
+    idx = np.argpartition(dist, n - 1)[:n]
+    return idx
 
 
-def sample_edge_image(path: Path, side: int = 96) -> np.ndarray:
+def ground_ring_samples(path: Path, target: StyleStats, side: int = 112,
+                        keep_fraction: float = 0.56) -> np.ndarray:
     with Image.open(path) as src:
         rgba = src.convert("RGBA").resize((side, side), Image.Resampling.LANCZOS)
     arr = np.asarray(rgba, dtype=np.float64) / 255.0
-    mask = (arr[..., 3] > 0.10) & hex_outer_ring(side)
-    rgb = arr[..., :3][mask]
-    if rgb.size == 0:
-        raise RuntimeError(f"No visible edge pixels: {path}")
-    return rgb_to_oklab(rgb)
+    norm = hex_norm_map(side)
+    ring = (norm >= 0.66) & (norm <= 1.0) & (arr[..., 3] > 0.10)
+    rgb = arr[..., :3][ring]
+    if len(rgb) < 64:
+        rgb = arr[..., :3][(norm <= 1.0) & (arr[..., 3] > 0.10)]
+    lab = rgb_to_oklab(rgb)
+    idx = terrain_like_subset(lab, target, keep_fraction)
+    return lab[idx]
 
 
 def group_source_style(paths: list[Path], target: StyleStats) -> StyleStats:
-    # The visual seam is decided at the hex perimeter. Identify the source ground from
-    # that region and use the terrain-like 60% only, rather than letting acid/mud/metal
-    # dominate the fit.
-    pixels = np.concatenate([sample_edge_image(path, 96) for path in paths], axis=0)
-    norm = (pixels - target.center) / np.maximum(target.spread, CHANNEL_FLOOR)
-    dist = np.sqrt(np.sum(norm * norm, axis=1))
-    cutoff = np.quantile(dist, 0.60)
-    return robust_stats(pixels[dist <= cutoff])
+    pixels = np.concatenate([ground_ring_samples(path, target) for path in paths], axis=0)
+    return robust_stats(pixels)
 
 
-def correction(source: StyleStats, target: StyleStats, biome: str, group: str) -> tuple[np.ndarray, np.ndarray]:
+def correction(source: StyleStats, target: StyleStats) -> tuple[np.ndarray, np.ndarray]:
     shift = np.clip(target.center - source.center, -SHIFT_LIMIT, SHIFT_LIMIT)
+    desired_center = source.center + shift
     scale = np.clip(target.spread / np.maximum(source.spread, CHANNEL_FLOOR), SCALE_MIN, SCALE_MAX)
-
-    # Once the edge-ground center is close, preserve feature-heavy families. The
-    # independent audit found one specific exception: Desert BoilingMud still has a
-    # materially over-wide ground spread after its center matches. AridSteppe mud does
-    # not: another spread pass regresses it, so keep Arid fixed.
-    min_meaningful = np.array([0.015, 0.006, 0.006], dtype=np.float64)
-    centered = np.all(np.abs(shift) < min_meaningful)
-    allow_spread_only = biome == "Desert" and group == "BoilingMud"
-    if centered and not allow_spread_only:
-        return source.center.copy(), np.ones(3, dtype=np.float64)
-
-    # For the Desert mud exception with a matched center, do not invent a center shift;
-    # only tighten the terrain-like spread around the existing center.
-    desired_center = source.center.copy() if centered else source.center + shift
     return desired_center, scale
+
+
+def affinity_and_edge(lab: np.ndarray, source: StyleStats, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
+    norm = (lab - source.center) / np.maximum(source.spread * 2.15, CHANNEL_FLOOR)
+    distance = np.sqrt(np.sum(norm * norm, axis=1))
+    affinity = np.exp(-0.5 * (distance / 1.55) ** 2)
+
+    if h == w:
+        edge = smoothstep(0.56, 0.95, hex_norm_map(h)).reshape(-1)
+    else:
+        edge = np.zeros(h * w, dtype=np.float64)
+    return affinity, edge
 
 
 def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarray,
                   scale: np.ndarray, target: StyleStats) -> np.ndarray:
     shape = rgb.shape
+    h, w = shape[:2]
     lab = rgb_to_oklab(rgb.reshape(-1, 3))
     corrected = desired_center + (lab - source.center) * scale
 
-    # Ground/background pixels cluster around source.center and receive nearly the full
-    # correction. Distinctive feature pixels (acid, boiling mud, canyon shadow, wreck)
-    # are progressively protected instead of receiving the old unconditional 36% shift.
-    norm = (lab - source.center) / np.maximum(source.spread, CHANNEL_FLOOR)
-    distance = np.sqrt(np.sum(norm * norm, axis=1))
-    weight = 0.05 + 0.95 * np.exp(-0.5 * (distance / 2.15) ** 2)
+    affinity, edge = affinity_and_edge(lab, source, h, w)
+    ground_weight = affinity * (0.70 + 0.28 * edge)
+    feature_floor = 0.025 + 0.055 * edge
+    weight = np.clip(feature_floor + (1.0 - feature_floor) * ground_weight, 0.0, 0.985)
+
     out_lab = lab + weight[:, None] * (corrected - lab)
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
 
 
+def edge_ground_center(rgb: np.ndarray, target: StyleStats) -> np.ndarray:
+    h, w = rgb.shape[:2]
+    if h != w:
+        return robust_stats(rgb_to_oklab(rgb.reshape(-1, 3))).center
+    norm = hex_norm_map(h)
+    ring = (norm >= 0.66) & (norm <= 1.0)
+    lab = rgb_to_oklab(rgb[ring])
+    idx = terrain_like_subset(lab, target, 0.56)
+    return np.median(lab[idx], axis=0)
+
+
+def residual_equalize(rgb: np.ndarray, source: StyleStats, target: StyleStats,
+                      residual: np.ndarray) -> np.ndarray:
+    shape = rgb.shape
+    h, w = shape[:2]
+    lab = rgb_to_oklab(rgb.reshape(-1, 3))
+    affinity, edge = affinity_and_edge(lab, source, h, w)
+    weight = affinity * (0.46 + 0.54 * edge)
+    weight = np.where(affinity >= 0.10, weight, 0.0)
+    out = lab + weight[:, None] * residual[None, :]
+    return np.clip(oklab_to_rgb(out).reshape(shape), 0.0, 1.0)
+
+
 def metric_for_rgb(rgb: np.ndarray, target: StyleStats) -> float:
     image = Image.fromarray(np.rint(np.clip(rgb, 0, 1) * 255).astype(np.uint8), "RGB")
-    image = image.resize((80, 80), Image.Resampling.LANCZOS)
-    lab = rgb_to_oklab(np.asarray(image, dtype=np.float64).reshape(-1, 3) / 255.0)
+    image = image.resize((96, 96), Image.Resampling.LANCZOS)
+    arr = np.asarray(image, dtype=np.float64) / 255.0
+    norm_map = hex_norm_map(96)
+    ring = (norm_map >= 0.64) & (norm_map <= 1.0)
+    lab = rgb_to_oklab(arr[ring])
     norm = (lab - target.center) / np.maximum(target.spread, CHANNEL_FLOOR)
     dist = np.sqrt(np.sum(norm * norm, axis=1))
-    return float(np.mean(np.sort(dist)[: max(1, len(dist) // 2)]))
+    n = max(1, int(len(dist) * 0.56))
+    return float(np.mean(np.partition(dist, n - 1)[:n]))
 
 
-def open_rgb_alpha(path: Path) -> tuple[np.ndarray, np.ndarray | None]:
+def open_rgb_alpha(path: Path) -> tuple[np.ndarray, np.ndarray | None, str]:
     with Image.open(path) as src:
         mode = src.mode
         rgba = np.asarray(src.convert("RGBA"), dtype=np.uint8)
     rgb = rgba[..., :3].astype(np.float64) / 255.0
     alpha = rgba[..., 3].copy() if ("A" in mode or mode in ("P", "LA")) else None
-    return rgb, alpha
+    return rgb, alpha, mode
 
 
 def save_rgb_alpha(path: Path, rgb: np.ndarray, alpha: np.ndarray | None) -> None:
     out = np.rint(np.clip(rgb, 0.0, 1.0) * 255.0).astype(np.uint8)
     if alpha is None:
-        Image.fromarray(out, "RGB").save(path)
+        Image.fromarray(out, "RGB").save(path, optimize=True)
     else:
-        Image.fromarray(np.dstack([out, alpha]), "RGBA").save(path)
+        Image.fromarray(np.dstack([out, alpha]), "RGBA").save(path, optimize=True)
 
 
 def thumb(rgb: np.ndarray, size: int = 88) -> Image.Image:
@@ -312,7 +343,7 @@ def build_contact_sheet(biome: str, pairs: list[tuple[str, str, np.ndarray, np.n
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.load_default()
     y = 12
-    draw.text((12, y), f"{biome} palette normalization - left before, right after",
+    draw.text((12, y), f"{biome} adaptive palette normalization - left source, right result",
               fill=(235, 235, 235), font=font)
     y += 26
     for group in GROUPS:
@@ -345,41 +376,64 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
         paths = sorted(complex_dir.glob(pattern))
         if len(paths) != expected:
             raise RuntimeError(f"{biome}/{group}: expected {expected} files, found {len(paths)}")
+
         source = group_source_style(paths, target)
-        desired_center, scale = correction(source, target, biome, group)
-        before_scores = []
-        after_scores = []
+        desired_center, scale = correction(source, target)
+
+        original: dict[Path, tuple[np.ndarray, np.ndarray | None, str]] = {
+            path: open_rgb_alpha(path) for path in paths
+        }
+        transformed: dict[Path, np.ndarray] = {}
+        before_scores: list[float] = []
 
         for path in paths:
-            before_rgb, alpha = open_rgb_alpha(path)
+            before_rgb, _, _ = original[path]
+            before_scores.append(metric_for_rgb(before_rgb, target))
+            transformed[path] = transform_rgb(before_rgb, source, desired_center, scale, target)
+
+        centers = {path: edge_ground_center(rgb, target) for path, rgb in transformed.items()}
+        for path in paths:
+            residual = np.clip(target.center - centers[path], -RESIDUAL_LIMIT, RESIDUAL_LIMIT)
+            transformed[path] = residual_equalize(transformed[path], source, target, residual)
+
+        after_scores: list[float] = []
+        residual_magnitudes: list[float] = []
+        for path in paths:
+            before_rgb, alpha, _ = original[path]
             before_alpha = None if alpha is None else alpha.copy()
-            after_rgb = transform_rgb(before_rgb, source, desired_center, scale, target)
+            after_rgb = transformed[path]
             before = metric_for_rgb(before_rgb, target)
             after = metric_for_rgb(after_rgb, target)
-            before_scores.append(before)
             after_scores.append(after)
+            residual = np.clip(target.center - centers[path], -RESIDUAL_LIMIT, RESIDUAL_LIMIT)
+            residual_magnitudes.append(float(np.linalg.norm(residual)))
             metrics.append(FileMetric(biome, group, path.name, before, after))
             contact_pairs.append((group, path.name, before_rgb, after_rgb))
 
             if write:
+                original_size = before_rgb.shape[:2]
                 save_rgb_alpha(path, after_rgb, alpha)
-                if before_alpha is not None:
-                    with Image.open(path) as check:
+                with Image.open(path) as check:
+                    if check.size != (original_size[1], original_size[0]):
+                        raise RuntimeError(f"{path}: dimensions changed during normalization")
+                    if before_alpha is not None:
                         after_alpha = np.asarray(check.convert("RGBA"), dtype=np.uint8)[..., 3]
-                    if not np.array_equal(before_alpha, after_alpha):
-                        raise RuntimeError(f"{path}: alpha changed during normalization")
+                        if not np.array_equal(before_alpha, after_alpha):
+                            raise RuntimeError(f"{path}: alpha changed during normalization")
 
         summary.append(
-            f"{biome}/{group}: {len(paths)} files, terrain-style distance "
+            f"{biome}/{group}: {len(paths)} files, edge terrain distance "
             f"{np.mean(before_scores):.3f} -> {np.mean(after_scores):.3f}, "
-            f"center shift {np.round(desired_center - source.center, 4).tolist()}, "
-            f"spread scale {np.round(scale, 3).tolist()}"
+            f"ground center shift {np.round(desired_center - source.center, 4).tolist()}, "
+            f"ground spread scale {np.round(scale, 3).tolist()}, "
+            f"max residual {max(residual_magnitudes):.4f}"
         )
 
     if report:
         DOCS.mkdir(parents=True, exist_ok=True)
         build_contact_sheet(biome, contact_pairs).save(
-            DOCS / f"{biome.lower()}-palette-normalization-before-after.png"
+            DOCS / f"{biome.lower()}-palette-normalization-before-after.png",
+            optimize=True,
         )
     return metrics, summary
 
@@ -390,13 +444,18 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "",
         "Generated by Tools/terrain-assets/normalize_clusters.py.",
         "",
-        "Each biome is evaluated independently against all ordinary terrain textures configured in "
-        "GameConfig (main + alternatives). The fitted target still weights Desert, Sand dunes and Rock "
-        "desert more strongly because authored complexes can actually be placed only on those surfaces.",
+        "The source runtime PNGs are restored from the feature branch merge-base before this tool runs, "
+        "so repeated workflow runs are deterministic rather than cumulative.",
         "",
-        "One shared OKLab transform is fitted per complex family and biome. Animated frames are never "
-        "normalized independently, preventing color/brightness flicker. RGB is adjusted; dimensions "
-        "and alpha are preserved.",
+        "Each biome is evaluated independently against every ordinary configured terrain texture "
+        "(main + alternatives). The target is weighted toward Desert / Sand dunes / Rock desert because "
+        "complexes can be placed only on those surfaces.",
+        "",
+        "The main correction is fitted from terrain-like pixels in the outer hex band and shared by the "
+        "whole complex family. Ground receives a strong correction, especially near the hex boundary; "
+        "distinctive acid/mud/canyon/wreck pixels receive only a small correction. A tightly capped "
+        "background-only residual removes remaining per-part/per-frame edge drift. RGB only is modified; "
+        "dimensions and alpha are preserved.",
         "",
         "## Group transforms",
         "",
@@ -404,13 +463,13 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
     lines.extend(f"- {line}" for line in summaries)
     lines.extend([
         "",
-        "## Per-file comparison",
+        "## Per-file edge/background comparison",
         "",
-        "Lower terrain-style distance is closer to the biome reference envelope. The score uses the "
-        "terrain-like half of each image, so distinctive acid, mud, canyon and wreck features are not "
-        "mistaken for background soil.",
+        "Lower edge terrain distance is closer to the biome's placement-compatible terrain envelope. "
+        "The metric uses the terrain-like portion of the outer regular-hex band so the authored obstacle "
+        "itself does not dominate the score.",
         "",
-        "| Biome | Group | File | Before | After | Delta |",
+        "| Biome | Group | File | Source | Result | Delta |",
         "|---|---|---|---:|---:|---:|",
     ])
     for item in metrics:
@@ -425,8 +484,7 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "- aridsteppe-palette-normalization-before-after.png",
         "- desert-palette-normalization-before-after.png",
         "",
-        "These are offline color-review sheets, not Unity screenshots. Final acceptance still requires "
-        "an in-engine map review because URP/material lighting can shift perceived tone.",
+        "Independent visual audit sheets are produced by audit_clusters.py after normalization.",
         "",
     ])
     (DOCS / "palette-normalization-report.md").write_text("\n".join(lines), encoding="utf-8")
@@ -451,24 +509,10 @@ def main() -> None:
         write_report(all_metrics, summaries)
 
     print("\n".join(summaries))
-    improved = sum(1 for item in all_metrics if item.after < item.before - 1e-4)
-    regressed = [item for item in all_metrics if item.after > item.before + 0.02]
-    unchanged = len(all_metrics) - improved - sum(
-        1 for item in all_metrics if item.after > item.before + 1e-4
-    )
-    print(
-        f"Per-file terrain-style score: improved={improved}, unchanged~={unchanged}, "
-        f"material regressions={len(regressed)} / {len(all_metrics)}"
-    )
-    if regressed:
-        names = ", ".join(f"{x.biome}/{x.file}" for x in regressed[:8])
-        raise SystemExit(f"Normalization materially regressed files: {names}")
-
-    # The transform is intentionally convergent/idempotent: after the first pass only one
-    # family may still need work while already-aligned families remain unchanged. A fixed
-    # percentage-of-files improvement gate incorrectly fails that healthy convergence.
-    if improved == 0:
-        print("Normalization is stable: no remaining per-file score improvement was required.")
+    improved = sum(1 for item in all_metrics if item.after < item.before)
+    print(f"Per-file edge/background score improved: {improved}/{len(all_metrics)}")
+    if improved < math.ceil(len(all_metrics) * 0.90):
+        raise SystemExit("Normalization did not improve enough individual files; review the transform.")
 
 
 if __name__ == "__main__":
