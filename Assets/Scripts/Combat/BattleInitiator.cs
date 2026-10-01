@@ -19,9 +19,9 @@ namespace Game.Combat
     public static class BattleInitiator
     {
         // "Not Combat Capable": a hero-only army (or an empty one) can't fight a Ground Combat
-        // round — see the manual's Hero section; heroes never act in BattleTurnOrder's own
-        // acting queue and can't be targeted as a regular grid unit either. At least one
-        // non-hero unit is required. Still used for exactly that narrower question (can this
+        // round — heroes never act in BattleTurnOrder's own acting queue, even though a hero
+        // standing on the tactical grid remains a legal passive attack target. At least one
+        // non-hero ground combatant is required. Still used for exactly that narrower question (can this
         // army take part in the Tactical Battle Module / does it still have a real fighting
         // force) — see CheckBattleEnd, and the hunter-needs-units rule in
         // BattleScreenUI.Combat.cs.
