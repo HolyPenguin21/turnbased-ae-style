@@ -1,0 +1,59 @@
+name: Terrain complex palette normalization
+
+on:
+  push:
+    branches:
+      - asset/terrain-complex-palette-normalization
+    paths:
+      - Tools/terrain-assets/normalize_clusters.py
+      - .github/workflows/terrain-complex-palette-normalization.yml
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: asset/terrain-complex-palette-normalization
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image tooling
+        run: python -m pip install --disable-pip-version-check pillow numpy pyyaml
+
+      - name: Normalize both biome asset sets
+        run: python Tools/terrain-assets/normalize_clusters.py --write --report
+
+      - name: Validate terrain config and assets
+        run: python Tools/terrain-assets/validate.py
+
+      - name: Refresh offline diagnostics
+        run: |
+          python Tools/terrain-assets/preview.py --biome AridSteppe
+          python Tools/terrain-assets/preview.py --biome Desert
+
+      - name: Check patch
+        run: git diff --check
+
+      - name: Commit normalized runtime assets
+        shell: bash
+        run: |
+          git config user.name "terrain-palette-bot"
+          git config user.email "terrain-palette-bot@users.noreply.github.com"
+          git add Assets/Textures/Terrain/AridSteppe/Complexes
+          git add Assets/Textures/Terrain/Desert/Complexes
+          git add Docs/terrain-complexes
+          if git diff --cached --quiet; then
+            echo "No palette changes were produced."
+            exit 0
+          fi
+          git commit -m "Normalize terrain complex palettes per biome"
+          git push origin HEAD:asset/terrain-complex-palette-normalization
