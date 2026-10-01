@@ -233,20 +233,22 @@ def group_source_style(paths: list[Path], target: StyleStats) -> StyleStats:
     return robust_stats(pixels[dist <= cutoff])
 
 
-def correction(source: StyleStats, target: StyleStats, group: str) -> tuple[np.ndarray, np.ndarray]:
+def correction(source: StyleStats, target: StyleStats, biome: str, group: str) -> tuple[np.ndarray, np.ndarray]:
     shift = np.clip(target.center - source.center, -SHIFT_LIMIT, SHIFT_LIMIT)
     scale = np.clip(target.spread / np.maximum(source.spread, CHANNEL_FLOOR), SCALE_MIN, SCALE_MAX)
 
-    # Once the edge-ground center is close, preserve feature-heavy families unless they
-    # are BoilingMud. Mud can still have visibly excessive ground contrast/spread after
-    # its center matches, so allow its feature-aware spread correction to converge.
+    # Once the edge-ground center is close, preserve feature-heavy families. The
+    # independent audit found one specific exception: Desert BoilingMud still has a
+    # materially over-wide ground spread after its center matches. AridSteppe mud does
+    # not: another spread pass regresses it, so keep Arid fixed.
     min_meaningful = np.array([0.015, 0.006, 0.006], dtype=np.float64)
     centered = np.all(np.abs(shift) < min_meaningful)
-    if centered and group != "BoilingMud":
+    allow_spread_only = biome == "Desert" and group == "BoilingMud"
+    if centered and not allow_spread_only:
         return source.center.copy(), np.ones(3, dtype=np.float64)
 
-    # For mud with a matched center, do not invent a center shift; only tighten/expand
-    # the terrain-like spread around the existing center.
+    # For the Desert mud exception with a matched center, do not invent a center shift;
+    # only tighten the terrain-like spread around the existing center.
     desired_center = source.center.copy() if centered else source.center + shift
     return desired_center, scale
 
@@ -344,7 +346,7 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
         if len(paths) != expected:
             raise RuntimeError(f"{biome}/{group}: expected {expected} files, found {len(paths)}")
         source = group_source_style(paths, target)
-        desired_center, scale = correction(source, target, group)
+        desired_center, scale = correction(source, target, biome, group)
         before_scores = []
         after_scores = []
 
