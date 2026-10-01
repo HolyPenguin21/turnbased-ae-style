@@ -101,6 +101,7 @@ namespace Game.UI
             {
                 BattleDebugLog.Write($"[SplashDiag] {hit.Skill}: {attacker?.Name} -> {hit.Victim?.Name} " +
                     $"dealt={hit.Damage} hpAfter={hit.Victim?.HitPointsCurrent}/{hit.Victim?.HitPointsMax} died={hit.Died}");
+                secondary.Add(hit);
             }
 
             RefreshGrid();
