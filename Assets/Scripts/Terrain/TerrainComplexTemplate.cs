@@ -22,15 +22,15 @@ namespace Game.Terrain
         [Min(0)] public int count = 1;
         [Min(1)] public int placementAttempts = 64;
         [Min(0.01f)] public float framesPerSecond = 3f;
-        public int[] rotations = { 0, 1, 2, 3, 4, 5 };
+        // Offsets are the authored, final footprint. Runtime generation may translate the
+        // whole complex to another origin, but never rotates or mirrors this shape.
         public string[] allowedTerrainNames = { "Desert", "Sand dunes", "Rock desert" };
         public TerrainComplexPart[] parts;
 
         public bool IsValid()
         {
             if (string.IsNullOrEmpty(terrainName) || parts == null || parts.Length < 2
-                || parts.Length > 3 || rotations == null || rotations.Length == 0
-                || allowedTerrainNames == null || allowedTerrainNames.Length == 0)
+                || parts.Length > 3 || allowedTerrainNames == null || allowedTerrainNames.Length == 0)
                 return false;
             var offsets = new HashSet<HexCoord>();
             int frameCount = parts[0]?.frames?.Length ?? 0;
@@ -41,7 +41,6 @@ namespace Game.Terrain
                     || !offsets.Add(new HexCoord(part.offset.x, part.offset.y))) return false;
                 foreach (Texture2D frame in part.frames) if (frame == null) return false;
             }
-            foreach (int rotation in rotations) if (rotation < 0 || rotation > 5) return false;
             // Reject disconnected shapes even when all their cells happen to exist.
             var seen = new HashSet<HexCoord>();
             var queue = new Queue<HexCoord>();
@@ -53,11 +52,5 @@ namespace Game.Terrain
             return seen.Count == parts.Length;
         }
 
-        public static HexCoord Rotate(HexCoord offset, int turns)
-        {
-            for (int i = 0; i < (turns % 6 + 6) % 6; i++)
-                offset = new HexCoord(-offset.R, offset.Q + offset.R);
-            return offset;
-        }
     }
 }
