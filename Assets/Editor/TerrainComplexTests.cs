@@ -158,7 +158,7 @@ namespace Game.EditorTests
         [Test] public void OutOfMapPairRejectedAtomically()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0)); var data = Assignment();
-            Assert.That(Validate(t, new HexCoord(3, 0), 0, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
+            Assert.That(Validate(t, new HexCoord(3, 0), data, new HashSet<HexCoord>(), null, out var cells), Is.False);
             Assert.That(cells, Is.Null); Assert.That(data.Values.All(x => x == 0), Is.True);
         }
         [Test] public void ReservedCellRejectsWholeComplex()
