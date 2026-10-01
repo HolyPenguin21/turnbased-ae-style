@@ -99,11 +99,13 @@ namespace Game.UI
                 output.Append("\nTroops on map: ")
                     .Append(Ratio(force.DeployedPower, force.TotalAvailablePower, force.DeployedPercent))
                     .Append(';');
-                // Attack mobilization start (B): the field force against the deck's strongest army;
-                // the gate opens strictly above 80%.
+                // Attack mobilization start (B): the field force against the Attack peak (the AI's
+                // own AttackPeak); the gate opens strictly above 80% of it.
+                string bar = force.AttackBar.ToString("0.0", CultureInfo.InvariantCulture);
                 output.Append("\nField strike force: ")
-                    .Append(Ratio(force.FieldStrikePotential, force.GroundArmyPotential, force.FieldStrikePercent))
-                    .Append(force.FieldStrikeReady ? "; gate open" : "; gate >80%")
+                    .Append(Ratio(force.FieldStrikePotential, force.AttackPeak, force.FieldStrikePercent))
+                    .Append(force.FieldStrikeReady ? "; gate open (>" : "; gate >").Append(bar)
+                    .Append(force.FieldStrikeReady ? ")" : " (80%)")
                     .Append(';');
                 ArmyData army = force.StrongestArmy;
                 output.Append("\nStrongest field army: ");
@@ -112,7 +114,8 @@ namespace Game.UI
                     .Append(army.Hex.R).Append("); ").Append(army.Members.Count).Append('/')
                     .Append(army.Capacity);
                 output.Append("; power ")
-                    .Append(Ratio(force.StrongestArmyPower, force.GroundArmyPotential, force.ReadinessPercent))
+                    .Append(Ratio(force.StrongestArmyPower, force.AttackPeak, force.ReadinessPercent))
+                    .Append(force.ForceReady ? "; march open" : "; march >").Append(force.ForceReady ? "" : bar)
                     .Append(';');
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";

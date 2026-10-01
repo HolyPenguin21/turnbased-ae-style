@@ -13,9 +13,15 @@ namespace Game.Ai.V2
     {
         public readonly float DeployedPower, TotalAvailablePower, StrongestArmyPower, GroundArmyPotential;
         public readonly ArmyData StrongestArmy;
-        public float ReadinessPercent => GroundArmyPotential > 0f
-            ? 100f * StrongestArmyPower / GroundArmyPotential : 0f;
-        public bool ForceReady => AttackObjectiveEvaluator.ForceReady(StrongestArmyPower, GroundArmyPotential);
+        // The Attack bar's peak (SelfSnapshot.AttackPeak, AttackForcePool): the strongest ONE
+        // army from the force an Attack can assemble — no explicit scouts, no garrison defence
+        // floor. Every Attack ratio below is measured on it, as the AI measures it, so the panel
+        // and the log show the same numbers. GroundArmyPotential stays the whole-deck ceiling.
+        public readonly float AttackPeak;
+        public float AttackBar => 0.80f * AttackPeak;
+        public float ReadinessPercent => AttackPeak > 0f
+            ? 100f * StrongestArmyPower / AttackPeak : 0f;
+        public bool ForceReady => AttackObjectiveEvaluator.ForceReady(StrongestArmyPower, AttackPeak);
         // Share of the whole additive force already played onto the map; the Attack mobilization
         // trigger reads exactly this pair (AttackObjectiveEvaluator.MobilizationOpen).
         public float DeployedPercent => TotalAvailablePower > 0f
@@ -23,16 +29,17 @@ namespace Game.Ai.V2
         public bool MobilizationOpen => AttackObjectiveEvaluator.MobilizationOpen(DeployedPower, TotalAvailablePower);
         // Mobilization start (B): the strongest stack the field bodies can already form
         // (WorldAnalysis.FieldStrikePotential — no lone scouts, aviation, heroes' own power or
-        // garrison defence floor) against the strongest army the whole deck can form.
+        // garrison defence floor) against the Attack peak (same army set on both sides).
         public readonly float FieldStrikePotential;
-        public float FieldStrikePercent => GroundArmyPotential > 0f
-            ? 100f * FieldStrikePotential / GroundArmyPotential : 0f;
+        public float FieldStrikePercent => AttackPeak > 0f
+            ? 100f * FieldStrikePotential / AttackPeak : 0f;
         public bool FieldStrikeReady =>
-            AttackObjectiveEvaluator.FieldStrikeForceReady(FieldStrikePotential, GroundArmyPotential);
+            AttackObjectiveEvaluator.FieldStrikeForceReady(FieldStrikePotential, AttackPeak);
 
         private PlayerForceAnalysis(float deployed, float total, ArmyData army, float armyPower, float potential,
-            float fieldStrike)
+            float fieldStrike, float attackPeak)
         {
+            AttackPeak = attackPeak;
             FieldStrikePotential = fieldStrike;
             DeployedPower = deployed;
             TotalAvailablePower = total;
@@ -67,7 +74,10 @@ namespace Game.Ai.V2
                 }
             }
             float fieldStrike = WorldAnalysis.FieldStrikePotential(player, own, total);
-            return new PlayerForceAnalysis(deployed, total, strongest, strongestPower, potential, fieldStrike);
+            float attackPeak = AttackForcePool.Build(player,
+                new SelfSnapshot { Hand = handCards, Deck = deckCards, AvailablePower = total }).Peak;
+            return new PlayerForceAnalysis(deployed, total, strongest, strongestPower, potential, fieldStrike,
+                attackPeak);
         }
 
         // The additive pair alone (deployed / available) — the Attack mobilization trigger's
