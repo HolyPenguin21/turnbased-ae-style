@@ -22,13 +22,13 @@ The closest 30% of ring pixels is a heuristic, not a semantic ground mask. Where
 
 | Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |
 |---|---:|---:|---:|---|---|---|---|---|---|---|
-| AcidLake | 14 | 1.428 | 1.581 | AcidLake_Part1_04.png | 0.2446..0.2560 (med 0.2512) | 0.1084..0.1332 (med 0.1180) | 0.4102..0.4294 (med 0.4184) | 66.9700..68.6347 (med 67.9622) | 0.0588..0.0610 (med 0.0600) | 0.0118..0.0157 (med 0.0157) |
+| AcidLake | 14 | 0.650 | 0.681 | AcidLake_Part1_06.png | 0.2506..0.2547 (med 0.2531) | 0.0730..0.0813 (med 0.0770) | 0.4251..0.4343 (med 0.4290) | 67.5707..68.0331 (med 67.8888) | 0.0610..0.0622 (med 0.0614) | 0.0196..0.0235 (med 0.0196) |
 
 **AcidLake animation continuity (edge/background):**
 
-- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0067, chroma=0.0017, saturation=0.0050, warmth=0.0014
-- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0036, chroma=0.0011, saturation=0.0097, warmth=0.0010
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0091, chroma=0.0025, warmth=0.0019
+- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0028, chroma=0.0007, saturation=0.0049, warmth=0.0006
+- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0035, chroma=0.0008, saturation=0.0052, warmth=0.0006
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0040, chroma=0.0006, warmth=0.0007
 - Visual sheet: aridsteppe-acidlake-audit.png
 
 ### Canyon
@@ -75,13 +75,13 @@ The closest 30% of ring pixels is a heuristic, not a semantic ground mask. Where
 
 | Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |
 |---|---:|---:|---:|---|---|---|---|---|---|---|
-| AcidLake | 14 | 1.274 | 1.492 | AcidLake_Part1_02.png | 0.4337..0.4386 (med 0.4369) | 0.0888..0.1261 (med 0.1055) | 0.4694..0.4817 (med 0.4758) | 70.3420..70.9332 (med 70.5360) | 0.0839..0.0863 (med 0.0854) | 0.0078..0.0118 (med 0.0118) |
+| AcidLake | 14 | 0.494 | 0.522 | AcidLake_Part1_06.png | 0.4358..0.4385 (med 0.4374) | 0.0541..0.0607 (med 0.0571) | 0.4771..0.4813 (med 0.4789) | 70.2495..70.4362 (med 70.3259) | 0.0857..0.0866 (med 0.0860) | 0.0157..0.0157 (med 0.0157) |
 
 **AcidLake animation continuity (edge/background):**
 
-- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0024, chroma=0.0013, saturation=0.0050, warmth=0.0013
-- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0014, chroma=0.0006, saturation=0.0026, warmth=0.0005
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0047, chroma=0.0025, warmth=0.0021
+- AcidLake_Part1: max adjacent-frame delta edge luminance=0.0020, chroma=0.0003, saturation=0.0020, warmth=0.0003
+- AcidLake_Part2: max adjacent-frame delta edge luminance=0.0017, chroma=0.0007, saturation=0.0030, warmth=0.0007
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0026, chroma=0.0007, warmth=0.0007
 - Visual sheet: desert-acidlake-audit.png
 
 ### Canyon

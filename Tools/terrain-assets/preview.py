@@ -9,6 +9,7 @@ from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser()
 parser.add_argument('--biome',choices=['Desert','AridSteppe'],default='Desert')
+parser.add_argument('--group', choices=['AcidLake', 'Canyon', 'BoilingMud', 'GiantMachineWreck'])
 args=parser.parse_args()
 TEX=ROOT/'Assets/Textures/Terrain'/args.biome
 OUT=ROOT/'Docs/terrain-complexes'
@@ -37,10 +38,11 @@ def render(parts,name):
     result=Image.fromarray(np.clip(rgb,0,255).astype('uint8'))
     if name is not None: result.save(OUT/(args.biome.lower()+'-'+name))
     return result
-render({(0,0):('Complexes/AcidLake_Part1_00.png',0),(1,0):('Complexes/AcidLake_Part2_00.png',0)},'lake-offline-diagnostic.png')
-render({(0,-1):('Complexes/Canyon_Part1.png',0),(1,-1):('Complexes/Canyon_Part2.png',0),(1,0):('Complexes/Canyon_Part3.png',0)},'canyon-offline-diagnostic.png')
+if args.group in (None, 'AcidLake'): render({(0,0):('Complexes/AcidLake_Part1_00.png',0),(1,0):('Complexes/AcidLake_Part2_00.png',0)},'lake-offline-diagnostic.png')
+if args.group in (None, 'Canyon'): render({(0,-1):('Complexes/Canyon_Part1.png',0),(1,-1):('Complexes/Canyon_Part2.png',0),(1,0):('Complexes/Canyon_Part3.png',0)},'canyon-offline-diagnostic.png')
 
 for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
+    if args.group not in (None, family): continue
     frames=[]
     sheet=Image.new('RGB', (1320, 708), (30,30,30))
     draw=ImageDraw.Draw(sheet)
@@ -52,4 +54,4 @@ for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
         draw.text((x+8,y+334),f'{args.biome} {family} frame {frame:02} (offline)',fill=(240,240,240))
     frames[0].save(OUT/(args.biome.lower()+f'-{label}-offline-animation.gif'),save_all=True,append_images=frames[1:],duration=333,loop=0)
     sheet.save(OUT/(args.biome.lower()+f'-{label}-all-frames-offline.png'),optimize=True)
-render({(-1,0):('Complexes/GiantMachineWreck_Part1.png',0),(0,0):('Complexes/GiantMachineWreck_Part2.png',0),(1,0):('Complexes/GiantMachineWreck_Part3.png',0)},'wreck-offline-diagnostic.png')
+if args.group in (None, 'GiantMachineWreck'): render({(-1,0):('Complexes/GiantMachineWreck_Part1.png',0),(0,0):('Complexes/GiantMachineWreck_Part2.png',0),(1,0):('Complexes/GiantMachineWreck_Part3.png',0)},'wreck-offline-diagnostic.png')
