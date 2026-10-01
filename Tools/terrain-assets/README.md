@@ -41,3 +41,24 @@ python3 Tools/terrain-assets/validate.py
 ```
 
 Validation additionally needs PyYAML. Offline mud GIFs show all seven phases, not Unity capture.
+
+## Palette normalization
+
+Generated complex textures must be normalized after extraction so each biome keeps its own visual
+range. The normalizer reads every ordinary terrain texture configured for that biome (including
+alternative textures), builds an independent AridSteppe/Desert reference envelope, and fits one
+shared OKLab transform per complex family. Desert, Sand dunes and Rock desert receive extra target
+weight because complexes can actually border those terrains. Acid/mud/canyon/wreck feature colors
+are only partially corrected; terrain-like ground receives the full correction.
+
+Animation frames are deliberately never corrected independently: AcidLake and BoilingMud use one
+transform for the whole 14-file set in a biome, preventing brightness or hue flicker between phases.
+The script preserves image dimensions and alpha.
+
+```sh
+python3 Tools/terrain-assets/normalize_clusters.py --write --report
+python3 Tools/terrain-assets/validate.py
+```
+
+The report and before/after contact sheets are written to `Docs/terrain-complexes/`. After replacing
+or regenerating cluster art, run normalization before accepting the assets.
