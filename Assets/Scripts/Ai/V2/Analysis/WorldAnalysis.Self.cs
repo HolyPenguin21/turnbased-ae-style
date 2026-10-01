@@ -159,7 +159,8 @@ namespace Game.Ai.V2
                     || AiArmyRoles.IsSoloRecce(a) || scouts.Contains(a.Id))
                     continue;
                 List<UnitData> bodies = a.Members
-                    .Where(u => u != null && !u.IsPrisoner && AiArmyRoles.IsGroundBattleBody(u)).ToList();
+                    .Where(u => u != null && !u.IsPrisoner && !u.IsSummoned
+                        && AiArmyRoles.IsGroundBattleBody(u)).ToList();
                 if (a.IsGarrison)
                 {
                     HashSet<int> spare = AiArmyRoles.SpareableBodies(bodies,

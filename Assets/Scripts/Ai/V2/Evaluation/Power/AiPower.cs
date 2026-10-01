@@ -79,10 +79,16 @@ namespace Game.Ai.V2
         // The unit's own stat line (hero Fate included) — the value of its hit points and stats
         // as a unit, NOT army combat power. Only for readers pricing the unit itself, e.g. the
         // repair of a wounded hero (StrategicMaintenancePolicy); army strength reads ToPowerUnit.
+        //
+        // In-battle Berserk stacks are read out (BattleEngine reverts them when the battle ends):
+        // a unit's strength between battles is its pre-battle line, so the panel and any AI read
+        // taken while a battle runs do not see a transient spike (playtest 2026-10-01 #7).
         public static float StatLinePower(UnitData u)
         {
-            float line = u.Attack * AiConfigV2.powerAttackWeight
-                       + u.Defense * AiConfigV2.powerDefenseWeight
+            int attack = u.Attack - u.BerserkStacks * AbilityMagnitudes.Default.BerserkAttackGain;
+            int defense = u.Defense + u.BerserkDefenseLost;
+            float line = attack * AiConfigV2.powerAttackWeight
+                       + defense * AiConfigV2.powerDefenseWeight
                        + u.HitPointsCurrent * AiConfigV2.powerHitPointsWeight
                        + u.Initiative * AiConfigV2.powerInitiativeWeight
                        + u.Resistance * AiConfigV2.powerResistanceWeight;
@@ -326,9 +332,12 @@ namespace Game.Ai.V2
             return raw * (AiConfigV2.compoFloor + (1f - AiConfigV2.compoFloor) * q);
         }
 
+        // A unit summoned into one battle (UnitData.IsSummoned, removed at battle end) is never
+        // part of an army's strength.
         public static float EffectiveArmyPower(IEnumerable<UnitData> members)
         {
-            List<PowerUnit> pus = members?.Select(ToPowerUnit).ToList();
+            List<PowerUnit> pus = members?.Where(m => m != null && !m.IsSummoned)
+                .Select(ToPowerUnit).ToList();
             return pus == null || pus.Count == 0 ? 0f : EffectiveArmyPower(pus);
         }
 
@@ -348,7 +357,8 @@ namespace Game.Ai.V2
             var result = new List<PowerUnit>();
             if (live != null)
                 foreach (UnitData unit in live)
-                    if (unit != null && !unit.IsPrisoner && (!groundOnly || !unit.IsAviation))
+                    if (unit != null && !unit.IsPrisoner && !unit.IsSummoned
+                        && (!groundOnly || !unit.IsAviation))
                         result.Add(ToPowerUnit(unit));
 
             List<CardData> handCards = hand?.Where(c => c?.Definition != null).ToList()

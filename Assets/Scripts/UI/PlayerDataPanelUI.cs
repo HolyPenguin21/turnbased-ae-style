@@ -104,8 +104,7 @@ namespace Game.UI
                 string bar = force.AttackBar.ToString("0.0", CultureInfo.InvariantCulture);
                 output.Append("\nField strike force: ")
                     .Append(Ratio(force.FieldStrikePotential, force.AttackPeak, force.FieldStrikePercent))
-                    .Append(force.FieldStrikeReady ? "; gate open (>" : "; gate >").Append(bar)
-                    .Append(force.FieldStrikeReady ? ")" : " (80%)")
+                    .Append(force.FieldStrikeReady ? "; gate open" : "; gate needs power > ").Append(force.FieldStrikeReady ? "" : bar)
                     .Append(';');
                 ArmyData army = force.StrongestArmy;
                 output.Append("\nStrongest field army: ");
@@ -115,7 +114,7 @@ namespace Game.UI
                     .Append(army.Capacity);
                 output.Append("; power ")
                     .Append(Ratio(force.StrongestArmyPower, force.AttackPeak, force.ReadinessPercent))
-                    .Append(force.ForceReady ? "; march open" : "; march >").Append(force.ForceReady ? "" : bar)
+                    .Append(force.ForceReady ? "; march open" : "; march needs power > ").Append(force.ForceReady ? "" : bar)
                     .Append(';');
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";

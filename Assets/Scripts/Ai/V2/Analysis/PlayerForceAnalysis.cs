@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             List<ArmyData> own = (armies ?? Enumerable.Empty<ArmyData>())
                 .Where(a => a != null && a.Owner == player && !a.IsPrison).ToList();
             live = own.SelectMany(a => a.Members)
-                .Where(u => u != null && !u.IsPrisoner).Distinct().ToList();
+                .Where(u => u != null && !u.IsPrisoner && !u.IsSummoned).Distinct().ToList();
             return own;
         }
 

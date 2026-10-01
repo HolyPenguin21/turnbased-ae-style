@@ -74,7 +74,7 @@ namespace Game.Ai.V2
                 }
                 foreach (UnitData u in a.Members)
                 {
-                    if (u == null || u.IsPrisoner || u.IsAviation)
+                    if (u == null || u.IsPrisoner || u.IsAviation || u.IsSummoned)
                         continue;
                     if (u.IsHero)
                     {
