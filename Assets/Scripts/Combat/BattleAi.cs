@@ -737,10 +737,9 @@ namespace Game.Combat
                         && previousPositions.TryGetValue(actor, out Vector2Int previous)
                         && previous.x == step.Value.row && previous.y == step.Value.col)
                     {
-                        (int row, int col)? toward = FindStepToward(grid, actor, row, col);
-                        if (toward.HasValue
-                            && (toward.Value.row != previous.x || toward.Value.col != previous.y)
-                            && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                        (int row, int col)? toward = FindClosingStepExcluding(
+                            grid, actor, row, col, previous.x, previous.y);
+                        if (toward.HasValue)
                             step = toward;
                     }
 
@@ -1020,10 +1019,9 @@ namespace Game.Combat
                 && previousPositions.TryGetValue(actor, out Vector2Int previous)
                 && previous.x == step.Value.row && previous.y == step.Value.col)
             {
-                (int row, int col)? toward = FindStepToward(grid, actor, actorRow, actorCol);
-                if (toward.HasValue
-                    && (toward.Value.row != previous.x || toward.Value.col != previous.y)
-                    && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                (int row, int col)? toward = FindClosingStepExcluding(
+                    grid, actor, actorRow, actorCol, previous.x, previous.y);
+                if (toward.HasValue)
                 {
                     step = toward;
                     closes = true;
@@ -1132,6 +1130,31 @@ namespace Game.Combat
                 if (dist < bestDist)
                 {
                     bestDist = dist;
+                    best = (row, col);
+                }
+            }
+            return best;
+        }
+
+        private static (int row, int col)? FindClosingStepExcluding(BattleGrid grid, UnitData actor,
+            int actorRow, int actorCol, int excludedRow, int excludedCol)
+        {
+            int currentDistance = NearestEnemyManhattanDistance(grid, actor, actorRow, actorCol);
+            (int row, int col)? best = null;
+            int bestDistance = currentDistance;
+            int[] dRows = { -1, 1, 0, 0 };
+            int[] dCols = { 0, 0, -1, 1 };
+            for (int i = 0; i < 4; i++)
+            {
+                int row = actorRow + dRows[i];
+                int col = actorCol + dCols[i];
+                if ((row == excludedRow && col == excludedCol)
+                    || !BattleGrid.InBounds(row, col) || grid.Get(row, col) != null)
+                    continue;
+                int distance = NearestEnemyManhattanDistance(grid, actor, row, col);
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
                     best = (row, col);
                 }
             }
