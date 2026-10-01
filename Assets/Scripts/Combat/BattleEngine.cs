@@ -924,8 +924,6 @@ namespace Game.Combat
 
             for (int c = 0; c < BattleGrid.Columns; c++)
             {
-                if (c == BattleGrid.HeroColumn)
-                    continue;
                 if (_state.Grid.Get(backRow, c) == null)
                 {
                     row = backRow;
