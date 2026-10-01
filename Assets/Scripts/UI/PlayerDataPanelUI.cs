@@ -99,6 +99,12 @@ namespace Game.UI
                 output.Append("\nTroops on map: ")
                     .Append(Ratio(force.DeployedPower, force.TotalAvailablePower, force.DeployedPercent))
                     .Append(';');
+                // Attack mobilization start (B): the field force against the deck's strongest army;
+                // the gate opens strictly above 80%.
+                output.Append("\nField strike force: ")
+                    .Append(Ratio(force.FieldStrikePotential, force.GroundArmyPotential, force.FieldStrikePercent))
+                    .Append(force.FieldStrikeReady ? "; gate open" : "; gate >80%")
+                    .Append(';');
                 ArmyData army = force.StrongestArmy;
                 output.Append("\nStrongest field army: ");
                 if (army == null) output.Append("none");
@@ -107,12 +113,6 @@ namespace Game.UI
                     .Append(army.Capacity);
                 output.Append("; power ")
                     .Append(Ratio(force.StrongestArmyPower, force.GroundArmyPotential, force.ReadinessPercent))
-                    .Append(';');
-                // Attack mobilization start (B): the field force against the deck's strongest army;
-                // the gate opens strictly above 80%.
-                output.Append("\nField strike force: ")
-                    .Append(Ratio(force.FieldStrikePotential, force.GroundArmyPotential, force.FieldStrikePercent))
-                    .Append(force.FieldStrikeReady ? "; gate open" : "; gate >80%")
                     .Append(';');
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";
