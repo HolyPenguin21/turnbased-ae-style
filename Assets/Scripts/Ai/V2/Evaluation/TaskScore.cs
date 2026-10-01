@@ -27,6 +27,7 @@ namespace Game.Ai.V2
         OwnTerritoryProximity,
         TerrainDefense,
         RaidReward,
+        EventReward,
         AttackReadiness,
         PreventedDamage,
         WinChance,
@@ -85,9 +86,11 @@ namespace Game.Ai.V2
         public readonly float EconomicExpansionValue;
         // One military fact per task family — never summed into a shared slot:
         //   RaidReward      — the fixed expected resource/card reward of completing a Raid;
+        //   EventReward     — a Hex Event guard Raid's own event reward, by guard tier;
         //   AttackReadiness — Attack's stronghold readiness (assembly x deployment), Base/Citadel only;
         //   PreventedDamage — the damage an ActiveDefence intercept keeps off the threatened asset.
         public readonly float RaidReward;
+        public readonly float EventReward;
         public readonly float AttackReadiness;
         public readonly float PreventedDamage;
         // Development output: the need-justified force a Research/Production output adds
@@ -123,6 +126,7 @@ namespace Game.Ai.V2
             float ownTerritoryProximity = 0f,
             float terrainDefense = 0f,
             float raidReward = 0f,
+            float eventReward = 0f,
             float attackReadiness = 0f,
             float preventedDamage = 0f,
             float winChance = 0f,
@@ -151,6 +155,7 @@ namespace Game.Ai.V2
             OwnTerritoryProximity = ownTerritoryProximity;
             TerrainDefense = terrainDefense;
             RaidReward = raidReward;
+            EventReward = eventReward;
             AttackReadiness = attackReadiness;
             PreventedDamage = preventedDamage;
             WinChance = winChance;
@@ -188,6 +193,7 @@ namespace Game.Ai.V2
                     case TaskSlot.OwnTerritoryProximity: return OwnTerritoryProximity;
                     case TaskSlot.TerrainDefense: return TerrainDefense;
                     case TaskSlot.RaidReward: return RaidReward;
+                    case TaskSlot.EventReward: return EventReward;
                     case TaskSlot.AttackReadiness: return AttackReadiness;
                     case TaskSlot.PreventedDamage: return PreventedDamage;
                     case TaskSlot.ForceAmplification: return ForceAmplification;
@@ -224,6 +230,7 @@ namespace Game.Ai.V2
                 ownTerritoryProximity: value(TaskSlot.OwnTerritoryProximity),
                 terrainDefense: value(TaskSlot.TerrainDefense),
                 raidReward: value(TaskSlot.RaidReward),
+                eventReward: value(TaskSlot.EventReward),
                 attackReadiness: value(TaskSlot.AttackReadiness),
                 preventedDamage: value(TaskSlot.PreventedDamage),
                 winChance: value(TaskSlot.WinChance),
@@ -507,6 +514,13 @@ namespace Game.Ai.V2
 
         // Fixed per eligible Raid; never derived from defender power (that is WinChance's).
         internal static float RaidReward() => AiConfigV2.RaidReward;
+
+        // Raw fact: the event guard's authored tier (0 light / 1 medium / 2 heavy, -1 unknown).
+        internal static float EventReward(int guardTier) =>
+            guardTier == 0 ? AiConfigV2.taskScoreEventRewardLight
+            : guardTier == 1 ? AiConfigV2.taskScoreEventRewardMedium
+            : guardTier >= 2 ? AiConfigV2.taskScoreEventRewardHeavy
+            : AiConfigV2.taskScoreEventRewardUnknownTier;
 
         internal static float AttackReadiness(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreAttackReadinessMax;

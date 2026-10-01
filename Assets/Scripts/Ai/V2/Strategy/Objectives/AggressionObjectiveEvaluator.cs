@@ -201,15 +201,30 @@ namespace Game.Ai.V2
             return null;
         }
 
-        internal static TaskScore BuildRaidScore(WorldSnapshot snap, HexCoord targetHex)
+        internal static TaskScore BuildRaidScore(WorldSnapshot snap, RaidTargetRef target, HexCoord targetHex)
         {
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
             // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
             // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
+            // A Hex Event guard also pays the event's own reward (EventReward), by the guard tier
+            // the observer remembers; a neutral army has no reward beyond RaidReward.
             return new TaskScore(
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 raidReward: TaskScoreEvaluator.RaidReward(),
+                eventReward: target.Kind == RaidTargetKind.EventGuard
+                    ? TaskScoreEvaluator.EventReward(KnownEventGuardTier(snap, targetHex)) : 0f,
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
+        }
+
+        // The remembered guard tier of the event on `hex` (AiMapMemory via Known.EventGuards);
+        // -1 when this observer does not know it.
+        private static int KnownEventGuardTier(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Known?.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                    if (g.Hex.Equals(hex))
+                        return g.Strength.RewardTier;
+            return -1;
         }
 
         private static AggressionObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
@@ -220,7 +235,7 @@ namespace Game.Ai.V2
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
             // IntelAgePenalty stays only for mobile targets (ActiveDefence); Raid and Attack never pay it.
-            TaskScore score = BuildRaidScore(snap, o.TargetHex);
+            TaskScore score = BuildRaidScore(snap, o.Target, o.TargetHex);
 
             bool haveViable = o.IsViable;
             bool needsHero = !haveViable && !report.HeroAvailable;

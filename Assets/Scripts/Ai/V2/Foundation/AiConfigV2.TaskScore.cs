@@ -40,6 +40,13 @@
         // The expected resource/card reward of completing a Raid. Constant per eligible Raid,
         // never derived from defender power (that is WinChance's) and never on return legs.
         public const float RaidReward = 8f;
+        // A Raid on a Hex Event guard also earns the event's own reward, on top of RaidReward
+        // (2026-10-01, user decision). Priced by the guard tier the observer sees (the authored
+        // light / medium / heavy variant); the hidden payout itself is never read.
+        public const float taskScoreEventRewardLight = 4f;
+        public const float taskScoreEventRewardMedium = 8f;
+        public const float taskScoreEventRewardHeavy = 12f;
+        public const float taskScoreEventRewardUnknownTier = 8f;
         public const float taskScoreWinChanceMax = 12f;
         // Attack's stronghold readiness (assembly x deployment, each in [0,1]); Base/Citadel only.
         public const float taskScoreAttackReadinessMax = 5.4f;

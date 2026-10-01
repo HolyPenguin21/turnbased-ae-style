@@ -269,6 +269,7 @@ namespace Game.EditorTests
             Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
             Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
             Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
+                + AiConfigV2.taskScoreEventRewardUnknownTier
                 + TaskScoreEvaluator.OwnTerritoryProximity(
                     TaskScoreEvaluator.NearestOwnedHomeDistance(eventSnap, eventRaid.LastKnownHex))));
             Assert.That(eventRaid.TaskScore.IntelAgePenalty, Is.Zero);
@@ -299,7 +300,9 @@ namespace Game.EditorTests
                 CombatOpportunityAnalyzer.Analyze(eventSnap)).Single();
             Assert.That(eventRaid.TaskScore.OwnTerritoryProximity,
                 Is.EqualTo(nearRaid.TaskScore.OwnTerritoryProximity));
-            Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue));
+            // Same position, same RaidReward; the event guard adds its own EventReward on top.
+            Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue
+                + AiConfigV2.taskScoreEventRewardUnknownTier).Within(0.0001f));
         }
 
         [Test]

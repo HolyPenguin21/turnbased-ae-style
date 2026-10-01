@@ -42,5 +42,20 @@ namespace Game.Ai
                 .FirstOrDefault(g => g.card != null && g.card.cardType == CardType.Hero).card;
             return WorthIt.SideCommander.Of(hero);
         }
+
+        // The event's guard tier: the index of the authored variant (light 0 / medium 1 / heavy 2,
+        // EventDefinition.variants) whose guard this hex carries; -1 when unknown. The reward is
+        // authored per tier, so the tier is what an observer of the guard learns about the reward
+        // without ever reading the hidden payout (HexEventRegistry.Entry.SelectedRewards).
+        public static int RewardTier(HexEventRegistry.Entry entry)
+        {
+            var variants = entry?.Definition?.variants;
+            if (variants == null || string.IsNullOrEmpty(entry.GuardArmyName))
+                return -1;
+            for (int i = 0; i < variants.Count; i++)
+                if (variants[i] != null && variants[i].guardArmyName == entry.GuardArmyName)
+                    return i;
+            return -1;
+        }
     }
 }

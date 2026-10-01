@@ -97,7 +97,7 @@ canonical-seams table below.
   is the ground-combat instance. A capability demand whose actor is materialized by a card
   chain (CollectorCapability, GlobalResourceCarrier/Facility, Development CardUpgrade) carries
   intrinsic slots only: the chain prices its own execution.
-* **One fact, one slot.** `RaidReward` (fixed Raid reward), `AttackReadiness` (Attack's
+* **One fact, one slot.** `RaidReward` (fixed Raid reward), `EventReward` (a Hex Event guard Raid's own reward, by the guard tier the observer remembers — `AiMapMemory.GuardStrength.RewardTier`), `AttackReadiness` (Attack's
   stronghold readiness) and `PreventedDamage` (ActiveDefence) are separate military slots;
   `Staleness` is Recon's value of refreshing old intel and `IntelAgePenalty` the price of
   acting on it (Attack, ActiveDefence). `ForceAmplification` is the need-weighted force a

@@ -54,7 +54,7 @@ BENEFIT_FAMILY = {
     "EconomicHexBenefit": "Economy", "Payback": "Economy", "Airfield": "Economy",
     "GlobalCardEffect": "Economy", "EconomicExpansionValue": "Economy",
     "InfoGain": "Recon", "Staleness": "Recon", "ContactRelevance": "Recon",
-    "RaidReward": "Military", "WinChance": "Military", "AttackReadiness": "Military",
+    "RaidReward": "Military", "EventReward": "Military", "WinChance": "Military", "AttackReadiness": "Military",
     "PreventedDamage": "Military",
     "ForceAmplification": "Development",
     "FrontProgress": "Positional", "CorridorAlignment": "Positional",

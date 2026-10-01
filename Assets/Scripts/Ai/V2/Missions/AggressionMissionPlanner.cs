@@ -184,7 +184,7 @@ namespace Game.Ai.V2
                         // Destruction/capture/invalidation is handled separately by Raid continuity
                         // through the canonical live objective checks.
                         TaskScore staleIntrinsic = AggressionObjectiveEvaluator.BuildRaidScore(
-                            snap, intent.Raid.LastKnownHex);
+                            snap, intent.Raid.Target, intent.Raid.LastKnownHex);
                         TaskScore staleTask = TaskScoreEvaluator.WithResponse(
                             staleIntrinsic, 0f, staleCost.ApDesired,
                             staleEstimate.RecurringActivationAp, staleCost.EtaTurns);

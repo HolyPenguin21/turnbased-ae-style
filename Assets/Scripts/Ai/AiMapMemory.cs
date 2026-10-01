@@ -183,11 +183,15 @@ namespace Game.Ai
             public readonly string Name;
             // The guard's commander: its first hero card, if the guard has one.
             public readonly WorthIt.SideCommander Commander;
+            // Hex Event guards only: the authored guard tier (HexEventGuardEstimate.RewardTier,
+            // light 0 / medium 1 / heavy 2), which carries the event's reward tier; -1 unknown.
+            public readonly int RewardTier;
 
             public GuardStrength(float defense, float attack, IReadOnlyList<WorthIt.DefenderProfile> defenders, string name = null,
-                WorthIt.SideCommander commander = default)
+                WorthIt.SideCommander commander = default, int rewardTier = -1)
             {
                 Commander = commander;
+                RewardTier = rewardTier;
                 Defense = defense;
                 Attack = attack;
                 Defenders = defenders;
@@ -957,7 +961,7 @@ namespace Game.Ai
                         g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
                         g.card.grantedAbilities), g.count)).ToList();
                     eventGuards[hex] = new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName,
-                        HexEventGuardEstimate.GuardCommander(eventEntry));
+                        HexEventGuardEstimate.GuardCommander(eventEntry), HexEventGuardEstimate.RewardTier(eventEntry));
                 }
                 else
                 {
