@@ -651,6 +651,9 @@ namespace Game.Ai.V2
                 var pool = snap.Self.StrikePoolKeyCounts.ToDictionary(kv => kv.Key, kv => kv.Value);
                 foreach (StrikeRosterSlot slot in a.TargetRoster)
                 {
+                    // The commander slot is the host's own hero (pinned by TargetRosterCommanderKey,
+                    // checked above), not a pool pick: a garrison-tagged commander is never in the pool.
+                    if (slot.IsHero) continue;
                     pool.TryGetValue(slot.Key, out int n);
                     if (n <= 0) { why = $"position {slot.Key} left the pool"; break; }
                     pool[slot.Key] = n - 1;
