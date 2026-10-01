@@ -21,9 +21,19 @@ namespace Game.Ai.V2
         public float DeployedPercent => TotalAvailablePower > 0f
             ? 100f * DeployedPower / TotalAvailablePower : 0f;
         public bool MobilizationOpen => AttackObjectiveEvaluator.MobilizationOpen(DeployedPower, TotalAvailablePower);
+        // Mobilization start (B): the strongest stack the field bodies can already form
+        // (WorldAnalysis.FieldStrikePotential — no lone scouts, aviation, heroes' own power or
+        // garrison defence floor) against the strongest army the whole deck can form.
+        public readonly float FieldStrikePotential;
+        public float FieldStrikePercent => GroundArmyPotential > 0f
+            ? 100f * FieldStrikePotential / GroundArmyPotential : 0f;
+        public bool FieldStrikeReady =>
+            AttackObjectiveEvaluator.FieldStrikeForceReady(FieldStrikePotential, GroundArmyPotential);
 
-        private PlayerForceAnalysis(float deployed, float total, ArmyData army, float armyPower, float potential)
+        private PlayerForceAnalysis(float deployed, float total, ArmyData army, float armyPower, float potential,
+            float fieldStrike)
         {
+            FieldStrikePotential = fieldStrike;
             DeployedPower = deployed;
             TotalAvailablePower = total;
             StrongestArmy = army;
@@ -56,7 +66,8 @@ namespace Game.Ai.V2
                     strongestPower = power;
                 }
             }
-            return new PlayerForceAnalysis(deployed, total, strongest, strongestPower, potential);
+            float fieldStrike = WorldAnalysis.FieldStrikePotential(player, own, total);
+            return new PlayerForceAnalysis(deployed, total, strongest, strongestPower, potential, fieldStrike);
         }
 
         // The additive pair alone (deployed / available) — the Attack mobilization trigger's

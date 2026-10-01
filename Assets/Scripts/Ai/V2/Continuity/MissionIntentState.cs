@@ -99,6 +99,24 @@ namespace Game.Ai.V2
             return _reconTrimmedActorIds;
         }
 
+        // Distinct ground scouts bound to a Recon mission this turn (ReconAssignmentPlanner).
+        // The per-pass HardCap is re-applied on every bounded replan, so without this turn-wide
+        // set a turn could walk 3-4 different scouts (2026-10-01 playtest).
+        private int _reconUsedTurn = -1;
+        private readonly HashSet<int> _reconUsedActorIds = new HashSet<int>();
+
+        internal IReadOnlyCollection<int> ReconGroundActorsUsedThisTurn(int turn)
+        {
+            if (_reconUsedTurn != turn) { _reconUsedTurn = turn; _reconUsedActorIds.Clear(); }
+            return _reconUsedActorIds;
+        }
+
+        internal void MarkReconGroundActorUsed(int turn, int armyId)
+        {
+            if (_reconUsedTurn != turn) { _reconUsedTurn = turn; _reconUsedActorIds.Clear(); }
+            _reconUsedActorIds.Add(armyId);
+        }
+
         // Bounded delivery-failure streaks. A structurally valid site may still be operationally
         // impossible for every builder: count only CONSECUTIVE-turn delivery-gate failures of the
         // exact project and, once the ordinary commitment stall window is exhausted, briefly

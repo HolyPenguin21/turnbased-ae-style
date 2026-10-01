@@ -80,7 +80,9 @@ namespace Game.Ai.V2
                 }
                 // T01 — sanctioned coordinates are not an observed defender package: a march on a
                 // never-observed site is not proposed (Recon observes it; mobilization may prepare).
-                if (objective.LocationOnly)
+                // 2026-10-01 (user decision) — a preparation whose host reached the peak bar is
+                // already an Assault incumbent (Continuity): it marches and observes on the way.
+                if (objective.LocationOnly && incumbent == null)
                 {
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                         $"[AI][V2][Attack][Assembly] decision=HOLD target={objective.Target.DiagnosticLabel} "

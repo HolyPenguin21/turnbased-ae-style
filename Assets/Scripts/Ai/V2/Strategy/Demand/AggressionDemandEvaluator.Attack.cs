@@ -286,6 +286,15 @@ namespace Game.Ai.V2
             // The same capability gate the chain enumeration applies to the preparation host's
             // FieldCombatPower demand (MaterializationChainMatching, recceMayFight): a card Phase A
             // never plays into this host is no witness.
+            // 2026-10-01 (user decision) — a witness must be able to close the gap: the card that
+            // fills the host's LAST slot is a witness only if the host then clears the march bar
+            // (0.80 x the current peak, as ResolveAttackPreparation); while room remains after it
+            // (or a hero card opens more), any strengthening card is progress.
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            bool ClosesOrLeavesRoom(Game.Cards.CardDefinition d, AiPower.ProjectedStrategicLine line) =>
+                d.cardType == Game.Cards.CardType.Hero
+                || host.Members.Count + 1 < host.Capacity
+                || MaterializationDeliveryPolicy.ProjectedArmyPower(host.Members, d, line) > required;
             bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
                 d != null && !d.isAviation
                 && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
@@ -294,7 +303,8 @@ namespace Game.Ai.V2
                     CapabilityKind.FieldCombatPower, recceMayFight: true)
                 && host.CanFitAdditionalCard(d)
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
-                    AiPower.EffectiveLine(d, equipped?.equipment));
+                    AiPower.EffectiveLine(d, equipped?.equipment))
+                && ClosesOrLeavesRoom(d, AiPower.EffectiveLine(d, equipped?.equipment));
 
             foreach (Game.Cards.CardData c in HandFieldCards(snap))
                 if (Strengthens(c.Definition, c.Equipment))

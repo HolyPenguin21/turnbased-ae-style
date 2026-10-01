@@ -16,6 +16,13 @@ namespace Game.Ai.V2
 
         public static int HardCap => Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
 
+        // Distinct ground scouts a turn may bind (ReconAssignmentPlanner): fewer once the Attack
+        // mobilization is open — its AP belongs to playing and gathering the strike force.
+        public static int GroundActorsPerTurn(WorldSnapshot snap) =>
+            AttackObjectiveEvaluator.MobilizationOpen(snap?.Self)
+                ? AiConfigV2.reconGroundActorsPerTurnMobilized
+                : AiConfigV2.reconGroundActorsPerTurn;
+
         internal enum ReconCoverageClass { Combined, Observation, GroundTraversal }
 
         public static int DesiredTotal(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable) =>

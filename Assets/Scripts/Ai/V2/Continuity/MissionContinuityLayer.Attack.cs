@@ -524,22 +524,16 @@ namespace Game.Ai.V2
             if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
                 && AttackPrimaryClearsTarget(snap, a))
             {
-                if (!locationOnly)
-                {
-                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
-                        + $"(fist strictly > 80% of the current peak, coverage "
-                        + $"{(a.CoversAllDefenders ? "ok" : "missing")}); Gather -> Assault, released "
-                        + $"supports [{string.Join(",", a.GatherSupportArmyIds)}]");
-                    a.GatherSupportArmyIds.Clear();
-                    a.Preparation = false;
-                    a.Phase = AttackMissionPhase.Assault;
-                    return true;
-                }
-                AiDebugLog.WriteDeduped(intent.IntentKey + "#unknown",
-                    $"[AI][V2][Attack][Mobilization] {at} decision=HOLD blocker=unknown_defenders "
-                    + $"target={a.Target.DiagnosticLabel} knowledge=starting-location-only; the march "
-                    + "waits for a real observation (ObservationNeeds -> Recon)");
-                intent.LastProtectedTurn = snap.TurnNumber;
+                // 2026-10-01 (user decision) — a fist at the peak has nothing left to wait for:
+                // an unobserved (location-only) target no longer holds it. It marches, observes on
+                // the way, and every pass of the march re-checks the then-known defenders.
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
+                    + $"(fist strictly > 80% of the current peak, coverage "
+                    + $"{(locationOnly ? "unknown: target not yet observed" : a.CoversAllDefenders ? "ok" : "missing")}); "
+                    + $"Gather -> Assault, released supports [{string.Join(",", a.GatherSupportArmyIds)}]");
+                a.GatherSupportArmyIds.Clear();
+                a.Preparation = false;
+                a.Phase = AttackMissionPhase.Assault;
                 return true;
             }
             if (a.GatherSupportArmyIds.Count > 0)

@@ -291,13 +291,21 @@ namespace Game.Ai.V2
         {
             if (card == null || card.isAviation)
                 return false;
+            float beforePower = AiPower.EffectiveArmyPower((members ?? Enumerable.Empty<UnitData>())
+                .Where(u => u != null).Select(AiPower.ToPowerUnit).ToList());
+            return ProjectedArmyPower(members, card, line) > beforePower;
+        }
+
+        // The army's AiPower once this card has joined it.
+        internal static float ProjectedArmyPower(IEnumerable<UnitData> members, CardDefinition card,
+            AiPower.ProjectedStrategicLine line)
+        {
             var projected = (members ?? Enumerable.Empty<UnitData>())
                 .Where(u => u != null).Select(AiPower.ToPowerUnit).ToList();
             AiPower.PowerUnit unit = AiPower.ToPowerUnit(card);
-            float beforePower = AiPower.EffectiveArmyPower(projected);
             projected.Add(new AiPower.PowerUnit(line.BasePower, unit.Tags,
                 line.Range, unit.IsHero, line.CommandRating));
-            return AiPower.EffectiveArmyPower(projected) > beforePower;
+            return AiPower.EffectiveArmyPower(projected);
         }
 
         internal static bool IsArmyOperationalForDemand(ArmySnapshot army, AxisDemand demand)

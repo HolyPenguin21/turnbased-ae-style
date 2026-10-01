@@ -234,6 +234,10 @@
         // per turn (gradual contraction, not a one-pass collapse). Only Soft/None-funded lanes are
         // ever shed; a Hard-funded lane is kept even if it leaves active above desired.
         public const int maxReconLaneTrimPerTurn = 1;
+        // 2026-10-01 (user decision) — distinct ground scouts bound to Recon in one turn (across
+        // every bounded replan): 3 normally, 2 while the Attack mobilization gate is open.
+        public const int reconGroundActorsPerTurn = 3;
+        public const int reconGroundActorsPerTurnMobilized = 2;
         // Generic Phase-B surplus may hold at most desiredConcurrency + this many scout-shaped
         // (IsSoloRecce) armies before it stops founding more; ReconConcurrencyPolicy.HardCap is
         // the separate absolute ceiling above that.

@@ -542,14 +542,37 @@ namespace Game.Ai.V2
             }
 
             int groundActorCap = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - claimedGroundActors);
+            // 2026-10-01 (user decision) — turn-wide ceiling on DISTINCT ground scouts, lowered
+            // while the Attack mobilization is open (ReconConcurrencyPolicy.GroundActorsPerTurn).
+            // A scout already used this turn may keep serving; a new one only within the budget.
+            int turn = snap?.TurnNumber ?? ctx?.TurnNumber ?? -1;
+            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
+            var usedGround = new HashSet<int>(intentState.ReconGroundActorsUsedThisTurn(turn));
+            int newGroundBudget = Mathf.Max(0,
+                ReconConcurrencyPolicy.GroundActorsPerTurn(snap) - usedGround.Count);
             List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())
                 .Where(pm => pm != null && pm.Kind == MissionKind.Scout
                     && pm.ExecutorKind == ScoutExecutorKind.Ground)
                 .Select(pm => pm.FocusHex).ToList();
             ReconAssignmentResult solved = AssignFromCandidates(
                 open, cands, airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
-            foreach (KeyValuePair<StableMissionKey, ScoutExecutionCandidate> kv in solved.Assigned)
-                result.Assigned[kv.Key] = kv.Value;
+            // The solver knows only the per-pass cap: missions in priority order keep a NEW ground
+            // scout while the turn budget lasts; the rest fall to MoverContended below (contention,
+            // never "no scout exists" — that would ask Demand to buy another one).
+            foreach (FundedEntry fe in open)
+            {
+                StableMissionKey key = StableMissionKey.For(fe.Mission);
+                if (!solved.Assigned.TryGetValue(key, out ScoutExecutionCandidate chosen))
+                    continue;
+                if (chosen.ExecutorKind == ScoutExecutorKind.Ground
+                    && !usedGround.Contains(chosen.ActorKey))
+                {
+                    if (newGroundBudget <= 0)
+                        continue;
+                    newGroundBudget--;
+                }
+                result.Assigned[key] = chosen;
+            }
 
             for (int i = 0; i < open.Count; i++)
             {

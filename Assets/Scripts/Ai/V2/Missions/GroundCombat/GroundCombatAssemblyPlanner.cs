@@ -95,16 +95,17 @@ namespace Game.Ai.V2
 
     internal static class GroundCombatAdmissionPolicy
     {
-        // Fresh admission still requires the strict raidMinViableWinChance (0.65 today).
+        // Fresh admission still requires the strict raidMinViableWinChance (0.80, 2026-10-01).
         internal static float FreshStartWinChanceGate => AiConfigV2.raidMinViableWinChance;
 
         // Once a Hard raid has actually left its staging hex, small Monte-Carlo variance / loss of
         // same-hex donor availability must not instantly turn the incumbent actor into a structural
         // AssemblyInfeasible failure. The assigned incumbent may continue while it still covers
-        // every known defender and keeps at least this lower safety floor. 0.40 is intentionally
+        // every known defender and keeps at least this lower safety floor (0.55 since the fresh gate
+        // rose to 0.80, 2026-10-01; it was 0.40 under 0.65). It is intentionally
         // conservative: it fixes the observed 0.78-start -> ~0.41-next-turn discontinuity without
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
-        internal const float ContinuationWinChanceFloor = 0.40f;
+        internal const float ContinuationWinChanceFloor = 0.55f;
 
         // Attack checks known defender coverage without imposing a probability threshold.
         internal const float AttackCoverageGate = 0f;

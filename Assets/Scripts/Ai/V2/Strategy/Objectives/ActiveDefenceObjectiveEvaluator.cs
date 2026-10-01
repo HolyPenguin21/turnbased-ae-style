@@ -120,6 +120,16 @@ namespace Game.Ai.V2
                         + "reason=no_potential_damage_to_any_asset");
                     continue;
                 }
+                // 2026-10-01 (user decision) — by roster strength, not by skills: a scout or a
+                // lone weak body is not worth an army's AP.
+                float enemyPower = chosen.Contact.Army.EffectiveArmyPower;
+                if (enemyPower < AiConfigV2.activeDefenceMinEnemyPower)
+                {
+                    AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
+                        $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
+                        + $"reason=enemy_below_min_power power={enemyPower:0.0}");
+                    continue;
+                }
                 TaskScore score = BuildActiveDefenceScore(snap, chosen);
                 var target = new ActiveDefenceMissionTarget
                 {
@@ -416,7 +426,7 @@ namespace Game.Ai.V2
                     t.PotentialDamage * Mathf.Clamp01(assetNorm)),
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance));
+                ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
         }
     }
 }
