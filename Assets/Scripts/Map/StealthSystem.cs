@@ -418,9 +418,8 @@ namespace Game.Map
                 int pool = SourcePool(building.Hex, hiddenHex, spot, hasRadius);
                 if (pool > bestPool)
                 {
-                    (int bcol, int brow) = building.Hex.ToOffset();
                     bestPool = pool;
-                    bestLabel = $"building \"{building.Name}\" @ ({bcol}, {brow})";
+                    bestLabel = $"building \"{building.Name}\" @ ({building.Hex.Q}, {building.Hex.R})";
                 }
             }
 
@@ -455,7 +454,8 @@ namespace Game.Map
             if (IsDetectedBy(unit, observer))
                 return true; // already personally visible to this observer — no re-roll
 
-            (int col, int row) = hex.ToOffset();
+            // Axial (q, r), the same coordinate the map labels and the logs show.
+            int col = hex.Q, row = hex.R;
             int spot = spotSource.Pool;
             // §4 diagnostics — name the trigger ("arrival" / "new vision" / "hidden action"),
             // the hidden unit (plus its army id where the caller knows it — UnitData has no id
@@ -498,7 +498,7 @@ namespace Game.Map
                 notices = new List<string>();
                 _detectionNotices[observer] = notices;
             }
-            (int col, int row) = hex.ToOffset(); // player-facing (col, row), same as the aviation messages
+            int col = hex.Q, row = hex.R; // player-facing axial (q, r), same as the map labels and aviation messages
             string name = string.IsNullOrEmpty(unit.Name) ? "an enemy unit" : unit.Name;
             notices.Add($"Hidden enemy detected: {name} at ({col}, {row}).");
         }

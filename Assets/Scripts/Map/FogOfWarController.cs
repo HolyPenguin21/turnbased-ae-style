@@ -219,11 +219,10 @@ namespace Game.Map
                 HexCoordLabel label = labelObject.AddComponent<HexCoordLabel>();
                 label.ApplyStyle(style);
 
-                // Same (col, row) convention HexInfoPanelUI already shows ("Hex (col, row)") —
-                // not raw axial (q, r) — so this label reads as the same coordinate a player
-                // would already recognise from clicking the hex.
-                (int col, int row) = coord.ToOffset();
-                label.SetCoord(col, row);
+                // Axial (q, r) — the one coordinate every log, AI line and player-facing message
+                // prints (2026-10-01, user decision; the old offset col:row disagreed with the
+                // logs by a column-dependent amount).
+                label.SetCoord(coord.Q, coord.R);
                 labelObject.transform.position = map.HexToWorld(coord)
                     + new Vector3(offset.x, 0f, offset.y) * map.OuterRadius;
 

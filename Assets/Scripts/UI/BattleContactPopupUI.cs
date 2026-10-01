@@ -221,8 +221,8 @@ namespace Game.UI
             string defenderName = participants != null && participants.Count > 1 ? participants[1].Name : "?";
             if (titleText != null)
             {
-                (int col, int row) = hex.ToOffset();
-                titleText.text = $"({col}:{row}) - {attackerName} attacks {defenderName}";
+                // Axial q:r, the same coordinate the map labels show.
+                titleText.text = $"({hex.Q}:{hex.R}) - {attackerName} attacks {defenderName}";
             }
 
             ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;

@@ -70,8 +70,8 @@ namespace Game.Aviation
 
         private static string FormatGameCoord(Game.HexGrid.HexCoord hex)
         {
-            (int col, int row) = hex.ToOffset();
-            return $"({col}, {row})";
+            // Axial (q, r), the same coordinate the map labels and the logs show.
+            return $"({hex.Q}, {hex.R})";
         }
     }
 }
