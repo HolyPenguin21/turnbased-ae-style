@@ -261,6 +261,9 @@ namespace Game.Ai.V2
                 var lastStrategicAdmissionFingerprint = new Dictionary<DesireAxis, string>();
                 bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
                 bool zeroRadarResidualWindow = false;
+                // LifecycleReturnPolicy: return legs wait until the first Phase B round.
+                bool lifecycleReturnsReleased = false;
+                bool lifecycleReturnsDeferred = false;
 
                 string StrategicAdmissionFingerprint(DesireAxis axis)
                 {
@@ -616,6 +619,21 @@ namespace Game.Ai.V2
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
                         out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
+                    if (!lifecycleReturnsReleased && !LifecycleReturnPolicy.HomeThreatened(snapshot))
+                    {
+                        var waiting = missions.Where(m => LifecycleReturnPolicy.IsDeferrableReturn(
+                            m, activeIntents)).ToList();
+                        if (waiting.Count > 0)
+                        {
+                            lifecycleReturnsDeferred = true;
+                            foreach (MissionProposal m in waiting)
+                                missionDeferrals[MissionIntentKey.For(m)] = LifecycleReturnPolicy.DeferralReason;
+                            missions = missions.Except(waiting).ToList();
+                            AiDebugLog.WriteDeduped($"returns-wait#{player.ColorIndex}#{ctx.TurnNumber}",
+                                $"[AI][V2][Loop] lifecycle returns wait for the tempo pass (no home threat): "
+                                + string.Join(", ", waiting.Select(m => StableMissionKey.For(m).ToString())));
+                        }
+                    }
                     if (retryNextTurnThisPass.Count > 0)
                     {
                         var retained = new List<MissionProposal>(missions.Count);
@@ -1082,6 +1100,9 @@ namespace Game.Ai.V2
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
+                    // Phase B has spent first; return legs now take what is left.
+                    bool releaseReturnsNow = !lifecycleReturnsReleased && lifecycleReturnsDeferred;
+                    lifecycleReturnsReleased = true;
 
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
                         out StrategicInvalidationReason strategicReasons,
@@ -1123,6 +1144,12 @@ namespace Game.Ai.V2
                     // on the settled state before admitting any zero-Radar residual.
                     if (phaseBRound.StateChanged && !operationalDirty)
                     {
+                        noProgressCycles = 0;
+                        yield return RunTypedAdmissions();
+                    }
+                    if (releaseReturnsNow && !operationalDirty && !phaseBRound.StateChanged)
+                    {
+                        AiDebugLog.Write("[AI][V2][Loop] lifecycle returns released after the tempo pass");
                         noProgressCycles = 0;
                         yield return RunTypedAdmissions();
                     }

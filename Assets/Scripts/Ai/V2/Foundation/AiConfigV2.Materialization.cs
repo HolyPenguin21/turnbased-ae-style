@@ -283,7 +283,11 @@
         public const float apScarcityMultiplierMin = 0.5f;
         public const float apScarcityMultiplierMax = 2.0f;
         // Turns of witnessed AP demand (ApTurnPressure) averaged into WitnessedApDemand.
-        public const int apWitnessedDemandHistoryTurns = 3;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
+        public const int apWitnessedDemandHistoryTurns = 3;
+        // LifecycleReturnPolicy: Citadel/Base threat severity (ThreatModel, [0..1]) from which a
+        // return leg no longer waits for the tempo pass. Below it the far, weak contacts that
+        // keep a small standing severity (~0.1) do not count as a threat to home.
+        public const float lifecycleReturnHomeThreatSeverity = 0.25f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
         public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
         public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
         // Structural-fallback path only (a call with no owner-witnessed workload — sims, bare tests,
