@@ -364,6 +364,7 @@ MonoBehaviour:
         materials: 0
         tech: 0
       moveCost: 1
+      blocksGroundMovement: 0
       defenseModifier: 1
     - terrainName: Desert
       texture: {fileID: 2800000, guid: cc69b687163987f4aaee72f259d23275, type: 3}
@@ -382,6 +383,7 @@ MonoBehaviour:
         materials: 0
         tech: 0
       moveCost: 1
+      blocksGroundMovement: 0
       defenseModifier: 0
     - terrainName: Mountains
       texture: {fileID: 2800000, guid: 74bfa362df5a7a14d9b4dbb1128501b6, type: 3}
@@ -396,6 +398,7 @@ MonoBehaviour:
         materials: 0
         tech: 0
       moveCost: 3
+      blocksGroundMovement: 0
       defenseModifier: 2
     - terrainName: Rock desert
       texture: {fileID: 2800000, guid: 05e651b1c6ceef94d8dadfeeaead2433, type: 3}
@@ -410,6 +413,7 @@ MonoBehaviour:
         materials: 0
         tech: 0
       moveCost: 1
+      blocksGroundMovement: 0
       defenseModifier: 1
     - terrainName: Sand dunes
       texture: {fileID: 2800000, guid: b9242a52e05ddbe42abac1d922f63983, type: 3}
@@ -424,6 +428,7 @@ MonoBehaviour:
         materials: 0
         tech: 0
       moveCost: 2
+      blocksGroundMovement: 0
       defenseModifier: 1
     - terrainName: Acid lake
       texture: {fileID: 2800000, guid: b547aa40cb3e46b5990fa944e24072e5, type: 3}
@@ -473,7 +478,6 @@ MonoBehaviour:
       moveCost: 1
       blocksGroundMovement: 1
       defenseModifier: 0
-    complexCount: 5
     complexes:
     - name: Arid acid lake pair
       terrainName: Acid lake
@@ -573,6 +577,7 @@ MonoBehaviour:
       - offset: {x: 2, y: 0}
         frames:
         - {fileID: 2800000, guid: fc094a5cf18546cbaccc4333dd72c9f9, type: 3}
+    complexCount: 0
     mountainsTerrainName: Mountains
     mountainRangeCount: 3
     mountainRangeLength: 2
@@ -595,6 +600,7 @@ MonoBehaviour:
           materials: 0
           tech: 0
         moveCost: 1
+        blocksGroundMovement: 0
         defenseModifier: 1
       - terrainName: Desert
         texture: {fileID: 2800000, guid: 74893629b977f9e4da84b2640d1460a3, type: 3}
@@ -613,6 +619,7 @@ MonoBehaviour:
           materials: 0
           tech: 0
         moveCost: 1
+        blocksGroundMovement: 0
         defenseModifier: 0
       - terrainName: Mountains
         texture: {fileID: 2800000, guid: ca042cbd5d70ec447b5ea05c20a59bd3, type: 3}
@@ -627,6 +634,7 @@ MonoBehaviour:
           materials: 0
           tech: 0
         moveCost: 3
+        blocksGroundMovement: 0
         defenseModifier: 2
       - terrainName: Rock desert
         texture: {fileID: 2800000, guid: 3b5b3e8bc4e41d94285511a3c6308ee8, type: 3}
@@ -641,6 +649,7 @@ MonoBehaviour:
           materials: 0
           tech: 0
         moveCost: 1
+        blocksGroundMovement: 0
         defenseModifier: 1
       - terrainName: Sand dunes
         texture: {fileID: 2800000, guid: 1b92812766508b54391954f6e3eb3ac5, type: 3}
@@ -655,6 +664,7 @@ MonoBehaviour:
           materials: 0
           tech: 0
         moveCost: 2
+        blocksGroundMovement: 0
         defenseModifier: 1
       - terrainName: Acid lake
         texture: {fileID: 2800000, guid: 005d68e88d2e5d6bb377f0885891503b, type: 3}
