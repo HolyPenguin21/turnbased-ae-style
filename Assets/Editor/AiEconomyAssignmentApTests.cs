@@ -25,6 +25,19 @@ namespace Game.EditorTests
             IsOnTarget = isOnTarget,
         };
 
+        // SafeStepPathing's "no safe way back" (int.MaxValue) is unknown, not ~1e9 turns of
+        // return activations (playtest 2026-10-01 #4: a BuildExtraction valued -1e9).
+        [Test]
+        public void UnknownReturnPath_IsNotPricedAsAnEndlessReturn()
+        {
+            float noReturn = DemandLayer.EstimateEconomyAssignmentAp(
+                Route(4, 2, 2, false, activationApCost: 1, returnTravelCost: int.MaxValue), 2f, true);
+            float outboundOnly = DemandLayer.EstimateEconomyAssignmentAp(
+                Route(4, 2, 2, false, activationApCost: 1, returnTravelCost: 0), 2f, true);
+            Assert.That(noReturn, Is.EqualTo(outboundOnly));
+            Assert.That(noReturn, Is.LessThan(10f));
+        }
+
         [Test]
         public void ZeroCurrentMovement_KeepsTheFutureReactivationInThePrice()
         {

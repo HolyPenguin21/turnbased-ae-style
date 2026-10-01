@@ -1009,7 +1009,11 @@ namespace Game.Ai.V2
                 outboundTurns - (route.HasActivatedThisTurn && currentTurnAlreadyProgressesRoute
                     && outboundTurns > 0 ? 1 : 0));
             if (route.IsOnTarget) paidOutboundActivations = 0;
-            int returnTurns = includeReturn && route.ReturnTravelCost > 0
+            // int.MaxValue is the route snapshot's "no safe way back" (SafeStepPathing found no
+            // return path at all) — unknown, not a cost: pricing it as ~1e9 turns drove the task
+            // to value -1e9 (playtest 2026-10-01 #4, Draven T5).
+            bool returnKnown = route.ReturnTravelCost > 0 && route.ReturnTravelCost < int.MaxValue;
+            int returnTurns = includeReturn && returnKnown
                 ? Mathf.CeilToInt(route.ReturnTravelCost / (float)move) : 0;
             return Mathf.Max(0f, buildApCost)
                 + (paidOutboundActivations + returnTurns) * Mathf.Max(0, route.ActivationApCost);
