@@ -310,8 +310,17 @@ namespace Game.Ai.V2
             {
                 if (o.Key == null || o.Key == host || !o.Key.CanDonate || o.Value == null)
                     continue;
+                // A garrison body is a source only when the garrison may let it go (the one spare
+                // rule, AiArmyRoles.SpareableBodies over its power floor) — otherwise the host
+                // would release a slot for a body that never comes (Halden T21-T23 ping-pong).
+                List<ReorgUnit> garrisonBodies = o.Key.IsGarrison
+                    ? o.Value.Where(x => x != null && x.IsGroundCombatant).ToList() : null;
+                HashSet<int> spare = garrisonBodies == null ? null
+                    : AiArmyRoles.SpareableBodies(garrisonBodies,
+                        set => EffectivePower(set.ToList()), o.Key.GarrisonPowerFloor);
                 foreach (ReorgUnit u in o.Value)
-                    if (u != null && !u.IsHero && !u.IsAviation && !u.IsCommitted)
+                    if (u != null && !u.IsHero && !u.IsAviation && !u.IsCommitted
+                        && (spare == null || spare.Contains(garrisonBodies.IndexOf(u))))
                         Take(u.StrikeKey);
             }
             foreach (string k in host.PreparationHandKeys ?? Array.Empty<string>())

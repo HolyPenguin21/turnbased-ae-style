@@ -369,6 +369,13 @@ namespace Game.Ai.V2
         // (MissionContinuityLayer.RefreshTargetRoster) — never on every small reshuffle.
         public List<StrikeRosterSlot> TargetRoster;
         public float TargetRosterPeak;
+        // The host commander (card key) the roster was composed under, and the roster's power.
+        public string TargetRosterCommanderKey;
+        public float TargetRosterPower;
+        // 2026-10-01 (variant B) — a stronger commander fetched from an own garrison elsewhere:
+        // the lone-hero container walking to the host (AttackPreparationStep.FetchCommander /
+        // MoveCommander). Housekeeping promotes it on the host's hex; cleared when it is gone.
+        public int? CommanderArmyId;
         public int? PrimaryArmyId { get; set; }
         public int? SupportArmyId { get; set; }
         // Gather phase only: supports still walking to (or about to hand off at) the primary.

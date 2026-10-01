@@ -198,19 +198,21 @@ namespace Game.Ai.V2
             // Hand bodies/heroes are kept for BestStackPotential (map + hand); the deck feeds
             // only CommandHeroes, equipment and aviation here.
             void AddCard(CardDefinition d, ForceSource source, int key, List<AiPower.PowerUnit> units,
-                List<AiPower.PowerUnit> heroes)
+                List<AiPower.PowerUnit> heroes, CardData held = null)
             {
                 if (d == null) return;
                 if (d.cardType == CardType.Equipment) { equipment.Add(d); return; }
                 if (!IsMilitaryCard(d)) return;
-                if (d.isAviation) { aviation += AiPower.ToPowerUnit(d).BasePower; return; }
-                if (d.cardType == CardType.Unit) { units?.Add(AiPower.ToPowerUnit(d)); return; }
-                heroes?.Add(AiPower.ToPowerUnit(d));
+                // A held card counts with the equipment already attached to it.
+                AiPower.PowerUnit pu = held != null ? AiPower.ToPowerUnit(held) : AiPower.ToPowerUnit(d);
+                if (d.isAviation) { aviation += pu.BasePower; return; }
+                if (d.cardType == CardType.Unit) { units?.Add(pu); return; }
+                heroes?.Add(pu);
                 commandHeroes.Add(new OwnCommandHero(HeroRoleEvaluator.Profile(d, key), source));
             }
             for (int i = 0; i < self.Hand.Count; i++)
                 AddCard(self.Hand[i]?.Definition, ForceSource.Hand, -(1 + i),
-                    handUnits, handHeroes);
+                    handUnits, handHeroes, self.Hand[i]);
             for (int i = 0; i < self.Deck.Count; i++)
                 AddCard(self.Deck[i], ForceSource.Deck, -(1 + self.Hand.Count + i),
                     null, null);
@@ -230,23 +232,29 @@ namespace Game.Ai.V2
             var allUnits = new List<AiPower.PowerUnit>(AiPower.MilitaryPool(
                 ownArmies.SelectMany(a => a.Members), null, null));
             void AddCards(IEnumerable<CardDefinition> cards, CardType kind, ForceSource source,
-                List<StrikeRosterSlot> into)
+                List<StrikeRosterSlot> into, IReadOnlyList<CardData> held = null)
             {
+                int i = -1;
                 foreach (CardDefinition d in cards)
+                {
+                    i++;
                     if (d != null && d.cardType == kind && !d.isAviation)
                     {
-                        AiPower.PowerUnit pu = AiPower.ToPowerUnit(d);
+                        // A held card counts with the equipment already attached to it.
+                        AiPower.PowerUnit pu = held != null ? AiPower.ToPowerUnit(held[i])
+                            : AiPower.ToPowerUnit(d);
                         var slot = new StrikeRosterSlot(StrikeRoster.CardKey(d), pu.IsHero,
                             pu.BasePower, source);
                         into.Add(slot);
                         allSlots.Add(slot);
                         allUnits.Add(pu);
                     }
+                }
             }
             List<CardDefinition> handDefs = self.Hand.Select(c => c?.Definition).ToList();
-            AddCards(handDefs, CardType.Unit, ForceSource.Hand, cardBodies);
+            AddCards(handDefs, CardType.Unit, ForceSource.Hand, cardBodies, self.Hand);
             AddCards(self.Deck, CardType.Unit, ForceSource.Deck, cardBodies);
-            AddCards(handDefs, CardType.Hero, ForceSource.Hand, cardHeroes);
+            AddCards(handDefs, CardType.Hero, ForceSource.Hand, cardHeroes, self.Hand);
             AddCards(self.Deck, CardType.Hero, ForceSource.Deck, cardHeroes);
             // Identity = index in allSlots; the PowerUnit list runs in the same order.
             var index = Enumerable.Range(0, allSlots.Count).ToList();
@@ -258,6 +266,7 @@ namespace Game.Ai.V2
             self.StrikeRoster = peak.Select(i => allSlots[i]).ToList();
             self.StrikePoolKeyCounts = allSlots.Where(x => x.Key != null).GroupBy(x => x.Key)
                 .ToDictionary(g => g.Key, g => g.Count());
+            self.StrikePool = index.Select(i => new StrikeRosterCandidate(allSlots[i], allUnits[i])).ToList();
 
             self.FieldPotential = ceilings.Field;
             self.BestStackPotential = AiPower.TotalMilitaryPotential(

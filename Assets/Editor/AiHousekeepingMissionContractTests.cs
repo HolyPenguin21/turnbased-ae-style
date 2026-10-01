@@ -135,6 +135,22 @@ namespace Game.EditorTests
             Assert.That(plan.ExpectedMembership[2], Has.No.Member(scout.Key), plan.DebugSummary());
         }
 
+        // A garrison body the garrison may not spare is no source: no release, no ping-pong.
+        [Test]
+        public void PreparationHost_KeepsNonRosterBody_WhenTheGarrisonCannotSpareTheSource()
+        {
+            ReorgContainer garrison = Garrison(1, Keyed(Body(6f), "tank"));
+            garrison.GarrisonNonHeroFloor = 1;
+            garrison.GarrisonPowerFloor = 5f;
+            ReorgUnit scout = Keyed(Body(3f), "scout");
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
+            host.MayReleaseExcessHeroes = true;
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2), Is.False, plan.DebugSummary());
+        }
+
         // With no source of a missing position the non-roster body stays: nothing to wait for.
         [Test]
         public void PreparationHost_KeepsNonRosterBodyWithoutAPendingSource()

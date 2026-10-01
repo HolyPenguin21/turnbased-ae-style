@@ -213,7 +213,7 @@ namespace Game.Ai.V2
                     if (target != null && target.Count > 0)
                     {
                         container.PreparationTargetKeys = target.Select(x => x.Key).ToList();
-                        container.PreparationHandKeys = HeldFieldCardKeys(player, army.Hex);
+                        container.PreparationHandKeys = HeldFieldCardKeys(player, army.Hex, army.Id, turn);
                     }
                 }
                 if (contract.KeepsMovement && army.Members.Count > 0)
@@ -258,11 +258,15 @@ namespace Game.Ai.V2
 
         // Card keys of the held ground Unit cards that deploy on `hex` (a held card lands in the
         // host by Phase A only through a building there that deploys it).
-        internal static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex) =>
+        // A card Phase A already failed to chain into this host frees no slot either.
+        internal static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex,
+            int hostArmyId, int turn) =>
             (AiHandRegistry.Peek(player)?.Hand ?? Enumerable.Empty<CardData>())
                 .Select(c => c?.Definition)
                 .Where(d => d != null && d.cardType == CardType.Unit && !d.isAviation
-                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d))
+                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d)
+                    && !PreparationDeliveryMemory.NoChainRecently(player, hostArmyId, turn,
+                        StrikeRoster.CardKey(d)))
                 .Select(StrikeRoster.CardKey).ToList();
 
         // Live twin of the planner's body release (HousekeepingExecutor preflight): is this a

@@ -23,6 +23,19 @@ namespace Game.Ai.V2
         }
     }
 
+    // One pool candidate: its roster slot and the PowerUnit the peak greedy reads.
+    public readonly struct StrikeRosterCandidate
+    {
+        public readonly StrikeRosterSlot Slot;
+        public readonly AiPower.PowerUnit Unit;
+
+        public StrikeRosterCandidate(StrikeRosterSlot slot, AiPower.PowerUnit unit)
+        {
+            Slot = slot;
+            Unit = unit;
+        }
+    }
+
     // 2026-10-01 (user decision) — the strike force is gathered toward a concrete roster: the
     // composition of the strongest army the whole deck can form (AiPower.NestedPotentialsOf, the
     // same greedy as the > 80% bar). A preparation freezes it (AttackIntent.TargetRoster) and
@@ -34,6 +47,44 @@ namespace Game.Ai.V2
     // Positions are a multiset by card key: two Medium Tanks are two positions.
     public static class StrikeRoster
     {
+        // 2026-10-01 (user decision, variant B) — a preparation's roster is composed under the
+        // commander its host actually has (or none): the same greedy as the peak
+        // (AiPower.ComposeStackOf), its bodies from the whole pool, capped by that commander's
+        // CommandRating (`capacity` counts the commander, as ArmyData.Capacity does). A stronger
+        // commander standing elsewhere is fetched by its own preparation step; once it leads the
+        // host the roster is re-frozen under it.
+        public static List<StrikeRosterSlot> ComposeUnder(IReadOnlyList<StrikeRosterCandidate> pool,
+            StrikeRosterCandidate? commander, int capacity, out float power)
+        {
+            var bodies = (pool ?? System.Array.Empty<StrikeRosterCandidate>())
+                .Where(c => !c.Unit.IsHero).ToList();
+            List<StrikeRosterCandidate> pick = AiPower.ComposeStackOf(bodies, c => c.Unit,
+                System.Math.Max(1, capacity), commander.HasValue, commander.GetValueOrDefault());
+            power = AiPower.EffectiveArmyPower(pick.Select(c => c.Unit).ToList());
+            return pick.Select(c => c.Slot).ToList();
+        }
+
+        // The pool candidate standing for a live hero (by its card key), or a fresh one built
+        // from the unit itself when the pool has none.
+        public static StrikeRosterCandidate CommanderCandidate(UnitData hero) =>
+            new StrikeRosterCandidate(new StrikeRosterSlot(UnitKey(hero), true, 0f, ForceSource.Map),
+                AiPower.ToPowerUnit(hero));
+
+        // 2026-10-01 (user decision) — a Recce body the peak stack itself picked (an RC Vehicle with
+        // a Plasma Cannon outfights most cards) is a combat body for every FieldCombatPower demand,
+        // not only the preparation host's: scouts that are not among the peak's bodies stay Recon.
+        public static bool IsPeakBody(WorldSnapshot snap, CardDefinition d)
+        {
+            IReadOnlyList<StrikeRosterSlot> roster = snap?.Self?.StrikeRoster;
+            if (roster == null || d == null || d.cardType != CardType.Unit)
+                return false;
+            string key = CardKey(d);
+            for (int i = 0; i < roster.Count; i++)
+                if (!roster[i].IsHero && roster[i].Key == key)
+                    return true;
+            return false;
+        }
+
         public static string CardKey(CardDefinition d) =>
             d == null ? null : string.IsNullOrEmpty(d.authoredKey) ? d.displayName : d.authoredKey;
 

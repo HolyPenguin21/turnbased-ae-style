@@ -315,8 +315,12 @@ namespace Game.Ai.V2
                 && StrikeRoster.FillsMissing(missing, d,
                     AiPower.EffectiveLine(d, equipped?.equipment).BasePower);
 
+            // A held card Phase A already failed to chain into this exact host (its pinned demand,
+            // this turn or the last) is no witness: the two stages answer with one truth.
             foreach (Game.Cards.CardData c in HandFieldCards(snap))
-                if (Strengthens(c.Definition, c.Equipment))
+                if (Strengthens(c.Definition, c.Equipment)
+                    && !PreparationDeliveryMemory.NoChainRecently(snap.Observer, host.Id,
+                        snap.TurnNumber, StrikeRoster.CardKey(c.Definition)))
                     return $"hand_card:{c.Definition.displayName}";
             DevelopmentReadiness dev = snap.Development;
             if (dev != null)

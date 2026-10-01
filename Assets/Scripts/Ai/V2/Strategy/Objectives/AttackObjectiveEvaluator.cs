@@ -64,6 +64,10 @@ namespace Game.Ai.V2
         // cards and generated outputs land in it directly. A host standing elsewhere first walks
         // there (a plain Transit of the host, the walk-home leg's machinery).
         MoveHost = 4,
+        // 2026-10-01 (variant B) — a hero with a larger Command than the host's commander, standing
+        // in an own garrison elsewhere, leaves it as a lone-hero container (CreateArmyWithMember);
+        // it then walks to the host as a Gather leg (CommanderLeg) and takes command there.
+        FetchCommander = 5,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -103,6 +107,12 @@ namespace Game.Ai.V2
         // PreparationStep names the host-side step, None for an ordinary support leg.
         public bool Preparation;
         public AttackPreparationStep PreparationStep;
+        // 2026-10-01 (variant B) — this Gather leg walks the preparation's fetched commander
+        // (AttackIntent.CommanderArmyId): its handoff counts the larger Command as progress.
+        public bool CommanderLeg;
+        // FetchCommander only: the own garrison the hero leaves and the hero (UnitData.RuntimeId).
+        public int? CommanderDonorArmyId;
+        public int CommanderUnitId;
     }
 
     // ===========================================================================================

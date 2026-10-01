@@ -23,6 +23,10 @@ namespace Game.Ai.V2
         // taskScoreActiveDefenceLeashPerHex (a desire penalty, never a hard gate).
         public const int activeDefenceLeashHexes = 4;
         public const float taskScoreActiveDefenceLeashPerHex = 2f;
+        // 2026-10-01 (user decision) — a regroup at the Citadel or a withdrawal walks every usable
+        // field army home: only for a threat that reaches its asset within this many turns. A
+        // farther one is deferred (the field armies keep their tasks; the next pass re-decides).
+        public const int activeDefenceWithdrawMaxEnemyEta = 2;
         // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
         // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
         public const float attackTargetRosterRefreezeGrowth = 0.10f;

@@ -155,6 +155,7 @@ namespace Game.Setup
             Game.Ai.V2.AviationObligationStallRegistry.Clear(); // Recon audit B1 — per-turn stalled air obligations
             Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
             Game.Ai.V2.ForceBaselineRegistry.Clear(); // Strategy V2 per-player first-turn force ceiling (P_start)
+            Game.Ai.V2.PreparationDeliveryMemory.Clear(); // Phase A verdict on cards for an Attack preparation host
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
             Game.Ai.V2.ScoutTrailRegistry.ClearAll(); // Strategy V2 bounded per-scout backtrack trail (spec §5)
             Game.Ai.V2.ResourceStarvationRegistry.Clear(); // Strategy V2 decaying resource-starvation economic feedback (spec §17)

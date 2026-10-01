@@ -6,6 +6,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -212,6 +213,8 @@ namespace Game.Ai.V2
                     $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Attack structure"));
 
             HexCoord hex = target.DestinationHex;
+            if (target.PreparationStep == AttackPreparationStep.FetchCommander)
+                return ProvisionFetchCommander(player, root, session, funded, target, key, eps);
             ArmyData host = null;
             if (target.PrimaryArmyId.HasValue)
             {
@@ -272,7 +275,7 @@ namespace Game.Ai.V2
             if (ap > envelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
                     $"attack preparation needs {N(ap)} AP to create its host, envelope is {N(envelope)}"));
-            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            float turnApLeft = TurnApLeft(root, session);
             if (ap > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: attack preparation needs {N(ap)}, {N(turnApLeft)} left"));
@@ -299,6 +302,61 @@ namespace Game.Ai.V2
                 ExecutionHex = hex,
                 AttackTarget = target,
                 AttackPreparationAssembly = assembly,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+                StealthApReserved = false,
+            });
+        }
+
+        // The turn AP this provisioning cycle has not claimed yet — the one physical AP read of
+        // the preparation steps (the allocator's envelope stays the spending authority).
+        private static float TurnApLeft(PlayerRoot root, ProvisioningSession session) =>
+            root.ActionPoints - session.ApClaimed;
+
+        // 2026-10-01 (variant B) — the fetched commander leaves its garrison: the host still exists,
+        // the hero still stands in that own garrison, is no garrison hero / operator, the garrison
+        // may spare it, and the turn has the creation AP. Every refusal is Blocked-class.
+        private static ProvisioningResult ProvisionFetchCommander(PlayerSetupData player, PlayerRoot root,
+            ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key, float eps)
+        {
+            ArmyData host = target.PrimaryArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+            ArmyData garrison = target.CommanderDonorArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, target.CommanderDonorArmyId.Value) : null;
+            UnitData hero = garrison?.Members.FirstOrDefault(u => u != null
+                && u.RuntimeId == target.CommanderUnitId);
+            if (host == null || host.Owner != player || garrison == null || !garrison.IsGarrison
+                || garrison.Owner != player || hero == null || !hero.IsHero
+                || AiArmyRoles.IsGarrisonHero(hero)
+                || AiArmyRoles.IsFacilityOperator(player, garrison.Hex, hero)
+                || !AiArmyRoles.CanSpareGarrisonMember(player, garrison, hero))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"attack preparation commander fetch: host or hero #{target.CommanderUnitId} in "
+                    + $"garrison #{target.CommanderDonorArmyId} no longer available"));
+            if (session.ClaimedArmyIds.Contains(garrison.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"attack preparation commander fetch: garrison #{garrison.Id} was claimed this cycle"));
+            float ap = ArmyActions.CreateArmyApCost;
+            if (ap > funded.Tentative.Ap + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    $"attack preparation commander fetch needs {N(ap)} AP, envelope is {N(funded.Tentative.Ap)}"));
+            if (ap > TurnApLeft(root, session) + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: commander fetch needs {N(ap)}"));
+            session.ClaimedArmyIds.Add(garrison.Id);
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"PREPARATION FetchCommander {hero.Name} (command {hero.CommandRating}) from garrison "
+                + $"#{garrison.Id} at ({garrison.Hex.Q},{garrison.Hex.R}) for host #{host.Id} ap {N(ap)}");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = -1,
+                FocusHex = garrison.Hex,
+                ExecutionHex = garrison.Hex,
+                AttackTarget = target,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
                 StealthApReserved = false,
@@ -423,7 +481,8 @@ namespace Game.Ai.V2
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
-                "attack", out bool atRendezvous, allowCommandHandover: true);
+                "attack", out bool atRendezvous, allowCommandHandover: true,
+                capacityIsProgress: target.CommanderLeg);
             if (!check.Ok)
                 return check.Failure;
 

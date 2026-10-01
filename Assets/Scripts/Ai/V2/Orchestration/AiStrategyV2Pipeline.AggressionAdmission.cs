@@ -92,6 +92,7 @@ namespace Game.Ai.V2
                 + $"|citadel={(self.HoldsStartingCitadel ? 1 : 0)}|bases={bases}"
                 + $"|hand={handCards}"
                 + $"|gen={generation}"
+                + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}";
         }

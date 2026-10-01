@@ -4,6 +4,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -468,7 +469,7 @@ namespace Game.Ai.V2
             int? hostId, HexCoord hostHex, AttackPreparationStep step, float ap,
             GroundCombatAssemblyPlan assembly, float hexBonus, List<MissionProposal> proposals,
             string head, MissionIntent intent = null, int[] supports = null,
-            TaskScore? pricedScore = null)
+            TaskScore? pricedScore = null, int? commanderDonorId = null, int commanderUnitId = 0)
         {
             float win = assembly?.ProjectedWinChance ?? 0f;
             TaskScore score = pricedScore ?? (intent != null ? default(TaskScore)
@@ -490,6 +491,8 @@ namespace Game.Ai.V2
                 EstimatedEta = 1,
                 Preparation = true,
                 PreparationStep = step,
+                CommanderDonorArmyId = commanderDonorId,
+                CommanderUnitId = commanderUnitId,
             };
             var proposal = new MissionProposal
             {
@@ -621,6 +624,26 @@ namespace Game.Ai.V2
                 AppendPreparationAssembly(snap, intent, a, host, hexBonus, committed, proposals);
                 if (a.GatherSupportArmyIds.Count == 0)
                     AppendPreparationRecruit(snap, intent, a, host, hexBonus, committed, proposals);
+                if (!a.CommanderArmyId.HasValue)
+                    AppendPreparationCommanderFetch(snap, intent, a, host, hexBonus, proposals);
+            }
+            // 2026-10-01 (variant B) — the fetched commander walks to the host and hands itself
+            // over there (a Gather leg whose larger Command is the progress: CommanderLeg).
+            if (a.Preparation && a.CommanderArmyId.HasValue)
+            {
+                ArmySnapshot commander = snap.Self.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.CommanderArmyId.Value);
+                if (commander != null && (commander.Hex.Equals(host.Hex) || commander.CurrentMovement > 0))
+                {
+                    MissionProposal leg = BuildAttackGatherLeg(a.Target, host, commander,
+                        a.GatherSupportArmyIds, hexBonus, defenderCount, a.ProjectedWinChance,
+                        a.CoversAllDefenders, a.LastOpportunisticStrikeTurn, default(TaskScore), intent);
+                    MarkPreparation(leg, AttackPreparationStep.None);
+                    AttackMissionTarget lt = (AttackMissionTarget)leg.Target;
+                    lt.CommanderLeg = true;
+                    leg.Target = lt;
+                    proposals.Add(leg);
+                }
             }
             foreach (int supportId in a.GatherSupportArmyIds.ToList())
             {
@@ -665,6 +688,65 @@ namespace Game.Ai.V2
             AppendPreparationStep(snap, objective, host.ArmyId, host.Hex,
                 AttackPreparationStep.Assemble, 0f, step, hexBonus, proposals,
                 $"[AI][V2][Attack][Mobilization] {intent.IntentKey}", intent);
+        }
+
+        // 2026-10-01 (user decision, variant B) — the host's own commander caps the roster
+        // (StrikeRoster.ComposeUnder). When that roster cannot clear the march bar (> 80% of the
+        // peak) and an own garrison ELSEWHERE holds a hero with a larger Command whose roster would
+        // be stronger — never a garrison hero (Support tag), never a facility operator, only one
+        // the garrison may spare — the hero leaves the garrison as a lone-hero container (2 AP,
+        // lifecycle of the Hard operation) and then walks to the host (CommanderLeg).
+        private static void AppendPreparationCommanderFetch(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ArmySnapshot host, float hexBonus, List<MissionProposal> proposals)
+        {
+            PlayerSetupData player = snap.Observer;
+            ArmyData liveHost = player == null ? null : AiV2Util.ResolveArmy(player, host.ArmyId);
+            if (liveHost == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
+                return;
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            UnitData current = liveHost.Commander;
+            StrikeRoster.ComposeUnder(snap.Self.StrikePool,
+                current == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(current),
+                liveHost.Capacity, out float currentPower);
+            if (currentPower > required)
+                return;
+            int currentCommand = current?.CommandRating ?? 0;
+            (ArmyData garrison, UnitData hero, float power) best = (null, null, currentPower);
+            foreach (ArmyData g in ArmyRegistry.AllForOwner(player))
+            {
+                if (g == null || !g.IsGarrison || g.Hex.Equals(liveHost.Hex))
+                    continue;
+                foreach (UnitData u in g.Members)
+                {
+                    if (u == null || !u.IsHero || u.IsPrisoner || u.CommandRating <= currentCommand
+                        || AiArmyRoles.IsGarrisonHero(u) || AiArmyRoles.IsFacilityOperator(player, g.Hex, u)
+                        || !AiArmyRoles.CanSpareGarrisonMember(player, g, u))
+                        continue;
+                    StrikeRoster.ComposeUnder(snap.Self.StrikePool, StrikeRoster.CommanderCandidate(u),
+                        u.CommandRating, out float power);
+                    if (power > best.power + AiConfigV2.allocatorSliceEpsilon
+                        || (best.hero != null && System.Math.Abs(power - best.power) <= AiConfigV2.allocatorSliceEpsilon
+                            && HexGridMath.Distance(g.Hex, liveHost.Hex) < HexGridMath.Distance(best.garrison.Hex, liveHost.Hex)))
+                        best = (g, u, power);
+                }
+            }
+            if (best.hero == null)
+            {
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#commander",
+                    $"[AI][V2][Attack][Mobilization] {intent.IntentKey} decision=NONE step=FetchCommander "
+                    + $"host=#{host.ArmyId} command={currentCommand} roster={F(currentPower)} required>{F(required)} "
+                    + "reason=no_stronger_spareable_commander_in_an_own_garrison");
+                return;
+            }
+            AttackObjective objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
+                ?? new AttackObjective { Target = a.Target };
+            AppendPreparationStep(snap, objective, host.ArmyId, best.garrison.Hex,
+                AttackPreparationStep.FetchCommander, ArmyActions.CreateArmyApCost, null, hexBonus,
+                proposals,
+                $"[AI][V2][Attack][Mobilization] {intent.IntentKey} commander={best.hero.Name}"
+                + $"(command {best.hero.CommandRating}) from garrison #{best.garrison.Id} roster "
+                + $"{F(currentPower)}->{F(best.power)} required>{F(required)}",
+                intent, commanderDonorId: best.garrison.Id, commanderUnitId: best.hero.RuntimeId);
         }
 
         // ATK-F05 — a live preparation buys supports another operation holds only through the

@@ -195,6 +195,21 @@ namespace Game.Ai.V2
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;
 
+        // 2026-10-01 — a held card with the equipment already attached to it (EffectiveLine): a
+        // Plasma Cannon on an RC Vehicle in hand makes it the strongest body, and the peak, the
+        // strike roster and the additive force must see that (Ysolde T17-T23).
+        public static PowerUnit ToPowerUnit(CardData card)
+        {
+            CardDefinition d = card?.Definition;
+            if (d == null)
+                return new PowerUnit(0f, null, 1, false);
+            if (card.Equipment?.equipment == null)
+                return ToPowerUnit(d);
+            ProjectedStrategicLine line = EffectiveLine(d, card.Equipment.equipment);
+            PowerUnit plain = ToPowerUnit(d);
+            return new PowerUnit(line.BasePower, plain.Tags, line.Range, plain.IsHero, line.CommandRating);
+        }
+
         // A not-yet-played military CardDefinition as the same per-combatant snapshot WorthIt's
         // Monte Carlo consumes — the card-side counterpart of WorthIt.FromLiveUnit, so the
         // CombatOpportunityAnalyzer can fold hand cards into an assemblable roster and run the
@@ -336,18 +351,24 @@ namespace Game.Ai.V2
                     if (unit != null && !unit.IsPrisoner && (!groundOnly || !unit.IsAviation))
                         result.Add(ToPowerUnit(unit));
 
-            List<CardDefinition> handCards = hand?.Select(c => c?.Definition).ToList()
-                ?? new List<CardDefinition>();
+            List<CardData> handCards = hand?.Where(c => c?.Definition != null).ToList()
+                ?? new List<CardData>();
             List<CardDefinition> deckCards = deck?.ToList() ?? new List<CardDefinition>();
+            void AddHand(CardType kind)
+            {
+                foreach (CardData card in handCards)
+                    if (card.Definition.cardType == kind && (!groundOnly || !card.Definition.isAviation))
+                        result.Add(ToPowerUnit(card));
+            }
             void Add(IEnumerable<CardDefinition> cards, CardType kind)
             {
                 foreach (CardDefinition card in cards)
                     if (card != null && card.cardType == kind && (!groundOnly || !card.isAviation))
                         result.Add(ToPowerUnit(card));
             }
-            Add(handCards, CardType.Unit);
+            AddHand(CardType.Unit);
             Add(deckCards, CardType.Unit);
-            Add(handCards, CardType.Hero);
+            AddHand(CardType.Hero);
             Add(deckCards, CardType.Hero);
             return result;
         }

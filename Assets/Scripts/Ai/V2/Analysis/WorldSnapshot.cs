@@ -493,6 +493,10 @@ namespace Game.Ai.V2
         // How many of each card key the whole ground pool (map + hand + deck) holds: a frozen
         // roster position stays obtainable while its key is still counted here.
         public IReadOnlyDictionary<string, int> StrikePoolKeyCounts = new Dictionary<string, int>();
+        // The whole ground pool (map + hand + deck) as identified candidates with their power,
+        // in AiPower.MilitaryPool order: a preparation composes its roster under the host's own
+        // commander from it (StrikeRoster.ComposeUnder).
+        public IReadOnlyList<StrikeRosterCandidate> StrikePool = System.Array.Empty<StrikeRosterCandidate>();
 
         // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
         public float FistPower;

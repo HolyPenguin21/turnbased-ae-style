@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Combat;
@@ -93,6 +94,51 @@ namespace Game.EditorTests
             WorldSnapshot stronger = Snap(new[] { new CardData(Unit(12)) }, null);
             Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(stronger, host, target),
                 Does.StartWith("hand_card:Unit12"), "an equivalent at least as strong fills it");
+        }
+
+        // 2026-10-01 — Phase A is the one truth: a held card it failed to chain into this host
+        // (this turn or the last) is no WAIT witness.
+        [Test]
+        public void HeldCard_PhaseAFailedToChain_IsNoWitness()
+        {
+            CardDefinition unit = Unit(6);
+            ArmyData host = Host(Citadel, Body(4));
+            WorldSnapshot snap = Snap(new[] { new CardData(unit) }, null);
+            try
+            {
+                PreparationDeliveryMemory.MarkNoChain(Us, host.Id, 19, new[] { StrikeRoster.CardKey(unit) });
+                Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, host), Is.Null);
+                PreparationDeliveryMemory.Clear();
+                PreparationDeliveryMemory.MarkNoChain(Us, host.Id, 18, new[] { StrikeRoster.CardKey(unit) });
+                Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(snap, host),
+                    Does.StartWith("hand_card:"), "a verdict two turns old has expired");
+            }
+            finally
+            {
+                PreparationDeliveryMemory.Clear();
+            }
+        }
+
+        // Variant B — the roster is composed under the host's own commander and its Command.
+        [Test]
+        public void ComposeUnder_CapsTheRosterByTheHostCommander()
+        {
+            var pool = new List<StrikeRosterCandidate>();
+            for (int i = 0; i < 6; i++)
+            {
+                CardDefinition d = Unit(4 + i);
+                AiPower.PowerUnit pu = AiPower.ToPowerUnit(d);
+                pool.Add(new StrikeRosterCandidate(
+                    new StrikeRosterSlot(StrikeRoster.CardKey(d), false, pu.BasePower, ForceSource.Deck), pu));
+            }
+            var lead = new StrikeRosterCandidate(new StrikeRosterSlot("lead", true, 0f, ForceSource.Map),
+                new AiPower.PowerUnit(0f, null, 1, true, 4));
+            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(pool, lead, 4, out float power);
+            Assert.That(roster.Count, Is.EqualTo(4));
+            Assert.That(roster[0].Key, Is.EqualTo("lead"));
+            Assert.That(roster.Skip(1).Select(x => x.Key),
+                Is.EquivalentTo(new[] { "Unit9", "Unit8", "Unit7" }), "the three strongest bodies");
+            Assert.That(power, Is.GreaterThan(0f));
         }
 
         [Test]

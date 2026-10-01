@@ -617,6 +617,19 @@ namespace Game.Ai.V2
                         }
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, apBudget, commitments, reserved);
+                        // The preparation host's witness reads this verdict (one truth) — only a
+                        // structural one: no chain shape at all, or shapes that pass the play
+                        // preflight yet cannot deliver into this host. An AP/resource shortfall of
+                        // this pass is timing and marks nothing.
+                        if (d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
+                        {
+                            MaterializationDeliveryAvailability availability =
+                                MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                                    snap, player, root, hand, ctx, d, commitments, result.Reservation);
+                            if (availability.RawCandidates == 0 || availability.ConfirmedBlocked)
+                                PreparationDeliveryMemory.MarkNoChain(player, d.AttackFistArmyId.Value,
+                                    ctx.TurnNumber, hand.Hand.Select(c => StrikeRoster.CardKey(c?.Definition)));
+                        }
                         AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A — {d}: no feasible useful chain "
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(apBudget.Balance())}, "
                             + $"discrete {F(apBudget.DiscreteAdmissionBudget())}, "

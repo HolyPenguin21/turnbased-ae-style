@@ -6,6 +6,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -491,7 +492,7 @@ namespace Game.Ai.V2
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
             float required = 0.80f * snap.Self.TotalMilitaryPotential;
-            RefreshTargetRoster(snap, intent, a);
+            RefreshTargetRoster(snap, intent, a, AiV2Util.ResolveArmy(snap.Observer, hostId));
             string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
                 + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
                 + $"ideal={snap.Self.TotalMilitaryPotential:0.#} required>{required:0.#}";
@@ -521,6 +522,21 @@ namespace Game.Ai.V2
                     + $"[{string.Join(",", dropped)}] lost or no longer raise the host");
             }
 
+            // 2026-10-01 (variant B) — the fetched commander stays the operation's while its
+            // lone-hero container still exists outside any garrison; once its hero leads the host
+            // (the handoff empties the container) or it is lost, the marker clears.
+            if (a.CommanderArmyId.HasValue)
+            {
+                ArmyData commanderArmy = AiV2Util.ResolveArmy(snap.Observer, a.CommanderArmyId.Value);
+                if (commanderArmy == null || commanderArmy.IsGarrison
+                    || !commanderArmy.Members.Any(u => u != null && u.IsHero))
+                {
+                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} commander container "
+                        + $"#{a.CommanderArmyId.Value} gone or without its hero — released");
+                    a.CommanderArmyId = null;
+                }
+            }
+
             bool locationOnly = AttackObjectiveEvaluator.IsLocationOnly(snap, a.Target);
             if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
                 && AttackPrimaryClearsTarget(snap, a))
@@ -533,10 +549,15 @@ namespace Game.Ai.V2
                     + $"{(locationOnly ? "unknown: target not yet observed" : a.CoversAllDefenders ? "ok" : "missing")}); "
                     + $"Gather -> Assault, released supports [{string.Join(",", a.GatherSupportArmyIds)}]");
                 a.GatherSupportArmyIds.Clear();
+                a.CommanderArmyId = null;
                 a.Preparation = false;
                 a.Phase = AttackMissionPhase.Assault;
                 return true;
             }
+            // A walking commander is progress (protected from the stall clock); the rest of the
+            // preparation goes on meanwhile.
+            if (a.CommanderArmyId.HasValue)
+                intent.LastProtectedTurn = snap.TurnNumber;
             if (a.GatherSupportArmyIds.Count > 0)
             {
                 intent.LastProtectedTurn = snap.TurnNumber;
@@ -605,17 +626,23 @@ namespace Game.Ai.V2
         }
 
         // 2026-10-01 (user decision) — the preparation gathers toward a frozen target roster
-        // (StrikeRoster). Frozen at the first pass; re-frozen only when the peak grew by more than
-        // attackTargetRosterRefreezeGrowth or a frozen position left the whole pool (a unit died,
-        // a card was spent elsewhere) — a small reshuffle of the greedy pick never churns it.
-        // Housekeeping may take armies apart meanwhile: the roster is by card key, not by army,
-        // so whatever host the preparation has re-gathers the same positions.
-        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a)
+        // (StrikeRoster), composed under the commander its host actually has (variant B): the
+        // bodies come from the whole pool, capped by that commander's CommandRating. Frozen at
+        // the first pass; re-frozen only when the host's commander changed (a fetched commander
+        // took over), the peak grew by more than attackTargetRosterRefreezeGrowth, or a frozen
+        // position left the whole pool (a unit died, a card was spent elsewhere) — a small
+        // reshuffle of the greedy pick never churns it. Housekeeping may take armies apart
+        // meanwhile: the roster is by card key, not by army, so the host re-gathers it.
+        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
+            ArmyData liveHost)
         {
-            IReadOnlyList<StrikeRosterSlot> current = snap.Self.StrikeRoster;
+            UnitData commander = liveHost?.Commander;
+            string commanderKey = commander == null ? null : StrikeRoster.UnitKey(commander);
             string why = null;
             if (a.TargetRoster == null || a.TargetRoster.Count == 0)
                 why = "frozen";
+            else if (commanderKey != a.TargetRosterCommanderKey)
+                why = $"commander {a.TargetRosterCommanderKey ?? "none"}->{commanderKey ?? "none"}";
             else if (snap.Self.TotalMilitaryPotential > a.TargetRosterPeak
                      * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
                 why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.TotalMilitaryPotential:0.#}";
@@ -629,13 +656,20 @@ namespace Game.Ai.V2
                     pool[slot.Key] = n - 1;
                 }
             }
-            if (why == null || current == null || current.Count == 0)
+            if (why == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return;
-            a.TargetRoster = current.ToList();
+            int capacity = liveHost != null ? liveHost.Capacity
+                : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false);
+            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(snap.Self.StrikePool,
+                commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
+                capacity, out float power);
+            a.TargetRoster = roster;
             a.TargetRosterPeak = snap.Self.TotalMilitaryPotential;
+            a.TargetRosterCommanderKey = commanderKey;
+            a.TargetRosterPower = power;
             AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
                 + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "
-                + $"peak={a.TargetRosterPeak:0.#}");
+                + $"power={power:0.#} capacity={capacity} peak={a.TargetRosterPeak:0.#}");
         }
 
         private static string MissingLabel(IReadOnlyList<StrikeRosterSlot> target, ArmyData host) =>

@@ -1724,6 +1724,23 @@ namespace Game.Ai.V2
                         && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
                         && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
                         ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    // 2026-10-01 (variant B) — the fetched commander: its container is recorded
+                    // once created; an attempted handoff ends its leg (a body exchanged into the
+                    // container walks home like any gather donor; an emptied shell just stays).
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.FetchCommander
+                        && o.MoverArmyId.HasValue && o.MoverArmyId.Value >= 0)
+                    {
+                        ai.CommanderArmyId = o.MoverArmyId.Value;
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
+                    if (o.AttackTarget.CommanderLeg && o.ReinforcementHandoffAttempted
+                        && o.MoverArmyId.HasValue && ai.CommanderArmyId == o.MoverArmyId.Value)
+                    {
+                        ai.CommanderArmyId = null;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    }
                     // ATK-F05 — the one claim transition of a priced donor purchase: the frozen
                     // supports enter the operation; the lenders retire on the next pass
                     // ("given to an Attack gather"), their reservations with them.

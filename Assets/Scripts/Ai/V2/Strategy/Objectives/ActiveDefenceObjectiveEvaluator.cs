@@ -274,6 +274,15 @@ namespace Game.Ai.V2
                 return response;
             }
 
+            // 2026-10-01 — a regroup / withdrawal is for an imminent threat only (Halden/Cassia
+            // T14-T18: 16 activations walking armies home for 15-power contacts several turns out).
+            if (objective.Target.EstimatedEta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+            {
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = $"threat_not_imminent eta={objective.Target.EstimatedEta}";
+                return response;
+            }
+
             var powerExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             if (withdrawing != null) powerExcluded.ExceptWith(withdrawing);
             List<ArmySnapshot> usable = GroundCombatActorEligibility.EligibleArmies(snap,

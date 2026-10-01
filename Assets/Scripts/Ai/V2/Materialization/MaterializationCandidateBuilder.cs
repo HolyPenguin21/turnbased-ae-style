@@ -93,9 +93,17 @@ namespace Game.Ai.V2
                         && !a.IsAirfield && !a.IsAirArmy
                         && !AbilityParams.ArmyHasAnyRecce(a)
                         && a.Members.All(u => AiArmyRoles.IsGroundBattleBody(u));
+                    // 2026-10-01 — a hero-led ground formation that already fights with a Recce
+                    // body (a peak scout, a preparation host's scout) is still a combat army; only
+                    // a lone scout stays Recon's.
+                    bool heroLedWithRecceBody = isUnit && !a.IsAirfield && !a.IsAirArmy
+                        && a.Members.Count(m => m.IsHero) == 1
+                        && a.Members.Any(m => !m.IsHero && AiArmyRoles.IsGroundBattleBody(m))
+                        && !AiArmyRoles.IsSoloRecce(a);
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
                         || heroCanLeadFullFormation
-                        || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a));
+                        || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a))
+                        || heroLedWithRecceBody;
                     if (ok)
                         opts.Add(new PlacementOption(hex, DeploymentKind.ExistingArmy, a));
                 }

@@ -96,6 +96,45 @@ namespace Game.Ai.V2
             GroundCombatAssemblyPlan assembly = pm.AttackPreparationAssembly;
             string corr = $"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack preparation";
 
+            // 2026-10-01 (variant B) — the fetched commander leaves its garrison as a lone-hero
+            // container (one canonical CreateArmyWithMember); Continuity records it and its Gather
+            // leg walks it to the host.
+            if (target.PreparationStep == AttackPreparationStep.FetchCommander)
+            {
+                ArmyData garrison = target.CommanderDonorArmyId.HasValue
+                    ? AiV2Util.ResolveArmy(player, target.CommanderDonorArmyId.Value) : null;
+                UnitData hero = garrison?.Members.FirstOrDefault(u => u != null
+                    && u.RuntimeId == target.CommanderUnitId);
+                string fetchWhy = null;
+                ArmyData container = garrison != null && hero != null
+                    && AiArmyRoles.CanSpareGarrisonMember(player, garrison, hero)
+                    ? ArmyActions.CreateArmyWithMember(player, garrison.Hex,
+                        ctx?.StartingDeckCatalog?.GetCatalog(player.Faction), garrison, hero,
+                        ctx?.HexSelection, out fetchWhy)
+                    : null;
+                if (container == null)
+                {
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    AiDebugLog.Write($"{corr} REJECTED FetchCommander #{target.CommanderUnitId} from "
+                        + $"#{target.CommanderDonorArmyId}: {fetchWhy ?? "hero or garrison no longer available"}; "
+                        + "world unchanged");
+                    return true;
+                }
+                pm.MoverArmyId = container.Id;
+                result.ActualActorArmyId = container.Id;
+                result.ActorMaterialized = true;
+                result.OperationStarted = true;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                result.StartHex = container.Hex;
+                result.FinalHex = container.Hex;
+                AiDebugLog.Write($"{corr} OK commander_fetched {hero.Name} (command {hero.CommandRating}) "
+                    + $"-> container #{container.Id} at ({container.Hex.Q},{container.Hex.R}) for host "
+                    + $"#{target.PrimaryArmyId}");
+                MarkChanged(player, ctx, container.Id);
+                return true;
+            }
+
             ArmyData host = target.PrimaryArmyId.HasValue
                 ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
             if (target.PrimaryArmyId.HasValue && (host == null || host.Owner != player
@@ -489,7 +528,7 @@ namespace Game.Ai.V2
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
-                allowCompleteTransfer: true);
+                allowCompleteTransfer: true, capacityIsProgress: target.CommanderLeg);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "

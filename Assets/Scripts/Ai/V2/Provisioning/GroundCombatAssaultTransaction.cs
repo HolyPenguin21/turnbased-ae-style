@@ -150,7 +150,8 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            string lane, out bool atRendezvous, bool allowCommandHandover = false)
+            string lane, out bool atRendezvous, bool allowCommandHandover = false,
+            bool capacityIsProgress = false)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -175,7 +176,7 @@ namespace Game.Ai.V2
             string improveWhy;
             bool improves = lane == "attack"
                 ? GroundCombatReinforcement.ImprovesAttackForce(primary, support, opposition,
-                    defenderHexDefenseBonus, out improveWhy)
+                    defenderHexDefenseBonus, out improveWhy, capacityIsProgress: capacityIsProgress)
                 : GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
                     defenderHexDefenseBonus, out improveWhy, allowCommandHandover,
                     allowCompleteTransfer: allowCommandHandover);
@@ -209,7 +210,7 @@ namespace Game.Ai.V2
                 string planWhy;
                 HandoffPlan plan = lane == "attack"
                     ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition,
-                        defenderHexDefenseBonus, requireChargeNow: true, out planWhy)
+                        defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress)
                     : GroundCombatReinforcement.PlanHandoff(primary, support,
                         allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy,
                         allowCompleteTransfer: allowCommandHandover);
@@ -310,8 +311,9 @@ namespace Game.Ai.V2
         // elsewhere on the map or a Monte-Carlo win change that can be zero at saturation.
         internal static bool ImprovesAttackForce(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string why,
-            bool requireChargeNow = false) =>
-            PlanAttackHandoff(primary, support, opposition, hexBonus, requireChargeNow, out why) != null;
+            bool requireChargeNow = false, bool capacityIsProgress = false) =>
+            PlanAttackHandoff(primary, support, opposition, hexBonus, requireChargeNow, out why,
+                capacityIsProgress) != null;
 
         // ATK-F04 — THE Attack handoff, one read-only plan for the gather projection
         // (SupportImprovesPrimary), Continuity's support drop, Provisioning's leg check and the
@@ -322,9 +324,13 @@ namespace Game.Ai.V2
         // handoff that happens on the support's arrival (container/capacity legality only; its
         // activation charge is priced by ProjectedHandoffApCost, not paid from today's AP). Null
         // with the exact `why` (both alternatives, with power before/after) when neither helps.
+        // `capacityIsProgress` — 2026-10-01 (variant B): the preparation's fetched commander. Its
+        // lone hero takes command (joining, or exchanged for the weakest body of a full host) and
+        // its larger Command is the progress, as for the same-hex capacity hero of a preparation;
+        // the lone-hero container may be emptied by it.
         internal static HandoffPlan PlanAttackHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, bool requireChargeNow,
-            out string why)
+            out string why, bool capacityIsProgress = false)
         {
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             why = "";
@@ -340,6 +346,13 @@ namespace Game.Ai.V2
                 var roster = primary.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
                 float after = AiPower.EffectiveArmyPower(roster);
                 improves = after > before;
+                if (!improves && capacityIsProgress && plan.Promote != null)
+                {
+                    var led = new List<UnitData> { plan.Promote };
+                    led.AddRange(roster.Where(u => u != plan.Promote));
+                    improves = ArmyData.ComputeCapacity(led, false)
+                        > ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
+                }
                 if (!improves)
                 {
                     // A zero-power exchange may still add the only weapon capable of hurting a
@@ -355,7 +368,8 @@ namespace Game.Ai.V2
             }
 
             HandoffPlan first = PlanHandoff(primary, support, opposition, hexBonus,
-                out string firstWhy, allowCompleteTransfer: true, requireChargeNow: requireChargeNow);
+                out string firstWhy, allowCompleteTransfer: true, requireChargeNow: requireChargeNow,
+                allowEmptySupport: capacityIsProgress);
             string commandJudged = null;
             if (first != null)
             {
@@ -398,7 +412,7 @@ namespace Game.Ai.V2
         // the handoff — one answer for all four.
         internal static CommandHandoverPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool allowEmptySupport = false)
         {
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
@@ -469,7 +483,9 @@ namespace Game.Ai.V2
                 }
                 // Without its hero the support must still hold what it keeps and receives; a
                 // support that cannot does not give this hero away.
-                if (!SupportStaysLegal(support, incoming, displaced))
+                if (!SupportStaysLegal(support, incoming, displaced)
+                    && !(allowEmptySupport && support.Members.All(u => incoming.Contains(u))
+                        && displaced.Count == 0))
                     continue;
                 return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
             }
@@ -483,7 +499,8 @@ namespace Game.Ai.V2
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
-            out string why, bool allowCompleteTransfer = false, bool requireChargeNow = true)
+            out string why, bool allowCompleteTransfer = false, bool requireChargeNow = true,
+            bool allowEmptySupport = false)
         {
             why = "";
             if (primary == null || support == null)
@@ -494,7 +511,7 @@ namespace Game.Ai.V2
             if (commandOpposition != null)
             {
                 CommandHandoverPlan c = CommandHandover(primary, support, commandOpposition,
-                    commandHexBonus, null);
+                    commandHexBonus, null, allowEmptySupport);
                 if (c != null)
                 {
                     if (ArmyActions.CanExchangeMembers(c.Incoming, support, primary, c.Hero,

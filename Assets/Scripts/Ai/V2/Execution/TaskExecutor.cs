@@ -1070,7 +1070,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm, ArmyData support, ArmyData primary,
             out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition = null, float commandHexBonus = 0f,
-            bool allowCompleteTransfer = false)
+            bool allowCompleteTransfer = false, bool capacityIsProgress = false)
         {
             transferred = 0;
             wasSwap = false;
@@ -1081,7 +1081,7 @@ namespace Game.Ai.V2
             string why;
             HandoffPlan plan = commandOpposition != null
                 ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, commandOpposition,
-                    commandHexBonus, requireChargeNow: true, out why)
+                    commandHexBonus, requireChargeNow: true, out why, capacityIsProgress)
                 : GroundCombatReinforcement.PlanHandoff(primary, support,
                     null, commandHexBonus, out why, allowCompleteTransfer);
             if (plan == null)
