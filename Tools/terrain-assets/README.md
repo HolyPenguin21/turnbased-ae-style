@@ -41,3 +41,50 @@ python3 Tools/terrain-assets/validate.py
 ```
 
 Validation additionally needs PyYAML. Offline mud GIFs show all seven phases, not Unity capture.
+
+## Palette normalization
+
+Generated complex textures must be normalized after extraction so each biome keeps its own visual
+range. The normalizer reads every ordinary terrain texture configured for that biome (including
+alternative textures), builds an independent AridSteppe/Desert reference envelope, and fits one
+shared OKLab transform per complex family. Desert, Sand dunes and Rock desert receive extra target
+weight because complexes can actually border those terrains. Distinctive acid/mud/canyon/wreck pixels receive no forced feature correction; terrain-like
+ground receives the main correction. Animated-family edge refinement compresses broad soil
+shading, with additional crack-detail attenuation for BoilingMud.
+
+Animation frames are deliberately never corrected independently: AcidLake and BoilingMud use one
+transform for the whole 14-file set in a biome, preventing brightness or hue flicker between phases.
+The script preserves image dimensions and alpha.
+
+```sh
+python3 Tools/terrain-assets/normalize_clusters.py --write --report
+python3 Tools/terrain-assets/validate.py
+```
+
+The report and before/after contact sheets are written to `Docs/terrain-complexes/`. After replacing
+or regenerating cluster art, run normalization before accepting the assets.
+
+## Final offline acceptance
+
+The reviewed asset baseline is `3774b1c`; the coverage/integrity update is `2014d7a`.
+See `Docs/terrain-complexes/final-visual-review.md` for the final review and its scope.
+
+The complete audit includes all 68 runtime PNGs, 24 configured ordinary references per biome,
+all seven frames of each animated family, and the last-to-first loop transition.
+`runtime-pixel-audit.csv` retains all per-file full-image and edge metrics.
+Preview produces lake and mud GIFs and seven-frame contact sheets for both biomes.
+
+The edge score is a colour-distance heuristic, not an acceptance threshold: the closest 30%
+of pixels can still contain shoreline, cracks, canyon walls or wreckage. Inspect the exposed
+soil and assembled complexes before adjusting a feature merely to reduce this number.
+
+For an integrity check against authored source PNGs (the base commit must be locally available):
+
+```sh
+python Tools/terrain-assets/audit_clusters.py
+python Tools/terrain-assets/validate.py --normalization-base c3d52f46ad99cc06f4772b702e4e9b38efbc96c4
+```
+
+This verifies unchanged dimensions, image modes and alpha for 68 PNGs, and rejects other
+asset/config/GUID changes. Normalization workflows restore source PNGs from this base before
+processing, avoiding cumulative correction. Offline acceptance is separate from Unity rendering.

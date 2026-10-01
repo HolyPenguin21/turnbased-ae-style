@@ -1,0 +1,80 @@
+name: Terrain complex palette normalization
+
+on:
+  push:
+    branches:
+      - asset/terrain-complex-palette-normalization
+    paths:
+      - Tools/terrain-assets/normalize_clusters.py
+      - Tools/terrain-assets/audit_clusters.py
+      - .github/workflows/terrain-complex-palette-normalization.yml
+      - .github/workflows/terrain-complex-visual-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: terrain-complex-palette-normalization-v2
+  cancel-in-progress: true
+
+jobs:
+  normalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: asset/terrain-complex-palette-normalization
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install image tooling
+        run: python -m pip install --disable-pip-version-check pillow numpy pyyaml
+
+      - name: Restore authored source PNGs from verified branch base
+        shell: bash
+        run: |
+          BASE_SHA="c3d52f46ad99cc06f4772b702e4e9b38efbc96c4"
+          echo "Using verified authored source base: $BASE_SHA"
+          git fetch --depth=1 origin "$BASE_SHA"
+          git checkout "$BASE_SHA" -- \
+            Assets/Textures/Terrain/AridSteppe/Complexes \
+            Assets/Textures/Terrain/Desert/Complexes
+
+      - name: Normalize both biome asset sets
+        run: python Tools/terrain-assets/normalize_clusters.py --write --report
+
+      - name: Run independent visual/pixel audit
+        run: python Tools/terrain-assets/audit_clusters.py
+
+      - name: Validate terrain config and assets
+        run: python Tools/terrain-assets/validate.py --normalization-base c3d52f46ad99cc06f4772b702e4e9b38efbc96c4
+
+      - name: Refresh offline diagnostics
+        run: |
+          python Tools/terrain-assets/preview.py --biome AridSteppe
+          python Tools/terrain-assets/preview.py --biome Desert
+
+      - name: Check patch
+        run: git diff --check
+
+      - name: Commit normalized runtime assets and QA diagnostics
+        shell: bash
+        run: |
+          git config user.name "terrain-palette-bot"
+          git config user.email "terrain-palette-bot@users.noreply.github.com"
+          git add Assets/Textures/Terrain/AridSteppe/Complexes
+          git add Assets/Textures/Terrain/Desert/Complexes
+          git add Docs/terrain-complexes
+          if git diff --cached --quiet; then
+            echo "No palette or audit changes were produced."
+            exit 0
+          fi
+          git commit -m "Refine terrain complex biome matching"
+          git push origin HEAD:asset/terrain-complex-palette-normalization
+

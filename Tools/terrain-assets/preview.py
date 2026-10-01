@@ -5,7 +5,7 @@ from pathlib import Path
 import math
 import argparse
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser()
 parser.add_argument('--biome',choices=['Desert','AridSteppe'],default='Desert')
@@ -40,8 +40,16 @@ def render(parts,name):
 render({(0,0):('Complexes/AcidLake_Part1_00.png',0),(1,0):('Complexes/AcidLake_Part2_00.png',0)},'lake-offline-diagnostic.png')
 render({(0,-1):('Complexes/Canyon_Part1.png',0),(1,-1):('Complexes/Canyon_Part2.png',0),(1,0):('Complexes/Canyon_Part3.png',0)},'canyon-offline-diagnostic.png')
 
-mud=[]
-for frame in range(7):
-    mud.append(render({(0,0):(f'Complexes/BoilingMud_Part1_{frame:02}.png',0),(1,0):(f'Complexes/BoilingMud_Part2_{frame:02}.png',0)},'mud-frame-00-offline.png' if frame == 0 else None))
-mud[0].save(OUT/(args.biome.lower()+'-mud-offline-animation.gif'),save_all=True,append_images=mud[1:],duration=333,loop=0)
+for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
+    frames=[]
+    sheet=Image.new('RGB', (1320, 708), (30,30,30))
+    draw=ImageDraw.Draw(sheet)
+    for frame in range(7):
+        image=render({(0,0):(f'Complexes/{family}_Part1_{frame:02}.png',0),(1,0):(f'Complexes/{family}_Part2_{frame:02}.png',0)},f'{label}-frame-00-offline.png' if frame == 0 else None)
+        frames.append(image)
+        x=(frame%4)*330; y=(frame//4)*354
+        sheet.paste(image.resize((330,330),Image.Resampling.LANCZOS),(x,y))
+        draw.text((x+8,y+334),f'{args.biome} {family} frame {frame:02} (offline)',fill=(240,240,240))
+    frames[0].save(OUT/(args.biome.lower()+f'-{label}-offline-animation.gif'),save_all=True,append_images=frames[1:],duration=333,loop=0)
+    sheet.save(OUT/(args.biome.lower()+f'-{label}-all-frames-offline.png'),optimize=True)
 render({(-1,0):('Complexes/GiantMachineWreck_Part1.png',0),(0,0):('Complexes/GiantMachineWreck_Part2.png',0),(1,0):('Complexes/GiantMachineWreck_Part3.png',0)},'wreck-offline-diagnostic.png')
