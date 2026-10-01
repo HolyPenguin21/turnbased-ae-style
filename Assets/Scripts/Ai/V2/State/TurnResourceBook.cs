@@ -51,7 +51,8 @@ namespace Game.Ai.V2
 
     internal static class TurnResourceBook
     {
-        // Owner key of the derived claim. It never matches a ledger owner or a SpendAuthority.
+        // Owner key of the derived claim. It never matches a ledger owner; the one SpendAuthority
+        // carrying it is an Attack strike-force demand (InfrastructureFulfillment.SpendAuthorityFor).
         internal const string OperationContinuationOwner = "derived:operation-continuation";
 
         internal static ResourceClaimKind KindOf(StrategicReservationReason reason) => reason switch

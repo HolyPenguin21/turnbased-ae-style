@@ -127,6 +127,12 @@ namespace Game.Ai.V2
             AiFrameLog.GameState(snapshot, hand);
             AiFrameLog.WorldAnalysis(snapshot);
             ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, snapshot);
+            // The first Attack preparation step's AP hold reads this turn's mobilization gate.
+            bool mobilizationOpen = AttackObjectiveEvaluator.MobilizationOpen(snapshot.Self);
+            OperationContinuationWindow.SetMobilizationOpen(player, ctx.TurnNumber, mobilizationOpen);
+            if (mobilizationOpen)
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {player.Nickname}: gate open, Phase A plays around "
+                    + "the AP of the next preparation step (strike-force cards excepted)");
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
@@ -1393,6 +1399,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null)
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
+            AttackPreparationPriority.Apply(missions);
             AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);

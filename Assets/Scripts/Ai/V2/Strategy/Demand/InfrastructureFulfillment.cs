@@ -257,8 +257,13 @@ namespace Game.Ai.V2
                     || demand.Capability == CapabilityKind.GlobalResourceCarrier))
                 return new SpendAuthority(null, economyCompletesNow: true);
             string heroBuildOwner = EconomyHeroPrerequisiteOwner(demand);
-            return heroBuildOwner != null
-                ? new SpendAuthority(heroBuildOwner, economyCompletesNow: false)
+            if (heroBuildOwner != null)
+                return new SpendAuthority(heroBuildOwner, economyCompletesNow: false);
+            // 2026-10-01 (user decision): a card that builds the Attack's own strike force may use
+            // the AP held for the Attack's next step (the derived operation-continuation claim);
+            // every other card plays around it.
+            return demand != null && demand.ConsumerMissionKind == MissionKind.Attack
+                ? new SpendAuthority(TurnResourceBook.OperationContinuationOwner, economyCompletesNow: false)
                 : default;
         }
 

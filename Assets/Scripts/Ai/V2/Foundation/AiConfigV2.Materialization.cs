@@ -287,7 +287,10 @@
         // LifecycleReturnPolicy: Citadel/Base threat severity (ThreatModel, [0..1]) from which a
         // return leg no longer waits for the tempo pass. Below it the far, weak contacts that
         // keep a small standing severity (~0.1) do not count as a threat to home.
-        public const float lifecycleReturnHomeThreatSeverity = 0.25f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
+        public const float lifecycleReturnHomeThreatSeverity = 0.25f;
+        // AP held from card play for the first Attack preparation step while mobilization is open
+        // and no Attack operation exists yet (StrategicSpendability; MoveHost/CreateHost cost 2-3).
+        public const float attackPreparationFirstStepApHold = 3f;   // marginalApUtility = Lerp(floor, 1, ramp) — a tiny residual value always survives
         public const float apDevActionApProxy   = 1f;      // AP the AI could still usefully spend on a Development action this turn
         public const float apAirSortieApProxy   = 1f;      // AP per available recon-air sortie folded into useful AP demand
         // Structural-fallback path only (a call with no owner-witnessed workload — sims, bare tests,

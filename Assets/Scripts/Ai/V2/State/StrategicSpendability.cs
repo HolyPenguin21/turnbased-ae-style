@@ -26,8 +26,28 @@ namespace Game.Ai.V2
         internal static bool IsSettled(PlayerSetupData player, int turn) =>
             player != null && SettledTurn.TryGetValue(player, out int t) && t == turn;
 
+        // Attack mobilization gate of this turn (AttackObjectiveEvaluator.MobilizationOpen on the
+        // turn's scan), stamped by the pipeline: the first preparation step's AP hold reads it.
+        private static readonly Dictionary<PlayerSetupData, int> MobilizationOpenTurn =
+            new Dictionary<PlayerSetupData, int>();
+
+        internal static void SetMobilizationOpen(PlayerSetupData player, int turn, bool open)
+        {
+            if (player == null)
+                return;
+            if (open) MobilizationOpenTurn[player] = turn;
+            else MobilizationOpenTurn.Remove(player);
+        }
+
+        internal static bool IsMobilizationOpen(PlayerSetupData player, int turn) =>
+            player != null && MobilizationOpenTurn.TryGetValue(player, out int t) && t == turn;
+
         // Match-start reset (CitadelSetupController), alongside the other V2 registries.
-        internal static void ClearAll() => SettledTurn.Clear();
+        internal static void ClearAll()
+        {
+            SettledTurn.Clear();
+            MobilizationOpenTurn.Clear();
+        }
     }
 
     // Which strategic reservations ONE action may draw on. Every stage that admits, prices,
@@ -90,15 +110,23 @@ namespace Game.Ai.V2
                 || OperationContinuationWindow.IsSettled(player, ctx.TurnNumber))
                 return 0f;
             var movers = new SortedSet<int>();
-            foreach (MissionIntent intent in MissionIntentRegistry.GetOrCreate(player).All)
+            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+            foreach (MissionIntent intent in intents)
             {
                 if (intent == null || intent.Status != IntentStatus.Active
                     || intent.Funding != CommitmentTier.Hard || intent.IsLifecycleLeg)
                     continue;
-                foreach (int id in OperationLegMovers(intent))
+                foreach (int id in OperationLegMovers(intent, player))
                     movers.Add(id);
             }
-            if (movers.Count == 0)
+            // 2026-10-01 (user decision, playtest #6): with mobilization open and no Attack
+            // operation yet, the FIRST preparation step (MoveHost / CreateHost) has no intent to
+            // protect it, so Phase A card play spent its AP six turns running. Hold its typical
+            // price until the mission loop settles; cards that build the strike force may use it
+            // (InfrastructureFulfillment.SpendAuthorityFor), the allocator always may.
+            bool firstPreparationStep = OperationContinuationWindow.IsMobilizationOpen(player, ctx.TurnNumber)
+                && AggressionMissionLayer.LiveAttackOperation(intents) == null;
+            if (movers.Count == 0 && !firstPreparationStep)
                 return 0f;
             float available = Mathf.Max(0f, root.ActionPoints);
             float protectedAp = 0f;
@@ -116,10 +144,13 @@ namespace Game.Ai.V2
                     break;
                 protectedAp += activation;
             }
+            if (firstPreparationStep)
+                protectedAp += Mathf.Min(AiConfigV2.attackPreparationFirstStepApHold,
+                    Mathf.Max(0f, available - protectedAp));
             return protectedAp;
         }
 
-        private static IEnumerable<int> OperationLegMovers(MissionIntent intent)
+        private static IEnumerable<int> OperationLegMovers(MissionIntent intent, PlayerSetupData player)
         {
             if (intent.Raid != null)
             {
@@ -142,6 +173,11 @@ namespace Game.Ai.V2
                     // leg of the same operation: its next activation is held from card play too.
                     if (a.CommanderArmyId.HasValue)
                         yield return a.CommanderArmyId.Value;
+                    // 2026-10-01: a preparation host still walking to its staging Base (not on an
+                    // own Base/Citadel yet) is the preparation's own leg too.
+                    if (a.Preparation && a.PrimaryArmyId.HasValue
+                        && !OnOwnBase(player, a.PrimaryArmyId.Value))
+                        yield return a.PrimaryArmyId.Value;
                 }
                 else if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
                     yield return a.SupportArmyId.Value;
@@ -152,6 +188,13 @@ namespace Game.Ai.V2
                 if (d.Phase == ActiveDefencePhase.Intercept && d.PrimaryArmyId.HasValue)
                     yield return d.PrimaryArmyId.Value;
             }
+        }
+
+        private static bool OnOwnBase(PlayerSetupData player, int armyId)
+        {
+            ArmyData army = ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x != null && x.Id == armyId);
+            BuildingData building = army != null ? BuildingRegistry.FindAt(army.Hex) : null;
+            return building != null && building.Owner == player;
         }
 
         // The derived (non-ledger) hold: the next step of continuing Hard operations (AP).
