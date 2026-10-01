@@ -391,9 +391,9 @@ def main():
 
         lines += [""]
 
-    (DOCS / "independent-visual-audit.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (DOCS / "independent-visual-audit.md").write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     with (DOCS / "runtime-pixel-audit.csv").open("w", newline="", encoding="utf-8") as stream:
-        writer = csv.DictWriter(stream, fieldnames=list(csv_rows[0]))
+        writer = csv.DictWriter(stream, fieldnames=list(csv_rows[0]), lineterminator="\n")
         writer.writeheader()
         writer.writerows(csv_rows)
     print("\n".join(lines))
