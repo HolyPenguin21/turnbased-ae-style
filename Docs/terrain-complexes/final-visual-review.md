@@ -1,4 +1,4 @@
-# Final terrain complex visual review
+# Previous terrain complex visual review — superseded
 
 Date: 2026-10-01
 Repository: HolyPenguin21/turnbased-ae-style
@@ -6,7 +6,13 @@ Branch: asset/terrain-complex-palette-normalization
 Authored source / unchanged master: c3d52f46ad99cc06f4772b702e4e9b38efbc96c4
 Reviewed runtime asset baseline: 3774b1c6106c07063fd556204b6cb59582502fce
 
-## Outcome
+## Review rejected by in-game evidence
+
+The user's 2026-10-01 Unity screenshot showed missing exterior shores and biome soil mismatch.
+The offline acceptance below was insufficient and must not be treated as current approval.
+See lake-enclosed-shores-review.md for the correction and its pending engine acceptance.
+
+## Previous outcome
 
 Offline visual acceptance is complete for the normalized asset set. No further RGB correction
 was warranted after inspecting the latest comparative sheets and assembled complexes.

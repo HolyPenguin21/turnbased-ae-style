@@ -1,0 +1,59 @@
+name: Enclosed acid lake shores
+on:
+  push:
+    branches: [asset/lake-enclosed-shores]
+    paths:
+      - Tools/terrain-assets/Sources/**/AcidLake_7PhaseSource.png
+      - Tools/terrain-assets/Sources/AcidLake_7PhaseSource.png
+      - Tools/terrain-assets/extract.py
+      - Tools/terrain-assets/normalize_clusters.py
+      - Tools/terrain-assets/validate_lake_shores.py
+      - .github/workflows/lake-enclosed-shores.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: lake-enclosed-shores
+  cancel-in-progress: true
+jobs:
+  lakes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: asset/lake-enclosed-shores
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pillow numpy pyyaml
+      - name: Fetch verified asset baseline
+        run: git fetch --depth=1 origin fd3bfff772a9a0734e08475f0ba61b90eca45f3a
+      - name: Extract only the new lake sources
+        run: |
+          python Tools/terrain-assets/extract.py --biome AridSteppe --group AcidLake
+          python Tools/terrain-assets/extract.py --biome Desert --group AcidLake
+      - name: Match exposed banks to each biome
+        run: python Tools/terrain-assets/normalize_clusters.py --group AcidLake --write
+      - name: Verify every outer shore and open shared edge
+        run: python Tools/terrain-assets/validate_lake_shores.py
+      - name: Audit all runtime complexes
+        run: python Tools/terrain-assets/audit_clusters.py
+      - name: Validate assets and alpha integrity
+        run: python Tools/terrain-assets/validate.py --normalization-base fd3bfff772a9a0734e08475f0ba61b90eca45f3a
+      - name: Refresh assembled previews
+        run: |
+          python Tools/terrain-assets/preview.py --biome AridSteppe
+          python Tools/terrain-assets/preview.py --biome Desert
+      - name: Verify and commit generated assets
+        run: |
+          git add Assets/Textures/Terrain/AridSteppe/Complexes/AcidLake_*.png
+          git add Assets/Textures/Terrain/Desert/Complexes/AcidLake_*.png
+          git add Docs/terrain-complexes
+          git diff --cached --check
+          git config user.name terrain-palette-bot
+          git config user.email terrain-palette-bot@users.noreply.github.com
+          if ! git diff --cached --quiet; then
+            git commit -m "Generate enclosed lake shores and refreshed biome diagnostics"
+            git push origin HEAD:asset/lake-enclosed-shores
+          fi

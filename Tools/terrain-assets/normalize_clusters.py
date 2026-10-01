@@ -422,6 +422,8 @@ def build_contact_sheet(biome: str, pairs: list[tuple[str, str, np.ndarray, np.n
     y += 26
     for group in GROUPS:
         items = [item for item in pairs if item[0] == group]
+        if not items:
+            continue
         draw.text((12, y), group, fill=(245, 245, 245), font=font)
         y += 18
         for idx, (_, name, before, after) in enumerate(items):
@@ -436,7 +438,7 @@ def build_contact_sheet(biome: str, pairs: list[tuple[str, str, np.ndarray, np.n
 
 
 def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: bool,
-                    report: bool) -> tuple[list[FileMetric], list[str]]:
+                    report: bool, selected_group: str | None = None) -> tuple[list[FileMetric], list[str]]:
     all_refs, placement_refs = resolve_reference_paths(config, biome, guids)
     all_style = texture_style(all_refs)
     placement_style = texture_style(placement_refs)
@@ -447,6 +449,8 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
     contact_pairs: list[tuple[str, str, np.ndarray, np.ndarray]] = []
 
     for group, (pattern, expected) in GROUPS.items():
+        if selected_group is not None and group != selected_group:
+            continue
         paths = sorted(complex_dir.glob(pattern))
         if len(paths) != expected:
             raise RuntimeError(f"{biome}/{group}: expected {expected} files, found {len(paths)}")
@@ -601,6 +605,7 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--group", choices=list(GROUPS), help="normalize only the selected family")
     parser.add_argument("--write", action="store_true", help="overwrite runtime complex PNGs")
     parser.add_argument("--report", action="store_true", help="write per-file report/contact sheets")
     args = parser.parse_args()
@@ -610,7 +615,7 @@ def main() -> None:
     all_metrics: list[FileMetric] = []
     summaries: list[str] = []
     for biome in ("AridSteppe", "Desert"):
-        metrics, summary = normalize_biome(config, guids, biome, args.write, args.report)
+        metrics, summary = normalize_biome(config, guids, biome, args.write, args.report, args.group)
         all_metrics.extend(metrics)
         summaries.extend(summary)
 
