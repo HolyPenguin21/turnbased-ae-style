@@ -14,10 +14,35 @@ namespace Game.Ai.V2
     //  the planner withholds it (a recorded deferral, so Continuity keeps the commitment), Phase B
     //  spends first, and the next admission pass after the first Phase B round funds the returns
     //  from what is left. An ActiveDefence return is a withdrawal from a threat and never waits.
+    //
+    //  Bounded (playtest 2026-10-01 #6): Phase B usually spends every AP, so a leg that waited
+    //  every turn never walked, counted as a stall and was reaped as idle (a builder's return
+    //  lived turns 4-15). A leg that waited on the previous turn goes at normal priority now, and
+    //  a deliberate wait is marked protected so it never spends the StallTurns budget.
     // ===========================================================================================
     internal static class LifecycleReturnPolicy
     {
         internal const string DeferralReason = "lifecycle_return_waits_for_tempo";
+
+        // Per player: the last turn each return leg waited.
+        private static readonly Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>
+            LastWait = new Dictionary<Game.Players.PlayerSetupData, Dictionary<MissionIntentKey, int>>();
+
+        internal static void ClearAll() => LastWait.Clear();
+
+        // A leg may wait this turn unless it already waited on the previous one.
+        internal static bool MayWait(Game.Players.PlayerSetupData player, MissionIntentKey key, int turn) =>
+            player == null || !LastWait.TryGetValue(player, out Dictionary<MissionIntentKey, int> byKey)
+            || !byKey.TryGetValue(key, out int last) || last != turn - 1;
+
+        internal static void RecordWait(Game.Players.PlayerSetupData player, MissionIntentKey key, int turn)
+        {
+            if (player == null)
+                return;
+            if (!LastWait.TryGetValue(player, out Dictionary<MissionIntentKey, int> byKey))
+                LastWait[player] = byKey = new Dictionary<MissionIntentKey, int>();
+            byKey[key] = turn;
+        }
 
         internal static bool HomeThreatened(WorldSnapshot snap)
         {

@@ -176,6 +176,7 @@ namespace Game.Setup
             Game.Ai.V2.StrategicTempoBudget.ClearAll();
             Game.Ai.V2.ApBudgetTelemetry.ClearAll();
             Game.Ai.V2.ApTurnPressure.ClearAll();
+            Game.Ai.V2.LifecycleReturnPolicy.ClearAll();
             Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
             AssignStartingHexes(GameSession.Players);
 

@@ -49,6 +49,26 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AReturnNeverWaitsTwoTurnsInARow()
+        {
+            var player = new Game.Players.PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            var (_, proposal) = Economy(EconomyTaskKind.ReturnBuilder);
+            MissionIntentKey key = MissionIntentKey.For(proposal);
+            try
+            {
+                Assert.That(LifecycleReturnPolicy.MayWait(player, key, 5), Is.True);
+                LifecycleReturnPolicy.RecordWait(player, key, 5);
+                Assert.That(LifecycleReturnPolicy.MayWait(player, key, 5), Is.True, "later passes of the same turn");
+                Assert.That(LifecycleReturnPolicy.MayWait(player, key, 6), Is.False, "waited last turn: goes now");
+                Assert.That(LifecycleReturnPolicy.MayWait(player, key, 7), Is.True);
+            }
+            finally
+            {
+                LifecycleReturnPolicy.ClearAll();
+            }
+        }
+
+        [Test]
         public void OnlyARealHomeThreatStopsTheWait()
         {
             WorldSnapshot Snap(float citadel, float baseSev, bool siege = false) => new WorldSnapshot

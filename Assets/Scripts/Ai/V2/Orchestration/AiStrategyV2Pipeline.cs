@@ -622,12 +622,20 @@ namespace Game.Ai.V2
                     if (!lifecycleReturnsReleased && !LifecycleReturnPolicy.HomeThreatened(snapshot))
                     {
                         var waiting = missions.Where(m => LifecycleReturnPolicy.IsDeferrableReturn(
-                            m, activeIntents)).ToList();
+                                m, activeIntents)
+                            && LifecycleReturnPolicy.MayWait(player, MissionIntentKey.For(m), ctx.TurnNumber))
+                            .ToList();
                         if (waiting.Count > 0)
                         {
                             lifecycleReturnsDeferred = true;
                             foreach (MissionProposal m in waiting)
-                                missionDeferrals[MissionIntentKey.For(m)] = LifecycleReturnPolicy.DeferralReason;
+                            {
+                                MissionIntentKey waitKey = MissionIntentKey.For(m);
+                                missionDeferrals[waitKey] = LifecycleReturnPolicy.DeferralReason;
+                                LifecycleReturnPolicy.RecordWait(player, waitKey, ctx.TurnNumber);
+                                // A deliberate wait is not a stall (ReconcileAfterTurn).
+                                MissionContinuityLayer.MarkProtectedThisTurn(player, waitKey, ctx.TurnNumber);
+                            }
                             missions = missions.Except(waiting).ToList();
                             AiDebugLog.WriteDeduped($"returns-wait#{player.ColorIndex}#{ctx.TurnNumber}",
                                 $"[AI][V2][Loop] lifecycle returns wait for the tempo pass (no home threat): "
