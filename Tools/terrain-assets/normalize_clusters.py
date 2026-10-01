@@ -25,7 +25,7 @@ from typing import Iterable
 
 import numpy as np
 import yaml
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "Assets/Config/GameConfig.asset"
@@ -77,9 +77,12 @@ EDGE_REFINEMENT_STRENGTH = {
     "AcidLake": 0.96,
     "BoilingMud": 0.94,
 }
-EDGE_CHROMA_SPREAD_MULT = 2.60
-EDGE_LUMA_SPREAD_MULT = 5.00
-EDGE_L_CLIP_SIGMA = 2.80
+EDGE_LOW_FREQUENCY_SCALE = {
+    "AcidLake": 0.14,
+    "BoilingMud": 0.18,
+}
+EDGE_CHROMA_SPREAD_MULT = 2.25
+EDGE_BLUR_RADIUS = 10.0
 
 
 @dataclass
@@ -290,14 +293,15 @@ def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarra
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
 
 
-def refine_edge_background(rgb: np.ndarray, source: StyleStats, target: StyleStats,
-                           strength: float) -> np.ndarray:
-    """Compress exposed terrain-rim contrast while protecting the authored feature.
+def refine_edge_background(rgb: np.ndarray, target: StyleStats,
+                           strength: float, low_frequency_scale: float) -> np.ndarray:
+    """Reduce broad edge-ground tonal mismatch without erasing authored texture.
 
-    Classification is intentionally driven mostly by OKLab a/b proximity to the authored
-    ground style. Luminance is only a weak gate, so dark cracks and bright grains of the same
-    soil are still treated as ground. Spatial weighting rises toward the regular-hex edge;
-    central acid/mud remains effectively untouched.
+    The first normalization pass already aligns the ground colour centre. This pass therefore
+    must *not* apply another centre shift. It separates OKLab L into a blurred low-frequency
+    component plus local detail, compresses only the broad shading around the biome target,
+    and keeps the high-frequency detail term unchanged. A target-chroma gate protects green
+    acid and neutral/brown mud; the spatial weight rises toward the regular-hex boundary.
     """
     shape = rgb.shape
     h, w = shape[:2]
@@ -306,45 +310,37 @@ def refine_edge_background(rgb: np.ndarray, source: StyleStats, target: StyleSta
 
     lab = rgb_to_oklab(rgb.reshape(-1, 3))
     chroma_scale = np.maximum(
-        source.spread[1:] * EDGE_CHROMA_SPREAD_MULT,
+        target.spread[1:] * EDGE_CHROMA_SPREAD_MULT,
         CHANNEL_FLOOR[1:] * 1.35,
     )
-    chroma_delta = (lab[:, 1:] - source.center[1:]) / chroma_scale
+    chroma_delta = (lab[:, 1:] - target.center[1:]) / chroma_scale
     chroma_distance = np.sqrt(np.sum(chroma_delta * chroma_delta, axis=1))
-    chroma_affinity = np.exp(-0.5 * (chroma_distance / 1.30) ** 2)
+    terrain_affinity = np.exp(-0.5 * (chroma_distance / 1.25) ** 2)
+    edge = smoothstep(0.30, 0.90, hex_norm_map(h)).reshape(-1)
 
-    luma_scale = max(
-        float(source.spread[0] * EDGE_LUMA_SPREAD_MULT),
-        float(CHANNEL_FLOOR[0] * 2.5),
-    )
-    luma_distance = np.abs(lab[:, 0] - source.center[0]) / luma_scale
-    luma_affinity = np.exp(-0.5 * (luma_distance / 1.55) ** 2)
-
-    # Keep luminance permissive: high-contrast ground is exactly what this pass must catch.
-    terrain_affinity = chroma_affinity * (0.65 + 0.35 * luma_affinity)
-    edge = smoothstep(0.36, 0.90, hex_norm_map(h)).reshape(-1)
-
-    scale = np.clip(
-        target.spread / np.maximum(source.spread, CHANNEL_FLOOR),
-        np.array([0.20, 0.45, 0.45], dtype=np.float64),
-        np.array([0.95, 1.05, 1.05], dtype=np.float64),
-    )
-    corrected = target.center + (lab - source.center) * scale
-
-    # Clamp only the candidate result, never the original pixel. Feature pixels have near-zero
-    # weight and therefore keep their authored brightness/colour.
-    l_lo = target.center[0] - EDGE_L_CLIP_SIGMA * target.spread[0]
-    l_hi = target.center[0] + EDGE_L_CLIP_SIGMA * target.spread[0]
-    corrected[:, 0] = np.clip(corrected[:, 0], l_lo, l_hi)
+    luma = lab[:, 0].reshape(h, w)
+    luma_u8 = np.rint(np.clip(luma, 0.0, 1.0) * 255.0).astype(np.uint8)
+    low = np.asarray(
+        Image.fromarray(luma_u8, "L").filter(
+            ImageFilter.GaussianBlur(radius=EDGE_BLUR_RADIUS)
+        ),
+        dtype=np.float64,
+    ) / 255.0
+    detail = luma - low
+    corrected_luma = (
+        target.center[0]
+        + (low - target.center[0]) * low_frequency_scale
+        + detail
+    ).reshape(-1)
 
     weight = np.clip(
-        strength * edge * np.power(terrain_affinity, 1.10),
+        strength * edge * np.power(terrain_affinity, 1.12),
         0.0,
         0.985,
     )
-    out_lab = lab + weight[:, None] * (corrected - lab)
+    out_lab = lab.copy()
+    out_lab[:, 0] = lab[:, 0] + weight * (corrected_luma - lab[:, 0])
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
-
 
 def edge_ground_center(rgb: np.ndarray, target: StyleStats) -> np.ndarray:
     h, w = rgb.shape[:2]
@@ -466,7 +462,10 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
             edge_strength = EDGE_REFINEMENT_STRENGTH.get(group)
             if edge_strength is not None:
                 after_rgb = refine_edge_background(
-                    after_rgb, source, target, edge_strength
+                    after_rgb,
+                    target,
+                    edge_strength,
+                    EDGE_LOW_FREQUENCY_SCALE[group],
                 )
             transformed[path] = after_rgb
 
@@ -555,8 +554,8 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "The main correction is fitted from the closest terrain-like pixels in the outer hex band and "
         "shared by the whole complex family. Ground receives a strong correction, especially near the "
         "hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. "
-        "AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses exposed soil "
-        "contrast without recolouring their central feature. "
+        "AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses only "
+        "low-frequency exposed-soil luminance while preserving local texture and the central feature. "
         "Animated families use one background-only residual per Part across all frames, preventing the "
         "normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.",
         "",
