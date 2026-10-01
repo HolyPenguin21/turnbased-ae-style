@@ -6,17 +6,17 @@ The source runtime PNGs are restored from the feature branch merge-base before t
 
 Each biome is evaluated independently against every ordinary configured terrain texture (main + alternatives). The target is weighted toward Desert / Sand dunes / Rock desert because complexes can be placed only on those surfaces.
 
-The main correction is fitted from the closest terrain-like pixels in the outer hex band and shared by the whole complex family. Ground receives a strong correction, especially near the hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. Animated families use one background-only residual per Part across all frames, preventing the normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.
+The main correction is fitted from the closest terrain-like pixels in the outer hex band and shared by the whole complex family. Ground receives a strong correction, especially near the hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses exposed soil contrast without recolouring their central feature. Animated families use one background-only residual per Part across all frames, preventing the normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.
 
 ## Group transforms
 
-- AridSteppe/AcidLake: 14 files, edge terrain distance 2.194 -> 1.576, ground center shift [0.0757, 0.0008, 0.0019], ground spread scale [0.566, 0.938, 0.948], max residual 0.0126
+- AridSteppe/AcidLake: 14 files, edge terrain distance 2.194 -> 1.423, ground center shift [0.0757, 0.0008, 0.0019], ground spread scale [0.566, 0.938, 0.948], max residual 0.0126
 - AridSteppe/Canyon: 3 files, edge terrain distance 0.903 -> 0.561, ground center shift [0.0167, -0.0053, -0.0036], ground spread scale [1.2, 1.0, 1.0], max residual 0.0044
-- AridSteppe/BoilingMud: 14 files, edge terrain distance 1.340 -> 1.252, ground center shift [0.0125, -0.0014, 0.0013], ground spread scale [0.928, 1.0, 0.989], max residual 0.0110
+- AridSteppe/BoilingMud: 14 files, edge terrain distance 1.340 -> 1.195, ground center shift [0.0125, -0.0014, 0.0013], ground spread scale [0.928, 1.0, 0.989], max residual 0.0073
 - AridSteppe/GiantMachineWreck: 3 files, edge terrain distance 0.926 -> 0.667, ground center shift [0.0079, -0.0039, -0.0046], ground spread scale [1.2, 1.0, 1.0], max residual 0.0112
-- Desert/AcidLake: 14 files, edge terrain distance 3.205 -> 1.522, ground center shift [0.0939, 0.0032, 0.0076], ground spread scale [0.409, 0.636, 0.562], max residual 0.0128
+- Desert/AcidLake: 14 files, edge terrain distance 3.205 -> 1.109, ground center shift [0.0939, 0.0032, 0.0076], ground spread scale [0.409, 0.636, 0.562], max residual 0.0130
 - Desert/Canyon: 3 files, edge terrain distance 0.822 -> 0.448, ground center shift [0.0082, -0.0033, -0.0055], ground spread scale [1.2, 1.0, 1.0], max residual 0.0032
-- Desert/BoilingMud: 14 files, edge terrain distance 1.785 -> 1.202, ground center shift [0.0368, -0.0027, 0.0022], ground spread scale [0.764, 1.0, 0.717], max residual 0.0122
+- Desert/BoilingMud: 14 files, edge terrain distance 1.785 -> 0.991, ground center shift [0.0368, -0.0027, 0.0022], ground spread scale [0.764, 1.0, 0.717], max residual 0.0121
 - Desert/GiantMachineWreck: 3 files, edge terrain distance 1.834 -> 0.593, ground center shift [-0.0079, -0.0097, -0.014], ground spread scale [1.2, 1.0, 1.0], max residual 0.0131
 
 ## Per-file edge/background comparison
@@ -25,71 +25,71 @@ Lower edge terrain distance is closer to the biome's placement-compatible terrai
 
 | Biome | Group | File | Source | Result | Delta |
 |---|---|---|---:|---:|---:|
-| AridSteppe | AcidLake | AcidLake_Part1_00.png | 2.367 | 1.631 | -0.736 |
-| AridSteppe | AcidLake | AcidLake_Part1_01.png | 2.479 | 1.675 | -0.805 |
-| AridSteppe | AcidLake | AcidLake_Part1_02.png | 2.467 | 1.709 | -0.758 |
-| AridSteppe | AcidLake | AcidLake_Part1_03.png | 2.399 | 1.655 | -0.745 |
-| AridSteppe | AcidLake | AcidLake_Part1_04.png | 2.442 | 1.759 | -0.683 |
-| AridSteppe | AcidLake | AcidLake_Part1_05.png | 2.423 | 1.711 | -0.712 |
-| AridSteppe | AcidLake | AcidLake_Part1_06.png | 2.444 | 1.769 | -0.675 |
-| AridSteppe | AcidLake | AcidLake_Part2_00.png | 1.952 | 1.419 | -0.533 |
-| AridSteppe | AcidLake | AcidLake_Part2_01.png | 1.948 | 1.432 | -0.516 |
-| AridSteppe | AcidLake | AcidLake_Part2_02.png | 1.936 | 1.434 | -0.502 |
-| AridSteppe | AcidLake | AcidLake_Part2_03.png | 1.865 | 1.409 | -0.457 |
-| AridSteppe | AcidLake | AcidLake_Part2_04.png | 1.965 | 1.481 | -0.485 |
-| AridSteppe | AcidLake | AcidLake_Part2_05.png | 1.972 | 1.470 | -0.501 |
-| AridSteppe | AcidLake | AcidLake_Part2_06.png | 2.056 | 1.506 | -0.550 |
+| AridSteppe | AcidLake | AcidLake_Part1_00.png | 2.367 | 1.435 | -0.932 |
+| AridSteppe | AcidLake | AcidLake_Part1_01.png | 2.479 | 1.444 | -1.036 |
+| AridSteppe | AcidLake | AcidLake_Part1_02.png | 2.467 | 1.483 | -0.983 |
+| AridSteppe | AcidLake | AcidLake_Part1_03.png | 2.399 | 1.439 | -0.960 |
+| AridSteppe | AcidLake | AcidLake_Part1_04.png | 2.442 | 1.540 | -0.902 |
+| AridSteppe | AcidLake | AcidLake_Part1_05.png | 2.423 | 1.479 | -0.944 |
+| AridSteppe | AcidLake | AcidLake_Part1_06.png | 2.444 | 1.538 | -0.906 |
+| AridSteppe | AcidLake | AcidLake_Part2_00.png | 1.952 | 1.324 | -0.628 |
+| AridSteppe | AcidLake | AcidLake_Part2_01.png | 1.948 | 1.356 | -0.593 |
+| AridSteppe | AcidLake | AcidLake_Part2_02.png | 1.936 | 1.366 | -0.569 |
+| AridSteppe | AcidLake | AcidLake_Part2_03.png | 1.865 | 1.358 | -0.507 |
+| AridSteppe | AcidLake | AcidLake_Part2_04.png | 1.965 | 1.397 | -0.569 |
+| AridSteppe | AcidLake | AcidLake_Part2_05.png | 1.972 | 1.384 | -0.588 |
+| AridSteppe | AcidLake | AcidLake_Part2_06.png | 2.056 | 1.383 | -0.673 |
 | AridSteppe | Canyon | Canyon_Part1.png | 0.934 | 0.559 | -0.375 |
 | AridSteppe | Canyon | Canyon_Part2.png | 0.964 | 0.616 | -0.347 |
 | AridSteppe | Canyon | Canyon_Part3.png | 0.812 | 0.509 | -0.303 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_00.png | 1.311 | 1.201 | -0.109 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_01.png | 1.254 | 1.164 | -0.090 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_02.png | 1.242 | 1.147 | -0.094 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_03.png | 1.247 | 1.123 | -0.124 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_04.png | 1.255 | 1.140 | -0.115 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_05.png | 1.207 | 1.106 | -0.101 |
-| AridSteppe | BoilingMud | BoilingMud_Part1_06.png | 1.268 | 1.146 | -0.122 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_00.png | 1.457 | 1.387 | -0.069 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_01.png | 1.429 | 1.359 | -0.070 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_02.png | 1.454 | 1.385 | -0.070 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_03.png | 1.372 | 1.299 | -0.073 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_04.png | 1.434 | 1.366 | -0.068 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_05.png | 1.449 | 1.381 | -0.069 |
-| AridSteppe | BoilingMud | BoilingMud_Part2_06.png | 1.379 | 1.316 | -0.063 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_00.png | 1.311 | 1.141 | -0.170 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_01.png | 1.254 | 1.112 | -0.141 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_02.png | 1.242 | 1.096 | -0.145 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_03.png | 1.247 | 1.058 | -0.189 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_04.png | 1.255 | 1.082 | -0.173 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_05.png | 1.207 | 1.050 | -0.157 |
+| AridSteppe | BoilingMud | BoilingMud_Part1_06.png | 1.268 | 1.086 | -0.182 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_00.png | 1.457 | 1.329 | -0.127 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_01.png | 1.429 | 1.307 | -0.122 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_02.png | 1.454 | 1.330 | -0.124 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_03.png | 1.372 | 1.247 | -0.125 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_04.png | 1.434 | 1.306 | -0.129 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_05.png | 1.449 | 1.326 | -0.124 |
+| AridSteppe | BoilingMud | BoilingMud_Part2_06.png | 1.379 | 1.261 | -0.118 |
 | AridSteppe | GiantMachineWreck | GiantMachineWreck_Part1.png | 0.828 | 0.644 | -0.184 |
 | AridSteppe | GiantMachineWreck | GiantMachineWreck_Part2.png | 0.998 | 0.750 | -0.248 |
 | AridSteppe | GiantMachineWreck | GiantMachineWreck_Part3.png | 0.952 | 0.607 | -0.345 |
-| Desert | AcidLake | AcidLake_Part1_00.png | 3.592 | 1.651 | -1.942 |
-| Desert | AcidLake | AcidLake_Part1_01.png | 3.694 | 1.665 | -2.029 |
-| Desert | AcidLake | AcidLake_Part1_02.png | 3.798 | 1.780 | -2.019 |
-| Desert | AcidLake | AcidLake_Part1_03.png | 3.605 | 1.589 | -2.016 |
-| Desert | AcidLake | AcidLake_Part1_04.png | 3.652 | 1.726 | -1.927 |
-| Desert | AcidLake | AcidLake_Part1_05.png | 3.672 | 1.647 | -2.025 |
-| Desert | AcidLake | AcidLake_Part1_06.png | 3.671 | 1.724 | -1.948 |
-| Desert | AcidLake | AcidLake_Part2_00.png | 2.705 | 1.311 | -1.394 |
-| Desert | AcidLake | AcidLake_Part2_01.png | 2.788 | 1.420 | -1.368 |
-| Desert | AcidLake | AcidLake_Part2_02.png | 2.702 | 1.346 | -1.355 |
-| Desert | AcidLake | AcidLake_Part2_03.png | 2.714 | 1.333 | -1.381 |
-| Desert | AcidLake | AcidLake_Part2_04.png | 2.778 | 1.387 | -1.391 |
-| Desert | AcidLake | AcidLake_Part2_05.png | 2.714 | 1.335 | -1.379 |
-| Desert | AcidLake | AcidLake_Part2_06.png | 2.783 | 1.394 | -1.389 |
+| Desert | AcidLake | AcidLake_Part1_00.png | 3.592 | 1.130 | -2.462 |
+| Desert | AcidLake | AcidLake_Part1_01.png | 3.694 | 1.118 | -2.576 |
+| Desert | AcidLake | AcidLake_Part1_02.png | 3.798 | 1.170 | -2.628 |
+| Desert | AcidLake | AcidLake_Part1_03.png | 3.605 | 1.073 | -2.532 |
+| Desert | AcidLake | AcidLake_Part1_04.png | 3.652 | 1.163 | -2.490 |
+| Desert | AcidLake | AcidLake_Part1_05.png | 3.672 | 1.094 | -2.578 |
+| Desert | AcidLake | AcidLake_Part1_06.png | 3.671 | 1.163 | -2.509 |
+| Desert | AcidLake | AcidLake_Part2_00.png | 2.705 | 1.064 | -1.641 |
+| Desert | AcidLake | AcidLake_Part2_01.png | 2.788 | 1.113 | -1.676 |
+| Desert | AcidLake | AcidLake_Part2_02.png | 2.702 | 1.092 | -1.609 |
+| Desert | AcidLake | AcidLake_Part2_03.png | 2.714 | 1.073 | -1.641 |
+| Desert | AcidLake | AcidLake_Part2_04.png | 2.778 | 1.096 | -1.683 |
+| Desert | AcidLake | AcidLake_Part2_05.png | 2.714 | 1.075 | -1.639 |
+| Desert | AcidLake | AcidLake_Part2_06.png | 2.783 | 1.109 | -1.674 |
 | Desert | Canyon | Canyon_Part1.png | 0.875 | 0.509 | -0.366 |
 | Desert | Canyon | Canyon_Part2.png | 0.798 | 0.410 | -0.388 |
 | Desert | Canyon | Canyon_Part3.png | 0.793 | 0.424 | -0.369 |
-| Desert | BoilingMud | BoilingMud_Part1_00.png | 1.799 | 1.048 | -0.750 |
-| Desert | BoilingMud | BoilingMud_Part1_01.png | 1.862 | 1.088 | -0.773 |
-| Desert | BoilingMud | BoilingMud_Part1_02.png | 1.788 | 1.066 | -0.723 |
-| Desert | BoilingMud | BoilingMud_Part1_03.png | 1.708 | 1.030 | -0.677 |
-| Desert | BoilingMud | BoilingMud_Part1_04.png | 1.867 | 1.126 | -0.741 |
-| Desert | BoilingMud | BoilingMud_Part1_05.png | 1.797 | 1.095 | -0.703 |
-| Desert | BoilingMud | BoilingMud_Part1_06.png | 1.741 | 1.030 | -0.711 |
-| Desert | BoilingMud | BoilingMud_Part2_00.png | 1.761 | 1.292 | -0.470 |
-| Desert | BoilingMud | BoilingMud_Part2_01.png | 1.804 | 1.339 | -0.465 |
-| Desert | BoilingMud | BoilingMud_Part2_02.png | 1.763 | 1.333 | -0.430 |
-| Desert | BoilingMud | BoilingMud_Part2_03.png | 1.760 | 1.333 | -0.426 |
-| Desert | BoilingMud | BoilingMud_Part2_04.png | 1.855 | 1.421 | -0.434 |
-| Desert | BoilingMud | BoilingMud_Part2_05.png | 1.756 | 1.336 | -0.420 |
-| Desert | BoilingMud | BoilingMud_Part2_06.png | 1.732 | 1.285 | -0.447 |
+| Desert | BoilingMud | BoilingMud_Part1_00.png | 1.799 | 0.814 | -0.985 |
+| Desert | BoilingMud | BoilingMud_Part1_01.png | 1.862 | 0.827 | -1.034 |
+| Desert | BoilingMud | BoilingMud_Part1_02.png | 1.788 | 0.848 | -0.940 |
+| Desert | BoilingMud | BoilingMud_Part1_03.png | 1.708 | 0.816 | -0.891 |
+| Desert | BoilingMud | BoilingMud_Part1_04.png | 1.867 | 0.880 | -0.987 |
+| Desert | BoilingMud | BoilingMud_Part1_05.png | 1.797 | 0.851 | -0.947 |
+| Desert | BoilingMud | BoilingMud_Part1_06.png | 1.741 | 0.800 | -0.941 |
+| Desert | BoilingMud | BoilingMud_Part2_00.png | 1.761 | 1.086 | -0.676 |
+| Desert | BoilingMud | BoilingMud_Part2_01.png | 1.804 | 1.141 | -0.664 |
+| Desert | BoilingMud | BoilingMud_Part2_02.png | 1.763 | 1.155 | -0.608 |
+| Desert | BoilingMud | BoilingMud_Part2_03.png | 1.760 | 1.162 | -0.597 |
+| Desert | BoilingMud | BoilingMud_Part2_04.png | 1.855 | 1.231 | -0.625 |
+| Desert | BoilingMud | BoilingMud_Part2_05.png | 1.756 | 1.158 | -0.599 |
+| Desert | BoilingMud | BoilingMud_Part2_06.png | 1.732 | 1.099 | -0.633 |
 | Desert | GiantMachineWreck | GiantMachineWreck_Part1.png | 1.767 | 0.572 | -1.195 |
 | Desert | GiantMachineWreck | GiantMachineWreck_Part2.png | 1.985 | 0.688 | -1.297 |
 | Desert | GiantMachineWreck | GiantMachineWreck_Part3.png | 1.752 | 0.520 | -1.232 |
