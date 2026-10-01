@@ -78,6 +78,19 @@ namespace Game.Ai.V2
             ISet<int> committed = ActorCommitments.FromIntents(
                 activeIntents?.Where(i => i != null && i.Status == IntentStatus.Active),
                 snap, null).ClaimedArmyIdSet;
+            // 2026-10-01 (user decision, playtest #7): while mobilization is open and the
+            // preparation has not started yet, its host has no intent to claim it — a fresh Raid
+            // took Halden's assembled strike army (#28, 52 power, 7 AP a turn) to a guarded event
+            // for four turns. A FRESH Raid never takes the pending preparation host; a Raid already
+            // under way keeps its own army (incumbents exclude only `committed`).
+            (int pendingHostId, float _) = PendingPreparationHost(snap, activeIntents, committed);
+            ISet<int> freshExcluded = committed;
+            if (pendingHostId >= 0)
+            {
+                freshExcluded = new HashSet<int>(committed) { pendingHostId };
+                AiDebugLog.WriteDeduped($"raid-skips-prep-host#{snap.Observer?.ColorIndex}#{pendingHostId}",
+                    $"[AI][V2][Attack][Mobilization] fresh raids leave the pending preparation host #{pendingHostId} alone");
+            }
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
             {
@@ -94,7 +107,7 @@ namespace Game.Ai.V2
                         + "reason=target_on_known_foreign_structure attack_owner_required");
                     continue;
                 }
-                fresh.Add(ToCandidate(snap, o, breakdown, unavailableArmyIds: committed));
+                fresh.Add(ToCandidate(snap, o, breakdown, unavailableArmyIds: freshExcluded));
             }
 
             var incumbents = new List<RaidCandidate>();
@@ -235,7 +248,7 @@ namespace Game.Ai.V2
 
             foreach (RaidCandidate c in picked)
             {
-                MissionProposal p = BuildProposal(snap, c, committed);
+                MissionProposal p = BuildProposal(snap, c, c.IsIncumbent ? committed : freshExcluded);
                 if (!c.IsIncumbent
                     && GroundCombatAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
                     && eligible.Count == 0)
