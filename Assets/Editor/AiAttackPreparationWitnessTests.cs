@@ -119,6 +119,28 @@ namespace Game.EditorTests
             }
         }
 
+        // 2026-10-01 — a residual Phase A proved structurally undeliverable keeps no claim on hand
+        // cards: neither the strategic-claim gate nor Phase B's hero hold may read it.
+        [Test]
+        public void UndeliverableResidual_HoldsNoCardClaim()
+        {
+            var residual = new AxisDemand
+            {
+                Capability = CapabilityKind.Hero, RequestingAxis = DesireAxis.Economy, DesiredAmount = 1f,
+            };
+            var reservation = new MaterializationReservation();
+            reservation.UnresolvedDemands.Add(residual);
+            var plan = new MaterializationPlan { FinalCapability = CapabilityKind.Hero };
+            Assert.That(reservation.BestUnresolvedDemandFor(plan), Is.SameAs(residual));
+            Assert.That(MaterializationFeasibility.UnresolvedClaimFor(reservation, CapabilityKind.Hero, null),
+                Is.SameAs(residual));
+
+            residual.StructurallyUndeliverable = true;
+            Assert.That(reservation.BestUnresolvedDemandFor(plan), Is.Null);
+            Assert.That(MaterializationFeasibility.UnresolvedClaimFor(reservation, CapabilityKind.Hero, null),
+                Is.Null);
+        }
+
         // Variant B — the roster is composed under the host's own commander and its Command.
         [Test]
         public void ComposeUnder_CapsTheRosterByTheHostCommander()

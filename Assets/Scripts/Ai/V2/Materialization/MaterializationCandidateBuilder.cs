@@ -179,8 +179,11 @@ namespace Game.Ai.V2
             // TryPromotePersistenceDeferred clears the flag on the SAME AxisDemand instance the
             // moment it actually promotes it, so a promoted demand is indistinguishable from a
             // normal one here — exactly the desired behaviour.
+            // 2026-10-01 — nor does a demand Phase A proved structurally undeliverable: Phase B's
+            // "hero card matches an unresolved demand no placement delivers" hold reads this too.
             return UnresolvedDemands
                 .Where(d => d != null && !d.IsPersistenceDeferred && d.DesiredAmount > 0f
+                    && !d.StructurallyUndeliverable
                     && d.Capability == plan.FinalCapability
                     && (plan.ExpectedTraits & d.RequiredTraits) == d.RequiredTraits)
                 .OrderByDescending(d => d.Value)
