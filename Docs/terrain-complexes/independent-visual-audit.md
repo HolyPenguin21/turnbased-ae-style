@@ -55,13 +55,13 @@ Visual sheets: aridsteppe-reference-terrain-sheet.png and aridsteppe-current-clu
 - AcidLake_Part2: max adjacent-frame delta edge luminance=0.0220, delta edge chroma=0.0014, delta saturation=0.0025
 - Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0345, max delta edge chroma=0.0021
 | Canyon | 3 | 0.621 | 0.707 | Canyon_Part1.png | 0.4056..0.4150 (med 0.4125) | 0.2946..0.3151 (med 0.3081) | 0.4764..0.4782 (med 0.4769) | 0.0352..0.0386 (med 0.0385) |
-| BoilingMud | 14 | 1.274 | 1.422 | BoilingMud_Part2_04.png | 0.3718..0.3908 (med 0.3848) | 0.2524..0.3112 (med 0.2795) | 0.4426..0.4522 (med 0.4491) | 0.0384..0.0490 (med 0.0425) |
+| BoilingMud | 14 | 1.186 | 1.330 | BoilingMud_Part2_04.png | 0.3772..0.3944 (med 0.3894) | 0.2329..0.2930 (med 0.2599) | 0.4412..0.4502 (med 0.4473) | 0.0365..0.0467 (med 0.0404) |
 
 **BoilingMud animation continuity (edge/background):**
 
-- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0045, delta edge chroma=0.0007, delta saturation=0.0011
-- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0104, delta edge chroma=0.0036, delta saturation=0.0046
-- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0333, max delta edge chroma=0.0100
+- BoilingMud_Part1: max adjacent-frame delta edge luminance=0.0045, delta edge chroma=0.0008, delta saturation=0.0010
+- BoilingMud_Part2: max adjacent-frame delta edge luminance=0.0094, delta edge chroma=0.0033, delta saturation=0.0044
+- Part1-to-Part2 same-frame agreement: max delta edge luminance=0.0304, max delta edge chroma=0.0093
 | GiantMachineWreck | 3 | 0.631 | 0.692 | GiantMachineWreck_Part2.png | 0.2835..0.3914 (med 0.3910) | 0.4344..0.4415 (med 0.4386) | 0.4725..0.4776 (med 0.4751) | 0.0429..0.0521 (med 0.0445) |
 
 Visual sheets: desert-reference-terrain-sheet.png and desert-current-clusters-audit.png.
