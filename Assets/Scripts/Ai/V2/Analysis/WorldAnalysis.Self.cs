@@ -217,56 +217,9 @@ namespace Game.Ai.V2
                 AddCard(self.Deck[i], ForceSource.Deck, -(1 + self.Hand.Count + i),
                     null, null);
 
-            // One commander-in-slot rule for every nested ceiling (AiPower.NestedPotentials),
-            // computed over identified candidates so the peak's roster comes out of the same pass
-            // (pool order = AiPower.MilitaryPool: map, hand bodies, deck bodies, hand heroes,
-            // deck heroes).
-            var mapSlots = new List<StrikeRosterSlot>();
-            foreach (UnitData m in ownArmies.SelectMany(a => a.Members))
-                if (m != null && !m.IsPrisoner && !m.IsAviation)
-                    mapSlots.Add(new StrikeRosterSlot(StrikeRoster.UnitKey(m), m.IsHero,
-                        AiPower.UnitPower(m), ForceSource.Map));
-            var cardBodies = new List<StrikeRosterSlot>();
-            var cardHeroes = new List<StrikeRosterSlot>();
-            var allSlots = new List<StrikeRosterSlot>(mapSlots);
-            var allUnits = new List<AiPower.PowerUnit>(AiPower.MilitaryPool(
-                ownArmies.SelectMany(a => a.Members), null, null));
-            void AddCards(IEnumerable<CardDefinition> cards, CardType kind, ForceSource source,
-                List<StrikeRosterSlot> into, IReadOnlyList<CardData> held = null)
-            {
-                int i = -1;
-                foreach (CardDefinition d in cards)
-                {
-                    i++;
-                    if (d != null && d.cardType == kind && !d.isAviation)
-                    {
-                        // A held card counts with the equipment already attached to it.
-                        AiPower.PowerUnit pu = held != null ? AiPower.ToPowerUnit(held[i])
-                            : AiPower.ToPowerUnit(d);
-                        var slot = new StrikeRosterSlot(StrikeRoster.CardKey(d), pu.IsHero,
-                            pu.BasePower, source);
-                        into.Add(slot);
-                        allSlots.Add(slot);
-                        allUnits.Add(pu);
-                    }
-                }
-            }
-            List<CardDefinition> handDefs = self.Hand.Select(c => c?.Definition).ToList();
-            AddCards(handDefs, CardType.Unit, ForceSource.Hand, cardBodies, self.Hand);
-            AddCards(self.Deck, CardType.Unit, ForceSource.Deck, cardBodies);
-            AddCards(handDefs, CardType.Hero, ForceSource.Hand, cardHeroes, self.Hand);
-            AddCards(self.Deck, CardType.Hero, ForceSource.Deck, cardHeroes);
-            // Identity = index in allSlots; the PowerUnit list runs in the same order.
-            var index = Enumerable.Range(0, allSlots.Count).ToList();
-            AiPower.ForcePotentials ceilings = AiPower.NestedPotentialsOf(
-                index.Take(mapSlots.Count).ToList(),
-                index.Skip(mapSlots.Count).Take(cardBodies.Count).ToList(),
-                index.Skip(mapSlots.Count + cardBodies.Count).ToList(),
-                i => allUnits[i], out List<int> peak);
-            self.StrikeRoster = peak.Select(i => allSlots[i]).ToList();
-            self.StrikePoolKeyCounts = allSlots.Where(x => x.Key != null).GroupBy(x => x.Key)
-                .ToDictionary(g => g.Key, g => g.Count());
-            self.StrikePool = index.Select(i => new StrikeRosterCandidate(allSlots[i], allUnits[i])).ToList();
+            // One commander-in-slot rule for every nested ceiling (AiPower.NestedPotentials).
+            AiPower.ForcePotentials ceilings = AiPower.NestedPotentials(
+                ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck);
 
             self.FieldPotential = ceilings.Field;
             self.BestStackPotential = AiPower.TotalMilitaryPotential(
@@ -275,6 +228,13 @@ namespace Game.Ai.V2
             PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
                 out self.DeployedPower, out self.AvailablePower);
             self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
+            // The force an Attack can actually assemble (busy armies, scouts, garrison defence,
+            // garrison heroes and operators out): its peak, roster and pool.
+            AttackForcePool attackPool = AttackForcePool.Build(player, self);
+            self.AttackPeak = attackPool.Peak;
+            self.StrikeRoster = attackPool.Roster;
+            self.StrikePool = attackPool.Pool;
+            self.StrikePoolKeyCounts = attackPool.KeyCounts;
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)

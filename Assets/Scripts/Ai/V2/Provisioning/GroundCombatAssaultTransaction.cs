@@ -684,7 +684,7 @@ namespace Game.Ai.V2
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
-                        ? 0.80f * session.Snapshot.Self.TotalMilitaryPotential : 0f,
+                        ? 0.80f * session.Snapshot.Self.AttackPeak : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -815,7 +815,7 @@ namespace Game.Ai.V2
             // its original commitment and is rechecked for defender coverage above.
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
                 && !AttackObjectiveEvaluator.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
-                    session.Snapshot.Self.TotalMilitaryPotential))
+                    session.Snapshot.Self.AttackPeak))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 

@@ -621,12 +621,14 @@ namespace Game.Ai.V2
                         // structural one: no chain shape at all, or shapes that pass the play
                         // preflight yet cannot deliver into this host. An AP/resource shortfall of
                         // this pass is timing and marks nothing.
-                        if (d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
+                        // The same structural verdict releases the demand's claim on hand cards.
                         {
                             MaterializationDeliveryAvailability availability =
                                 MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
                                     snap, player, root, hand, ctx, d, commitments, result.Reservation);
-                            if (availability.RawCandidates == 0 || availability.ConfirmedBlocked)
+                            bool structural = availability.RawCandidates == 0 || availability.ConfirmedBlocked;
+                            d.StructurallyUndeliverable = structural;
+                            if (structural && d.AttackFistIsPreparationHost && d.AttackFistArmyId.HasValue)
                                 PreparationDeliveryMemory.MarkNoChain(player, d.AttackFistArmyId.Value,
                                     ctx.TurnNumber, hand.Hand.Select(c => StrikeRoster.CardKey(c?.Definition)));
                         }
@@ -810,8 +812,21 @@ namespace Game.Ai.V2
             FulfillInfrastructure(residualInfrastructure);
 
             result.Reservation.UnresolvedDemands.Clear();
+            // A residual Phase A has structurally no way to deliver keeps no claim on hand cards
+            // (AxisDemand.StructurallyUndeliverable): judged on the end-of-pass world, one read
+            // per residual, AP/resource shortfalls excluded (that is timing, the claim stays).
             foreach (DemandState state in states.Where(s => s.Remaining > 0f))
+            {
+                if (!state.Demand.StructurallyUndeliverable)
+                {
+                    MaterializationDeliveryAvailability availability =
+                        MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                            snap, player, root, hand, ctx, state.Demand, commitments, result.Reservation);
+                    state.Demand.StructurallyUndeliverable =
+                        availability.RawCandidates == 0 || availability.ConfirmedBlocked;
+                }
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
+            }
             // Deferred demands never promoted this pass (no runnable window to try them, or no
             // deliverable candidate — AC7) are still real unmet strategic need; carry them into the
             // same residual pool the reaction pass / Phase B read, so a later chance this turn is not
@@ -862,6 +877,7 @@ namespace Game.Ai.V2
             AxisDemand d = state.Demand;
             return new AxisDemand
             {
+                StructurallyUndeliverable = d.StructurallyUndeliverable,
                 TraceId = d.TraceId,
                 RequestingAxis = d.RequestingAxis,
                 Value = d.Value,

@@ -95,7 +95,7 @@ namespace Game.Ai.V2
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackCoverageGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
-                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.TotalMilitaryPotential);
+                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.AttackPeak);
                 if (attackShortage != null)
                     demands.Add(attackShortage);
             }
@@ -182,7 +182,7 @@ namespace Game.Ai.V2
             }
             int hostId = ai.PrimaryArmyId.Value;
             ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == hostId);
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             float have = host?.EffectiveArmyPower ?? 0f;
             if (host == null || have > required)
             {
@@ -387,7 +387,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
+                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -407,7 +407,7 @@ namespace Game.Ai.V2
                     objective.Opposition, a.ArmyId,
                     GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus).Feasible
                     && AttackObjectiveEvaluator.ForceReady(a.EffectiveArmyPower,
-                        snap.Self.TotalMilitaryPotential));
+                        snap.Self.AttackPeak));
             if (futureActor != null)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -419,7 +419,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,
-                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
+                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -435,7 +435,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
+                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -468,7 +468,7 @@ namespace Game.Ai.V2
                     + $"deployed={snap.Self.DeployedPower:0.#} available={snap.Self.AvailablePower:0.#}");
                 return;
             }
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             float have = fist?.EffectiveArmyPower ?? 0f;
             // §11 — a fist that already has the numbers yet misses the gate is an assembly /
             // composition gap: strengthening it by a phantom +1 from hand closes nothing.

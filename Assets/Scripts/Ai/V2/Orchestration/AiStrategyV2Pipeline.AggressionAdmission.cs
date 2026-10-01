@@ -85,6 +85,7 @@ namespace Game.Ai.V2
             return $"axis={DesireAxis.Aggression}"
                 + $"|know={snapshot.KnowledgeVersion}"
                 + $"|peak={self.TotalMilitaryPotential.ToString("0.##", inv)}"
+                + $"|atkPeak={self.AttackPeak.ToString("0.##", inv)}"
                 + $"|reserve={(self.Reserve.Units + self.Reserve.Hero).ToString("0.##", inv)}"
                 + $"|share={self.DeployedPower.ToString("0.##", inv)}/{self.AvailablePower.ToString("0.##", inv)}"
                 // Mobilization start (B): garrison floors and operators are not in the army rows.

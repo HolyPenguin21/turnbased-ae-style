@@ -490,6 +490,16 @@ namespace Game.Ai.V2
         // The roster of TotalMilitaryPotential's peak stack, by card key (StrikeRoster): what the
         // Attack preparation gathers toward. Commander first when a hero leads it.
         public IReadOnlyList<StrikeRosterSlot> StrikeRoster = System.Array.Empty<StrikeRosterSlot>();
+        // 2026-10-01 (user decision) — the peak of the force an Attack can actually assemble
+        // (AttackForcePool): the Attack bar (> 80%), the preparation roster and the mobilization
+        // field-strike gate read it. TotalMilitaryPotential stays the whole-deck ceiling.
+        // Until the pool is built (isolated snapshots, tests) it falls back to the whole-deck peak.
+        public float AttackPeak
+        {
+            get => _attackPeak ?? TotalMilitaryPotential;
+            set => _attackPeak = value;
+        }
+        private float? _attackPeak;
         // How many of each card key the whole ground pool (map + hand + deck) holds: a frozen
         // roster position stays obtainable while its key is still counted here.
         public IReadOnlyDictionary<string, int> StrikePoolKeyCounts = new Dictionary<string, int>();

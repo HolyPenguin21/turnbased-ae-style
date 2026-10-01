@@ -552,7 +552,7 @@ namespace Game.Ai.V2
 
         internal static bool MobilizationOpen(SelfSnapshot self) =>
             self != null && (MobilizationOpen(self.DeployedPower, self.AvailablePower)
-                || FieldStrikeForceReady(self.FieldStrikePotential, self.TotalMilitaryPotential));
+                || FieldStrikeForceReady(self.FieldStrikePotential, self.AttackPeak));
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as
         // "age unknown", i.e. maximally stale, never as "observed on turn 0".

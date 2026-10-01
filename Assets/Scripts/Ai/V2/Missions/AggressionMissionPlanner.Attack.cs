@@ -26,7 +26,7 @@ namespace Game.Ai.V2
             List<MissionProposal> proposals, AiTurnContext ctx,
             IDictionary<MissionIntentKey, string> deferredThisPass)
         {
-            if (snap?.Self == null || snap.Self.TotalMilitaryPotential <= 0f)
+            if (snap?.Self == null || snap.Self.AttackPeak <= 0f)
                 return;
 
             // ---- durable legs that carry their own pinned actor and destination ---------------
@@ -108,7 +108,7 @@ namespace Game.Ai.V2
                         Opposition = opposition,
                         WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
                         MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
-                            ? 0f : 0.80f * snap.Self.TotalMilitaryPotential,
+                            ? 0f : 0.80f * snap.Self.AttackPeak,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -256,10 +256,10 @@ namespace Game.Ai.V2
             bool open = AttackObjectiveEvaluator.MobilizationOpen(self);
             bool byShare = AttackObjectiveEvaluator.MobilizationOpen(self.DeployedPower, self.AvailablePower);
             bool byField = AttackObjectiveEvaluator.FieldStrikeForceReady(self.FieldStrikePotential,
-                self.TotalMilitaryPotential);
+                self.AttackPeak);
             string share = $"deployed={F(self.DeployedPower)} available={F(self.AvailablePower)} "
                 + $"share={(self.AvailablePower > 0f ? 100f * self.DeployedPower / self.AvailablePower : 0f):0.00}% "
-                + $"gate>=75% fieldStrike={F(self.FieldStrikePotential)} gate>{F(0.80f * self.TotalMilitaryPotential)} "
+                + $"gate>=75% fieldStrike={F(self.FieldStrikePotential)} gate>{F(0.80f * self.AttackPeak)} "
                 + $"open={(open ? (byShare && byField ? "share+field" : byShare ? "share" : "field") : "0")}";
             MissionIntent live = LiveAttackOperation(activeIntents);
             string skip = !open ? "trigger_closed"
@@ -278,13 +278,13 @@ namespace Game.Ai.V2
 
             AttackObjective objective = objectives[0];
             HexCoord citadel = AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex).Value;
-            float required = 0.80f * self.TotalMilitaryPotential;
+            float required = 0.80f * self.AttackPeak;
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, objective.Hex);
             IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
             var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             string head = $"[AI][V2][Attack][Mobilization] target={objective.Target.DiagnosticLabel} "
                 + $"knowledge={(objective.LocationOnly ? "starting-location-only" : "observed")} {share} "
-                + $"ideal={F(self.TotalMilitaryPotential)} required>{F(required)} "
+                + $"ideal={F(self.AttackPeak)} required>{F(required)} "
                 + $"staging=({citadel.Q},{citadel.R})";
 
             // 1) an existing free field army hosts the fist wherever it stands.
@@ -542,7 +542,7 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: donorValues,
-                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
+                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
@@ -703,7 +703,7 @@ namespace Game.Ai.V2
             ArmyData liveHost = player == null ? null : AiV2Util.ResolveArmy(player, host.ArmyId);
             if (liveHost == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return;
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             UnitData current = liveHost.Commander;
             StrikeRoster.ComposeUnder(snap.Self.StrikePool,
                 current == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(current),
@@ -766,7 +766,7 @@ namespace Game.Ai.V2
                 return;
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             unavailable.Remove(host.ArmyId);
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex), hexBonus,
                 a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,

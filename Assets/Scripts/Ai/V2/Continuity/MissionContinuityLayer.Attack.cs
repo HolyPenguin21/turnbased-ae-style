@@ -454,7 +454,7 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
                 a.PrimaryArmyId, null,
-                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
+                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -491,11 +491,11 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             RefreshTargetRoster(snap, intent, a, AiV2Util.ResolveArmy(snap.Observer, hostId));
             string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
                 + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
-                + $"ideal={snap.Self.TotalMilitaryPotential:0.#} required>{required:0.#}";
+                + $"ideal={snap.Self.AttackPeak:0.#} required>{required:0.#}";
 
             // An empty shell has nothing invested in it: a free field army that can host the fist
             // supersedes it (the shell stays a reusable, paid container).
@@ -643,9 +643,9 @@ namespace Game.Ai.V2
                 why = "frozen";
             else if (commanderKey != a.TargetRosterCommanderKey)
                 why = $"commander {a.TargetRosterCommanderKey ?? "none"}->{commanderKey ?? "none"}";
-            else if (snap.Self.TotalMilitaryPotential > a.TargetRosterPeak
+            else if (snap.Self.AttackPeak > a.TargetRosterPeak
                      * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
-                why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.TotalMilitaryPotential:0.#}";
+                why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.AttackPeak:0.#}";
             else
             {
                 var pool = snap.Self.StrikePoolKeyCounts.ToDictionary(kv => kv.Key, kv => kv.Value);
@@ -664,7 +664,7 @@ namespace Game.Ai.V2
                 commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
                 capacity, out float power);
             a.TargetRoster = roster;
-            a.TargetRosterPeak = snap.Self.TotalMilitaryPotential;
+            a.TargetRosterPeak = snap.Self.AttackPeak;
             a.TargetRosterCommanderKey = commanderKey;
             a.TargetRosterPower = power;
             AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
@@ -694,7 +694,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus);
             if (!a.AssaultStarted && (!plan.Feasible
                 || !AttackObjectiveEvaluator.ForceReady(plan.ProjectedPower,
-                    snap.Self.TotalMilitaryPotential)))
+                    snap.Self.AttackPeak)))
                 return false;
             if (plan.Feasible)
             {
