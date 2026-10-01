@@ -81,6 +81,10 @@ EDGE_LOW_FREQUENCY_SCALE = {
     "AcidLake": 0.14,
     "BoilingMud": 0.18,
 }
+EDGE_DETAIL_SCALE = {
+    "AcidLake": 1.00,
+    "BoilingMud": 0.35,
+}
 EDGE_CHROMA_SPREAD_MULT = 2.25
 EDGE_BLUR_RADIUS = 10.0
 
@@ -294,7 +298,8 @@ def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarra
 
 
 def refine_edge_background(rgb: np.ndarray, target: StyleStats,
-                           strength: float, low_frequency_scale: float) -> np.ndarray:
+                           strength: float, low_frequency_scale: float,
+                           detail_scale: float) -> np.ndarray:
     """Reduce broad edge-ground tonal mismatch without erasing authored texture.
 
     The first normalization pass already aligns the ground colour centre. This pass therefore
@@ -330,7 +335,7 @@ def refine_edge_background(rgb: np.ndarray, target: StyleStats,
     corrected_luma = (
         target.center[0]
         + (low - target.center[0]) * low_frequency_scale
-        + detail
+        + detail * detail_scale
     ).reshape(-1)
 
     weight = np.clip(
@@ -466,6 +471,7 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
                     target,
                     edge_strength,
                     EDGE_LOW_FREQUENCY_SCALE[group],
+                    EDGE_DETAIL_SCALE[group],
                 )
             transformed[path] = after_rgb
 
@@ -554,8 +560,9 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "The main correction is fitted from the closest terrain-like pixels in the outer hex band and "
         "shared by the whole complex family. Ground receives a strong correction, especially near the "
         "hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. "
-        "AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses only "
-        "low-frequency exposed-soil luminance while preserving local texture and the central feature. "
+        "AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses "
+        "low-frequency exposed-soil luminance; BoilingMud also softens excess crack contrast only in "
+        "terrain-like edge pixels, while the central feature remains protected. "
         "Animated families use one background-only residual per Part across all frames, preventing the "
         "normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.",
         "",
