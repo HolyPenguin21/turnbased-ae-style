@@ -27,8 +27,15 @@ general semantic segmentation model.
 The existing config/asset validation and source-integrity check protect image dimensions,
 modes, alpha, GUIDs and other assets. Independent audit and all-seven-phase previews are refreshed.
 
-Status: generated artwork and local shoreline checks pass; full branch CI and final assembled
-colour review are in progress. Unity engine acceptance remains unverified.
+Status: full branch CI passed, including all 28 lake frames, shoreline checks, all-complex audit,
+config validation, 68/68 alpha/dimension integrity and staged diff checks. Final assembled
+previews of both biomes and all seven phases were inspected. Unity engine acceptance remains
+unverified; this report does not repeat the previous claim of completed in-game acceptance.
+
+Verification run: https://github.com/HolyPenguin21/turnbased-ae-style/actions/runs/36899608367
+AridSteppe exterior olive-water sample max: 0.011; Desert: 0.004 (sparse texture false positives).
+Central shared water window: 1.000 in every frame of both parts and biomes.
+Only the 28 AcidLake runtime PNGs changed; other runtime textures, config and GUIDs did not.
 
 ## Generation record
 
