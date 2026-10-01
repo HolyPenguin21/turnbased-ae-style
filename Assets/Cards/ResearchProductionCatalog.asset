@@ -24,16 +24,6 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.mechanical.nuclear-engine
     factionRestriction: 2
-  - cardKey: neutral.science.unit.ashdrifter
-    factionRestriction: 2
-  - cardKey: vessels.20.siege-walker
-    factionRestriction: 5
-  - cardKey: vessels.22.monolith
-    factionRestriction: 5
-  - cardKey: vessels.24.prism-engine
-    factionRestriction: 5
-  - cardKey: vessels.28.dreadnought
-    factionRestriction: 5
   productionCards:
   - cardKey: neutral.equipment.bio.flamer
     factionRestriction: 2
@@ -49,13 +39,3 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.armored.double-barrel
     factionRestriction: 2
-  - cardKey: vessels.16.bulwark-vessel
-    factionRestriction: 5
-  - cardKey: vessels.18.bastion-frame
-    factionRestriction: 5
-  - cardKey: vessels.19.heavy-sentinel
-    factionRestriction: 5
-  - cardKey: vessels.23.echo-mortar
-    factionRestriction: 5
-  - cardKey: vessels.25.harmonic-howitzer
-    factionRestriction: 5

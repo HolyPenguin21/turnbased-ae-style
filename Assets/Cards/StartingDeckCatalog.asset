@@ -121,17 +121,19 @@ MonoBehaviour:
     - cardKey: The Ashen/LI Ash Runner
       count: 1
     - cardKey: The Ashen/MI Iron Husk
-      count: 0
+      count: 2
     - cardKey: The Ashen/Scav Carrier
       count: 1
     - cardKey: The Ashen/Rad Brute
       count: 0
     - cardKey: The Ashen/HI Ash Walker
-      count: 0
+      count: 1
     - cardKey: The Ashen/BS Grave Engine
       count: 0
     - cardKey: The Ashen/MT Rust Tank
       count: 2
+    - cardKey: The Ashen/HT Boomstick
+      count: 1
     - cardKey: The Ashen/Leviathan
       count: 0
     - cardKey: The Ashen/Scrap Mortar
@@ -150,8 +152,6 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
-    - cardKey: The Ashen/HT Boomstick
-      count: 0
   - deckName: Iron Concord Starter
     faction: 0
     cards:
@@ -186,7 +186,7 @@ MonoBehaviour:
     - cardKey: Iron Concord/Light Infantry
       count: 2
     - cardKey: Iron Concord/Medium infantry
-      count: 0
+      count: 2
     - cardKey: Iron Concord/Flamer
       count: 0
     - cardKey: Iron Concord/AT Infantry
@@ -196,9 +196,9 @@ MonoBehaviour:
     - cardKey: Iron Concord/Light Tank
       count: 1
     - cardKey: Iron Concord/Medium Tank
-      count: 1
+      count: 2
     - cardKey: Iron Concord/Heavy Tank
-      count: 0
+      count: 1
     - cardKey: Iron Concord/Artillery Cannon
       count: 0
     - cardKey: Iron Concord/AT Cannon
