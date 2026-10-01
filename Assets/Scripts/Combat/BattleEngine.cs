@@ -370,11 +370,12 @@ namespace Game.Combat
 
         public BattleAi.AiAction ChooseAiAction(UnitData actor,
             Dictionary<UnitData, int> waitStreak, ArmyData ownArmy, ArmyData enemyArmy,
-            List<UnitData> turnOrder, int turnIndex, bool favorableFight, HexMap map)
+            List<UnitData> turnOrder, int turnIndex, bool favorableFight, HexMap map,
+            Dictionary<UnitData, Vector2Int> previousPositions = null)
         {
             return BattleAi.ChooseAction(_state.Grid, actor, waitStreak, ownArmy, enemyArmy,
                 _magnitudes, turnOrder, turnIndex, favorableFight,
-                _state.Defender, GetDefenderHexDefenseBonus(map));
+                _state.Defender, GetDefenderHexDefenseBonus(map), previousPositions);
         }
 
         public BattleDefenseBreakdown GetDefenseBreakdown(UnitData defender, HexMap map)
