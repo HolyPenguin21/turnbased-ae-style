@@ -2,8 +2,8 @@
 
 The runtime hex mesh owns clipping/alpha; this tool changes RGB only. It derives one shared
 OKLab transform per complex family and biome, so animation frames cannot acquire per-frame
-color flicker. The target is built from every ordinary terrain texture in that biome, with
-extra weight on Desert / Sand dunes / Rock desert because complexes are actually placed there.
+color flicker. The target is built from every ordinary terrain texture in that biome, while the seam fit
+strongly prioritizes Desert / Sand dunes / Rock desert because complexes can only be placed there.
 
 Requires: Pillow, NumPy, PyYAML.
 """
@@ -55,9 +55,13 @@ M1_INV = np.array([
 ], dtype=np.float64)
 
 CHANNEL_FLOOR = np.array([0.025, 0.012, 0.012], dtype=np.float64)
-SHIFT_LIMIT = np.array([0.11, 0.055, 0.055], dtype=np.float64)
-SCALE_MIN = np.array([0.88, 0.84, 0.84], dtype=np.float64)
-SCALE_MAX = np.array([1.12, 1.16, 1.16], dtype=np.float64)
+# Background soil on the authored complexes starts substantially darker than the biome
+# references (especially Desert AcidLake). The original 0.11 L cap was reached before
+# the terrain edge entered the real reference envelope. The stronger limits are safe
+# because transform_rgb now applies them primarily to source-like ground pixels.
+SHIFT_LIMIT = np.array([0.18, 0.070, 0.070], dtype=np.float64)
+SCALE_MIN = np.array([0.80, 0.78, 0.78], dtype=np.float64)
+SCALE_MAX = np.array([1.20, 1.22, 1.22], dtype=np.float64)
 
 
 @dataclass
@@ -178,17 +182,54 @@ def texture_style(paths: Iterable[Path]) -> StyleStats:
 
 
 def blended_target(all_style: StyleStats, placement_style: StyleStats) -> StyleStats:
+    # Complexes can only be generated on Desert / Sand dunes / Rock desert, so those
+    # textures define the seam-matching target. Keep a small contribution from every
+    # ordinary texture to remain inside the biome's overall palette.
     return StyleStats(
-        center=0.30 * all_style.center + 0.70 * placement_style.center,
-        spread=np.maximum(0.30 * all_style.spread + 0.70 * placement_style.spread, CHANNEL_FLOOR),
+        center=0.15 * all_style.center + 0.85 * placement_style.center,
+        spread=np.maximum(0.15 * all_style.spread + 0.85 * placement_style.spread, CHANNEL_FLOOR),
     )
 
 
+def hex_outer_ring(side: int, inner: float = 0.70) -> np.ndarray:
+    """Approximate the visible outer band of the pointy-top runtime hex mesh."""
+    yy, xx = np.mgrid[0:side, 0:side]
+    x = (xx + 0.5) / side
+    y = (yy + 0.5) / side
+
+    def inside(scale: float) -> np.ndarray:
+        cx = cy = 0.5
+        xs = (x - cx) / scale + cx
+        ys = (y - cy) / scale + cy
+        dx = np.abs(xs - 0.5)
+        return (
+            (dx <= 0.5)
+            & (ys >= np.maximum(0.0, 2.0 * dx - 0.5))
+            & (ys <= np.minimum(1.0, 1.5 - 2.0 * dx))
+        )
+
+    return inside(1.0) & ~inside(inner)
+
+
+def sample_edge_image(path: Path, side: int = 96) -> np.ndarray:
+    with Image.open(path) as src:
+        rgba = src.convert("RGBA").resize((side, side), Image.Resampling.LANCZOS)
+    arr = np.asarray(rgba, dtype=np.float64) / 255.0
+    mask = (arr[..., 3] > 0.10) & hex_outer_ring(side)
+    rgb = arr[..., :3][mask]
+    if rgb.size == 0:
+        raise RuntimeError(f"No visible edge pixels: {path}")
+    return rgb_to_oklab(rgb)
+
+
 def group_source_style(paths: list[Path], target: StyleStats) -> StyleStats:
-    pixels = np.concatenate([sample_image(path, 80) for path in paths], axis=0)
+    # The visual seam is decided at the hex perimeter. Identify the source ground from
+    # that region and use the terrain-like 60% only, rather than letting acid/mud/metal
+    # dominate the fit.
+    pixels = np.concatenate([sample_edge_image(path, 96) for path in paths], axis=0)
     norm = (pixels - target.center) / np.maximum(target.spread, CHANNEL_FLOOR)
     dist = np.sqrt(np.sum(norm * norm, axis=1))
-    cutoff = np.quantile(dist, 0.52)
+    cutoff = np.quantile(dist, 0.60)
     return robust_stats(pixels[dist <= cutoff])
 
 
@@ -204,9 +245,13 @@ def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarra
     shape = rgb.shape
     lab = rgb_to_oklab(rgb.reshape(-1, 3))
     corrected = desired_center + (lab - source.center) * scale
-    norm = (lab - source.center) / np.maximum(target.spread * 1.8, CHANNEL_FLOOR)
+
+    # Ground/background pixels cluster around source.center and receive nearly the full
+    # correction. Distinctive feature pixels (acid, boiling mud, canyon shadow, wreck)
+    # are progressively protected instead of receiving the old unconditional 36% shift.
+    norm = (lab - source.center) / np.maximum(source.spread, CHANNEL_FLOOR)
     distance = np.sqrt(np.sum(norm * norm, axis=1))
-    weight = 0.36 + 0.64 * np.exp(-0.5 * (distance / 2.4) ** 2)
+    weight = 0.05 + 0.95 * np.exp(-0.5 * (distance / 2.15) ** 2)
     out_lab = lab + weight[:, None] * (corrected - lab)
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
 
