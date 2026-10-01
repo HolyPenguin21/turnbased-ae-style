@@ -78,7 +78,7 @@
         // nothing for Phase A to materialize from; terminal Draw only sees the AP the moves left
         // over (often 0-1), so a thin hand never recovers. Drawn BEFORE the scan so the card can
         // be played this turn. Counts against maxTerminalDrawsPerTurn.
-        public const int handReplenishTargetCards = 2;
+        public const int handReplenishTargetCards = 3;   // 2026-10-01 playtest #3: at 2 it never fired (hands sat at 2-4)
         public const int handReplenishMaxDrawsPerTurn = 2;
         // AP that must remain after every turn-start draw, for activations / aviation obligations.
         public const int handReplenishMinApLeft = 4;
