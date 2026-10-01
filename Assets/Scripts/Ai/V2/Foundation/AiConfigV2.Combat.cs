@@ -95,7 +95,7 @@ namespace Game.Ai.V2
         //  is a later overload of the same method, filling the same CombatOpportunity contract —
         //  build-order steps 6/9. Buildings / event guards / cheat-region targets: deferred there.
         // =======================================================================================
-        public const float opportunityMinViableWinChance = 0.65f; // parity with AiConfig.raidMinimumWinChance
+        public const float opportunityMinViableWinChance = 0.80f; // parity with raidMinViableWinChance (2026-10-01)
         public const float opportunityNoHeroPenalty = 0.35f;      // raids are hero-led; no hero obtainable -> weak
         public const float opportunityValueNorm = 30f;            // targetValue that maps to a full value term
         // A safe, cheap, close win is itself worth wanting — one weak neutral next door is "a good

@@ -229,7 +229,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0800000007000000
     grantedAbilities:
     - Researcher
     resourceYield:
@@ -273,7 +273,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0800000007000000
     grantedAbilities:
     - Assembler
     resourceYield:
@@ -449,7 +449,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0800000007000000
     grantedAbilities:
     - ApBonus
     resourceYield:

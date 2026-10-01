@@ -195,6 +195,35 @@ namespace Game.EditorTests
             Assert.That(highDefence.TaskScore.Value, Is.EqualTo(lowDefence.TaskScore.Value));
         }
 
+        // 2026-10-01 (user decision) — Intercept answers armies, not scouts: by roster power.
+        [Test]
+        public void ActiveDefence_SkipsContactBelowMinimumPower()
+        {
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(
+                DefenceWorld(10f, 100f, enemyPower: AiConfigV2.activeDefenceMinEnemyPower - 0.1f)),
+                Is.Empty);
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(
+                DefenceWorld(10f, 100f, enemyPower: AiConfigV2.activeDefenceMinEnemyPower)),
+                Has.Count.EqualTo(1));
+        }
+
+        // 2026-10-01 (user decision) — past the leash radius a pursuit loses desire per hex
+        // (a TaskScore penalty, never a gate): the objective still exists.
+        [Test]
+        public void ActiveDefence_FarPursuitIsPenalizedNotForbidden()
+        {
+            int leash = AiConfigV2.activeDefenceLeashHexes;
+            ActiveDefenceObjective atLeash = ActiveDefenceObjectiveEvaluator.Enumerate(
+                DefenceWorld(10f, 100f, enemyHex: new HexCoord(leash, 0)))[0];
+            ActiveDefenceObjective beyond = ActiveDefenceObjectiveEvaluator.Enumerate(
+                DefenceWorld(10f, 100f, enemyHex: new HexCoord(leash + 2, 0)))[0];
+            float slopeOnly = TaskScoreEvaluator.OwnTerritoryProximity(leash + 2);
+            Assert.That(beyond.TaskScore.OwnTerritoryProximity, Is.EqualTo(
+                slopeOnly - 2 * AiConfigV2.taskScoreActiveDefenceLeashPerHex).Within(1e-4f));
+            Assert.That(atLeash.TaskScore.OwnTerritoryProximity, Is.EqualTo(
+                TaskScoreEvaluator.OwnTerritoryProximity(leash)).Within(1e-4f));
+        }
+
         [Test]
         public void ActiveDefenceIntercept_IsNotBorrowableByAttackGather()
         {
@@ -361,10 +390,11 @@ namespace Game.EditorTests
                 },
             };
 
-        private static WorldSnapshot DefenceWorld(float bestStack, float totalPotential)
+        private static WorldSnapshot DefenceWorld(float bestStack, float totalPotential,
+            float enemyPower = 12f, HexCoord? enemyHex = null)
         {
             var enemy = new PlayerSetupData { Nickname = "DefenceEnemy", ColorIndex = 2 };
-            var hex = new HexCoord(4, 0);
+            var hex = enemyHex ?? new HexCoord(4, 0);
             var body = new WorthIt.DefenderProfile(3f, false, null, 4f, 8f, 2);
             var contact = new EnemyContactSnapshot
             {
@@ -372,7 +402,7 @@ namespace Game.EditorTests
                 {
                     ArmyId = 42,
                     Owner = enemy,
-                    EffectiveArmyPower = 7f,
+                    EffectiveArmyPower = enemyPower,
                     Members = new[] { body },
                     MemberCount = 1,
                 },

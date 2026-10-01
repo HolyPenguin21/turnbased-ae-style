@@ -1,4 +1,4 @@
-#if UNITY_INCLUDE_TESTS
+﻿#if UNITY_INCLUDE_TESTS
 using System.Linq;
 using Game.Ai.V2;
 using Game.Cards;
@@ -43,7 +43,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void TotalIncludesAviationButAttackArmyExcludesGarrisonAirAndPrison()
+        public void GroundShareExcludesAviation_AttackArmyExcludesGarrisonAirAndPrison()
         {
             var player = new PlayerSetupData();
             var field = Army(player, Body());
@@ -52,7 +52,8 @@ namespace Game.EditorTests
             var prison = Army(player, Body(1000)); prison.IsPrison = true;
             var force = PlayerForceAnalysis.Calculate(player, new[] { field, garrison, air, prison }, null, null);
             Assert.That(force.StrongestArmy, Is.SameAs(field));
-            Assert.That(force.DeployedPower, Is.EqualTo(new[] { field, garrison, air }
+            // User decision 2026-09-30: the mobilization share is the ground force only.
+            Assert.That(force.DeployedPower, Is.EqualTo(new[] { field, garrison }
                 .SelectMany(a => a.Members).Sum(AiPower.UnitPower)));
             Assert.That(force.GroundArmyPotential, Is.EqualTo(AiPower.TotalMilitaryPotential(
                 AiPower.MilitaryPool(field.Members.Concat(garrison.Members), null, null))));
@@ -103,10 +104,10 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void MobilizationOpensAtFourFifthsInclusiveWhileAssaultStaysStrict()
+        public void MobilizationOpensAtThreeQuartersInclusiveWhileAssaultStaysStrict()
         {
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(144f, 180f), Is.True);
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(143.9f, 180f), Is.False);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(135f, 180f), Is.True);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(134.9f, 180f), Is.False);
             Assert.That(AttackObjectiveEvaluator.MobilizationOpen(0f, 0f), Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(56f, 70f), Is.False);
             Assert.That(AttackObjectiveEvaluator.ForceReady(56.1f, 70f), Is.True);

@@ -39,7 +39,8 @@ namespace Game.Ai.V2
                         ? card == demand.EconomySourceCard
                     : demand.Capability == CapabilityKind.ScoutCapability ? recce
                     : demand.Capability == CapabilityKind.Hero ? def.cardType == CardType.Hero && !recce
-                    : !recce && (def.cardType == CardType.Unit || def.cardType == CardType.Hero);
+                    : (!recce || demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, def))
+                        && (def.cardType == CardType.Unit || def.cardType == CardType.Hero);
                 if (!cap || def.isAviation)
                     continue;
                 matching++;

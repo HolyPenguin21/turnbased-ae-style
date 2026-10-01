@@ -138,6 +138,10 @@ namespace Game.Ai.V2
                 {
                     foreach (int id in a.GatherSupportArmyIds)
                         yield return id;
+                    // 2026-10-01 (variant B) — the fetched commander walking to the host is a
+                    // leg of the same operation: its next activation is held from card play too.
+                    if (a.CommanderArmyId.HasValue)
+                        yield return a.CommanderArmyId.Value;
                 }
                 else if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
                     yield return a.SupportArmyId.Value;

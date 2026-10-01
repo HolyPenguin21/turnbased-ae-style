@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Game.Cards;
 using Game.Economy;
 using UnityEngine;
@@ -79,6 +79,11 @@ namespace Game.Ai.V2
 
         internal static float ToCardScore(float apEquivalents) =>
             Mathf.Max(0f, apEquivalents) * AiConfigV2.cardScorePerApEquivalent;
+
+        // The MoverOpportunityCost raw fact (TaskScore units) of a plan that takes a garrison hero
+        // out as its fallback commander (AiConfigV2.garrisonHeroFallbackApEquivalent).
+        internal static float GarrisonHeroFallback(bool usesGarrisonHero) =>
+            usesGarrisonHero ? ToTaskScore(AiConfigV2.garrisonHeroFallbackApEquivalent) : 0f;
 
         // Inverse, for a planner that must rank an already-scored loss against AP.
         internal static float FromTaskScore(float scoreUnits) =>

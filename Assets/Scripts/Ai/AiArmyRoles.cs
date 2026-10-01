@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -8,6 +8,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using Game.Ai.V2;
 
 namespace Game.Ai
 {
@@ -219,6 +220,31 @@ namespace Game.Ai
             => CanSpareGarrisonMembers(player, source,
                 unit == null ? null : new[] { unit }, allowCitadelEmergency);
 
+        // 2026-09-30 (user decision) — a garrison hero: a hero whose card carries the Support type
+        // tag (ApBonus, Researcher and Assembler heroes are authored with it). Its place is the
+        // garrison: Housekeeping keeps it there and never pulls it out, and an active task takes
+        // it only as a priced fallback (GarrisonHeroFallbackCost) when no other hero qualifies.
+        public static bool IsGarrisonHero(UnitData unit) =>
+            unit != null && unit.IsHero && unit.TypeTags.Contains(UnitTypeTag.Support);
+
+        // A hero that operates an own Research/Production facility on `hex`: the facility's
+        // role hero standing there (ResearchProductionSystem.FindActors — the same source the
+        // facility's own eligibility and ArmyReorgAnalyzer.MarkDevelopmentOperators read).
+        public static bool IsFacilityOperator(PlayerSetupData player, HexCoord hex, UnitData unit)
+        {
+            if (player == null || unit == null || !unit.IsHero)
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                return false;
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+                if (building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                    && unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                    return true;
+            return false;
+        }
+
         // Batch form is the canonical safety check for atomic ground-combat assembly. Checking
         // candidates one-by-one against the unchanged source could approve several removals that
         // collectively cross the protected garrison floor.
@@ -238,22 +264,123 @@ namespace Game.Ai
             if (source.Members.Count - selected.Count < 1)
                 return false;
 
+            // 2026-09-30 (user decision) — a hero serving this hex's Research/Production facility
+            // is never released, by anyone: one rule for Economy, Development, Raid and Attack.
+            if (selected.Any(u => IsFacilityOperator(player, source.Hex, u)))
+                return false;
+
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
             bool isCitadel = source.Hex.Equals(citadelHex);
             if (isCitadel && allowCitadelEmergency)
                 return true;
 
-            int removedNonHero = selected.Count(u => u.IsGroundCombatant);
-            // Heroes never count toward the secure headcount (see IsBaseGarrisonSecure), so a
-            // hero-only departure is governed by the "never the literal last body" rule above
-            // alone — exactly what the header comment promises. Without this, a garrison already
-            // below the non-hero floor could not release even its heroes (Economy / Development
-            // operator extraction), which the floor was never meant to protect.
-            if (removedNonHero == 0)
+            // Heroes never count toward the garrison's defence, so a hero-only departure is governed
+            // by the "never the literal last member" rule above alone. Without this, a garrison
+            // below its floor could not release even its heroes (Economy / Development operator
+            // extraction), which the floor was never meant to protect.
+            List<UnitData> removedBodies = selected.Where(u => u.IsGroundCombatant).ToList();
+            if (removedBodies.Count == 0)
                 return true;
-            int remainingNonHero = source.Members.Count(m => m.IsGroundCombatant) - removedNonHero;
-            int floor = isCitadel ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
-            return remainingNonHero >= floor;
+            // 2026-09-30 (user decision) — a power floor, not a headcount: the garrison keeps a share
+            // of the player's whole ground force, at least one body, and among the legal choices
+            // the strongest bodies go (SpareableBodies).
+            List<UnitData> bodies = source.Members.Where(u => u != null && u.IsGroundCombatant).ToList();
+            HashSet<int> spare = SpareableBodies(bodies,
+                set => AiPower.EffectiveArmyPower(set.ToList()),
+                GarrisonDefenceFloor(player, isCitadel));
+            return removedBodies.All(u => spare.Contains(bodies.IndexOf(u)));
+        }
+
+        // The garrison defence floor on the player's live ground force (map + AI hand + remaining
+        // deck, aviation excluded — PlayerForceAnalysis.AdditivePower, the mobilization scale).
+        public static float GarrisonDefenceFloor(PlayerSetupData player, bool isCitadel)
+        {
+            AiHandData hand = AiHandRegistry.Peek(player);
+            PlayerForceAnalysis.AdditivePower(player, ArmyRegistry.AllForOwner(player), hand?.Hand,
+                hand?.RemainingDeck, out _, out float available);
+            return GarrisonDefenceFloor(available, isCitadel);
+        }
+
+        // Same floor from an already measured ground force (SelfSnapshot.AvailablePower).
+        public static float GarrisonDefenceFloor(float groundAvailablePower, bool isCitadel) =>
+            Math.Max(0f, groundAvailablePower)
+                * (isCitadel ? AiConfig.garrisonDefenceShareCitadel : AiConfig.garrisonDefenceShareBase);
+
+        // Which garrison bodies may leave (indices into `bodies`), decided once for the roster:
+        //   * how many — the most that still lets the strongest remaining bodies hold `floor`
+        //     (at least one body always stays);
+        //   * which — the kept set that maximizes (power released to the field) minus (shortfall of
+        //     the kept set below the floor), both on the one AiPower scale. A strong tank leaves and
+        //     a weak body stays even when that leaves the garrison slightly under the floor, when
+        //     that shortfall is smaller than the attack power gained (Vex T22: floor 7.4, keep
+        //     Ash Drifter 6.6 = -0.8, release MT Rust Tank ~11). Ties keep the stronger defender.
+        // Pure; the planner and the executor read the same answer.
+        public static HashSet<int> SpareableBodies<T>(IReadOnlyList<T> bodies,
+            Func<IEnumerable<T>, float> setPower, float floor)
+        {
+            var spare = new HashSet<int>();
+            int n = bodies?.Count ?? 0;
+            if (n <= 1 || setPower == null)
+                return spare;
+            List<int> strongestFirst = Enumerable.Range(0, n)
+                .OrderByDescending(i => setPower(new[] { bodies[i] }))
+                .ThenBy(i => i)
+                .ToList();
+            int release = 0;
+            for (int k = n - 1; k >= 1; k--)
+                if (setPower(strongestFirst.Take(n - k).Select(i => bodies[i])) >= floor)
+                {
+                    release = k;
+                    break;
+                }
+            if (release == 0)
+                return spare;
+
+            int keep = n - release;
+            List<int> bestKept = null;
+            float bestValue = float.NegativeInfinity, bestKeptPower = float.NegativeInfinity;
+            IEnumerable<List<int>> keptSets = n <= 10
+                ? Combinations(n, keep)
+                : new[] { strongestFirst.Take(keep).ToList() };
+            foreach (List<int> kept in keptSets)
+            {
+                float keptPower = setPower(kept.Select(i => bodies[i]));
+                float released = setPower(Enumerable.Range(0, n).Where(i => !kept.Contains(i))
+                    .Select(i => bodies[i]));
+                float value = released - Math.Max(0f, floor - keptPower);
+                if (value > bestValue + 0.001f
+                    || (Math.Abs(value - bestValue) <= 0.001f && keptPower > bestKeptPower + 0.001f))
+                {
+                    bestKept = kept;
+                    bestValue = value;
+                    bestKeptPower = keptPower;
+                }
+            }
+            for (int i = 0; i < n; i++)
+                if (!bestKept.Contains(i))
+                    spare.Add(i);
+            return spare;
+        }
+
+        private static IEnumerable<List<int>> Combinations(int n, int k)
+        {
+            var current = new List<int>();
+            IEnumerable<List<int>> Walk(int start)
+            {
+                if (current.Count == k)
+                {
+                    yield return new List<int>(current);
+                    yield break;
+                }
+                for (int i = start; i <= n - (k - current.Count); i++)
+                {
+                    current.Add(i);
+                    foreach (List<int> c in Walk(i + 1))
+                        yield return c;
+                    current.RemoveAt(current.Count - 1);
+                }
+            }
+            return Walk(0);
         }
 
         // A non-citadel base's own garrison counts as genuinely secure once it holds at least
@@ -304,26 +431,15 @@ namespace Game.Ai
             if (player == null || garrison == null || !garrison.IsGarrison)
                 return null;
 
-            HashSet<UnitData> operators = null;
-            BuildingData building = BuildingRegistry.FindAt(garrison.Hex);
-            if (building != null && building.Owner == player)
-            {
-                foreach (ResearchProductionMode mode in new[]
-                         { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                {
-                    if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
-                        continue;
-                    operators ??= new HashSet<UnitData>();
-                    operators.UnionWith(ResearchProductionSystem.FindActors(player, garrison.Hex, mode));
-                }
-            }
-
+            // Facility operators are refused by CanSpareGarrisonMember itself.
             return garrison.Members
                 .Where(u => u != null && u.IsHero
                     && (requiredRole == null || u.HasAbility(requiredRole))
-                    && (operators == null || !operators.Contains(u))
                     && CanSpareGarrisonMember(player, garrison, u))
-                .OrderByDescending(u => u.MoveMax)
+                // A garrison hero leaves for Economy only when no other hero qualifies; Development
+                // (a required role) asks for exactly those heroes.
+                .OrderBy(u => requiredRole == null && IsGarrisonHero(u))
+                .ThenByDescending(u => u.MoveMax)
                 .ThenByDescending(u => u.CommandRating)
                 .ThenBy(u => u.Name)
                 .FirstOrDefault();

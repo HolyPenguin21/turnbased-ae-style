@@ -788,8 +788,10 @@ namespace Game.EditorTests
                     .Garrison
                     .GarrisonNonHeroFloor;
 
-                Assert.That(FloorAt(capturedHex), Is.EqualTo(AiConfig.secureBaseMinNonHeroUnits));
-                Assert.That(FloorAt(citadelHex), Is.EqualTo(AiConfig.secureCitadelMinNonHeroUnits));
+                // 2026-09-30 — one body always stays; the defence is a power floor (Citadel share
+                // above the Base share of the same ground force).
+                Assert.That(FloorAt(capturedHex), Is.EqualTo(1));
+                Assert.That(FloorAt(citadelHex), Is.EqualTo(1));
             }
             finally
             {

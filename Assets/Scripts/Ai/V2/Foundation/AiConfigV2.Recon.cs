@@ -215,7 +215,8 @@
         // --- Ground Recon reaction / assignment / concurrency / step-scoring tunables (spec §24).
         //     Previously scattered as private/internal consts and inline literals across
         //     ReconReactionPolicy / ReconPatrolState / ReconConcurrencyPolicy / ReconGroundStepPlanner.
-        public const float scoutReactionAttackWinChance = 0.80f;   // ReconReactionPolicy — min win chance for an opportunistic solo-Recce attack
+        // 2026-10-01 (user decision) — a scout drives off weaker enemy scouting forces from 60%.
+        public const float scoutReactionAttackWinChance = 0.60f;   // ReconReactionPolicy — min win chance for an opportunistic attack on an enemy scouting force
         public const float scoutReactionAttackMaxCriticalAfter = 0.25f; // ...reject the attack if even a WIN leaves the scout critically wounded this often (WorthIt.BattleEstimate)
         public const float scoutReactionFleeWinChance = 0.50f;     // ReconReactionPolicy — flee when the worst exposed known threat drops our win chance below this
         // Flee-destination scoring (spec §14) — nearest base is a fallback only, not the goal.
@@ -234,6 +235,10 @@
         // per turn (gradual contraction, not a one-pass collapse). Only Soft/None-funded lanes are
         // ever shed; a Hard-funded lane is kept even if it leaves active above desired.
         public const int maxReconLaneTrimPerTurn = 1;
+        // 2026-10-01 (user decision) — distinct ground scouts bound to Recon in one turn (across
+        // every bounded replan): 3 normally, 2 while the Attack mobilization gate is open.
+        public const int reconGroundActorsPerTurn = 3;
+        public const int reconGroundActorsPerTurnMobilized = 2;
         // Generic Phase-B surplus may hold at most desiredConcurrency + this many scout-shaped
         // (IsSoloRecce) armies before it stops founding more; ReconConcurrencyPolicy.HardCap is
         // the separate absolute ceiling above that.

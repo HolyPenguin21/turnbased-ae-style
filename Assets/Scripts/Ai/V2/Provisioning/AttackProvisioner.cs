@@ -6,6 +6,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -46,6 +47,18 @@ namespace Game.Ai.V2
                     return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
                 // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
                 // T01 — a host-side preparation step has no support; it binds / fills the host.
+                // The preparation host walking to its staging Base: the walk-home leg's validation.
+                // Already there is Blocked-class, never "satisfied" (that would end the operation).
+                case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
+                {
+                    ArmyData walker = target.PrimaryArmyId.HasValue
+                        ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+                    if (walker != null && walker.Hex.Equals(target.DestinationHex))
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"attack preparation host #{walker.Id} already stands on its staging Base"));
+                    return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
+                        target.PrimaryArmyId, "preparation host");
+                }
                 case AttackMissionPhase.Gather when target.PreparationStep != AttackPreparationStep.None:
                     return ProvisionPreparation(player, root, session, funded, target, key, eps);
                 case AttackMissionPhase.Reinforcement:
@@ -200,6 +213,8 @@ namespace Game.Ai.V2
                     $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Attack structure"));
 
             HexCoord hex = target.DestinationHex;
+            if (target.PreparationStep == AttackPreparationStep.FetchCommander)
+                return ProvisionFetchCommander(player, root, session, funded, target, key, eps);
             ArmyData host = null;
             if (target.PrimaryArmyId.HasValue)
             {
@@ -215,17 +230,21 @@ namespace Game.Ai.V2
             }
             else
             {
-                // A container is created only on the player's OWN starting Citadel, and never
-                // beside an empty shell that could be reused instead.
-                if (snap?.Self == null || !snap.Self.HoldsStartingCitadel || !hex.Equals(snap.Self.Citadel))
+                // A container is created only on the preparation's staging Base (the own Base
+                // nearest to the target), and never beside an empty shell that could be reused.
+                HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, target.Target.Hex);
+                if (!staging.HasValue || !hex.Equals(staging.Value))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                        $"attack preparation: ({hex.Q},{hex.R}) is not the held own starting Citadel"));
+                        $"attack preparation: ({hex.Q},{hex.R}) is not the staging own Base"));
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, null);
                 if (shell != null && !session.ClaimedArmyIds.Contains(shell.Id))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                         $"attack preparation: reusable shell #{shell.Id} stands on the Citadel; reuse it "
                         + "instead of creating a container"));
             }
+
+            if (target.PreparationStep == AttackPreparationStep.RecruitDonors)
+                return ProvisionRecruit(player, session, funded, target, key, host);
 
             HashSet<int> excluded = session.ExcludedForGroundCombat(funded.Mission);
             if (host != null)
@@ -256,7 +275,7 @@ namespace Game.Ai.V2
             if (ap > envelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
                     $"attack preparation needs {N(ap)} AP to create its host, envelope is {N(envelope)}"));
-            float turnApLeft = root.ActionPoints - session.ApClaimed;
+            float turnApLeft = TurnApLeft(root, session);
             if (ap > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: attack preparation needs {N(ap)}, {N(turnApLeft)} left"));
@@ -285,6 +304,114 @@ namespace Game.Ai.V2
                 AttackPreparationAssembly = assembly,
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
+                StealthApReserved = false,
+            });
+        }
+
+        // The turn AP this provisioning cycle has not claimed yet — the one physical AP read of
+        // the preparation steps (the allocator's envelope stays the spending authority).
+        private static float TurnApLeft(PlayerRoot root, ProvisioningSession session) =>
+            root.ActionPoints - session.ApClaimed;
+
+        // 2026-10-01 (variant B) — the fetched commander leaves its garrison: the host still exists,
+        // the hero still stands in that own garrison, is no garrison hero / operator, the garrison
+        // may spare it, and the turn has the creation AP. Every refusal is Blocked-class.
+        private static ProvisioningResult ProvisionFetchCommander(PlayerSetupData player, PlayerRoot root,
+            ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key, float eps)
+        {
+            ArmyData host = target.PrimaryArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+            ArmyData garrison = target.CommanderDonorArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, target.CommanderDonorArmyId.Value) : null;
+            UnitData hero = garrison?.Members.FirstOrDefault(u => u != null
+                && u.RuntimeId == target.CommanderUnitId);
+            if (host == null || host.Owner != player || garrison == null || !garrison.IsGarrison
+                || garrison.Owner != player || hero == null || !hero.IsHero
+                || AiArmyRoles.IsGarrisonHero(hero)
+                || AiArmyRoles.IsFacilityOperator(player, garrison.Hex, hero)
+                || !AiArmyRoles.CanSpareGarrisonMember(player, garrison, hero))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"attack preparation commander fetch: host or hero #{target.CommanderUnitId} in "
+                    + $"garrison #{target.CommanderDonorArmyId} no longer available"));
+            if (session.ClaimedArmyIds.Contains(garrison.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"attack preparation commander fetch: garrison #{garrison.Id} was claimed this cycle"));
+            float ap = ArmyActions.CreateArmyApCost;
+            if (ap > funded.Tentative.Ap + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    $"attack preparation commander fetch needs {N(ap)} AP, envelope is {N(funded.Tentative.Ap)}"));
+            if (ap > TurnApLeft(root, session) + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: commander fetch needs {N(ap)}"));
+            session.ClaimedArmyIds.Add(garrison.Id);
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"PREPARATION FetchCommander {hero.Name} (command {hero.CommandRating}) from garrison "
+                + $"#{garrison.Id} at ({garrison.Hex.Q},{garrison.Hex.R}) for host #{host.Id} ap {N(ap)}");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = -1,
+                FocusHex = garrison.Hex,
+                ExecutionHex = garrison.Hex,
+                AttackTarget = target,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+                StealthApReserved = false,
+            });
+        }
+
+        // ATK-F05 — the priced donor purchase: the host holds, every planned support is still an own
+        // mobile ground army that no mission used this cycle, and each one held by an operation is
+        // still for sale at a price (GroundCombatDonorPolicy.BorrowableDonorValues). 0 AP; the
+        // supports are claimed for the rest of the cycle so their lender cannot move them after
+        // the sale. Nothing moves here.
+        private static ProvisioningResult ProvisionRecruit(PlayerSetupData player,
+            ProvisioningSession session, FundedEntry funded, AttackMissionTarget target,
+            StableMissionKey key, ArmyData host)
+        {
+            // Every refusal is Blocked-class (MoverContended): a sale that cannot happen now never
+            // ends the preparation; Continuity and the next plan re-read the world.
+            if (host == null || target.GatherSupportArmyIds == null || target.GatherSupportArmyIds.Length == 0)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "attack donor purchase has no host or no support"));
+            Dictionary<int, float> forSale = GroundCombatDonorPolicy.BorrowableDonorValues(
+                MissionIntentRegistry.GetOrCreate(player).All);
+            HashSet<int> durable = session.ExcludedForGroundCombat(funded.Mission);
+            foreach (int id in target.GatherSupportArmyIds)
+            {
+                ArmyData s = AiV2Util.ResolveArmy(player, id);
+                if (s == null || s.Owner != player || s.Members.Count == 0 || s.IsGarrison || s.IsPrison
+                    || s.IsAirfield || AviationRules.IsAirArmy(s))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} is no longer an own mobile ground army"));
+                if (session.ClaimedArmyIds.Contains(id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} was used by an earlier mission this cycle"));
+                if (durable.Contains(id) && !forSale.ContainsKey(id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"attack donor purchase: support #{id} is held by an operation that is not for sale"));
+            }
+            session.ClaimedArmyIds.Add(host.Id);
+            foreach (int id in target.GatherSupportArmyIds)
+                session.ClaimedArmyIds.Add(id);
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"PREPARATION RecruitDonors host #{host.Id} supports "
+                + $"[{string.Join(",", target.GatherSupportArmyIds)}] bought "
+                + $"[{string.Join(",", target.GatherSupportArmyIds.Where(forSale.ContainsKey).Select(id => $"#{id}:{forSale[id]:0.##}"))}] ap 0");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = host.Id,
+                FocusHex = host.Hex,
+                ExecutionHex = host.Hex,
+                AttackTarget = target,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = 0f,
                 StealthApReserved = false,
             });
         }
@@ -354,7 +481,8 @@ namespace Game.Ai.V2
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
-                "attack", out bool atRendezvous, allowCommandHandover: true);
+                "attack", out bool atRendezvous, allowCommandHandover: true,
+                capacityIsProgress: target.CommanderLeg);
             if (!check.Ok)
                 return check.Failure;
 

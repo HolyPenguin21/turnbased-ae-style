@@ -49,11 +49,25 @@ namespace Game.Ai.V2
     //                member), else ArmyActions.CreateArmy (an empty shell). 2 AP when created.
     //   Assemble   — same-hex bodies/hero from legal donors (garrison floors and operators kept)
     //                join the host through the canonical transfer, 0 AP.
+    //   RecruitDonors — ATK-F05: the priced purchase of supports another operation holds
+    //                (GroundCombatDonorPolicy). A FRESH proposal whose TaskScore carries what those
+    //                operations lose (MoverOpportunityCost), never the Hard intent's lifecycle; no
+    //                mutation, 0 AP. Executed, its GatherSupportArmyIds enter the intent
+    //                (AdvanceIntent) and the lender retires on the next pass, as after a fresh gather.
     public enum AttackPreparationStep
     {
         None = 0,
         CreateHost = 1,
         Assemble = 2,
+        RecruitDonors = 3,
+        // User decision 30.09: the fist is assembled on an own Base (PreparationStagingBase), where
+        // cards and generated outputs land in it directly. A host standing elsewhere first walks
+        // there (a plain Transit of the host, the walk-home leg's machinery).
+        MoveHost = 4,
+        // 2026-10-01 (variant B) — a hero with a larger Command than the host's commander, standing
+        // in an own garrison elsewhere, leaves it as a lone-hero container (CreateArmyWithMember);
+        // it then walks to the host as a Gather leg (CommanderLeg) and takes command there.
+        FetchCommander = 5,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -93,6 +107,12 @@ namespace Game.Ai.V2
         // PreparationStep names the host-side step, None for an ordinary support leg.
         public bool Preparation;
         public AttackPreparationStep PreparationStep;
+        // 2026-10-01 (variant B) — this Gather leg walks the preparation's fetched commander
+        // (AttackIntent.CommanderArmyId): its handoff counts the larger Command as progress.
+        public bool CommanderLeg;
+        // FetchCommander only: the own garrison the hero leaves and the hero (UnitData.RuntimeId).
+        public int? CommanderDonorArmyId;
+        public int CommanderUnitId;
     }
 
     // ===========================================================================================
@@ -146,6 +166,31 @@ namespace Game.Ai.V2
 
     public static class AttackObjectiveEvaluator
     {
+        // The own Base a mobilization preparation assembles on: of every held own Base
+        // (SelfSnapshot.BaseHexes, starting Citadel included) the one nearest to the target; ties
+        // go to the starting Citadel, then Q, R. Null when no own Base is held. Recomputed every
+        // pass, so a lost Base simply moves the staging point. With a `host` whose route facts
+        // Analysis measured (a structural field army, ArmySnapshot.ReachableOwnBaseHexes) only a
+        // Base it can really reach qualifies — an unreachable staging point would otherwise hold
+        // the preparation in WAIT forever.
+        internal static HexCoord? PreparationStagingBase(WorldSnapshot snap, HexCoord targetHex,
+            ArmySnapshot host = null)
+        {
+            IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
+            if (host != null && host.IsStructuralRaidActor && bases != null)
+                bases = bases.Where(h => h.Equals(host.Hex)
+                    || (host.ReachableOwnBaseHexes != null && host.ReachableOwnBaseHexes.Contains(h)))
+                    .ToList();
+            if (bases == null || bases.Count == 0)
+                return null;
+            HexCoord citadel = snap.Self.Citadel;
+            return bases
+                .OrderBy(h => HexGridMath.Distance(h, targetHex))
+                .ThenByDescending(h => h.Equals(citadel))
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .First();
+        }
+
         // ---- enumeration --------------------------------------------------------------------
 
         public static List<AttackObjective> Enumerate(WorldSnapshot snap)
@@ -468,10 +513,15 @@ namespace Game.Ai.V2
         // how much of the available force already stands in one fist (assembly: Fist / P_field) and
         // how much of the reachable ceiling is already on the map (deployment: P_field against
         // P_deck plus the equipment still in hand/deck). Aviation is parallel support and stays out.
+        // 2026-09-30 (user decision) — once the mobilization gate is open the force IS ready to
+        // mobilize: the slot is full, so every preparation step (MoveHost first) keeps Attack's
+        // priority against fresh work instead of being starved by it.
         internal static float Readiness(SelfSnapshot self)
         {
             if (self == null)
                 return 0f;
+            if (MobilizationOpen(self))
+                return 1f;
             float assembly = self.FistPower / Mathf.Max(1f, self.FieldPotential);
             float deployment = self.FieldPotential
                 / Mathf.Max(1f, self.TotalMilitaryPotential + self.Reserve.Equipment);
@@ -484,13 +534,25 @@ namespace Game.Ai.V2
         internal static bool ForceReady(float attackArmyPower, float currentDeckPeakPower) =>
             currentDeckPeakPower > 0f && attackArmyPower > 0.80f * currentDeckPeakPower;
 
-        // Mobilization opens a new Attack preparation (never a march): at least four fifths of the
-        // additive live + hand + remaining-deck force is already on the map (PlayerForceAnalysis
-        // scale, aviation and garrisons included). Inclusive on purpose, unlike ForceReady; written
-        // as 5·deployed >= 4·available so exactly four fifths (144 of 180) is not lost to the
-        // binary rounding of 0.8f.
+        // Mobilization opens a new Attack preparation (never a march). Two independent starts
+        // (2026-09-30, user decision); the march itself keeps ForceReady's strict > 80%:
+        //  (A) deck share — at least three quarters of the additive live + hand + remaining-deck
+        //      ground force is already on the map (PlayerForceAnalysis scale). Inclusive; written
+        //      as 4·deployed >= 3·available so exactly three quarters (135 of 180) is not lost to
+        //      the binary rounding of 0.75f.
+        //  (B) field strike force — the bodies already on the field can form the strike army:
+        //      SelfSnapshot.FieldStrikePotential (no active scouts, aviation, heroes' own power or
+        //      mandatory garrison defence; Raid / ActiveDefence armies count — they come back)
+        //      clears the same ForceReady bar on the current deck peak.
         internal static bool MobilizationOpen(float deployedPower, float availablePower) =>
-            availablePower > 0f && 5f * deployedPower >= 4f * availablePower;
+            availablePower > 0f && 4f * deployedPower >= 3f * availablePower;
+
+        internal static bool FieldStrikeForceReady(float fieldStrikePotential, float currentDeckPeakPower) =>
+            ForceReady(fieldStrikePotential, currentDeckPeakPower);
+
+        internal static bool MobilizationOpen(SelfSnapshot self) =>
+            self != null && (MobilizationOpen(self.DeployedPower, self.AvailablePower)
+                || FieldStrikeForceReady(self.FieldStrikePotential, self.AttackPeak));
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as
         // "age unknown", i.e. maximally stale, never as "observed on turn 0".

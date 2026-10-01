@@ -150,7 +150,8 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            string lane, out bool atRendezvous, bool allowCommandHandover = false)
+            string lane, out bool atRendezvous, bool allowCommandHandover = false,
+            bool capacityIsProgress = false)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -170,16 +171,21 @@ namespace Game.Ai.V2
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
+            // ATK-F04 — composition only: whether the arrival handoff strengthens the primary does
+            // not depend on today's AP; the rendezvous step below prices and checks the charge.
+            string improveWhy;
             bool improves = lane == "attack"
                 ? GroundCombatReinforcement.ImprovesAttackForce(primary, support, opposition,
-                    defenderHexDefenseBonus, out _)
+                    defenderHexDefenseBonus, out improveWhy, capacityIsProgress: capacityIsProgress)
                 : GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out _, allowCommandHandover,
+                    defenderHexDefenseBonus, out improveWhy, allowCommandHandover,
                     allowCompleteTransfer: allowCommandHandover);
             if (!improves)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
-                        $"{lane} reinforcement #{support.Id} -> #{primary.Id} cannot strengthen its legal roster")));
+                        $"{lane} reinforcement #{support.Id} -> #{primary.Id} cannot strengthen its legal roster"
+                        + $" at ({primary.Hex.Q},{primary.Hex.R}), support at ({support.Hex.Q},{support.Hex.R}): "
+                        + $"{improveWhy}")));
 
             if (!atRendezvous)
             {
@@ -201,9 +207,13 @@ namespace Game.Ai.V2
             // handoff plan does, so no plan means there is no step to provision.
             if (atRendezvous)
             {
-                HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
-                    allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out string planWhy,
-                    allowCompleteTransfer: allowCommandHandover);
+                string planWhy;
+                HandoffPlan plan = lane == "attack"
+                    ? GroundCombatReinforcement.PlanAttackHandoff(primary, support, opposition,
+                        defenderHexDefenseBonus, requireChargeNow: true, out planWhy, capacityIsProgress)
+                    : GroundCombatReinforcement.PlanHandoff(primary, support,
+                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out planWhy,
+                        allowCompleteTransfer: allowCommandHandover);
                 if (plan == null)
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(
@@ -300,23 +310,92 @@ namespace Game.Ai.V2
         // The Attack lane needs power delivered into the actual primary, not a new shell
         // elsewhere on the map or a Monte-Carlo win change that can be zero at saturation.
         internal static bool ImprovesAttackForce(ArmyData primary, ArmyData support,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string why)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, out string why,
+            bool requireChargeNow = false, bool capacityIsProgress = false) =>
+            PlanAttackHandoff(primary, support, opposition, hexBonus, requireChargeNow, out why,
+                capacityIsProgress) != null;
+
+        // ATK-F04 — THE Attack handoff, one read-only plan for the gather projection
+        // (SupportImprovesPrimary), Continuity's support drop, Provisioning's leg check and the
+        // executed transfer. The legal command handover and the legal bodies-only transfer are
+        // alternatives: the handover is kept when it raises the primary (power, or the defender
+        // coverage it lacked), otherwise the bodies-only plan when that one does — a hero that does
+        // not strengthen the fist never displaces a useful body. `requireChargeNow` false projects a
+        // handoff that happens on the support's arrival (container/capacity legality only; its
+        // activation charge is priced by ProjectedHandoffApCost, not paid from today's AP). Null
+        // with the exact `why` (both alternatives, with power before/after) when neither helps.
+        // `capacityIsProgress` — 2026-10-01 (variant B): the preparation's fetched commander. Its
+        // lone hero takes command (joining, or exchanged for the weakest body of a full host) and
+        // its larger Command is the progress, as for the same-hex capacity hero of a preparation;
+        // the lone-hero container may be emptied by it.
+        internal static HandoffPlan PlanAttackHandoff(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, bool requireChargeNow,
+            out string why, bool capacityIsProgress = false)
         {
-            HandoffPlan plan = PlanHandoff(primary, support, opposition, hexBonus,
-                out why, allowCompleteTransfer: true);
-            if (plan == null) return false;
-            var roster = primary.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
-            if (AiPower.EffectiveArmyPower(roster) > AiPower.EffectiveArmyPower(primary.Members))
-                return true;
-            // Once a march has started, a zero-power swap may still add the only weapon
-            // capable of hurting a newly observed defender.
-            var before = primary.Members.Select(WorthIt.FromLiveUnit).ToList();
-            var after = roster.Select(WorthIt.FromLiveUnit).ToList();
-            if (!WorthIt.CanDamageAll(before, opposition, hexBonus)
-                && WorthIt.CanDamageAll(after, opposition, hexBonus))
-                return true;
-            why = "legal handoff does not increase primary power or defender coverage";
-            return false;
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
+            why = "";
+            if (primary == null || support == null)
+            {
+                why = "primary or support is gone";
+                return null;
+            }
+            float before = AiPower.EffectiveArmyPower(primary.Members);
+            List<WorthIt.DefenderProfile> beforeProfiles = null;
+            string Judge(HandoffPlan plan, out bool improves)
+            {
+                var roster = primary.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
+                float after = AiPower.EffectiveArmyPower(roster);
+                improves = after > before;
+                if (!improves && capacityIsProgress && plan.Promote != null)
+                {
+                    var led = new List<UnitData> { plan.Promote };
+                    led.AddRange(roster.Where(u => u != plan.Promote));
+                    improves = ArmyData.ComputeCapacity(led, false)
+                        > ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
+                }
+                if (!improves)
+                {
+                    // A zero-power exchange may still add the only weapon capable of hurting a
+                    // known defender (coverage-only change).
+                    beforeProfiles = beforeProfiles ?? primary.Members.Select(WorthIt.FromLiveUnit).ToList();
+                    improves = !WorthIt.CanDamageAll(beforeProfiles, opposition, hexBonus)
+                        && WorthIt.CanDamageAll(roster.Select(WorthIt.FromLiveUnit).ToList(),
+                            opposition, hexBonus);
+                }
+                return $"{plan.Detail} (in=[{string.Join(",", plan.Incoming.Select(u => u.Name))}] "
+                    + $"out=[{string.Join(",", plan.Displaced.Select(u => u.Name))}] "
+                    + $"power {before:0.#}->{after:0.#})";
+            }
+
+            HandoffPlan first = PlanHandoff(primary, support, opposition, hexBonus,
+                out string firstWhy, allowCompleteTransfer: true, requireChargeNow: requireChargeNow,
+                allowEmptySupport: capacityIsProgress);
+            string commandJudged = null;
+            if (first != null)
+            {
+                string judged = Judge(first, out bool improves);
+                if (improves)
+                    return first;
+                if (first.Promote == null)
+                {
+                    // No hero moved: this already was the bodies-only plan.
+                    why = $"bodies-only handoff does not raise power or coverage: {judged}";
+                    return null;
+                }
+                commandJudged = judged;
+            }
+            HandoffPlan bodies = PlanHandoff(primary, support, null, 0f, out string bodiesWhy,
+                allowCompleteTransfer: true, requireChargeNow: requireChargeNow);
+            string bodiesJudged = null;
+            if (bodies != null)
+            {
+                bodiesJudged = Judge(bodies, out bool bodiesImprove);
+                if (bodiesImprove)
+                    return bodies;
+            }
+            why = $"command handover: {commandJudged ?? firstWhy}; bodies-only: "
+                + $"{bodiesJudged ?? bodiesWhy} - neither raises power or coverage";
+            return null;
         }
 
         // Strike force — THE "hand the support's hero over to lead the primary" rule, exchanges
@@ -333,7 +412,7 @@ namespace Game.Ai.V2
         // the handoff — one answer for all four.
         internal static CommandHandoverPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, bool allowEmptySupport = false)
         {
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
@@ -404,7 +483,9 @@ namespace Game.Ai.V2
                 }
                 // Without its hero the support must still hold what it keeps and receives; a
                 // support that cannot does not give this hero away.
-                if (!SupportStaysLegal(support, incoming, displaced))
+                if (!SupportStaysLegal(support, incoming, displaced)
+                    && !(allowEmptySupport && support.Members.All(u => incoming.Contains(u))
+                        && displaced.Count == 0))
                     continue;
                 return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
             }
@@ -418,7 +499,8 @@ namespace Game.Ai.V2
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
-            out string why, bool allowCompleteTransfer = false)
+            out string why, bool allowCompleteTransfer = false, bool requireChargeNow = true,
+            bool allowEmptySupport = false)
         {
             why = "";
             if (primary == null || support == null)
@@ -429,11 +511,11 @@ namespace Game.Ai.V2
             if (commandOpposition != null)
             {
                 CommandHandoverPlan c = CommandHandover(primary, support, commandOpposition,
-                    commandHexBonus, null);
+                    commandHexBonus, null, allowEmptySupport);
                 if (c != null)
                 {
                     if (ArmyActions.CanExchangeMembers(c.Incoming, support, primary, c.Hero,
-                            c.Displaced, out string cWhy))
+                            c.Displaced, out string cWhy, requireChargeNow))
                         return new HandoffPlan(c.Incoming, c.Displaced, c.Hero,
                             $"hero {c.Hero.Name} took command"
                             + (c.HeroExchangedFor != null ? $" in exchange for {c.HeroExchangedFor.Name}" : "")
@@ -453,7 +535,8 @@ namespace Game.Ai.V2
             if (freeSlots > 0)
             {
                 List<UnitData> batch = sparable.Take(freeSlots).ToList();
-                if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy))
+                if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy,
+                        requireChargeNow))
                     return new HandoffPlan(batch, null, null, $"transferred {batch.Count} into free slot(s)");
                 why += $"atomic transfer rejected: {fWhy}";
                 return null;
@@ -475,7 +558,7 @@ namespace Game.Ai.V2
                     <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
                     continue;
                 if (ArmyActions.CanExchangeMembers(new[] { fresh }, support, primary, null,
-                        new[] { weakest }, out string sWhy))
+                        new[] { weakest }, out string sWhy, requireChargeNow))
                     return new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
                         $"swapped {weakest.Name} out for {fresh.Name}");
                 why += $"swap rejected: {sWhy}; ";
@@ -601,7 +684,7 @@ namespace Game.Ai.V2
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
-                        ? 0.80f * session.Snapshot.Self.TotalMilitaryPotential : 0f,
+                        ? 0.80f * session.Snapshot.Self.AttackPeak : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -732,7 +815,7 @@ namespace Game.Ai.V2
             // its original commitment and is rechecked for defender coverage above.
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
                 && !AttackObjectiveEvaluator.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
-                    session.Snapshot.Self.TotalMilitaryPotential))
+                    session.Snapshot.Self.AttackPeak))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
 

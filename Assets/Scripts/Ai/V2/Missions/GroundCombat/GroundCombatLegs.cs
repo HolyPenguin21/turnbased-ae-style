@@ -183,6 +183,9 @@ namespace Game.Ai.V2
             if (attack.Phase == AttackMissionPhase.Gather)
                 foreach (int id in attack.GatherSupportArmyIds)
                     yield return id;
+            // 2026-10-01 (variant B) — the preparation's fetched commander walking to the host.
+            if (attack.Phase == AttackMissionPhase.Gather && attack.CommanderArmyId.HasValue)
+                yield return attack.CommanderArmyId.Value;
             foreach (AttackGatherReturn r in attack.GatherReturns)
                 yield return r.ArmyId;
         }

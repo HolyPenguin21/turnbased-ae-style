@@ -126,6 +126,12 @@ namespace Game.Ai.V2
         // so delivery checks the exact claimed container instead of a structural combat actor.
         public bool AttackFistIsPreparationHost;
         public bool IsPersistenceDeferred;
+        // 2026-10-01 — Phase A proved this demand structurally undeliverable this pass (no chain
+        // shape at all, or shapes that pass the play preflight yet cannot deliver): it keeps no
+        // strategic claim on hand cards (MaterializationFeasibility.UnresolvedClaimFor), so Phase B
+        // may spend them (Korrin/Orlan T15-T25: heroes held for an Economy Hero demand whose
+        // every delivery exceeded its site value).
+        public bool StructurallyUndeliverable;
 
         // For an Economy Hero-prerequisite demand (the builder hero a pending build still needs):
         // the reservation owner of THAT build, whose deferred hold the hero's own card may draw on —

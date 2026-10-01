@@ -190,7 +190,8 @@ namespace Game.Ai.V2
         // the receiver may be claimed only while its live contract admits inbound members. Swaps
         // pass inboundOnly=false: both sides give, so both must be free.
         private static bool CommonPreflight(PlayerSetupData player, int turn, ArmyData a, ArmyData b,
-            ActorCommitments commitments, out string why, bool inboundOnly = true)
+            ActorCommitments commitments, out string why, bool inboundOnly = true,
+            UnitData released = null)
         {
             why = null;
             if (a == b) { why = "same container"; return false; }
@@ -202,9 +203,18 @@ namespace Game.Ai.V2
             if (AviationRules.IsAirfield(a) || AviationRules.IsAirArmy(a)
                 || AviationRules.IsAirfield(b) || AviationRules.IsAirArmy(b))
             { why = "aviation container"; return false; }
-            if (ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments) != null)
-            { why = "source is mission-claimed"; return false; }
+            ArmyMutationContract giver = ArmyReorgAnalyzer.MutationContractFor(player, turn, a, commitments);
             ArmyMutationContract receiver = ArmyReorgAnalyzer.MutationContractFor(player, turn, b, commitments);
+            // ATK-F03 — the one outbound exception: a preparation host lets a non-commander hero
+            // go to a free container (the planner chose it as an excess hero).
+            bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
+                && released != null && released.IsHero && released != a.Commander && receiver == null;
+            // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
+            // it for a missing position's source; ReorgViability.PreparationRosterWaste).
+            bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
+                && receiver == null && ArmyReorgAnalyzer.IsPreparationNonRosterBody(player, a, released);
+            if (giver != null && !heroRelease && !bodyRelease)
+            { why = "source is mission-claimed"; return false; }
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))
             { why = $"destination mission contract {receiver.Label} admits no inbound"; return false; }
             return true;
@@ -256,7 +266,7 @@ namespace Game.Ai.V2
         private static bool PreflightTransfer(PlayerSetupData player, int turn, ArmyData from, ArmyData to,
             UnitData unit, ActorCommitments commitments, HashSet<UnitData> movedUnits, out string why)
         {
-            if (!CommonPreflight(player, turn, from, to, commitments, out why))
+            if (!CommonPreflight(player, turn, from, to, commitments, out why, released: unit))
                 return false;
             if (movedUnits.Contains(unit)) { why = "unit already moved this plan"; return false; }
             if (!from.Members.Contains(unit)) { why = "unit not in source"; return false; }
@@ -277,16 +287,6 @@ namespace Game.Ai.V2
                 return false;
             if (from.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, from, unit, allowCitadelEmergency: false))
             { why = "garrison safety floor"; return false; }
-            // §P1 — a garrison that currently holds a real defensive power reserve must not be
-            // dropped below it by a zero-AP structural move.
-            if (from.IsGarrison)
-            {
-                float beforePower = AiPower.EffectiveArmyPower(from.Members);
-                if (beforePower >= AiConfigV2.housekeepingGarrisonReservePower
-                    && AiPower.EffectiveArmyPower(from.Members.Where(m => m != unit))
-                        < AiConfigV2.housekeepingGarrisonReservePower)
-                { why = "garrison power reserve"; return false; }
-            }
             return true;
         }
 
@@ -311,16 +311,7 @@ namespace Game.Ai.V2
                 { why = "garrison swap must send a hero out"; return false; }
                 if (!AiArmyRoles.CanSpareGarrisonMember(player, garr, leaving, allowCitadelEmergency: false))
                 { why = "garrison hero release breaks security"; return false; }
-                // §P1 — a garrison that currently holds its defensive power reserve must not be
-                // dropped below it by the swap either (strong hero out, weak body in).
-                float garrBefore = AiPower.EffectiveArmyPower(garr.Members);
-                if (garrBefore >= AiConfigV2.housekeepingGarrisonReservePower)
-                {
-                    var garrAfter = garr.Members.Where(m => m != leaving).ToList();
-                    garrAfter.Add(entering);
-                    if (AiPower.EffectiveArmyPower(garrAfter) < AiConfigV2.housekeepingGarrisonReservePower)
-                    { why = "garrison power reserve"; return false; }
-                }
+                // A hero (no power) leaves and a body enters: the garrison's defence never drops.
             }
             if (movedUnits.Contains(unitA) || movedUnits.Contains(unitB)) { why = "swap member already moved this plan"; return false; }
             if (!armyA.Members.Contains(unitA) || !armyB.Members.Contains(unitB)) { why = "swap membership changed"; return false; }

@@ -385,11 +385,14 @@ namespace Game.Map
 
         // The exact check TransferMembersAtomic(units, source, target, …, promoteToCommander,
         // displaced) will run — for a caller that plans the exchange before committing to it.
+        // `requireChargeNow` false: the same membership / container / capacity legality without the
+        // current turn's activation charge — for a read-only projection of an exchange that will
+        // happen on a later turn (the charge is then priced, not paid from today's AP).
         public static bool CanExchangeMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, UnitData promoteToCommander, IReadOnlyList<UnitData> displaced,
-            out string failReason)
+            out string failReason, bool requireChargeNow = true)
             => CanTransferMembers(units, source, target, promoteToCommander, displaced,
-                out _, out _, out _, out failReason);
+                out _, out _, out _, out failReason, requireChargeNow);
 
         public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
         {
@@ -405,7 +408,8 @@ namespace Game.Map
         // exchange); both sides are judged on their final rosters.
         private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, UnitData promoteToCommander, IReadOnlyList<UnitData> displaced,
-            out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out string failReason)
+            out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out string failReason,
+            bool requireChargeNow = true)
         {
             failReason = null;
             targetRoot = null;
@@ -480,6 +484,8 @@ namespace Game.Map
                 return false;
             }
 
+            if (!requireChargeNow)
+                return true;
             var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
             var chargeableBack = back.Where(source.RequiresActivationCharge).ToList();
             if (chargeable.Count > 0 || chargeableBack.Count > 0)

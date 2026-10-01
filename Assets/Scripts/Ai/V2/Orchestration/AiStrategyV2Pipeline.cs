@@ -116,6 +116,10 @@ namespace Game.Ai.V2
             int initiativeActionableAtStart =
                 Game.Ai.V2.Initiative.PreTurnCapacityAnalysis.CountActionableFieldArmies(player, unactivatedOnly: false);
 
+            // 1b. A thin hand is refilled BEFORE the scan, so the drawn cards are in this turn's
+            //     demand fulfilment instead of waiting for leftover AP in Phase B.
+            int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
+
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
             // P_start: the first scanned force ceiling is this player's baseline for the game.
@@ -188,7 +192,7 @@ namespace Game.Ai.V2
             //     Aviation obligations come first (AviationObligations): while a wing must still
             //     return or rebase, Phase A is deferred and the loop below settles the wings; every
             //     axis is then admitted in one re-admission pass.
-            int handAtStart = hand?.Hand?.Count ?? 0;
+            int handAtStart = (hand?.Hand?.Count ?? 0) - replenishDrawn;
             var deferredAdmission = new DeferredStrategicAdmission();
             StrategicPhaseResult phaseA;
             if (AviationObligations.Pending(player, ctx))
@@ -204,6 +208,7 @@ namespace Game.Ai.V2
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
+            phaseA.CardsDrawn += replenishDrawn;
 
             // S4. Analysis owns refresh granularity. The existing AiMapMemory revision decides
             //     whether honest knowledge/map facts changed; action kind is not used as a proxy.

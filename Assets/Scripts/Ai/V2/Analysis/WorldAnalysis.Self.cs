@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Core;
@@ -22,8 +22,6 @@ namespace Game.Ai.V2
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {
-        private const int NoHeroStackCapacity = 2;
-
         private static SelfSnapshot BuildSelf(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             var self = new SelfSnapshot();
@@ -140,6 +138,44 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // 2026-09-30 (user decision) — mobilization start (B): the strongest ONE stack the bodies
+        // already on the field could form (AiPower.TotalMilitaryPotential, one commander-in-slot
+        // rule). Counted: ground bodies of every field army, busy ones included (a Raid or an
+        // ActiveDefence finishes and its army comes back), and the bodies a garrison may spare
+        // above its defence floor (AiArmyRoles.SpareableBodies). Not counted: aviation, explicit
+        // scouts (lone scouts and armies a Scout mission holds — the same set AttackForcePool
+        // leaves out, so the gate compares like with like), prisoners and the garrison's
+        // mandatory defence. Heroes
+        // bring only their slots (their power is 0); a facility operator commands nothing.
+        internal static float FieldStrikePotential(PlayerSetupData player, IEnumerable<ArmyData> ownArmies,
+            float groundAvailablePower)
+        {
+            var pool = new List<AiPower.PowerUnit>();
+            HexCoord citadel = AiTurnController.GarrisonHexFor(player);
+            HashSet<int> scouts = AttackForcePool.ScoutMissionArmyIds(player);
+            foreach (ArmyData a in ownArmies ?? Enumerable.Empty<ArmyData>())
+            {
+                if (a == null || a.IsPrison || a.IsAirfield || AviationRules.IsAirArmy(a)
+                    || AiArmyRoles.IsSoloRecce(a) || scouts.Contains(a.Id))
+                    continue;
+                List<UnitData> bodies = a.Members
+                    .Where(u => u != null && !u.IsPrisoner && AiArmyRoles.IsGroundBattleBody(u)).ToList();
+                if (a.IsGarrison)
+                {
+                    HashSet<int> spare = AiArmyRoles.SpareableBodies(bodies,
+                        set => AiPower.EffectiveArmyPower(set.ToList()),
+                        AiArmyRoles.GarrisonDefenceFloor(groundAvailablePower, a.Hex.Equals(citadel)));
+                    bodies = bodies.Where((u, i) => spare.Contains(i)).ToList();
+                }
+                pool.AddRange(bodies.Select(AiPower.ToPowerUnit));
+                pool.AddRange(a.Members
+                    .Where(u => u != null && u.IsHero && !u.IsPrisoner && !u.IsAviation
+                        && !AiArmyRoles.IsFacilityOperator(player, a.Hex, u))
+                    .Select(AiPower.ToPowerUnit));
+            }
+            return AiPower.TotalMilitaryPotential(pool);
+        }
+
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
 
@@ -153,63 +189,69 @@ namespace Game.Ai.V2
         {
             var commandHeroes = new List<OwnCommandHero>();
             var mapPool = new List<AiPower.PowerUnit>();
-            int mapCap = NoHeroStackCapacity;
             foreach (ArmyData a in ownArmies)
                 foreach (UnitData m in a.Members)
                 {
                     if (m == null || m.IsAviation || m.IsPrisoner) continue;
                     mapPool.Add(AiPower.ToPowerUnit(m));
                     if (!m.IsHero) continue;
-                    mapCap = Mathf.Max(mapCap, m.CommandRating);
                     commandHeroes.Add(new OwnCommandHero(
                         HeroRoleEvaluator.Profile(m, m.RuntimeId), ForceSource.Map));
                 }
 
             var handUnits = new List<AiPower.PowerUnit>();
             var handHeroes = new List<AiPower.PowerUnit>();
-            var deckUnits = new List<AiPower.PowerUnit>();
-            var deckHeroes = new List<AiPower.PowerUnit>();
             var equipment = new List<CardDefinition>();
-            int handCap = 0, deckCap = 0;
             float aviation = 0f;
 
             // Cards carry no runtime id: hand then deck, by position, as negative keys.
+            // Hand bodies/heroes are kept for BestStackPotential (map + hand); the deck feeds
+            // only CommandHeroes, equipment and aviation here.
             void AddCard(CardDefinition d, ForceSource source, int key, List<AiPower.PowerUnit> units,
-                List<AiPower.PowerUnit> heroes, ref int cap)
+                List<AiPower.PowerUnit> heroes, CardData held = null)
             {
                 if (d == null) return;
                 if (d.cardType == CardType.Equipment) { equipment.Add(d); return; }
                 if (!IsMilitaryCard(d)) return;
-                if (d.isAviation) { aviation += AiPower.ToPowerUnit(d).BasePower; return; }
-                if (d.cardType == CardType.Unit) { units.Add(AiPower.ToPowerUnit(d)); return; }
-                heroes.Add(AiPower.ToPowerUnit(d));
-                cap = Mathf.Max(cap, d.commandRating);
+                // A held card counts with the equipment already attached to it.
+                AiPower.PowerUnit pu = held != null ? AiPower.ToPowerUnit(held) : AiPower.ToPowerUnit(d);
+                if (d.isAviation) { aviation += pu.BasePower; return; }
+                if (d.cardType == CardType.Unit) { units?.Add(pu); return; }
+                heroes?.Add(pu);
                 commandHeroes.Add(new OwnCommandHero(HeroRoleEvaluator.Profile(d, key), source));
             }
             for (int i = 0; i < self.Hand.Count; i++)
                 AddCard(self.Hand[i]?.Definition, ForceSource.Hand, -(1 + i),
-                    handUnits, handHeroes, ref handCap);
+                    handUnits, handHeroes, self.Hand[i]);
             for (int i = 0; i < self.Deck.Count; i++)
                 AddCard(self.Deck[i], ForceSource.Deck, -(1 + self.Hand.Count + i),
-                    deckUnits, deckHeroes, ref deckCap);
+                    null, null);
 
-            List<AiPower.PowerUnit> withUnits = mapPool.Concat(handUnits).Concat(deckUnits).ToList();
-            float unitsCeiling = AiPower.BestStackPotential(withUnits, mapCap);
+            // One commander-in-slot rule for every nested ceiling (AiPower.NestedPotentials).
+            AiPower.ForcePotentials ceilings = AiPower.NestedPotentials(
+                ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck);
 
-            self.FieldPotential = AiPower.TotalMilitaryPotential(mapPool);
+            self.FieldPotential = ceilings.Field;
             self.BestStackPotential = AiPower.TotalMilitaryPotential(
                 mapPool.Concat(handUnits).Concat(handHeroes).ToList());
-            self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(
-                AiPower.MilitaryPool(ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck));
+            self.TotalMilitaryPotential = ceilings.Total;
             PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
                 out self.DeployedPower, out self.AvailablePower);
+            self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
+            // The force an Attack can actually assemble (busy armies, scouts, garrison defence,
+            // garrison heroes and operators out): its peak, roster and pool.
+            AttackForcePool attackPool = AttackForcePool.Build(player, self);
+            self.AttackPeak = attackPool.Peak;
+            self.StrikeRoster = attackPool.Roster;
+            self.StrikePool = attackPool.Pool;
+            self.StrikePoolKeyCounts = attackPool.KeyCounts;
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)
                 ? start : self.TotalMilitaryPotential;
             self.Reserve = new ForceReserve(
-                units: Mathf.Max(0f, unitsCeiling - self.FieldPotential),
-                hero: Mathf.Max(0f, self.TotalMilitaryPotential - unitsCeiling),
+                units: ceilings.UnitsReserve,
+                hero: ceilings.HeroReserve,
                 equipment: EquipmentReserve(self, ownArmies, equipment),
                 aviation: aviation);
             self.CommandHeroes = commandHeroes;

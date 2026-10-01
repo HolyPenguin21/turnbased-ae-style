@@ -171,7 +171,7 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 2
+    moveMax: 4
     activationApCost: 1
     commandRating: 8
     fate: 2
@@ -230,7 +230,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000008000000
+    unitTypeTags: 010000000800000007000000
     grantedAbilities:
     - Researcher
     resourceYield:
@@ -274,7 +274,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0100000008000000
+    unitTypeTags: 010000000800000007000000
     grantedAbilities:
     - Assembler
     resourceYield:
@@ -435,9 +435,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
-    commandRating: 6
+    commandRating: 8
     fate: 4
     attack: 0
     defenseRating: 0
@@ -450,7 +450,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 0100000008000000
+    unitTypeTags: 010000000800000007000000
     grantedAbilities:
     - ApBonus
     resourceYield:

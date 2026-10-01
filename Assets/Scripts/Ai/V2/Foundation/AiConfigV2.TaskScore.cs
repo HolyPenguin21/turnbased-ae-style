@@ -1,4 +1,4 @@
-namespace Game.Ai.V2
+﻿namespace Game.Ai.V2
 {
     // ===========================================================================================
     //  TASKSCORE CALIBRATION TABLE — every lever of the world-task score, in one place.
@@ -72,6 +72,13 @@ namespace Game.Ai.V2
         // scarcity factor moves it between 0.2 (nothing else wants it) and 1.8 (the hand and
         // deck are short of it). Earlier prices disagreed: cards 1/3 AP, world tasks 1/2 AP.
         public const float actionPriceResourceAp = 1f;
+
+        // 2026-09-30 (user decision) — the price, in AP-equivalents, of taking a garrison hero
+        // (AiArmyRoles.IsGarrisonHero: ApBonus / Researcher / Assembler, Support type tag) out of
+        // its garrison as a task's fallback hero. It is a MoverOpportunityCost raw fact
+        // (ActionPrice.GarrisonHeroFallback), so an active task pays it only when no other hero
+        // qualifies. One ApBonus turn's worth (UnitAbilities.ApBonusActionPointsPerSource).
+        public const float garrisonHeroFallbackApEquivalent = 2f;
         public const float actionPriceScarcityMin = 0.2f;
         public const float actionPriceScarcityMax = 1.8f;
         // The two value currencies as scales of that one table. A TaskScore point is one

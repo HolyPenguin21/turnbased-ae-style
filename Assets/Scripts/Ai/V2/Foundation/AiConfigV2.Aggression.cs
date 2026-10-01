@@ -15,6 +15,21 @@ namespace Game.Ai.V2
         // can damage it is at most this many turns away
         // (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender).
         public const int strongholdDefenderPinEnemyEta = 1;
+        // 2026-10-01 (user decision) — ActiveDefence answers armies, not scouts: a hostile
+        // contact whose known roster is weaker than this (AiPower scale) is no Intercept target.
+        public const float activeDefenceMinEnemyPower = 10f;
+        // 2026-10-01 (user decision) — ActiveDefence stays near home: past this many hexes from
+        // the nearest own Base/Citadel every further hex lowers OwnTerritoryProximity by
+        // taskScoreActiveDefenceLeashPerHex (a desire penalty, never a hard gate).
+        public const int activeDefenceLeashHexes = 4;
+        public const float taskScoreActiveDefenceLeashPerHex = 2f;
+        // 2026-10-01 (user decision) — a regroup at the Citadel or a withdrawal walks every usable
+        // field army home: only for a threat that reaches its asset within this many turns. A
+        // farther one is deferred (the field armies keep their tasks; the next pass re-decides).
+        public const int activeDefenceWithdrawMaxEnemyEta = 2;
+        // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
+        // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
+        public const float attackTargetRosterRefreezeGrowth = 0.10f;
         // Generic military readiness for the Aggression Radar axis.
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;
@@ -78,7 +93,7 @@ namespace Game.Ai.V2
         public const float raidActivationApMax = 3f;
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
         // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
-        public const float raidMinViableWinChance = 0.65f;
+        public const float raidMinViableWinChance = 0.80f;
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
         public const float attackGatherMinWinGain = 0.05f;

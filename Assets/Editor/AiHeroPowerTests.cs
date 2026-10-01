@@ -23,6 +23,26 @@ namespace Game.EditorTests
             resistanceRating = 0, range = 2, unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry },
         };
 
+        // 2026-10-01 — the identified peak (strike roster) is the SAME greedy as the scalar
+        // ceilings: equal numbers, and the roster's own power is the Total ceiling.
+        [Test]
+        public void PeakRoster_MatchesScalarCeilings()
+        {
+            var map = new List<AiPower.PowerUnit> { Body(8f, UnitTypeTag.Infantry), Body(5f, UnitTypeTag.Armored),
+                Leader(4) };
+            var cardBodies = new List<AiPower.PowerUnit> { Body(12f, UnitTypeTag.Armored),
+                Body(3f, UnitTypeTag.Infantry), Body(9f, UnitTypeTag.Vehicle) };
+            var cardHeroes = new List<AiPower.PowerUnit> { Leader(6) };
+            AiPower.ForcePotentials scalar = AiPower.NestedPotentials(map, cardBodies, cardHeroes);
+            AiPower.ForcePotentials named = AiPower.NestedPotentialsOf(map, cardBodies, cardHeroes,
+                u => u, out List<AiPower.PowerUnit> roster);
+            Assert.That(named.Field, Is.EqualTo(scalar.Field));
+            Assert.That(named.Units, Is.EqualTo(scalar.Units));
+            Assert.That(named.Total, Is.EqualTo(scalar.Total));
+            Assert.That(AiPower.EffectiveArmyPower(roster), Is.EqualTo(scalar.Total).Within(1e-4f));
+            Assert.That(roster.Count, Is.EqualTo(6), "the 6-command hero leads five bodies");
+        }
+
         [Test]
         public void HeroCard_HasNoCombatPower()
         {
@@ -52,6 +72,101 @@ namespace Game.EditorTests
                 { AiPower.ToPowerUnit(Infantry()), AiPower.ToPowerUnit(Infantry()) };
             Assert.That(AiPower.TotalMilitaryPotential(pool),
                 Is.EqualTo(AiPower.EffectiveArmyPower(twoBodies)).Within(0.001f));
+        }
+
+        private static AiPower.PowerUnit Body(float power, UnitTypeTag tag = UnitTypeTag.Infantry) =>
+            new AiPower.PowerUnit(power, new List<UnitTypeTag> { tag }, 1, false);
+
+        private static AiPower.PowerUnit Leader(int command) =>
+            new AiPower.PowerUnit(0f, new List<UnitTypeTag> { UnitTypeTag.Hero }, 1, true, command);
+
+        private static void AssertNested(AiPower.ForcePotentials p)
+        {
+            Assert.That(p.UnitsReserve, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(p.HeroReserve, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(p.Field + p.UnitsReserve + p.HeroReserve, Is.EqualTo(p.Total).Within(1e-4f));
+        }
+
+        // ATK-F01 control case: Cassia T20 — empty hand and deck, one commander, more bodies
+        // than its slots. The units ceiling once filled the commander's slot with a body.
+        [Test]
+        public void NestedPotentials_EmptyCards_NoReserve()
+        {
+            var map = new List<AiPower.PowerUnit> { Leader(3) };
+            for (int i = 0; i < 5; i++) map.Add(Body(8f + i));
+            AiPower.ForcePotentials p = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit>(), new List<AiPower.PowerUnit>());
+            AssertNested(p);
+            Assert.That(p.UnitsReserve, Is.EqualTo(0f));
+            Assert.That(p.HeroReserve, Is.EqualTo(0f));
+            Assert.That(p.Total, Is.EqualTo(AiPower.TotalMilitaryPotential(map)));
+        }
+
+        [Test]
+        public void NestedPotentials_CommandEight_TakesSevenBodies()
+        {
+            var map = new List<AiPower.PowerUnit> { Leader(8) };
+            for (int i = 0; i < 8; i++) map.Add(Body(10f));
+            var sevenLed = new List<AiPower.PowerUnit> { Leader(8) };
+            for (int i = 0; i < 7; i++) sevenLed.Add(Body(10f));
+            AiPower.ForcePotentials p = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit> { Body(10f) }, new List<AiPower.PowerUnit>());
+            AssertNested(p);
+            Assert.That(p.Field, Is.EqualTo(AiPower.EffectiveArmyPower(sevenLed)).Within(1e-4f));
+            Assert.That(p.UnitsReserve, Is.EqualTo(0f), "an equal body cannot join a full stack");
+        }
+
+        [Test]
+        public void NestedPotentials_StrongBodyCard_IsUnitsReserve_WeakOneIsNot()
+        {
+            var map = new List<AiPower.PowerUnit> { Leader(3), Body(10f), Body(10f) };
+            AiPower.ForcePotentials weak = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit> { Body(1f) }, new List<AiPower.PowerUnit>());
+            AssertNested(weak);
+            Assert.That(weak.UnitsReserve, Is.EqualTo(0f));
+            AiPower.ForcePotentials strong = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit> { Body(30f) }, new List<AiPower.PowerUnit>());
+            AssertNested(strong);
+            Assert.That(strong.UnitsReserve, Is.GreaterThan(0f));
+            Assert.That(strong.HeroReserve, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void NestedPotentials_HeroCard_AddsOnlyThroughItsSlots()
+        {
+            var map = new List<AiPower.PowerUnit> { Leader(3) };
+            for (int i = 0; i < 5; i++) map.Add(Body(10f));
+            AiPower.ForcePotentials same = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit>(), new List<AiPower.PowerUnit> { Leader(3) });
+            AssertNested(same);
+            Assert.That(same.HeroReserve, Is.EqualTo(0f), "an equal commander opens no slot");
+            AiPower.ForcePotentials bigger = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit>(), new List<AiPower.PowerUnit> { Leader(6) });
+            AssertNested(bigger);
+            Assert.That(bigger.HeroReserve, Is.GreaterThan(0f), "three more slots for map bodies");
+        }
+
+        [Test]
+        public void NestedPotentials_NoHero_TwoBodyStack()
+        {
+            var map = new List<AiPower.PowerUnit> { Body(10f), Body(10f), Body(10f) };
+            AiPower.ForcePotentials p = AiPower.NestedPotentials(map,
+                new List<AiPower.PowerUnit> { Body(5f) }, new List<AiPower.PowerUnit>());
+            AssertNested(p);
+            Assert.That(p.Field, Is.EqualTo(AiPower.EffectiveArmyPower(
+                new List<AiPower.PowerUnit> { Body(10f), Body(10f) })).Within(1e-4f));
+            Assert.That(p.UnitsReserve, Is.EqualTo(0f));
+        }
+
+        [Test]
+        public void HeroTags_AreNoTypeCoverage()
+        {
+            var taggedHero = new AiPower.PowerUnit(0f,
+                new List<UnitTypeTag> { UnitTypeTag.Hero, UnitTypeTag.Bio }, 1, true, 4);
+            var bodies = new List<AiPower.PowerUnit> { Body(10f), Body(10f) };
+            var led = new List<AiPower.PowerUnit>(bodies) { taggedHero };
+            Assert.That(AiPower.EffectiveArmyPower(led),
+                Is.EqualTo(AiPower.EffectiveArmyPower(bodies)).Within(1e-4f));
         }
 
         [Test]

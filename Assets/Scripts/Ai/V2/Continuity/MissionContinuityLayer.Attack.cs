@@ -6,6 +6,7 @@ using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -447,11 +448,13 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(a.PrimaryArmyId.Value);
+            // ATK-F05 — Continuity keeps accepted legs and re-plans with FREE armies only (a
+            // completed Raid's unclaimed fallback included); an army another operation holds is
+            // bought only by a fresh, priced proposal that wins the allocator.
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
-                a.PrimaryArmyId, GroundCombatDonorPolicy.BorrowableDonorValues(
-                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
-                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
+                a.PrimaryArmyId, null,
+                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -488,10 +491,11 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
+            RefreshTargetRoster(snap, intent, a, AiV2Util.ResolveArmy(snap.Observer, hostId));
             string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
                 + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
-                + $"ideal={snap.Self.TotalMilitaryPotential:0.#} required>{required:0.#}";
+                + $"ideal={snap.Self.AttackPeak:0.#} required>{required:0.#}";
 
             // An empty shell has nothing invested in it: a free field army that can host the fist
             // supersedes it (the shell stays a reusable, paid container).
@@ -518,40 +522,70 @@ namespace Game.Ai.V2
                     + $"[{string.Join(",", dropped)}] lost or no longer raise the host");
             }
 
+            // 2026-10-01 (variant B) — the fetched commander stays the operation's while its
+            // lone-hero container still exists outside any garrison; once its hero leads the host
+            // (the handoff empties the container) or it is lost, the marker clears.
+            if (a.CommanderArmyId.HasValue)
+            {
+                ArmyData commanderArmy = AiV2Util.ResolveArmy(snap.Observer, a.CommanderArmyId.Value);
+                if (commanderArmy == null || commanderArmy.IsGarrison
+                    || !commanderArmy.Members.Any(u => u != null && u.IsHero))
+                {
+                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} commander container "
+                        + $"#{a.CommanderArmyId.Value} gone or without its hero — released");
+                    a.CommanderArmyId = null;
+                }
+            }
+
             bool locationOnly = AttackObjectiveEvaluator.IsLocationOnly(snap, a.Target);
             if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
                 && AttackPrimaryClearsTarget(snap, a))
             {
-                if (!locationOnly)
-                {
-                    AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
-                        + $"(fist strictly > 80% of the current peak, coverage "
-                        + $"{(a.CoversAllDefenders ? "ok" : "missing")}); Gather -> Assault, released "
-                        + $"supports [{string.Join(",", a.GatherSupportArmyIds)}]");
-                    a.GatherSupportArmyIds.Clear();
-                    a.Preparation = false;
-                    a.Phase = AttackMissionPhase.Assault;
-                    return true;
-                }
-                AiDebugLog.WriteDeduped(intent.IntentKey + "#unknown",
-                    $"[AI][V2][Attack][Mobilization] {at} decision=HOLD blocker=unknown_defenders "
-                    + $"target={a.Target.DiagnosticLabel} knowledge=starting-location-only; the march "
-                    + "waits for a real observation (ObservationNeeds -> Recon)");
-                intent.LastProtectedTurn = snap.TurnNumber;
+                // 2026-10-01 (user decision) — a fist at the peak has nothing left to wait for:
+                // an unobserved (location-only) target no longer holds it. It marches, observes on
+                // the way, and every pass of the march re-checks the then-known defenders.
+                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} decision=ASSAULT-READY "
+                    + $"(fist strictly > 80% of the current peak, coverage "
+                    + $"{(locationOnly ? "unknown: target not yet observed" : a.CoversAllDefenders ? "ok" : "missing")}); "
+                    + $"Gather -> Assault, released supports [{string.Join(",", a.GatherSupportArmyIds)}]");
+                a.GatherSupportArmyIds.Clear();
+                a.CommanderArmyId = null;
+                a.Preparation = false;
+                a.Phase = AttackMissionPhase.Assault;
                 return true;
             }
+            // A walking commander is progress (protected from the stall clock); the rest of the
+            // preparation goes on meanwhile.
+            if (a.CommanderArmyId.HasValue)
+                intent.LastProtectedTurn = snap.TurnNumber;
             if (a.GatherSupportArmyIds.Count > 0)
             {
                 intent.LastProtectedTurn = snap.TurnNumber;
                 return true;
             }
 
+            // The fist assembles on its staging Base (the own Base nearest to the target): a host
+            // standing elsewhere walks there first (the planner's MoveHost leg); supports are
+            // planned only once it has arrived. No own Base left -> the ordinary stall lifecycle.
+            HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex, host);
+            if (host.MemberCount > 0 && (!staging.HasValue || !host.Hex.Equals(staging.Value)))
+            {
+                if (staging.HasValue)
+                    intent.LastProtectedTurn = snap.TurnNumber;
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
+                    $"[AI][V2][Attack][Mobilization] {at} decision="
+                    + (staging.HasValue
+                        ? $"WAIT next=host_to_staging staging=({staging.Value.Q},{staging.Value.R})"
+                        : "STALL blocker=no_own_base_reachable_by_host"));
+                return true;
+            }
+
             GroundCombatGatherPlan plan = host.MemberCount == 0
                 ? GroundCombatGatherPlan.Infeasible("empty host takes no walking support")
+                // ATK-F05 — free armies only; a bought donor is the planner's priced
+                // RecruitDonors proposal (AggressionMissionPlanner.AppendPreparationRecruit).
                 : GroundCombatAssemblyPlanner.PlanGather(snap, opposition, hexBonus, a.Target.Hex,
-                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId,
-                    GroundCombatDonorPolicy.BorrowableDonorValues(snap.Observer == null ? null
-                        : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
+                    unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate, hostId, null,
                     minimumArmyPower: required, allowPartial: true);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
@@ -567,22 +601,84 @@ namespace Game.Ai.V2
             ArmyData liveHost = AiV2Util.ResolveArmy(snap.Observer, hostId);
             bool sameHexStep = liveHost != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                 snap, liveHost, unavailable, opposition, hexBonus).Feasible;
-            bool poolLeft = snap.Self.Reserve.Units + snap.Self.Reserve.Hero > AiConfigV2.allocatorSliceEpsilon;
-            if (sameHexStep || poolLeft)
+            // ATK-F02 — a WAIT names its concrete source; a positive Reserve alone is no delivery
+            // into this exact (possibly full) host.
+            string cardSource = sameHexStep ? null
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost, a.TargetRoster);
+            // A support another operation holds is not a WAIT witness: it is bought only by the
+            // priced RecruitDonors proposal, whose execution resets the stall (AdvanceIntent).
+            if (sameHexStep || cardSource != null)
             {
                 intent.LastProtectedTurn = snap.TurnNumber;
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
-                    + $"reserve={snap.Self.Reserve.Units + snap.Self.Reserve.Hero:0.#} gather={plan.Reason}");
+                    + $"witness={cardSource ?? "same_hex_body"} "
+                    + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");
                 return true;
             }
             AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                 $"[AI][V2][Attack][Mobilization] {at} decision=STALL blocker=no_legal_source "
-                + $"(no support, no same-hex body, nothing left in hand/deck: {plan.Reason}); the "
-                + "existing stall lifecycle ends the preparation");
+                + $"(no support, no same-hex body, no hand/deck/generated card strengthens this host"
+                + $"{(snap.Self.BaseHexes?.Contains(host.Hex) == true ? "" : " off an own Base")}: "
+                + $"{plan.Reason}); the existing stall lifecycle ends the preparation");
             return true;
         }
+
+        // 2026-10-01 (user decision) — the preparation gathers toward a frozen target roster
+        // (StrikeRoster), composed under the commander its host actually has (variant B): the
+        // bodies come from the whole pool, capped by that commander's CommandRating. Frozen at
+        // the first pass; re-frozen only when the host's commander changed (a fetched commander
+        // took over), the peak grew by more than attackTargetRosterRefreezeGrowth, or a frozen
+        // position left the whole pool (a unit died, a card was spent elsewhere) — a small
+        // reshuffle of the greedy pick never churns it. Housekeeping may take armies apart
+        // meanwhile: the roster is by card key, not by army, so the host re-gathers it.
+        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
+            ArmyData liveHost)
+        {
+            UnitData commander = liveHost?.Commander;
+            string commanderKey = commander == null ? null : StrikeRoster.UnitKey(commander);
+            string why = null;
+            if (a.TargetRoster == null || a.TargetRoster.Count == 0)
+                why = "frozen";
+            else if (commanderKey != a.TargetRosterCommanderKey)
+                why = $"commander {a.TargetRosterCommanderKey ?? "none"}->{commanderKey ?? "none"}";
+            else if (snap.Self.AttackPeak > a.TargetRosterPeak
+                     * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
+                why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.AttackPeak:0.#}";
+            else
+            {
+                var pool = snap.Self.StrikePoolKeyCounts.ToDictionary(kv => kv.Key, kv => kv.Value);
+                foreach (StrikeRosterSlot slot in a.TargetRoster)
+                {
+                    // The commander slot is the host's own hero (pinned by TargetRosterCommanderKey,
+                    // checked above), not a pool pick: a garrison-tagged commander is never in the pool.
+                    if (slot.IsHero) continue;
+                    pool.TryGetValue(slot.Key, out int n);
+                    if (n <= 0) { why = $"position {slot.Key} left the pool"; break; }
+                    pool[slot.Key] = n - 1;
+                }
+            }
+            if (why == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
+                return;
+            int capacity = liveHost != null ? liveHost.Capacity
+                : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false);
+            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(snap.Self.StrikePool,
+                commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
+                capacity, out float power);
+            a.TargetRoster = roster;
+            a.TargetRosterPeak = snap.Self.AttackPeak;
+            a.TargetRosterCommanderKey = commanderKey;
+            a.TargetRosterPower = power;
+            AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
+                + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "
+                + $"power={power:0.#} capacity={capacity} peak={a.TargetRosterPeak:0.#}");
+        }
+
+        private static string MissingLabel(IReadOnlyList<StrikeRosterSlot> target, ArmyData host) =>
+            target == null || host == null ? "-"
+                : string.Join(",", StrikeRoster.Missing(target, host.Members)
+                    .Select(m => $"{m.Key}({m.Source})"));
 
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
         // and the SAME honest hex-defence read the mission layer used, with known defender coverage; before the march it also checks the current force threshold.
@@ -601,7 +697,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus);
             if (!a.AssaultStarted && (!plan.Feasible
                 || !AttackObjectiveEvaluator.ForceReady(plan.ProjectedPower,
-                    snap.Self.TotalMilitaryPotential)))
+                    snap.Self.AttackPeak)))
                 return false;
             if (plan.Feasible)
             {

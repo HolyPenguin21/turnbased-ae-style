@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -100,6 +100,11 @@ namespace Game.Ai.V2
         // CatalogKnown=false means no bound exists (no catalog): nothing may be proven from it.
         public IReadOnlyList<CardDefinition> CatalogOutputs = System.Array.Empty<CardDefinition>();
         public bool CatalogKnown;
+        // What an own facility that already has its operator could mint in its own mode, stock
+        // and investment window ignored (they are timing, not impossibility). Narrower than
+        // CatalogOutputs: no facility or operator is assumed. Read by the Attack preparation's
+        // generation witness (AggressionDemandEvaluator.PreparationHostCardSource).
+        public IReadOnlyList<CardDefinition> StaffedOutputs = System.Array.Empty<CardDefinition>();
 
         public bool AnyFacilityWithHero;   // a facility exists AND carries a qualifying hero (execution-ready)
         public float BestSuccessChance;    // max p over Offerings (0 if none)
@@ -488,6 +493,29 @@ namespace Game.Ai.V2
         // (AttackObjectiveEvaluator.MobilizationOpen); it never admits a march.
         public float DeployedPower;
         public float AvailablePower;
+        // Mobilization start (B), one-stack scale: the strongest single army the bodies already
+        // on the field could form (WorldAnalysis.FieldStrikePotential).
+        public float FieldStrikePotential;
+        // The roster of TotalMilitaryPotential's peak stack, by card key (StrikeRoster): what the
+        // Attack preparation gathers toward. Commander first when a hero leads it.
+        public IReadOnlyList<StrikeRosterSlot> StrikeRoster = System.Array.Empty<StrikeRosterSlot>();
+        // 2026-10-01 (user decision) — the peak of the force an Attack can actually assemble
+        // (AttackForcePool): the Attack bar (> 80%), the preparation roster and the mobilization
+        // field-strike gate read it. TotalMilitaryPotential stays the whole-deck ceiling.
+        // Until the pool is built (isolated snapshots, tests) it falls back to the whole-deck peak.
+        public float AttackPeak
+        {
+            get => _attackPeak ?? TotalMilitaryPotential;
+            set => _attackPeak = value;
+        }
+        private float? _attackPeak;
+        // How many of each card key the whole ground pool (map + hand + deck) holds: a frozen
+        // roster position stays obtainable while its key is still counted here.
+        public IReadOnlyDictionary<string, int> StrikePoolKeyCounts = new Dictionary<string, int>();
+        // The whole ground pool (map + hand + deck) as identified candidates with their power,
+        // in AiPower.MilitaryPool order: a preparation composes its roster under the host's own
+        // commander from it (StrikeRoster.ComposeUnder).
+        public IReadOnlyList<StrikeRosterCandidate> StrikePool = System.Array.Empty<StrikeRosterCandidate>();
 
         // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
         public float FistPower;

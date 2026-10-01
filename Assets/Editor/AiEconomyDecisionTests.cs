@@ -3562,6 +3562,34 @@ namespace Game.EditorTests
             Assert.That(state.ReconActorsTrimmedThisTurn(12), Is.Empty);
         }
 
+        // 2026-10-01 — the turn-wide distinct-scout budget counts per turn only.
+        [Test]
+        public void ReconGroundActorsUsed_AreCountedPerTurn()
+        {
+            var state = new MissionIntentState();
+
+            state.MarkReconGroundActorUsed(11, 15);
+            state.MarkReconGroundActorUsed(11, 15);
+            state.MarkReconGroundActorUsed(11, 20);
+
+            Assert.That(state.ReconGroundActorsUsedThisTurn(11), Has.Count.EqualTo(2));
+            Assert.That(state.ReconGroundActorsUsedThisTurn(12), Is.Empty);
+        }
+
+        [Test]
+        public void ReconGroundActorsPerTurn_DropsToTwoWhileMobilizationIsOpen()
+        {
+            var closed = new WorldSnapshot { Self = new SelfSnapshot
+                { DeployedPower = 10f, AvailablePower = 100f, TotalMilitaryPotential = 50f } };
+            var open = new WorldSnapshot { Self = new SelfSnapshot
+                { DeployedPower = 80f, AvailablePower = 100f, TotalMilitaryPotential = 50f } };
+
+            Assert.That(ReconConcurrencyPolicy.GroundActorsPerTurn(closed),
+                Is.EqualTo(AiConfigV2.reconGroundActorsPerTurn));
+            Assert.That(ReconConcurrencyPolicy.GroundActorsPerTurn(open),
+                Is.EqualTo(AiConfigV2.reconGroundActorsPerTurnMobilized));
+        }
+
         private static EconomyExtractionOpportunity ExtractionOpportunity(
             HexCoord hex, ResourceType type, int gain) => new EconomyExtractionOpportunity
         {

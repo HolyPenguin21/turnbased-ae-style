@@ -60,7 +60,8 @@ namespace Game.Ai.V2
                     continue;
 
                 IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
-                if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability, requiredResourceType)
+                if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability, requiredResourceType,
+                            recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, def))
                     && MaterializationChainMatching.MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
                 {
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly,
@@ -80,7 +81,8 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability, requiredResourceType)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability, requiredResourceType,
+                            recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, def))
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
@@ -108,7 +110,8 @@ namespace Game.Ai.V2
                             continue;
                         IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
                         List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability, requiredResourceType)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability, requiredResourceType,
+                            recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, hd))
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
@@ -130,7 +133,8 @@ namespace Game.Ai.V2
                             preparationShellId: preparationShell);
                     if (genOpts.Count == 0) continue;
 
-                    if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability, requiredResourceType)
+                    if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability, requiredResourceType,
+                            recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, gd))
                         && MaterializationChainMatching.MeetsRequiredTraits(genAbilities, demand.RequiredTraits))
                     {
                         foreach (PlacementOption opt in genOpts)
@@ -147,7 +151,8 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, gd))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(genAbilities, eqDef.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability, requiredResourceType)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability, requiredResourceType,
+                            recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, gd))
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
                         foreach (PlacementOption opt in genOpts)

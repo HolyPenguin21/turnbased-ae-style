@@ -74,6 +74,14 @@
         // SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. A draw beyond it
         // is not offered as a candidate.
         public const int maxTerminalDrawsPerTurn = 4;
+        // Turn-start hand replenishment (HandReplenishPolicy). A hand below this many cards has
+        // nothing for Phase A to materialize from; terminal Draw only sees the AP the moves left
+        // over (often 0-1), so a thin hand never recovers. Drawn BEFORE the scan so the card can
+        // be played this turn. Counts against maxTerminalDrawsPerTurn.
+        public const int handReplenishTargetCards = 2;
+        public const int handReplenishMaxDrawsPerTurn = 2;
+        // AP that must remain after every turn-start draw, for activations / aviation obligations.
+        public const int handReplenishMinApLeft = 4;
         // Generic (no-residual) combat surplus into an already-saturated garrison must clear
         // this absolute shared-score floor. It is a local garrison-cap policy, not a second global
         // Phase-B admission threshold; all alternatives still reach the common arbiter.

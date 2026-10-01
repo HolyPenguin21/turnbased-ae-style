@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 
@@ -13,6 +13,8 @@ namespace Game.Ai.V2
             // 0. Required development operators belong under the strongest on-hex defence.
             // This is a contextual relocation into the existing garrison, not a permanent role;
             // the operator remains on the facility hex and all transfer/capacity/AP rules still apply.
+            // 2026-09-30 (user decision) — so does every garrison hero (Support type tag) standing
+            // in a free field container on a hex with an own garrison.
             int operatorGarrisonId = armyIds.FirstOrDefault(id => state.Meta[id].IsGarrison);
             if (state.Meta.TryGetValue(operatorGarrisonId, out ReorgContainer operatorGarrison)
                 && operatorGarrison.IsGarrison && operatorGarrison.CanReceive)
@@ -23,11 +25,13 @@ namespace Game.Ai.V2
                     if (!IsFieldContainer(src) || !src.CanDonate)
                         continue;
                     foreach (ReorgUnit u in state.Roster[srcId]
-                                 .Where(x => x != null && x.IsDevelopmentOperator)
+                                 .Where(x => x != null && (x.IsDevelopmentOperator || x.IsGarrisonHero))
                                  .OrderBy(x => x.Key))
                     {
                         VState moved = TryMoveOne(state, srcId, operatorGarrisonId, u,
-                            "protect Research/Production operator in local garrison",
+                            u.IsDevelopmentOperator
+                                ? "protect Research/Production operator in local garrison"
+                                : "return a garrison hero to the local garrison",
                             allowDevelopmentOperator: true);
                         if (moved != null)
                             yield return moved;
@@ -151,6 +155,98 @@ namespace Game.Ai.V2
                     VState swapped = TrySwap(state, srcId, hero, dstId, weakestBody);
                     if (swapped != null)
                         yield return swapped;
+                }
+            }
+
+            // 0.75 ATK-F03 — an Attack preparation host sheds the heroes that only take a fighter
+            // slot (its contract's MayReleaseExcessHeroes): each goes, zero-AP, to a free local
+            // container that legally takes it — the garrison first (OrderedDestinations), never
+            // another claimed receiver. The best commander and every operator stay.
+            foreach (int srcId in armyIds)
+            {
+                ReorgContainer src = state.Meta[srcId];
+                if (!src.MayReleaseExcessHeroes)
+                    continue;
+                foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext))
+                    foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
+                    {
+                        if (state.Meta[dstId].IsMissionReceiver)
+                            continue;
+                        VState released = TryMoveOne(state, srcId, dstId, hero,
+                            "release a hero that only takes a fighter slot of the preparation host");
+                        if (released != null)
+                            yield return released;
+                    }
+            }
+
+            // 0.8 (2026-10-01) — an Attack preparation host releases a body its target roster
+            // does not need, zero-AP, to a free local container, so a concrete source of a missing
+            // position gets the slot (ReorgViability.PreparationRosterWaste decides whether it
+            // pays). Weakest non-roster body first; heroes are 0.75's business.
+            foreach (int srcId in armyIds)
+            {
+                ReorgContainer src = state.Meta[srcId];
+                // Only while a missing position's source is actually blocked: never a generic
+                // donation from a claimed host for some other formation's profile.
+                if (src.PreparationTargetKeys == null
+                    || ReorgViability.PreparationBlockedSlots(src, state.Roster[srcId],
+                        state.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
+                            kv.Value, state.Roster[kv.Key]))) == 0)
+                    continue;
+                var need = new Dictionary<string, int>();
+                foreach (string k in src.PreparationTargetKeys)
+                    if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+                var nonRoster = new List<ReorgUnit>();
+                foreach (ReorgUnit u in state.Roster[srcId].Where(u => u != null && !u.IsHero)
+                             .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
+                {
+                    if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                    else
+                        nonRoster.Add(u);
+                }
+                nonRoster.Reverse();
+                foreach (ReorgUnit body in nonRoster.Where(u => !u.IsCommitted
+                             && !state.MovedUnitKeys.Contains(u.Key)))
+                    foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
+                    {
+                        if (state.Meta[dstId].IsMissionReceiver)
+                            continue;
+                        VState released = TryMoveOne(state, srcId, dstId, body,
+                            "release a non-roster body of the preparation host for a missing position");
+                        if (released != null)
+                            yield return released;
+                    }
+            }
+
+            // 0.85 (2026-10-01) — an Attack preparation host takes a same-hex body of a missing
+            // roster position from a container that may give (ReorgViability.PreparationRosterWaste
+            // counts it as pending until it is in). Garrison floors and capacity are TryMoveOne's.
+            foreach (int hostId in armyIds)
+            {
+                ReorgContainer host = state.Meta[hostId];
+                if (host.PreparationTargetKeys == null || !host.CanReceive)
+                    continue;
+                var need = new Dictionary<string, int>();
+                foreach (string k in host.PreparationTargetKeys)
+                    if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+                foreach (ReorgUnit u in state.Roster[hostId])
+                    if (u?.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                foreach (int srcId in armyIds)
+                {
+                    if (srcId == hostId || !state.Meta[srcId].CanDonate)
+                        continue;
+                    foreach (ReorgUnit u in state.Roster[srcId].Where(x => x != null && !x.IsHero
+                                 && !x.IsAviation && !x.IsCommitted && x.StrikeKey != null
+                                 && need.TryGetValue(x.StrikeKey, out int n) && n > 0)
+                                 .OrderByDescending(x => x.Power).ThenBy(x => x.Key))
+                    {
+                        VState taken = TryMoveOne(state, srcId, hostId, u,
+                            "a missing roster position joins the preparation host");
+                        if (taken != null)
+                            yield return taken;
+                    }
                 }
             }
 
@@ -374,6 +470,45 @@ namespace Game.Ai.V2
                 .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .First().unit;
+        }
+
+        // ATK-F03 — a hero shapes a fist only as its commander (AiPower: no power of its own), so
+        // in a preparation host every releasable hero beyond one leader only takes a fighter slot.
+        // Research/Production operators and committed units are never counted or moved.
+        private static int PreparationSlotWaste(List<ReorgUnit> units) =>
+            System.Math.Max(0, (units ?? new List<ReorgUnit>()).Count(u => u != null && u.IsHero
+                && !u.IsDevelopmentOperator && !u.IsCommitted) - 1);
+
+        // The heroes that may leave: neither the current commander nor the one commander
+        // evaluation's best legal leader (HeroRoleEvaluator, the BestCommander the reorder
+        // promotes first; the old commander becomes releasable after that zero-AP reorder).
+        private static List<ReorgUnit> ExcessHeroes(List<ReorgUnit> units, ReorgContainer meta,
+            IReadOnlyList<WorthIt.DefendingArmy> context)
+        {
+            if (units == null || units.Count(u => u != null && u.IsHero) < 2)
+                return new List<ReorgUnit>();
+            ReorgUnit current = units.First(u => u != null && u.IsHero);
+            ReorgUnit lead = BestCommander(units, meta.IsGarrison, context);
+            return units.Where(u => u != null && u.IsHero && !ReferenceEquals(u, lead)
+                    && !ReferenceEquals(u, current) && !u.IsDevelopmentOperator && !u.IsCommitted)
+                .OrderBy(u => u.Key).ToList();
+        }
+
+        // ATK-F03 — a claimed receiver takes a hero only as its better commander: led by the one
+        // commander evaluation's best hero, the roster keeps at least the room for bodies it had.
+        // A hero that would only occupy a fighter slot (Vashti T13: two heroes folded into a 3/7
+        // host, power unchanged, two slots lost) never enters it.
+        private static bool MissionReceiverTakesHero(VState state, List<ReorgUnit> dest,
+            ReorgUnit hero, ReorgContainer meta)
+        {
+            int BodyRoom(List<ReorgUnit> roster) =>
+                ReorgViability.Capacity(roster, meta.IsGarrison) - roster.Count(x => x != null && x.IsHero);
+            var after = new List<ReorgUnit>(dest);
+            ReorgViability.AddMemberSorted(after, hero);
+            ReorgUnit lead = meta.CanReorderCommander || !dest.Any(x => x != null && x.IsHero)
+                ? BestCommander(after, meta.IsGarrison, CommandContext(state))
+                : after.First(x => x != null && x.IsHero);
+            return ReferenceEquals(lead, hero) && BodyRoom(LedBy(after, hero)) >= BodyRoom(dest);
         }
 
         // `units` with `hero` moved to the commander slot (TryReorderCommander's roster order).

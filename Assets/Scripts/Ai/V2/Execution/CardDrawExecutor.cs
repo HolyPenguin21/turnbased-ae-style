@@ -25,7 +25,10 @@ namespace Game.Ai.V2
             && hand.HasFreeSlot && hand.HasCardsLeftToDraw
             && root.CanSpendActionPoints(ctx.DrawApCost);
 
-        public static bool TryCycle(PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        // `raiseBoundaryInterrupt` is false for a draw made before the turn's scan
+        // (HandReplenishPolicy): that scan already sees the new hand, so there is nothing to replan.
+        public static bool TryCycle(PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            string scope = "strat.B", bool raiseBoundaryInterrupt = true)
         {
             if (!CanCycle(root, hand, ctx))
                 return false;
@@ -37,7 +40,7 @@ namespace Game.Ai.V2
             if (card == null)
                 return false;
             root.SpendActionPoints(ctx.DrawApCost);
-            AiDebugLog.Write($"[AI][V2]   strat.B — drew \"{card.Definition?.displayName}\" ({ctx.DrawApCost} AP)");
+            AiDebugLog.Write($"[AI][V2]   {scope} — drew \"{card.Definition?.displayName}\" ({ctx.DrawApCost} AP)");
 
             // The end-of-turn tempo arbiter re-evaluates the whole candidate set after every action,
             // so a drawn card is scored on the NEXT iteration. A successful draw can itself make
@@ -52,7 +55,7 @@ namespace Game.Ai.V2
             bool terminalBoundary = !hand.HasFreeSlot
                 || !hand.HasCardsLeftToDraw
                 || !root.CanSpendActionPoints(ctx.DrawApCost);
-            if (terminalBoundary
+            if (raiseBoundaryInterrupt && terminalBoundary
                 && AiHandRegistry.TryGetOwner(hand, out PlayerSetupData owner)
                 && owner != null)
             {

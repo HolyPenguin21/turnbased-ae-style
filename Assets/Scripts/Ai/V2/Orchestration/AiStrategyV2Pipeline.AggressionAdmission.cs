@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Players;
@@ -44,7 +44,9 @@ namespace Game.Ai.V2
                 .Select(a => $"{a.ArmyId}:{a.MemberCount}:{a.EffectiveArmyPower.ToString("0.##", inv)}"
                     + $":{(a.IsStructuralRaidActor ? "S" : "")}{(a.IsGarrison ? "G" : "")}"
                     + $":{(a.CurrentMovement > 0 ? 1 : 0)}{(a.HasActivatedThisTurn ? 1 : 0)}"
-                    + (a.IsStructuralRaidActor || a.IsGarrison ? $":{a.Hex.Q},{a.Hex.R}" : "")));
+                    // A hero's hex decides the preparation host's capacity hero and a lone-hero
+                    // host (2026-09-30), so a hero-carrying army is positioned too.
+                    + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero ? $":{a.Hex.Q},{a.Hex.R}" : "")));
             string intents = string.Join(";", MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null)
                 .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"
@@ -83,11 +85,15 @@ namespace Game.Ai.V2
             return $"axis={DesireAxis.Aggression}"
                 + $"|know={snapshot.KnowledgeVersion}"
                 + $"|peak={self.TotalMilitaryPotential.ToString("0.##", inv)}"
+                + $"|atkPeak={self.AttackPeak.ToString("0.##", inv)}"
                 + $"|reserve={(self.Reserve.Units + self.Reserve.Hero).ToString("0.##", inv)}"
                 + $"|share={self.DeployedPower.ToString("0.##", inv)}/{self.AvailablePower.ToString("0.##", inv)}"
+                // Mobilization start (B): garrison floors and operators are not in the army rows.
+                + $"|field={self.FieldStrikePotential.ToString("0.##", inv)}"
                 + $"|citadel={(self.HoldsStartingCitadel ? 1 : 0)}|bases={bases}"
                 + $"|hand={handCards}"
                 + $"|gen={generation}"
+                + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}";
         }

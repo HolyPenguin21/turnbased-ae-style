@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
@@ -31,6 +31,7 @@ namespace Game.Ai.V2
             int garrisonDeficit = 0;
             int legality = 0;
             int operatorExposure = 0;
+            int preparationSlotWaste = 0;
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
@@ -53,10 +54,17 @@ namespace Game.Ai.V2
                 if (ReorgViability.Capacity(units, meta.IsGarrison) < units.Count)
                     legality++;
                 if (!meta.IsGarrison)
-                    operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
+                    operatorExposure += units.Count(u => u != null
+                        && (u.IsDevelopmentOperator || u.IsGarrisonHero));
 
                 if (meta.CanReorderCommander)
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
+                if (meta.MayReleaseExcessHeroes)
+                    preparationSlotWaste += PreparationSlotWaste(units);
+                if (meta.PreparationTargetKeys != null)
+                    preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
+                        s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
+                            kv.Value, s.Roster[kv.Key])));
 
                 if (meta.IsGarrison)
                 {
@@ -92,7 +100,8 @@ namespace Game.Ai.V2
                     singles++;
 
                 bool loneHero = units.Count == 1 && units[0].IsHero;
-                if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator)
+                if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator
+                    && !units[0].IsGarrisonHero)
                     benchedCombatCapable++;
 
                 if (ReorgViability.IsViable(units))
@@ -129,8 +138,9 @@ namespace Game.Ai.V2
                 formationStrengths.Sort((a, b) => b.CompareTo(a));
             }
 
-            return new Outcome(garrisonDeficit, legality, operatorExposure, singles, nonViable,
-                commandWaste, formationDefect, formationStrengths, -composition, s.Transfers.Count);
+            return new Outcome(garrisonDeficit, legality, operatorExposure, preparationSlotWaste,
+                singles, nonViable, commandWaste, formationDefect, formationStrengths, -composition,
+                s.Transfers.Count);
         }
 
         // Threat-first defensive profile. For each concrete enemy attacker, reproduce

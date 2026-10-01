@@ -264,13 +264,13 @@ namespace Game.Ai.V2
                 && snap.Known.Buildings.Any(b =>
                     AttackObjectiveEvaluator.IsHostileStrategicStructure(b, snap.Observer))
                 && !AttackObjectiveEvaluator.ForceReady(snap.Self.FistPower,
-                    snap.Self.TotalMilitaryPotential)
+                    snap.Self.AttackPeak)
                 && deck != null && deck.Any(d => !d.isAviation
                     && (d.cardType == CardType.Unit || d.cardType == CardType.Hero));
             float attackDrawBonus = attackNeedsDeck
                 ? AiConfigV2.tempoDrawDeckValueWeight * Mathf.Clamp01(
-                    (0.80f * snap.Self.TotalMilitaryPotential - snap.Self.FistPower)
-                    / Mathf.Max(1f, snap.Self.TotalMilitaryPotential)) : 0f;
+                    (0.80f * snap.Self.AttackPeak - snap.Self.FistPower)
+                    / Mathf.Max(1f, snap.Self.AttackPeak)) : 0f;
 
             float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty
                 + continuityBonus + attackDrawBonus;

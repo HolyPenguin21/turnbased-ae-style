@@ -8,7 +8,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PURE, DETERMINISTIC. Snapshot first, plan second, mutate later in HousekeepingExecutor.
     //  Every accepted candidate strictly improves this lexicographic tuple:
-    //    garrison safety -> legality -> singleton count -> non-viable count
+    //    garrison safety -> legality -> operator exposure -> preparation-host slot waste
+    //    -> singleton count -> non-viable count
     //    -> command/leadership defects -> strongest-first EffectiveArmyPower profile
     //    -> canonical AiPower composition -> operation count.
     //  Candidate generation is zero-AP: housekeeping holds no AP of its own.
@@ -23,6 +24,10 @@ namespace Game.Ai.V2
             public readonly int Legality;
             // Required Research/Production operators exposed outside the local garrison.
             public readonly int OperatorExposure;
+            // ATK-F03 — heroes in an Attack preparation host that only occupy a fighter slot
+            // (PreparationSlotWaste). Above the singleton/viability terms: a lone hero leaving the host for
+            // a free local container is the fix, never a reason to keep the fist short of slots.
+            public readonly int PreparationSlotWaste;
             public readonly int Singletons;
             public readonly int NonViable;
             // §7 — number of mutable multi-hero containers not led by the one commander
@@ -42,13 +47,14 @@ namespace Game.Ai.V2
             public readonly float NegComposition;
             public readonly int Operations;
 
-            public Outcome(int gd, int legal, int operatorExposure, int singles, int nonViable,
-                int commandWaste, int formationDefect, IReadOnlyList<float> formationStrengths,
-                float negComp, int operations)
+            public Outcome(int gd, int legal, int operatorExposure, int preparationSlotWaste,
+                int singles, int nonViable, int commandWaste, int formationDefect,
+                IReadOnlyList<float> formationStrengths, float negComp, int operations)
             {
                 GarrisonDeficit = gd;
                 Legality = legal;
                 OperatorExposure = operatorExposure;
+                PreparationSlotWaste = preparationSlotWaste;
                 Singletons = singles;
                 NonViable = nonViable;
                 CommanderMismatch = commandWaste;
@@ -63,6 +69,7 @@ namespace Game.Ai.V2
                 int c = GarrisonDeficit.CompareTo(o.GarrisonDeficit); if (c != 0) return c;
                 c = Legality.CompareTo(o.Legality); if (c != 0) return c;
                 c = OperatorExposure.CompareTo(o.OperatorExposure); if (c != 0) return c;
+                c = PreparationSlotWaste.CompareTo(o.PreparationSlotWaste); if (c != 0) return c;
                 c = Singletons.CompareTo(o.Singletons); if (c != 0) return c;
                 c = NonViable.CompareTo(o.NonViable); if (c != 0) return c;
                 c = CommanderMismatch.CompareTo(o.CommanderMismatch); if (c != 0) return c;

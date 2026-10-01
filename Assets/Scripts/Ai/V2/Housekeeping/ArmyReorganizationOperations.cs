@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -55,11 +55,12 @@ namespace Game.Ai.V2
             {
                 ReorgUnit u = from.FirstOrDefault(x => x.Key == original.Key);
                 if (u == null || c.MovedUnitKeys.Contains(u.Key) || u.IsCommitted
-                    || u.IsDevelopmentOperator || u.IsAviation)
+                    || u.IsDevelopmentOperator || u.IsAviation
+                    || (srcMeta.IsGarrison && u.IsGarrisonHero))
                     return null;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                     return null;
-                if (!CanAccept(to, u, dstMeta))
+                if (!CanAccept(c, to, u, dstMeta))
                     return null;
 
                 from.Remove(u);
@@ -88,7 +89,7 @@ namespace Game.Ai.V2
                 return null;
             if (!ReorgViability.CanLeaveWithoutOvercrowding(from, u, srcMeta.IsGarrison))
                 return null;
-            if (!CanAccept(to, u, dstMeta))
+            if (!CanAccept(c, to, u, dstMeta))
                 return null;
 
             from.Remove(u);
@@ -122,7 +123,7 @@ namespace Game.Ai.V2
                     break;
                 if (!ReorgViability.CanLeaveWithoutOvercrowding(donor, u, donorMeta.IsGarrison))
                     break;
-                if (!CanAccept(weak, u, weakMeta))
+                if (!CanAccept(c, weak, u, weakMeta))
                     break;
 
                 var after = donor.Where(x => x != u).ToList();
@@ -159,6 +160,7 @@ namespace Game.Ai.V2
 
             if (ua == null || ub == null || ua.IsCommitted || ub.IsCommitted
                 || ua.IsDevelopmentOperator || ub.IsDevelopmentOperator
+                || (aMeta.IsGarrison && ua.IsGarrisonHero) || (bMeta.IsGarrison && ub.IsGarrisonHero)
                 || ua.IsAviation || ub.IsAviation
                 || c.MovedUnitKeys.Contains(ua.Key) || c.MovedUnitKeys.Contains(ub.Key))
                 return null;
@@ -181,9 +183,9 @@ namespace Game.Ai.V2
 
             // §P1 — a garrison side of the swap must keep its defensive power reserve (same
             // "only if currently above it" semantics as GarrisonMayRelease).
-            if (aMeta.IsGarrison && !GarrisonRosterKeepsReserve(a, afterA))
+            if (aMeta.IsGarrison && !GarrisonRosterKeepsFloor(a, afterA, aMeta))
                 return null;
-            if (bMeta.IsGarrison && !GarrisonRosterKeepsReserve(b, afterB))
+            if (bMeta.IsGarrison && !GarrisonRosterKeepsFloor(b, afterB, bMeta))
                 return null;
 
             a.Clear(); a.AddRange(afterA);
@@ -195,9 +197,13 @@ namespace Game.Ai.V2
             return c;
         }
 
-        private static bool CanAccept(List<ReorgUnit> dest, ReorgUnit u, ReorgContainer destMeta)
+        private static bool CanAccept(VState state, List<ReorgUnit> dest, ReorgUnit u,
+            ReorgContainer destMeta)
         {
             if (u.IsAviation)
+                return false;
+            if (destMeta.IsMissionReceiver && u.IsHero
+                && !MissionReceiverTakesHero(state, dest, u, destMeta))
                 return false;
             if (destMeta.ChargesActivationFor(u))
                 return false; // TransferMember would spend AP, which Step 8C does not own.
@@ -215,34 +221,25 @@ namespace Game.Ai.V2
         private static bool GarrisonMayRelease(List<ReorgUnit> garrison, ReorgUnit u,
             ReorgContainer meta)
         {
-            if (u.IsDevelopmentOperator)
+            if (u.IsDevelopmentOperator || u.IsGarrisonHero)
                 return false;
             if (u.IsHero)
-            {
-                if (garrison.Count <= 1)
-                    return false;
-            }
-            else
-            {
-                int remainingNonHero = garrison.Count(x => x.IsGroundCombatant) - 1;
-                if (remainingNonHero < meta.GarrisonNonHeroFloor)
-                    return false;
-            }
-            // §P1 — headcount is not enough: a garrison that currently HOLDS a real defensive
-            // power reserve must not be dropped below it by a zero-AP reorg move (a small,
-            // already-below-reserve second base is still governed by the headcount floor above,
-            // exactly as before).
-            return GarrisonRosterKeepsReserve(garrison, garrison.Where(x => x != u).ToList());
+                return garrison.Count > 1;
+            // The one garrison spare rule (AiArmyRoles.SpareableBodies): a power floor, one body
+            // always stays, the strongest bodies are the ones that may go.
+            List<ReorgUnit> bodies = garrison.Where(x => x != null && x.IsGroundCombatant).ToList();
+            return AiArmyRoles.SpareableBodies(bodies,
+                    set => ReorgViability.EffectivePower(set.ToList()), meta.GarrisonPowerFloor)
+                .Contains(bodies.IndexOf(u));
         }
 
-        // §P1 — true when `after` (the garrison's projected roster) still holds the defensive
-        // power reserve, OR the garrison was already below it before the move (then only the
-        // headcount floor governs, unchanged behaviour).
-        private static bool GarrisonRosterKeepsReserve(List<ReorgUnit> before, List<ReorgUnit> after)
+        // A swap changes a garrison's roster without emptying it: it may not end below both its
+        // floor and what it held before.
+        private static bool GarrisonRosterKeepsFloor(List<ReorgUnit> before, List<ReorgUnit> after,
+            ReorgContainer meta)
         {
-            if (ReorgViability.EffectivePower(before) < AiConfigV2.housekeepingGarrisonReservePower)
-                return true;
-            return ReorgViability.EffectivePower(after) >= AiConfigV2.housekeepingGarrisonReservePower;
+            float was = ReorgViability.EffectivePower(before);
+            return ReorgViability.EffectivePower(after) + 0.001f >= System.Math.Min(was, meta.GarrisonPowerFloor);
         }
     }
 }

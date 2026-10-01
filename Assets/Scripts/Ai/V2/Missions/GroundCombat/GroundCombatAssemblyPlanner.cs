@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using Game.Map;
@@ -40,6 +40,9 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public float ProjectedPower;
+        // 2026-09-30 — the plan takes a garrison hero (AiArmyRoles.IsGarrisonHero) as its
+        // fallback commander; the proposal carries its price (GarrisonHeroFallbackCost).
+        public bool UsesGarrisonHero;
         // The win-chance gate this plan was admitted at (set where the plan is built against a
         // gate): any later re-check of the same plan asks the same question, never a stricter one.
         public float WinChanceGate;
@@ -92,16 +95,17 @@ namespace Game.Ai.V2
 
     internal static class GroundCombatAdmissionPolicy
     {
-        // Fresh admission still requires the strict raidMinViableWinChance (0.65 today).
+        // Fresh admission still requires the strict raidMinViableWinChance (0.80, 2026-10-01).
         internal static float FreshStartWinChanceGate => AiConfigV2.raidMinViableWinChance;
 
         // Once a Hard raid has actually left its staging hex, small Monte-Carlo variance / loss of
         // same-hex donor availability must not instantly turn the incumbent actor into a structural
         // AssemblyInfeasible failure. The assigned incumbent may continue while it still covers
-        // every known defender and keeps at least this lower safety floor. 0.40 is intentionally
+        // every known defender and keeps at least this lower safety floor (0.55 since the fresh gate
+        // rose to 0.80, 2026-10-01; it was 0.40 under 0.65). It is intentionally
         // conservative: it fixes the observed 0.78-start -> ~0.41-next-turn discontinuity without
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
-        internal const float ContinuationWinChanceFloor = 0.40f;
+        internal const float ContinuationWinChanceFloor = 0.55f;
 
         // Attack checks known defender coverage without imposing a probability threshold.
         internal const float AttackCoverageGate = 0f;
@@ -407,27 +411,10 @@ namespace Game.Ai.V2
                         && AiPower.EffectiveArmyPowerFromProfiles(projected)
                             > AiPower.EffectiveArmyPowerFromProfiles(before);
                 }
-                CommandHandoverPlan hero = GroundCombatReinforcement.CommandHandover(
-                    host, donor, opponents, defenderHexDefenseBonus, null);
-                if (hero != null)
-                {
-                    var led = host.Members.Except(hero.Displaced).Concat(hero.Incoming).ToList();
-                    if (AiPower.EffectiveArmyPower(led) > AiPower.EffectiveArmyPower(host.Members))
-                        return true;
-                }
-                List<UnitData> sparableUnits = GroundCombatReinforcement.SparableSupportBodies(
-                    donor, allowCompleteTransfer: true);
-                List<UnitData> bodyUnits = host.Members.Where(AiArmyRoles.IsGroundBattleBody).ToList();
-                if (!TryProjectReinforcement(bodyUnits.Select(WorthIt.FromLiveUnit).ToList(),
-                        sparableUnits.Select(WorthIt.FromLiveUnit).ToList(), host.Capacity,
-                        host.Members.Count, WorthIt.SideCommander.Of(host.Commander), opponents,
-                        out _, out _, out _, out List<int> incoming, out int displaced,
-                        defenderHexDefenseBonus, requireWinGain: false))
-                    return false;
-                var roster = new List<UnitData>(host.Members);
-                if (displaced >= 0) roster.Remove(bodyUnits[displaced]);
-                foreach (int index in incoming) roster.Add(sparableUnits[index]);
-                return AiPower.EffectiveArmyPower(roster) > AiPower.EffectiveArmyPower(host.Members);
+                // ATK-F04 — the live armies get the one Attack handoff plan Provisioning and
+                // Execution run, projected for the arrival turn (no charge from today's AP).
+                return GroundCombatReinforcement.PlanAttackHandoff(host, donor, opponents,
+                    defenderHexDefenseBonus, requireChargeNow: false, out _) != null;
             }
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
             // Mirror the live donor rule: Attack may consume one-body supports; other
@@ -586,10 +573,14 @@ namespace Game.Ai.V2
             // support's hero handed over because it leads this fight better
             // (GroundCombatReinforcement.CommandHandover — the handoff applies the same rule; the
             // cheapest such support is kept in the plan for its hero). Its Command sets capacity.
-            List<WorthIt.DefenderProfile> pooledBodies = pool.SelectMany(x => x.Bodies).ToList();
-            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
+            // ATK-F04 — the handoffs run under the host's CURRENT commander (a handoff promotes only
+            // a hero it brings), so the projection's slots are that commander's; the handover is
+            // the one the live plan would find (no pooled prospects), legal as an exchange, and
+            // taken only when it raises the host (GroundCombatReinforcement.PlanAttackHandoff's
+            // rule) — otherwise that support's bodies stay in the ordinary pool below.
+            UnitData lead = host.Commander;
             GatherSupport heroDonor = null;
+            float hostPowerBefore = AiPower.EffectiveArmyPower(host.Members);
             foreach (GatherSupport s in (minimumArmyPower > 0f
                 ? pool.OrderByDescending(x => x.Live.Members.Where(u => u.IsHero)
                         .Select(u => u.CommandRating).DefaultIfEmpty(0).Max())
@@ -597,8 +588,19 @@ namespace Game.Ai.V2
                 : pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)))
             {
                 CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
-                    opposition, defenderHexDefenseBonus, pooledBodies);
-                if (handover == null)
+                    opposition, defenderHexDefenseBonus, null);
+                if (handover == null
+                    || !ArmyActions.CanExchangeMembers(handover.Incoming, s.Live, host, handover.Hero,
+                        handover.Displaced, out _, requireChargeNow: false))
+                    continue;
+                List<UnitData> handed = host.Members.Except(handover.Displaced)
+                    .Concat(handover.Incoming).ToList();
+                bool raises = AiPower.EffectiveArmyPower(handed) > hostPowerBefore
+                    || (!WorthIt.CanDamageAll(host.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                            opposition, defenderHexDefenseBonus)
+                        && WorthIt.CanDamageAll(handed.Select(WorthIt.FromLiveUnit).ToList(),
+                            opposition, defenderHexDefenseBonus));
+                if (!raises)
                     continue;
                 lead = handover.Hero;
                 heroDonor = s;
@@ -1030,17 +1032,25 @@ namespace Game.Ai.V2
             // A lone-hero container is intentionally left to Housekeeping first: Provisioning's
             // canonical raid transaction never empties donor containers, so the planner must not
             // promise a transfer the executor will reject.
+            // 2026-09-30 (user decision) — in a preparation the hero is taken for its CAPACITY: a
+            // heroless host is capped at the bare container's slots and can never grow to the
+            // Attack threshold, so a hero that raises the capacity is progress even though a hero
+            // adds no power of its own. A lone-hero army may hand its hero over (preparation only).
+            bool garrisonHeroTaken = false;
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
                 (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host,
-                    excludeArmyIds, opposition, defenderHexDefenseBonus);
+                    excludeArmyIds, opposition, defenderHexDefenseBonus, preparation);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
-                    if (ArmyData.ComputeCapacity(withHero, host.IsGarrison) >= withHero.Count
-                        && (!preparation || AiPower.EffectiveArmyPower(withHero)
-                            > AiPower.EffectiveArmyPower(projectedUnits)))
+                    int capacityWith = ArmyData.ComputeCapacity(withHero, host.IsGarrison);
+                    if (capacityWith >= withHero.Count
+                        && (!preparation
+                            || capacityWith > ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
+                            || AiPower.EffectiveArmyPower(withHero) > AiPower.EffectiveArmyPower(projectedUnits)))
                     {
+                        garrisonHeroTaken = AiArmyRoles.IsGarrisonHero(hero);
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
@@ -1115,12 +1125,18 @@ namespace Game.Ai.V2
 
             if (preparation)
             {
-                if (selected.Count == 0 || AiPower.EffectiveArmyPower(projectedUnits) <= hostPower)
+                bool capacityRaised = ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
+                    > ArmyData.ComputeCapacity(host.Members, host.IsGarrison);
+                if (selected.Count == 0
+                    || (AiPower.EffectiveArmyPower(projectedUnits) <= hostPower && !capacityRaised))
                     return GroundCombatAssemblyPlan.Infeasible(
-                        $"preparation host #{host.Id}: no legal same-hex body raises its power");
+                        $"preparation host #{host.Id}: no legal same-hex body raises its power "
+                        + "and no hero raises its capacity");
                 GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits),
                     opposition, minWinChance, defenderHexDefenseBonus, out float pWin, out bool pCover);
-                return FinishAssembly(host, selected, pWin, pCover, minWinChance, projectedUnits);
+                GroundCombatAssemblyPlan prep = FinishAssembly(host, selected, pWin, pCover, minWinChance, projectedUnits);
+                prep.UsesGarrisonHero = garrisonHeroTaken;
+                return prep;
             }
 
             // The hero alone (no bodies available/needed) may already clear.

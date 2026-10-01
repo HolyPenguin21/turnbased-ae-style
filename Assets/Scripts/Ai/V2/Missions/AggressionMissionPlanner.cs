@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.HexGrid;
@@ -313,6 +313,9 @@ namespace Game.Ai.V2
                 }
 
             HashSet<int> withdrawing = ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(activeIntents);
+            // The army an opening Attack preparation would host in: an Intercept that takes it pays
+            // that preparation's value (MoverOpportunityCost). Resolved once, only when needed.
+            (int armyId, float value)? pendingHost = null;
             // One fresh withdrawal per army per pass, however many threats ask for it: a Return is
             // identified by its own mover and destination, never by the threat.
             var withdrawalProposed = new HashSet<int>();
@@ -327,7 +330,9 @@ namespace Game.Ai.V2
                 switch (response.Kind)
                 {
                     case ActiveDefenceResponseKind.Intercept:
-                        AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals);
+                        pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
+                        AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals,
+                            pendingHost.Value);
                         break;
                     case ActiveDefenceResponseKind.Defer:
                         if (incumbent != null && deferredThisPass != null)
@@ -366,7 +371,8 @@ namespace Game.Ai.V2
 
         private static void AppendActiveDefenceIntercept(WorldSnapshot snap,
             ActiveDefenceObjective objective, ActiveDefenceResponse response,
-            MissionIntent incumbent, List<MissionProposal> proposals)
+            MissionIntent incumbent, List<MissionProposal> proposals,
+            (int armyId, float value) pendingPreparationHost)
         {
             GroundCombatAssemblyPlan plan = response.Plan;
             ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
@@ -388,8 +394,14 @@ namespace Game.Ai.V2
             if (distance == int.MaxValue) return;
             int eta = AiV2Util.CeilDiv(distance,
                 UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
+            // An incumbent keeps its actor; a fresh intercept that takes the pending preparation's
+            // host (or one of its bodies' donors) pays that preparation's value.
+            float moverCost = incumbent == null && pendingPreparationHost.armyId >= 0
+                && (plan.BaseArmyId == pendingPreparationHost.armyId
+                    || plan.MergeArmyIds.Contains(pendingPreparationHost.armyId))
+                ? pendingPreparationHost.value : 0f;
             TaskScore actorScore = ActiveDefenceObjectiveEvaluator.WithResponse(objective,
-                actor, plan.ProjectedWinChance, eta,
+                actor, plan.ProjectedWinChance, eta, moverOpportunityCost: moverCost,
                 projectedActivationAp: GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan));
             ActiveDefenceMissionTarget target = objective.Target;
             target.PrimaryArmyId = actor.ArmyId;

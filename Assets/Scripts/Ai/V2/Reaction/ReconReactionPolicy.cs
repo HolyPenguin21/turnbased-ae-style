@@ -198,11 +198,16 @@ namespace Game.Ai.V2
                     continue;
                 ArmyData target = BattleInitiator.FindEnemyAt(h, army);
                 if (target == null || target.Owner == null || target.Owner.IsNeutral
-                    || !AiArmyRoles.IsSoloRecce(target))
+                    || target.IsGarrison || target.IsPrison)
                     continue;
 
                 List<Game.Units.UnitData> visible = StealthSystem.TargetableMembersFor(target, player).ToList();
                 if (visible.Count == 0)
+                    continue;
+                // 2026-10-01 (user decision) — an enemy SCOUTING force: a lone scout, or an army
+                // whose every visible member is a Recce unit. Real combat armies stay Aggression's.
+                if (!AiArmyRoles.IsSoloRecce(target)
+                    && !visible.All(u => u != null && !u.IsAviation && Game.Cards.AbilityParams.UnitHasAnyRecce(u)))
                     continue;
                 List<WorthIt.DefenderProfile> profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
                 // CURRENTLY visible target, so the full live hex bonus is honest here.
@@ -224,7 +229,7 @@ namespace Game.Ai.V2
 
                 bestWin = est.WinChance;
                 best = new ReconReactionDecision(ReconReactionAction.AttackOpportunity, h, target.Id,
-                    est.WinChance, "adjacent solo Recce: beatable, damage-complete, post-combat safe");
+                    est.WinChance, "adjacent enemy scouting force: beatable, damage-complete, post-combat safe");
             }
             return best;
         }

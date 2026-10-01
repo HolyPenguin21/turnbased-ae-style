@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
@@ -95,7 +95,7 @@ namespace Game.Ai.V2
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackCoverageGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
-                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.TotalMilitaryPotential);
+                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.AttackPeak);
                 if (attackShortage != null)
                     demands.Add(attackShortage);
             }
@@ -125,12 +125,17 @@ namespace Game.Ai.V2
                 if (garrison == null
                     || !armies.Any(a => a != null && a.IsStructuralRaidActor && a.Hex.Equals(baseHex)))
                     continue;
-                int floor = baseHex.Equals(snap.Self.Citadel)
-                    ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
-                int missing = floor - (garrison.Members?.Count ?? 0);
-                if (missing <= 0)
+                // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
+                // ground force: at least one body and the Citadel / Base share of power.
+                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Self.AvailablePower,
+                    baseHex.Equals(snap.Self.Citadel));
+                int bodies = garrison.Members?.Count ?? 0;
+                float desired = bodies == 0
+                    ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
+                    : floor - garrison.EffectiveArmyPower;
+                if (desired <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
-                float desired = missing * AiConfigV2.combatPowerPerBodyEstimate;
+                string missing = $"{desired:0.#}";
                 TaskScore score = BuildHeldBaseGarrisonScore();
                 diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
                     + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
@@ -149,7 +154,7 @@ namespace Game.Ai.V2
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"garrison the held base ({baseHex.Q},{baseHex.R}) from hand: "
-                        + $"{missing} body short of its floor {floor}; task={score.Value:0.##}",
+                        + $"{missing} power short of its floor {floor:0.#}; task={score.Value:0.##}",
                 });
             }
         }
@@ -177,7 +182,7 @@ namespace Game.Ai.V2
             }
             int hostId = ai.PrimaryArmyId.Value;
             ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == hostId);
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             float have = host?.EffectiveArmyPower ?? 0f;
             if (host == null || have > required)
             {
@@ -266,6 +271,93 @@ namespace Game.Ai.V2
             };
         }
 
+        // ATK-F02 — the card-borne ways the exact preparation host can still gain power, each named
+        // by its witness, on the delivery policy's own rule (a legal slot and a real power gain,
+        // MaterializationDeliveryPolicy.StrengthensArmy): a held Unit card (Phase A), a Research/
+        // Production output of a staffed own facility (a closed investment window or short stock is
+        // timing, never impossibility), an undrawn Unit card (Phase B's Draw). Null when the host
+        // stands off an own Base (no card lands there) or no card strengthens it: a positive
+        // Reserve alone is no delivery. Which chain actually runs stays Materialization's choice.
+        internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host,
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null)
+        {
+            if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(host.Hex))
+                return null;
+            // The same capability gate the chain enumeration applies to the preparation host's
+            // FieldCombatPower demand (MaterializationChainMatching, recceMayFight): a card Phase A
+            // never plays into this host is no witness.
+            // 2026-10-01 (user decision) — and only a source of the strike roster: a card that
+            // fills a missing position of the target roster (the preparation's frozen one, else
+            // the snapshot's), or an equivalent at least as strong as the weakest missing body.
+            // A body the roster does not need is never waited for, whatever slot it would take.
+            IReadOnlyList<StrikeRosterSlot> target = targetRoster ?? snap.Self.StrikeRoster;
+            List<StrikeRosterSlot> missing = target == null || target.Count == 0 ? null
+                : StrikeRoster.Missing(target, host.Members);
+            // A full host still takes a card of an exactly missing position once Housekeeping
+            // releases one of its non-roster bodies (ReorgViability.PreparationRosterWaste counts
+            // exactly such a held card as a pending source): that slot counts as room. An
+            // equivalent card frees no slot, so for it only a real free slot counts.
+            bool releasableSlot = missing != null
+                && StrikeRoster.NonTargetBodies(target, host.Members).Count > 0;
+            bool ExactlyMissing(Game.Cards.CardDefinition d) =>
+                missing != null && missing.Any(m => !m.IsHero && m.Key == StrikeRoster.CardKey(d));
+            bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
+                d != null && !d.isAviation
+                && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
+                && MaterializationChainMatching.AbilitiesSatisfyCapability(
+                    MaterializationChainMatching.EffectiveAbilities(d, equipped), d.cardType,
+                    CapabilityKind.FieldCombatPower, recceMayFight: true)
+                && (host.CanFitAdditionalCard(d)
+                    || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
+                && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
+                    AiPower.EffectiveLine(d, equipped?.equipment))
+                && StrikeRoster.FillsMissing(missing, d,
+                    AiPower.EffectiveLine(d, equipped?.equipment).BasePower);
+
+            // A held card Phase A already failed to chain into this exact host (its pinned demand,
+            // this turn or the last) is no witness: the two stages answer with one truth.
+            foreach (Game.Cards.CardData c in HandFieldCards(snap))
+                if (Strengthens(c.Definition, c.Equipment)
+                    && !PreparationDeliveryMemory.NoChainRecently(snap.Observer, host.Id,
+                        snap.TurnNumber, StrikeRoster.CardKey(c.Definition)))
+                    return $"hand_card:{c.Definition.displayName}";
+            DevelopmentReadiness dev = snap.Development;
+            if (dev != null)
+            {
+                foreach (DevelopmentOffering o in dev.Offerings)
+                    if (!o.ProducesEquipment && Strengthens(o.Card))
+                        return $"generation:{o.Card.displayName}@({o.FacilityHex.Q},{o.FacilityHex.R})"
+                            + (DevelopmentInvestmentGate.IsOpenFor(snap.Observer, snap.TurnNumber,
+                                o.Card.resourceCost) ? "" : "(window_closed)");
+                // Short stock is timing only while the Challenge fits today's spendable stock plus
+                // devChainFundingHorizonTurns of income (the Development PREPARE rule); a resource
+                // the player does not earn keeps it out of reach, so it is no WAIT witness.
+                foreach (Game.Cards.CardDefinition d in dev.StaffedOutputs)
+                    if (Strengthens(d) && FundableWithinHorizon(snap, d.resourceCost))
+                        return $"generation:{d.displayName}(stock_short)";
+            }
+            foreach (Game.Cards.CardDefinition d in snap.Self.Deck
+                ?? (IReadOnlyList<Game.Cards.CardDefinition>)System.Array.Empty<Game.Cards.CardDefinition>())
+                if (Strengthens(d))
+                    return $"undrawn_card:{d.displayName}";
+            return null;
+        }
+
+        private static bool FundableWithinHorizon(WorldSnapshot snap, Game.Cards.ResourceCost cost)
+        {
+            if (cost == null)
+                return true;
+            // The owner-aware spendable stock Analysis already netted (never the raw stockpile);
+            // no Economy snapshot counts as nothing spendable.
+            ResourceBundle spendable = snap.Economy?.SpendableStockpile ?? default;
+            foreach (Game.Economy.ResourceType t in ResourceBundle.All)
+                if (cost.Get(t) > spendable.Get(t) + AiConfigV2.devChainFundingHorizonTurns
+                        * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t)) + AiConfigV2.allocatorSliceEpsilon)
+                    return false;
+            return true;
+        }
+
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             List<string> diag, List<AxisDemand> demands)
@@ -295,7 +387,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
+                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -315,7 +407,7 @@ namespace Game.Ai.V2
                     objective.Opposition, a.ArmyId,
                     GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus).Feasible
                     && AttackObjectiveEvaluator.ForceReady(a.EffectiveArmyPower,
-                        snap.Self.TotalMilitaryPotential));
+                        snap.Self.AttackPeak));
             if (futureActor != null)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -327,7 +419,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,
-                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
+                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -343,7 +435,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
+                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -369,15 +461,14 @@ namespace Game.Ai.V2
             {
                 // T01 — with no free fist on an own Base the mobilization preparation is the path
                 // (it creates/reuses the host on the Citadel); this demand names nobody.
-                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self.DeployedPower,
-                    snap.Self.AvailablePower);
+                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
                     + "reason=no_free_base_fist_for_direct_card_delivery "
                     + $"mobilization={(open ? "open:preparation_owns_host" : "closed")} "
                     + $"deployed={snap.Self.DeployedPower:0.#} available={snap.Self.AvailablePower:0.#}");
                 return;
             }
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            float required = 0.80f * snap.Self.AttackPeak;
             float have = fist?.EffectiveArmyPower ?? 0f;
             // §11 — a fist that already has the numbers yet misses the gate is an assembly /
             // composition gap: strengthening it by a phantom +1 from hand closes nothing.

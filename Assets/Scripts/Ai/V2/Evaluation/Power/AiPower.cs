@@ -195,6 +195,21 @@ namespace Game.Ai.V2
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;
 
+        // 2026-10-01 — a held card with the equipment already attached to it (EffectiveLine): a
+        // Plasma Cannon on an RC Vehicle in hand makes it the strongest body, and the peak, the
+        // strike roster and the additive force must see that (Ysolde T17-T23).
+        public static PowerUnit ToPowerUnit(CardData card)
+        {
+            CardDefinition d = card?.Definition;
+            if (d == null)
+                return new PowerUnit(0f, null, 1, false);
+            if (card.Equipment?.equipment == null)
+                return ToPowerUnit(d);
+            ProjectedStrategicLine line = EffectiveLine(d, card.Equipment.equipment);
+            PowerUnit plain = ToPowerUnit(d);
+            return new PowerUnit(line.BasePower, plain.Tags, line.Range, plain.IsHero, line.CommandRating);
+        }
+
         // A not-yet-played military CardDefinition as the same per-combatant snapshot WorthIt's
         // Monte Carlo consumes — the card-side counterpart of WorthIt.FromLiveUnit, so the
         // CombatOpportunityAnalyzer can fold hand cards into an assemblable roster and run the
@@ -280,11 +295,12 @@ namespace Game.Ai.V2
             bool hasFront = false, hasReach = false;
             foreach (PowerUnit pu in units)
             {
+                // Bodies only: a hero never fights, so its tags are no type coverage and it is
+                // neither front nor reach.
+                if (pu.IsHero) continue;
                 foreach (UnitTypeTag t in pu.Tags)
                     if (t != UnitTypeTag.Hero)
                         distinctTags.Add(t);
-                // Bodies only: a hero never fights, so it is neither front nor reach.
-                if (pu.IsHero) continue;
                 if (pu.Range <= 1) hasFront = true;
                 else hasReach = true;
             }
@@ -335,18 +351,24 @@ namespace Game.Ai.V2
                     if (unit != null && !unit.IsPrisoner && (!groundOnly || !unit.IsAviation))
                         result.Add(ToPowerUnit(unit));
 
-            List<CardDefinition> handCards = hand?.Select(c => c?.Definition).ToList()
-                ?? new List<CardDefinition>();
+            List<CardData> handCards = hand?.Where(c => c?.Definition != null).ToList()
+                ?? new List<CardData>();
             List<CardDefinition> deckCards = deck?.ToList() ?? new List<CardDefinition>();
+            void AddHand(CardType kind)
+            {
+                foreach (CardData card in handCards)
+                    if (card.Definition.cardType == kind && (!groundOnly || !card.Definition.isAviation))
+                        result.Add(ToPowerUnit(card));
+            }
             void Add(IEnumerable<CardDefinition> cards, CardType kind)
             {
                 foreach (CardDefinition card in cards)
                     if (card != null && card.cardType == kind && (!groundOnly || !card.isAviation))
                         result.Add(ToPowerUnit(card));
             }
-            Add(handCards, CardType.Unit);
+            AddHand(CardType.Unit);
             Add(deckCards, CardType.Unit);
-            Add(handCards, CardType.Hero);
+            AddHand(CardType.Hero);
             Add(deckCards, CardType.Hero);
             return result;
         }
@@ -359,27 +381,36 @@ namespace Game.Ai.V2
         // but it is an informational comparison scalar, not a battle plan. O(cap^2 * n), run once
         // per AI turn.
         public static List<PowerUnit> ComposeStack(IReadOnlyList<PowerUnit> pool, int cap,
-            PowerUnit? commander = null)
+            PowerUnit? commander = null) =>
+            ComposeStackOf(pool, u => u, cap, commander.HasValue, commander.GetValueOrDefault());
+
+        // The same greedy over identified candidates (`unitOf` reads each one's PowerUnit): the
+        // strike-force target roster needs WHICH cards form the peak, not only its power. The
+        // PowerUnit overload above delegates here, so both always pick the same stack.
+        public static List<T> ComposeStackOf<T>(IReadOnlyList<T> pool, System.Func<T, PowerUnit> unitOf,
+            int cap, bool hasCommander = false, T commander = default)
         {
-            var pick = new List<PowerUnit>();
-            if (commander.HasValue) pick.Add(commander.Value);
+            var pick = new List<T>();
+            var pickUnits = new List<PowerUnit>();
+            if (hasCommander) { pick.Add(commander); pickUnits.Add(unitOf(commander)); }
             if (pool == null || pool.Count == 0)
                 return pick;
             cap = Mathf.Max(1, cap);
 
-            var remaining = new List<PowerUnit>(pool);
-            bool heroTaken = commander.HasValue;
+            var remaining = new List<T>(pool);
+            bool heroTaken = hasCommander;
             while (pick.Count < cap && remaining.Count > 0)
             {
                 int bestIdx = -1;
                 float bestScore = float.NegativeInfinity;
                 for (int i = 0; i < remaining.Count; i++)
                 {
-                    if (remaining[i].IsHero && heroTaken)
+                    PowerUnit candidate = unitOf(remaining[i]);
+                    if (candidate.IsHero && heroTaken)
                         continue;
-                    pick.Add(remaining[i]);
-                    float score = EffectiveArmyPower(pick);
-                    pick.RemoveAt(pick.Count - 1);
+                    pickUnits.Add(candidate);
+                    float score = EffectiveArmyPower(pickUnits);
+                    pickUnits.RemoveAt(pickUnits.Count - 1);
                     if (score > bestScore)
                     {
                         bestScore = score;
@@ -388,9 +419,11 @@ namespace Game.Ai.V2
                 }
                 if (bestIdx < 0)
                     break;
-                if (remaining[bestIdx].IsHero)
+                PowerUnit chosen = unitOf(remaining[bestIdx]);
+                if (chosen.IsHero)
                     heroTaken = true;
                 pick.Add(remaining[bestIdx]);
+                pickUnits.Add(chosen);
                 remaining.RemoveAt(bestIdx);
             }
             return pick;
@@ -407,21 +440,91 @@ namespace Game.Ai.V2
         // a capacity borrowed from a different hero and not an unbounded sum of every card
         // — and composition-aware, so it is "tanks + artillery + skill coverage", never "7 of the
         // same unit". Live units use their current stats, including current hit points.
-        public static float TotalMilitaryPotential(IReadOnlyList<PowerUnit> pool)
+        public static float TotalMilitaryPotential(IReadOnlyList<PowerUnit> pool) =>
+            PeakStackOf(pool, u => u, out _);
+
+        // TotalMilitaryPotential over identified candidates: returns the peak power and the
+        // roster (commander first when a hero leads it) that reaches it.
+        public static float PeakStackOf<T>(IReadOnlyList<T> pool, System.Func<T, PowerUnit> unitOf,
+            out List<T> roster)
         {
+            roster = new List<T>();
             if (pool == null) return 0f;
             // A hero's own command rating, not another hero's, determines the capacity of
             // the stack containing it. Enumerate the commander before the greedy body pick.
-            List<PowerUnit> bodies = pool.Where(u => !u.IsHero).ToList();
-            float best = EffectiveArmyPower(ComposeStack(bodies, 2));
-            foreach (PowerUnit hero in pool.Where(u => u.IsHero))
+            List<T> bodies = pool.Where(u => !unitOf(u).IsHero).ToList();
+            roster = ComposeStackOf(bodies, unitOf, 2);
+            float best = EffectiveArmyPower(roster.Select(unitOf).ToList());
+            foreach (T hero in pool.Where(u => unitOf(u).IsHero))
             {
-                int capacity = hero.CommandRating;
+                int capacity = unitOf(hero).CommandRating;
                 if (capacity < 1) continue;
-                List<PowerUnit> roster = ComposeStack(bodies, capacity, hero);
-                best = Mathf.Max(best, EffectiveArmyPower(roster));
+                List<T> candidate = ComposeStackOf(bodies, unitOf, capacity, true, hero);
+                float power = EffectiveArmyPower(candidate.Select(unitOf).ToList());
+                if (power > best)
+                {
+                    best = power;
+                    roster = candidate;
+                }
             }
             return best;
+        }
+
+        // The nested ground ceilings of one player's force, on TotalMilitaryPotential's one
+        // commander-in-slot rule: Field = map pool, Units = map + hand/deck bodies (only the
+        // map's own commanders), Total = + hand/deck heroes. A pool that contains a smaller one
+        // is never weaker than it: that stack is still legal in the bigger pool, while the
+        // greedy body pick alone is not monotone under added candidates. So
+        // Field + (Units - Field) + (Total - Units) == Total by construction, and a hero card
+        // raises the ceiling only through the slots its CommandRating opens.
+        public readonly struct ForcePotentials
+        {
+            public readonly float Field, Units, Total;
+
+            public ForcePotentials(float field, float units, float total)
+            {
+                Field = field;
+                Units = units;
+                Total = total;
+            }
+
+            public float UnitsReserve => Units - Field;
+            public float HeroReserve => Total - Units;
+        }
+
+        public static ForcePotentials NestedPotentials(IEnumerable<UnitData> live,
+            IEnumerable<CardData> hand, IEnumerable<CardDefinition> deck)
+        {
+            List<PowerUnit> map = MilitaryPool(live, null, null);
+            // MilitaryPool orders map, hand bodies, deck bodies, hand heroes, deck heroes.
+            List<PowerUnit> cards = MilitaryPool(null, hand, deck);
+            return NestedPotentials(map, cards.Where(u => !u.IsHero).ToList(),
+                cards.Where(u => u.IsHero).ToList());
+        }
+
+        public static ForcePotentials NestedPotentials(IReadOnlyList<PowerUnit> map,
+            IReadOnlyList<PowerUnit> cardBodies, IReadOnlyList<PowerUnit> cardHeroes) =>
+            NestedPotentialsOf(map, cardBodies, cardHeroes, u => u, out _);
+
+        // NestedPotentials over identified candidates, plus the roster of the Total ceiling: the
+        // stack of whichever nested pool reaches it (a smaller pool wins ties, as the Max does).
+        public static ForcePotentials NestedPotentialsOf<T>(IReadOnlyList<T> map,
+            IReadOnlyList<T> cardBodies, IReadOnlyList<T> cardHeroes, System.Func<T, PowerUnit> unitOf,
+            out List<T> peakRoster)
+        {
+            var withBodies = new List<T>(map ?? System.Array.Empty<T>());
+            withBodies.AddRange(cardBodies ?? System.Array.Empty<T>());
+            var full = new List<T>(withBodies);
+            full.AddRange(cardHeroes ?? System.Array.Empty<T>());
+
+            float field = PeakStackOf(map ?? System.Array.Empty<T>(), unitOf, out List<T> fieldRoster);
+            float unitsRaw = PeakStackOf(withBodies, unitOf, out List<T> unitsRoster);
+            float units = Mathf.Max(field, unitsRaw);
+            if (unitsRaw <= field) unitsRoster = fieldRoster;
+            float totalRaw = PeakStackOf(full, unitOf, out List<T> totalRoster);
+            float total = Mathf.Max(units, totalRaw);
+            peakRoster = totalRaw <= units ? unitsRoster : totalRoster;
+            return new ForcePotentials(field, units, total);
         }
     }
 }

@@ -18,12 +18,6 @@ namespace Game.Ai.V2
         // "non-viable" — a conservative structural floor, NOT a battle prediction. A singleton
         // (one non-hero member) and a lone hero are non-viable regardless of this number.
         public const float housekeepingViabilityPowerFloor = 6f;
-        // A garrison donor in the zero-AP reorg pass must leave the garrison with at least this
-        // much EffectivePower, ON TOP OF the non-hero headcount floor — so Housekeeping can never
-        // strip a strong Citadel to prop up a weak field army. (The reorg pass also no longer uses
-        // the garrison as a seed donor for a purposeless shell at all — this is defence in depth
-        // for the benched-hero lending paths and smaller second-base garrisons.)
-        public const float housekeepingGarrisonReservePower = 20f;
         // Fewer than this many friendly containers (garrison + field armies) on one hex -> there
         // is nothing to reorganise, the hex is skipped.
         public const int housekeepingMinContainersForGroup = 2;

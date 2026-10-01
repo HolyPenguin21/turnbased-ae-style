@@ -338,7 +338,9 @@ namespace Game.Ai.V2
             HexCoord assetHex = t.Asset != null ? t.Asset.Hex : default;
             return $"{contactId}:{t.Asset?.Kind}:{assetHex.Q},{assetHex.R}:"
                 + $"{t.EnemyEta}:{t.EnemyApproachCost}:{t.ResponseEta}:{t.CanDamage}:"
-                + t.Severity.ToString("R", CultureInfo.InvariantCulture);
+                + t.Severity.ToString("R", CultureInfo.InvariantCulture)
+                // ActiveDefence admits a contact by its roster power (activeDefenceMinEnemyPower).
+                + ":" + (t.Contact?.Army?.EffectiveArmyPower ?? 0f).ToString("R", CultureInfo.InvariantCulture);
         }
 
         private static bool InfrastructureChanged(WorldSnapshot before, WorldSnapshot after)

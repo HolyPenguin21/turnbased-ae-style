@@ -183,6 +183,7 @@ namespace Game.Ai.V2
             // none of whose placements beats that ready hero must stay spendable.
             return reservation.UnresolvedDemands
                 .Where(d => d != null && !d.IsPersistenceDeferred && !d.IsEconomyNewHeroAlternative
+                    && !d.StructurallyUndeliverable
                     && d.DesiredAmount > 0f && d.Capability == cap
                     && (projTraits & d.RequiredTraits) == d.RequiredTraits)
                 .OrderByDescending(d => d.Value)

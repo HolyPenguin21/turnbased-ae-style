@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -46,6 +46,9 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.GatherReturn:
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
+                case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
+                    yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
+                    yield break;
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
                     yield return RunReinforcementStep(player, ctx, pm, result, army, snapshot);
@@ -81,7 +84,8 @@ namespace Game.Ai.V2
         {
             if (pm == null || pm.Kind != MissionKind.Attack
                 || pm.AttackTarget.Phase != AttackMissionPhase.Gather
-                || pm.AttackTarget.PreparationStep == AttackPreparationStep.None)
+                || pm.AttackTarget.PreparationStep == AttackPreparationStep.None
+                || pm.AttackTarget.PreparationStep == AttackPreparationStep.MoveHost)
                 return false;
 
             AttackMissionTarget target = pm.AttackTarget;
@@ -91,6 +95,45 @@ namespace Game.Ai.V2
             result.FinalHex = hex;
             GroundCombatAssemblyPlan assembly = pm.AttackPreparationAssembly;
             string corr = $"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack preparation";
+
+            // 2026-10-01 (variant B) — the fetched commander leaves its garrison as a lone-hero
+            // container (one canonical CreateArmyWithMember); Continuity records it and its Gather
+            // leg walks it to the host.
+            if (target.PreparationStep == AttackPreparationStep.FetchCommander)
+            {
+                ArmyData garrison = target.CommanderDonorArmyId.HasValue
+                    ? AiV2Util.ResolveArmy(player, target.CommanderDonorArmyId.Value) : null;
+                UnitData hero = garrison?.Members.FirstOrDefault(u => u != null
+                    && u.RuntimeId == target.CommanderUnitId);
+                string fetchWhy = null;
+                ArmyData container = garrison != null && hero != null
+                    && AiArmyRoles.CanSpareGarrisonMember(player, garrison, hero)
+                    ? ArmyActions.CreateArmyWithMember(player, garrison.Hex,
+                        ctx?.StartingDeckCatalog?.GetCatalog(player.Faction), garrison, hero,
+                        ctx?.HexSelection, out fetchWhy)
+                    : null;
+                if (container == null)
+                {
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    result.NeedsReplan = true;
+                    AiDebugLog.Write($"{corr} REJECTED FetchCommander #{target.CommanderUnitId} from "
+                        + $"#{target.CommanderDonorArmyId}: {fetchWhy ?? "hero or garrison no longer available"}; "
+                        + "world unchanged");
+                    return true;
+                }
+                pm.MoverArmyId = container.Id;
+                result.ActualActorArmyId = container.Id;
+                result.ActorMaterialized = true;
+                result.OperationStarted = true;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                result.StartHex = container.Hex;
+                result.FinalHex = container.Hex;
+                AiDebugLog.Write($"{corr} OK commander_fetched {hero.Name} (command {hero.CommandRating}) "
+                    + $"-> container #{container.Id} at ({container.Hex.Q},{container.Hex.R}) for host "
+                    + $"#{target.PrimaryArmyId}");
+                MarkChanged(player, ctx, container.Id);
+                return true;
+            }
 
             ArmyData host = target.PrimaryArmyId.HasValue
                 ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
@@ -113,7 +156,8 @@ namespace Game.Ai.V2
                 {
                     ArmyData donor = AiV2Util.ResolveArmy(player, seed.DonorArmyId);
                     bool legal = donor != null && donor.Members.Contains(seed.Unit)
-                        && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(seed.Unit)
+                        && GroundCombatDonorPolicy.LeavesDonorLegal(donor, preparation: true)
+                        && donor.CanLeaveWithoutOvercrowding(seed.Unit)
                         && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, seed.Unit));
                     host = legal
                         ? ArmyActions.CreateArmyWithMember(player, hex, catalog, donor, seed.Unit,
@@ -149,6 +193,17 @@ namespace Game.Ai.V2
             }
 
             result.ActualActorArmyId = host.Id;
+            if (target.PreparationStep == AttackPreparationStep.RecruitDonors)
+            {
+                // ATK-F05 — the purchase won the allocator; the supports join the operation through
+                // Continuity (AdvanceIntent). No world mutation, 0 AP.
+                result.OperationStarted = true;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                AiDebugLog.Write($"{corr} OK donors_recruited host #{host.Id} supports "
+                    + $"[{string.Join(",", target.GatherSupportArmyIds ?? System.Array.Empty<int>())}]; "
+                    + "no mutation, 0 AP");
+                return true;
+            }
             if (target.PreparationStep == AttackPreparationStep.CreateHost || assembly == null
                 || assembly.Transfers.Count == 0)
             {
@@ -160,6 +215,26 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // A garrison's spareable set is a property of its whole roster (AiArmyRoles.
+            // SpareableBodies), so it is checked once per donor for the complete planned batch on
+            // the pre-transfer garrison — the planner's own question and the raid transaction's
+            // rule. Re-asking per body against the shrinking garrison refused the third body of a
+            // legal batch and rolled the step back every pass (Orlan T14-T15, playtest 2026-10-01).
+            foreach (IGrouping<int, GroundCombatAssemblyTransfer> batch in assembly.Transfers
+                         .Where(x => x != null).GroupBy(x => x.DonorArmyId))
+            {
+                ArmyData garrison = AiV2Util.ResolveArmy(player, batch.Key);
+                List<UnitData> units = batch.Select(x => x.Unit).ToList();
+                if (garrison == null || !garrison.IsGarrison
+                    || AiArmyRoles.CanSpareGarrisonMembers(player, garrison, units))
+                    continue;
+                result.StopReason = ExecutionStopReason.MoveRejected;
+                result.NeedsReplan = true;
+                AiDebugLog.Write($"{corr} REJECTED Assemble into #{host.Id}: garrison #{batch.Key} can no "
+                    + $"longer spare [{string.Join(",", units.Select(u => u?.Name))}]; nothing transferred");
+                return true;
+            }
+
             float before = AiPower.EffectiveArmyPower(host.Members);
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
@@ -167,8 +242,8 @@ namespace Game.Ai.V2
                 ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
                 string why = donor == null ? "donor missing" : null;
                 bool legal = donor != null && donor.Hex.Equals(host.Hex) && donor.Members.Contains(t.Unit)
-                    && donor.Members.Count > 1 && donor.CanLeaveWithoutOvercrowding(t.Unit)
-                    && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit));
+                    && GroundCombatDonorPolicy.LeavesDonorLegal(donor, preparation: true)
+                    && donor.CanLeaveWithoutOvercrowding(t.Unit);
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {
                     bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "attack preparation");
@@ -472,7 +547,7 @@ namespace Game.Ai.V2
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
-                allowCompleteTransfer: true);
+                allowCompleteTransfer: true, capacityIsProgress: target.CommanderLeg);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
