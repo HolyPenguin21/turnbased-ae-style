@@ -209,7 +209,11 @@ namespace Game.Ai.V2
             // go to a free container (the planner chose it as an excess hero).
             bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && released != null && released.IsHero && released != a.Commander && receiver == null;
-            if (giver != null && !heroRelease)
+            // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
+            // it for a missing position's source; ReorgViability.PreparationRosterWaste).
+            bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
+                && receiver == null && ArmyReorgAnalyzer.IsPreparationNonRosterBody(player, a, released);
+            if (giver != null && !heroRelease && !bodyRelease)
             { why = "source is mission-claimed"; return false; }
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))
             { why = $"destination mission contract {receiver.Label} admits no inbound"; return false; }

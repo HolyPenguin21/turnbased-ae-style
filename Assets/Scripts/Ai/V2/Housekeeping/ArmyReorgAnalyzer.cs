@@ -176,6 +176,7 @@ namespace Game.Ai.V2
                     HasRecce = AbilityParams.UnitHasAnyRecce(u),
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
+                    StrikeKey = StrikeRoster.UnitKey(u),
                     CombatProfile = WorthIt.FromLiveUnit(u),
                     AsCommander = u.IsHero ? WorthIt.SideCommander.Of(u) : default,
                 });
@@ -206,6 +207,15 @@ namespace Game.Ai.V2
                 container.CanReceive = contract.MayReceive;
                 container.CanReorderCommander = contract.MayReorderCommander;
                 container.MayReleaseExcessHeroes = contract.MayReleaseExcessHeroes;
+                if (contract.MayReleaseExcessHeroes)
+                {
+                    List<StrikeRosterSlot> target = PreparationTargetRoster(player, army);
+                    if (target != null && target.Count > 0)
+                    {
+                        container.PreparationTargetKeys = target.Select(x => x.Key).ToList();
+                        container.PreparationHandKeys = HeldFieldCardKeys(player, army.Hex);
+                    }
+                }
                 if (contract.KeepsMovement && army.Members.Count > 0)
                 {
                     container.MovementFloor = army.CurrentMovement;
@@ -232,6 +242,38 @@ namespace Game.Ai.V2
             }
 
             return container;
+        }
+
+        // The frozen target roster of the live Attack preparation this army hosts (null if none).
+        internal static List<StrikeRosterSlot> PreparationTargetRoster(PlayerSetupData player, ArmyData army)
+        {
+            if (player == null || army == null)
+                return null;
+            MissionIntent prep = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+                i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
+                && i.Attack != null && i.Attack.Preparation && i.Attack.Phase == AttackMissionPhase.Gather
+                && i.Attack.PrimaryArmyId == army.Id);
+            return prep?.Attack?.TargetRoster;
+        }
+
+        // Card keys of the held ground Unit cards that deploy on `hex` (a held card lands in the
+        // host by Phase A only through a building there that deploys it).
+        internal static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex) =>
+            (AiHandRegistry.Peek(player)?.Hand ?? Enumerable.Empty<CardData>())
+                .Select(c => c?.Definition)
+                .Where(d => d != null && d.cardType == CardType.Unit && !d.isAviation
+                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d))
+                .Select(StrikeRoster.CardKey).ToList();
+
+        // Live twin of the planner's body release (HousekeepingExecutor preflight): is this a
+        // non-commander BODY of a preparation host that its target roster does not contain?
+        internal static bool IsPreparationNonRosterBody(PlayerSetupData player, ArmyData host, UnitData unit)
+        {
+            if (unit == null || unit.IsHero || host == null || !host.Members.Contains(unit))
+                return false;
+            List<StrikeRosterSlot> target = PreparationTargetRoster(player, host);
+            return target != null && target.Count > 0
+                && StrikeRoster.NonTargetBodies(target, host.Members).Contains(unit);
         }
 
         // Select the minimum set of on-hex heroes that keeps every currently installed

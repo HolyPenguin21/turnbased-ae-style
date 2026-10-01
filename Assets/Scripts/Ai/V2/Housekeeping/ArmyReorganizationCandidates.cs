@@ -179,6 +179,77 @@ namespace Game.Ai.V2
                     }
             }
 
+            // 0.8 (2026-10-01) — an Attack preparation host releases a body its target roster
+            // does not need, zero-AP, to a free local container, so a concrete source of a missing
+            // position gets the slot (ReorgViability.PreparationRosterWaste decides whether it
+            // pays). Weakest non-roster body first; heroes are 0.75's business.
+            foreach (int srcId in armyIds)
+            {
+                ReorgContainer src = state.Meta[srcId];
+                // Only while a missing position's source is actually blocked: never a generic
+                // donation from a claimed host for some other formation's profile.
+                if (src.PreparationTargetKeys == null
+                    || ReorgViability.PreparationBlockedSlots(src, state.Roster[srcId],
+                        state.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
+                            kv.Value, state.Roster[kv.Key]))) == 0)
+                    continue;
+                var need = new Dictionary<string, int>();
+                foreach (string k in src.PreparationTargetKeys)
+                    if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+                var nonRoster = new List<ReorgUnit>();
+                foreach (ReorgUnit u in state.Roster[srcId].Where(u => u != null && !u.IsHero)
+                             .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
+                {
+                    if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                    else
+                        nonRoster.Add(u);
+                }
+                nonRoster.Reverse();
+                foreach (ReorgUnit body in nonRoster.Where(u => !u.IsCommitted
+                             && !state.MovedUnitKeys.Contains(u.Key)))
+                    foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
+                    {
+                        if (state.Meta[dstId].IsMissionReceiver)
+                            continue;
+                        VState released = TryMoveOne(state, srcId, dstId, body,
+                            "release a non-roster body of the preparation host for a missing position");
+                        if (released != null)
+                            yield return released;
+                    }
+            }
+
+            // 0.85 (2026-10-01) — an Attack preparation host takes a same-hex body of a missing
+            // roster position from a container that may give (ReorgViability.PreparationRosterWaste
+            // counts it as pending until it is in). Garrison floors and capacity are TryMoveOne's.
+            foreach (int hostId in armyIds)
+            {
+                ReorgContainer host = state.Meta[hostId];
+                if (host.PreparationTargetKeys == null || !host.CanReceive)
+                    continue;
+                var need = new Dictionary<string, int>();
+                foreach (string k in host.PreparationTargetKeys)
+                    if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+                foreach (ReorgUnit u in state.Roster[hostId])
+                    if (u?.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                        need[u.StrikeKey] = n - 1;
+                foreach (int srcId in armyIds)
+                {
+                    if (srcId == hostId || !state.Meta[srcId].CanDonate)
+                        continue;
+                    foreach (ReorgUnit u in state.Roster[srcId].Where(x => x != null && !x.IsHero
+                                 && !x.IsAviation && !x.IsCommitted && x.StrikeKey != null
+                                 && need.TryGetValue(x.StrikeKey, out int n) && n > 0)
+                                 .OrderByDescending(x => x.Power).ThenBy(x => x.Key))
+                    {
+                        VState taken = TryMoveOne(state, srcId, hostId, u,
+                            "a missing roster position joins the preparation host");
+                        if (taken != null)
+                            yield return taken;
+                    }
+                }
+            }
+
             // 1. Whole-fold any occupied mutable field container when the transfer is physically
             // legal. Candidate generation owns legality only; policy belongs to Evaluate(). A
             // healthy viable source is therefore allowed to collapse into a stronger local field

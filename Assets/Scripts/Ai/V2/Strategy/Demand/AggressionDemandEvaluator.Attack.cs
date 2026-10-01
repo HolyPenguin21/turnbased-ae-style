@@ -278,7 +278,8 @@ namespace Game.Ai.V2
         // timing, never impossibility), an undrawn Unit card (Phase B's Draw). Null when the host
         // stands off an own Base (no card lands there) or no card strengthens it: a positive
         // Reserve alone is no delivery. Which chain actually runs stays Materialization's choice.
-        internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host)
+        internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host,
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null)
         {
             if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
                 || !snap.Self.BaseHexes.Contains(host.Hex))
@@ -286,25 +287,33 @@ namespace Game.Ai.V2
             // The same capability gate the chain enumeration applies to the preparation host's
             // FieldCombatPower demand (MaterializationChainMatching, recceMayFight): a card Phase A
             // never plays into this host is no witness.
-            // 2026-10-01 (user decision) — a witness must be able to close the gap: the card that
-            // fills the host's LAST slot is a witness only if the host then clears the march bar
-            // (0.80 x the current peak, as ResolveAttackPreparation); while room remains after it
-            // (or a hero card opens more), any strengthening card is progress.
-            float required = 0.80f * snap.Self.TotalMilitaryPotential;
-            bool ClosesOrLeavesRoom(Game.Cards.CardDefinition d, AiPower.ProjectedStrategicLine line) =>
-                d.cardType == Game.Cards.CardType.Hero
-                || host.Members.Count + 1 < host.Capacity
-                || MaterializationDeliveryPolicy.ProjectedArmyPower(host.Members, d, line) > required;
+            // 2026-10-01 (user decision) — and only a source of the strike roster: a card that
+            // fills a missing position of the target roster (the preparation's frozen one, else
+            // the snapshot's), or an equivalent at least as strong as the weakest missing body.
+            // A body the roster does not need is never waited for, whatever slot it would take.
+            IReadOnlyList<StrikeRosterSlot> target = targetRoster ?? snap.Self.StrikeRoster;
+            List<StrikeRosterSlot> missing = target == null || target.Count == 0 ? null
+                : StrikeRoster.Missing(target, host.Members);
+            // A full host still takes a card of an exactly missing position once Housekeeping
+            // releases one of its non-roster bodies (ReorgViability.PreparationRosterWaste counts
+            // exactly such a held card as a pending source): that slot counts as room. An
+            // equivalent card frees no slot, so for it only a real free slot counts.
+            bool releasableSlot = missing != null
+                && StrikeRoster.NonTargetBodies(target, host.Members).Count > 0;
+            bool ExactlyMissing(Game.Cards.CardDefinition d) =>
+                missing != null && missing.Any(m => !m.IsHero && m.Key == StrikeRoster.CardKey(d));
             bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
                 d != null && !d.isAviation
                 && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
                 && MaterializationChainMatching.AbilitiesSatisfyCapability(
                     MaterializationChainMatching.EffectiveAbilities(d, equipped), d.cardType,
                     CapabilityKind.FieldCombatPower, recceMayFight: true)
-                && host.CanFitAdditionalCard(d)
+                && (host.CanFitAdditionalCard(d)
+                    || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
                     AiPower.EffectiveLine(d, equipped?.equipment))
-                && ClosesOrLeavesRoom(d, AiPower.EffectiveLine(d, equipped?.equipment));
+                && StrikeRoster.FillsMissing(missing, d,
+                    AiPower.EffectiveLine(d, equipped?.equipment).BasePower);
 
             foreach (Game.Cards.CardData c in HandFieldCards(snap))
                 if (Strengthens(c.Definition, c.Equipment))

@@ -23,6 +23,9 @@ namespace Game.Ai.V2
         // taskScoreActiveDefenceLeashPerHex (a desire penalty, never a hard gate).
         public const int activeDefenceLeashHexes = 4;
         public const float taskScoreActiveDefenceLeashPerHex = 2f;
+        // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
+        // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
+        public const float attackTargetRosterRefreezeGrowth = 0.10f;
         // Generic military readiness for the Aggression Radar axis.
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;

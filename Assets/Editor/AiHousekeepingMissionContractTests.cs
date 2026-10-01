@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
 using NUnit.Framework;
@@ -111,6 +112,64 @@ namespace Game.EditorTests
                 plan.DebugSummary());
             Assert.That(plan.ExpectedMembership[2], Does.Contain(lead.Key));
             Assert.That(plan.ExpectedMembership[2].Count, Is.EqualTo(5));
+        }
+
+        private static ReorgUnit Keyed(ReorgUnit u, string key) { u.StrikeKey = key; return u; }
+
+        // 2026-10-01 — a full preparation host swaps a body its target roster does not need for
+        // a free same-hex body of a missing position: the scout goes out, the tank comes in.
+        [Test]
+        public void PreparationHost_SwapsNonRosterBodyForMissingPosition()
+        {
+            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
+            ReorgUnit scout = Keyed(Body(3f), "scout");
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
+            host.MayReleaseExcessHeroes = true;
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            ReorgUnit tank = Keyed(Body(12f), "tank");
+            ReorgContainer free = Free(3, Hero(0f, command: 4), tank, Keyed(Body(5f), "inf"),
+                Keyed(Body(5f), "inf"));
+            ReorganizationPlan plan = Plan(garrison, host, free);
+            Assert.That(plan.ExpectedMembership[2], Does.Contain(tank.Key), plan.DebugSummary());
+            Assert.That(plan.ExpectedMembership[2], Does.Not.Contain(scout.Key), plan.DebugSummary());
+        }
+
+        // With no source of a missing position the non-roster body stays: nothing to wait for.
+        [Test]
+        public void PreparationHost_KeepsNonRosterBodyWithoutAPendingSource()
+        {
+            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
+            ReorgUnit scout = Keyed(Body(3f), "scout");
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), scout);
+            host.MayReleaseExcessHeroes = true;
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.ExpectedMembership.TryGetValue(2, out var members)
+                ? members.Contains(scout.Key) : true, Is.True, plan.DebugSummary());
+        }
+
+        // A held card of a missing position is a source too: the slot is freed for it.
+        [Test]
+        public void PreparationRosterWaste_CountsHeldCardAndFreeSlots()
+        {
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 3), "lead"), Keyed(Body(6f), "inf"), Keyed(Body(3f), "scout"));
+            host.PreparationTargetKeys = new[] { "lead", "inf", "tank" };
+            host.PreparationHandKeys = new[] { "tank" };
+            var none = new KeyValuePair<ReorgContainer, List<ReorgUnit>>[0];
+            // One pending source (the card) and the scout blocks its only possible slot.
+            Assert.That(ReorgViability.PreparationRosterWaste(host, host.Units, none), Is.EqualTo(2));
+            Assert.That(ReorgViability.PreparationBlockedSlots(host, host.Units, none), Is.EqualTo(1));
+            host.PreparationHandKeys = new[] { "other" };
+            Assert.That(ReorgViability.PreparationRosterWaste(host, host.Units, none), Is.EqualTo(0));
+            // Room left: the card lands without a release.
+            ReorgContainer roomy = Mission(4, receives: true, movementFloor: -1,
+                Keyed(Hero(0f, command: 4), "lead"), Keyed(Body(6f), "inf"), Keyed(Body(3f), "scout"));
+            roomy.PreparationTargetKeys = host.PreparationTargetKeys;
+            roomy.PreparationHandKeys = new[] { "tank" };
+            Assert.That(ReorgViability.PreparationBlockedSlots(roomy, roomy.Units, none), Is.EqualTo(0));
         }
 
         [Test]

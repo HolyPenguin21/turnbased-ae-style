@@ -491,6 +491,7 @@ namespace Game.Ai.V2
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
             float required = 0.80f * snap.Self.TotalMilitaryPotential;
+            RefreshTargetRoster(snap, intent, a);
             string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
                 + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
                 + $"ideal={snap.Self.TotalMilitaryPotential:0.#} required>{required:0.#}";
@@ -582,7 +583,7 @@ namespace Game.Ai.V2
             // ATK-F02 — a WAIT names its concrete source; a positive Reserve alone is no delivery
             // into this exact (possibly full) host.
             string cardSource = sameHexStep ? null
-                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost);
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost, a.TargetRoster);
             // A support another operation holds is not a WAIT witness: it is bought only by the
             // priced RecruitDonors proposal, whose execution resets the stall (AdvanceIntent).
             if (sameHexStep || cardSource != null)
@@ -591,7 +592,8 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
-                    + $"witness={cardSource ?? "same_hex_body"} gather={plan.Reason}");
+                    + $"witness={cardSource ?? "same_hex_body"} "
+                    + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");
                 return true;
             }
             AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
@@ -601,6 +603,45 @@ namespace Game.Ai.V2
                 + $"{plan.Reason}); the existing stall lifecycle ends the preparation");
             return true;
         }
+
+        // 2026-10-01 (user decision) — the preparation gathers toward a frozen target roster
+        // (StrikeRoster). Frozen at the first pass; re-frozen only when the peak grew by more than
+        // attackTargetRosterRefreezeGrowth or a frozen position left the whole pool (a unit died,
+        // a card was spent elsewhere) — a small reshuffle of the greedy pick never churns it.
+        // Housekeeping may take armies apart meanwhile: the roster is by card key, not by army,
+        // so whatever host the preparation has re-gathers the same positions.
+        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a)
+        {
+            IReadOnlyList<StrikeRosterSlot> current = snap.Self.StrikeRoster;
+            string why = null;
+            if (a.TargetRoster == null || a.TargetRoster.Count == 0)
+                why = "frozen";
+            else if (snap.Self.TotalMilitaryPotential > a.TargetRosterPeak
+                     * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
+                why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.TotalMilitaryPotential:0.#}";
+            else
+            {
+                var pool = snap.Self.StrikePoolKeyCounts.ToDictionary(kv => kv.Key, kv => kv.Value);
+                foreach (StrikeRosterSlot slot in a.TargetRoster)
+                {
+                    pool.TryGetValue(slot.Key, out int n);
+                    if (n <= 0) { why = $"position {slot.Key} left the pool"; break; }
+                    pool[slot.Key] = n - 1;
+                }
+            }
+            if (why == null || current == null || current.Count == 0)
+                return;
+            a.TargetRoster = current.ToList();
+            a.TargetRosterPeak = snap.Self.TotalMilitaryPotential;
+            AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
+                + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "
+                + $"peak={a.TargetRosterPeak:0.#}");
+        }
+
+        private static string MissingLabel(IReadOnlyList<StrikeRosterSlot> target, ArmyData host) =>
+            target == null || host == null ? "-"
+                : string.Join(",", StrikeRoster.Missing(target, host.Members)
+                    .Select(m => $"{m.Key}({m.Source})"));
 
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
         // and the SAME honest hex-defence read the mission layer used, with known defender coverage; before the march it also checks the current force threshold.

@@ -71,6 +71,30 @@ namespace Game.EditorTests
                 Does.StartWith("undrawn_card:"));
         }
 
+        // 2026-10-01 — with a target roster only a missing position (or an equivalent at least
+        // as strong as the weakest missing body) is waited for; a weak non-roster body is not.
+        [Test]
+        public void TargetRoster_WaitsOnlyForAMissingPosition()
+        {
+            CardDefinition tank = Unit(9);
+            float tankPower = AiPower.ToPowerUnit(tank).BasePower;
+            var target = new List<StrikeRosterSlot>
+                { new StrikeRosterSlot(StrikeRoster.CardKey(tank), false, tankPower, ForceSource.Deck) };
+            ArmyData host = Host(Citadel, Body(4));
+
+            WorldSnapshot weakOnly = Snap(new[] { new CardData(Unit(5)) }, null);
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(weakOnly, host, target),
+                Is.Null, "a weaker non-roster card is no witness");
+
+            WorldSnapshot exact = Snap(new[] { new CardData(Unit(5)), new CardData(Unit(9)) }, null);
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(exact, host, target),
+                Does.StartWith("hand_card:Unit9"));
+
+            WorldSnapshot stronger = Snap(new[] { new CardData(Unit(12)) }, null);
+            Assert.That(AggressionDemandEvaluator.PreparationHostCardSource(stronger, host, target),
+                Does.StartWith("hand_card:Unit12"), "an equivalent at least as strong fills it");
+        }
+
         [Test]
         public void HeldUnit_IsTheWitness()
         {

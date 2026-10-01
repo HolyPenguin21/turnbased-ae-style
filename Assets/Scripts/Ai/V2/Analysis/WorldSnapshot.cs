@@ -487,6 +487,12 @@ namespace Game.Ai.V2
         // Mobilization start (B), one-stack scale: the strongest single army the bodies already
         // on the field could form (WorldAnalysis.FieldStrikePotential).
         public float FieldStrikePotential;
+        // The roster of TotalMilitaryPotential's peak stack, by card key (StrikeRoster): what the
+        // Attack preparation gathers toward. Commander first when a hero leads it.
+        public IReadOnlyList<StrikeRosterSlot> StrikeRoster = System.Array.Empty<StrikeRosterSlot>();
+        // How many of each card key the whole ground pool (map + hand + deck) holds: a frozen
+        // roster position stays obtainable while its key is still counted here.
+        public IReadOnlyDictionary<string, int> StrikePoolKeyCounts = new Dictionary<string, int>();
 
         // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
         public float FistPower;

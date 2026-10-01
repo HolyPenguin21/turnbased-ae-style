@@ -55,6 +55,9 @@ namespace Game.Ai.V2
         public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
+        // The unit's card identity (StrikeRoster.UnitKey) — matched against an Attack
+        // preparation host's target roster.
+        public string StrikeKey;
         // Turn-local contextual duty: this exact hero is the minimum operator set needed by a
         // Research/Production facility on the current hex. Not a persistent strategic role.
         public bool IsDevelopmentOperator;
@@ -99,6 +102,11 @@ namespace Game.Ai.V2
         public bool IsMissionReceiver;
         // ATK-F03 — ArmyMutationContract.MayReleaseExcessHeroes (the Attack preparation host).
         public bool MayReleaseExcessHeroes;
+        // 2026-10-01 — the Attack preparation host's frozen target roster (AttackIntent.TargetRoster
+        // keys, a multiset) and the held Unit card keys that could fill it. Null for every other
+        // container. Read by ReorgViability.PreparationRosterWaste.
+        public IReadOnlyList<string> PreparationTargetKeys;
+        public IReadOnlyList<string> PreparationHandKeys;
         public string MissionLabel;
         // Commander promotion among heroes already in the roster (free field/garrison containers
         // via CanChangeComposition; mission containers via their contract).
@@ -162,6 +170,12 @@ namespace Game.Ai.V2
             // decides whether the current one is already the best).
             foreach (ReorgContainer c in Containers)
                 if (ReorgViability.HasCommanderChoice(c))
+                    return true;
+
+            // A preparation host holding non-roster bodies that block a missing position's source.
+            foreach (ReorgContainer c in Containers)
+                if (c.PreparationTargetKeys != null && ReorgViability.PreparationRosterWaste(c, c.Units,
+                        Containers.Select(o => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(o, o.Units))) > 0)
                     return true;
 
             if (Containers.Count < AiConfigV2.housekeepingMinContainersForGroup)
@@ -237,6 +251,75 @@ namespace Game.Ai.V2
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsScoredField && IsSingletonShape(c.Units);
+
+        // 2026-10-01 (user decision) — how far an Attack preparation host is from the positions
+        // of its target roster that already have a concrete source (a free same-hex body of a
+        // donor container, a held card):
+        //   pending sources + min(non-roster bodies, max(0, pending sources - free slots)).
+        // Taking a same-hex roster body in lowers the first term; releasing a non-roster body
+        // that blocks a slot lowers the second; taking a non-roster body back in raises it again,
+        // so the planner never ping-pongs. A held card stays pending until Phase A plays it (a
+        // constant for Housekeeping). Zero for every container without a target roster.
+        public static int PreparationRosterWaste(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
+        {
+            PreparationRosterGap(host, hostUnits, others, out int pending, out int blocked);
+            return pending + blocked;
+        }
+
+        // The second term alone: non-roster bodies that block a pending source's slot.
+        public static int PreparationBlockedSlots(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others)
+        {
+            PreparationRosterGap(host, hostUnits, others, out _, out int blocked);
+            return blocked;
+        }
+
+        private static void PreparationRosterGap(ReorgContainer host, IReadOnlyList<ReorgUnit> hostUnits,
+            IEnumerable<KeyValuePair<ReorgContainer, List<ReorgUnit>>> others, out int pending, out int blocked)
+        {
+            pending = 0;
+            blocked = 0;
+            if (host?.PreparationTargetKeys == null || hostUnits == null)
+                return;
+            var need = new Dictionary<string, int>();
+            foreach (string k in host.PreparationTargetKeys)
+                if (k != null) { need.TryGetValue(k, out int n); need[k] = n + 1; }
+            int nonTarget = 0;
+            foreach (ReorgUnit u in hostUnits.Where(u => u != null && !u.IsHero)
+                         .OrderByDescending(u => u.Power).ThenBy(u => u.Key))
+            {
+                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                    need[u.StrikeKey] = n - 1;
+                else
+                    nonTarget++;
+            }
+            foreach (ReorgUnit u in hostUnits.Where(u => u != null && u.IsHero))
+                if (u.StrikeKey != null && need.TryGetValue(u.StrikeKey, out int n) && n > 0)
+                    need[u.StrikeKey] = n - 1;
+            int found = 0;
+            bool Take(string key)
+            {
+                if (key == null || !need.TryGetValue(key, out int n) || n <= 0) return false;
+                need[key] = n - 1;
+                found++;
+                return true;
+            }
+            foreach (KeyValuePair<ReorgContainer, List<ReorgUnit>> o in others
+                         ?? Enumerable.Empty<KeyValuePair<ReorgContainer, List<ReorgUnit>>>())
+            {
+                if (o.Key == null || o.Key == host || !o.Key.CanDonate || o.Value == null)
+                    continue;
+                foreach (ReorgUnit u in o.Value)
+                    if (u != null && !u.IsHero && !u.IsAviation && !u.IsCommitted)
+                        Take(u.StrikeKey);
+            }
+            foreach (string k in host.PreparationHandKeys ?? Array.Empty<string>())
+                Take(k);
+            int free = Math.Max(0, Capacity(hostUnits, host.IsGarrison) - hostUnits.Count);
+            pending = found;
+            blocked = Math.Min(nonTarget, Math.Max(0, found - free));
+        }
 
         // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
         public static bool HasCommanderChoice(ReorgContainer c) =>

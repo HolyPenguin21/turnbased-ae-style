@@ -363,6 +363,12 @@ namespace Game.Ai.V2
         // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;
         // it becomes an ordinary Assault only once the host strictly clears the current peak.
         public bool Preparation;
+        // 2026-10-01 (user decision) — the frozen strike-force target roster (StrikeRoster) the
+        // preparation gathers toward and the peak it was frozen at. Re-frozen only when the peak
+        // grew by attackTargetRosterRefreezeGrowth or a frozen position left the pool
+        // (MissionContinuityLayer.RefreshTargetRoster) — never on every small reshuffle.
+        public List<StrikeRosterSlot> TargetRoster;
+        public float TargetRosterPeak;
         public int? PrimaryArmyId { get; set; }
         public int? SupportArmyId { get; set; }
         // Gather phase only: supports still walking to (or about to hand off at) the primary.

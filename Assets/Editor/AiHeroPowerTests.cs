@@ -23,6 +23,26 @@ namespace Game.EditorTests
             resistanceRating = 0, range = 2, unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry },
         };
 
+        // 2026-10-01 — the identified peak (strike roster) is the SAME greedy as the scalar
+        // ceilings: equal numbers, and the roster's own power is the Total ceiling.
+        [Test]
+        public void PeakRoster_MatchesScalarCeilings()
+        {
+            var map = new List<AiPower.PowerUnit> { Body(8f, UnitTypeTag.Infantry), Body(5f, UnitTypeTag.Armored),
+                Leader(4) };
+            var cardBodies = new List<AiPower.PowerUnit> { Body(12f, UnitTypeTag.Armored),
+                Body(3f, UnitTypeTag.Infantry), Body(9f, UnitTypeTag.Vehicle) };
+            var cardHeroes = new List<AiPower.PowerUnit> { Leader(6) };
+            AiPower.ForcePotentials scalar = AiPower.NestedPotentials(map, cardBodies, cardHeroes);
+            AiPower.ForcePotentials named = AiPower.NestedPotentialsOf(map, cardBodies, cardHeroes,
+                u => u, out List<AiPower.PowerUnit> roster);
+            Assert.That(named.Field, Is.EqualTo(scalar.Field));
+            Assert.That(named.Units, Is.EqualTo(scalar.Units));
+            Assert.That(named.Total, Is.EqualTo(scalar.Total));
+            Assert.That(AiPower.EffectiveArmyPower(roster), Is.EqualTo(scalar.Total).Within(1e-4f));
+            Assert.That(roster.Count, Is.EqualTo(6), "the 6-command hero leads five bodies");
+        }
+
         [Test]
         public void HeroCard_HasNoCombatPower()
         {

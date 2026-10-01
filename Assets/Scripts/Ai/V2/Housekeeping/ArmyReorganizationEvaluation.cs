@@ -61,6 +61,10 @@ namespace Game.Ai.V2
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
                 if (meta.MayReleaseExcessHeroes)
                     preparationSlotWaste += PreparationSlotWaste(units);
+                if (meta.PreparationTargetKeys != null)
+                    preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
+                        s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
+                            kv.Value, s.Roster[kv.Key])));
 
                 if (meta.IsGarrison)
                 {
