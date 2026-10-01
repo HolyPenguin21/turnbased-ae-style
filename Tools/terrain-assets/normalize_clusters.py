@@ -68,6 +68,19 @@ SCALE_MAX = np.array([1.20, 1.18, 1.18], dtype=np.float64)
 RESIDUAL_LIMIT = np.array([0.012, 0.0045, 0.0045], dtype=np.float64)
 GROUND_KEEP_FRACTION = 0.30
 
+# Animated lakes/mud need a second, explicitly edge-biased ground pass. Their authored
+# features occupy most of the hex, so a whole-image palette match leaves the small exposed
+# terrain rim too contrasty even when its average hue is already correct. The pass below
+# keys mostly on terrain chroma (not luminance), allowing dark/light grains of the same soil
+# to be compressed without pulling green acid or neutral mud toward sand colours.
+EDGE_REFINEMENT_STRENGTH = {
+    "AcidLake": 0.96,
+    "BoilingMud": 0.94,
+}
+EDGE_CHROMA_SPREAD_MULT = 2.60
+EDGE_LUMA_SPREAD_MULT = 5.00
+EDGE_L_CLIP_SIGMA = 2.80
+
 
 @dataclass
 class StyleStats:
@@ -277,6 +290,62 @@ def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarra
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
 
 
+def refine_edge_background(rgb: np.ndarray, source: StyleStats, target: StyleStats,
+                           strength: float) -> np.ndarray:
+    """Compress exposed terrain-rim contrast while protecting the authored feature.
+
+    Classification is intentionally driven mostly by OKLab a/b proximity to the authored
+    ground style. Luminance is only a weak gate, so dark cracks and bright grains of the same
+    soil are still treated as ground. Spatial weighting rises toward the regular-hex edge;
+    central acid/mud remains effectively untouched.
+    """
+    shape = rgb.shape
+    h, w = shape[:2]
+    if h != w:
+        return rgb
+
+    lab = rgb_to_oklab(rgb.reshape(-1, 3))
+    chroma_scale = np.maximum(
+        source.spread[1:] * EDGE_CHROMA_SPREAD_MULT,
+        CHANNEL_FLOOR[1:] * 1.35,
+    )
+    chroma_delta = (lab[:, 1:] - source.center[1:]) / chroma_scale
+    chroma_distance = np.sqrt(np.sum(chroma_delta * chroma_delta, axis=1))
+    chroma_affinity = np.exp(-0.5 * (chroma_distance / 1.30) ** 2)
+
+    luma_scale = max(
+        float(source.spread[0] * EDGE_LUMA_SPREAD_MULT),
+        float(CHANNEL_FLOOR[0] * 2.5),
+    )
+    luma_distance = np.abs(lab[:, 0] - source.center[0]) / luma_scale
+    luma_affinity = np.exp(-0.5 * (luma_distance / 1.55) ** 2)
+
+    # Keep luminance permissive: high-contrast ground is exactly what this pass must catch.
+    terrain_affinity = chroma_affinity * (0.65 + 0.35 * luma_affinity)
+    edge = smoothstep(0.36, 0.90, hex_norm_map(h)).reshape(-1)
+
+    scale = np.clip(
+        target.spread / np.maximum(source.spread, CHANNEL_FLOOR),
+        np.array([0.20, 0.45, 0.45], dtype=np.float64),
+        np.array([0.95, 1.05, 1.05], dtype=np.float64),
+    )
+    corrected = target.center + (lab - source.center) * scale
+
+    # Clamp only the candidate result, never the original pixel. Feature pixels have near-zero
+    # weight and therefore keep their authored brightness/colour.
+    l_lo = target.center[0] - EDGE_L_CLIP_SIGMA * target.spread[0]
+    l_hi = target.center[0] + EDGE_L_CLIP_SIGMA * target.spread[0]
+    corrected[:, 0] = np.clip(corrected[:, 0], l_lo, l_hi)
+
+    weight = np.clip(
+        strength * edge * np.power(terrain_affinity, 1.10),
+        0.0,
+        0.985,
+    )
+    out_lab = lab + weight[:, None] * (corrected - lab)
+    return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
+
+
 def edge_ground_center(rgb: np.ndarray, target: StyleStats) -> np.ndarray:
     h, w = rgb.shape[:2]
     if h != w:
@@ -393,7 +462,13 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
         for path in paths:
             before_rgb, _, _ = original[path]
             before_scores.append(metric_for_rgb(before_rgb, target))
-            transformed[path] = transform_rgb(before_rgb, source, desired_center, scale, target)
+            after_rgb = transform_rgb(before_rgb, source, desired_center, scale, target)
+            edge_strength = EDGE_REFINEMENT_STRENGTH.get(group)
+            if edge_strength is not None:
+                after_rgb = refine_edge_background(
+                    after_rgb, source, target, edge_strength
+                )
+            transformed[path] = after_rgb
 
         centers = {path: edge_ground_center(rgb, target) for path, rgb in transformed.items()}
 
@@ -480,6 +555,8 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "The main correction is fitted from the closest terrain-like pixels in the outer hex band and "
         "shared by the whole complex family. Ground receives a strong correction, especially near the "
         "hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. "
+        "AcidLake and BoilingMud additionally use a chroma-gated edge pass that compresses exposed soil "
+        "contrast without recolouring their central feature. "
         "Animated families use one background-only residual per Part across all frames, preventing the "
         "normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.",
         "",
