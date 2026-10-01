@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: terrain-complex-palette-normalization
+  group: terrain-complex-palette-normalization-v2
   cancel-in-progress: true
 
 jobs:
