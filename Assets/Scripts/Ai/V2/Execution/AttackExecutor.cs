@@ -215,6 +215,26 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // A garrison's spareable set is a property of its whole roster (AiArmyRoles.
+            // SpareableBodies), so it is checked once per donor for the complete planned batch on
+            // the pre-transfer garrison — the planner's own question and the raid transaction's
+            // rule. Re-asking per body against the shrinking garrison refused the third body of a
+            // legal batch and rolled the step back every pass (Orlan T14-T15, playtest 2026-10-01).
+            foreach (IGrouping<int, GroundCombatAssemblyTransfer> batch in assembly.Transfers
+                         .Where(x => x != null).GroupBy(x => x.DonorArmyId))
+            {
+                ArmyData garrison = AiV2Util.ResolveArmy(player, batch.Key);
+                List<UnitData> units = batch.Select(x => x.Unit).ToList();
+                if (garrison == null || !garrison.IsGarrison
+                    || AiArmyRoles.CanSpareGarrisonMembers(player, garrison, units))
+                    continue;
+                result.StopReason = ExecutionStopReason.MoveRejected;
+                result.NeedsReplan = true;
+                AiDebugLog.Write($"{corr} REJECTED Assemble into #{host.Id}: garrison #{batch.Key} can no "
+                    + $"longer spare [{string.Join(",", units.Select(u => u?.Name))}]; nothing transferred");
+                return true;
+            }
+
             float before = AiPower.EffectiveArmyPower(host.Members);
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
@@ -223,8 +243,7 @@ namespace Game.Ai.V2
                 string why = donor == null ? "donor missing" : null;
                 bool legal = donor != null && donor.Hex.Equals(host.Hex) && donor.Members.Contains(t.Unit)
                     && GroundCombatDonorPolicy.LeavesDonorLegal(donor, preparation: true)
-                    && donor.CanLeaveWithoutOvercrowding(t.Unit)
-                    && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit));
+                    && donor.CanLeaveWithoutOvercrowding(t.Unit);
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {
                     bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "attack preparation");
