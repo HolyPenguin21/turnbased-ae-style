@@ -53,7 +53,7 @@ jobs:
         run: python Tools/terrain-assets/audit_clusters.py
 
       - name: Validate terrain config and assets
-        run: python Tools/terrain-assets/validate.py
+        run: python Tools/terrain-assets/validate.py --normalization-base c3d52f46ad99cc06f4772b702e4e9b38efbc96c4
 
       - name: Refresh offline diagnostics
         run: |
@@ -77,3 +77,4 @@ jobs:
           fi
           git commit -m "Refine terrain complex biome matching"
           git push origin HEAD:asset/terrain-complex-palette-normalization
+

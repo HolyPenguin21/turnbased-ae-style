@@ -7,8 +7,9 @@ make the full authored feature and every animation frame available for visual re
 """
 from __future__ import annotations
 
+import csv
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import numpy as np
@@ -203,7 +204,7 @@ def reference_sheet(biome: str, refs):
 
 def group_sheet(biome: str, group: str, placement_refs, paths: list[Path], stats: list[PixelStats]):
     width = 786
-    canvas = Image.new("RGB", (width, 700), (30, 30, 30))
+    canvas = Image.new("RGB", (width, 1000), (30, 30, 30))
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.load_default()
     y = 10
@@ -239,8 +240,6 @@ def group_sheet(biome: str, group: str, placement_refs, paths: list[Path], stats
               fill=(215,215,215), font=font)
     y += 15
     for i, (path, s) in enumerate(zip(paths, stats)):
-        if i >= 8:
-            break
         draw.text(
             (12, y),
             f"{path.stem[-12:]:>12}  {s.edge_luma:.3f} / {s.edge_contrast:.3f} / "
@@ -265,10 +264,12 @@ def animation_metrics(paths: list[Path], placement_style):
     for part, frames in sorted(by_part.items()):
         frames = sorted(frames)
         stats = [image_stats(p, placement_style) for p in frames]
-        dl = [abs(stats[i+1].edge_luma - stats[i].edge_luma) for i in range(len(stats)-1)]
-        dc = [abs(stats[i+1].edge_chroma - stats[i].edge_chroma) for i in range(len(stats)-1)]
-        ds = [abs(stats[i+1].edge_saturation - stats[i].edge_saturation) for i in range(len(stats)-1)]
-        dw = [abs(stats[i+1].edge_warmth - stats[i].edge_warmth) for i in range(len(stats)-1)]
+        # Include the 06 -> 00 transition: runtime animation loops.
+        pairs = list(zip(stats, stats[1:] + stats[:1]))
+        dl = [abs(b.edge_luma - a.edge_luma) for a, b in pairs]
+        dc = [abs(b.edge_chroma - a.edge_chroma) for a, b in pairs]
+        ds = [abs(b.edge_saturation - a.edge_saturation) for a, b in pairs]
+        dw = [abs(b.edge_warmth - a.edge_warmth) for a, b in pairs]
         out.append((part, max(dl, default=0), max(dc, default=0),
                     max(ds, default=0), max(dw, default=0)))
     return out
@@ -281,6 +282,7 @@ def main():
     for stale in DOCS.glob("*-current-clusters-audit.png"):
         stale.unlink()
 
+    csv_rows = []
     lines = [
         "# Independent terrain cluster visual audit",
         "",
@@ -291,6 +293,13 @@ def main():
         "sample the terrain-like portion of the outer regular-hex band, because that is the area that "
         "must continue naturally into a neighbouring ordinary hex. Full-image metrics are retained only "
         "as a secondary check for global brightness/contrast/shadows.",
+        "",
+        "The closest 30% of ring pixels is a heuristic, not a semantic ground mask. "
+        "Where water, mud, canyon walls or wreckage cross the ring, feature/shore transitions "
+        "can remain in that subset. A higher score or contrast therefore requires visual "
+        "inspection; it is not a requirement to flatten the obstacle to ordinary sand. "
+        "See runtime-pixel-audit.csv for all per-file values, including full-image metrics. "
+        "Animation deltas include the last-to-first transition.",
         "",
     ]
 
@@ -321,8 +330,6 @@ def main():
             f"- Edge warmth (OKLab b): {fmt_range([s.edge_warmth for _,_,s in placement_stats])}.",
             f"- Edge detail density: {fmt_range([s.edge_detail for _,_,s in placement_stats])}.",
             "",
-            "| Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |",
-            "|---|---:|---:|---:|---|---|---|---|---|---|---|",
         ]
 
         cdir = TERRAIN_ROOT / biome / "Complexes"
@@ -334,6 +341,13 @@ def main():
             stats = [s for _, s in vals]
             scores = [s.edge_score for s in stats]
             worst_p, _ = max(vals, key=lambda x: x[1].edge_score)
+            lines += [
+                f"### {group}", "",
+                "| Group | Files | edge mean | edge max | worst file | edge L | edge contrast | edge sat | edge hue | edge warmth | edge detail |",
+                "|---|---:|---:|---:|---|---|---|---|---|---|---|",
+            ]
+            for p, s in vals:
+                csv_rows.append({"biome": biome, "group": group, "file": p.name, **asdict(s)})
             lines.append(
                 f"| {group} | {len(paths)} | {np.mean(scores):.3f} | {max(scores):.3f} | "
                 f"{worst_p.name} | {fmt_range([s.edge_luma for s in stats])} | "
@@ -373,10 +387,15 @@ def main():
                 )
 
             lines.append(f"- Visual sheet: {sheet_name}")
+            lines.append("")
 
         lines += [""]
 
     (DOCS / "independent-visual-audit.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with (DOCS / "runtime-pixel-audit.csv").open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=list(csv_rows[0]))
+        writer.writeheader()
+        writer.writerows(csv_rows)
     print("\n".join(lines))
 
 
