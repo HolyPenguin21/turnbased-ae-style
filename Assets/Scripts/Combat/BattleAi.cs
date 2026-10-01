@@ -574,12 +574,17 @@ namespace Game.Combat
                         battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                         rng: rng, fateByArmy: fateByArmy, simulatedAttack: simulatedAttack,
                         simulatedDefense: simulatedDefense, ownArmy: ownArmy, enemyArmy: enemyArmy);
+                    if (!IsSimulationCombatCapable(grid, hp, ownArmy)
+                        || !IsSimulationCombatCapable(grid, hp, enemyArmy))
+                        break;
                 }
 
                 foreach (UnitData member in ownUnits)
-                    ownHpSum += Mathf.Max(0f, hp[member]);
+                    if (member.IsGroundCombatant)
+                        ownHpSum += Mathf.Max(0f, hp[member]);
                 foreach (UnitData member in enemyUnits)
-                    enemyHpSum += Mathf.Max(0f, hp[member]);
+                    if (member.IsGroundCombatant)
+                        enemyHpSum += Mathf.Max(0f, hp[member]);
             }
 
             return new SimulationOutcome
@@ -640,6 +645,11 @@ namespace Game.Combat
             var suppressed = new HashSet<UnitData>();
             for (int i = 0; i < order.Count; i++)
             {
+                if (ownArmy != null && enemyArmy != null
+                    && (!IsSimulationCombatCapable(grid, hp, ownArmy)
+                        || !IsSimulationCombatCapable(grid, hp, enemyArmy)))
+                    return;
+
                 UnitData actor = order[i];
                 if (suppressed.Contains(actor))
                     continue;
@@ -705,6 +715,10 @@ namespace Game.Combat
                                 fateByArmy[targetArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
                         }
                     }
+                    if (ownArmy != null && enemyArmy != null
+                        && (!IsSimulationCombatCapable(grid, hp, ownArmy)
+                            || !IsSimulationCombatCapable(grid, hp, enemyArmy)))
+                        return;
                     continue;
                 }
 
@@ -857,13 +871,26 @@ namespace Game.Combat
         // per-turn pick and the round-simulation pick) — see ChooseAction/RunOneRound's own calls
         // into it.
 
+        private static bool IsSimulationCombatCapable(BattleGrid grid, Dictionary<UnitData, float> hp,
+            ArmyData army)
+        {
+            if (grid == null || hp == null || army == null)
+                return false;
+            foreach (UnitData member in army.Members)
+                if (member.IsGroundCombatant
+                    && hp.TryGetValue(member, out float memberHp) && memberHp > 0f
+                    && grid.TryFindPosition(member, out _, out _))
+                    return true;
+            return false;
+        }
+
         private static float TotalHp(ArmyData army)
         {
             float total = 0f;
             if (army == null)
                 return total;
             foreach (UnitData member in army.Members)
-                if (member.HitPointsCurrent > 0)
+                if (member.IsGroundCombatant && member.HitPointsCurrent > 0)
                     total += member.HitPointsCurrent;
             return total;
         }
