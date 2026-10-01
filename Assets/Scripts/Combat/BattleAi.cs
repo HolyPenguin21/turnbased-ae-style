@@ -956,6 +956,7 @@ namespace Game.Combat
                 turnOrder, turnIndex, out AiAction attackAction, battleDefender, battleDefenderDefenseBonus))
             {
                 waitStreak[actor] = 0;
+                previousPositions?.Remove(actor);
                 return attackAction;
             }
 
