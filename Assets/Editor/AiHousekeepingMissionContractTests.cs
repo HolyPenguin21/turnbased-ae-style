@@ -132,7 +132,7 @@ namespace Game.EditorTests
                 Keyed(Body(5f), "inf"));
             ReorganizationPlan plan = Plan(garrison, host, free);
             Assert.That(plan.ExpectedMembership[2], Does.Contain(tank.Key), plan.DebugSummary());
-            Assert.That(plan.ExpectedMembership[2], Does.Not.Contain(scout.Key), plan.DebugSummary());
+            Assert.That(plan.ExpectedMembership[2], Has.No.Member(scout.Key), plan.DebugSummary());
         }
 
         // With no source of a missing position the non-roster body stays: nothing to wait for.
