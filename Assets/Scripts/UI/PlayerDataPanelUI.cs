@@ -100,11 +100,9 @@ namespace Game.UI
                     .Append(Ratio(force.DeployedPower, force.TotalAvailablePower, force.DeployedPercent))
                     .Append(';');
                 // Attack mobilization start (B): the field force against the Attack peak (the AI's
-                // own AttackPeak); the gate opens strictly above 80% of it.
-                string bar = force.AttackBar.ToString("0.0", CultureInfo.InvariantCulture);
-                output.Append("\nField strike force: ")
+                // own AttackPeak); the AI's gate opens strictly above 80% of it.
+                output.Append("\nStrike force on map: ")
                     .Append(Ratio(force.FieldStrikePotential, force.AttackPeak, force.FieldStrikePercent))
-                    .Append(force.FieldStrikeReady ? "; gate open" : "; gate needs power > ").Append(force.FieldStrikeReady ? "" : bar)
                     .Append(';');
                 ArmyData army = force.StrongestArmy;
                 output.Append("\nStrongest field army: ");
@@ -114,7 +112,6 @@ namespace Game.UI
                     .Append(army.Capacity);
                 output.Append("; power ")
                     .Append(Ratio(force.StrongestArmyPower, force.AttackPeak, force.ReadinessPercent))
-                    .Append(force.ForceReady ? "; march open" : "; march needs power > ").Append(force.ForceReady ? "" : bar)
                     .Append(';');
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";
