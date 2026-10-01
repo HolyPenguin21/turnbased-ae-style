@@ -1,14 +1,16 @@
 """Normalize authored terrain-complex colours against each biome's terrain set.
 
 The tool changes RGB only. Dimensions and alpha stay byte-for-byte stable.
-A shared OKLab transform is fitted per biome/complex family from terrain-like pixels in the
-outer hex band. The transform is then applied adaptively: ordinary ground is corrected
-strongly (especially near the hex edge), while distinctive feature pixels such as acid,
-mud, canyon interiors and wreck metal receive only a very small correction.
+A shared OKLab transform is fitted per biome/complex family from the closest terrain-like
+pixels in the outer hex band. The subset is deliberately conservative: feature-heavy assets
+such as AcidLake must never be forced to contribute acid pixels merely to fill a fixed
+majority quota. The transform is then applied adaptively: ordinary ground is corrected
+strongly (especially near the hex edge), while distinctive acid, mud, canyon interiors and
+wreck metal stay effectively untouched.
 
-A second, tightly capped residual pass equalises terrain-like background between parts and
-animation frames. It is background-only and uses the same target for the whole group, so it
-removes colour/brightness flicker without altering the authored animation geometry.
+A second, tightly capped residual pass equalises terrain-like background between parts.
+For animated families the residual is shared by every frame of a given Part, so the
+normalizer cannot introduce frame-to-frame colour/brightness flicker.
 
 Requires: Pillow, NumPy, PyYAML.
 """
@@ -61,9 +63,10 @@ M1_INV = np.array([
 
 CHANNEL_FLOOR = np.array([0.022, 0.010, 0.010], dtype=np.float64)
 SHIFT_LIMIT = np.array([0.16, 0.070, 0.070], dtype=np.float64)
-SCALE_MIN = np.array([0.62, 0.70, 0.70], dtype=np.float64)
+SCALE_MIN = np.array([0.38, 0.55, 0.55], dtype=np.float64)
 SCALE_MAX = np.array([1.20, 1.18, 1.18], dtype=np.float64)
-RESIDUAL_LIMIT = np.array([0.014, 0.006, 0.006], dtype=np.float64)
+RESIDUAL_LIMIT = np.array([0.012, 0.0045, 0.0045], dtype=np.float64)
+GROUND_KEEP_FRACTION = 0.30
 
 
 @dataclass
@@ -219,7 +222,7 @@ def terrain_like_subset(lab: np.ndarray, target: StyleStats, keep_fraction: floa
 
 
 def ground_ring_samples(path: Path, target: StyleStats, side: int = 112,
-                        keep_fraction: float = 0.56) -> np.ndarray:
+                        keep_fraction: float = GROUND_KEEP_FRACTION) -> np.ndarray:
     with Image.open(path) as src:
         rgba = src.convert("RGBA").resize((side, side), Image.Resampling.LANCZOS)
     arr = np.asarray(rgba, dtype=np.float64) / 255.0
@@ -246,9 +249,9 @@ def correction(source: StyleStats, target: StyleStats) -> tuple[np.ndarray, np.n
 
 
 def affinity_and_edge(lab: np.ndarray, source: StyleStats, h: int, w: int) -> tuple[np.ndarray, np.ndarray]:
-    norm = (lab - source.center) / np.maximum(source.spread * 2.15, CHANNEL_FLOOR)
+    norm = (lab - source.center) / np.maximum(source.spread * 1.95, CHANNEL_FLOOR)
     distance = np.sqrt(np.sum(norm * norm, axis=1))
-    affinity = np.exp(-0.5 * (distance / 1.55) ** 2)
+    affinity = np.exp(-0.5 * (distance / 1.35) ** 2)
 
     if h == w:
         edge = smoothstep(0.56, 0.95, hex_norm_map(h)).reshape(-1)
@@ -265,9 +268,10 @@ def transform_rgb(rgb: np.ndarray, source: StyleStats, desired_center: np.ndarra
     corrected = desired_center + (lab - source.center) * scale
 
     affinity, edge = affinity_and_edge(lab, source, h, w)
-    ground_weight = affinity * (0.70 + 0.28 * edge)
-    feature_floor = 0.025 + 0.055 * edge
-    weight = np.clip(feature_floor + (1.0 - feature_floor) * ground_weight, 0.0, 0.985)
+    # No feature floor: pixels that do not resemble the authored ground keep their
+    # original colour. This is essential for acid/mud/metal identity.
+    ground_weight = np.power(affinity, 1.35) * (0.82 + 0.18 * edge)
+    weight = np.clip(ground_weight, 0.0, 0.99)
 
     out_lab = lab + weight[:, None] * (corrected - lab)
     return np.clip(oklab_to_rgb(out_lab).reshape(shape), 0.0, 1.0)
@@ -280,7 +284,7 @@ def edge_ground_center(rgb: np.ndarray, target: StyleStats) -> np.ndarray:
     norm = hex_norm_map(h)
     ring = (norm >= 0.66) & (norm <= 1.0)
     lab = rgb_to_oklab(rgb[ring])
-    idx = terrain_like_subset(lab, target, 0.56)
+    idx = terrain_like_subset(lab, target, GROUND_KEEP_FRACTION)
     return np.median(lab[idx], axis=0)
 
 
@@ -290,8 +294,8 @@ def residual_equalize(rgb: np.ndarray, source: StyleStats, target: StyleStats,
     h, w = shape[:2]
     lab = rgb_to_oklab(rgb.reshape(-1, 3))
     affinity, edge = affinity_and_edge(lab, source, h, w)
-    weight = affinity * (0.46 + 0.54 * edge)
-    weight = np.where(affinity >= 0.10, weight, 0.0)
+    weight = np.power(affinity, 1.35) * (0.58 + 0.42 * edge)
+    weight = np.where(affinity >= 0.12, weight, 0.0)
     out = lab + weight[:, None] * residual[None, :]
     return np.clip(oklab_to_rgb(out).reshape(shape), 0.0, 1.0)
 
@@ -305,7 +309,7 @@ def metric_for_rgb(rgb: np.ndarray, target: StyleStats) -> float:
     lab = rgb_to_oklab(arr[ring])
     norm = (lab - target.center) / np.maximum(target.spread, CHANNEL_FLOOR)
     dist = np.sqrt(np.sum(norm * norm, axis=1))
-    n = max(1, int(len(dist) * 0.56))
+    n = max(1, int(len(dist) * GROUND_KEEP_FRACTION))
     return float(np.mean(np.partition(dist, n - 1)[:n]))
 
 
@@ -392,9 +396,32 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
             transformed[path] = transform_rgb(before_rgb, source, desired_center, scale, target)
 
         centers = {path: edge_ground_center(rgb, target) for path, rgb in transformed.items()}
+
+        # Animated assets keep one residual per Part across all seven frames. Static
+        # assets may use one residual per file because there is no temporal continuity
+        # to protect.
+        residuals: dict[Path, np.ndarray] = {}
+        if group in ("AcidLake", "BoilingMud"):
+            by_part: dict[str, list[Path]] = {}
+            for path in paths:
+                match = re.match(r"(.+_Part\d+)_\d+$", path.stem)
+                key = match.group(1) if match else path.stem
+                by_part.setdefault(key, []).append(path)
+            for part_paths in by_part.values():
+                part_center = np.median(np.stack([centers[p] for p in part_paths]), axis=0)
+                residual = np.clip(target.center - part_center, -RESIDUAL_LIMIT, RESIDUAL_LIMIT)
+                for path in part_paths:
+                    residuals[path] = residual
+        else:
+            for path in paths:
+                residuals[path] = np.clip(
+                    target.center - centers[path], -RESIDUAL_LIMIT, RESIDUAL_LIMIT
+                )
+
         for path in paths:
-            residual = np.clip(target.center - centers[path], -RESIDUAL_LIMIT, RESIDUAL_LIMIT)
-            transformed[path] = residual_equalize(transformed[path], source, target, residual)
+            transformed[path] = residual_equalize(
+                transformed[path], source, target, residuals[path]
+            )
 
         after_scores: list[float] = []
         residual_magnitudes: list[float] = []
@@ -405,8 +432,7 @@ def normalize_biome(config: dict, guids: dict[str, Path], biome: str, write: boo
             before = metric_for_rgb(before_rgb, target)
             after = metric_for_rgb(after_rgb, target)
             after_scores.append(after)
-            residual = np.clip(target.center - centers[path], -RESIDUAL_LIMIT, RESIDUAL_LIMIT)
-            residual_magnitudes.append(float(np.linalg.norm(residual)))
+            residual_magnitudes.append(float(np.linalg.norm(residuals[path])))
             metrics.append(FileMetric(biome, group, path.name, before, after))
             contact_pairs.append((group, path.name, before_rgb, after_rgb))
 
@@ -451,11 +477,11 @@ def write_report(metrics: list[FileMetric], summaries: list[str]) -> None:
         "(main + alternatives). The target is weighted toward Desert / Sand dunes / Rock desert because "
         "complexes can be placed only on those surfaces.",
         "",
-        "The main correction is fitted from terrain-like pixels in the outer hex band and shared by the "
-        "whole complex family. Ground receives a strong correction, especially near the hex boundary; "
-        "distinctive acid/mud/canyon/wreck pixels receive only a small correction. A tightly capped "
-        "background-only residual removes remaining per-part/per-frame edge drift. RGB only is modified; "
-        "dimensions and alpha are preserved.",
+        "The main correction is fitted from the closest terrain-like pixels in the outer hex band and "
+        "shared by the whole complex family. Ground receives a strong correction, especially near the "
+        "hex boundary; distinctive acid/mud/canyon/wreck pixels are not given a forced feature correction. "
+        "Animated families use one background-only residual per Part across all frames, preventing the "
+        "normalizer from introducing temporal flicker. RGB only is modified; dimensions and alpha are preserved.",
         "",
         "## Group transforms",
         "",

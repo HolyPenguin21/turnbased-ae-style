@@ -93,7 +93,7 @@ def sat_values(rgb: np.ndarray) -> np.ndarray:
 
 
 def terrain_like_subset(lab: np.ndarray, target_center: np.ndarray, target_spread: np.ndarray,
-                        keep_fraction: float = 0.56):
+                        keep_fraction: float = 0.30):
     norm = (lab - target_center) / np.maximum(target_spread, CHANNEL_FLOOR)
     dist = np.sqrt(np.sum(norm * norm, axis=1))
     n = max(16, min(len(dist), int(round(len(dist) * keep_fraction))))
@@ -134,7 +134,7 @@ def image_stats(path: Path, placement_style) -> PixelStats:
         ring_detail = detail_map[visible]
     ring_lab = rgb_to_oklab(ring_rgb)
     idx, d = terrain_like_subset(
-        ring_lab, placement_style.center, placement_style.spread, keep_fraction=0.56
+        ring_lab, placement_style.center, placement_style.spread, keep_fraction=0.30
     )
     terrain_ring_rgb = ring_rgb[idx]
     terrain_ring_lab = ring_lab[idx]
