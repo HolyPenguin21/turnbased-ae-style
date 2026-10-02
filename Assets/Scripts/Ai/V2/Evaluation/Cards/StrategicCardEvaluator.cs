@@ -95,7 +95,11 @@ namespace Game.Ai.V2
         public float AlternativeUseValue;     // negative — opportunity cost of using this card HERE vs its best other role / Hold
         public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
         public float ResourcePressureBenefit; // stranded AP / near-cap resource makes spending now better
-        public float HandPressureBenefit;     // a full hand makes materialising now better
+        public float HandPressureBenefit;     // a full hand makes materialising now better (+ IdleBonus)
+        // Part of HandPressureBenefit (NOT summed again): growing bonus for a card that has lain in
+        // hand while the bank can afford it. IdleAgeTurns = turns the oldest consumed card waited.
+        public float IdleBonus;
+        public int IdleAgeTurns;
         // Canonical world-task value directly enabled by this exact non-combat placement. Only the
         // shared scorer may fold it into global card arbitration; callers never post-adjust Total.
         public float OperationalTaskValue;
@@ -116,6 +120,7 @@ namespace Game.Ai.V2
                  + $"need {F(ProductionNeedDiscount)} "
                  + $"redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
+                 + $"idle={IdleBonus.ToString("0.00", CultureInfo.InvariantCulture)} age={IdleAgeTurns} "
                  + $"task {F(OperationalTaskValue)} "
                  + $"hold {F(HoldValue)} "
                  + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
@@ -392,7 +397,7 @@ namespace Game.Ai.V2
             // non-stealth demand) — the general "best other role" cost applies in Phase B.
             bd.AlternativeUseValue = -ScarcityOpportunityCost(plan, demand, inv);
             bd.ResourcePressureBenefit = 0f;     // spends a ledger entitlement, not stranded AP
-            bd.HandPressureBenefit = 0f;
+            ApplyIdlePressure(bd, plan, snap, 0f, spendableResource);
             bd.GenerationRiskDiscount = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
             bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
@@ -534,7 +539,9 @@ namespace Game.Ai.V2
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
             bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
-            bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
+            ApplyIdlePressure(bd, plan, snap,
+                hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f,
+                spendableResource);
             bd.GenerationRiskDiscount = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.ProductionNeedDiscount = ProductionNeedDiscount(bd, plan.Generation, snap);
             bd.Total = SumTotal(bd);
@@ -723,7 +730,9 @@ namespace Game.Ai.V2
             bd.EffectDetail = JoinDetail(ncEffDetail, calibrationDetail);
 
             bd.OperationalTaskValue = operationalTask?.Value ?? 0f;
-            bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
+            ApplyIdlePressure(bd, snap?.TurnNumber ?? 0, card, card?.EffectivePlayResourceCost,
+                hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f,
+                spendableResource);
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             // Aviation sortie-upkeep penalty — a new wing does not just cost its own AP/resources
             // to deploy, it keeps drawing apAirSortieApProxy AP/turn to actually fly afterwards.
@@ -791,6 +800,34 @@ namespace Game.Ai.V2
             return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost))
                    + StrategicResourceCostValue(plan.ResCost, snap, spendableResource, player)
                    + ChainStepPenalty(plan.Kind);
+        }
+
+        // Idle-card pressure for a materialisation plan: the OLDEST hand card the plan consumes
+        // (base body / equipment / upgrade host) sets the age; the plan's own whole-chain resource
+        // cost sets the saturation. `fullHandBonus` is the existing hand-pressure term.
+        private static void ApplyIdlePressure(StrategicUseScoreBreakdown bd, MaterializationPlan plan,
+            WorldSnapshot snap, float fullHandBonus, System.Func<ResourceType, float> spendableResource)
+        {
+            int turn = snap?.TurnNumber ?? 0;
+            int age = 0;
+            if (plan != null)
+                age = Mathf.Max(AiHandData.AgeInTurns(plan.BaseCardInHand, turn),
+                    Mathf.Max(AiHandData.AgeInTurns(plan.EquipmentInHand, turn),
+                              AiHandData.AgeInTurns(plan.UpgradeTargetCard, turn)));
+            ApplyIdlePressure(bd, age, plan?.ResCost, fullHandBonus, spendableResource);
+        }
+
+        private static void ApplyIdlePressure(StrategicUseScoreBreakdown bd, int turn, CardData card,
+            ResourceCost cost, float fullHandBonus, System.Func<ResourceType, float> spendableResource)
+            => ApplyIdlePressure(bd, AiHandData.AgeInTurns(card, turn), cost, fullHandBonus, spendableResource);
+
+        private static void ApplyIdlePressure(StrategicUseScoreBreakdown bd, int age, ResourceCost cost,
+            float fullHandBonus, System.Func<ResourceType, float> spendableResource)
+        {
+            float idle = IdleCardPressure.Bonus(age, IdleCardPressure.Saturation(cost, spendableResource));
+            bd.IdleBonus = idle;
+            bd.IdleAgeTurns = age;
+            bd.HandPressureBenefit = fullHandBonus + idle;
         }
 
         private static float GenerationChance(MaterializationPlan plan) =>

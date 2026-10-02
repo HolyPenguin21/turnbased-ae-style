@@ -612,6 +612,7 @@ namespace Game.Ai.V2
                             DemandCandidate b = topOpts[0];
                             AiDebugLog.Write($"[AI][V2]   strat.A hold — {d}: best chain {b.Plan.StableKey} "
                                 + $"play {F(b.PlayScore)} hold {F(b.HoldValue)} decision {F(b.DecisionScore)} "
+                                + $"idle={F(b.Plan.UseBreakdown?.IdleBonus ?? 0f)} age={b.Plan.UseBreakdown?.IdleAgeTurns ?? 0} "
                                 + "not worth playing over holding the card / lost to contention; keep in hand");
                             continue;
                         }

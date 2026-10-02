@@ -227,6 +227,7 @@ namespace Game.Ai
             // invariant from the hand's first card, never a window between construction and a
             // post-hoc field assignment where a starting-hand draw could overflow it.
             AiHandData hand = AiHandRegistry.GetOrCreate(player, ctx.StartingDeckCatalog, ctx.StartingHandSize, ctx.HandCapacity);
+            hand.SetCurrentTurn(ctx.TurnNumber);
 
             // ---- Global Map AI = Strategy V2, unconditionally (ARCH-01, 2026-09-04) ----
             // The former V1/V2 fork is gone: V2 owns every AI turn end to end. Placed after
