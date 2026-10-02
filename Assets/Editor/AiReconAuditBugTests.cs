@@ -18,6 +18,74 @@ namespace Game.EditorTests
         {
             MissionIntentRegistry.Clear();
             ReconPatrolStateRegistry.ClearAll();
+            AiReconMemory.Clear();
+        }
+
+        [Test]
+        public void OrdinaryRediscovery_UpdatesHonestReconHistory()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon" };
+            var enemy = new PlayerSetupData { Nickname = "Enemy" };
+            var oldHex = new HexCoord(10, 8);
+            var newHex = new HexCoord(12, 9);
+            AiReconMemory.Observe(player, 5, 1, new[]
+            {
+                new AiMapMemory.KnownEnemySighting(oldHex, enemy, "army", 5, 20f, 42f,
+                    null, seenTurn: 5, armyId: 17),
+            });
+            Assert.That(AiReconMemory.Historical(player, new HashSet<int>()).Single().LastObservedHex,
+                Is.EqualTo(oldHex));
+
+            AiReconMemory.Observe(player, 10, 2, new[]
+            {
+                new AiMapMemory.KnownEnemySighting(newHex, enemy, "army", 4, 18f, 38f,
+                    null, seenTurn: 10, armyId: 17),
+            });
+            ReconObservation refreshed = AiReconMemory.Historical(player, new HashSet<int>()).Single();
+            Assert.That(refreshed.LastObservedHex, Is.EqualTo(newHex));
+            Assert.That(refreshed.LastObservedTurn, Is.EqualTo(10));
+            Assert.That(refreshed.MemberCount, Is.EqualTo(4));
+            Assert.That(AiReconMemory.Historical(player, new HashSet<int> { 17 }), Is.Empty);
+        }
+
+        [Test]
+        public void StaleEnemyContact_RemainsThreatData_WithoutCreatingAReconJob()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon" };
+            var focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, 10, focus);
+            snap.Known = new KnownSnapshot { EnemySightings =
+                new List<AiMapMemory.KnownEnemySighting>() };
+            var contact = new EnemyContactSnapshot
+            {
+                Army = new ArmySnapshot { ArmyId = 17, MemberCount = 5 },
+                Knowledge = ContactKnowledge.LastKnown,
+                Position = focus,
+                LastObservedTurn = 5,
+                Confidence = 0.5f,
+            };
+            snap.Threat = new ThreatModel { Contacts = new List<EnemyContactSnapshot> { contact } };
+
+            List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap);
+
+            Assert.That(snap.Threat.Contacts.Single(), Is.SameAs(contact));
+            Assert.That(contact.Position, Is.EqualTo(focus));
+            Assert.That(contact.LastObservedTurn, Is.EqualTo(5));
+            Assert.That(objectives.All(o => o.Kind == ReconObjectiveKind.Explore
+                || o.Kind == ReconObjectiveKind.Refresh || o.Kind == ReconObjectiveKind.AirSweep), Is.True);
+            Assert.That(objectives.All(o => o.IntentKey.SubKind != 1), Is.True);
+        }
+
+        [Test]
+        public void ScoutNumericIdentities_LeaveTheRemovedSubtypeUnused()
+        {
+            Assert.That((int)ScoutTargetKind.Explore, Is.Zero);
+            Assert.That((int)ScoutTargetKind.Refresh, Is.EqualTo(2));
+            Assert.That((int)ScoutTargetKind.AirSweep, Is.EqualTo(3));
+            Assert.That(System.Enum.IsDefined(typeof(ScoutTargetKind), 1), Is.False);
+            foreach (ScoutTargetKind kind in System.Enum.GetValues(typeof(ScoutTargetKind)))
+                Assert.That(MissionIntentKey.ForScoutTarget(Scout(kind, new HexCoord(4, 3))
+                    .Target as ScoutMissionTarget).SubKind, Is.Not.EqualTo(1));
         }
 
         // B3 — an AirSweep with no air candidate must not borrow a GROUND capability diagnosis:
@@ -38,48 +106,6 @@ namespace Game.EditorTests
             Assert.That(result.Rejected[StableMissionKey.For(sweep)],
                 Is.EqualTo(ScoutAssignmentFailureReason.NoExecutableStep),
                 "ground scouts are never AirSweep capacity, busy or not");
-        }
-
-        // B4 — a fresh Surveil absorbed into the actor's existing durable role must carry the
-        // provisioned baseline, or IsIntentStillValid retires the role on the very next pass.
-        [Test]
-        public void AbsorbIntoSurveil_KeepsTheProvisionedBaseline()
-        {
-            var player = new PlayerSetupData { Nickname = "Recon audit" };
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent explore = Incumbent(new HexCoord(4, 3), preferredMover: 10);
-            state.Put(explore);
-
-            var target = new ScoutMissionTarget
-            {
-                Kind = ScoutTargetKind.Surveil,
-                FocusHex = new HexCoord(6, 6),
-                Stealth = StealthRequirement.Required,
-            };
-            var proposal = new MissionProposal { Kind = MissionKind.Scout, Target = target };
-            var outcome = new MissionTurnOutcome
-            {
-                AttemptKey = StableMissionKey.For(proposal),
-                IntentKey = new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, 99, 0, 0),
-                Proposal = proposal,
-                MissionKind = MissionKind.Scout,
-                Outcome = ExecutionOutcome.ProductiveStop,
-                MadeProgress = true,
-                StepsMoved = 1,
-                HasScoutPayload = true,
-                MoverArmyId = 10,
-                ScoutKind = ScoutTargetKind.Surveil,
-                ScoutRequiresStealth = true,
-                FocusHex = new HexCoord(6, 6),
-                TrackedArmyId = 99,
-                BaselineObservedTurn = 7,
-            };
-
-            MissionContinuityLayer.ReconcileStep(player, 8, outcome);
-
-            Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent absorbed), Is.True);
-            Assert.That(absorbed, Is.SameAs(explore), "the actor's durable role is re-pointed, not duplicated");
-            Assert.That(absorbed.Scout.BaselineObservedTurn, Is.EqualTo(7));
         }
 
         // B5 — a tactical TargetInvalidated (opportunistic attack/sabotage target gone, stale vantage,

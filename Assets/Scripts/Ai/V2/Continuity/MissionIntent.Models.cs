@@ -97,9 +97,6 @@ namespace Game.Ai.V2
 
         public static MissionIntentKey ForScoutTarget(ScoutMissionTarget t)
         {
-            if (t.Kind == ScoutTargetKind.Surveil)
-                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
-                    t.Contact?.Army?.ArmyId ?? 0, 0, 0);
             // AirSweep is one durable operation whose anchor follows the enemy — hex-less identity.
             if (t.Kind == ScoutTargetKind.AirSweep)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
@@ -129,9 +126,6 @@ namespace Game.Ai.V2
             ScoutIntent s = intent?.Scout;
             if (s == null)
                 return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
-            if (s.Kind == ScoutTargetKind.Surveil)
-                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
-                    s.TrackedArmyId ?? 0, 0, 0);
             if (s.Kind == ScoutTargetKind.AirSweep)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
             return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, s.FocusHex.Q, s.FocusHex.R);
@@ -157,13 +151,13 @@ namespace Game.Ai.V2
         {
             if (Kind == MissionKind.Scout)
             {
-                if (SubKind == (int)ScoutTargetKind.Surveil)
-                    return $"Intent(Surveil #{ObjectiveId})";
                 if (SubKind == (int)ReconScoutKinds.Refresh)
                     return $"Intent(Refresh {Q},{R})";
                 if (SubKind == (int)ScoutTargetKind.AirSweep)
                     return "Intent(AirSweep)";
-                return $"Intent(Explore {Q},{R})";
+                if (SubKind == (int)ScoutTargetKind.Explore)
+                    return $"Intent(Explore {Q},{R})";
+                return $"Intent(Unknown Scout subtype {SubKind})";
             }
             if (Kind == MissionKind.Raid)
                 return TargetKind == RaidTargetKind.EventGuard
@@ -192,8 +186,6 @@ namespace Game.Ai.V2
         // serve it, so counting it as generic supply would mask a real generic deficit.
         public bool RequiresStealth;
         public HexCoord FocusHex;
-        public int? TrackedArmyId;
-        public int BaselineObservedTurn;
     }
 
     // S4 — the physical core every ground-combat operation (Raid, Attack, ActiveDefence) shares:

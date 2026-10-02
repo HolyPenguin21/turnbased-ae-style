@@ -299,8 +299,7 @@ namespace Game.Ai.V2
         // An AirSweep is never "met" by seeing its anchor: the sortie ends by its own refuel
         // endurance (AirReconStepDirector outbound cap -> Return), not by an observation check.
         private static bool ObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
-            pm != null && ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
-                pm.TrackedArmyId, pm.BaselineObservedTurn);
+            pm != null && ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
 
         private static void MarkSatisfiedNoOp(ProvisionedMission pm, ExecutionResult er)
         {

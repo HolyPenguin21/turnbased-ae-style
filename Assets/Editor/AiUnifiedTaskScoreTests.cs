@@ -34,7 +34,7 @@ namespace Game.EditorTests
             string json = Game.EditorTools.TaskScoreCalibrationReport.Build();
             foreach (string name in new[] { "Extraction", "Base", "Raid near", "Raid far",
                          "Attack enemy Base", "ActiveDefence intercept", "Recon Explore",
-                         "Recon Surveil", "Mobile collection", "Development operator walk" })
+                         "Recon Refresh", "Mobile collection", "Development operator walk" })
                 Assert.That(json, Does.Contain("\"name\":\"" + name + "\""), name);
             // Raid near: reward 8 + win 0.8 x 12 + proximity at 3 hexes 1.5 - activation 3 - one turn 3.
             Assert.That(json, Does.Contain("\"name\":\"Raid near\",\"family\":\"Military\""));
@@ -396,7 +396,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ScoutEstimate_UsesCitadelWithoutBases_AndPricesSurveillanceTravel()
+        public void ScoutEstimate_UsesNearestHomeForExplore()
         {
             var snapshot = new WorldSnapshot
             {
@@ -422,16 +422,6 @@ namespace Game.EditorTests
             ScoutCostEstimate fromNearestHome = ScoutCostModel.Estimate(snapshot, explore);
             Assert.That(fromNearestHome.EstimatedDistance, Is.EqualTo(6f));
 
-            var surveillance = new ScoutMissionTarget
-            {
-                Kind = ScoutTargetKind.Surveil,
-                FocusHex = explore.FocusHex,
-                Stealth = StealthRequirement.Required,
-            };
-            ScoutCostEstimate surveillanceCost = ScoutCostModel.Estimate(snapshot, surveillance);
-            Assert.That(surveillanceCost.EstimatedDistance, Is.EqualTo(6f));
-            Assert.That(surveillanceCost.EtaTurns, Is.EqualTo(2));
-            Assert.That(surveillanceCost.ApDesired, Is.EqualTo(2f));
         }
 
         [Test]
@@ -759,52 +749,6 @@ namespace Game.EditorTests
                 "fog must preserve the stationary Raid target's fixed RaidReward");
             Assert.That(TaskScoreEvaluator.IntelAgePenalty(1f), Is.GreaterThan(0f),
                 "shared intel-age price remains available for future mobile player targets");
-        }
-
-        [Test]
-        public void SurveilContact_ArmyIdZeroSurvivesReconContactByArmyIdLookup()
-        {
-            // Task 8 addition — covers the stage3 Task 3 fix in
-            // WorldAnalysis.Threat.cs::BuildThreat() (ReconContactByArmyId keying: "ArmyId == 0 is
-            // a valid identity ... not 'no army'"), which shipped with no EditMode coverage.
-            // BuildThreat() itself is private and needs a full WorldSnapshot/AiTurnContext plus the
-            // static AiReconMemory/AiMapMemory singletons — an unreasonably heavy fixture for one
-            // dictionary-keying fact. The fix's actual observable contract is one level up, at the
-            // public ScoutObjectiveEvaluator.SurveilContact() / ReconObjectiveEvaluator.SurveilOf()
-            // consumers Surveil missions actually call, reading the SAME ReconContactByArmyId
-            // dictionary shape BuildThreat produces — so this constructs that dictionary directly
-            // (honest fixture of the real consumer contract, not a re-implementation of BuildThreat)
-            // and proves a contact keyed at ArmyId 0 is not lost.
-            var zeroIdArmy = new ArmySnapshot { ArmyId = 0, MemberCount = 1 };
-            HexCoord pos = new HexCoord(3, 1);
-            var contact = new EnemyContactSnapshot
-            {
-                Army = zeroIdArmy,
-                Knowledge = ContactKnowledge.LastKnown,
-                Position = pos,
-                Confidence = 0.5f,
-                LastObservedTurn = 5,
-            };
-            var snap = new WorldSnapshot
-            {
-                TurnNumber = 8,
-                Self = new SelfSnapshot { BaseHexes = new List<HexCoord>() },
-                Threat = new ThreatModel
-                {
-                    ReconContactByArmyId = new Dictionary<int, EnemyContactSnapshot> { [0] = contact },
-                },
-            };
-
-            EnemyContactSnapshot resolved = ScoutObjectiveEvaluator.SurveilContact(snap, trackedArmyId: 0);
-            Assert.That(resolved, Is.Not.Null,
-                "a contact keyed at ArmyId 0 must not be treated as 'no army' / silently dropped");
-            Assert.That(resolved.Army?.ArmyId, Is.EqualTo(0));
-
-            ReconObjective objective = ReconObjectiveEvaluator.SurveilOf(snap, resolved);
-            Assert.That(objective, Is.Not.Null);
-            Assert.That(objective.ContactArmyId, Is.EqualTo(0),
-                "Surveil's own objective identity must keep the real ArmyId 0, not collapse it "
-                + "to the same sentinel a genuinely-absent army would use");
         }
 
         [Test]

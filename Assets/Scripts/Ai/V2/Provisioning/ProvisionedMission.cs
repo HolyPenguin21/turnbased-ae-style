@@ -24,8 +24,6 @@ namespace Game.Ai.V2
         public int MoverArmyId;
         public HexCoord FocusHex;
         public HexCoord ExecutionHex;
-        public int? TrackedArmyId;
-        public int BaselineObservedTurn;
         // Single source of truth for this provisioned task's Raid target. RaidTargetArmyId below is
         // a read-only projection for existing non-Raid/logging readers — never a second settable copy.
         public RaidTargetRef RaidTarget;

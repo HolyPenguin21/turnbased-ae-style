@@ -60,7 +60,7 @@ namespace Game.Ai.V2
             if (!hasRecoveryTarget) return false;
             if (alreadyProtected && !underImmediateThreat) return false;
             if (lender?.Kind == MissionKind.Scout && lender.Scout != null
-                && lender.Scout.Kind != ScoutTargetKind.Surveil && !underImmediateThreat)
+                && !underImmediateThreat)
                 return false;
             return true;
         }
@@ -457,8 +457,7 @@ namespace Game.Ai.V2
             // durable intents on the same waypoint. Mutated as intents are re-pointed below.
             var scoutFoci = new HashSet<HexCoord>();
             foreach (MissionIntent i in state.All)
-                if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil
-                    && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
+                if (i.Scout != null && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
                     scoutFoci.Add(i.Scout.FocusHex);
 
             // Neutral targets already owned by a durable Raid, so a re-orientation
@@ -956,8 +955,7 @@ namespace Game.Ai.V2
         {
             // AirSweep has no waypoint to re-point: its anchor is re-derived every turn, and an
             // invalid sweep (no enemy anchor at all) simply retires.
-            if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil
-                || ReconScoutKinds.IsAirSweep(s.Kind))
+            if (snap?.MapKnowledge == null || s == null || ReconScoutKinds.IsAirSweep(s.Kind))
                 return false;
 
             HexCoord old = s.FocusHex;
@@ -1468,19 +1466,17 @@ namespace Game.Ai.V2
                 // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
                 // began executing this turn, CREATE — the durable ground-scout intent so
                 // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
-                // (its hex now fails IsIntentStillValid). Mirrors the own-execution
-                // ExecutionResult.DurableRoleContinues ProductiveStop path. Surveil and genuine
-                // own-execution completions still retire.
+                // (its hex now fails IsIntentStillValid). Own-execution completion uses
+                // ExecutionResult.DurableRoleContinues.
                 if (o.ObjectiveSatisfiedExternally)
                 {
                     bool existingScoutRole = intent != null
-                        && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
+                        && intent.Scout != null;
                     // Fresh role: the mission was provisioned AND executed at least one step
                     // this turn (so ReconPatrolState already exists). A provisioning-only
                     // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
                     // false / MadeProgress == false and is correctly NOT made durable.
-                    bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress
-                        && o.ScoutKind != ScoutTargetKind.Surveil;
+                    bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress;
 
                     if (existingScoutRole)
                     {
@@ -1920,7 +1916,7 @@ namespace Game.Ai.V2
         }
 
         // Spec §1/§10 — the physical scout that produced this fresh scout outcome already owns a
-        // durable Recon role (Explore / Refresh / Surveil) under a different key: a new
+        // durable Recon role (Explore / Refresh) under a different key: a new
         // opportunistic mission ran on a mover continuity already tracks. Re-point that existing
         // role at the new objective and re-key its registry slot, preserving CreatedTurn /
         // TurnsActive / CumulativeApSpent / StepsMovedTotal / PreferredMoverArmyId, instead of
@@ -1948,11 +1944,7 @@ namespace Game.Ai.V2
 
             MissionIntentKey oldKey = owner.IntentKey;
             ApplyScoutPayload(owner.Scout, o);
-            // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
-            // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
-            owner.Funding = o.ScoutKind == ScoutTargetKind.Surveil
-                ? (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.Soft)
-                : (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.None);
+            owner.Funding = owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.None;
             owner.IntentKey = MissionIntentKey.For(owner);
             state.Remove(oldKey);
             state.Put(owner);
@@ -1966,16 +1958,12 @@ namespace Game.Ai.V2
 
         // THE one writer of a Scout outcome's provisioned payload into a durable ScoutIntent — used
         // when a role is created, advanced and when an actor's existing role absorbs a fresh
-        // mission, so the three can never drift apart again (Recon audit B4: the absorb copy lost
-        // the Surveil baseline). Contact identity and baseline belong to Surveil only.
+        // mission, so the three can never drift apart again.
         private static void ApplyScoutPayload(ScoutIntent s, MissionTurnOutcome o)
         {
             s.FocusHex = o.FocusHex;
             s.Kind = o.ScoutKind;
             s.RequiresStealth = o.ScoutRequiresStealth;
-            bool surveil = o.ScoutKind == ScoutTargetKind.Surveil;
-            s.TrackedArmyId = surveil ? o.TrackedArmyId : null;
-            s.BaselineObservedTurn = surveil ? o.BaselineObservedTurn : 0;
         }
 
         // Shared skeleton for the three Create*Intent methods below — was three independent,
@@ -2015,7 +2003,7 @@ namespace Game.Ai.V2
         {
             var si = new ScoutIntent();
             ApplyScoutPayload(si, o);
-            CommitmentTier funding = o.ScoutKind == ScoutTargetKind.Surveil ? CommitmentTier.Soft : CommitmentTier.None;
+            CommitmentTier funding = CommitmentTier.None;
             MissionIntent intent = NewIntent(o, turn, MissionKind.Scout, funding, si);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "

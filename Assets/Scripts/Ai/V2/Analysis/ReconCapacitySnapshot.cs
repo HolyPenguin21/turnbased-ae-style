@@ -10,7 +10,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Observation capacity and ground-traversal capacity are DIFFERENT resources:
     //
-    //    · An OBSERVATION lane (Refresh / Surveil — keep fresh eyes on a hex or a contact) is
+    //    · An OBSERVATION lane (Refresh — update stale information about a hex) is
     //      served by a ground scout.
     //    · A GROUND-TRAVERSAL lane (Explore — a frontier hex that must be physically stood on to
     //      count as visited) can ONLY be served by a ground actor. Aviation reveals a hex; it
@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         public int StructuralObservationSupply;
 
         // Distinct GENERIC GROUND actors already in hand — deduped ids (a scout counted once even
-        // though it could serve either class): active generic Explore/Refresh/Surveil lanes plus
+        // though it could serve either class): active generic Explore/Refresh lanes plus
         // idle-usable solo Recce. This is what DemandLayer's global-concurrency clamp subtracts.
         // Air capacity is DELIBERATELY NOT folded in: aviation can close an Observation lane but
         // NEVER a GroundTraversal lane, so letting it shrink the combined ceiling would let a
@@ -71,7 +71,7 @@ namespace Game.Ai.V2
 
         private static bool IsStealth(ReconObjective o) => o != null && o.NeedsStealth;
 
-        // observationRunnable — runnable Refresh/Surveil objectives; groundVisitRunnable — runnable
+        // observationRunnable — runnable Refresh objectives; groundVisitRunnable — runnable
         // Explore objectives.
         public static ReconCapacitySnapshot Build(WorldSnapshot snap,
             IReadOnlyList<ReconObjective> observationRunnable,
@@ -123,7 +123,7 @@ namespace Game.Ai.V2
                     if (i.Scout.Kind == ScoutTargetKind.Explore)
                         cap.GenericGroundLaneActors.Add(id);
                     else
-                        cap.GenericObservationLaneActors.Add(id);   // Refresh / Surveil == observation freshness
+                        cap.GenericObservationLaneActors.Add(id);   // Refresh == observation freshness
                 }
 
             // --- Idle ground scouts. Keep TWO horizons:

@@ -139,8 +139,7 @@ namespace Game.Ai.V2
             result.FinalHex = army.Hex;
 
             if (!ReconScoutKinds.IsExplore(pm.ScoutKind)
-                && !ReconScoutKinds.IsRefresh(pm.ScoutKind)
-                && !ReconScoutKinds.IsSurveil(pm.ScoutKind))
+                && !ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 result.ApSpent = 0f;
@@ -173,10 +172,8 @@ namespace Game.Ai.V2
                 RequestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
                     ? ReconMode.Explore
                     : ReconMode.Refresh,
-                // The hex the scout works FROM: the vantage of a Surveil or of a vantage Refresh
-                // (Recon audit B2 — ExecutionHex != FocusHex), otherwise the focus itself.
-                StrategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
-                    || (ReconScoutKinds.IsRefresh(pm.ScoutKind) && !pm.ExecutionHex.Equals(pm.FocusHex))
+                // A blocked Refresh observes its focus from the assigned execution vantage.
+                StrategicAnchor = ReconScoutKinds.IsRefresh(pm.ScoutKind) && !pm.ExecutionHex.Equals(pm.FocusHex)
                     ? pm.ExecutionHex
                     : pm.FocusHex,
             };
@@ -470,15 +467,13 @@ namespace Game.Ai.V2
             if (result.ReachedGoal)
                 return;
 
-            bool met = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
-                pm.TrackedArmyId, pm.BaselineObservedTurn);
+            bool met = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
 
             if (met)
             {
                 result.ReachedGoal = true;
                 // Spec §1 — for a ground Explore/Refresh actor this is a satisfied WAYPOINT, not a
                 // finished role: the durable ReconPatrolState persists and the MissionIntent should
-                // be re-focused next turn, not retired. Surveil completion is a genuine done.
                 result.DurableRoleContinues = ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
                     pm.ScoutKind, pm.Mission?.FromDurableIntent == true,
                     AiArmyRoles.IsSoloRecce(AiV2Util.ResolveArmy(player, pm.MoverArmyId)),

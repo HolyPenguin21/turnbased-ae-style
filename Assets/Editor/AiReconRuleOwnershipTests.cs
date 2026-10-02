@@ -128,11 +128,11 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot { Armies = new[] { mover } },
                 MapKnowledge = new MapKnowledgeSnapshot { AllHexes = new[] { vantage } },
             };
-            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Surveil,
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh,
                 FocusHex = new HexCoord(distance + 1, 0) };
             Assert.That(ScoutCostModel.PairCost(snap, mover, vantage, false).EtaTurns,
                 Is.EqualTo(expected));
-            Assert.That(SurveilVantageSelector.Rank(snap, mover, target).Single().EtaTurns,
+            Assert.That(ObservationVantageSelector.Rank(snap, mover, target).Single().EtaTurns,
                 Is.EqualTo(expected));
         }
 
@@ -278,7 +278,7 @@ namespace Game.EditorTests
             AssertCalls(typeof(ReconCapacitySnapshot), "Build", typeof(ScoutMoverSelector), "IsGroundScout");
             AssertCalls(typeof(ScoutMoverSelector), "Eligible", typeof(ScoutMoverSelector), "IsGroundScout");
             AssertCalls(typeof(ScoutCostModel), "PairCost", typeof(ScoutCostModel), "TravelTurns");
-            AssertCalls(typeof(SurveilVantageSelector), "Rank", typeof(ScoutCostModel), "TravelTurns");
+            AssertCalls(typeof(ObservationVantageSelector), "Rank", typeof(ScoutCostModel), "TravelTurns");
         }
 
         [Test]

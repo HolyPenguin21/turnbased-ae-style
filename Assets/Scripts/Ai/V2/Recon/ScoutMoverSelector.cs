@@ -34,8 +34,7 @@ namespace Game.Ai.V2
     // The unit the assignment solver actually packs (build-order step 6b): a concrete mover PLUS
     // the concrete hex it would execute from. Explore -> ExecutionHex == FocusHex, DetectionRisk
     // and StandOff are 0 (the strategic risk already lives in ScoutMissionTarget.DetectionRisk /
-    // MissionLayer's LocalAdmissionScore and must not be double-counted in the solver). Surveil ->
-    // ExecutionHex is the first CURRENTLY-EXECUTABLE vantage from SurveilVantageSelector, with its
+    // ExecutionHex is the first CURRENTLY-EXECUTABLE vantage from ObservationVantageSelector, with its
     // own vantage-specific DetectionRisk / StandOff.
     public readonly struct ScoutExecutionCandidate
     {
@@ -143,7 +142,6 @@ namespace Game.Ai.V2
         public static bool ArrivesHiddenLive(bool alreadyHidden, bool stealthEntryReserved) =>
             alreadyHidden || stealthEntryReserved;
 
-        // Eligibility ONLY (no ranking / no ETA toward FocusHex — that basis is wrong for Surveil).
         // Same filter Rank applies: fielded solo Recce, not prison / air, has members, can still
         // act this turn (CurrentMovement > 0), not in excludeArmyIds, and — for a Required mission
         // — hidden or able to enter stealth before its first move.
@@ -206,9 +204,7 @@ namespace Game.Ai.V2
         // synthesized here as a single-member ArmySnapshot (ArmyId = the GARRISON's own id, flagged
         // RequiresGarrisonExtraction) so ScoutCostModel.PairCost prices it exactly like any other
         // solo Recce, without a second cost model (the same idle-garrison capacity Economy's
-        // BestSparableEconomyHero uses). Ground Explore/Refresh only — never Surveil, never air:
         // those need vantage/route machinery this extraction path does not attempt to reproduce; a
-        // garrisoned Recce competing for Surveil/Air duty stays a separate, later task.
         // AiArmyRoles. CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's
         // own extraction already trust) gates which unit, if any, is even considered.
         public static List<ArmySnapshot> EligibleGarrisonExtraction(WorldSnapshot snap,
@@ -216,7 +212,7 @@ namespace Game.Ai.V2
         {
             var result = new List<ArmySnapshot>();
             if (snap?.Self?.Armies == null || player == null
-                || target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsAirSweep(target.Kind))
+                || ReconScoutKinds.IsAirSweep(target.Kind))
                 return result;
 
             bool needStealth = target.Stealth == StealthRequirement.Required;

@@ -101,7 +101,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // AI-RECON-02 — unified recon capacity. Observation lanes (Refresh / Surveil) and
+            // AI-RECON-02 — unified recon capacity. Observation lanes (Refresh) and
             // ground-traversal lanes (Explore — a physical visit) are both served by ground actors;
             // aviation serves only the AirSweep pass and is never capacity here. A new Scout is materialised only when a USABLE, requirement-scoped
             // deficit has persisted (spec §7), never merely because Recon desire is high. Stealth
@@ -141,9 +141,8 @@ namespace Game.Ai.V2
 
             // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be
-            //     unable to reach any runnable objective (blocked path, no reachable Surveil vantage),
             //     which only ReconAssignmentPlanner.CanExecute actually knows via
-            //     SafeStepPathing / SurveilVantageSelector. A durable lane actor is re-validated
+            //     SafeStepPathing / ObservationVantageSelector. A durable lane actor is re-validated
             //     against its OWN current committed target (its path was only proven valid when the
             //     lane started — it may since have spent its MP/AP or lost the path). An idle,
             //     uncommitted actor only counts if a single JOINT bipartite matching across BOTH

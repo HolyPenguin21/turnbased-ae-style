@@ -11,23 +11,17 @@
         //                 slice behind an enemy citadel / hostile guard simply isn't in that
         //                 number. 0 exactly when the frontier is empty. NO turn-number term:
         //                 decay is state-driven, not clock-driven.
-        //  surveillance — SUSTAINED all game: a non-burning baseline (re-scan hex content, keep
-        //                 resource sites / vision current) plus a bump for TARGETABLE contacts
-        //                 (honest + positioned) gone stale. Cheat uncertainty is enemyBlindness's
-        //                 job, never this — the three signals must not overlap.
         //  enemyBlindness— we KNOW an opponent is fielded (honest opponent list) but have zero
         //                 honest sightings of it. Magnitude only; a with-error direction is the
         //                 step-4 planner's job.
         public const float reconExploreRampLo = 0.03f;
         public const float reconExploreRampHi = 1.00f;
-        public const float reconSurveillanceBaseline = 0.18f;
-        public const float reconStaleShareWeight = 0.50f;
+        public const float reconRefreshBaseline = 0.18f;
 
         // Composite RefreshPressure (spec §4, DesireEvaluators.ReconRefreshPressure). baseline is
-        // reconSurveillanceBaseline above; these weight the other contributions, all [0..1] before
+        // reconRefreshBaseline above; these weight the other contributions, all [0..1] before
         // the weight. First-pass.
         public const float reconRefreshWeightIntelAge = 0.35f;      // whole-known-map strategic IntelAge
-        public const float reconRefreshWeightStaleContacts = 0.30f; // share of honest enemy contacts gone stale (the `surveillance` term)
         public const float reconRefreshWeightPerimeter = 0.25f;     // staleness of hexes around own bases/citadel
         public const float reconRefreshWeightCorridor = 0.20f;      // staleness sampled between own citadel and the nearest known enemy
         public const float reconRefreshWeightConcentration = 0.15f; // coarse enemy-concentration direction pressure
@@ -41,7 +35,7 @@
         public const float reconRefreshPressureFloorWeight = 0.15f;
         public const float reconBlindnessMagnitude = 1.0f;
         public const float reconWeightExploration = 0.55f;
-        public const float reconWeightSurveillance = 0.55f;
+        public const float reconWeightRefresh = 0.55f;
         public const float reconWeightBlindness = 0.35f;
         // Explore value of an unvisited "City ruins" hex (always seeded with a Hex Event), as the
         // normalized StrategicRelevance of knowing that site: 1 = +taskScoreStrategicRelevanceMax.
@@ -57,14 +51,12 @@
         // =======================================================================================
         //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7.1 candidate beam)
         //  MissionLayer turns one WorldSnapshot + the Recon DesireBreakdown into a CANDIDATE BEAM
-        //  of up to scoutCandidateBeamWidth Scout proposals. Two candidate kinds, one shared
+        //  of up to scoutCandidateBeamWidth Scout proposals. Three candidate kinds, one shared
         //  0..100 scale:
         //    Explore — a MapKnowledge.Frontier hex. Value from info gain + how central it is.
-        //    Surveil — a stale honest contact's last-known hex. Value from staleness x the
-        //              ThreatModel severity already attached to that contact (Recon reuses the
-        //              same threat picture Defence will).
+        //    Refresh — an observed hex with stale information.
+        //    AirSweep — an aviation-only observation pass.
         //  BaseValue is the mission's INTRINSIC merit and is what goes in MissionProposal.BaseValue.
-        //  The breakdown weights (ReconExploration / ReconSurveillance) are applied ONLY to
         //  LocalAdmissionScore (= BaseValue * that weight * risk) — never folded into BaseValue, or
         //  Recon's strategic pull would be counted twice (once in the radar, once here).
         //
@@ -89,26 +81,20 @@
         public const int frontierWaveBand = 2;             // ring width past the leading edge (V1 visitRingBand kin)
         public const int frontierEnemyExposureRadius = 3;  // a known non-neutral this close ANNOTATES a frontier hex EnemyExposure (does NOT drop it; V1 scoutFleeRadius kin)
         public const float scoutDetectionRiskNorm = 2f;    // this many stealth-capable detectors near the focus -> DetectionRisk 1
-        // A Surveil target IS a (stale) enemy contact — always stealth-Required, and its own
-        // last-known hex carries at least this much detection risk (scaled by contact confidence)
-        // before any currently-known detectors nearby are added on top.
-        public const float scoutSurveilBaseDetectionRisk = 0.5f;
         // Planner-local only: LocalAdmissionScore *= (1 - this * DetectionRisk). Keeps BaseValue /
         // the radar clean (execution risk is not intrinsic information value) while still making the
         // planner prefer the safer of two equally valuable recon jobs.
         public const float scoutDetectionRiskSelectionPenalty = 0.30f;
 
-        // Recon observation history (AiReconMemory) — longer than V1's 2-turn tactical enemy
-        // memory so the Surveil staleness ramp (scoutSurveilStaleTurns*) is actually reachable.
-        // Must exceed scoutSurveilStaleTurnsHi so the whole ramp is observable before purge.
+        // Recon history keeps honest last-known threats after tactical sighting expires.
+        // Keep the generic intel staleness ramp observable before history purges.
         public const int reconObservationMemoryTurns = 12;
 
         // Scout BaseValue = Lerp(min, max, quality); quality = Σ weighted terms / Σ weights, each term [0..1].
         public const float scoutBaseValueMin = 15f;
         public const float scoutBaseValueMax = 65f;
-        public const float scoutInfoGainWeight = 0.45f;          // Explore only (Surveil passes infoGain 0)
+        public const float scoutInfoGainWeight = 0.45f;          // Explore information gain
         public const float scoutStrategicProximityWeight = 0.25f; // both — closeness to our own bases
-        public const float scoutThreatWeight = 0.45f;            // Surveil only (Explore passes threatRelevance 0)
         public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
         public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1
         public const int scoutProximityRampHi = 12;              // base-distance: at/over this -> proximity 0
@@ -128,8 +114,8 @@
         public const int scoutStepHomeLocalRingRadius = 4;          // hexes from nearest home asset that count as "local"
         public const float scoutStepHomeOutwardPenaltyWeight = 0.45f; // max fraction shaved off an outward step's score when localGap=1
         public const float scoutStepHomeInwardBonusWeight = 0.10f;  // small reward for a step that closes home distance while local gaps remain
-        public const int scoutSurveilStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
-        public const int scoutSurveilStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
+        public const int reconIntelStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
+        public const int reconIntelStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
         // Strike force step 6 — the target of a live Attack operation needs fresher intel than
         // generic Refresh: once its last observation is older than this, Recon treats it as fully
         // stale and maximally relevant (AttackObjectiveEvaluator.ObservationNeeds).
@@ -141,7 +127,7 @@
         // static vision or an air flyby) the map information is in hand, and only the physical
         // frontier-expansion merit (scoutExploreHomeProximityWeight) should carry the objective.
         // The information half of the Explore quality blend is scaled by a factor that sits at this
-        // floor at IntelAge 0 and recovers linearly to 1 across scoutSurveilStaleTurnsLo..Hi. It is
+        // floor at IntelAge 0 and recovers linearly to 1 across reconIntelStaleTurnsLo..Hi. It is
         // a floored multiplier, never a hard exclusion — a genuinely stale or strategically hot
         // cell still scores here and, separately, as a Refresh objective.
         public const float scoutExploreObservedInfoDiscountFloor = 0.25f;
@@ -154,12 +140,7 @@
         // Compatibility alias only. The gameplay cost itself is owned by StealthSystem.
         public const int scoutOptionalStealthAp = Game.Map.StealthSystem.EnterStealthApCost;
 
-        // A generic (non-stealth) Refresh/Surveil mission is executable by EITHER a
-        // ground scout OR an air actor (see ReconAssignmentPlanner.AppendAirCandidates); the
-        // Mission-stage estimate must therefore size an envelope wide enough for air's typical
-        // activation cost too, not only a ground scout's. Both are notional, worst-reasonable-case
-        // figures — Assignment/Provisioning refine to the real bound actor's cost afterward, exactly
-        // like the ground AP estimate already does.
+        // Notional aviation costs for the AirSweep pass.
         public const float airReconNotionalActivationAp = 1f;
         public const float airReconNotionalLaunchEnergy = 2f;
 
@@ -172,7 +153,7 @@
         public const float scoutQualityMobilityEtaWeight = 0.22f;   // per whole turn shaved off the ETA to the focus vs that baseline
         public const float scoutQualityMobilityFollowThroughFactor = 0.35f; // raw-headroom value kept when the baseline mover already reaches the focus this turn
         public const float scoutQualityVisionWeight = 0.16f;        // per Recce radius over 1, scaled by how much dark it can actually open
-        public const float scoutQualitySpotWeight = 0.16f;          // Recce spot strength, only meaningful in a detection/surveil context
+        public const float scoutQualitySpotWeight = 0.16f;          // Recce spot strength, only meaningful in a detection context
         public const int   scoutQualitySpotNorm = 6;                // spot strength that maps to a full spot term
         public const float scoutQualitySpotIrrelevantFactor = 0.06f;// residual spot value on a plain Explore (near zero)
         public const float scoutQualityStealthOptionValue = 0.10f;  // safe-context option value of a stealth-capable body (ceiling)
@@ -246,7 +227,7 @@
         public const int reconDemandRegionMergeDistance = 2;         // frontier hexes within this many hexes count as one reachable unexplored region (spec §28)
         public const float reconDemandRefreshLaneThreshold = 0.55f;  // Refresh pressure at/above this earns one dedicated Refresh scout on top of the Explore-driven count
         // --- AI-RECON-02 Unified Recon Capacity model (ReconCapacitySnapshot / DemandLayer.ReconDemands).
-        //     Observation lanes (Refresh / Surveil — keep eyes on it) may be served by a ground
+        //     Observation lanes (Refresh — keep eyes on it) may be served by a ground
         //     scout, a ready aircraft, an airborne recon wing, or a funded-but-unlaunched air
         //     sortie; a ground-traversal lane (Explore — a hex that must be physically stood on)
         //     can ONLY be served by a ground actor, never by aviation. DemandLayer materialises a
@@ -311,7 +292,7 @@
         public const int airReconRouteObservationMaxHexes = 14;     // hard cap on scored route hexes per candidate (bounds the per-decision cost)
         public const float airReconCitadelDirectionWeight = 0.70f;  // first step heads into the enemy-Citadel sector (× confidence: 1.0 known, 0.55 hidden-bias only)
         // The strongest anchor: Assignment/Continuity
-        // already bound this sortie to a SPECIFIC Refresh/Surveil target this turn (or a durable one,
+        // already bound this sortie to a SPECIFIC Refresh target this turn (or a durable one,
         // for a continuing sortie), and the tactical planner must drift toward it rather than pick a
         // fresh unrelated objective. Weighted above every discovered/inferred anchor (Citadel
         // included) since it is a real commitment, not an inference — AirReconRouteScorer.Score gives

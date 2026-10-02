@@ -183,7 +183,7 @@ namespace Game.Ai.V2
             DesireBreakdown b = a.Breakdown;
             if (b != null)
             {
-                AiDebugLog.Write($"{P}   recon drivers:  explore {N2(b.ReconExploration)}  surveil {N2(b.ReconSurveillance)}  "
+                AiDebugLog.Write($"{P}   recon drivers:  explore {N2(b.ReconExploration)}  refresh {N2(b.ReconRefreshPressure)}  "
                     + $"blindness {N2(b.ReconEnemyBlindness)}  explore-press {N2(b.ReconExplorePressure)}  refresh-press {N2(b.ReconRefreshPressure)}");
                 AiDebugLog.Write($"{P}   agg axis:       raw {N2(a.Desires.Raw[DesireAxis.Aggression])}  "
                     + $"radar {N2(r.Weight[DesireAxis.Aggression])}  scale {N2(RadarValueScale.For(r, DesireAxis.Aggression))}  "

@@ -292,7 +292,6 @@ namespace Game.Ai.V2
 
         // Vision reach for THIS army, EXACTLY VisionSystem's own formula
         // (GameConfig.armyVisionRadius + AbilityParams.GetBestRecceRadius). Own armies only in
-        // practice — lets a Surveil vantage be chosen without a live VisionSystem read. Seeing a
         // hex from this range is NOT visiting it (only standing on a hex marks it visited).
         public int EffectiveVisionRadius;
         // Own-army Collect capability frozen with the rest of the actor. Analysis uses it only
@@ -659,7 +658,7 @@ namespace Game.Ai.V2
         // ~0.40 (a frontier-hex COUNT could not). Drives ReconExploration directly.
         public float ExplorableUnknownFrac;
 
-        // Every on-map hex (== map.AllCoords). SurveilVantageSelector enumerates observation
+        // Every on-map hex (== map.AllCoords). ObservationVantageSelector enumerates observation
         // candidates from this instead of re-reading the map.
         public IReadOnlyList<HexCoord> AllHexes;
 
@@ -1060,9 +1059,7 @@ namespace Game.Ai.V2
         public float BaseThreatSeverity;
 
         // Honest, POSITIONED contacts indexed by the tracked army's id — the freshest one when the
-        // same army is both live-sighted and remembered. The step-7 Surveil continuity path reads
         // this instead of querying AiReconMemory, keeping "downstream reads the snapshot" intact.
-        public IReadOnlyDictionary<int, EnemyContactSnapshot> ReconContactByArmyId;
         // AI-behaviour label ONLY — no game "siege" state exists. "A force I can't beat is at the
         // gates": an enemy within AiConfigV2.siegeRadius (3) of a Citadel/Base (or <=1 turn out)
         // whose attack would probably win, using terrain-route approach rather than geometry.

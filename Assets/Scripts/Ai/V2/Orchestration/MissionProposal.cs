@@ -54,7 +54,6 @@ namespace Game.Ai.V2
 
         // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
         // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
-        // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments, never through the
         // fresh loop). Together they let MissionAdmissionPolicy.AdmissionRank apply the retarget
         // hysteresis at the allocator's K-cut, not just inside the beam.
         public bool FromDurableIntent;

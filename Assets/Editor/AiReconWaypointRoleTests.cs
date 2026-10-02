@@ -11,7 +11,6 @@ namespace Game.EditorTests
         [TestCase(ScoutTargetKind.Refresh, false, true, true, ExpectedResult = true)]
         [TestCase(ScoutTargetKind.Explore, false, true, false, ExpectedResult = false)]
         [TestCase(ScoutTargetKind.Refresh, true, false, true, ExpectedResult = false)]
-        [TestCase(ScoutTargetKind.Surveil, true, true, true, ExpectedResult = false)]
         [TestCase(ScoutTargetKind.AirSweep, true, true, true, ExpectedResult = false)]
         public bool RoleContinuesAtWaypoint(ScoutTargetKind kind, bool durable, bool actorStillScout,
             bool acted) =>

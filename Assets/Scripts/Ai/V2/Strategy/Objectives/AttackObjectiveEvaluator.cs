@@ -560,7 +560,7 @@ namespace Game.Ai.V2
         {
             int turn = snap?.TurnNumber ?? 0;
             if (b.SeenTurn <= 0)
-                return Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi);
+                return Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi);
             return Mathf.Max(0, turn - b.SeenTurn);
         }
 

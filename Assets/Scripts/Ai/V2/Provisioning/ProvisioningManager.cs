@@ -257,7 +257,6 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("unsupported mission kind"));
 
             StableMissionKey key = StableMissionKey.For(m);
-            bool surveil = target.Kind == ScoutTargetKind.Surveil;
             bool refresh = ReconScoutKinds.IsRefresh(target.Kind);
 
             if (!session.TryGetAssignedExecution(key, out ScoutExecutionCandidate exec))
@@ -329,29 +328,7 @@ namespace Game.Ai.V2
             bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             bool arrivesHidden = ScoutMoverSelector.ArrivesHiddenLive(alreadyHidden, reserveStealth);
 
-            if (surveil)
-            {
-                int trackedId = target.Contact?.Army?.ArmyId ?? -1;
-                if (trackedId < 0
-                    || target.Contact.Knowledge != ContactKnowledge.LastKnown)
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                        "surveil target is no longer a last-known contact"));
-                int baseline = target.Contact.LastObservedTurn;
-                if (VisionSystem.IsVisible(player, focus) || HasFresherSighting(player, trackedId, baseline))
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                        $"tracked #{trackedId} already re-observed (focus ({focus.Q},{focus.R}), baseline turn {baseline})"));
-                if (executionHex.Equals(focus))
-                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                        "surveil ExecutionHex == FocusHex — invariant violation"));
-                if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
-                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                        $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
-                if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                        arrivesHidden))
-                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                        $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
-            }
-            else if (refresh)
+            if (refresh)
             {
                 // A Refresh target was selected because frozen IntelAge was stale. Previously
                 // Visited ground remains valid; only a NEW current observation completes it.
@@ -362,7 +339,7 @@ namespace Game.Ai.V2
                 {
                     // Recon audit B2 — a vantage Refresh (the Attack observation need on a known
                     // hostile site): its defenders are the point of the look, never a reason to
-                    // cancel it. The vantage itself gets Surveil's live checks.
+                    // cancel it. The vantage gets the same live safety checks.
                     if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
@@ -474,8 +451,6 @@ namespace Game.Ai.V2
                 MoverArmyId = moverArmyId,
                 FocusHex = focus,
                 ExecutionHex = executionHex,
-                TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
-                BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
                 ClaimedAp = realNeed,
                 ClaimedPhysical = funded.PhysicalDraw,
                 StealthApReserved = stealthAp > 0,
@@ -517,14 +492,6 @@ namespace Game.Ai.V2
                     return ProvisionFailure.MoverContended(
                         "a capable solo Recce exists but is spent / activated / claimed this cycle");
             }
-        }
-
-        private static bool HasFresherSighting(PlayerSetupData player, int trackedArmyId, int baselineTurn)
-        {
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (s.ArmyId == trackedArmyId && s.SeenTurn > baselineTurn)
-                    return true;
-            return false;
         }
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
