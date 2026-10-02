@@ -164,6 +164,11 @@
         // A new builder hero's delivery may exceed the site value by this fraction once the Base
         // card has been idle long enough (full ramp = cap); the "NotCheaperThanReadyHero" rule is
         // untouched. Sites 1.24-1.32x over value were rejected while the card sat 20 turns.
+        // Raid returns walk to the staging base (own base nearest a known enemy base) once the
+        // strongest army holds this share of the strike pool: the fist then assembles where it will
+        // march from instead of at the most-collected base (playtest 2026-10-02: strike 38/60 at
+        // T19, armies scattered over 5-8 raids). Below it, returns keep the old "most active base".
+        public const float stagingReturnMinFistShare = 0.30f;
         public const float economyIdleBuilderDeliveryTolerance = 0.60f;
         // StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
