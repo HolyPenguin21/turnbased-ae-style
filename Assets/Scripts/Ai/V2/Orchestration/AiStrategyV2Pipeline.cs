@@ -245,6 +245,39 @@ namespace Game.Ai.V2
                     player, ctx, root, demandAxes);
             }
 
+            // S4b. Air recon wing on demand (project owner, 2026-10-02): an AirSweep job can only
+            //      fly a FORMED wing, and forming one used to wait for the end-of-turn tempo arbiter
+            //      (utility capped at aviationFormWingUtilityCap, so every card play or draw won and
+            //      the next AirSweep failed NoExecutableStep). Forming is free (the sortie is paid by
+            //      Recon funding) and is proven against the spendable bank, so it is done here,
+            //      before the missions are built, when no formed wing can serve a serviceable sweep.
+            //      Existing wings are used first: BuildFormationPlan returns null while
+            //      formed wings already cover the serviceable sweeps.
+            if (!AviationObligations.Pending(player, ctx))
+            {
+                AviationRebasePlan formation = AviationRebasePlanner.BuildFormationPlan(
+                    snapshot, player, root, ctx, reconObjectives);
+                if (formation != null)
+                {
+                    bool formedWing = false;
+                    yield return AviationRebasePlanner.Execute(player, root, ctx, formation,
+                        changed => formedWing |= changed);
+                    if (formedWing)
+                    {
+                        // AviationRebase does not version itself (see StrategicPhaseB): one canonical
+                        // bump per mutating action, before any snapshot/cache read of the new state.
+                        V2StateVersion.Bump();
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
+                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        activeIntents = MissionContinuityLayer.ResolveActive(
+                            player, snapshot, reconObjectives, aggressionObjectives);
+                        actorCommitments = ActorCommitments.FromIntents(
+                            activeIntents, snapshot, reconObjectives);
+                    }
+                }
+            }
+
             List<MissionProposal> missions;
             TentativeAllocation allocation = new TentativeAllocation();
             var fundedKeysThisTurn = new HashSet<StableMissionKey>();

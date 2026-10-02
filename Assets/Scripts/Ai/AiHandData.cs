@@ -70,6 +70,17 @@ namespace Game.Ai
                     break;
         }
 
+        // The owner's current turn, pushed in by AiTurnController.RunTurn every turn (same way as
+        // the capacity). AddCard stamps it onto the card as CardData.AcquiredTurn. Cards drawn
+        // into the starting hand (constructor) are stamped with 0.
+        public int CurrentTurn { get; private set; }
+
+        public void SetCurrentTurn(int turn) => CurrentTurn = Mathf.Max(0, turn);
+
+        // Whole turns this card has been in hand at `turnNumber` (0 for an unstamped card).
+        public static int AgeInTurns(CardData card, int turnNumber) =>
+            card == null || card.AcquiredTurn < 0 ? 0 : Mathf.Max(0, turnNumber - card.AcquiredTurn);
+
         public void SetCapacity(int capacity)
         {
             int next = Mathf.Max(0, capacity);
@@ -93,6 +104,7 @@ namespace Game.Ai
             if (card?.Definition == null || (!card.ResearchProductionCreated && !HasFreeSlot))
                 return;
 
+            card.AcquiredTurn = CurrentTurn;
             Hand.Add(card);
             MutationVersion++;
             HandChanged?.Invoke();

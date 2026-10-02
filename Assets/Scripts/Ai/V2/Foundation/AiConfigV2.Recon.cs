@@ -375,7 +375,19 @@
         // effectRecurring* / apMarginalUtil*). Kept only so any stale reference still compiles.
         public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
-        public const int surplusScoutOversupplyAt = 3;       // ReadyScouts >= this -> another Recce is oversupply
+        // Idle-card pressure (playtest 2026-10-02: Laboratory/Factory/Base/Striker and equipment sat
+        // in hand 15-20 turns with hand 1-7/10 and resources piling up, so the full-hand bonus above
+        // never fired). A card that has waited longer than the grace earns a growing play bonus,
+        // scaled by how much the bank can afford it. Starting values: the log's typical stale card
+        // scored play -0.2..-0.8 vs hold 0; rate x (age-grace) reaches the cap after ~8 more turns,
+        // and the cap sits under ~2x the full-hand bonus so a card with real demand/role value
+        // (play >= +0.5) is never displaced by an idle one, and a clearly bad play (< -0.6 at cap)
+        // is still held. Costs stay in the score (ResourceEfficiency), so AP is not spent blindly.
+        public const int idleCardGraceTurns = 4;               // turns in hand before any pressure
+        public const float idleCardBonusPerTurn = 0.08f;       // score per turn beyond the grace
+        public const float idleCardBonusCap = 0.60f;           // hard ceiling of the bonus
+        public const float idleCardSaturationHeadroom = 3f;    // spendable surplus (units) over the card's cost for full saturation
+        public const int surplusScoutOversupplyAt = 3;      // ReadyScouts >= this -> another Recce is oversupply
         public const float surplusOversupplyPenalty = 0.8f;
 
     }

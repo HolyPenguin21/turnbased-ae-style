@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                             return DeliveryAssessment.No(
                                 DeliveryFailureReason.InsufficientSafeEscort,
                                 choice.IneligibleReason);
-                        return EconomyNewHeroWorthIt(p, demand, choice);
+                        return EconomyNewHeroWorthIt(p, demand, choice, snapshot.TurnNumber);
                     }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
@@ -359,16 +359,18 @@ namespace Game.Ai.V2
         //    price plus that delivery must be lower than the ready hero's cost — a tie keeps the
         //    ready hero, which spends no card.
         private static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
-            AxisDemand demand, DemandLayer.EconomyBuilderChoice choice)
+            AxisDemand demand, DemandLayer.EconomyBuilderChoice choice, int turnNumber)
         {
             float newDelivery = TaskScoreEvaluator.Price(
                 Mathf.Max(0f, choice.TotalAssignmentApCost - demand.EconomyBuildApCost));
             string card = p.BaseCardInHand?.Definition?.displayName
                 ?? p.GeneratedBaseDef?.displayName ?? "?";
+            float tolerance = IdleBuilderDeliveryTolerance(demand, turnNumber);
+            float siteAllowance = demand.EconomySiteValue * (1f + tolerance);
             if (demand.EconomySiteValue > AiConfigV2.allocatorSliceEpsilon
-                && newDelivery >= demand.EconomySiteValue)
+                && newDelivery >= siteAllowance)
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
-                    $"delivery={newDelivery:0.##} site={demand.EconomySiteValue:0.##}");
+                    $"delivery={newDelivery:0.##} site={demand.EconomySiteValue:0.##} tol={tolerance:0.##}");
             if (!demand.EconomyReadyDeliveryCost.HasValue)
                 return DeliveryAssessment.Ok;
             float newCost = TaskScoreEvaluator.Price(ActionPrice.Ap(p.ApCost)
@@ -387,6 +389,19 @@ namespace Game.Ai.V2
                     + $"decision={(ok ? "NEW_HERO" : reason.ToString())}");
                 return ok ? DeliveryAssessment.Ok : DeliveryAssessment.No(reason, detail);
             }
+        }
+
+        // Extra fraction of the site value a NEW builder's delivery may cost: grows with how long
+        // the Base card of this demand has lain in hand (same idle ramp as every card), 0 for a
+        // non-Base build or a fresh card.
+        internal static float IdleBuilderDeliveryTolerance(AxisDemand demand, int turnNumber)
+        {
+            CardData baseCard = demand?.EconomyBuildCard;
+            if (baseCard?.Definition?.cardType != CardType.Base)
+                return 0f;
+            float ramp = IdleCardPressure.Bonus(AiHandData.AgeInTurns(baseCard, turnNumber), 1f)
+                / Mathf.Max(0.01f, AiConfigV2.idleCardBonusCap);
+            return AiConfigV2.economyIdleBuilderDeliveryTolerance * ramp;
         }
 
         internal static bool IsEconomyHeroDemand(AxisDemand demand)

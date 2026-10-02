@@ -41,16 +41,17 @@ namespace Game.Turns
         }
 
         // AP granted for finishing the initiative roll at a given 0-based rank. Rank 0 (first) is
-        // 10, rank 1 (second) is 8, every later rank is 6 — for ANY player count. There is no
-        // special two-player rule. This is the single function both the real AP allocation
+        // 12, rank 1 (second) is 10, every later rank is 8 — for ANY player count. There is no
+        // special two-player rule. (2026-10-02: +2 for every rank, was 10/8/6 — playtest showed
+        // ~12 AP/turn of unmet demand at 8-12 AP/turn.) This is the single function both the real AP allocation
         // (GameTurnController.AllocateActionPoints) and Initiative expected-AP math call.
         public static int ApForRank(int rankZeroBased)
         {
             if (rankZeroBased <= 0)
-                return 10;
+                return 12;
             if (rankZeroBased == 1)
-                return 8;
-            return 6;
+                return 10;
+            return 8;
         }
     }
 }

@@ -153,6 +153,30 @@
         // for a follow-up draw gets this option-continuity value. This is utility, not a gate:
         // genuinely strong/urgent plays can still win the common Phase-B arbitration.
         public const float tempoDrawLastCardContinuityBonus = 0.85f;
+        // Builder-hero pressure (playtest 2026-10-02: Cassia held a Base card T2-T22 with no hero in
+        // hand or field, `no_builder`=1781; the first hero arrived by a plain draw on ~T20).
+        // A Base card in hand, no mobile builder anywhere and a hero still in the deck make the
+        // existing Draw action worth a bonus: at most this much, scaled by how idle the Base card
+        // is (IdleCardPressure ramp) and by the heroes' share of the deck. Draw stays an AP-priced
+        // peer of card plays (apOpp / handQualityPenalty still apply), it is only no longer blind.
+        public const float tempoDrawBuilderHeroBonus = 0.90f;
+        public const float tempoDrawBuilderHeroDeckShareFull = 0.15f;  // hero share of the deck that earns the full bonus
+        // A new builder hero's delivery may exceed the site value by this fraction once the Base
+        // card has been idle long enough (full ramp = cap); the "NotCheaperThanReadyHero" rule is
+        // untouched. Sites 1.24-1.32x over value were rejected while the card sat 20 turns.
+        // Raid returns walk to the staging base (own base nearest a known enemy base) once the
+        // strongest army holds this share of the strike pool: the fist then assembles where it will
+        // march from instead of at the most-collected base (playtest 2026-10-02: strike 38/60 at
+        // T19, armies scattered over 5-8 raids). Below it, returns keep the old "most active base".
+        // A fresh opportunistic Raid (no capability demand, no durable intent) that is worth less
+        // than this many TaskScore points per AP it asks is parked and funded only from the AP
+        // remainder (ResourceAllocator, DeferReason.LowValuePerAp). 1 TaskScore point = 1 AP
+        // (taskScorePerApEquivalent), so 2 = "must return at least twice its AP". Guard raids in the
+        // 2026-10-02 log were worth 14-27 for 1-5 AP, so this only catches genuinely thin raids;
+        // with spare AP they still run the same turn through the remainder pass.
+        public const float raidParkValuePerAp = 2.0f;
+        public const float stagingReturnMinFistShare = 0.30f;
+        public const float economyIdleBuilderDeliveryTolerance = 0.60f;
         // StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
         // band: it is the concrete Facility's dynamic StrategicCardEvaluator TotalUseScore minus

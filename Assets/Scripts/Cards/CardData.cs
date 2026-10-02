@@ -27,6 +27,14 @@ namespace Game.Cards
         // exact 1:1 cost behaviour it always had.
         public bool ResearchProductionCreated;
 
+        // Owner turn on which this instance last entered an AI hand (draw, event grant, returned
+        // aircraft, Research/Production mint) — stamped by AiHandData.AddCard from the turn the
+        // owner pushed in via AiHandData.SetCurrentTurn. Lets any scorer read "how long has this
+        // card been sitting" off the instance itself (the immutable snapshot already carries the
+        // hand's CardData), never off the live hand registry. -1 = never stamped (human hand,
+        // test fixtures): age reads as 0.
+        public int AcquiredTurn = -1;
+
         public CardData(CardDefinition definition)
         {
             Definition = definition;

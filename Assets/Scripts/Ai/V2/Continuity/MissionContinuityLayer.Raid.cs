@@ -410,7 +410,7 @@ namespace Game.Ai.V2
             HexCoord? home = raid.RecoveryBaseHex.HasValue && primary != null
                     && primary.Hex.Equals(raid.RecoveryBaseHex.Value)
                 ? raid.RecoveryBaseHex
-                : SelectReturnBase(snap, player, raid.PrimaryArmyId);
+                : SelectReturnBase(snap, player, raid.PrimaryArmyId, preferStaging: true);
             if (!home.HasValue)
             {
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=ABANDON intent={intent.IntentKey} "
@@ -490,7 +490,7 @@ namespace Game.Ai.V2
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;
-            HexCoord? home = SelectReturnBase(snap, player, supportArmyId);
+            HexCoord? home = SelectReturnBase(snap, player, supportArmyId, preferStaging: true);
             if (home == null)
             {
                 // No base to send it home to — never block the Raid on this. Release the support

@@ -1088,7 +1088,33 @@ namespace Game.Ai.V2
             return SelectReturnBase(snap, player, moverArmyId);
         }
 
-        internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId)
+        // The own base nearest to the closest known hostile base/Citadel — where an Attack's fist
+        // would assemble. Null until an enemy structure is known and the strongest army already
+        // carries stagingReturnMinFistShare of the strike pool (before that, "home" stays the
+        // economically most active base). A pure snapshot rule.
+        internal static HexCoord? StagingBase(WorldSnapshot snap, PlayerSetupData player)
+        {
+            if (snap?.Self?.BaseHexes == null || snap.Known?.Buildings == null || player == null
+                || snap.Self.AttackPeak <= 0f
+                || snap.Self.FistPower < AiConfigV2.stagingReturnMinFistShare * snap.Self.AttackPeak)
+                return null;
+            List<HexCoord> targets = snap.Known.Buildings
+                .Where(b => AttackObjectiveEvaluator.IsHostileStrategicStructure(b, player))
+                .Select(b => b.Hex).ToList();
+            if (targets.Count == 0)
+                return null;
+            return snap.Self.BaseHexes
+                .OrderBy(h => targets.Min(t => HexGridMath.Distance(h, t)))
+                .ThenByDescending(h => h.Equals(snap.Self.Citadel) ? 1 : 0)
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .Select(h => (HexCoord?)h).FirstOrDefault();
+        }
+
+        // `preferStaging`: Raid return legs only — a returning raider walks to the staging base
+        // (see StagingBase) instead of the most active one, so the fist assembles where it will
+        // march from. Defence/Attack legs keep their own home rule.
+        internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId,
+            bool preferStaging = false)
         {
             if (snap?.Self?.BaseHexes == null || player == null)
                 return null;
@@ -1115,8 +1141,10 @@ namespace Game.Ai.V2
                 || mover.ReachableOwnBaseHexes.Contains(h);
 
             HexCoord citadel = snap.Self.Citadel;
+            HexCoord? staging = preferStaging ? StagingBase(snap, player) : null;
             return bases
                 .OrderByDescending(h => Reachable(h) ? 1 : 0)
+                .ThenByDescending(h => staging.HasValue && h.Equals(staging.Value) ? 1 : 0)
                 .ThenByDescending(h => BaseCollectedAmount(snap, h))
                 .ThenByDescending(h => BaseHasDevelopmentInfrastructure(snap, h) ? 1 : 0)
                 .ThenByDescending(h => BaseOwnPowerAt(snap, h))

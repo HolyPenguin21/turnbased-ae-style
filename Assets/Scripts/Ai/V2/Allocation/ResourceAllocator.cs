@@ -300,6 +300,10 @@ namespace Game.Ai.V2
         // category-specific policy still owns what constitutes a conflict; the allocator merely
         // applies that policy before committing resources.
         MissionConflict,
+        // A fresh opportunistic Raid worth less than AiConfigV2.raidParkValuePerAp per AP it asks:
+        // parked, and funded only from the common remainder after every other fresh mission (the
+        // same pass that funds InsufficientBudget spillover), i.e. on turns with AP to spare.
+        LowValuePerAp,
     }
 
     public sealed class DeferredEntry
@@ -727,6 +731,12 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (IsLowValueRaid(m))
+                {
+                    alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.LowValuePerAp });
+                    continue;
+                }
+
                 float affordable = Mathf.Max(0f, Mathf.Min(budget, ApAvailableFor(m)));
                 float min = ApMinimum(m);
                 if (affordable + eps < min)
@@ -788,7 +798,8 @@ namespace Game.Ai.V2
             float remainder = Mathf.Max(0f, budget - lockedRemainderConsumed);
             alloc.RemainderGenerated = new ResourceVector(remainder);
             List<DeferredEntry> spillover = alloc.Deferred
-                .Where(d => d != null && d.Reason == DeferReason.InsufficientBudget && d.Mission != null)
+                .Where(d => d != null && d.Mission != null
+                    && (d.Reason == DeferReason.InsufficientBudget || d.Reason == DeferReason.LowValuePerAp))
                 .ToList();
             foreach (DeferredEntry deferred in spillover)
             {
@@ -893,6 +904,15 @@ namespace Game.Ai.V2
             return _repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)
                 ? Mathf.Max(baseMin, floor.Ap) : baseMin;
         }
+        // Fresh (no durable intent), opportunistic (no capability demand behind it) Raid whose
+        // INTRINSIC value (BaseValue, TaskScore points; never the radar-scaled EffectiveValue, which
+        // would park every raid of a low-weight axis) per desired AP is under the park threshold. A Return leg, a commitment and a demand-driven
+        // Raid are never parked.
+        private bool IsLowValueRaid(MissionProposal m) =>
+            m != null && m.Kind == MissionKind.Raid && !m.FromDurableIntent
+            && m.CauseDemandTraceIds.Count == 0
+            && m.BaseValue < AiConfigV2.raidParkValuePerAp * Mathf.Max(1f, ApDesired(m));
+
         private float ApDesired(MissionProposal m) =>
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
         private float ApMaximum(MissionProposal m) =>
