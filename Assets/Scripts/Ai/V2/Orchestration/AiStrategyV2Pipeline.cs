@@ -78,6 +78,7 @@ namespace Game.Ai.V2
                 .Where(d => d != null && d.RequestingAxis == axis)
                 .Select(d => $"{d.ConsumerIntentKey?.ToString() ?? "-"}:{d.Capability}"
                     + $":{d.AttackFistArmyId?.ToString() ?? "-"}"
+                    + (d.AttackCoverageGap ? ":cov" : "")
                     + $":{(d.TargetHex.HasValue ? $"{d.TargetHex.Value.Q},{d.TargetHex.Value.R}" : "-")}"
                     + $"={d.DesiredAmount.ToString("0.#", CultureInfo.InvariantCulture)}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
