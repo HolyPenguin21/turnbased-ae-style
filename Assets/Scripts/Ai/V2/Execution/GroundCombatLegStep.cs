@@ -41,7 +41,8 @@ namespace Game.Ai.V2
                 r.Blocked = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, destination);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, destination,
+                profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
             {
                 r.Blocked = ExecutionStopReason.NoSafeStep;
@@ -52,7 +53,7 @@ namespace Game.Ai.V2
             int armyId = army.Id;
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
-                AiDecision.Move(army, next.Value, reason, 0f, AiGroundMoveAuthority.Transit),
+                AiDecision.Move(army, next.Value, reason, 0f, AiGroundMoveAuthority.TransitCapture),
                 ctx, trace);
             r.Army = AiV2Util.ResolveArmy(player, armyId);
             r.EndHex = r.Army != null ? r.Army.Hex : trace.EndHex;

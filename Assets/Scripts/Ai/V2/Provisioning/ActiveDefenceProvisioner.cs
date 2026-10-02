@@ -106,7 +106,8 @@ namespace Game.Ai.V2
             if (session.ClaimedArmyIds.Contains(actor.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "active defence return actor is claimed"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value) == null)
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value,
+                    profile: SafeRouteProfile.Combat) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     "active defence responder has no safe return step"));
             int ap = actor.HasActivatedThisTurn ? 0 : actor.ActivationApCost;

@@ -148,6 +148,8 @@ namespace Game.Ai.V2
         public IReadOnlyList<WorthIt.DefenderProfile> Defenders => WorthIt.UnitsOf(Opposition);
         public int DefenderCount => Defenders.Count;
         public float TargetPower;
+        // Remembered Base structural defence of the site (selection priority only; terrain unknown here).
+        public float HexDefense;
         // Turns since the site was last actually observed. int.MaxValue-safe: 0 when the memory
         // carries no stamp at all, which is treated as maximally stale by the score below.
         public int IntelAgeTurns;
@@ -252,9 +254,13 @@ namespace Game.Ai.V2
                     + $"task={F(located.BaseValue)} knowledge=starting-location-only defenders=unknown");
             }
 
+            // Internal selection priority (project owner, 2026-10-02) — NOT the external score:
+            // the TaskScore stays on the objective for allocation and diagnostics, but which site
+            // is aimed at first is decided by how near and how weakly held it is.
+            IReadOnlyList<HexCoord> ownBases = snap.Self.BaseHexes;
             result.Sort((a, b) =>
             {
-                int c = b.BaseValue.CompareTo(a.BaseValue);
+                int c = CompareSelection(SelectionKey(a, ownBases), SelectionKey(b, ownBases));
                 if (c != 0) return c;
                 // ATK §18/§21 — deterministic tie-break on the stable identity, never on
                 // enumeration order of a dictionary-backed memory store.
@@ -269,6 +275,45 @@ namespace Game.Ai.V2
         public static AttackObjective ForTrackedTarget(WorldSnapshot snap, AttackTargetRef target) =>
             !target.HasValue ? null
                 : Enumerate(snap).FirstOrDefault(o => o.Target.Equals(target));
+
+        // ---- internal selection priority ------------------------------------------------------
+
+        internal readonly struct SelectionPriority
+        {
+            public readonly int EtaBucket;       // march turns from the nearest own Base, coarse
+            public readonly float DefenderPower; // known defenders' power; unknown = float.MaxValue
+            public readonly float HexDefense;    // terrain + Base structural defence of the site
+            public readonly float TaskValue;     // external score, last tie-break only
+            public SelectionPriority(int etaBucket, float defenderPower, float hexDefense, float taskValue)
+            {
+                EtaBucket = etaBucket; DefenderPower = defenderPower;
+                HexDefense = hexDefense; TaskValue = taskValue;
+            }
+        }
+
+        // Nearer first (in whole march-turn buckets, so one hex never outranks a weaker site), then
+        // the less defended site, then the lower-bonus hex, then the higher TaskScore.
+        internal static int CompareSelection(SelectionPriority a, SelectionPriority b)
+        {
+            int c = a.EtaBucket.CompareTo(b.EtaBucket);
+            if (c != 0) return c;
+            c = a.DefenderPower.CompareTo(b.DefenderPower);
+            if (c != 0) return c;
+            c = a.HexDefense.CompareTo(b.HexDefense);
+            return c != 0 ? c : b.TaskValue.CompareTo(a.TaskValue);
+        }
+
+        private static SelectionPriority SelectionKey(AttackObjective o, IReadOnlyList<HexCoord> ownBases)
+        {
+            int nearest = int.MaxValue;
+            if (ownBases != null)
+                foreach (HexCoord h in ownBases)
+                    nearest = Math.Min(nearest, HexGridMath.Distance(h, o.Hex));
+            int bucket = nearest == int.MaxValue ? int.MaxValue
+                : (nearest + AiConfigV2.attackTargetEtaBucketHexes - 1) / AiConfigV2.attackTargetEtaBucketHexes;
+            return new SelectionPriority(bucket,
+                o.LocationOnly ? float.MaxValue : o.TargetPower, o.HexDefense, o.BaseValue);
+        }
 
         // ---- target validity (§25) -----------------------------------------------------------
 
@@ -471,6 +516,7 @@ namespace Game.Ai.V2
                 Target = AttackTargetRef.For(b.Hex, b.Owner, kind),
                 Opposition = opposition,
                 TargetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders),
+                HexDefense = b.IsBase ? b.Defense : 0f, // remembered structural defence; no registry read
                 IntelAgeTurns = intelAge,
                 TaskScore = score,
             };

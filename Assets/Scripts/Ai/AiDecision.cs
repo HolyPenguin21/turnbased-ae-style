@@ -52,14 +52,19 @@ namespace Game.Ai
     public enum AiGroundMoveAuthority
     {
         Transit,
+        // Walks on; may take over a KNOWN undefended structure standing in its way (the game rule
+        // destroys/captures it on arrival anyway), never seeks a fight. Approach steps of the
+        // combat lanes (Attack approach, gather/return legs).
+        TransitCapture,
         Combat,
         CombatAndCapture,
     }
 
     // ATK §26/§84 — the ONE rule for which authority a single step of a deliberate
     // structure-capture operation carries. Only the TERMINAL step into the target may seek a
-    // takeover; every approach step is ordinary Transit, so an operation can never capture some
-    // other structure it happens to walk across on the way (§27). Kept beside the enum it decides
+    // takeover. Approach steps are TransitCapture (2026-10-02, project owner): they never seek a
+    // fight, but the game rule destroys/captures an undefended foreign structure the mover lands on,
+    // so a known one on the way is no longer a route blocker (SafeRouteProfile.Combat). Kept beside the enum it decides
     // because it is part of that contract, not a per-lane preference.
     public static class GroundMoveAuthorityPolicy
     {
@@ -67,7 +72,7 @@ namespace Game.Ai
             Game.HexGrid.HexCoord step, Game.HexGrid.HexCoord target) =>
             step.Equals(target)
                 ? AiGroundMoveAuthority.CombatAndCapture
-                : AiGroundMoveAuthority.Transit;
+                : AiGroundMoveAuthority.TransitCapture;
 
         // ATK §9/§26 — one step of an opportunistic side strike on an enemy FIELD army. Same shape
         // as the assault rule above with one deliberate difference: the terminal step gets Combat,
@@ -78,7 +83,7 @@ namespace Game.Ai
             Game.HexGrid.HexCoord step, Game.HexGrid.HexCoord contact) =>
             step.Equals(contact)
                 ? AiGroundMoveAuthority.Combat
-                : AiGroundMoveAuthority.Transit;
+                : AiGroundMoveAuthority.TransitCapture;
     }
 
     public class AiDecision
@@ -113,8 +118,10 @@ namespace Game.Ai
         // Transit is deliberately the safe default: a caller must opt into deliberate combat or
         // an undefended-structure takeover. Air movement ignores this ground-only authorization.
         public AiGroundMoveAuthority GroundMoveAuthority = AiGroundMoveAuthority.Transit;
-        public bool AllowsGroundCombat => GroundMoveAuthority != AiGroundMoveAuthority.Transit;
-        public bool AllowsStructureTakeover => GroundMoveAuthority == AiGroundMoveAuthority.CombatAndCapture;
+        public bool AllowsGroundCombat => GroundMoveAuthority == AiGroundMoveAuthority.Combat
+            || GroundMoveAuthority == AiGroundMoveAuthority.CombatAndCapture;
+        public bool AllowsStructureTakeover => GroundMoveAuthority == AiGroundMoveAuthority.CombatAndCapture
+            || GroundMoveAuthority == AiGroundMoveAuthority.TransitCapture;
 
         public static AiDecision Move(ArmyData army, HexCoord hex, string reason, float score,
             AiGroundMoveAuthority groundMoveAuthority = AiGroundMoveAuthority.Transit) => new AiDecision

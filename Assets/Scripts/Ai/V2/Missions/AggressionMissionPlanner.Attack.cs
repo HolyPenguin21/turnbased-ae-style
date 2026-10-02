@@ -215,9 +215,9 @@ namespace Game.Ai.V2
                     + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
             }
 
-            MissionProposal bestFresh = freshCandidates
-                .OrderByDescending(p => p.Score?.Value ?? p.BaseValue)
-                .FirstOrDefault();
+            // freshCandidates were appended in objective order — the internal selection priority
+            // (AttackObjectiveEvaluator.CompareSelection: nearer, then less defended), not score.
+            MissionProposal bestFresh = freshCandidates.FirstOrDefault();
             if (bestFresh != null)
                 proposals.Add(bestFresh);
 
@@ -333,10 +333,12 @@ namespace Game.Ai.V2
                     : null;
                 if (lead != null)
                 {
-                    int eta = Mathf.Max(1, gather.TotalEta);
+                    // The step is priced for the gather stage only (walks + handoffs); the later
+                    // assault march is paid turn by turn when it is taken, not up front here.
+                    int eta = Mathf.Max(1, gather.GatherTurns);
                     TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
                         PreparationWin(objective, gather.ProjectedWinChance), gather.CurrentTurnAp,
-                        AiV2Util.CeilDiv(gather.FutureAp, eta), eta,
+                        AiV2Util.CeilDiv(gather.GatherFutureAp, eta), eta,
                         moverOpportunityCost: gather.DisplacedValue);
                     MissionProposal proposal = BuildAttackGatherLeg(objective.Target, fieldHost, lead,
                         gather.SupportArmyIds, hexBonus, objective.DefenderCount,
@@ -567,12 +569,14 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            int eta = Mathf.Max(1, gather.TotalEta);
             // Priced off the plan's own AP split, never off the host's activation state: the
-            // supports' legs are what this turn pays, the rest is spread over the operation.
+            // supports' legs are what this turn pays, the rest of the GATHER stage is spread over
+            // its turns. The assault march is not charged to the gather step (project owner,
+            // 2026-10-02): the operation moves toward the goal turn by turn.
+            int eta = Mathf.Max(1, gather.GatherTurns);
             TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
                 gather.ProjectedWinChance, gather.CurrentTurnAp,
-                AiV2Util.CeilDiv(gather.FutureAp, eta), eta,
+                AiV2Util.CeilDiv(gather.GatherFutureAp, eta), eta,
                 moverOpportunityCost: gather.DisplacedValue);
             MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
                 gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
@@ -783,10 +787,11 @@ namespace Game.Ai.V2
             }
             AttackObjective objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
                 ?? new AttackObjective { Target = a.Target };
-            int eta = Mathf.Max(1, plan.TotalEta);
+            // Gather stage only, as every other gather step (the assault march is paid when taken).
+            int eta = Mathf.Max(1, plan.GatherTurns);
             TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
                 PreparationWin(objective, plan.ProjectedWinChance), plan.CurrentTurnAp,
-                AiV2Util.CeilDiv(plan.FutureAp, eta), eta, moverOpportunityCost: plan.DisplacedValue);
+                AiV2Util.CeilDiv(plan.GatherFutureAp, eta), eta, moverOpportunityCost: plan.DisplacedValue);
             AppendPreparationStep(snap, objective, host.ArmyId, host.Hex,
                 AttackPreparationStep.RecruitDonors, 0f, null, hexBonus, proposals,
                 $"[AI][V2][Attack][Mobilization] {intent.IntentKey} donors=[{string.Join(",", bought.Select(id => $"#{id}:{F(donorValues[id])}"))}] "

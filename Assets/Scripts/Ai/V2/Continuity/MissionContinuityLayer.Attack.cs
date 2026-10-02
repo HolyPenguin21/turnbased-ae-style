@@ -617,8 +617,12 @@ namespace Game.Ai.V2
                     + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");
                 return true;
             }
+            // Name what keeps the host from marching: a fist above the bar can still fail the
+            // win-chance gate or leave a known defender no body can damage (coverage).
+            string clearance = DescribeClearance(snap, a, host.EffectiveArmyPower, required);
             AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                 $"[AI][V2][Attack][Mobilization] {at} decision=STALL blocker=no_legal_source "
+                + $"clearance={clearance} "
                 + $"(no support, no same-hex body, no hand/deck/generated card strengthens this host"
                 + $"{(snap.Self.BaseHexes?.Contains(host.Hex) == true ? "" : " off an own Base")}: "
                 + $"{plan.Reason}); the existing stall lifecycle ends the preparation");
@@ -682,6 +686,32 @@ namespace Game.Ai.V2
 
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
         // and the SAME honest hex-defence read the mission layer used, with known defender coverage; before the march it also checks the current force threshold.
+        // Why the primary does not clear the target yet: fist_below_bar (power not strictly above
+        // the bar), coverage_missing (a known defender no roster body can damage), win_below_gate,
+        // or ready (it clears; the assault starts on the next pass).
+        private static string DescribeClearance(WorldSnapshot snap, AttackIntent a, float fist, float required)
+        {
+            if (!(fist > required))
+                return "fist_below_bar";
+            if (!a.PrimaryArmyId.HasValue)
+                return "no_primary";
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            if (primary == null)
+                return "no_primary";
+            bool clears = GroundCombatFeasibility.Clears(
+                (primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList(),
+                primary.Commander, opposition, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                hexBonus, out _, out bool cover);
+            if (clears)
+                return AttackObjectiveEvaluator.ForceReady(primary.EffectiveArmyPower, snap.Self.AttackPeak)
+                    ? "ready" : "fist_below_bar";
+            return cover ? "win_below_gate" : "coverage_missing";
+        }
+
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)

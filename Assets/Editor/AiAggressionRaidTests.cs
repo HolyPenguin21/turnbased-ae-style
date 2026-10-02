@@ -101,6 +101,28 @@ namespace Game.EditorTests
             Assert.That(found.Count, Is.EqualTo(1));
         }
 
+        // 2026-10-02 playtest: a lone raider was priced against "Guard@-2,-2" alone while neutral
+        // Army#6 stood on the same hex (4 retreats at an estimated win of 1.00). A raid fights
+        // everything on the hex it lands on, whichever of them it was aimed at.
+        [Test]
+        public void KnownOpposition_EventGuardAndNeutralArmyOnOneHex_AreOneFight()
+        {
+            var hex = new HexCoord(-2, -2);
+            WorldSnapshot snap = SnapshotWithEventGuard(hex, Weak());
+            var neutralOwner = new PlayerSetupData { IsNeutral = true, Nickname = "Neutral" };
+            var roamers = new List<WorthIt.DefenderProfile> { Weak(), Weak(), Weak() };
+            snap.Known.NeutralSightings = new List<Game.Ai.AiMapMemory.KnownEnemySighting>
+            {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(hex, neutralOwner, "Roamers", roamers.Count,
+                    roamers.Sum(d => d.Defense), roamers.Sum(d => d.Attack), roamers, armyId: 6),
+            };
+
+            Assert.That(AiV2Util.KnownDefenders(snap, RaidTargetRef.ForEventGuard(hex)).Count, Is.EqualTo(4),
+                "the guard raid also fights the roaming army standing on its hex");
+            Assert.That(AiV2Util.KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(6)).Count, Is.EqualTo(4),
+                "the army raid also fights the event guard on its hex");
+        }
+
         // ---- CombatOpportunityAnalyzer: event guards join the same estimator -------------------
 
         [Test]

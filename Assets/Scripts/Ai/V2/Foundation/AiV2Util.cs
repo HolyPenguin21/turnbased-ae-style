@@ -94,33 +94,64 @@ namespace Game.Ai.V2
         internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target) =>
             WorthIt.UnitsOf(KnownOpposition(snap, target));
 
-        // The same target as the fight it is: one defending army (or event guard) with its
-        // observed commander. Empty when nothing is known.
+        // The same target as the fight it is: the defending army (or event guard) with its
+        // observed commander, PLUS every other known body standing on that hex. A mover that
+        // lands on a hex fights everything there (an event guard and a roaming neutral army can
+        // share one; the 2026-10-02 playtest sent a lone Scav Carrier at "Guard@-2,-2" priced
+        // against its 2 defenders alone while neutral Army#6 stood on the same hex — four
+        // retreats in a row at an estimated win of 1.00). Empty when nothing is known.
         internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target)
         {
             if (snap?.Known == null || !target.HasValue)
                 return System.Array.Empty<WorthIt.DefendingArmy>();
 
-            if (target.Kind == RaidTargetKind.EventGuard)
-            {
-                if (snap.Known.EventGuards != null)
-                    foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
-                        if (g.Hex.Equals(target.Hex))
-                            return new[] { new WorthIt.DefendingArmy(g.Defenders, g.Commander,
-                                Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
-                                    snap.Observer, g.Hex, defendingOwner: null)) };
-                return System.Array.Empty<WorthIt.DefendingArmy>();
-            }
-
             IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
                 (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
-            foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == target.ArmyId)
-                    return new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander,
-                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
-                            snap.Observer, s.Hex, s.Owner)) };
-            return System.Array.Empty<WorthIt.DefendingArmy>();
+
+            var result = new List<WorthIt.DefendingArmy>();
+            HexCoord hex;
+            int excludeArmyId = -1;
+            if (target.Kind == RaidTargetKind.EventGuard)
+            {
+                hex = target.Hex;
+                AddEventGuard(snap, hex, result);
+                if (result.Count == 0)
+                    return System.Array.Empty<WorthIt.DefendingArmy>();
+            }
+            else
+            {
+                Game.Ai.AiMapMemory.KnownEnemySighting? own = null;
+                foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
+                    if (s.ArmyId == target.ArmyId) { own = s; break; }
+                if (!own.HasValue)
+                    return System.Array.Empty<WorthIt.DefendingArmy>();
+                hex = own.Value.Hex;
+                excludeArmyId = target.ArmyId;
+                result.Add(new WorthIt.DefendingArmy(own.Value.Defenders, own.Value.Commander,
+                    Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner)));
+                AddEventGuard(snap, hex, result);
+            }
+
+            foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all.OrderBy(x => x.ArmyId))
+                if (s.Hex.Equals(hex) && s.ArmyId != excludeArmyId && s.Defenders != null
+                    && s.Owner != snap.Observer)
+                    result.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
+                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner)));
+            return result;
+        }
+
+        private static void AddEventGuard(WorldSnapshot snap, HexCoord hex, List<WorthIt.DefendingArmy> into)
+        {
+            if (snap.Known.EventGuards == null)
+                return;
+            foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                if (g.Hex.Equals(hex))
+                {
+                    into.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
+                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null)));
+                    return;
+                }
         }
 
         // THE hex defence a Raid target fights with — the companion of KnownOpposition, resolved

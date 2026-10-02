@@ -114,8 +114,8 @@ namespace Game.EditorTests
         public void MoveAuthority_OnlyTheTerminalStepMaySeekATakeover()
         {
             Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(EnRoute, RedBase),
-                Is.EqualTo(AiGroundMoveAuthority.Transit),
-                "an approach step must never capture a structure it happens to cross");
+                Is.EqualTo(AiGroundMoveAuthority.TransitCapture),
+                "an approach step never seeks a fight; a known undefended structure on the way is crossed (the game rule takes it)");
             Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(RedBase, RedBase),
                 Is.EqualTo(AiGroundMoveAuthority.CombatAndCapture));
         }
@@ -128,8 +128,8 @@ namespace Game.EditorTests
         public void MoveAuthority_ATacticalStrikeMayFightButNeverCapture()
         {
             Assert.That(GroundMoveAuthorityPolicy.ForTacticalStrikeStep(OurBase, EnRoute),
-                Is.EqualTo(AiGroundMoveAuthority.Transit),
-                "walking toward the contact is ordinary Transit");
+                Is.EqualTo(AiGroundMoveAuthority.TransitCapture),
+                "walking toward the contact never seeks a fight");
             Assert.That(GroundMoveAuthorityPolicy.ForTacticalStrikeStep(EnRoute, EnRoute),
                 Is.EqualTo(AiGroundMoveAuthority.Combat),
                 "the contact step fights the army and may not take any structure over");
@@ -835,6 +835,29 @@ namespace Game.EditorTests
             };
             intent.IntentKey = MissionIntentKey.For(intent);
             return intent;
+        }
+
+        // 2026-10-02 — internal selection priority: nearer (whole march-turn buckets) first, then the
+        // less defended site, then the lower-bonus hex; the external score only breaks the last tie.
+        [Test]
+        public void TargetSelection_NearerThenLessDefended()
+        {
+            var near = new AttackObjectiveEvaluator.SelectionPriority(2, 50f, 0f, 1f);
+            var far = new AttackObjectiveEvaluator.SelectionPriority(3, 5f, 0f, 99f);
+            Assert.That(AttackObjectiveEvaluator.CompareSelection(near, far), Is.LessThan(0),
+                "a nearer bucket beats a weaker but farther site and a higher score");
+
+            var weak = new AttackObjectiveEvaluator.SelectionPriority(2, 10f, 4f, 1f);
+            var strong = new AttackObjectiveEvaluator.SelectionPriority(2, 30f, 0f, 99f);
+            Assert.That(AttackObjectiveEvaluator.CompareSelection(weak, strong), Is.LessThan(0));
+
+            var open = new AttackObjectiveEvaluator.SelectionPriority(2, 10f, 0f, 1f);
+            var walled = new AttackObjectiveEvaluator.SelectionPriority(2, 10f, 4f, 99f);
+            Assert.That(AttackObjectiveEvaluator.CompareSelection(open, walled), Is.LessThan(0));
+
+            var unknown = new AttackObjectiveEvaluator.SelectionPriority(2, float.MaxValue, 0f, 99f);
+            Assert.That(AttackObjectiveEvaluator.CompareSelection(strong, unknown), Is.LessThan(0),
+                "an unobserved site is treated as the most defended in its bucket");
         }
     }
 }

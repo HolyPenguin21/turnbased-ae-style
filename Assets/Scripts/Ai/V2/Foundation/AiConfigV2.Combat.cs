@@ -84,6 +84,8 @@ namespace Game.Ai.V2
         //  ETA  (first pass — plain hex distance / move budget, no real pathfinding yet).
         // =======================================================================================
         public const int etaFallbackMoveBudget = 1; // when an army reports 0 MaxMovement
+        // Attack target selection: hexes per march-turn bucket (typical ground army movement).
+        public const int attackTargetEtaBucketHexes = 3;
 
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
         // =======================================================================================

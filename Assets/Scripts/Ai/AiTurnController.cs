@@ -414,7 +414,12 @@ namespace Game.Ai
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
                     trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null,
-                    allowUndefendedBuildingTakeover: decision.AllowsStructureTakeover,
+                    // Physical arrival always applies the gameplay rule: an undefended foreign
+                    // building under a ground mover changes hands / is destroyed (project owner,
+                    // 2026-10-02). decision.AllowsStructureTakeover only gates DELIBERATE routing onto a
+                    // KNOWN structure (IsKnownGroundOutcomeAuthorized above); a structure found
+                    // only on arrival (fog) is a surprise and must not be left standing.
+                    allowUndefendedBuildingTakeover: true,
                     // A Hex Event met by a move that may not seek combat is always Skipped — the
                     // mover keeps its stealth and remaining movement and walks on.
                     allowAiEventExplore: decision.AllowsGroundCombat)

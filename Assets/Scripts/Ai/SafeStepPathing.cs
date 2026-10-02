@@ -11,6 +11,15 @@ namespace Game.Ai
     // Layer-neutral, fog-honest routing shared by planning and execution. Route sequences
     // retain HexPathfinder's destination-specific straightness tie break; cost-only fields
     // below are used only where Economy needs a minimum cost, never a route/threat witness.
+    // Which remembered obstacles a ground route treats as blocked.
+    //   Standard — every remembered foreign army and building plus scout-danger zones (scouts,
+    //              economy, development: nothing there may set anything off).
+    //   Combat   — Attack / Raid / ActiveDefence movers (project owner, 2026-10-02): only a hex
+    //              holding a known ARMY blocks. A foreign building with nobody on it is simply
+    //              crossed (arrival takes it over / destroys it by the game rule) and a scout-danger
+    //              zone is a scout concern, not a fist's.
+    public enum SafeRouteProfile { Standard, Combat }
+
     public static class SafeStepPathing
     {
         // `projectedCurrentMovement`/`projectedMaxMovement` — ask the SAME question about a
@@ -20,7 +29,8 @@ namespace Game.Ai
         // unblock a step the mission's route actually needs"). Null — every pre-existing call
         // site — keeps the army's own live movement figures and behaviour unchanged.
         public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex,
-            int? projectedCurrentMovement = null, int? projectedMaxMovement = null)
+            int? projectedCurrentMovement = null, int? projectedMaxMovement = null,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
         {
             if (map == null || army == null)
                 return null;
@@ -29,8 +39,10 @@ namespace Game.Ai
             // only the equivalent remembered blocker membership is shared with planning. A FULLY
             // hidden army sets nothing off on arrival (AiMapMemory.KnownGroundArrival), so it
             // may cross known armies/structures — only danger zones remain transit blocks for it.
-            HashSet<HexCoord> blockers = Game.Map.StealthSystem.IsArmyFullyHidden(army)
-                ? cache.HiddenBlockedHexes : cache.BlockedHexes;
+            bool hidden = Game.Map.StealthSystem.IsArmyFullyHidden(army);
+            HashSet<HexCoord> blockers = profile == SafeRouteProfile.Combat
+                ? (hidden ? cache.HiddenCombatBlockedHexes : cache.CombatBlockedHexes)
+                : (hidden ? cache.HiddenBlockedHexes : cache.BlockedHexes);
             return AiTurnController.FindAffordableStep(map, army, targetHex,
                 SafeRouteBlocker(null, blockers, targetHex, null),
                 projectedCurrentMovement, projectedMaxMovement);
@@ -38,10 +50,25 @@ namespace Game.Ai
 
         // Convenience for the common AI-01 shape: "the roster this assembly will produce".
         public static HexCoord? FindNextSafeStepForRoster(HexMap map, ArmyData army,
-            HexCoord targetHex, IReadOnlyList<UnitData> projectedRoster) =>
+            HexCoord targetHex, IReadOnlyList<UnitData> projectedRoster,
+            SafeRouteProfile profile = SafeRouteProfile.Standard) =>
             FindNextSafeStep(map, army, targetHex,
                 projectedRoster == null ? (int?)null : ArmyData.ComputeCurrentMovement(projectedRoster),
-                projectedRoster == null ? (int?)null : ArmyData.ComputeMaxMovement(projectedRoster));
+                projectedRoster == null ? (int?)null : ArmyData.ComputeMaxMovement(projectedRoster),
+                profile);
+
+        // Diagnostics: what each profile blocks for this army's owner, so a detour can be explained.
+        public static string DescribeBlockers(HexMap map, ArmyData army)
+        {
+            if (map == null || army == null)
+                return "n/a";
+            PlayerRouteCache cache = EnsureCacheState(map, army.Owner);
+            string Fmt(HashSet<HexCoord> set) => set.Count == 0 ? "-"
+                : string.Join(" ", System.Linq.Enumerable.Select(
+                    System.Linq.Enumerable.OrderBy(System.Linq.Enumerable.OrderBy(set, h => h.R), h => h.Q),
+                    h => $"({h.Q},{h.R})"));
+            return $"standard=[{Fmt(cache.BlockedHexes)}] combat=[{Fmt(cache.CombatBlockedHexes)}]";
+        }
 
         public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
         {
@@ -141,6 +168,8 @@ namespace Game.Ai
             // live, fully hidden army (FindNextSafeStep) uses HiddenBlockedHexes.
             public HashSet<HexCoord> BlockedHexes;
             public HashSet<HexCoord> HiddenBlockedHexes;
+            public HashSet<HexCoord> CombatBlockedHexes;
+            public HashSet<HexCoord> HiddenCombatBlockedHexes;
             public long MemoryVersion;
             public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
@@ -155,7 +184,8 @@ namespace Game.Ai
         // cannot silently alter route policy), plus active scout-danger zones for every mover.
         // The route's explicit destination remains separately exempt in SafeRouteBlocker; the
         // mission's permission to fight/capture THAT endpoint is the execution gate's check.
-        private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner, bool moverFullyHidden)
+        private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner, bool moverFullyHidden,
+            bool armiesOnly = false)
         {
             var blocked = new HashSet<HexCoord>();
             var candidates = new HashSet<HexCoord>();
@@ -164,7 +194,12 @@ namespace Game.Ai
             foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(owner))
                 if (building.Owner != owner) candidates.Add(building.Hex);
             foreach (HexCoord hex in candidates)
-                if (AiMapMemory.KnownGroundArrival(owner, hex, moverFullyHidden).HasOutcome) blocked.Add(hex);
+            {
+                AiMapMemory.GroundArrival arrival = AiMapMemory.KnownGroundArrival(owner, hex, moverFullyHidden);
+                if (armiesOnly ? arrival.Contact : arrival.HasOutcome) blocked.Add(hex);
+            }
+            if (armiesOnly)
+                return blocked;
             foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
                 foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
@@ -179,6 +214,8 @@ namespace Game.Ai
                 {
                     BlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: false),
                     HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true),
+                    CombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: false, armiesOnly: true),
+                    HiddenCombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true, armiesOnly: true),
                     MemoryVersion = memoryVersion,
                 };
                 _playerCaches[owner] = cache;
@@ -189,6 +226,8 @@ namespace Game.Ai
                 if (!cache.BlockedHexes.SetEquals(current)) cache.ClearPathsAndFields();
                 cache.BlockedHexes = current;
                 cache.HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true);
+                cache.CombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: false, armiesOnly: true);
+                cache.HiddenCombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true, armiesOnly: true);
                 cache.MemoryVersion = memoryVersion;
             }
             return cache;

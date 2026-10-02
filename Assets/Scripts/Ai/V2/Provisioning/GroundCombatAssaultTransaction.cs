@@ -113,7 +113,8 @@ namespace Game.Ai.V2
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.NoExecutableStep(
                         $"{lane} {roleLabel} return mover #{mover.Id} has no movement left")));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home) == null)
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home,
+                    profile: SafeRouteProfile.Combat) == null)
             {
                 // Defensive re-check only; the frozen Analysis reachability fact
                 // (ReturnBaseStillValid) already retargets a genuinely unreachable base at turn-start
@@ -193,7 +194,8 @@ namespace Game.Ai.V2
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(
                             $"{lane} reinforcement support #{support.Id} has no movement left")));
-                if (SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous) == null)
+                if (SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous,
+                    profile: SafeRouteProfile.Combat) == null)
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(
                             $"no safe first step from ({support.Hex.Q},{support.Hex.R}) toward rendezvous "
@@ -824,7 +826,8 @@ namespace Game.Ai.V2
             // call. Reachability too: a recruit slower than the host lowers the whole army's shared
             // movement (ArmyData.ComputeCurrentMovement), so the first step must be re-asked with
             // the projected movement rather than the host's own.
-            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits) == null)
+            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits,
+                    SafeRouteProfile.Combat) == null)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.NoExecutableStep(
                         $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward {lane} target "

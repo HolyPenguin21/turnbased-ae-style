@@ -656,6 +656,10 @@ namespace Game.Combat
             return new BattleCaptureKillApplication(outcome, effective, imprisoned, removed, needsRetreat);
         }
 
+        private static string DescribeForLog(ArmyData army) => army == null ? "none"
+            : $"{(army.Owner != null ? army.Owner.Nickname : "neutral")}/{army.Name}#{army.Id} "
+              + $"[{string.Join(",", System.Linq.Enumerable.Select(army.Members, m => m?.Name))}]";
+
         public void CompleteBattle(bool attackerAlive, bool defenderAlive,
             HexSelectionController hexSelectionController)
         {
@@ -663,6 +667,9 @@ namespace Game.Combat
             RevertTemporaryBattleStats(_state.Defender, _magnitudes);
             AiMatchStats.RecordBattle(_state.Attacker?.Owner, _state.Defender?.Owner,
                 attackerAlive, defenderAlive);
+            AiDebugLog.Write($"[BATTLE] ({_state.BattleHex.Q},{_state.BattleHex.R}) finished: attacker "
+                + $"{DescribeForLog(_state.Attacker)} {(attackerAlive ? "alive" : "wiped")}; defender "
+                + $"{DescribeForLog(_state.Defender)} {(defenderAlive ? "alive" : "wiped")}");
 
             bool attackerEmpty = _state.Attacker != null && _state.Attacker.Members.Count == 0;
             bool defenderEmpty = _state.Defender != null && _state.Defender.Members.Count == 0;
@@ -681,6 +688,9 @@ namespace Game.Combat
             BattleRetreatApplication result = PerformRetreat(
                 _state, army, survivingArmy, map, hexSelectionController);
             AiMatchStats.RecordRetreat(army?.Owner, survivingArmy?.Owner, result.Destroyed);
+            AiDebugLog.Write($"[BATTLE] ({_state.BattleHex.Q},{_state.BattleHex.R}) retreat: "
+                + $"{DescribeForLog(army)} gave way to {DescribeForLog(survivingArmy)}"
+                + (result.Destroyed ? " (destroyed while retreating)" : ""));
             _state.RetreatingArmy = null;
             return result;
         }

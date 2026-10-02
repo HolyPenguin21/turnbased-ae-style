@@ -70,6 +70,10 @@ namespace Game.Ai.V2
         // Σ (support activation × walking turns + its handoff charge) + assembled activation ×
         // assault turns.
         public int TotalAp;
+        // The gather stage alone: Σ (support walks + handoff charge). A gather STEP is priced with
+        // this, never with the whole operation (project owner, 2026-10-02): the assault march is
+        // paid when it is actually taken, turn by turn, like any other multi-turn work.
+        public int GatherAp;
         // The TaskScore value of the operations the plan's bought supports abandon
         // (MissionIntent.DisplacementValue) — the gather's MoverOpportunityCost, never AP.
         public float DisplacedValue;
@@ -87,6 +91,7 @@ namespace Game.Ai.V2
         public bool ReachesThreshold = true;
         // Everything still to be paid on later turns (the rest of the walks, handoffs, assault).
         public int FutureAp => System.Math.Max(0, TotalAp - CurrentTurnAp);
+        public int GatherFutureAp => System.Math.Max(0, GatherAp - CurrentTurnAp);
         public int TotalEta => GatherTurns + AssaultEta;
 
         public static GroundCombatGatherPlan Infeasible(string reason) =>
@@ -760,6 +765,8 @@ namespace Game.Ai.V2
                 AssaultEta = assaultEta,
                 // Walks + each support's handoff (the same charge its rendezvous leg provisions)
                 // + the assembled roster's march to the target.
+                GatherAp = chosen.Sum(s => s.Ap + GroundCombatReinforcement.ProjectedHandoffApCost(
+                        s.Incoming, s.Displaced, host, s.Live, supportWalks: s.Turns > 0)),
                 TotalAp = chosen.Sum(s => s.Ap + GroundCombatReinforcement.ProjectedHandoffApCost(
                         s.Incoming, s.Displaced, host, s.Live, supportWalks: s.Turns > 0))
                     + ArmyData.ComputeActivationApCost(roster) * System.Math.Max(1, assaultEta),

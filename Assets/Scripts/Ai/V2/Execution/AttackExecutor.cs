@@ -326,7 +326,8 @@ namespace Game.Ai.V2
                 snapshot, army, target, ctx.TurnNumber);
             HexCoord waypoint = strike.HasValue ? strike.Hex : targetHex;
 
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint,
+                profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
             {
                 // §27 — a route blocked by another known hostile structure simply has no safe step
@@ -350,6 +351,10 @@ namespace Game.Ai.V2
                 ? $"V2 attack — tactical strike on enemy #{strike.EnemyArmyId} en route to "
                     + target.Target.DiagnosticLabel
                 : $"V2 attack — assault {target.Target.DiagnosticLabel}", 0f, authority);
+            AiDebugLog.WriteDeduped($"attack-route#{army.Id}@{before.Q},{before.R}",
+                $"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({before.Q},{before.R}) -> "
+                + $"({waypoint.Q},{waypoint.R}) next=({next.Value.Q},{next.Value.R}) "
+                + $"blockers {SafeStepPathing.DescribeBlockers(ctx.Map, army)}");
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 

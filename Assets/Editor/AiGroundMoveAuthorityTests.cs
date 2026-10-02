@@ -35,6 +35,8 @@ namespace Game.EditorTests
         [TestCase(AiGroundMoveAuthority.Transit, false, false, true)]
         [TestCase(AiGroundMoveAuthority.Transit, true, false, false)]
         [TestCase(AiGroundMoveAuthority.Transit, false, true, false)]
+        [TestCase(AiGroundMoveAuthority.TransitCapture, false, true, true)]
+        [TestCase(AiGroundMoveAuthority.TransitCapture, true, false, false)]
         [TestCase(AiGroundMoveAuthority.Combat, true, false, true)]
         [TestCase(AiGroundMoveAuthority.Combat, false, true, false)]
         [TestCase(AiGroundMoveAuthority.Combat, true, true, false)]
@@ -62,8 +64,11 @@ namespace Game.EditorTests
             var approach = new HexCoord(8, -4);
 
             Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(approach, target),
-                Is.EqualTo(AiGroundMoveAuthority.Transit),
-                "Approach steps must remain safe Transit and must not gain incidental combat/capture permission.");
+                Is.EqualTo(AiGroundMoveAuthority.TransitCapture),
+                "Approach steps never seek a fight; they may cross a known undefended structure.");
+            Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(approach, target) ==
+                AiGroundMoveAuthority.TransitCapture && !AiDecision.Move(null, default(HexCoord), "t", 0f,
+                    AiGroundMoveAuthority.TransitCapture).AllowsGroundCombat, Is.True);
 
             AiGroundMoveAuthority terminal =
                 GroundMoveAuthorityPolicy.ForStructureAssaultStep(target, target);
