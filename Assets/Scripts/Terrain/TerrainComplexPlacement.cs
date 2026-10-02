@@ -38,12 +38,56 @@ namespace Game.Terrain
             return result;
         }
 
+        // For each non-empty exclusiveGroup keeps ONE member, picked by weight = max(1, count) so
+        // equal counts give even odds; returns the indices to keep (ungrouped always kept), in
+        // the original order. randomBelow(n) is a uniform integer in [0, n).
+        public static List<int> ChooseFromExclusiveGroups(IReadOnlyList<TerrainComplexTemplate> templates,
+            Func<int, int> randomBelow)
+        {
+            var kept = new HashSet<int>();
+            var groups = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < templates.Count; i++)
+            {
+                string g = templates[i]?.exclusiveGroup;
+                if (string.IsNullOrEmpty(g)) { kept.Add(i); continue; }
+                if (!groups.TryGetValue(g, out List<int> members)) groups[g] = members = new List<int>();
+                members.Add(i);
+            }
+            foreach (List<int> members in groups.Values)
+            {
+                int total = 0;
+                foreach (int m in members) total += Math.Max(1, templates[m].count);
+                int roll = randomBelow(total);
+                foreach (int m in members)
+                {
+                    roll -= Math.Max(1, templates[m].count);
+                    if (roll < 0) { kept.Add(m); break; }
+                }
+            }
+            return kept.OrderBy(i => i).ToList();
+        }
+
+        // Inclusive centre-distance range (in rings) every footprint cell must lie in. The band
+        // comes from the template's fractions of the radius; a blocking terrain is further capped
+        // at radius - edgeMarginRings. min is raised to 1 when the band starts above 0 so a
+        // "near the middle" template never lands on the exact centre hex.
+        public static void CenterDistanceRange(TerrainComplexTemplate template, bool blocksGround,
+            int radius, int edgeMarginRings, out int min, out int max)
+        {
+            float lo = template == null ? 0f : template.minCenterFraction;
+            float hi = template == null ? 1f : template.maxCenterFraction;
+            min = (int)Math.Round(lo * radius, MidpointRounding.AwayFromZero);
+            if (lo > 0f) min = Math.Max(1, min);
+            max = (int)Math.Round(hi * radius, MidpointRounding.AwayFromZero);
+            if (blocksGround) max = Math.Min(max, radius - Math.Max(0, edgeMarginRings));
+        }
+
         // Validate the entire footprint and resulting ground graph before any assignment.
         // The caller commits all returned cells together; failure returns no partial footprint.
         public static bool TryValidate(TerrainComplexTemplate template, HexCoord origin,
             IReadOnlyDictionary<HexCoord, int> assignment, IReadOnlyList<TerrainTypeEntry> types,
             int terrainIndex, HashSet<HexCoord> claimed, Func<HexCoord, bool> protectedHex,
-            out HexCoord[] cells)
+            out HexCoord[] cells, int minCenterDistance = 0, int maxCenterDistance = int.MaxValue)
         {
             cells = null;
             if (template == null || !template.useInGeneration || !template.IsValid()
@@ -56,6 +100,8 @@ namespace Game.Terrain
                 HexCoord h = new HexCoord(origin.Q + offset.x, origin.R + offset.y);
                 if (!assignment.TryGetValue(h, out int existing) || claimed.Contains(h)
                     || (protectedHex != null && protectedHex(h)) || !footprint.Add(h)
+                    || HexGridMath.Distance(new HexCoord(0, 0), h) < minCenterDistance
+                    || HexGridMath.Distance(new HexCoord(0, 0), h) > maxCenterDistance
                     || !Array.Exists(template.allowedTerrainNames, name =>
                         string.Equals(name, types[existing].terrainName, StringComparison.OrdinalIgnoreCase)))
                     return false;

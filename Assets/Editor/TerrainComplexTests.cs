@@ -56,6 +56,55 @@ namespace Game.EditorTests
             TerrainComplexPlacement.TryValidate(t, origin, data, new[] { _desert, _lake }, 1,
                 claimed, reserved, out cells);
 
+        [Test] public void CenterBandKeepsEveryCellInsideItAndOffTheEdgeMargin()
+        {
+            TerrainComplexTemplate canyon = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
+            canyon.minCenterFraction = 0.15f; canyon.maxCenterFraction = 0.5f;
+            TerrainComplexPlacement.CenterDistanceRange(canyon, true, 6, 2, out int min, out int max);
+            Assert.That(min, Is.EqualTo(1), "near the middle, never the exact centre");
+            Assert.That(max, Is.EqualTo(3));
+
+            // An unbanded blocking template is only kept off the edge margin.
+            TerrainComplexTemplate anywhere = Template(new Vector2Int(0, 0));
+            TerrainComplexPlacement.CenterDistanceRange(anywhere, true, 6, 2, out min, out max);
+            Assert.That((min, max), Is.EqualTo((0, 4)));
+            // A walkable template is not capped by the margin.
+            TerrainComplexPlacement.CenterDistanceRange(anywhere, false, 6, 2, out min, out max);
+            Assert.That(max, Is.EqualTo(6));
+
+            Dictionary<HexCoord, int> data = Assignment();
+            Assert.That(TerrainComplexPlacement.TryValidate(canyon, new HexCoord(0, 0), data,
+                new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), null, out _, 1, 3), Is.False,
+                "the centre hex is outside the band");
+            Assert.That(TerrainComplexPlacement.TryValidate(canyon, new HexCoord(1, 0), data,
+                new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), null, out _, 1, 3), Is.True);
+            Assert.That(TerrainComplexPlacement.TryValidate(canyon, new HexCoord(3, 0), data,
+                new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), null, out _, 1, 3), Is.False,
+                "its second cell (4,0) is past the band");
+        }
+
+        [Test] public void ExclusiveGroupKeepsExactlyOneAlternativeAtEvenOdds()
+        {
+            TerrainComplexTemplate canyon = Template(new Vector2Int(0, 0)); canyon.exclusiveGroup = "centerpiece";
+            TerrainComplexTemplate wreck = Template(new Vector2Int(0, 0)); wreck.exclusiveGroup = "Centerpiece";
+            TerrainComplexTemplate lake = Template(new Vector2Int(0, 0));
+            var all = new[] { canyon, lake, wreck };
+            // roll 0 -> first member, roll 1 -> second; ungrouped is always kept.
+            Assert.That(TerrainComplexPlacement.ChooseFromExclusiveGroups(all, n => 0), Is.EqualTo(new[] { 0, 1 }));
+            Assert.That(TerrainComplexPlacement.ChooseFromExclusiveGroups(all, n => 1), Is.EqualTo(new[] { 1, 2 }));
+            var rng = new System.Random(3);
+            int canyons = 0;
+            for (int i = 0; i < 1000; i++)
+            {
+                List<int> kept = TerrainComplexPlacement.ChooseFromExclusiveGroups(all, n => rng.Next(n));
+                Assert.That(kept.Count(k => k != 1), Is.EqualTo(1));
+                if (kept.Contains(0)) canyons++;
+            }
+            Assert.That(canyons, Is.InRange(430, 570), "equal counts = 50/50");
+            // A single remaining member (the other disabled) is always used.
+            Assert.That(TerrainComplexPlacement.ChooseFromExclusiveGroups(new[] { wreck }, n => 0), Is.EqualTo(new[] { 0 }));
+        }
+
         [Test] public void ComplexTotalIsSplitByTemplateShares()
         {
             var shares = new[] { 2, 1, 1, 1 };

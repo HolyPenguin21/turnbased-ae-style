@@ -421,6 +421,11 @@ namespace Game.Map
                 }
                 valid.Add((template, typeIndex));
             }
+            // Alternatives (e.g. canyon OR giant machine wreck) are decided once per map, after
+            // disabled templates are gone, so a disabled alternative never takes the draw.
+            List<int> keep = TerrainComplexPlacement.ChooseFromExclusiveGroups(
+                valid.Select(v => v.template).ToList(), n => Random.Range(0, n));
+            valid = keep.Select(i => valid[i]).ToList();
             // Settings.complexCount is the map's total; each template's count is its share of it.
             int[] instances = TerrainComplexPlacement.AllocateInstances(
                 valid.Select(v => v.template.count).ToList(), Settings.complexCount, n => Random.Range(0, n));
@@ -430,14 +435,26 @@ namespace Game.Map
                 for (int instance = 0; instance < instances[t]; instance++)
                 {
                     bool placed = false;
-                    for (int attempt = 0; attempt < template.placementAttempts; attempt++)
+                    // Origins come from the band the footprint must fit in (footprint offsets reach
+                    // at most 2 rings from the origin), so a narrow "near the middle" band is not
+                    // left to the luck of 64 uniform rolls over the whole map.
+                    TerrainComplexPlacement.CenterDistanceRange(template,
+                        _activeBiome.terrainTypes[typeIndex].blocksGroundMovement, _activeRadius,
+                        Settings.impassableEdgeMarginRings, out int minCenter, out int maxCenter);
+                    List<HexCoord> origins = allCoords.FindAll(h =>
                     {
-                        HexCoord origin = allCoords[Random.Range(0, allCoords.Count)];
+                        int d = HexGridMath.Distance(new HexCoord(0, 0), h);
+                        return d >= minCenter - 2 && d <= maxCenter + 2;
+                    });
+                    for (int attempt = 0; attempt < template.placementAttempts && origins.Count > 0; attempt++)
+                    {
+                        HexCoord origin = origins[Random.Range(0, origins.Count)];
                         bool Protected(HexCoord h) => BuildingRegistry.FindAt(h) != null
                             || ArmyRegistry.AllAt(h).Any() || HexEventRegistry.FindAt(h) != null
                             || HexResourceBonusRegistry.GetBonus(h) != null;
                         if (!TerrainComplexPlacement.TryValidate(template, origin, assignment,
-                            _activeBiome.terrainTypes, typeIndex, claimed, Protected, out HexCoord[] cells)) continue;
+                            _activeBiome.terrainTypes, typeIndex, claimed, Protected, out HexCoord[] cells,
+                            minCenter, maxCenter)) continue;
                         // All rejection paths above leave the original assignment unchanged.
                         foreach (HexCoord h in cells) { assignment[h] = typeIndex; claimed.Add(h); }
                         result.Add(new PlacedComplex

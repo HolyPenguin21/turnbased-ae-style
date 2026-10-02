@@ -72,6 +72,11 @@ namespace Game.Terrain
         // total (see TerrainComplexPlacement.AllocateInstances).
         [Min(0)] public int complexCount = 5;
 
+        // Hexes that block ground movement (lake, canyon, mud, wreck) never stand within this many
+        // rings of the map's outer edge, so the edge ring and the one inside it stay walkable and
+        // the players' start areas cannot be walled off.
+        [Min(0)] public int impassableEdgeMarginRings = 2;
+
         // Mountains are the one type still placed by a dedicated rule instead of the baseline
         // weighted pool — they form a few connected chains rather than scattering as single
         // hexes, so this name lookup pulls them out of the pool the same way Ruins/Wasteland

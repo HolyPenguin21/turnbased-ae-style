@@ -504,6 +504,9 @@ MonoBehaviour:
       useInGeneration: 1
       count: 1
       placementAttempts: 64
+      exclusiveGroup: centerpiece
+      minCenterFraction: 0.15
+      maxCenterFraction: 0.5
       framesPerSecond: 3
       allowedTerrainNames:
       - Desert
@@ -544,6 +547,9 @@ MonoBehaviour:
       useInGeneration: 1
       count: 1
       placementAttempts: 64
+      exclusiveGroup: centerpiece
+      minCenterFraction: 0.15
+      maxCenterFraction: 0.5
       framesPerSecond: 3
       allowedTerrainNames:
       - Desert
@@ -719,6 +725,9 @@ MonoBehaviour:
         useInGeneration: 1
         count: 1
         placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
         framesPerSecond: 3
         allowedTerrainNames:
         - Desert
@@ -759,6 +768,9 @@ MonoBehaviour:
         useInGeneration: 1
         count: 1
         placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
         framesPerSecond: 3
         allowedTerrainNames:
         - Desert

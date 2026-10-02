@@ -23,6 +23,16 @@ namespace Game.Terrain
         // Relative share of MapGenerationSettings.complexCount, not an absolute instance count.
         [Min(0)] public int count = 1;
         [Min(1)] public int placementAttempts = 64;
+        // Templates of the same non-empty group are alternatives: per generated map exactly ONE of
+        // the enabled members is used (chosen by `count` as relative weight, equal counts = even
+        // odds), the others get no placements. Empty = not part of any group.
+        public string exclusiveGroup = "";
+        // Allowed distance of EVERY footprint cell from the map centre, as a fraction of the map
+        // radius. 0..1 (default) = anywhere. Deep canyon uses a band near the middle, but not on
+        // the exact centre. An impassable template is additionally kept off the map edge by
+        // MapGenerationSettings.impassableEdgeMarginRings, whatever the band says.
+        [Range(0f, 1f)] public float minCenterFraction = 0f;
+        [Range(0f, 1f)] public float maxCenterFraction = 1f;
         [Min(0.01f)] public float framesPerSecond = 3f;
         // Offsets are the authored, final footprint. Runtime generation may translate the
         // whole complex to another origin, but never rotates or mirrors this shape.

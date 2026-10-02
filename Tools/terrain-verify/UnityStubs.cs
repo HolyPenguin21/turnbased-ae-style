@@ -87,6 +87,7 @@ namespace Game.Ai
         public static long RouteMemoryVersionFor(Game.Players.PlayerSetupData owner)=>version;
         public static IEnumerable<KnownEnemySighting> AllKnownEnemySightings(Game.Players.PlayerSetupData p)=>Array.Empty<KnownEnemySighting>();
         public static IEnumerable<KnownEnemySighting> AllKnownNeutralSightings(Game.Players.PlayerSetupData p)=>Array.Empty<KnownEnemySighting>();
+        public static IEnumerable<Game.HexGrid.HexCoord> AllKnownEventGuardHexes(Game.Players.PlayerSetupData p)=>Array.Empty<Game.HexGrid.HexCoord>();
         public static IEnumerable<KnownBuilding> AllKnownBuildings(Game.Players.PlayerSetupData p)=>Array.Empty<KnownBuilding>();
         public static IEnumerable<(Game.HexGrid.HexCoord,int)> ScoutDangerZoneRanges(Game.Players.PlayerSetupData p)=>Array.Empty<(Game.HexGrid.HexCoord,int)>();
         public static GroundArrival KnownGroundArrival(Game.Players.PlayerSetupData p,Game.HexGrid.HexCoord h,bool hidden)=>default;

@@ -52,3 +52,15 @@ disabled template rejection, and invalid empty/oversized shapes. Unity-only test
 exercise generator allocation with exactly one enabled template and with all templates
 disabled in both biomes; disabled types must also stay out of ordinary random fill.
 The shader/mesh display and those generator tests require Unity EditMode/PlayMode.
+
+## Placement zones and alternatives (2026-10-02)
+
+- `MapGenerationSettings.impassableEdgeMarginRings` (default 2): any complex whose terrain
+  blocks ground movement keeps every cell at least that many rings inside the map edge.
+- `minCenterFraction` / `maxCenterFraction` on a template: every footprint cell must lie
+  in that band of the map radius. Deep canyon and Giant machine wreck use 0.15–0.5, i.e.
+  near the middle but never on the centre hex (radius 6: rings 1–3).
+- `exclusiveGroup` on a template: enabled members of one group are alternatives; one is
+  drawn per map (weight = `count`, equal counts give 50/50). Canyon and wreck share the group
+  `centerpiece`. A disabled member never takes the draw, so with the wreck disabled the canyon
+  is always used. Origins are sampled from the band, not from the whole map.
