@@ -46,7 +46,8 @@ namespace Game.Terrain
             out HexCoord[] cells)
         {
             cells = null;
-            if (template == null || !template.IsValid() || terrainIndex < 0 || terrainIndex >= types.Count) return false;
+            if (template == null || !template.useInGeneration || !template.IsValid()
+                || terrainIndex < 0 || terrainIndex >= types.Count) return false;
             var footprint = new HashSet<HexCoord>();
             var candidates = new HexCoord[template.parts.Length];
             for (int i = 0; i < candidates.Length; i++)

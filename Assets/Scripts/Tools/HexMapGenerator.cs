@@ -410,6 +410,9 @@ namespace Game.Map
             var valid = new List<(TerrainComplexTemplate template, int typeIndex)>();
             foreach (TerrainComplexTemplate template in _activeBiome.complexes)
             {
+                // Exclude disabled templates before allocation so they cannot consume a share
+                // of the map's total or trigger placement attempts.
+                if (template != null && !template.useInGeneration) continue;
                 int typeIndex = template == null ? -1 : IndexOfTerrainNamed(template.terrainName);
                 if (typeIndex < 0 || !template.IsValid())
                 {

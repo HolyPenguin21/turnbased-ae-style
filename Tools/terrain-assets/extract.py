@@ -6,12 +6,24 @@ adjacent hex edges agree even though each texture remains a separate file.
 from pathlib import Path
 import math
 import argparse
+import yaml
 from PIL import Image
 ROOT = Path(__file__).resolve().parents[2]
 parser = argparse.ArgumentParser()
 parser.add_argument('--biome', choices=['Desert', 'AridSteppe'], default='Desert')
 parser.add_argument('--group', choices=['AcidLake', 'Canyon', 'BoilingMud', 'GiantMachineWreck'])
 args = parser.parse_args()
+# Legacy multi-hex atlases cannot reproduce the new footprints. Fail before writing
+# any texture rather than silently restoring the removed parts or replacing imported art.
+raw=(ROOT/'Assets/Config/GameConfig.asset').read_text()
+settings=yaml.safe_load('\n'.join(line for line in raw.splitlines() if not line.startswith(('%','---'))))['MonoBehaviour']['mapGeneration']
+palette=settings if args.biome=='AridSteppe' else settings['desertOverride']
+legacy={'AcidLake':('Acid lake',2),'BoilingMud':('Boiling mud field',2),'GiantMachineWreck':('Giant machine wreck',3)}
+for family,(name,part_count) in legacy.items():
+    if args.group not in (None,family): continue
+    template=next(t for t in palette['complexes'] if t['terrainName']==name)
+    if len(template['parts']) != part_count:
+        raise SystemExit(f'{family}: legacy atlas has {part_count} parts, but config uses {len(template["parts"])}. Supply new source art; existing runtime textures were not changed.')
 SOURCE = Path(__file__).resolve().parent / 'Sources'
 if args.biome == 'AridSteppe': SOURCE = SOURCE / 'AridSteppe'
 OUT = ROOT / 'Assets/Textures/Terrain' / args.biome / 'Complexes'
@@ -60,4 +72,5 @@ if args.group in (None, 'GiantMachineWreck'):
     for part in range(3):
         extract(wreck,.20+.30*part,.72-math.sqrt(3)*.1*part,.2,OUT/f'GiantMachineWreck_Part{part+1}.png')
     print('Extracted 14 mud frames and 3 wreck parts:', OUT)
+
 

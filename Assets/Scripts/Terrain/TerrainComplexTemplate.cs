@@ -18,6 +18,8 @@ namespace Game.Terrain
     {
         public string name;
         public string terrainName;
+        [Tooltip("Use this complex when generating maps for this biome. Disabled templates receive no placements.")]
+        public bool useInGeneration = true;
         // Relative share of MapGenerationSettings.complexCount, not an absolute instance count.
         [Min(0)] public int count = 1;
         [Min(1)] public int placementAttempts = 64;
@@ -29,7 +31,7 @@ namespace Game.Terrain
 
         public bool IsValid()
         {
-            if (string.IsNullOrEmpty(terrainName) || parts == null || parts.Length < 2
+            if (string.IsNullOrEmpty(terrainName) || parts == null || parts.Length < 1
                 || parts.Length > 3 || allowedTerrainNames == null || allowedTerrainNames.Length == 0)
                 return false;
             var offsets = new HashSet<HexCoord>();

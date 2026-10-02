@@ -479,11 +479,12 @@ MonoBehaviour:
       blocksGroundMovement: 1
       defenseModifier: 0
     complexes:
-    - name: Arid acid lake pair
+    - name: Arid acid lake single hex
       terrainName: Acid lake
+      useInGeneration: 1
       count: 2
       placementAttempts: 64
-      framesPerSecond: 2
+      framesPerSecond: 6.25
       allowedTerrainNames:
       - Desert
       - Sand dunes
@@ -498,17 +499,9 @@ MonoBehaviour:
         - {fileID: 2800000, guid: e52656ec5c2245a69feb54b6a540401e, type: 3}
         - {fileID: 2800000, guid: 9d172f1d69f34b78ac2c0a5131154681, type: 3}
         - {fileID: 2800000, guid: e85d2043d42d4b779f2192b3def4c27a, type: 3}
-      - offset: {x: 1, y: 0}
-        frames:
-        - {fileID: 2800000, guid: 5a35c2f861264f2b9dd8c65ce82b41c1, type: 3}
-        - {fileID: 2800000, guid: 5ccef136b5a644d1a304086bb8f374a4, type: 3}
-        - {fileID: 2800000, guid: 6cdca38e57684bfaa8ed16663007be05, type: 3}
-        - {fileID: 2800000, guid: 80f0d45cb2d141d197d13cf2a79a39f8, type: 3}
-        - {fileID: 2800000, guid: 4001ee01f3124d2d88b61a041d719b48, type: 3}
-        - {fileID: 2800000, guid: 6e05da35487a4d189809d8c6af0f3fa4, type: 3}
-        - {fileID: 2800000, guid: 4363a742220240319e3130fb1b934fbc, type: 3}
     - name: Arid canyon snake
       terrainName: Deep canyon
+      useInGeneration: 1
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
@@ -528,6 +521,7 @@ MonoBehaviour:
         - {fileID: 2800000, guid: 09be4da248f94e7b9b507c4d3fbe9a66, type: 3}
     - name: AridSteppe Boiling mud field
       terrainName: Boiling mud field
+      useInGeneration: 1
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
@@ -545,17 +539,9 @@ MonoBehaviour:
         - {fileID: 2800000, guid: fe50939d6cac494d975fc38c324bda08, type: 3}
         - {fileID: 2800000, guid: 0035d98d54df422a88012e7c18be63ab, type: 3}
         - {fileID: 2800000, guid: 3eeaeebc8557475b83ffc7038787adf3, type: 3}
-      - offset: {x: 1, y: 0}
-        frames:
-        - {fileID: 2800000, guid: 5ce87112f57e42238ef566db984ff5c5, type: 3}
-        - {fileID: 2800000, guid: 0a58cbe1fa8c4cce970a729b96b8cc7b, type: 3}
-        - {fileID: 2800000, guid: da3720ebe62e428aaaf76b504fddaefe, type: 3}
-        - {fileID: 2800000, guid: 047a6ca03adc4d8c8fae7965a9061ecd, type: 3}
-        - {fileID: 2800000, guid: f095247e6c254145a7241438376a6f0b, type: 3}
-        - {fileID: 2800000, guid: 60cbe196f81a49bb88622f8c3964b926, type: 3}
-        - {fileID: 2800000, guid: d4bacb434eea4ea6ab80c5a75f545afd, type: 3}
     - name: AridSteppe Giant machine wreck
       terrainName: Giant machine wreck
+      useInGeneration: 1
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
@@ -570,9 +556,6 @@ MonoBehaviour:
       - offset: {x: 1, y: 0}
         frames:
         - {fileID: 2800000, guid: 5d537ca6f938454fb9a67570316e88f2, type: 3}
-      - offset: {x: 2, y: 0}
-        frames:
-        - {fileID: 2800000, guid: fc094a5cf18546cbaccc4333dd72c9f9, type: 3}
     complexCount: 0
     mountainsTerrainName: Mountains
     mountainRangeCount: 3
@@ -711,11 +694,12 @@ MonoBehaviour:
         blocksGroundMovement: 1
         defenseModifier: 0
       complexes:
-      - name: Acid lake pair
+      - name: Acid lake single hex
         terrainName: Acid lake
+        useInGeneration: 1
         count: 2
         placementAttempts: 64
-        framesPerSecond: 3
+        framesPerSecond: 6.25
         allowedTerrainNames:
         - Desert
         - Sand dunes
@@ -730,17 +714,9 @@ MonoBehaviour:
           - {fileID: 2800000, guid: ef23a7265c8f58e6beeaf02ec856da96, type: 3}
           - {fileID: 2800000, guid: 123a640688eb51e4ab51afcc2c7a8246, type: 3}
           - {fileID: 2800000, guid: 895acce0bd2d5a85be6acaed713ab69d, type: 3}
-        - offset: {x: 1, y: 0}
-          frames:
-          - {fileID: 2800000, guid: fe2eb6bcc34453988f017e8c93dc786c, type: 3}
-          - {fileID: 2800000, guid: 73172c9195855a8981ab6788d6813d28, type: 3}
-          - {fileID: 2800000, guid: 8c76ff6d2f895875ae92be90a3d2a42d, type: 3}
-          - {fileID: 2800000, guid: 292be4285a9558fa99c58f7aaaf4d8b2, type: 3}
-          - {fileID: 2800000, guid: 0928f271467f596bb6988249840acb7b, type: 3}
-          - {fileID: 2800000, guid: 35b67812a6dc505d8e3deee892ccad35, type: 3}
-          - {fileID: 2800000, guid: 083c3727c842518a9e05402a77fd03c3, type: 3}
       - name: Canyon snake
         terrainName: Deep canyon
+        useInGeneration: 1
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
@@ -760,6 +736,7 @@ MonoBehaviour:
           - {fileID: 2800000, guid: a82257277d2f52bebdee123439bd0de7, type: 3}
       - name: Desert Boiling mud field
         terrainName: Boiling mud field
+        useInGeneration: 1
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
@@ -777,17 +754,9 @@ MonoBehaviour:
           - {fileID: 2800000, guid: b631feff22bc444684bce4956664eb12, type: 3}
           - {fileID: 2800000, guid: c7a23af71157403ca5c758d26138785d, type: 3}
           - {fileID: 2800000, guid: e1d653c978fb44cfb72c99cc06e07592, type: 3}
-        - offset: {x: 1, y: 0}
-          frames:
-          - {fileID: 2800000, guid: 3c4b3a2022274e689df503a3a97b6e73, type: 3}
-          - {fileID: 2800000, guid: 915da7e382c4404ca23ce5a4240fbd52, type: 3}
-          - {fileID: 2800000, guid: 089954592f524690b2fa16fe68ed2dde, type: 3}
-          - {fileID: 2800000, guid: 975983ff78a9450d81c706df04821a83, type: 3}
-          - {fileID: 2800000, guid: 9eb8a0e1b98b4750985219785b6dadc3, type: 3}
-          - {fileID: 2800000, guid: 1ed3c9c54e494996993d583211f14818, type: 3}
-          - {fileID: 2800000, guid: 1849a6bba64043d79aace413a142a522, type: 3}
       - name: Desert Giant machine wreck
         terrainName: Giant machine wreck
+        useInGeneration: 1
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
@@ -802,9 +771,6 @@ MonoBehaviour:
         - offset: {x: 1, y: 0}
           frames:
           - {fileID: 2800000, guid: 91f74070667640dfbbb3f9b054616d8d, type: 3}
-        - offset: {x: 2, y: 0}
-          frames:
-          - {fileID: 2800000, guid: fab7107b340e4c48aa79f6a69f625324, type: 3}
       mountainsTerrainName: Mountains
       mountainRangeCount: 3
       mountainRangeLength: 2
@@ -854,3 +820,4 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
+

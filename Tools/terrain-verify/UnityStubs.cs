@@ -45,6 +45,7 @@ namespace UnityEngine
     public static class Time { public static double timeAsDouble; public static float deltaTime=1f/60; }
     public static class Application { public static bool isPlaying; }
     public class SerializeField:Attribute{} public class RequireComponent:Attribute{public RequireComponent(params Type[] t){}}
+    public class TooltipAttribute:Attribute{public TooltipAttribute(string n){}}
     public class HeaderAttribute:Attribute{public HeaderAttribute(string n){}}
     public class MinAttribute:Attribute{public MinAttribute(float n){}} public class RangeAttribute:Attribute{public RangeAttribute(float a,float b){}}
 }
@@ -98,3 +99,4 @@ namespace Game.Ai
 
 namespace Game.Ai.V2 {}
 namespace Game.Combat {}
+

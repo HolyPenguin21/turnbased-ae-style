@@ -4,6 +4,8 @@ NOT a Unity screenshot: does not emulate URP colour space, camera tilt, fog or m
 from pathlib import Path
 import math
 import argparse
+import re
+import yaml
 import numpy as np
 from PIL import Image, ImageDraw
 ROOT=Path(__file__).resolve().parents[2]
@@ -14,6 +16,15 @@ args=parser.parse_args()
 TEX=ROOT/'Assets/Textures/Terrain'/args.biome
 OUT=ROOT/'Docs/terrain-complexes'
 OUT.mkdir(parents=True,exist_ok=True)
+
+raw=(ROOT/'Assets/Config/GameConfig.asset').read_text()
+settings=yaml.safe_load('\n'.join(line for line in raw.splitlines() if not line.startswith(('%','---'))))['MonoBehaviour']['mapGeneration']
+palette=settings if args.biome=='AridSteppe' else settings['desertOverride']
+names={'AcidLake':'Acid lake','Canyon':'Deep canyon','BoilingMud':'Boiling mud field','GiantMachineWreck':'Giant machine wreck'}
+templates={family:next(t for t in palette['complexes'] if t['terrainName']==name) for family,name in names.items()}
+guids={re.search(r'^guid: ([0-9a-f]+)$',meta.read_text(),re.M)[1]:Path(str(meta)[:-5]).relative_to(TEX).as_posix() for meta in TEX.rglob('*.png.meta')}
+def configured_parts(family,frame=0):
+    return {(part['offset']['x'],part['offset']['y']):(guids[part['frames'][frame]['guid']],0) for part in templates[family]['parts']}
 
 def render(parts,name):
     coords=[(q,r) for q in range(-3,4) for r in range(-3,4) if abs(q+r)<=3]
@@ -38,8 +49,8 @@ def render(parts,name):
     result=Image.fromarray(np.clip(rgb,0,255).astype('uint8'))
     if name is not None: result.save(OUT/(args.biome.lower()+'-'+name))
     return result
-if args.group in (None, 'AcidLake'): render({(0,0):('Complexes/AcidLake_Part1_00.png',0),(1,0):('Complexes/AcidLake_Part2_00.png',0)},'lake-offline-diagnostic.png')
-if args.group in (None, 'Canyon'): render({(0,-1):('Complexes/Canyon_Part1.png',0),(1,-1):('Complexes/Canyon_Part2.png',0),(1,0):('Complexes/Canyon_Part3.png',0)},'canyon-offline-diagnostic.png')
+if args.group in (None, 'AcidLake'): render(configured_parts('AcidLake'),'lake-offline-diagnostic.png')
+if args.group in (None, 'Canyon'): render(configured_parts('Canyon'),'canyon-offline-diagnostic.png')
 
 for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
     if args.group not in (None, family): continue
@@ -47,11 +58,12 @@ for family, label in [('AcidLake', 'lake'), ('BoilingMud', 'mud')]:
     sheet=Image.new('RGB', (1320, 708), (30,30,30))
     draw=ImageDraw.Draw(sheet)
     for frame in range(7):
-        image=render({(0,0):(f'Complexes/{family}_Part1_{frame:02}.png',0),(1,0):(f'Complexes/{family}_Part2_{frame:02}.png',0)},f'{label}-frame-00-offline.png' if frame == 0 else None)
+        image=render(configured_parts(family,frame),f'{label}-frame-00-offline.png' if frame == 0 else None)
         frames.append(image)
         x=(frame%4)*330; y=(frame//4)*354
         sheet.paste(image.resize((330,330),Image.Resampling.LANCZOS),(x,y))
         draw.text((x+8,y+334),f'{args.biome} {family} frame {frame:02} (offline)',fill=(240,240,240))
-    frames[0].save(OUT/(args.biome.lower()+f'-{label}-offline-animation.gif'),save_all=True,append_images=frames[1:],duration=333,loop=0)
+    frames[0].save(OUT/(args.biome.lower()+f'-{label}-offline-animation.gif'),save_all=True,append_images=frames[1:],duration=round(1000/templates[family]['framesPerSecond']),loop=0)
     sheet.save(OUT/(args.biome.lower()+f'-{label}-all-frames-offline.png'),optimize=True)
-if args.group in (None, 'GiantMachineWreck'): render({(-1,0):('Complexes/GiantMachineWreck_Part1.png',0),(0,0):('Complexes/GiantMachineWreck_Part2.png',0),(1,0):('Complexes/GiantMachineWreck_Part3.png',0)},'wreck-offline-diagnostic.png')
+if args.group in (None, 'GiantMachineWreck'): render(configured_parts('GiantMachineWreck'),'wreck-offline-diagnostic.png')
+

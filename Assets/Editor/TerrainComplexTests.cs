@@ -155,6 +155,43 @@ namespace Game.EditorTests
             Assert.That(cells.Length, Is.EqualTo(2));
             Assert.That(data.Values.All(x => x == 0), Is.True);
         }
+        [Test] public void SingleHexAcceptedWithoutChangingAssignment()
+        {
+            var template = Template(new Vector2Int(0, 0));
+            var data = Assignment();
+            Assert.That(template.useInGeneration, Is.True);
+            Assert.That(Validate(template, new HexCoord(1, -1), data,
+                new HashSet<HexCoord>(), null, out var cells), Is.True);
+            Assert.That(cells, Is.EqualTo(new[] { new HexCoord(1, -1) }));
+            Assert.That(data.Values.All(x => x == 0), Is.True);
+        }
+        [Test] public void DisabledTemplateRemainsStructurallyValidButCannotBePlaced()
+        {
+            var template = Template(new Vector2Int(0, 0));
+            template.useInGeneration = false;
+            var data = Assignment();
+            Assert.That(template.IsValid(), Is.True);
+            Assert.That(Validate(template, _origin, data, new HashSet<HexCoord>(), null, out var cells), Is.False);
+            Assert.That(cells, Is.Null);
+            Assert.That(data.Values.All(x => x == 0), Is.True);
+        }
+        [Test] public void SingleHexStillRejectsProtectedCellsAndBrokenConnectivity()
+        {
+            var template = Template(new Vector2Int(0, 0));
+            Assert.That(Validate(template, _origin, Assignment(), new HashSet<HexCoord>(),
+                h => h.Equals(_origin), out _), Is.False);
+            var bridge = new Dictionary<HexCoord, int>
+            {
+                [new HexCoord(-1, 0)] = 0, [_origin] = 0, [new HexCoord(1, 0)] = 0,
+            };
+            Assert.That(Validate(template, _origin, bridge, new HashSet<HexCoord>(), null, out _), Is.False);
+        }
+        [Test] public void EmptyAndOversizedFootprintsRemainInvalid()
+        {
+            Assert.That(Template().IsValid(), Is.False);
+            Assert.That(Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(2, 0),
+                new Vector2Int(3, 0)).IsValid(), Is.False);
+        }
         [Test] public void OutOfMapPairRejectedAtomically()
         {
             var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0)); var data = Assignment();
@@ -231,6 +268,30 @@ namespace Game.EditorTests
             foreach (var material in materials) UnityEngine.Object.DestroyImmediate(material);
             foreach (var frame in frames) UnityEngine.Object.DestroyImmediate(frame);
         }
+        [Test] public void SingleHexBubbleAnimationUsesOneMaterialAndLoops()
+        {
+            var frames = Enumerable.Range(0, 7).Select(i => new Texture2D(2, 2)).ToArray();
+            var material = new Material(Shader.Find("Custom/HexBlend"));
+            try
+            {
+                var animator = _object.AddComponent<MapTerrainAnimator>();
+                int version = _map.PathingVersion;
+                animator.Configure(new[] { new MapTerrainAnimator.Group
+                {
+                    Materials = new[] { material }, Frames = new[] { frames }, FramesPerSecond = 6.25f,
+                } });
+                animator.ApplyAtTime(.32);
+                Assert.That(material.mainTexture, Is.SameAs(frames[2]));
+                animator.ApplyAtTime(7.0 / 6.25);
+                Assert.That(material.mainTexture, Is.SameAs(frames[0]));
+                Assert.That(_map.PathingVersion, Is.EqualTo(version));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(material);
+                foreach (var frame in frames) UnityEngine.Object.DestroyImmediate(frame);
+            }
+        }
         [Test] public void GroundRouteCacheInvalidatesWhenTerrainChanges()
         {
             var owner = new PlayerSetupData(); var start = new HexCoord(-1, 0); var target = new HexCoord(1, 0);
@@ -273,7 +334,9 @@ namespace Game.EditorTests
                     foreach (var template in palette.complexes)
                     {
                         Assert.That(template.IsValid(), Is.True);
-                        Assert.That(template.parts.Length, Is.EqualTo(template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field" ? 2 : 3));
+                        int expectedParts = template.terrainName == "Deep canyon" ? 3
+                            : template.terrainName == "Giant machine wreck" ? 2 : 1;
+                        Assert.That(template.parts.Length, Is.EqualTo(expectedParts));
                         Assert.That(template.count, Is.EqualTo(template.terrainName == "Acid lake" ? 2 : 1));
                         Assert.That(template.allowedTerrainNames.All(n => palette.terrainTypes.Any(t => t.terrainName == n && !t.blocksGroundMovement)), Is.True);
                         Assert.That(template.parts.All(p => p.frames.Length == ((template.terrainName == "Acid lake" || template.terrainName == "Boiling mud field") ? 7 : 1)), Is.True);
@@ -312,6 +375,57 @@ namespace Game.EditorTests
             {
                 config.mapGeneration.complexCount = configuredComplexCount;
                 UnityEngine.Random.state = randomState;
+            }
+        }
+        [Test] public void DisabledComplexesAreExcludedBeforeAllocationInBothBiomes()
+        {
+            var source = UnityEditor.AssetDatabase.LoadAssetAtPath<Game.Core.GameConfig>("Assets/Config/GameConfig.asset");
+            var config = UnityEngine.Object.Instantiate(source);
+            BuildingRegistry.Clear(); ArmyRegistry.Clear(); HexEventRegistry.Clear(); HexResourceBonusRegistry.Clear();
+            var generator = _object.AddComponent<HexMapGenerator>();
+            Type type = typeof(HexMapGenerator);
+            type.GetField("gameConfig", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config);
+            var randomState = UnityEngine.Random.state;
+            try
+            {
+                config.mapGeneration.complexCount = 5;
+                foreach (Biome biome in new[] { Biome.Arid, Biome.Desert })
+                {
+                    var palette = config.mapGeneration.ResolveBiome(biome);
+                    type.GetField("_activeBiome", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, palette);
+                    int desert = palette.terrainTypes.FindIndex(t => t.terrainName == "Desert");
+                    var coords = HexGridMath.HexesInRange(_origin, (int)MapSize.Huge).ToList();
+                    // Enable only one template at a time: disabled shares must not consume the total.
+                    foreach (var enabled in palette.complexes)
+                    {
+                        foreach (var template in palette.complexes) template.useInGeneration = template == enabled;
+                        UnityEngine.Random.InitState(11);
+                        var assignment = coords.ToDictionary(h => h, h => desert);
+                        var placed = (IList)type.GetMethod("PlaceComplexes", BindingFlags.NonPublic | BindingFlags.Instance)
+                            .Invoke(generator, new object[] { coords, assignment });
+                        Assert.That(placed.Count, Is.EqualTo(5));
+                        foreach (object complex in placed)
+                            Assert.That(complex.GetType().GetField("Template").GetValue(complex), Is.SameAs(enabled));
+                    }
+                    foreach (var template in palette.complexes) template.useInGeneration = false;
+                    var untouched = coords.ToDictionary(h => h, h => desert);
+                    var before = new Dictionary<HexCoord, int>(untouched);
+                    var none = (IList)type.GetMethod("PlaceComplexes", BindingFlags.NonPublic | BindingFlags.Instance)
+                        .Invoke(generator, new object[] { coords, untouched });
+                    Assert.That(none.Count, Is.Zero);
+                    Assert.That(untouched, Is.EquivalentTo(before));
+                    // Dedicated complex types stay out of ordinary fill even with nonzero weight.
+                    foreach (var template in palette.complexes)
+                        palette.terrainTypes.Single(t => t.terrainName == template.terrainName).baselineWeight = 100;
+                    var baseline = (Dictionary<HexCoord, int>)type.GetMethod("AssignTerrainTypes", BindingFlags.NonPublic | BindingFlags.Instance)
+                        .Invoke(generator, new object[] { coords });
+                    Assert.That(baseline.Values.All(i => !palette.complexes.Any(t => t.terrainName == palette.terrainTypes[i].terrainName)), Is.True);
+                }
+            }
+            finally
+            {
+                UnityEngine.Random.state = randomState;
+                UnityEngine.Object.DestroyImmediate(config);
             }
         }
         [Test] public void ZeroComplexCountPlacesNoComplexes()

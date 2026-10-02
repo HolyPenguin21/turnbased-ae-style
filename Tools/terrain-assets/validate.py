@@ -17,7 +17,7 @@ for meta in (ROOT/'Assets').rglob('*.meta'):
     if match:
         assert match[1] not in guids, f'Duplicate GUID: {meta}'
         guids[match[1]]=Path(str(meta)[:-5])
-expected={'Acid lake':(2,2,7),'Deep canyon':(1,3,1),'Boiling mud field':(1,2,7),'Giant machine wreck':(1,3,1)}
+expected={'Acid lake':(2,1,7),'Deep canyon':(1,3,1),'Boiling mud field':(1,1,7),'Giant machine wreck':(1,2,1)}
 for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]:
     terrain={t['terrainName']:t for t in palette['terrainTypes']}
     assert not terrain['Mountains'].get('blocksGroundMovement',0)
@@ -25,7 +25,8 @@ for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]
     for template in palette['complexes']:
         count,parts,frames=expected[template['terrainName']]
         assert template['count']==count and len(template['parts'])==parts
-        assert template['rotations']==int('000000000100000002000000030000000400000005000000',8)
+        assert template['useInGeneration'] in (0, 1)
+        assert 'rotations' not in template
         assert set(template['allowedTerrainNames'])=={'Desert','Sand dunes','Rock desert'}
         assert all(not terrain[n].get('blocksGroundMovement',0) for n in template['allowedTerrainNames'])
         entry=terrain[template['terrainName']]
@@ -39,7 +40,10 @@ for biome,palette in [('AridSteppe',config),('Desert',config['desertOverride'])]
             for frame in part['frames']:
                 path=guids[frame['guid']]
                 assert path.is_relative_to(ROOT/'Assets/Textures/Terrain'/biome/'Complexes')
-                image=Image.open(path);image.load();assert image.size==(512,512)
+                image=Image.open(path);image.verify()
+                image=Image.open(path);image.load()
+                assert image.width==image.height and image.width>=512
+                if template['terrainName'] != 'Deep canyon': assert image.size==(512,512)
     print(f'{biome}: 4 templates, GUIDs, palette, frames, yields and passability valid')
 print('Authored asset checks passed; Unity generation/render checks are separate.')
 if args.normalization_base:
@@ -62,3 +66,4 @@ if args.normalization_base:
     changed=subprocess.check_output(['git','diff',base,'--name-only','--','Assets'],cwd=ROOT,text=True).splitlines()
     assert set(changed)<=allowed, f'Unexpected asset/config/meta changes: {sorted(set(changed)-allowed)}'
     print(f'Normalization integrity: {len(paths)}/68 dimensions, modes and alpha unchanged; config/GUIDs/other assets unchanged.')
+

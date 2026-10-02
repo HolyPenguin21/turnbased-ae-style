@@ -1,3 +1,17 @@
+## Current generation layout
+
+See `Docs/terrain-complexes/generation-options-and-footprints.md` for the current configuration:
+AcidLake and BoilingMud are single hexes, Wreck has two hexes, and Canyon has three.
+Each biome template has `Use In Generation`; `Complex Count = 0` still disables all.
+AcidLake uses imported, closed-shore bubble animation at 6.25 FPS. Mud and wreck art is
+provisional pending replacement. `preview.py` reads the actual configured footprint.
+
+The atlas extraction and normalization history below describes the former multi-hex
+sources. `extract.py` refuses those obsolete footprints before writing any textures;
+do not run legacy extraction to recreate the imported single-hex lake. The
+`--normalization-base` option checks historical palette-only edits, not this footprint
+and asset replacement change.
+
 `Sources/` contains the selected imagegen artwork, generated against the project's original
 `Desert_01.png`. Seven lake phase panels form a 3×3 source atlas (last two unused); the canyon
 uses one continuous square source. Art direction: flat top-down sandy beige, subdued olive water,
@@ -88,3 +102,4 @@ python Tools/terrain-assets/validate.py --normalization-base c3d52f46ad99cc06f47
 This verifies unchanged dimensions, image modes and alpha for 68 PNGs, and rejects other
 asset/config/GUID changes. Normalization workflows restore source PNGs from this base before
 processing, avoiding cumulative correction. Offline acceptance is separate from Unity rendering.
+

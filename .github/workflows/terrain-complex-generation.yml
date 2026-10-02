@@ -1,0 +1,36 @@
+name: Terrain complex generation
+on:
+  push:
+    branches: [feat/terrain-complex-generation-options]
+  pull_request:
+    paths:
+      - Assets/Scripts/Terrain/**
+      - Assets/Scripts/Tools/HexMapGenerator.cs
+      - Assets/Scripts/Map/MapTerrainAnimator.cs
+      - Assets/Editor/TerrainComplexTests.cs
+      - Assets/Config/GameConfig.asset
+      - Assets/Textures/Terrain/**/Complexes/**
+      - Tools/terrain-verify/**
+      - Tools/terrain-assets/validate*.py
+      - .github/workflows/terrain-complex-generation.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  terrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pillow numpy pyyaml
+      - name: Test actual terrain algorithms with managed Unity stubs
+        run: dotnet run --project Tools/terrain-verify/TerrainVerify.csproj
+      - name: Validate configured templates and referenced assets
+        run: python Tools/terrain-assets/validate.py
+      - name: Validate closed acid shores and localized animation
+        run: python Tools/terrain-assets/validate_lake_shores.py
