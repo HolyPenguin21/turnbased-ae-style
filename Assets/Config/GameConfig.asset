@@ -484,6 +484,9 @@ MonoBehaviour:
       useInGeneration: 1
       count: 2
       placementAttempts: 64
+      exclusiveGroup: 
+      minCenterFraction: 0
+      maxCenterFraction: 1
       framesPerSecond: 6.25
       allowedTerrainNames:
       - Desert
@@ -527,6 +530,9 @@ MonoBehaviour:
       useInGeneration: 1
       count: 1
       placementAttempts: 64
+      exclusiveGroup: 
+      minCenterFraction: 0
+      maxCenterFraction: 1
       framesPerSecond: 3
       allowedTerrainNames:
       - Desert
@@ -562,9 +568,10 @@ MonoBehaviour:
       - offset: {x: 1, y: 0}
         frames:
         - {fileID: 2800000, guid: 5d537ca6f938454fb9a67570316e88f2, type: 3}
-    complexCount: 0
+    complexCount: 3
+    impassableEdgeMarginRings: 2
     mountainsTerrainName: Mountains
-    mountainRangeCount: 3
+    mountainRangeCount: 2
     mountainRangeLength: 2
     borderDepthFraction: 0.5
     borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
@@ -705,6 +712,9 @@ MonoBehaviour:
         useInGeneration: 1
         count: 2
         placementAttempts: 64
+        exclusiveGroup: 
+        minCenterFraction: 0
+        maxCenterFraction: 1
         framesPerSecond: 6.25
         allowedTerrainNames:
         - Desert
@@ -748,6 +758,9 @@ MonoBehaviour:
         useInGeneration: 1
         count: 1
         placementAttempts: 64
+        exclusiveGroup: 
+        minCenterFraction: 0
+        maxCenterFraction: 1
         framesPerSecond: 3
         allowedTerrainNames:
         - Desert
@@ -832,4 +845,3 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
-
