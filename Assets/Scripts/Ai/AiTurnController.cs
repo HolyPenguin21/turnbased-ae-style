@@ -641,7 +641,13 @@ namespace Game.Ai
                     || (map.TryGetTerrainAt(hex, out TerrainTypeEntry stepEntry)
                         && Mathf.Max(1, stepEntry.moveCost) > maxMovement);
             }
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: effectiveBlock, flatCost: isAirArmy);
+            // Ground: the fastest route in TURNS from the mover's real movement left (a step the
+            // army cannot pay waits for the next turn), not merely the cheapest by total cost.
+            HexPath path = isAirArmy
+                ? HexPathfinder.FindPath(map, army.Hex, destination, blockHex: effectiveBlock, flatCost: true)
+                : HexPathfinder.FindPathByTurns(map, army.Hex, destination,
+                    projectedCurrentMovement ?? army.CurrentMovement,
+                    projectedMaxMovement ?? army.MaxMovement, effectiveBlock);
             if (path == null || path.Hexes.Count < 2)
                 return null;
             HexCoord step = path.Hexes[1];

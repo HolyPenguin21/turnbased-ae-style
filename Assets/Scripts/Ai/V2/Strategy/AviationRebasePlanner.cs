@@ -29,6 +29,10 @@ namespace Game.Ai.V2
         public int EnergyCost;
         public string SourceWitness;
         public string DestinationWitness;
+        // Project owner, 2026-10-02: Recon may form a wing out of stored aircraft. Forming is free
+        // (AviationActions.TryLaunch: "forming a stack is not a take-off"); the sortie itself is
+        // still admitted and paid by the ordinary Recon funding. Source == Destination.
+        public bool FormOnly;
     }
 
     internal static class AviationRebasePlanner
@@ -75,6 +79,103 @@ namespace Game.Ai.V2
                     result.Add(army);
             }
             return result.Distinct().OrderBy(a => a.Id).ToList();
+        }
+
+        // A stored aircraft cannot fly a sweep: Recon binds only already FORMED wings and
+        // LaunchRoutine used to be reachable only through a Rebase, so aircraft parked in an airfield
+        // that no better airfield outranked never flew (2026-10-02 playtest: Korrin's Wasp sat in
+        // its home airfield from T6 to T17 while every AirSweep failed NoExecutableStep). This
+        // proposes forming ONE wing from storage when the canonical service projection proves a
+        // sweep from this very airfield (BestAirfieldServiceTaskScore: route, endurance, launch rule
+        // and the sortie's own AP/Energy price already folded into the value) and the sortie is
+        // affordable from SPENDABLE resources — the same bank view that protects card play and the
+        // hand refill. Capped by the wings that already exist and the serviceable sweeps.
+        internal static AviationRebasePlan BuildFormationPlan(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives)
+        {
+            if (player == null || root == null || ctx?.Map == null || objectives == null
+                || objectives.Count == 0)
+                return null;
+            int serviceable = objectives.Count(ReconAirCapacityPolicy.IsAirServiceable);
+            if (serviceable == 0)
+                return null;
+            ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
+            int formed = detail.AirborneWings.Count + detail.SpareCandidatesInOrder.Count;
+            if (formed >= Mathf.Min(ReconAirCapacityPolicy.MaxAirReconActorsPerTurn, serviceable))
+                return null;
+
+            AviationRebasePlan best = null;
+            foreach (ArmyData source in ArmyRegistry.AllForOwner(player)
+                .Where(AviationRules.IsAirfield)
+                .OrderBy(a => a.Hex.Q).ThenBy(a => a.Hex.R))
+            {
+                foreach (UnitData aircraft in source.Members
+                    .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId))
+                {
+                    IReadOnlyList<UnitData> group = new[] { aircraft };
+                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
+                        continue;
+                    int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
+                    int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+                    if (ap > StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    if (energy > StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
+                        + AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    TaskScore service = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
+                        snap, player, ctx, group, source.Hex, objectives, out int coverage, out string witness);
+                    if (coverage <= 0 || service.Value <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    if (best != null && service.Value <= best.Utility + AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    best = new AviationRebasePlan
+                    {
+                        SourceHex = source.Hex,
+                        DestinationHex = source.Hex,
+                        Aircraft = group,
+                        Score = service,
+                        ActivationAp = 0,
+                        EnergyCost = 0,
+                        SourceWitness = "stored",
+                        DestinationWitness = witness,
+                        FormOnly = true,
+                    };
+                }
+            }
+            return best;
+        }
+
+        private static IEnumerator ExecuteFormation(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, AviationRebasePlan plan, System.Action<bool> setChanged)
+        {
+            ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
+            if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u)))
+                yield break;
+            // Re-proved against the live bank: the flight this wing exists for must still be payable.
+            int ap = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
+            int energy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+            if (!AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft)
+                || ap > StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon
+                || energy > StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
+                    + AiConfigV2.allocatorSliceEpsilon)
+            {
+                AiDebugLog.Write("[AI][V2][Aviation][FormWing] cancelled — AP/Energy held by the resource bank");
+                yield break;
+            }
+            bool formed = AviationActions.TryLaunch(source, plan.Aircraft.ToList(),
+                ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection,
+                out ArmyData wing, out string why);
+            if (!formed || wing == null)
+            {
+                AiDebugLog.Write($"[AI][V2][Aviation][FormWing] failed — {why}");
+                yield break;
+            }
+            AiDebugLog.Write($"[AI][V2][Aviation][FormWing] {player.Nickname}: \"{wing.Name}\" formed from "
+                + $"{plan.Aircraft.Count} stored aircraft at ({plan.SourceHex.Q},{plan.SourceHex.R}) "
+                + $"service={plan.Score.Value:0.00} witness={plan.DestinationWitness ?? "none"} "
+                + $"(sortie price ap {ap} energy {energy} is paid by Recon funding, not here)");
+            setChanged?.Invoke(true);
+            yield return AiTurnController.WaitStep(ctx);
         }
 
         internal static AviationRebasePlan BuildPlan(WorldSnapshot snap, PlayerSetupData player,
@@ -162,6 +263,11 @@ namespace Game.Ai.V2
             if (plan?.Aircraft == null || plan.Aircraft.Count == 0 || player == null
                 || root == null || ctx?.Map == null)
                 yield break;
+            if (plan.FormOnly)
+            {
+                yield return ExecuteFormation(player, root, ctx, plan, setChanged);
+                yield break;
+            }
             ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
                 || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft))

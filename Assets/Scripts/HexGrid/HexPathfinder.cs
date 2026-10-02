@@ -196,6 +196,145 @@ namespace Game.HexGrid
             return new HexPath(hexes, realCost);
         }
 
+        // Turn-aware ground route (project owner, 2026-10-02: a 2-movement army crawled one hex per
+        // turn over cost-2 terrain). A ground army pays hexes out of a per-turn budget and CANNOT
+        // enter a hex costing more than what is left, so the cheapest route by total cost is not
+        // the fastest: [1,2,1,1,2,1] wastes a point whenever a 2 follows a 1. This search runs over
+        // (hex, movement left) states and minimises TURNS first, then total cost, then the same
+        // destination-line straightness as FindPath. A forced wait costs one extra cost point so a
+        // route that can step now beats an equal-turn route that has to wait first.
+        public static HexPath FindPathByTurns(HexMap map, HexCoord start, HexCoord destination,
+            int currentMovement, int maxMovement, Func<HexCoord, bool> blockHex = null)
+        {
+            if (map == null || maxMovement <= 0 || !map.CanEnter(start) || !map.CanEnter(destination))
+                return null;
+            if (start.Equals(destination))
+                return new HexPath(new List<HexCoord> { start }, 0);
+            currentMovement = Mathf.Clamp(currentMovement, 0, maxMovement);
+
+            Vector3 startPlane = HexGridMath.AxialToWorld(start.Q, start.R, 1f);
+            Vector3 lineDir = HexGridMath.AxialToWorld(destination.Q, destination.R, 1f) - startPlane;
+            float lineLen = lineDir.magnitude;
+            float OffsetFromLine(HexCoord h)
+            {
+                if (lineLen < 1e-4f)
+                    return 0f;
+                Vector3 p = HexGridMath.AxialToWorld(h.Q, h.R, 1f) - startPlane;
+                return Mathf.Abs(p.x * lineDir.z - p.z * lineDir.x) / lineLen;
+            }
+
+            var best = new Dictionary<(HexCoord, int), TurnLabel>();
+            var cameFrom = new Dictionary<(HexCoord, int), (HexCoord, int)>();
+            var open = new SortedSet<TurnNode>(TurnNodeComparer.Instance);
+            long order = 0;
+            var origin = (start, currentMovement);
+            best[origin] = new TurnLabel(0, 0, 0f);
+            open.Add(new TurnNode(best[origin], order++, start, currentMovement));
+            (HexCoord, int)? goal = null;
+
+            while (open.Count > 0)
+            {
+                TurnNode node = open.Min;
+                open.Remove(node);
+                var key = (node.Hex, node.Left);
+                if (best.TryGetValue(key, out TurnLabel known) && TurnNodeComparer.Compare(known, node.Label) < 0)
+                    continue;
+                if (node.Hex.Equals(destination))
+                {
+                    goal = key;
+                    break;
+                }
+                foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+                {
+                    var next = new HexCoord(node.Hex.Q + dq, node.Hex.R + dr);
+                    if (!map.CanEnter(next) || !map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
+                        continue;
+                    if (blockHex != null && blockHex(next))
+                        continue;
+                    int step = Mathf.Max(1, entry.moveCost);
+                    if (step > maxMovement)
+                        continue;
+                    int turns = node.Label.Turns;
+                    int cost = node.Label.Cost + step;
+                    int left = node.Left - step;
+                    if (left < 0)
+                    {
+                        turns++;
+                        cost++; // the forced wait
+                        left = maxMovement - step;
+                    }
+                    var label = new TurnLabel(turns, cost, node.Label.Straightness + OffsetFromLine(next));
+                    var nextKey = (next, left);
+                    if (best.TryGetValue(nextKey, out TurnLabel old) && TurnNodeComparer.Compare(old, label) <= 0)
+                        continue;
+                    best[nextKey] = label;
+                    cameFrom[nextKey] = key;
+                    open.Add(new TurnNode(label, order++, next, left));
+                }
+            }
+
+            if (!goal.HasValue)
+                return null;
+            var hexes = new List<HexCoord>();
+            (HexCoord, int) walk = goal.Value;
+            hexes.Add(walk.Item1);
+            while (!walk.Equals(origin))
+            {
+                walk = cameFrom[walk];
+                hexes.Add(walk.Item1);
+            }
+            hexes.Reverse();
+            int realCost = 0;
+            for (int i = 1; i < hexes.Count; i++)
+            {
+                map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
+                realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
+            }
+            return new HexPath(hexes, realCost);
+        }
+
+        private readonly struct TurnLabel
+        {
+            public readonly int Turns;
+            public readonly int Cost;
+            public readonly float Straightness;
+            public TurnLabel(int turns, int cost, float straightness)
+            {
+                Turns = turns; Cost = cost; Straightness = straightness;
+            }
+        }
+
+        private readonly struct TurnNode
+        {
+            public readonly TurnLabel Label;
+            public readonly long Order;
+            public readonly HexCoord Hex;
+            public readonly int Left;
+            public TurnNode(TurnLabel label, long order, HexCoord hex, int left)
+            {
+                Label = label; Order = order; Hex = hex; Left = left;
+            }
+        }
+
+        private sealed class TurnNodeComparer : IComparer<TurnNode>
+        {
+            public static readonly TurnNodeComparer Instance = new TurnNodeComparer();
+
+            public static int Compare(TurnLabel a, TurnLabel b)
+            {
+                int c = a.Turns.CompareTo(b.Turns);
+                if (c != 0) return c;
+                c = a.Cost.CompareTo(b.Cost);
+                return c != 0 ? c : a.Straightness.CompareTo(b.Straightness);
+            }
+
+            public int Compare(TurnNode a, TurnNode b)
+            {
+                int c = Compare(a.Label, b.Label);
+                return c != 0 ? c : a.Order.CompareTo(b.Order);
+            }
+        }
+
         // Cost-only Dijkstra for a fixed base (forward) or the nearest of several bases
         // (reverse). A blocked hex is allowed as an ENDPOINT but never expanded as transit;
         // this is exactly FindSafePathCost's destination exemption for every queried endpoint.

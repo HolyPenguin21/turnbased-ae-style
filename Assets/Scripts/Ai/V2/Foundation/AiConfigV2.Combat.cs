@@ -86,6 +86,9 @@ namespace Game.Ai.V2
         public const int etaFallbackMoveBudget = 1; // when an army reports 0 MaxMovement
         // Attack target selection: hexes per march-turn bucket (typical ground army movement).
         public const int attackTargetEtaBucketHexes = 3;
+        // Free Recon wing formation competes in the Phase-B arbiter at no more than this utility:
+        // below every real card play / draw, above doing nothing.
+        public const float aviationFormWingUtilityCap = 0.5f;
 
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
         // =======================================================================================

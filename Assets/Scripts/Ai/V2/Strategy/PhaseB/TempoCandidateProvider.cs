@@ -203,6 +203,24 @@ namespace Game.Ai.V2
                         + $"task {rebase.SourceWitness ?? "none"} -> {rebase.DestinationWitness ?? "none"}",
                 });
 
+            // Recon wing formation (project owner, 2026-10-02): stored aircraft only fly once a wing is
+            // formed. Forming is free; its utility is capped far below any real card play or draw so
+            // it never competes with card play or the hand refill — it simply happens when the
+            // arbiter has nothing better and the sortie it serves is affordable.
+            AviationRebasePlan formation = AviationRebasePlanner.BuildFormationPlan(
+                snap, player, root, ctx, reconObjectives);
+            if (formation != null)
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.AviationRebase,
+                    Rebase = formation,
+                    Utility = Mathf.Min(formation.Utility, AiConfigV2.aviationFormWingUtilityCap),
+                    ApCost = 0f,
+                    ActionKey = $"aviation-form:{formation.Aircraft[0].RuntimeId}",
+                    Label = $"form recon wing from aircraft #{formation.Aircraft[0].RuntimeId} at "
+                        + $"({formation.SourceHex.Q},{formation.SourceHex.R}); task {formation.DestinationWitness ?? "none"}",
+                });
+
             // HoldResources — the value of NOT spending. AP is lost at EndTurn so holding it is ~0;
             // the loose persistent-resource pool is worth holding only when the economy is fragile.
             // (Per-card hold value is already inside every PlayCard NetScore — spec §5.)

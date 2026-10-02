@@ -613,8 +613,17 @@ namespace Game.Ai.V2
             if (a.Preparation && staging.HasValue && !host.Hex.Equals(staging.Value)
                 && host.MemberCount > 0)
             {
-                // The durable host walks on to the staging Base (lifecycle leg, neutral score).
-                if (host.CurrentMovement > 0)
+                // The durable host walks on to the staging Base (lifecycle leg, neutral score). A
+                // step is only offered when the host can really pay the NEXT hex now: movement left
+                // that is below that hex's cost (rough terrain costs 2) would only fail the
+                // provisioning with "no safe first step" and mark the whole operation Blocked.
+                ArmyData liveHost = ctx?.Map == null || snap.Observer == null ? null
+                    : AiV2Util.ResolveArmy(snap.Observer, host.ArmyId);
+                bool canStepNow = liveHost != null
+                    ? SafeStepPathing.FindNextSafeStep(ctx.Map, liveHost, staging.Value,
+                        profile: SafeRouteProfile.Combat).HasValue
+                    : host.CurrentMovement > 0;
+                if (canStepNow)
                 {
                     AttackObjective tracked = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target)
                         ?? new AttackObjective { Target = a.Target };
