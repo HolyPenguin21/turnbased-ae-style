@@ -2463,6 +2463,53 @@ namespace Game.EditorTests
             }
         }
 
+        // 2026-10-02 (project owner) — a hero that founds a Base takes a ground body to leave as the
+        // new garrison. includeReturn:false is the Base signal on every call site. The body is a
+        // preference: with nothing to lend, a safe solo builder stays eligible exactly as before.
+        [Test]
+        public void FoundBaseBuilder_TakesAGarrisonBodyWhenTheBaseCanLendOne()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            ArmySnapshot solo = EconomyBuilder(41, 1, 1f);
+            snapshot.Self.Armies = new[] { solo };
+
+            DemandLayer.EconomyBuilderChoice alone = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
+                30f, 1f, includeReturn: false);
+            Assert.That(alone, Is.Not.Null, "no body to lend: the solo builder is still eligible");
+            Assert.That(alone.MinimumEscortCount, Is.Zero);
+
+            var garrison = new ArmySnapshot
+            {
+                ArmyId = 43, Hex = solo.Hex, IsGarrison = true, MemberCount = 1,
+                Members = new[]
+                {
+                    new Game.Combat.WorthIt.DefenderProfile(
+                        defense: 4f, hasCeramicArmor: false,
+                        attack: 4f, hitPoints: 5f, initiative: 2),
+                },
+                NonHeroActivationApCosts = new[] { 1 },
+                NonHeroMoveMax = new[] { 3 },
+                MaxMovement = 3,
+            };
+            // A fresh snapshot: assessments are cached per snapshot (the garrison is a new witness).
+            snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            snapshot.Self.Armies = new[] { solo, garrison };
+            DemandLayer.EconomyBuilderChoice founding = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
+                30f, 1f, includeReturn: false);
+            Assert.That(founding, Is.Not.Null);
+            Assert.That(founding.Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.ReinforceAtBase));
+            Assert.That(founding.MinimumEscortCount, Is.EqualTo(1));
+
+            DemandLayer.EconomyBuilderChoice extraction = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
+                30f, 1f, includeReturn: true);
+            Assert.That(extraction.MinimumEscortCount, Is.Zero,
+                "an extraction build leaves nothing behind and needs no garrison body");
+        }
+
         [Test]
         public void EconomyArmySuitability_AllowsSafeSoloButRequiresCentralEscort()
         {

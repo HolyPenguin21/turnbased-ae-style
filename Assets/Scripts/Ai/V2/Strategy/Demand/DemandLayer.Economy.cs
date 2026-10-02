@@ -731,7 +731,25 @@ namespace Game.Ai.V2
             // copy, but must never overwrite the result observed by the next reader.
             return assessed.DetachedDecision();
 
+            // Project owner, 2026-10-02: a hero that goes to FOUND a Base takes a ground body with
+            // it, which BuildingPlayExecutor.LeaveGarrisonBody then leaves as the new base's garrison
+            // (an empty fresh Base was retaken the same or the next turn). Every call site already
+            // tells a Base founding from an extraction build by includeReturn (false = Base: no
+            // return trip, true = extraction), and includeReturn is part of the assessment cache
+            // key, so the rule needs no new plumbing. The body requirement is a PREFERENCE: when no
+            // roster can carry one (no body aboard and none the base garrison can lend) the builder
+            // is assessed exactly as before, never made ineligible by it.
             EconomyBuilderChoice Compute()
+            {
+                bool foundsBase = !includeReturn;
+                if (!foundsBase)
+                    return ComputeCore(false);
+                EconomyBuilderChoice withBody = ComputeCore(true);
+                return withBody.Suitability != EconomyArmySuitability.Ineligible
+                    ? withBody : ComputeCore(false);
+            }
+
+            EconomyBuilderChoice ComputeCore(bool enforceGarrisonBody)
             {
                 var choice = new EconomyBuilderChoice
                 {
@@ -784,6 +802,8 @@ namespace Game.Ai.V2
                     && !army.EconomyRosterProtected;
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
+                if (enforceGarrisonBody)
+                    minimumEscort = Mathf.Max(minimumEscort, 1);
                 choice.MinimumEscortCount = minimumEscort;
 
                 List<int> currentIndices = Enumerable.Range(0, army.Members?.Count ?? 0)
