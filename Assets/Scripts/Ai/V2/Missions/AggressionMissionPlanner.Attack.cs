@@ -261,7 +261,7 @@ namespace Game.Ai.V2
             string share = $"deployed={F(self.DeployedPower)} available={F(self.AvailablePower)} "
                 + $"share={(self.AvailablePower > 0f ? 100f * self.DeployedPower / self.AvailablePower : 0f):0.00}% "
                 + $"gate>=75% fieldStrike={F(self.FieldStrikePotential)} gate>{F(0.80f * self.AttackPeak)} "
-                + $"open={(open ? (byShare && byField ? "share+field" : byShare ? "share" : "field") : "0")}";
+                + $"open={(open ? (byShare && byField ? "share+field" : byShare ? "share" : byField ? "field" : "held") : "0")}";
             MissionIntent live = LiveAttackOperation(activeIntents);
             string skip = !open ? "trigger_closed"
                 : live != null ? $"operation_live:{live.IntentKey}"
@@ -276,6 +276,11 @@ namespace Game.Ai.V2
                     $"[AI][V2][Attack][Mobilization] decision=NONE {share} reason={skip}");
                 return;
             }
+
+            // A preparation is about to be proposed from a genuinely open gate: keep the gate open
+            // for the next two turns so a one-pass flicker cannot cost the start of the operation.
+            if (byShare || byField)
+                OperationContinuationWindow.HoldMobilization(snap.Observer, snap.TurnNumber);
 
             AttackObjective objective = objectives[0];
             HexCoord citadel = AttackObjectiveEvaluator.PreparationStagingBase(snap, objective.Hex).Value;

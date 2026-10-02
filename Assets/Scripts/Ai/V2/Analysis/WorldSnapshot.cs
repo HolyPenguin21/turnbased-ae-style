@@ -507,6 +507,10 @@ namespace Game.Ai.V2
         // (AttackForcePool): the Attack bar (> 80%), the preparation roster and the mobilization
         // field-strike gate read it. TotalMilitaryPotential stays the whole-deck ceiling.
         // Until the pool is built (isolated snapshots, tests) it falls back to the whole-deck peak.
+        // The mobilization gate was opened and a preparation step proposed within the last
+        // OperationContinuationWindow.MobilizationHoldTurns turns (hysteresis).
+        public bool MobilizationHeld;
+
         public float AttackPeak
         {
             get => _attackPeak ?? TotalMilitaryPotential;

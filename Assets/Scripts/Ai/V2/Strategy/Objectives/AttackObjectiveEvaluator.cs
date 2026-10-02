@@ -597,6 +597,10 @@ namespace Game.Ai.V2
             ForceReady(fieldStrikePotential, currentDeckPeakPower);
 
         internal static bool MobilizationOpen(SelfSnapshot self) =>
+            self != null && (MobilizationRawOpen(self) || self.MobilizationHeld);
+
+        // The gate as measured this pass, without the hysteresis hold.
+        internal static bool MobilizationRawOpen(SelfSnapshot self) =>
             self != null && (MobilizationOpen(self.DeployedPower, self.AvailablePower)
                 || FieldStrikeForceReady(self.FieldStrikePotential, self.AttackPeak));
 

@@ -42,11 +42,30 @@ namespace Game.Ai.V2
         internal static bool IsMobilizationOpen(PlayerSetupData player, int turn) =>
             player != null && MobilizationOpenTurn.TryGetValue(player, out int t) && t == turn;
 
+        // Mobilization hysteresis (project owner, 2026-10-02): the gate is razor-thin (a field strike
+        // of 63.92 against a 63.70 bar) and the preparation's own first step moves bodies out of the
+        // measured force, so a gate that opened for one pass closed again and the preparation
+        // started four turns late (Thane T13 -> T17). Once a preparation step is PROPOSED from a
+        // genuinely open gate, the gate is treated as open for the next MobilizationHoldTurns turns.
+        internal const int MobilizationHoldTurns = 2;
+        private static readonly Dictionary<PlayerSetupData, int> MobilizationHoldUntil =
+            new Dictionary<PlayerSetupData, int>();
+
+        internal static void HoldMobilization(PlayerSetupData player, int fromTurn)
+        {
+            if (player != null)
+                MobilizationHoldUntil[player] = fromTurn + MobilizationHoldTurns;
+        }
+
+        internal static bool IsMobilizationHeld(PlayerSetupData player, int turn) =>
+            player != null && MobilizationHoldUntil.TryGetValue(player, out int until) && turn <= until;
+
         // Match-start reset (CitadelSetupController), alongside the other V2 registries.
         internal static void ClearAll()
         {
             SettledTurn.Clear();
             MobilizationOpenTurn.Clear();
+            MobilizationHoldUntil.Clear();
         }
     }
 

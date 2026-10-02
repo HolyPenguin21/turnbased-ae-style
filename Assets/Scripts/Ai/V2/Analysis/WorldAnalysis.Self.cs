@@ -110,6 +110,8 @@ namespace Game.Ai.V2
 
             BuildForceMeasures(self, player, ownArmies);
 
+            self.MobilizationHeld = ctx != null
+                && OperationContinuationWindow.IsMobilizationHeld(player, ctx.TurnNumber);
             return self;
         }
 

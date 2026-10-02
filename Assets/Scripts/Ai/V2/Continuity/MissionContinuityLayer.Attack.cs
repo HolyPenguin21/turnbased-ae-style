@@ -614,6 +614,7 @@ namespace Game.Ai.V2
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
                     + $"witness={cardSource ?? "same_hex_body"} "
+                    + $"clearance={DescribeClearance(snap, a, host.EffectiveArmyPower, required)} "
                     + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");
                 return true;
             }
