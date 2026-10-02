@@ -41,6 +41,7 @@ namespace UnityEngine
         public static float Round(float x)=>(float)Math.Round(x);public static int RoundToInt(float x)=>(int)Math.Round(x);
         public static float Abs(float x)=>Math.Abs(x);public static int Abs(int x)=>Math.Abs(x);
         public static int Min(int a,int b)=>Math.Min(a,b);public static int Max(int a,int b)=>Math.Max(a,b);
+        public static int Clamp(int value,int min,int max)=>Math.Max(min,Math.Min(max,value));
     }
     public static class Time { public static double timeAsDouble; public static float deltaTime=1f/60; }
     public static class Application { public static bool isPlaying; }
@@ -80,7 +81,7 @@ namespace Game.Ai
     {
         public struct KnownEnemySighting { public Game.HexGrid.HexCoord Hex; }
         public struct KnownBuilding { public Game.HexGrid.HexCoord Hex; public Game.Players.PlayerSetupData Owner; }
-        public struct Arrival { public bool HasOutcome; }
+        public struct GroundArrival { public bool HasOutcome,Contact; }
         private static long version;
         public static void Clear(){version++;}
         public static long RouteMemoryVersionFor(Game.Players.PlayerSetupData owner)=>version;
@@ -88,7 +89,7 @@ namespace Game.Ai
         public static IEnumerable<KnownEnemySighting> AllKnownNeutralSightings(Game.Players.PlayerSetupData p)=>Array.Empty<KnownEnemySighting>();
         public static IEnumerable<KnownBuilding> AllKnownBuildings(Game.Players.PlayerSetupData p)=>Array.Empty<KnownBuilding>();
         public static IEnumerable<(Game.HexGrid.HexCoord,int)> ScoutDangerZoneRanges(Game.Players.PlayerSetupData p)=>Array.Empty<(Game.HexGrid.HexCoord,int)>();
-        public static Arrival KnownGroundArrival(Game.Players.PlayerSetupData p,Game.HexGrid.HexCoord h,bool hidden)=>default;
+        public static GroundArrival KnownGroundArrival(Game.Players.PlayerSetupData p,Game.HexGrid.HexCoord h,bool hidden)=>default;
     }
     public static class AiTurnController
     {
