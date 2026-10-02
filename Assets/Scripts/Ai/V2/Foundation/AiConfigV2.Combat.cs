@@ -86,6 +86,11 @@ namespace Game.Ai.V2
         public const int etaFallbackMoveBudget = 1; // when an army reports 0 MaxMovement
         // Attack target selection: hexes per march-turn bucket (typical ground army movement).
         public const int attackTargetEtaBucketHexes = 3;
+        // A preparation that has waited this many turns for a pinned card delivery gives up its
+        // target when the host's CURRENT fist already clears another known target (playtest
+        // 2026-10-02: Kryll waited 13 turns for an undrawn card while a Base defended by 6 power
+        // stood within reach of its 54-power fist).
+        public const int attackPreparationCardWaitTurns = 3;
         // Free Recon wing formation competes in the Phase-B arbiter at no more than this utility:
         // below every real card play / draw, above doing nothing.
         public const float aviationFormWingUtilityCap = 0.5f;

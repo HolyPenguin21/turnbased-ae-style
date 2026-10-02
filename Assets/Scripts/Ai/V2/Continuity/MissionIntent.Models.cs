@@ -355,6 +355,8 @@ namespace Game.Ai.V2
         // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;
         // it becomes an ordinary Assault only once the host strictly clears the current peak.
         public bool Preparation;
+        // First turn of the current unbroken WAIT for a pinned card delivery (-1: not waiting).
+        public int PreparationCardWaitSinceTurn = -1;
         // 2026-10-01 (user decision) — the frozen strike-force target roster (StrikeRoster) the
         // preparation gathers toward and the peak it was frozen at. Re-frozen only when the peak
         // grew by attackTargetRosterRefreezeGrowth or a frozen position left the pool

@@ -590,6 +590,7 @@ namespace Game.Ai.V2
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
+                a.PreparationCardWaitSinceTurn = -1;
                 intent.StallTurns = 0;
                 intent.LastProtectedTurn = snap.TurnNumber;
                 AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} re-planned supports "
@@ -610,6 +611,26 @@ namespace Game.Ai.V2
             if (sameHexStep || cardSource != null)
             {
                 intent.LastProtectedTurn = snap.TurnNumber;
+                if (sameHexStep)
+                    a.PreparationCardWaitSinceTurn = -1;
+                else
+                {
+                    if (a.PreparationCardWaitSinceTurn < 0)
+                        a.PreparationCardWaitSinceTurn = snap.TurnNumber;
+                    // Waiting on a card that may never be drawn must not hold the one live
+                    // operation hostage: a known target the host's CURRENT fist already clears
+                    // (cheaper or nearer than the bar-setting one) takes over on the next pass.
+                    if (snap.TurnNumber - a.PreparationCardWaitSinceTurn
+                        >= AiConfigV2.attackPreparationCardWaitTurns
+                        && ClearedAlternativeTarget(snap, a, hostId, out string alt))
+                    {
+                        AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired — waited "
+                            + $"{snap.TurnNumber - a.PreparationCardWaitSinceTurn} turn(s) for "
+                            + $"{cardSource}; the host's fist already clears {alt}, the next pass "
+                            + "re-selects the target");
+                        return false;
+                    }
+                }
                 AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
@@ -711,6 +732,35 @@ namespace Game.Ai.V2
                 return AttackObjectiveEvaluator.ForceReady(primary.EffectiveArmyPower, snap.Self.AttackPeak)
                     ? "ready" : "fist_below_bar";
             return cover ? "win_below_gate" : "coverage_missing";
+        }
+
+        // Another OBSERVED hostile structure (never a location-only guess) the host passes the
+        // attack coverage / win-chance gate against right now, in the evaluator's own priority
+        // order. Snapshot-pure: remembered opposition and structural defence only.
+        private static bool ClearedAlternativeTarget(WorldSnapshot snap, AttackIntent a, int hostId,
+            out string label)
+        {
+            label = null;
+            foreach (AttackObjective objective in AttackObjectiveEvaluator.Enumerate(snap))
+            {
+                if (objective == null)
+                    continue;
+                // The evaluator's order is what the fresh pick will follow: only a target that
+                // ranks AHEAD of the current one can take over (otherwise the same one returns).
+                if (objective.Target.Hex.Equals(a.Target.Hex))
+                    return false;
+                if (AttackObjectiveEvaluator.IsLocationOnly(snap, objective.Target)
+                    || objective.Opposition == null || objective.Opposition.Count == 0)
+                    continue;
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                    snap, objective.Opposition, hostId, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    objective.HexDefense);
+                if (!plan.Feasible || !plan.CoversAllDefenders)
+                    continue;
+                label = $"{objective.Target} (win {plan.ProjectedWinChance:0.00})";
+                return true;
+            }
+            return false;
         }
 
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)

@@ -509,10 +509,19 @@ namespace Game.Combat
                         continue; // ShockAttack removed this not-yet-taken action from the round
                     }
 
+                    // A hero stands in the back row and the fight ends when the non-hero bodies
+                    // are gone, so an attack is only spent on a hero once no body of that side
+                    // stands (playtest 2026-10-02: a lone Flamer + hero was rated 0.88 against two
+                    // neutral units and lost four of four — random picks wasted half the enemy
+                    // attacks on the hero).
                     livingTargets.Clear();
                     for (int i = 0; i < enemyList.Count; i++)
-                        if (enemyList[i].Hp > 0f)
+                        if (enemyList[i].Hp > 0f && !enemyList[i].IsHero)
                             livingTargets.Add(i);
+                    if (livingTargets.Count == 0)
+                        for (int i = 0; i < enemyList.Count; i++)
+                            if (enemyList[i].Hp > 0f)
+                                livingTargets.Add(i);
                     if (livingTargets.Count == 0)
                         break; // this side just ran out of targets mid-round — battle's over
 

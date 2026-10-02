@@ -113,6 +113,8 @@ namespace Game.UI
                 output.Append("; power ")
                     .Append(Ratio(force.StrongestArmyPower, force.AttackPeak, force.ReadinessPercent))
                     .Append(';');
+                if (!player.IsHuman)
+                    output.Append("\nAttack: ").Append(AttackIntentLabel.Describe(player)).Append(';');
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";
             if (dataTmpText.text != value) dataTmpText.text = value;
