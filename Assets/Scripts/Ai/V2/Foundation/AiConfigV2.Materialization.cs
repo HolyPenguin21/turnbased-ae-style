@@ -160,6 +160,11 @@
         // is (IdleCardPressure ramp) and by the heroes' share of the deck. Draw stays an AP-priced
         // peer of card plays (apOpp / handQualityPenalty still apply), it is only no longer blind.
         public const float tempoDrawBuilderHeroBonus = 0.90f;
+        // No ground body in hand + an uncovered resource hex worth collecting (useful gain): a draw
+        // can bring the cheap collector. Smaller than the builder-hero bonus: a collector is cheaper
+        // than a Base and loses less when destroyed (2026-10-02: 9 of 43 first collector failures
+        // had no body to play).
+        public const float tempoDrawCollectorBonus = 0.50f;
         public const float tempoDrawBuilderHeroDeckShareFull = 0.15f;  // hero share of the deck that earns the full bonus
         // A new builder hero's delivery may exceed the site value by this fraction once the Base
         // card has been idle long enough (full ramp = cap); the "NotCheaperThanReadyHero" rule is

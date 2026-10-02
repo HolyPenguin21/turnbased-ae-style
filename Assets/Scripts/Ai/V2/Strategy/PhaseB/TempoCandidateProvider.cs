@@ -290,7 +290,7 @@ namespace Game.Ai.V2
                     (0.80f * snap.Self.AttackPeak - snap.Self.FistPower)
                     / Mathf.Max(1f, snap.Self.AttackPeak)) : 0f;
 
-            float builderDrawBonus = BuilderHeroDrawBonus(snap, deck);
+            float builderDrawBonus = BuilderHeroDrawBonus(snap, deck) + CollectorDrawBonus(snap, deck);
 
             float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty
                 + continuityBonus + attackDrawBonus + builderDrawBonus;
@@ -324,6 +324,43 @@ namespace Game.Ai.V2
             float share = Mathf.Clamp01(heroes / (float)deck.Count
                 / Mathf.Max(0.01f, AiConfigV2.tempoDrawBuilderHeroDeckShareFull));
             return AiConfigV2.tempoDrawBuilderHeroBonus * ramp * share;
+        }
+
+        // The hand holds no ground body at all, yet a resource hex worth collecting is not covered
+        // by any army: a cheap disposable collector (any Unit/Hero body, cheaper and less to lose
+        // than a Base) is only one draw away. Only with a real site - no site, no bonus - and a
+        // body still in the deck. Counted per uncovered site with useful gain, capped at 1.
+        internal static float CollectorDrawBonus(WorldSnapshot snap, IReadOnlyList<CardDefinition> deck)
+        {
+            if (snap?.Self == null || snap.Economy?.CollectorSites == null || deck == null)
+                return 0f;
+            IReadOnlyList<CardData> hand = snap.Self.Hand;
+            if (hand == null || hand.Any(c => c?.Definition != null && !c.Definition.isAviation
+                && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero)))
+                return 0f;
+            int bodies = deck.Count(d => d != null && !d.isAviation
+                && (d.cardType == CardType.Unit || d.cardType == CardType.Hero));
+            if (bodies == 0)
+                return 0f;
+            var covered = new HashSet<(Game.HexGrid.HexCoord, Game.Economy.ResourceType)>(
+                (snap.Economy.MobileCollectionOpportunities
+                    ?? System.Array.Empty<MobileCollectionOpportunity>())
+                .Select(o => (o.TargetHex, o.ResourceType)));
+            int sites = 0;
+            foreach (EconomyExtractionOpportunity site in snap.Economy.CollectorSites)
+            {
+                if (site.MarginalIncomeGain <= AiConfigV2.allocatorSliceEpsilon
+                    || covered.Contains((site.Hex, site.ResourceType)))
+                    continue;
+                EconomyResourceStanding rs = snap.Economy.PerType == null ? default
+                    : snap.Economy.PerType.FirstOrDefault(x => x.Type == site.ResourceType);
+                if (rs.UsefulMarginalIncomeGain(site.MarginalIncomeGain) > AiConfigV2.allocatorSliceEpsilon)
+                    sites++;
+            }
+            if (sites == 0)
+                return 0f;
+            return AiConfigV2.tempoDrawCollectorBonus
+                * Mathf.Clamp01(bodies / (float)deck.Count / AiConfigV2.tempoDrawBuilderHeroDeckShareFull);
         }
 
         // spec §P1.6 — a lightweight GENERIC strategic value for an unseen deck card (the concrete
