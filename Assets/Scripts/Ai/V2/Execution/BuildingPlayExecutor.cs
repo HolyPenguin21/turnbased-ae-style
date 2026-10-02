@@ -1,7 +1,9 @@
+using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -81,12 +83,49 @@ namespace Game.Ai.V2
                 return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
 
             hand.RemoveCard(card);   // caller-owned hand, only on success
+            LeaveGarrisonBody(player, ctx, hex);
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
                 ResourcesSpent = card.EffectivePlayResourceCost,
                 StateVersionAfter = V2StateVersion.Bump(),
             };
+        }
+
+        // Project owner, 2026-10-02: a freshly founded Base is not left empty. The builder's
+        // army (the hero and whatever it brought) stands on the hex; one ground body stays as the
+        // new garrison so the base is not taken on the same or the next turn by anything that walks
+        // past. The builder keeps the rest and may stay or go on. Best effort and free (the
+        // garrison never activates): nothing happens when the builder brought no body, the base
+        // already has a ground defender, or the hero would be left with nothing to travel with.
+        // The body that costs the builder most to carry (highest activation AP, then lowest power)
+        // is the one that stays.
+        internal static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex)
+        {
+            ArmyData garrison = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a != null && a.IsGarrison
+                && a.Owner == player);
+            if (garrison == null || garrison.Members.Any(u => u != null && AiArmyRoles.IsGroundBattleBody(u)))
+                return;
+            foreach (ArmyData builder in ArmyRegistry.AllAt(hex).Where(a => a != null && !a.IsGarrison
+                && a.Owner == player && !a.IsAirfield && !a.IsAirArmy && !a.IsPrison)
+                .OrderByDescending(a => a.Members.Any(u => u != null && u.IsHero)).ThenBy(a => a.Id))
+            {
+                UnitData body = builder.Members
+                    .Where(u => u != null && !u.IsHero && AiArmyRoles.IsGroundBattleBody(u))
+                    .OrderByDescending(u => u.ActivationApCost)
+                    .ThenBy(u => AiPower.ToPowerUnit(u).BasePower)
+                    .FirstOrDefault();
+                if (body == null)
+                    continue;
+                if (ArmyActions.TransferMember(body, builder, garrison, ctx.HexSelection, out string why))
+                {
+                    AiDebugLog.Write($"[AI][V2][Economy] {player.Nickname}: \"{body.Name}\" stays as the garrison of "
+                        + $"the new base at ({hex.Q},{hex.R}); builder #{builder.Id} keeps {builder.Members.Count} member(s)");
+                    return;
+                }
+                AiDebugLog.Write($"[AI][V2][Economy] new base at ({hex.Q},{hex.R}): could not leave "
+                    + $"{body.Name} as garrison: {why}");
+            }
         }
 
         // ---------------------------------------------------------------- Facility ----
