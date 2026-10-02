@@ -1104,6 +1104,16 @@ namespace Game.Ai
                 : System.Array.Empty<KnownResourceHex>();
         }
 
+        // Every hex this observer remembers as a Hex Event with a real guard. The guard is not a
+        // sighting (it spawns on arrival), so KnownGroundArrival cannot see it; Combat routing
+        // reads this list so a march toward one target does not walk into another guard's hex.
+        public static IEnumerable<HexCoord> AllKnownEventGuardHexes(PlayerSetupData actor)
+        {
+            if (actor == null || !KnownEventGuards.TryGetValue(actor, out Dictionary<HexCoord, GuardStrength> guards))
+                return System.Array.Empty<HexCoord>();
+            return guards.Keys;
+        }
+
         // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
         // target pool isn't wavefront/radius-bounded like Разведка's (see that class's own class
         // comment), it just scores every known target by raw distance from the citadel.

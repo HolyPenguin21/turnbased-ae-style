@@ -199,7 +199,15 @@ namespace Game.Ai
                 if (armiesOnly ? arrival.Contact : arrival.HasOutcome) blocked.Add(hex);
             }
             if (armiesOnly)
+            {
+                // Combat movers: a known Hex Event guard is a battle waiting on its hex. Without
+                // this a Raid on guard A walked through guard B's hex and retreated from it four
+                // turns running (Vashti T15-T18, 2026-10-02). The route's own target stays exempt
+                // (SafeRouteBlocker), so raiding that very guard is unchanged.
+                foreach (HexCoord guardHex in AiMapMemory.AllKnownEventGuardHexes(owner))
+                    blocked.Add(guardHex);
                 return blocked;
+            }
             foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
                 foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
