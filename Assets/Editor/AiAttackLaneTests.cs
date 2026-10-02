@@ -876,6 +876,18 @@ namespace Game.EditorTests
             Assert.That(HeroRoleEvaluator.CompareCandidates(ordinary, weakerFight), Is.LessThan(0),
                 "the fight outranks the free activation");
         }
+
+        // 2026-10-02 — mobilization hysteresis: a gate held open by a recent preparation step counts
+        // as open although this pass's measurement is below the bars; the raw measurement is unchanged.
+        [Test]
+        public void MobilizationGate_HeldStaysOpenWhileRawIsClosed()
+        {
+            var closed = new SelfSnapshot { DeployedPower = 10f, AvailablePower = 100f };
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(closed), Is.False);
+            var held = new SelfSnapshot { DeployedPower = 10f, AvailablePower = 100f, MobilizationHeld = true };
+            Assert.That(AttackObjectiveEvaluator.MobilizationRawOpen(held), Is.False);
+            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(held), Is.True);
+        }
     }
 }
 #endif

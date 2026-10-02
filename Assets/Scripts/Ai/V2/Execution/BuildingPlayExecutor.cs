@@ -69,7 +69,8 @@ namespace Game.Ai.V2
 
         // -------------------------------------------------------------------- Base ----
         public static BuildingPlayResult PlayBaseCard(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex)
+            AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex,
+            int? builderArmyId = null)
         {
             if (player == null || hand == null || ctx?.HexSelection == null || card?.Definition == null)
                 return BuildingPlayResult.Fail("missing args");
@@ -83,7 +84,7 @@ namespace Game.Ai.V2
                 return new BuildingPlayResult { Built = false, FailReason = outcome.FailReason };
 
             hand.RemoveCard(card);   // caller-owned hand, only on success
-            LeaveGarrisonBody(player, ctx, hex);
+            LeaveGarrisonBody(player, ctx, hex, builderArmyId);
             return new BuildingPlayResult
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
@@ -100,15 +101,20 @@ namespace Game.Ai.V2
         // already has a ground defender, or the hero would be left with nothing to travel with.
         // The body that costs the builder most to carry (highest activation AP, then lowest power)
         // is the one that stays.
-        internal static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex)
+        internal static void LeaveGarrisonBody(PlayerSetupData player, AiTurnContext ctx, HexCoord hex,
+            int? builderArmyId = null)
         {
             ArmyData garrison = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a != null && a.IsGarrison
                 && a.Owner == player);
             if (garrison == null || garrison.Members.Any(u => u != null && AiArmyRoles.IsGroundBattleBody(u)))
                 return;
+            // Only a HERO-LED army can have founded the base (InfrastructureActions.CanFoundBase), so
+            // an unrelated hero-less army standing there is never raided for its body; when the
+            // caller knows the builder, only that army is considered.
             foreach (ArmyData builder in ArmyRegistry.AllAt(hex).Where(a => a != null && !a.IsGarrison
-                && a.Owner == player && !a.IsAirfield && !a.IsAirArmy && !a.IsPrison)
-                .OrderByDescending(a => a.Members.Any(u => u != null && u.IsHero)).ThenBy(a => a.Id))
+                && a.Owner == player && !a.IsAirfield && !a.IsAirArmy && !a.IsPrison
+                && a.Members.Any(u => u != null && u.IsHero)
+                && (!builderArmyId.HasValue || a.Id == builderArmyId.Value)).OrderBy(a => a.Id))
             {
                 UnitData body = builder.Members
                     .Where(u => u != null && !u.IsHero && AiArmyRoles.IsGroundBattleBody(u))

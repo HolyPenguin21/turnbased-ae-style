@@ -625,7 +625,7 @@ namespace Game.Ai.V2
                 ResCost = card.EffectivePlayResourceCost,
                 TargetHex = hex,
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
-                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex),
+                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex, builderId),
             };
         }
 

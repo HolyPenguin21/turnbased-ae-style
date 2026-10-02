@@ -758,12 +758,20 @@ namespace Game.Ai.V2
             // win re-check below are all priced WITHOUT them. Attack preparation has its own rule.
             ArmyData shedGarrison = null;
             var shed = new List<UnitData>();
+            UnitData shedKeeper = null; // the non-support hero that must lead once the commander is shed
             if (lane != "attack")
             {
                 shedGarrison = SupportHeroShedTarget(player, host);
                 if (shedGarrison != null)
+                {
+                    // Support is the FALLBACK: with an ordinary hero aboard every Support hero goes
+                    // (the ordinary one takes command first); with none, the commander stays and only
+                    // the extra Support heroes go.
+                    shedKeeper = host.Members.FirstOrDefault(u => u != null && u.IsHero
+                        && !AiArmyRoles.IsGarrisonHero(u));
                     foreach (UnitData hero in host.Members.Where(u => u != null && u.IsHero
-                        && u != host.Commander && AiArmyRoles.IsGarrisonHero(u)).ToList())
+                        && AiArmyRoles.IsGarrisonHero(u)
+                        && (shedKeeper != null || u != host.Commander)).ToList())
                     {
                         var withHero = new List<UnitData>(shedGarrison.Members);
                         withHero.AddRange(shed);
@@ -772,6 +780,11 @@ namespace Game.Ai.V2
                             break;
                         shed.Add(hero);
                     }
+                    if (shedKeeper != null && shed.Contains(host.Commander)
+                        && ArmyData.ComputeCapacity(host.Members.Where(u => !shed.Contains(u))
+                            .OrderBy(u => u == shedKeeper ? 0 : 1), false) < host.Members.Count - shed.Count)
+                        shed.Remove(host.Commander);
+                }
                 projectedUnits.RemoveAll(shed.Contains);
             }
             if (plan.NeedsAssembly)
@@ -884,6 +897,9 @@ namespace Game.Ai.V2
                         $"turn AP exhausted: {lane} needs {N(activationAp)}, {N(turnApLeft)} left")));
 
             var shedDone = new List<UnitData>();
+            // A shed commander hands command to the ordinary hero first (zero AP, no roster change).
+            if (shedKeeper != null && shed.Contains(host.Commander) && host.Commander != shedKeeper)
+                host.TryReorderCommander(shedKeeper, out _);
             foreach (UnitData hero in shed)
             {
                 if (ArmyActions.TransferMember(hero, host, shedGarrison, ctx.HexSelection, out string shedWhy))
