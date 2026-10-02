@@ -88,6 +88,11 @@ namespace Game.Ai.V2
             float steps = t.Steps.Sum(s => s.Ap);
             int draws = cardsDrawn * ctx.DrawApCost;
             float other = Mathf.Max(0f, m.Spent - steps - draws);
+            if (steps > 0f)
+                AiDebugLog.Write($"[AI][V2][ApBudget] {player.Nickname} T{ctx.TurnNumber} task steps by purpose: "
+                    + string.Join(", ", t.Steps.GroupBy(s => PurposeOf(s.Label))
+                        .OrderByDescending(g => g.Sum(s => s.Ap))
+                        .Select(g => $"{g.Key} {F(g.Sum(s => s.Ap))}")));
             float multiplier = Mathf.Clamp(m.Pressure, AiConfigV2.apScarcityMultiplierMin,
                 AiConfigV2.apScarcityMultiplierMax);
 
@@ -113,6 +118,23 @@ namespace Game.Ai.V2
                     + $"{F(dropped.Sum(x => x.Ap))} AP: "
                     + string.Join("; ", dropped.Select(x => $"{x.Label} v={F(x.Value)} ap={F(x.Ap)}"
                         + (x.Commitment ? " [commitment]" : ""))));
+        }
+
+        // "Raid(Guard@-3,0)" -> "Raid.Guard", "Attack(Gather #0 -4,5)" -> "Attack.Gather",
+        // "Raid(Return …)" -> "Raid.Return": the mission kind plus the first word of its target,
+        // so the purpose split needs no second classification of mission types.
+        internal static string PurposeOf(string label)
+        {
+            if (string.IsNullOrEmpty(label))
+                return "unknown";
+            int open = label.IndexOf('(');
+            if (open <= 0)
+                return label;
+            int i = open + 1;
+            while (i < label.Length && char.IsLetter(label[i]))
+                i++;
+            return i > open + 1 ? label.Substring(0, open) + "." + label.Substring(open + 1, i - open - 1)
+                : label.Substring(0, open);
         }
 
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
