@@ -153,6 +153,18 @@
         // for a follow-up draw gets this option-continuity value. This is utility, not a gate:
         // genuinely strong/urgent plays can still win the common Phase-B arbitration.
         public const float tempoDrawLastCardContinuityBonus = 0.85f;
+        // Builder-hero pressure (playtest 2026-10-02: Cassia held a Base card T2-T22 with no hero in
+        // hand or field, `no_builder`=1781; the first hero arrived by a plain draw on ~T20).
+        // A Base card in hand, no mobile builder anywhere and a hero still in the deck make the
+        // existing Draw action worth a bonus: at most this much, scaled by how idle the Base card
+        // is (IdleCardPressure ramp) and by the heroes' share of the deck. Draw stays an AP-priced
+        // peer of card plays (apOpp / handQualityPenalty still apply), it is only no longer blind.
+        public const float tempoDrawBuilderHeroBonus = 0.90f;
+        public const float tempoDrawBuilderHeroDeckShareFull = 0.15f;  // hero share of the deck that earns the full bonus
+        // A new builder hero's delivery may exceed the site value by this fraction once the Base
+        // card has been idle long enough (full ramp = cap); the "NotCheaperThanReadyHero" rule is
+        // untouched. Sites 1.24-1.32x over value were rejected while the card sat 20 turns.
+        public const float economyIdleBuilderDeliveryTolerance = 0.60f;
         // StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
         // band: it is the concrete Facility's dynamic StrategicCardEvaluator TotalUseScore minus

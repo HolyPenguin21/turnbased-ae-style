@@ -290,13 +290,40 @@ namespace Game.Ai.V2
                     (0.80f * snap.Self.AttackPeak - snap.Self.FistPower)
                     / Mathf.Max(1f, snap.Self.AttackPeak)) : 0f;
 
+            float builderDrawBonus = BuilderHeroDrawBonus(snap, deck);
+
             float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty
-                + continuityBonus + attackDrawBonus;
+                + continuityBonus + attackDrawBonus + builderDrawBonus;
             diag = $"expDeckVal {F(expectedDeckValue)} (mean {F(deckMean)} taper {F(thinTaper)}) freeSlots {freeSlots} "
                 + $"fill {F(fill)} blockRisk {F(blockRisk)} apOpp {F(apOpp)} handQualPen {F(handQualityPenalty)} "
-                + $"continuity +{F(continuityBonus)} attackDeck +{F(attackDrawBonus)} "
+                + $"continuity +{F(continuityBonus)} attackDeck +{F(attackDrawBonus)} builderHero +{F(builderDrawBonus)} "
                 + $"(selectablePlay {F(bestSelectablePlay)}) => draw {F(u)}";
             return u;
+        }
+
+        // A Base card waits in hand, nobody can carry it (no hero in hand, no mobile builder in the
+        // field) and the deck still holds heroes: drawing is the only way to get a builder. Ramped
+        // by the Base card's idle age so a fresh Base does not pull AP off real work immediately.
+        internal static float BuilderHeroDrawBonus(WorldSnapshot snap, IReadOnlyList<CardDefinition> deck)
+        {
+            if (snap?.Self == null || deck == null || deck.Count == 0)
+                return 0f;
+            if (snap.Self.Armies != null && snap.Self.Armies.Any(a => a != null && a.IsMobileEconomyBuilder))
+                return 0f;
+            IReadOnlyList<CardData> hand = snap.Self.Hand;
+            if (hand == null || hand.Any(c => c?.Definition?.cardType == CardType.Hero))
+                return 0f;
+            int baseAge = 0;
+            foreach (CardData c in hand)
+                if (c?.Definition?.cardType == CardType.Base)
+                    baseAge = Mathf.Max(baseAge, AiHandData.AgeInTurns(c, snap.TurnNumber));
+            if (baseAge <= 0)
+                return 0f;
+            float ramp = IdleCardPressure.Bonus(baseAge, 1f) / Mathf.Max(0.01f, AiConfigV2.idleCardBonusCap);
+            int heroes = deck.Count(d => d != null && d.cardType == CardType.Hero);
+            float share = Mathf.Clamp01(heroes / (float)deck.Count
+                / Mathf.Max(0.01f, AiConfigV2.tempoDrawBuilderHeroDeckShareFull));
+            return AiConfigV2.tempoDrawBuilderHeroBonus * ramp * share;
         }
 
         // spec §P1.6 — a lightweight GENERIC strategic value for an unseen deck card (the concrete

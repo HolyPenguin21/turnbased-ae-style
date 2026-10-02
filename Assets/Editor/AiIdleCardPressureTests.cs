@@ -77,6 +77,22 @@ namespace Game.EditorTests
             Assert.That(AiHandData.AgeInTurns(card, 10), Is.EqualTo(7));
             Assert.That(AiHandData.AgeInTurns(new CardData(null), 10), Is.EqualTo(0), "unstamped card has no age");
         }
+
+        [Test]
+        public void BuilderDeliveryToleranceIsZeroForFreshOrNonBaseCardAndGrowsWithAge()
+        {
+            var baseCard = new CardData(new CardDefinition { cardType = CardType.Base }) { AcquiredTurn = 2 };
+            var demand = new AxisDemand { EconomyBuildCard = baseCard };
+            Assert.That(MaterializationDeliveryPolicy.IdleBuilderDeliveryTolerance(demand, 2), Is.EqualTo(0f));
+            float mid = MaterializationDeliveryPolicy.IdleBuilderDeliveryTolerance(demand, 2 + AiConfigV2.idleCardGraceTurns + 3);
+            float full = MaterializationDeliveryPolicy.IdleBuilderDeliveryTolerance(demand, 500);
+            Assert.That(mid, Is.GreaterThan(0f).And.LessThan(full));
+            Assert.That(full, Is.EqualTo(AiConfigV2.economyIdleBuilderDeliveryTolerance).Within(1e-5f));
+
+            var other = new AxisDemand { EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Facility }) { AcquiredTurn = 0 } };
+            Assert.That(MaterializationDeliveryPolicy.IdleBuilderDeliveryTolerance(other, 500), Is.EqualTo(0f));
+            Assert.That(MaterializationDeliveryPolicy.IdleBuilderDeliveryTolerance(null, 500), Is.EqualTo(0f));
+        }
     }
 }
 #endif
