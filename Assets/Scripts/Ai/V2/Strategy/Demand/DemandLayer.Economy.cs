@@ -802,6 +802,7 @@ namespace Game.Ai.V2
                     && !army.EconomyRosterProtected;
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
+                bool garrisonBodyPreferenceOnly = enforceGarrisonBody && safeRear;
                 if (enforceGarrisonBody)
                     minimumEscort = Mathf.Max(minimumEscort, 1);
                 choice.MinimumEscortCount = minimumEscort;
@@ -880,6 +881,12 @@ namespace Game.Ai.V2
                     int bestMove = int.MinValue;
                     foreach (List<int> subset in Combinations(reserveIndices, add))
                     {
+                        // The garrison-body PREFERENCE (a Base founding in a safe rear) never takes a
+                        // body the garrison's protected defence floor keeps (AiArmyRoles.
+                        // CanSpareGarrisonMembers — the rule every other lane's donor path obeys); a
+                        // threat-driven escort keeps its existing contract.
+                        if (garrisonBodyPreferenceOnly && !GarrisonMaySpare(garrison, subset))
+                            continue;
                         var projected = new List<WorthIt.DefenderProfile>(current);
                         projected.AddRange(subset.Select(i => reserve[i]));
                         if ((army.Capacity > 0 && army.MemberCount + subset.Count > army.Capacity)
@@ -927,6 +934,19 @@ namespace Game.Ai.V2
                 }
                 return choice;
             }
+        }
+
+        // Whether the garrison snapshot lets the bodies at `indices` (its NonHero order) leave without
+        // crossing its protected defence floor — read from the scan-time witness, never from the live
+        // registry. The preference takes one body at a time.
+        private static bool GarrisonMaySpare(ArmySnapshot garrison, List<int> indices)
+        {
+            if (garrison?.NonHeroSpareable == null)
+                return true;
+            foreach (int i in indices)
+                if (i < 0 || i >= garrison.NonHeroSpareable.Count || !garrison.NonHeroSpareable[i])
+                    return false;
+            return indices.Count <= 1;
         }
 
         // `commander` — the escorted formation's commander (the builder hero), who leads the

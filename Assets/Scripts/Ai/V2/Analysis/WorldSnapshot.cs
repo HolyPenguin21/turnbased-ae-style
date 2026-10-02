@@ -218,6 +218,11 @@ namespace Game.Ai.V2
         public IReadOnlyList<bool> NonHeroIsAviation = System.Array.Empty<bool>();
         // Identity and remaining MP are frozen in the same order as Members.
         public IReadOnlyList<int> NonHeroRuntimeIds = System.Array.Empty<int>();
+        // Own garrison only, same order as NonHeroRuntimeIds: whether the garrison's protected defence
+        // floor lets this body leave on its own (AiArmyRoles.CanSpareGarrisonMember, read ONCE at
+        // scan time so Demand never has to query the live registry behind an immutable snapshot).
+        // Null = not a garrison (or no floor witness): every body counts as spareable.
+        public IReadOnlyList<bool> NonHeroSpareable;
         public IReadOnlyList<int> NonHeroCurrentMovement = System.Array.Empty<int>();
         public int HeroCurrentMovement;
         public bool EconomyRosterProtected;

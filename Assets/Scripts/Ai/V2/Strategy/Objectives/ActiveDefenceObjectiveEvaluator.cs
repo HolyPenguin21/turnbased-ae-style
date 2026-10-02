@@ -375,7 +375,7 @@ namespace Game.Ai.V2
             float bonus = 0f;
             if (snap.Known?.Buildings != null)
                 foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
-                    if (b.Hex.Equals(hex) && b.IsBase && b.Owner == snap.Observer)
+                    if (b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel) && b.Owner == snap.Observer)
                     {
                         bonus = Mathf.Max(0f, b.Defense);
                         break;

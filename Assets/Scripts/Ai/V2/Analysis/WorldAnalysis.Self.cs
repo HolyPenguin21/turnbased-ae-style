@@ -433,6 +433,8 @@ namespace Game.Ai.V2
                 RecoveryMembers = a.Members.Select((u, index) => ToRaidRecoveryMember(
                     a, u, index, viewer, isOwn)).ToList(),
                 NonHeroRuntimeIds = isOwn ? nonHero.Select(u => u.RuntimeId).ToList() : System.Array.Empty<int>(),
+                NonHeroSpareable = isOwn && a.IsGarrison
+                    ? nonHero.Select(u => AiArmyRoles.CanSpareGarrisonMember(viewer, a, u)).ToList() : null,
                 NonHeroCurrentMovement = nonHero.Select(u => AviationRules.EffectiveMoveCurrent(u)).ToList(),
                 EconomyRosterProtected = isOwn && MissionIntentRegistry.GetOrCreate(a.Owner).All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
