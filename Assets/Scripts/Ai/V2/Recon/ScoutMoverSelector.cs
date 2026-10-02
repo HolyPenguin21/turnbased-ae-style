@@ -204,8 +204,10 @@ namespace Game.Ai.V2
         // synthesized here as a single-member ArmySnapshot (ArmyId = the GARRISON's own id, flagged
         // RequiresGarrisonExtraction) so ScoutCostModel.PairCost prices it exactly like any other
         // solo Recce, without a second cost model (the same idle-garrison capacity Economy's
-        // those need vantage/route machinery this extraction path does not attempt to reproduce; a
-        // AiArmyRoles. CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's
+        // BestSparableEconomyHero uses). Ground Explore/Refresh only — never air, and the caller
+        // (ReconAssignmentPlanner.MaterializableGarrisonActors) skips a Refresh that needs a vantage:
+        // that needs route machinery this extraction path does not reproduce.
+        // AiArmyRoles.CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's
         // own extraction already trust) gates which unit, if any, is even considered.
         public static List<ArmySnapshot> EligibleGarrisonExtraction(WorldSnapshot snap,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)

@@ -50,6 +50,26 @@ namespace Game.EditorTests
             Assert.That(incumbent.LastProgressTurn, Is.EqualTo(4));
         }
 
+        [Test]
+        public void ScoutRole_SwitchesBetweenExploreAndRefresh_WithoutASecondIntent()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon payload" };
+            MissionIntent incumbent = AiReconAuditBugTests.Incumbent(new HexCoord(4, 3), preferredMover: 10);
+            MissionIntentRegistry.GetOrCreate(player).Put(incumbent);
+            MissionTurnOutcome o = Outcome(ScoutTargetKind.Refresh, new HexCoord(5, 1), mover: 10);
+
+            MissionContinuityLayer.ReconcileStep(player, 4, o);
+
+            var onTen = new List<MissionIntent>();
+            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+                if (i.Scout != null && i.PreferredMoverArmyId == 10) onTen.Add(i);
+            Assert.That(onTen.Count, Is.EqualTo(1), "one physical scout owns exactly one durable Recon intent");
+            Assert.That(onTen[0].Scout.Kind, Is.EqualTo(ScoutTargetKind.Refresh));
+            Assert.That(onTen[0].Scout.FocusHex, Is.EqualTo(new HexCoord(5, 1)));
+            Assert.That(onTen[0].Funding, Is.EqualTo(CommitmentTier.None));
+            Assert.That(onTen[0].IntentKey.SubKind, Is.Not.EqualTo(1));
+        }
+
         // An incumbent whose Explore focus has left the frozen objective list is re-derived from the
         // snapshot: an exposed focus requires stealth, so only a stealth-capable scout keeps the claim.
         [Test]

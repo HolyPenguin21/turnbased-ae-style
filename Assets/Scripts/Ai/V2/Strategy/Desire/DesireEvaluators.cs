@@ -210,7 +210,7 @@ namespace Game.Ai.V2
         // (ReconMissionPlanner.Propose runs mid-turn against a LIVE snapshot while the rest of
         // DesireBreakdown/Radar stays frozen from the turn's single Evaluate() — recomputing the
         // whole radar mid-turn would re-introduce the oscillation that decision explicitly
-        // avoided). This mutates ONLY the Explore/Refreshlance/Blindness fields in place
+        // avoided). This mutates ONLY the Explore/Refresh/Blindness fields in place
         // on the already-frozen breakdown, from the current snapshot, so a frontier completion
         // mid-turn is reflected before the next mission is proposed. No smoothing, no radar
         // renormalization, no other axis touched.
@@ -325,8 +325,9 @@ namespace Game.Ai.V2
             return Mathf.Min(need.Total, Mathf.Clamp01(surplus * need.Total * feasibility));
         }
 
-        // baseline, whole-map strategic IntelAge, the honest-contact stale share (extracted from
-        // enemy-facing corridor staleness sample, and coarse enemy-concentration direction pressure.
+        // Spec §4 — RefreshPressure is a composite: a baseline, whole-map strategic IntelAge,
+        // own-asset perimeter staleness, an enemy-facing corridor staleness sample, and coarse
+        // enemy-concentration direction pressure.
         private static float ReconRefreshPressure(WorldSnapshot snap)
         {
             if (snap?.Self == null)

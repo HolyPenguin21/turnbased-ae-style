@@ -21,7 +21,6 @@ namespace Game.Ai.V2
         Staleness,
         StrategicRelevance,
         ThreatDirection,
-        ContactRelevance,
         FrontProgress,
         CorridorAlignment,
         OwnTerritoryProximity,
@@ -74,7 +73,6 @@ namespace Game.Ai.V2
         public readonly float Staleness;
         public readonly float StrategicRelevance;
         public readonly float ThreatDirection;
-        public readonly float ContactRelevance;
         public readonly float FrontProgress;
         public readonly float CorridorAlignment;
         public readonly float OwnTerritoryProximity;
@@ -120,7 +118,6 @@ namespace Game.Ai.V2
             float staleness = 0f,
             float strategicRelevance = 0f,
             float threatDirection = 0f,
-            float contactRelevance = 0f,
             float frontProgress = 0f,
             float corridorAlignment = 0f,
             float ownTerritoryProximity = 0f,
@@ -149,7 +146,6 @@ namespace Game.Ai.V2
             Staleness = staleness;
             StrategicRelevance = strategicRelevance;
             ThreatDirection = threatDirection;
-            ContactRelevance = contactRelevance;
             FrontProgress = frontProgress;
             CorridorAlignment = corridorAlignment;
             OwnTerritoryProximity = ownTerritoryProximity;
@@ -187,7 +183,6 @@ namespace Game.Ai.V2
                     case TaskSlot.Staleness: return Staleness;
                     case TaskSlot.StrategicRelevance: return StrategicRelevance;
                     case TaskSlot.ThreatDirection: return ThreatDirection;
-                    case TaskSlot.ContactRelevance: return ContactRelevance;
                     case TaskSlot.FrontProgress: return FrontProgress;
                     case TaskSlot.CorridorAlignment: return CorridorAlignment;
                     case TaskSlot.OwnTerritoryProximity: return OwnTerritoryProximity;
@@ -224,7 +219,6 @@ namespace Game.Ai.V2
                 staleness: value(TaskSlot.Staleness),
                 strategicRelevance: value(TaskSlot.StrategicRelevance),
                 threatDirection: value(TaskSlot.ThreatDirection),
-                contactRelevance: value(TaskSlot.ContactRelevance),
                 frontProgress: value(TaskSlot.FrontProgress),
                 corridorAlignment: value(TaskSlot.CorridorAlignment),
                 ownTerritoryProximity: value(TaskSlot.OwnTerritoryProximity),
@@ -488,9 +482,6 @@ namespace Game.Ai.V2
 
         internal static float ThreatDirection(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreThreatDirectionMax;
-
-        internal static float ContactRelevance(float normalizedValue) =>
-            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreContactRelevanceMax;
 
         internal static float FrontProgress(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreFrontProgressMax;

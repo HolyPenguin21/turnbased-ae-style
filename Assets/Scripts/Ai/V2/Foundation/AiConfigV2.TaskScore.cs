@@ -34,7 +34,6 @@
         // ---- BENEFIT · Recon -------------------------------------------------------------------
         public const float taskScoreInfoGainMax = 10f;
         public const float taskScoreStalenessMax = 8f;                    // value of refreshing old intel
-        public const float taskScoreContactRelevanceMax = 10f;
 
         // ---- BENEFIT · Military (Raid / Attack / ActiveDefence) ---------------------------------
         // The expected resource/card reward of completing a Raid. Constant per eligible Raid,

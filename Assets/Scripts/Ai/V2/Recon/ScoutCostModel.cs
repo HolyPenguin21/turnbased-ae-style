@@ -227,12 +227,6 @@ namespace Game.Ai.V2
             est.ActivationApNow = notionalActivationAp;
 
             est.EnergyMinimum = 0f;
-                est.EnergyDesired = est.EnergyMaximum =
-                    airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
-                return est;
-            }
-
-            est.EnergyMinimum = 0f;
             est.EnergyDesired = est.EnergyMaximum =
                 airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
             float airApFloor = airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f;

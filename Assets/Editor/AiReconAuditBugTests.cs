@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.HexGrid;
 using Game.Players;
@@ -84,8 +85,32 @@ namespace Game.EditorTests
             Assert.That((int)ScoutTargetKind.AirSweep, Is.EqualTo(3));
             Assert.That(System.Enum.IsDefined(typeof(ScoutTargetKind), 1), Is.False);
             foreach (ScoutTargetKind kind in System.Enum.GetValues(typeof(ScoutTargetKind)))
-                Assert.That(MissionIntentKey.ForScoutTarget(Scout(kind, new HexCoord(4, 3))
-                    .Target as ScoutMissionTarget).SubKind, Is.Not.EqualTo(1));
+                Assert.That(MissionIntentKey.ForScoutTarget((ScoutMissionTarget)Scout(kind, new HexCoord(4, 3))
+                    .Target).SubKind, Is.Not.EqualTo(1));
+        }
+
+        [Test]
+        public void ObservationCapacity_CountsOnlyRefreshLanes_ExploreStaysGround()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, 11, focus);
+            MissionIntent explore = Incumbent(focus, preferredMover: 10);
+            MissionIntent refresh = Incumbent(new HexCoord(3, 4), preferredMover: 20);
+            ((ScoutIntent)refresh.Objective).Kind = ScoutTargetKind.Refresh;
+            refresh.IntentKey = MissionIntentKey.For(refresh);
+            var intents = new List<MissionIntent> { explore, refresh };
+            ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, new List<ReconObjective>
+            {
+                new ReconObjective { Kind = ReconObjectiveKind.Explore, FocusHex = focus, BaseValue = 10f },
+                new ReconObjective { Kind = ReconObjectiveKind.Refresh, FocusHex = new HexCoord(3, 4), BaseValue = 10f },
+            });
+
+            ReconCapacitySnapshot cap = ReconCapacitySnapshot.Build(snap,
+                new List<ReconObjective>(), new List<ReconObjective>(), intents, commitments, player);
+
+            Assert.That(cap.GenericGroundLaneActors, Is.EquivalentTo(new[] { 10 }));
+            Assert.That(cap.GenericObservationLaneActors, Is.EquivalentTo(new[] { 20 }));
         }
 
         // B3 — an AirSweep with no air candidate must not borrow a GROUND capability diagnosis:

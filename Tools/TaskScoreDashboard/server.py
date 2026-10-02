@@ -53,7 +53,7 @@ def nearest_method(lines, i):
 BENEFIT_FAMILY = {
     "EconomicHexBenefit": "Economy", "Payback": "Economy", "Airfield": "Economy",
     "GlobalCardEffect": "Economy", "EconomicExpansionValue": "Economy",
-    "InfoGain": "Recon", "Staleness": "Recon", "ContactRelevance": "Recon",
+    "InfoGain": "Recon", "Staleness": "Recon",
     "RaidReward": "Military", "EventReward": "Military", "WinChance": "Military", "AttackReadiness": "Military",
     "PreventedDamage": "Military",
     "ForceAmplification": "Development",
@@ -101,7 +101,7 @@ def axis_task(path, method):
     h = (path.stem + " " + (method or "")).lower().replace("_", "")
     pairs = [
         ("Recon","AirSweep",("airsweep",)), ("Recon","Explore",("explore",)),
-        ("Recon","Refresh",("refresh",)), ("Recon","Surveil",("surveil",)),
+        ("Recon","Refresh",("refresh",)),
         ("Aggression","ActiveDefence",("activedefence",)),
         ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid",)),
         ("Economy","FoundBase",("foundbase","baseexpansion")),
