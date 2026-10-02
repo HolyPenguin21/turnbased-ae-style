@@ -710,8 +710,9 @@ namespace Game.UI
             }
             if (resultTargetArtImage != null)
             {
-                resultTargetArtImage.sprite = _rpCard != null ? _rpCard.art : null;
-                resultTargetArtImage.gameObject.SetActive(_rpCard != null && _rpCard.art != null);
+                Sprite targetArt = _rpCard != null ? (_rpCard.detailArt != null ? _rpCard.detailArt : _rpCard.art) : null;
+                resultTargetArtImage.sprite = targetArt;
+                resultTargetArtImage.gameObject.SetActive(targetArt != null);
             }
             if (resultTargetNameText != null)
                 resultTargetNameText.text = _rpCard != null ? _rpCard.displayName : string.Empty;
@@ -998,12 +999,9 @@ namespace Game.UI
                 yield return new WaitUntil(() => _rerollAnimDone);
 
                 spentThisTurn = true;
-                // Same rule as AI and BattleSimulationKernel: a Fate reroll that lands as a miss
-                // ends THIS side's current duel turn. The other side may still react through the
-                // shared FateDuelOrder, but the unlucky side cannot immediately spend again.
-                if (_challengeSession == null || !_challengeSession.LastSpendHit)
-                    break;
-                // Successful reroll: same side, same turn, offer Spend-or-Accept again.
+                // A human may keep spending (even all their Fate in one turn) after any reroll,
+                // hit or miss; the turn passes to the other side only on Accept, or automatically
+                // once nothing is left to spend (no Fate or no missed die — the canSpend gate above).
             }
             _turnSpent = spentThisTurn;
         }
@@ -1306,8 +1304,9 @@ namespace Game.UI
             }
             if (resultTargetArtImage != null)
             {
-                resultTargetArtImage.sprite = _defender?.Art;
-                resultTargetArtImage.gameObject.SetActive(_defender?.Art != null);
+                Sprite targetArt = _defender != null ? (_defender.DetailArt != null ? _defender.DetailArt : _defender.Art) : null;
+                resultTargetArtImage.sprite = targetArt;
+                resultTargetArtImage.gameObject.SetActive(targetArt != null);
             }
             if (resultTargetNameText != null)
                 resultTargetNameText.text = _defender?.Name;
@@ -1367,8 +1366,9 @@ namespace Game.UI
                 resultSummaryText.text = summary;
             if (resultTargetArtImage != null)
             {
-                resultTargetArtImage.sprite = target != null ? target.Art : null;
-                resultTargetArtImage.gameObject.SetActive(target != null && target.Art != null);
+                Sprite targetArt = target != null ? (target.DetailArt != null ? target.DetailArt : target.Art) : null;
+                resultTargetArtImage.sprite = targetArt;
+                resultTargetArtImage.gameObject.SetActive(targetArt != null);
             }
             if (resultTargetNameText != null)
                 resultTargetNameText.text = target != null ? target.Name : string.Empty;

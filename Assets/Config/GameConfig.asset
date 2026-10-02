@@ -481,7 +481,7 @@ MonoBehaviour:
     complexes:
     - name: Arid acid lake single hex
       terrainName: Acid lake
-      useInGeneration: 1
+      useInGeneration: 0
       count: 2
       placementAttempts: 64
       exclusiveGroup: 
@@ -528,7 +528,7 @@ MonoBehaviour:
     - name: AridSteppe Boiling mud field
       terrainName: Boiling mud field
       useInGeneration: 1
-      count: 1
+      count: 3
       placementAttempts: 64
       exclusiveGroup: 
       minCenterFraction: 0
@@ -568,10 +568,10 @@ MonoBehaviour:
       - offset: {x: 1, y: 0}
         frames:
         - {fileID: 2800000, guid: 5d537ca6f938454fb9a67570316e88f2, type: 3}
-    complexCount: 3
+    complexCount: 4
     impassableEdgeMarginRings: 2
     mountainsTerrainName: Mountains
-    mountainRangeCount: 2
+    mountainRangeCount: 3
     mountainRangeLength: 2
     borderDepthFraction: 0.5
     borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
@@ -710,7 +710,7 @@ MonoBehaviour:
       - name: Acid lake single hex
         terrainName: Acid lake
         useInGeneration: 1
-        count: 2
+        count: 3
         placementAttempts: 64
         exclusiveGroup: 
         minCenterFraction: 0
@@ -755,7 +755,7 @@ MonoBehaviour:
           - {fileID: 2800000, guid: a82257277d2f52bebdee123439bd0de7, type: 3}
       - name: Desert Boiling mud field
         terrainName: Boiling mud field
-        useInGeneration: 1
+        useInGeneration: 0
         count: 1
         placementAttempts: 64
         exclusiveGroup: 
@@ -797,8 +797,8 @@ MonoBehaviour:
           frames:
           - {fileID: 2800000, guid: 91f74070667640dfbbb3f9b054616d8d, type: 3}
       mountainsTerrainName: Mountains
-      mountainRangeCount: 3
-      mountainRangeLength: 2
+      mountainRangeCount: 2
+      mountainRangeLength: 3
       groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
       borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
   minPlayers: 2

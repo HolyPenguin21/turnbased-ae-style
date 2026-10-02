@@ -165,9 +165,22 @@ namespace Game.Map
             mapRenderer.sharedMaterials = _materialInstances.ToArray();
             mapRenderer.sortingOrder = MapSortingOrder.Map;
             var animationGroups = new List<MapTerrainAnimator.Group>();
+            // Instances of one template start from evenly spread frames (random shared offset),
+            // so two copies never show the same frame at the same moment when frames allow it.
+            var totalByTemplate = new Dictionary<TerrainComplexTemplate, int>();
+            foreach (PlacedComplex complex in complexes)
+                totalByTemplate[complex.Template] = totalByTemplate.TryGetValue(complex.Template, out int n) ? n + 1 : 1;
+            var seenByTemplate = new Dictionary<TerrainComplexTemplate, int>();
+            var offsetByTemplate = new Dictionary<TerrainComplexTemplate, int>();
             foreach (PlacedComplex complex in complexes)
             {
                 int count = complex.Cells.Length;
+                int instance = seenByTemplate.TryGetValue(complex.Template, out int seen) ? seen : 0;
+                seenByTemplate[complex.Template] = instance + 1;
+                int frameCount = Mathf.Max(1, complex.Template.parts[0].frames.Length);
+                if (!offsetByTemplate.TryGetValue(complex.Template, out int offset))
+                    offsetByTemplate[complex.Template] = offset = Random.Range(0, frameCount);
+                int phase = (offset + instance * frameCount / totalByTemplate[complex.Template]) % frameCount;
                 var materials = new Material[count];
                 var frames = new Texture2D[count][];
                 for (int i = 0; i < count; i++)
@@ -179,7 +192,7 @@ namespace Game.Map
                 {
                     Materials = materials, Frames = frames,
                     FramesPerSecond = complex.Template.framesPerSecond,
-                    Phase = Random.Range(0, frames[0].Length),
+                    Phase = phase,
                 });
             }
             MapTerrainAnimator animator = GetComponent<MapTerrainAnimator>();
