@@ -859,6 +859,23 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.CompareSelection(strong, unknown), Is.LessThan(0),
                 "an unobserved site is treated as the most defended in its bucket");
         }
+
+        // 2026-10-02 — Raid / Active Defence commander: after the fight and the capacity, a Rapid
+        // (free-activation) non-support hero outranks the ordinary one, who outranks the Support one.
+        [Test]
+        public void CommanderChoice_RapidBeforeOrdinaryBeforeSupport()
+        {
+            var proj = new HeroRoleEvaluator.CommandProjection(1f, 5, null);
+            var rapid = new HeroRoleEvaluator.CommandCandidate(proj, 1, 1f, 6, 1, 0, rapidPreference: 1);
+            var ordinary = new HeroRoleEvaluator.CommandCandidate(proj, 2, 9f, 9, 3, 1);
+            var support = new HeroRoleEvaluator.CommandCandidate(proj, 0, 1f, 6, 1, 2);
+            Assert.That(HeroRoleEvaluator.CompareCandidates(rapid, ordinary), Is.LessThan(0));
+            Assert.That(HeroRoleEvaluator.CompareCandidates(ordinary, support), Is.LessThan(0));
+            var weakerFight = new HeroRoleEvaluator.CommandCandidate(
+                new HeroRoleEvaluator.CommandProjection(0.5f, 5, null), 1, 1f, 6, 1, 0, rapidPreference: 1);
+            Assert.That(HeroRoleEvaluator.CompareCandidates(ordinary, weakerFight), Is.LessThan(0),
+                "the fight outranks the free activation");
+        }
     }
 }
 #endif

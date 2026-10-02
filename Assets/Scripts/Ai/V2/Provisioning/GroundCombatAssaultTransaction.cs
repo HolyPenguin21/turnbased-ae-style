@@ -700,6 +700,17 @@ namespace Game.Ai.V2
             return plan;
         }
 
+        // The own garrison a field host may return a support hero to: the host stands on an own Base
+        // whose garrison is there, mine and has not been activated (it never moves, so the
+        // transfer is free).
+        private static ArmyData SupportHeroShedTarget(PlayerSetupData player, ArmyData host)
+        {
+            if (host == null || host.IsGarrison)
+                return null;
+            return ArmyRegistry.AllAt(host.Hex).FirstOrDefault(a => a != null && a.IsGarrison
+                && a.Owner == player && !a.HasActivatedThisTurn);
+        }
+
         internal static GroundCombatAssaultOutcome Run(GroundCombatAssaultRequest r)
         {
             PlayerSetupData player = r.Player;
@@ -738,6 +749,31 @@ namespace Game.Ai.V2
             var transfers = new List<GroundCombatAssemblyTransfer>();
             var claimedDonors = new HashSet<int>();
             var projectedUnits = new List<UnitData>(host.Members);
+            // Project owner, 2026-10-02: a Raid / Active Defence army does not march with a second
+            // (Support-tagged) hero. Playtest: Mordak's raid left with Hank Mercer AND Nova Sterling,
+            // an Economy hero that had been deployed into the same base army — one extra body slot
+            // and one extra activation AP every turn, for a hero that belongs in the citadel. On an
+            // own base the non-commander garrison heroes return to the local garrison first (free:
+            // the garrison never activates); the roster, the path check, the AP projection and the
+            // win re-check below are all priced WITHOUT them. Attack preparation has its own rule.
+            ArmyData shedGarrison = null;
+            var shed = new List<UnitData>();
+            if (lane != "attack")
+            {
+                shedGarrison = SupportHeroShedTarget(player, host);
+                if (shedGarrison != null)
+                    foreach (UnitData hero in host.Members.Where(u => u != null && u.IsHero
+                        && u != host.Commander && AiArmyRoles.IsGarrisonHero(u)).ToList())
+                    {
+                        var withHero = new List<UnitData>(shedGarrison.Members);
+                        withHero.AddRange(shed);
+                        withHero.Add(hero);
+                        if (ArmyData.ComputeCapacity(withHero, true) < withHero.Count)
+                            break;
+                        shed.Add(hero);
+                    }
+                projectedUnits.RemoveAll(shed.Contains);
+            }
             if (plan.NeedsAssembly)
             {
                 int heroTransfers = 0;
@@ -847,6 +883,27 @@ namespace Game.Ai.V2
                     ProvisionFailure.MoverContended(
                         $"turn AP exhausted: {lane} needs {N(activationAp)}, {N(turnApLeft)} left")));
 
+            var shedDone = new List<UnitData>();
+            foreach (UnitData hero in shed)
+            {
+                if (ArmyActions.TransferMember(hero, host, shedGarrison, ctx.HexSelection, out string shedWhy))
+                {
+                    shedDone.Add(hero);
+                    continue;
+                }
+                foreach (UnitData back in shedDone)
+                    ArmyActions.TransferMember(back, shedGarrison, host, ctx.HexSelection, out _);
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — could not return "
+                    + $"{hero.Name} to the garrison: {shedWhy}");
+                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.AssemblyInfeasible(
+                        $"{lane} host #{host.Id} could not shed support hero {hero.Name}: {shedWhy}")));
+            }
+            if (shedDone.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — support hero(es) "
+                    + $"[{string.Join(",", shedDone.Select(u => u.Name))}] returned to the garrison at "
+                    + $"({host.Hex.Q},{host.Hex.R}) instead of marching");
+
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in transfers)
             {
@@ -895,7 +952,7 @@ namespace Game.Ai.V2
             // (HeroRoleEvaluator, the same choice the gather projection made). Zero AP, no roster
             // change, so the funded activation above is untouched.
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, r.DefenderHexDefenseBonus);
+                opposition, r.DefenderHexDefenseBonus, preferRapid: lane != "attack");
             bool reordered = lead != null && lead != host.Commander
                 && host.TryReorderCommander(lead, out _);
             if (reordered)

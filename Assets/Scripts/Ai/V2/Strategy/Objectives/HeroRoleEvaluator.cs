@@ -159,7 +159,7 @@ namespace Game.Ai.V2
         // it (ArmyData.TryReorderCommander, zero AP) before the march.
         public static UnitData BestCommanderFor(IReadOnlyList<UnitData> members, bool isGarrison,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies = null)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies = null, bool preferRapid = false)
         {
             if (members == null)
                 return null;
@@ -181,7 +181,7 @@ namespace Game.Ai.V2
             return legal
                 .Select(h => (hero: h, candidate: Candidate(h, ProjectCommand(h.CommandRating,
                     heroes.Count - 1, WorthIt.SideCommander.Of(h), bodies, opposition,
-                    defenderHexDefenseBonus), h == current ? 0 : 1 + legal.IndexOf(h))))
+                    defenderHexDefenseBonus), h == current ? 0 : 1 + legal.IndexOf(h), preferRapid)))
                 .OrderBy(x => x.candidate, Comparer<CommandCandidate>.Create(CompareCandidates))
                 .First().hero;
         }
@@ -251,9 +251,12 @@ namespace Game.Ai.V2
             public readonly int CommandRating;
             public readonly int Fate;
             public readonly int StableKey;
+            // 1 for a Rapid Reaction hero that is not a support operator, when the caller asked for
+            // it (Raid / Active Defence: a Rapid commander costs no activation AP every turn).
+            public readonly int RapidPreference;
 
             public CommandCandidate(CommandProjection projection, int rolePreference, float leadership,
-                int commandRating, int fate, int stableKey)
+                int commandRating, int fate, int stableKey, int rapidPreference = 0)
             {
                 Projection = projection;
                 RolePreference = rolePreference;
@@ -261,11 +264,19 @@ namespace Game.Ai.V2
                 CommandRating = commandRating;
                 Fate = fate;
                 StableKey = stableKey;
+                RapidPreference = rapidPreference;
             }
         }
 
-        public static CommandCandidate Candidate(UnitData hero, CommandProjection projection, int stableKey) =>
-            Candidate(Profile(hero, stableKey), projection);
+        public static CommandCandidate Candidate(UnitData hero, CommandProjection projection, int stableKey,
+            bool preferRapid = false)
+        {
+            CommandCandidate c = Candidate(Profile(hero, stableKey), projection);
+            int rapid = preferRapid && hero != null && hero.HasAbility(UnitAbilities.RapidReaction)
+                && Classify(hero) != HeroOperationalRole.SupportOperator ? 1 : 0;
+            return rapid == 0 ? c : new CommandCandidate(c.Projection, c.RolePreference, c.Leadership,
+                c.CommandRating, c.Fate, c.StableKey, rapid);
+        }
 
         public static CommandCandidate Candidate(HeroProfile hero, CommandProjection projection) =>
             new CommandCandidate(projection, hero.RolePreference, hero.Leadership,
@@ -283,6 +294,10 @@ namespace Game.Ai.V2
             float dw = b.Projection.WinChance - a.Projection.WinChance;
             if (Math.Abs(dw) >= CommandWinEpsilon) return dw > 0f ? 1 : -1;
             int c = b.Projection.BodySlots.CompareTo(a.Projection.BodySlots);
+            if (c != 0) return c;
+            // Project owner, 2026-10-02 (Raid / Active Defence): Rapid > ordinary > Support. After
+            // the fight and the capacity, a Rapid commander (free activation) outranks the rest.
+            c = b.RapidPreference.CompareTo(a.RapidPreference);
             if (c != 0) return c;
             c = b.RolePreference.CompareTo(a.RolePreference);
             if (c != 0) return c;
