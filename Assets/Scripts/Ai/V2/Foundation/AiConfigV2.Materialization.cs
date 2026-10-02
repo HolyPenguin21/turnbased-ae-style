@@ -168,6 +168,13 @@
         // strongest army holds this share of the strike pool: the fist then assembles where it will
         // march from instead of at the most-collected base (playtest 2026-10-02: strike 38/60 at
         // T19, armies scattered over 5-8 raids). Below it, returns keep the old "most active base".
+        // A fresh opportunistic Raid (no capability demand, no durable intent) that is worth less
+        // than this many TaskScore points per AP it asks is parked and funded only from the AP
+        // remainder (ResourceAllocator, DeferReason.LowValuePerAp). 1 TaskScore point = 1 AP
+        // (taskScorePerApEquivalent), so 2 = "must return at least twice its AP". Guard raids in the
+        // 2026-10-02 log were worth 14-27 for 1-5 AP, so this only catches genuinely thin raids;
+        // with spare AP they still run the same turn through the remainder pass.
+        public const float raidParkValuePerAp = 2.0f;
         public const float stagingReturnMinFistShare = 0.30f;
         public const float economyIdleBuilderDeliveryTolerance = 0.60f;
         // StrategicMaintenancePolicy enumerates only genuinely non-card strategic

@@ -205,6 +205,48 @@ namespace Game.EditorTests
                 "the allocator must read the current ledger, not cache an expired hold");
         }
 
+        private static MissionProposal FreshRaid(int armyId, float value, float ap)
+        {
+            var raid = new MissionProposal
+            {
+                Kind = MissionKind.Raid,
+                Target = new RaidMissionTarget
+                {
+                    Phase = RaidMissionPhase.Assault,
+                    Target = RaidTargetRef.ForNeutralArmy(armyId),
+                },
+                BaseValue = value,
+                EffectiveValue = value,
+                Requirements = new MissionRequirements { ApMinimum = ap, ApDesired = ap, ApMaximum = ap },
+            };
+            raid.Axes.Value[DesireAxis.Aggression] = 1f;
+            return raid;
+        }
+
+        [Test]
+        public void ThinFreshRaid_IsParkedWhenApIsTight_AndRunsFromTheRemainderWhenApIsSpare()
+        {
+            var player = new PlayerSetupData();
+            var thin = FreshRaid(1, value: 3f, ap: 4f);        // 0.75 per AP: under the park bar
+            MissionProposal good = AirScout(0f);               // another lane: no raid-vs-raid conflict
+            good.EffectiveValue = good.BaseValue = 20f;
+            good.Requirements.ApMinimum = good.Requirements.ApDesired = good.Requirements.ApMaximum = 4f;
+            WorldSnapshot Snap(int ap) => new WorldSnapshot
+                { TurnNumber = 5, Self = new SelfSnapshot { ActionPoints = ap } };
+
+            TentativeAllocation tight = ResourceAllocator.BeginTurn(Snap(4), Radar.Even(),
+                new List<MissionProposal> { thin, good }, new List<Commitment>(), player).Pack();
+            Assert.That(tight.Funded.Select(f => f.Mission), Has.Member(good));
+            Assert.That(tight.Funded.Select(f => f.Mission), Has.No.Member(thin));
+            Assert.That(tight.Deferred.Any(d => d.Mission == thin && d.Reason == DeferReason.LowValuePerAp), Is.True,
+                string.Join(",", tight.Deferred.Select(d => d.Reason)) + " funded=" + tight.Funded.Count);
+
+            TentativeAllocation spare = ResourceAllocator.BeginTurn(Snap(10), Radar.Even(),
+                new List<MissionProposal> { thin, good }, new List<Commitment>(), player).Pack();
+            Assert.That(spare.Funded.Select(f => f.Mission), Has.Member(thin),
+                "with AP to spare the parked raid runs through the remainder pass");
+        }
+
         private static MissionProposal AirScout(float energy)
         {
             var scout = new MissionProposal

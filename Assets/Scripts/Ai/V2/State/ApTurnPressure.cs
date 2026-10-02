@@ -79,7 +79,7 @@ namespace Game.Ai.V2
                 }
 
             List<DeferredEntry> budget = (lastDeferred ?? System.Array.Empty<DeferredEntry>())
-                .Where(d => d?.Mission?.Requirements != null && d.Reason == DeferReason.InsufficientBudget)
+                .Where(d => d?.Mission?.Requirements != null && (d.Reason == DeferReason.InsufficientBudget || d.Reason == DeferReason.LowValuePerAp))
                 .ToList();
             return new ApTurnMeasure(startAp, endAp, drawsShort * drawCost, drawsShort,
                 cardsUnmet, cardsAffordable, budget.Sum(d => d.Mission.Requirements.ApDesired), budget.Count);
