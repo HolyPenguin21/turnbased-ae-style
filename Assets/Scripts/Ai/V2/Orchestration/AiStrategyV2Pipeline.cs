@@ -264,6 +264,9 @@ namespace Game.Ai.V2
                         changed => formedWing |= changed);
                     if (formedWing)
                     {
+                        // AviationRebase does not version itself (see StrategicPhaseB): one canonical
+                        // bump per mutating action, before any snapshot/cache read of the new state.
+                        V2StateVersion.Bump();
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);

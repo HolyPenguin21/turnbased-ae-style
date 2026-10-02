@@ -904,13 +904,14 @@ namespace Game.Ai.V2
             return _repricedFloors.TryGetValue(StableMissionKey.For(m), out ProvisionRequirement floor)
                 ? Mathf.Max(baseMin, floor.Ap) : baseMin;
         }
-        // Fresh (no durable intent), opportunistic (no capability demand behind it) Raid whose value
-        // per desired AP is under the park threshold. A Return leg, a commitment and a demand-driven
+        // Fresh (no durable intent), opportunistic (no capability demand behind it) Raid whose
+        // INTRINSIC value (BaseValue, TaskScore points; never the radar-scaled EffectiveValue, which
+        // would park every raid of a low-weight axis) per desired AP is under the park threshold. A Return leg, a commitment and a demand-driven
         // Raid are never parked.
         private bool IsLowValueRaid(MissionProposal m) =>
             m != null && m.Kind == MissionKind.Raid && !m.FromDurableIntent
             && m.CauseDemandTraceIds.Count == 0
-            && RankValue(m) < AiConfigV2.raidParkValuePerAp * Mathf.Max(1f, ApDesired(m));
+            && m.BaseValue < AiConfigV2.raidParkValuePerAp * Mathf.Max(1f, ApDesired(m));
 
         private float ApDesired(MissionProposal m) =>
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
