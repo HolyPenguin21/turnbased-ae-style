@@ -277,7 +277,15 @@ namespace Game.Combat
             _state = state ?? throw new ArgumentNullException(nameof(state));
             _magnitudes = magnitudes;
             _random = random ?? new System.Random(state.BattleSeed);
+            AiDebugLog.Write($"[BATTLE] ({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
+                + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
         }
+
+        // Every member with the stats the fight is played with (attack/defense/hp now/max): the
+        // start-of-battle composition the AI estimate is compared against.
+        private static string DescribeSides(ArmyData army) => army == null ? "none"
+            : DescribeForLog(army) + " {" + string.Join("; ", System.Linq.Enumerable.Select(army.Members,
+                m => m == null ? "?" : $"{m.Name} a{m.Attack} d{m.Defense} hp{m.HitPointsCurrent}/{m.HitPointsMax}")) + "}";
 
         public void StartRound()
         {
