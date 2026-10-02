@@ -93,7 +93,9 @@ namespace Game.Economy
                     continue;
 
                 BuildingData building = BuildingRegistry.FindAt(hex);
-                PlayerRoot buildingRoot = building?.Owner != null
+                // A defeated owner earns nothing, and its building must not eat the hex's finite
+                // yield before an active player's army gets its share.
+                PlayerRoot buildingRoot = building?.Owner != null && !building.Owner.IsEliminated
                     ? PlayerRootRegistry.FindFor(building.Owner) : null;
                 foreach (ResourceType type in AllResourceTypes)
                 {
@@ -123,7 +125,8 @@ namespace Game.Economy
                         if (remaining <= 0)
                             break;
                         PlayerSetupData owner = ownerArmies.Key;
-                        if (owner == null || BattleInitiator.FindEnemyAt(hex, owner) != null)
+                        if (owner == null || owner.IsEliminated
+                            || BattleInitiator.FindEnemyAt(hex, owner) != null)
                             continue;
                         int unitCount = ownerArmies.Sum(a =>
                             a.Members.Count(u => u.HasAbility(ability)));

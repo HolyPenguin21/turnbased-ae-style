@@ -26,7 +26,11 @@ namespace Game.Ai.V2
             List<HexCoord> eventGuardHexes = AiMapMemory.KnownEventGuardHexes(player).ToList();
             var known = new KnownSnapshot
             {
-                EnemySightings = AiMapMemory.AllKnownEnemySightings(player).ToList(),
+                // A defeated player's armies stand still for good: they are neither a threat nor an
+                // objective. (Route blocking and scout detection still read AiMapMemory directly -
+                // the army physically occupies its hex.)
+                EnemySightings = AiMapMemory.AllKnownEnemySightings(player)
+                    .Where(s => s.Owner == null || !s.Owner.IsEliminated).ToList(),
                 NeutralSightings = AiMapMemory.AllKnownNeutralSightings(player).ToList(),
                 Buildings = AiMapMemory.AllKnownBuildings(player).ToList(),
                 EventGuardHexes = eventGuardHexes,
@@ -84,6 +88,10 @@ namespace Game.Ai.V2
                     neutralArmies.AddRange(snaps);
                     continue;
                 }
+
+                // Defeated: immobile, never a direction/anchor/threat for planning.
+                if (p.IsEliminated)
+                    continue;
 
                 enemyArmies.AddRange(snaps);
 

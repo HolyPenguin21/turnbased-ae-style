@@ -150,6 +150,22 @@ namespace Game.Map
             hexSelection?.RestackArmiesOn(building.Hex, null);
         }
 
+        // A defeated owner's non-base buildings (resource facilities) are razed; its Bases and
+        // starting Citadel stay standing - still capturable by whoever arrives, never destroyed.
+        // Returns how many were destroyed.
+        public static int DestroyFacilitiesOf(PlayerSetupData defeated, HexSelectionController hexSelection)
+        {
+            if (defeated == null)
+                return 0;
+            var victims = new List<BuildingData>();
+            foreach (BuildingData b in AllBuildings())
+                if (b != null && b.Owner == defeated && !b.IsBase && !b.IsStartingCitadel)
+                    victims.Add(b);
+            foreach (BuildingData b in victims)
+                CaptureOrDestroy(b, null, hexSelection);
+            return victims.Count;
+        }
+
         // Shared by every place an army finishes ARRIVING on a hex without a fight of its own —
         // an ordinary strategic move (HexSelectionController.Movement.cs) and, per the user's own
         // spec, a retreat landing there too (BattleScreenUI.Retreat.cs's PerformRetreat). An

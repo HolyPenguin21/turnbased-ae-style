@@ -320,6 +320,9 @@ namespace Game.Turns
             player.IsEliminated = true;
             Game.Ai.AiMatchStats.RecordElimination(player);
 
+            // Resource facilities go with their owner; Bases and the Citadel stay (capturable).
+            BuildingRegistry.DestroyFacilitiesOf(player, hexSelectionController);
+
             if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
                 ReleasePrisoners(player, new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
 

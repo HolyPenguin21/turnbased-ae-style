@@ -113,7 +113,8 @@ namespace Game.Ai.V2
             if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconObservation> store))
                 return System.Array.Empty<ReconObservation>();
             return store.Values
-                .Where(o => currentArmyIds == null || !currentArmyIds.Contains(o.ArmyId))
+                .Where(o => (currentArmyIds == null || !currentArmyIds.Contains(o.ArmyId))
+                    && (o.Owner == null || !o.Owner.IsEliminated))
                 .ToList();
         }
 
