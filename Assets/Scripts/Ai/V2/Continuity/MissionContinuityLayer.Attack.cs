@@ -605,7 +605,8 @@ namespace Game.Ai.V2
             // ATK-F02 — a WAIT names its concrete source; a positive Reserve alone is no delivery
             // into this exact (possibly full) host.
             string cardSource = sameHexStep ? null
-                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost, a.TargetRoster);
+                : AggressionDemandEvaluator.PreparationHostCardSource(snap, liveHost, a.TargetRoster,
+                    a.Target.Hex);
             // A support another operation holds is not a WAIT witness: it is bought only by the
             // priced RecruitDonors proposal, whose execution resets the stall (AdvanceIntent).
             if (sameHexStep || cardSource != null)

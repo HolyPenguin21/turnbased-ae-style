@@ -184,7 +184,23 @@ namespace Game.Ai.V2
             ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == hostId);
             float required = 0.80f * snap.Self.AttackPeak;
             float have = host?.EffectiveArmyPower ?? 0f;
-            if (host == null || have > required)
+            if (host == null)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}preparation_host_clears_power "
+                    + $"have={have:0.#} required>{required:0.#}");
+                return null;
+            }
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex);
+            // The march gate is power AND coverage: GroundCombatFeasibility.Clears stays the one
+            // owner of coverage, so a host above the power bar is only satisfied when it also
+            // damages every known defender (an unobserved site has none and is vacuously covered).
+            bool coverageGap = have > required && !GroundCombatFeasibility.Clears(
+                host.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>(),
+                host.Commander, opposition, GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus,
+                out _, out _);
+            if (have > required && !coverageGap)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}preparation_host_clears_power "
                     + $"have={have:0.#} required>{required:0.#}");
@@ -196,9 +212,6 @@ namespace Game.Ai.V2
                     + $"supports=[{string.Join(",", ai.GatherSupportArmyIds)}]");
                 return null;
             }
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex);
             HashSet<int> claimed = commitments.ClaimedArmyIdSet;
             claimed.Remove(hostId);
             // §41 — the SAME partial gather the preparation plans with, as a capability question:
@@ -248,7 +261,7 @@ namespace Game.Ai.V2
             TaskScore score = AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default;
             diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE {at}preparation_host_below_threshold "
                 + $"capability=FieldCombatPower shape=Any desired={deficit:0.#} have={have:0.#} "
-                + $"required>{required:0.#} roster={host.MemberCount}/{host.Capacity} task={score.Value:0.##}");
+                + $"required>{required:0.#} coverageGap={coverageGap} roster={host.MemberCount}/{host.Capacity} task={score.Value:0.##}");
             return new AxisDemand
             {
                 RequestingAxis = DesireAxis.Aggression,
@@ -260,6 +273,8 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = deficit,
                 AttackFistArmyId = hostId,
                 AttackFistIsPreparationHost = true,
+                AttackCoverageGap = coverageGap,
+                AttackCoverageTargetHex = coverageGap ? ai.Target.Hex : (HexCoord?)null,
                 RequiredTraits = TraitPreference.None,
                 MinimumFollowupAp = 0f,
                 TargetHex = host.Hex,
@@ -279,7 +294,7 @@ namespace Game.Ai.V2
         // stands off an own Base (no card lands there) or no card strengthens it: a positive
         // Reserve alone is no delivery. Which chain actually runs stays Materialization's choice.
         internal static string PreparationHostCardSource(WorldSnapshot snap, ArmyData host,
-            IReadOnlyList<StrikeRosterSlot> targetRoster = null)
+            IReadOnlyList<StrikeRosterSlot> targetRoster = null, HexCoord? coverageTarget = null)
         {
             if (snap?.Self == null || host == null || snap.Self.BaseHexes == null
                 || !snap.Self.BaseHexes.Contains(host.Hex))
@@ -300,6 +315,12 @@ namespace Game.Ai.V2
             // equivalent card frees no slot, so for it only a real free slot counts.
             bool releasableSlot = missing != null
                 && StrikeRoster.NonTargetBodies(target, host.Members).Count > 0;
+            // A host that already clears the power bar but cannot damage every known defender of the
+            // target is served by a card that closes target coverage — not only by one filling a
+            // missing slot of the strongest-power roster.
+            bool coverageGap = coverageTarget.HasValue
+                && MaterializationDeliveryPolicy.UncoveredDefenderCount(snap, host.Members, null,
+                    coverageTarget.Value) > 0;
             bool ExactlyMissing(Game.Cards.CardDefinition d) =>
                 missing != null && missing.Any(m => !m.IsHero && m.Key == StrikeRoster.CardKey(d));
             bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
@@ -312,8 +333,11 @@ namespace Game.Ai.V2
                     || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
                     AiPower.EffectiveLine(d, equipped?.equipment))
-                && StrikeRoster.FillsMissing(missing, d,
-                    AiPower.EffectiveLine(d, equipped?.equipment).BasePower);
+                && (coverageGap
+                    ? MaterializationDeliveryPolicy.ClosesTargetCoverage(snap, host.Members, d,
+                        coverageTarget.Value)
+                    : StrikeRoster.FillsMissing(missing, d,
+                        AiPower.EffectiveLine(d, equipped?.equipment).BasePower));
 
             // A held card Phase A already failed to chain into this exact host (its pinned demand,
             // this turn or the last) is no witness: the two stages answer with one truth.

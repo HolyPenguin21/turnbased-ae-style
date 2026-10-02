@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.HexGrid;
 using UnityEngine;
 using Game.Cards;
 using Game.Map;
@@ -216,6 +217,13 @@ namespace Game.Ai.V2
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
                         if (!StrengthensArmy(p.Deploy.Army.Members, card, AiPower.ProjectMaterialization(p)))
                             return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
+                        // The host already clears the power bar and lacks target coverage: power
+                        // alone is no delivery — the body must let it damage more known defenders.
+                        if (demand.AttackCoverageGap && demand.AttackCoverageTargetHex.HasValue
+                            && !ClosesTargetCoverage(snapshot, p.Deploy.Army.Members, card,
+                                demand.AttackCoverageTargetHex.Value))
+                            return DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened,
+                                "card_does_not_improve_target_coverage");
                     }
                     if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
                     {
@@ -295,6 +303,35 @@ namespace Game.Ai.V2
                 .Where(u => u != null).Select(AiPower.ToPowerUnit).ToList());
             return ProjectedArmyPower(members, card, line) > beforePower;
         }
+
+        // How many known defender units of `hex` none of `members` (plus the optional `extra` card
+        // body) can damage. Coverage itself stays WorthIt.CanDamageAll's — asked once per defender
+        // unit here only so a card that closes some of several gaps still counts as progress.
+        internal static int UncoveredDefenderCount(WorldSnapshot snapshot, IEnumerable<UnitData> members,
+            CardDefinition extra, HexCoord hex)
+        {
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, hex);
+            if (opposition == null || opposition.Count == 0)
+                return 0;
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, null, hex);
+            var attackers = (members ?? Enumerable.Empty<UnitData>())
+                .Where(u => u != null).Select(WorthIt.FromLiveUnit).ToList();
+            if (extra != null && !extra.isAviation)
+                attackers.Add(AiPower.ToDefenderProfile(extra));
+            int uncovered = 0;
+            foreach (WorthIt.DefendingArmy army in opposition)
+                foreach (WorthIt.DefenderProfile unit in army.Units)
+                    if (!WorthIt.CanDamageAll(attackers, new[] { unit }, army.DefenseBonus(hexBonus)))
+                        uncovered++;
+            return uncovered;
+        }
+
+        // The card lets the host damage strictly more of the target's known defenders.
+        internal static bool ClosesTargetCoverage(WorldSnapshot snapshot, IEnumerable<UnitData> members,
+            CardDefinition card, HexCoord hex) =>
+            UncoveredDefenderCount(snapshot, members, card, hex)
+                < UncoveredDefenderCount(snapshot, members, null, hex);
 
         // The army's AiPower once this card has joined it.
         internal static float ProjectedArmyPower(IEnumerable<UnitData> members, CardDefinition card,

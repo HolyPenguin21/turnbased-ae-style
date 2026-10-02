@@ -63,6 +63,9 @@ namespace Game.Ai.V2
             // reaches the allocator (it could otherwise fund two operations in one pass).
             MissionIntent liveOperation = LiveAttackOperation(activeIntents);
             var freshCandidates = new List<MissionProposal>();
+            // Why an incumbent Assault got no proposal this pass (the planner knows it right where
+            // it declines); published below as the planner deferral Continuity reads.
+            var assaultWhy = new Dictionary<MissionIntentKey, string>();
             foreach (AttackObjective objective in objectives)
             {
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
@@ -131,20 +134,31 @@ namespace Game.Ai.V2
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                         $"[AI][V2][Attack][Assembly] decision=REJECT target={objective.Target.DiagnosticLabel} "
                         + $"reason={plan.Reason}");
+                    if (incumbent != null)
+                        assaultWhy[incumbent.IntentKey] = "attack_assault_rejected_plan_infeasible";
                     continue;
                 }
 
                 ArmySnapshot actor = snap.Self.Armies?.FirstOrDefault(x => x != null
                     && x.ArmyId == plan.BaseArmyId);
                 if (actor == null)
+                {
+                    if (incumbent != null)
+                        assaultWhy[incumbent.IntentKey] = "attack_assault_actor_temporarily_unavailable";
                     continue;
+                }
 
                 // Price and time the force this plan will ACTUALLY field, through the same
                 // projections Raid and ActiveDefence use — never a host-only figure.
                 int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
                     ?? actor.MaxMovement;
                 int distance = AiV2Util.TravelCost(snap, actor, objective.Hex, maxMovement: projectedMove);
-                if (distance == int.MaxValue) continue;
+                if (distance == int.MaxValue)
+                {
+                    if (incumbent != null)
+                        assaultWhy[incumbent.IntentKey] = "attack_assault_target_unreachable_this_pass";
+                    continue;
+                }
                 int eta = AiV2Util.CeilDiv(distance,
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
@@ -205,6 +219,8 @@ namespace Game.Ai.V2
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                         $"[AI][V2][Attack][Admission] decision=SUPPRESS target={objective.Target.DiagnosticLabel} "
                         + "reason=no_ready_ground_actor_after_phaseA");
+                    if (incumbent != null)
+                        assaultWhy[incumbent.IntentKey] = "attack_assault_no_ready_actor_this_pass";
                     continue;
                 }
 
@@ -223,6 +239,39 @@ namespace Game.Ai.V2
 
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
                 attackProposed);
+
+            RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
+        }
+
+        // Missions owns the reason a live Gather / Assault intent has no executable proposal this
+        // pass (Continuity must not re-run Attack eligibility to guess it). Only a deliberately
+        // absent primary step is recorded; an intent that did get a proposal, or whose lane already
+        // named its own deferral (Reinforcement), is left alone.
+        private static void RecordAttackDeferrals(IReadOnlyList<MissionIntent> activeIntents,
+            List<MissionProposal> proposals, IReadOnlyDictionary<MissionIntentKey, string> assaultWhy,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
+        {
+            if (activeIntents == null || deferredThisPass == null)
+                return;
+            foreach (MissionIntent intent in activeIntents.Where(i => i?.Attack != null
+                && i.Status == IntentStatus.Active))
+            {
+                AttackMissionPhase phase = intent.Attack.Phase;
+                if ((phase != AttackMissionPhase.Gather && phase != AttackMissionPhase.Assault)
+                    || deferredThisPass.ContainsKey(intent.IntentKey))
+                    continue;
+                if (proposals.Any(p => p != null && p.Kind == MissionKind.Attack
+                    && MissionIntentKey.For(p).Equals(intent.IntentKey)))
+                    continue;
+                string reason;
+                if (phase == AttackMissionPhase.Gather)
+                    reason = intent.Attack.Preparation
+                        ? "attack_preparation_no_executable_step_this_pass"
+                        : "attack_gather_no_executable_leg_this_pass";
+                else if (!assaultWhy.TryGetValue(intent.IntentKey, out reason))
+                    reason = "attack_assault_no_executable_step_this_pass";
+                deferredThisPass[intent.IntentKey] = reason;
+            }
         }
 
         // The player's one live Attack operation (a Gather — preparation included —, Assault or

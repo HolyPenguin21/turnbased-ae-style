@@ -129,6 +129,11 @@ namespace Game.Ai.V2
         // (ActorCommitments.IsPreparationHost): it may still be weak, hero-only or an empty shell,
         // so delivery checks the exact claimed container instead of a structural combat actor.
         public bool AttackFistIsPreparationHost;
+        // The preparation host already clears the power bar but cannot damage every known
+        // defender of AttackCoverageTargetHex (GroundCombatFeasibility.Clears' coverage): delivery
+        // accepts only a card that lets the host damage more of them.
+        public bool AttackCoverageGap;
+        public HexCoord? AttackCoverageTargetHex;
         public bool IsPersistenceDeferred;
         // 2026-10-01 — Phase A proved this demand structurally undeliverable this pass (no chain
         // shape at all, or shapes that pass the play preflight yet cannot deliver): it keeps no
