@@ -47,7 +47,7 @@ namespace Game.Ai.V2
     {
         NoMoverExists,          // no structural candidate at all (stealth-filtered where relevant)
         NoExecutableStep,       // an eligible mover exists but none has a safe first step / vantage
-        NoObservationVantage,   // Surveil only — no on-map vantage within any scout's vision
+        NoObservationVantage,   // Refresh — no on-map vantage within any scout's vision
         MoverContended,         // a capable candidate existed but lost this pass's batch solve
     }
 
@@ -133,12 +133,12 @@ namespace Game.Ai.V2
             if (live == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
 
-            if (!SurveilVantageSelector.UsesVantage(snap, target))
+            if (!ObservationVantageSelector.UsesVantage(snap, target))
                 return SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null
                     ? ReconAssignmentCandidateResult.Ok
                     : ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
 
-            foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
+            foreach (ObservationVantageCandidate v in ObservationVantageSelector.Rank(snap, mover, target))
                 if (SafeStepPathing.FindNextSafeStep(ctx.Map, live, v.ExecutionHex) != null)
                     return ReconAssignmentCandidateResult.Ok;
             return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoReachableVantage);
@@ -189,14 +189,14 @@ namespace Game.Ai.V2
         }
 
         // =======================================================================================
-        //  E. ResolveExecutionHex — Explore/Refresh execute AT the target; Surveil executes from the
-        //     best currently-reachable vantage.
+        //  E. ResolveExecutionHex — Explore and ordinary Refresh execute at the focus.
+        //     A blocked Refresh observes it from a reachable vantage.
         // =======================================================================================
         internal static HexCoord ResolveExecutionHex(WorldSnapshot snap, ArmySnapshot mover, ScoutMissionTarget target)
         {
-            if (!SurveilVantageSelector.UsesVantage(snap, target))
+            if (!ObservationVantageSelector.UsesVantage(snap, target))
                 return target.FocusHex;
-            var vantages = SurveilVantageSelector.Rank(snap, mover, target).ToList();
+            var vantages = ObservationVantageSelector.Rank(snap, mover, target).ToList();
             return vantages.Count > 0 ? vantages[0].ExecutionHex : target.FocusHex;
         }
 
@@ -234,9 +234,8 @@ namespace Game.Ai.V2
 
         // Item 2 — a single enumeration of (garrison mover, resolved destination shell) pairs for a
         // given probe target, shared verbatim by BuildCandidates and MeasureCapacity. Garrison
-        // extraction never serves Surveil (ScoutMoverSelector.EligibleGarrisonExtraction's own
-        // restriction — no vantage machinery); every OTHER kind (Explore, Refresh, either stealth-
-        // Required or not) is in scope, matching whatever `probeTarget` actually asks for. Every
+        // extraction cannot serve a Refresh that needs a vantage (a not-yet-extracted mover has no
+        // live route to one). Explore and ordinary Refresh remain in scope. Every
         // accepted pair reserves its shell into `reservedShellIds` so two garrisons competing for the
         // same hex's shells never both walk away with "the" first one (item 3).
         private static List<GarrisonGroundActor> MaterializableGarrisonActors(WorldSnapshot snap,
@@ -244,7 +243,7 @@ namespace Game.Ai.V2
             ActorCommitments commitments, HashSet<int> reservedShellIds)
         {
             var result = new List<GarrisonGroundActor>();
-            if (SurveilVantageSelector.UsesVantage(snap, probeTarget))
+            if (ObservationVantageSelector.UsesVantage(snap, probeTarget))
                 return result;
             foreach (ArmySnapshot mover in
                      ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, probeTarget, excludeArmyIds))
@@ -271,13 +270,13 @@ namespace Game.Ai.V2
                 return list;
             }
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
-            // Surveil, and a Refresh of a site a visible scout may not stand on, run from a vantage.
-            bool surveil = SurveilVantageSelector.UsesVantage(snap, target);
+            // A Refresh of a site a visible scout may not stand on runs from a vantage.
+            bool usesVantage = ObservationVantageSelector.UsesVantage(snap, target);
 
             List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
             foreach (ArmySnapshot mover in movers)
             {
-                if (!surveil)
+                if (!usesVantage)
                 {
                     if (ctx?.Map != null)
                     {
@@ -295,7 +294,7 @@ namespace Game.Ai.V2
 
                 ArmyData live = AiV2Util.ResolveArmy(player, mover.ArmyId);
                 if (live == null) continue;
-                foreach (SurveilVantageCandidate v in SurveilVantageSelector.Rank(snap, mover, target))
+                foreach (ObservationVantageCandidate v in ObservationVantageSelector.Rank(snap, mover, target))
                 {
                     if (SafeStepPathing.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
                         continue;
@@ -326,7 +325,7 @@ namespace Game.Ai.V2
             // to this one BuildCandidates call so two garrisons sharing a hex within the SAME
             // mission's candidate list compete for distinct shells — cross-mission dedup for the
             // same shell is the batch solver's ActorKey uniqueness.
-            if (!surveil)
+            if (!usesVantage)
             {
                 var reservedShellIds = new HashSet<int>();
                 foreach (GarrisonGroundActor g in MaterializableGarrisonActors(
@@ -357,7 +356,7 @@ namespace Game.Ai.V2
             if (airPool == null || airPool.Count == 0 || root == null || ctx?.Map == null || snap?.Self == null)
                 return;
             // Aviation serves only the aviation-only AirSweep pass (ReconAirCapacityPolicy.
-            // IsAirServiceable): generic Refresh / Surveil stay with ground scouts.
+            // IsAirServiceable): generic Refresh stay with ground scouts.
             bool observationClass = ReconScoutKinds.IsAirSweep(target.Kind);
             if (!observationClass || target.NeedsStealth)
                 return;
@@ -624,12 +623,12 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(target.Kind))
                 return ScoutAssignmentFailureReason.NoExecutableStep;
 
-            bool surveil = SurveilVantageSelector.UsesVantage(snap, target);
+            bool usesVantage = ObservationVantageSelector.UsesVantage(snap, target);
 
             if (!HasStructuralCandidate(snap, target))
                 return ScoutAssignmentFailureReason.NoMoverExists;
 
-            if (!surveil)
+            if (!usesVantage)
             {
                 // An unassigned ground Explore/Refresh is only MoverContended if a capable UNCLAIMED
                 // scout that could actually take a safe first step toward the focus was preferred
@@ -654,12 +653,12 @@ namespace Game.Ai.V2
             }
 
             bool anyStructuralVantage = StructuralCandidates(snap, target)
-                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+                .Any(mv => ObservationVantageSelector.Rank(snap, mv, target).Count > 0);
             if (!anyStructuralVantage)
                 return ScoutAssignmentFailureReason.NoObservationVantage;
 
             bool anyEligibleHasVantage = EligibleMovers(snap, target, excludeArmyIds)
-                .Any(mv => SurveilVantageSelector.Rank(snap, mv, target).Count > 0);
+                .Any(mv => ObservationVantageSelector.Rank(snap, mv, target).Count > 0);
             return anyEligibleHasVantage
                 ? ScoutAssignmentFailureReason.NoExecutableStep
                 : ScoutAssignmentFailureReason.MoverContended;
@@ -815,7 +814,7 @@ namespace Game.Ai.V2
         // A job with a real, mission-specific air route belongs to the independent aviation lane;
         // ground must not consume it merely because its AP envelope is cheaper. Aviation now
         // serves only the aviation-only AirSweep (ReconAirCapacityPolicy.IsAirServiceable), so
-        // generic Refresh / Surveil never reserve for air — they are ground jobs.
+        // generic Refresh never reserve for air — they are ground jobs.
         internal static bool ShouldReserveObservationForAir(ScoutMissionTarget target,
             ScoutExecutionCandidate selected, IEnumerable<ScoutExecutionCandidate> candidates)
         {
@@ -981,7 +980,7 @@ namespace Game.Ai.V2
             // could already supply. `claimed` folds in commitments (durable intents) AND every
             // generic lane actor already claimed above, mirroring
             // ScoutMoverSelector.EligibleGarrisonExtraction's excludeArmyIds contract; a probe
-            // target with no stealth/Surveil requirement matches IdleGroundScouts' generic scope.
+            // target with no stealth requirement matches IdleGroundScouts' generic scope.
             HashSet<int> claimedForGarrison = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
             claimedForGarrison.UnionWith(capacity.GenericGroundLaneActors);
             claimedForGarrison.UnionWith(capacity.GenericObservationLaneActors);
@@ -1061,7 +1060,7 @@ namespace Game.Ai.V2
             }
 
             // The air jobs worth guaranteeing with air: every runnable aviation-serviceable AirSweep
-            // job. A ground scout on a Refresh / Surveil lane never serves one
+            // job. A ground scout on a Refresh lane never serves one
             // (ReconAirCapacityPolicy.IsAirServiceable), so ground lanes do not reduce this need;
             // a wing already flying one is witnessed below and struck off via consumedObjectiveKeys.
             var obsRunnable = (reconObjectives ?? System.Array.Empty<ReconObjective>())
@@ -1169,8 +1168,6 @@ namespace Game.Ai.V2
         // toward at least one still-unmatched runnable Observation objective, tested with the EXACT
         // primitives AppendAirCandidates binds a real funded mission with:
         //   · Refresh objective -> anchor = its FocusHex.
-        //   · Surveil objective -> anchor = best reachable vantage (needs a live wing position/vision,
-        //     so a already-formed wing is evaluated at its live position.
         //   · ReconAirStepPlanner.Pick with missionFocusHex = anchor, score must
         //     clear MinimumUsefulScore, and the resulting step must MakesGenuineProgress toward the
         //     anchor (strictly closer, or the anchor already falls inside the resulting vision).
@@ -1291,16 +1288,13 @@ namespace Game.Ai.V2
             // path. Mirrors BuildCandidates' garrison-extraction check exactly: coordinate-based
             // SafeStepPathing off the synthetic snapshot's own Hex/MaxMovement.
             //
-            // The gate is on the JOB's own kind (never Surveil — matches
-            // ScoutMoverSelector.EligibleGarrisonExtraction's exclusion, since a not-yet-extracted
-            // Recce cannot serve Surveil vantage machinery), NOT on which list (groundJobs/obsJobs)
-            // it came from: `observationRunnable` covers Refresh AND Surveil, and BuildCandidates
-            // fully supports Refresh for the same actor.
+            // Garrison extraction uses coordinate pathing, so a Refresh requiring a vantage
+            // must be left to an existing ground scout. Other Refresh jobs can use the shell.
             bool CanRun(ArmySnapshot a, ReconObjective job)
             {
                 if (!a.RequiresGarrisonExtraction)
                     return CanExecute(ctx, player, snap, a, job.ToTarget());
-                if (SurveilVantageSelector.UsesVantage(snap, job.ToTarget()))
+                if (ObservationVantageSelector.UsesVantage(snap, job.ToTarget()))
                     return false;
                 return ctx?.Map == null
                     || SafeStepPathing.FindSafePath(ctx.Map, player, a.Hex, job.FocusHex, a.MaxMovement) != null;

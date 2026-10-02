@@ -9,7 +9,6 @@
 
         public static bool IsRefresh(ScoutTargetKind kind) => kind == ScoutTargetKind.Refresh;
         public static bool IsExplore(ScoutTargetKind kind) => kind == ScoutTargetKind.Explore;
-        public static bool IsSurveil(ScoutTargetKind kind) => kind == ScoutTargetKind.Surveil;
         // Aviation-only observation pass (support, never a ground visit). See ScoutTargetKind.
         public static bool IsAirSweep(ScoutTargetKind kind) => kind == ScoutTargetKind.AirSweep;
 
@@ -27,7 +26,6 @@
             switch (kind)
             {
                 case ScoutTargetKind.Refresh: return "Refresh";
-                case ScoutTargetKind.Surveil: return "Surveil";
                 case ScoutTargetKind.Explore: return "Explore";
                 case ScoutTargetKind.AirSweep: return "AirSweep";
                 default: return $"Unknown({(int)kind})";

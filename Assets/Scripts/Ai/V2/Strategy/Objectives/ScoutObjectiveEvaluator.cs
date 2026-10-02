@@ -9,7 +9,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT OBJECTIVE EVALUATOR  (Strategy V2 build-order step 7 — the single completion/validity home)
     // ===========================================================================================
-    //  One home for Explore / generic Refresh / contact Surveil lifecycle rules.
+    //  One home for Explore / generic Refresh lifecycle rules.
     //
     //    · LIVE overloads  — read the mutated world directly (VisionSystem / AiMapMemory). Called
     //                        at execution / provisioning time, where post-mutation live state IS
@@ -32,34 +32,15 @@ namespace Game.Ai.V2
         public static bool IsRefreshSatisfiedLive(PlayerSetupData player, HexCoord focus) =>
             VisionSystem.IsVisible(player, focus);
 
-        // Surveil is an INFORMATION objective: the focus hex visible again, OR the tracked army
-        // honestly re-sighted ANYWHERE with a SeenTurn past the baseline. Honest memory only —
-        // never TrueWorld.
-        public static bool IsSurveilSatisfiedLive(PlayerSetupData player, HexCoord focus,
-            int? trackedArmyId, int baselineObservedTurn)
-        {
-            if (VisionSystem.IsVisible(player, focus))
-                return true;
-            if (!trackedArmyId.HasValue)
-                return false;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (s.ArmyId == trackedArmyId.Value && s.SeenTurn > baselineObservedTurn)
-                    return true;
-            return false;
-        }
-
         // THE live "is this Scout job's objective met" dispatch, read by the post-execution ledger,
         // the ground and air executors and MissionRevalidator. AirSweep is never met by observation
         // (each sortie ends by its own refuel endurance).
-        public static bool IsSatisfiedLive(PlayerSetupData player, ScoutTargetKind kind, HexCoord focus,
-            int? trackedArmyId, int baselineObservedTurn)
+        public static bool IsSatisfiedLive(PlayerSetupData player, ScoutTargetKind kind, HexCoord focus)
         {
             switch (kind)
             {
                 case ScoutTargetKind.Explore: return IsExploreSatisfiedLive(player, focus);
                 case ScoutTargetKind.Refresh: return IsRefreshSatisfiedLive(player, focus);
-                case ScoutTargetKind.Surveil:
-                    return IsSurveilSatisfiedLive(player, focus, trackedArmyId, baselineObservedTurn);
                 default: return false;
             }
         }
@@ -67,8 +48,7 @@ namespace Game.Ai.V2
         // THE "a met objective is only a waypoint" rule (D5): a ground Explore / Refresh role whose
         // focus is met keeps its durable role (ProductiveStop -> re-focused next pass) when its
         // actor can still scout AND the role is already durable or the actor really acted this
-        // turn. A fresh mission met before it ever acted is not turned into a role; Surveil
-        // completion and AirSweep (never met) end.
+        // turn. A fresh mission met before it ever acted is not turned into a role.
         public static bool RoleContinuesAtWaypoint(ScoutTargetKind kind, bool durableIntent,
             bool actorStillScout, bool actedThisTurn) =>
             (kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh)
@@ -82,12 +62,6 @@ namespace Game.Ai.V2
         {
             if (snap == null || intent == null)
                 return false;
-
-            if (intent.Kind == ScoutTargetKind.Surveil)
-            {
-                EnemyContactSnapshot contact = SurveilContact(snap, intent.TrackedArmyId);
-                return contact != null && contact.LastObservedTurn <= intent.BaselineObservedTurn;
-            }
 
             // AirSweep stays a live operation while an anchor exists (the enemy is somewhere);
             // it is never "met" by observation — each sortie ends by its own refuel endurance.
@@ -106,7 +80,8 @@ namespace Game.Ai.V2
                             && IsAttackObservationFocusRunnable(snap, intent.FocusHex)));
             }
 
-            return IsExploreFocusRunnable(snap, intent.FocusHex);
+            return ReconScoutKinds.IsExplore(intent.Kind)
+                && IsExploreFocusRunnable(snap, intent.FocusHex);
         }
 
         // THE authoritative Explore validity predicate. An Explore focus is runnable iff it is a
@@ -149,19 +124,6 @@ namespace Game.Ai.V2
                 return false;
             var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
             return onMap.Contains(focus) && !mk.IsBlockedForScout(focus, stealthCapable: true);
-        }
-
-        // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no
-        // longer has one. Read from the frozen snapshot lookup, never AiReconMemory directly.
-        public static EnemyContactSnapshot SurveilContact(WorldSnapshot snap, int? trackedArmyId)
-        {
-            if (!trackedArmyId.HasValue || snap?.Threat?.ReconContactByArmyId == null)
-                return null;
-            if (!snap.Threat.ReconContactByArmyId.TryGetValue(trackedArmyId.Value, out EnemyContactSnapshot c))
-                return null;
-            return c != null
-                   && c.Knowledge == ContactKnowledge.LastKnown && c.Position.HasValue
-                ? c : null;
         }
 
         public static int ExploreStillOpen(WorldSnapshot snap, HexCoord focus)

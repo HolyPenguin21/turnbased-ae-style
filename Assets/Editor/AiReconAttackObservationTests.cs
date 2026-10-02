@@ -55,8 +55,8 @@ namespace Game.EditorTests
             var refresh = new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh, FocusHex = Site };
             var explore = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = Site };
 
-            Assert.That(SurveilVantageSelector.UsesVantage(snap, refresh), Is.True);
-            Assert.That(SurveilVantageSelector.UsesVantage(snap, explore), Is.False);
+            Assert.That(ObservationVantageSelector.UsesVantage(snap, refresh), Is.True);
+            Assert.That(ObservationVantageSelector.UsesVantage(snap, explore), Is.False);
             HexCoord from = ReconAssignmentPlanner.ResolveExecutionHex(snap, scout, refresh);
             Assert.That(from, Is.Not.EqualTo(Site));
             Assert.That(HexGridMath.Distance(from, Site), Is.LessThanOrEqualTo(scout.EffectiveVisionRadius));
@@ -68,7 +68,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = Scenario(out ArmySnapshot scout);
             var refresh = new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh, FocusHex = new HexCoord(3, 0) };
 
-            Assert.That(SurveilVantageSelector.UsesVantage(snap, refresh), Is.False);
+            Assert.That(ObservationVantageSelector.UsesVantage(snap, refresh), Is.False);
             Assert.That(ReconAssignmentPlanner.ResolveExecutionHex(snap, scout, refresh),
                 Is.EqualTo(new HexCoord(3, 0)));
         }

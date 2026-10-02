@@ -8,7 +8,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT RISK MODEL  (Strategy V2 build-order step 6b — shared "how exposed is a scout here")
     // ===========================================================================================
-    //  One implementation of the detection-risk number, so a Surveil vantage (SurveilVantageSelector)
     //  is scored the exact same way the frontier scan scores an Explore hex. Extracted from
     //  ReconMissionPlanner.CurrentDetectorRisk verbatim — HONEST memory only
     //  (WorldSnapshot.Known.EnemySightings), a "detector" is a known non-neutral force within

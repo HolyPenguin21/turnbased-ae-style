@@ -232,7 +232,6 @@ namespace Game.Ai.V2
                     // MissionLayer re-materialises the ONE incumbent objective via
                     // ReconObjectiveEvaluator.{ExploreAt,RefreshAt}, each of which recomputes
                     // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
-                    // Refresh must NOT fall through to SurveilOf — it has no TrackedArmyId, so that
                     // path returns null and silently drops a real stealth requirement).
                     ReconObjective o = ReconObjectiveEvaluator.ForIntent(snap, i.Scout);
                     req = o?.Stealth ?? StealthRequirement.None;
@@ -325,7 +324,7 @@ namespace Game.Ai.V2
         }
 
         // Is the intent's committed mover structurally able to continue the role? Ground uses the
-        // canonical solo-Recce shape. Air may continue observation (Refresh/Surveil) outside the
+        // canonical solo-Recce shape. Air may continue observation (Refresh) outside the
         // ground concurrency cap, but can never satisfy Explore's physical-visit or stealth lane.
         public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement)
         {

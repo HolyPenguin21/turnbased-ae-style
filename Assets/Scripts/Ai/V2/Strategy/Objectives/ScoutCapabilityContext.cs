@@ -32,9 +32,8 @@ namespace Game.Ai.V2
         public float DetectionRisk;
 
         // The work is specifically about re-acquiring / observing a potentially hidden target.
-        // Recce spot strength detects OTHER hidden units; it does NOT protect our scout from enemy
-        // detectors, so an exposed Explore does not become spot-relevant merely because its own
-        // DetectionRisk is high. Today Surveil is the only such objective.
+        // Recce spot strength detects hidden units; it does not protect a scout from detectors.
+        // Detection risk alone does not make spotting useful for map observation.
         public bool DetectionRelevant;
 
         public HexCoord? FocusHex;
@@ -49,7 +48,7 @@ namespace Game.Ai.V2
                 ExplorableUnknownFrac = UnityEngine.Mathf.Clamp01(darkFrac),
                 FocusFreshNeighbors = o.FreshNeighbors,
                 DetectionRisk = UnityEngine.Mathf.Clamp01(o.DetectionRisk),
-                DetectionRelevant = o.Kind == ReconObjectiveKind.Surveil,
+                DetectionRelevant = false,
                 FocusHex = o.FocusHex,
             };
         }

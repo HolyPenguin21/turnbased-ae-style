@@ -60,21 +60,6 @@ namespace Game.Ai.V2
 
             model.Contacts = contacts;
 
-            var byArmy = new Dictionary<int, EnemyContactSnapshot>();
-            foreach (EnemyContactSnapshot c in contacts)
-            {
-                if (!c.Position.HasValue) continue;
-                // ArmyId == 0 is a valid identity (e.g. the game's very first spawned army), not
-                // "no army" — only a genuinely absent Army reference means there is nothing to key
-                // this contact by. Treating id<=0 as invalid silently dropped honest contacts for
-                // army #0 from the dictionary, so Surveil could never recover a lost contact on it.
-                if (c.Army == null) continue;
-                int id = c.Army.ArmyId;
-                if (!byArmy.TryGetValue(id, out EnemyContactSnapshot cur) || c.LastObservedTurn > cur.LastObservedTurn)
-                    byArmy[id] = c;
-            }
-            model.ReconContactByArmyId = byArmy;
-
             var assets = new List<StrategicAssetSnapshot>();
             float totalIncome = snap.Self.PerTurnIncome.Sum;
 

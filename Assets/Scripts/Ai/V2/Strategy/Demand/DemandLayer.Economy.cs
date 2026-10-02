@@ -1121,7 +1121,7 @@ namespace Game.Ai.V2
             if (donor.Funding != CommitmentTier.None && donor.Funding != CommitmentTier.Soft)
                 return false;
             if (donor.Kind == MissionKind.Scout)
-                return donor.Scout != null && donor.Scout.Kind != ScoutTargetKind.Surveil;
+                return donor.Scout != null;
             if (donor.Kind == MissionKind.Raid)
                 return donor.Raid != null && !donor.Raid.OperationStarted;
             return false;
@@ -1138,7 +1138,6 @@ namespace Game.Ai.V2
             netValue = buildValue - TaskScoreEvaluator.Price(extraAp)
                 - TaskScoreEvaluator.MoverOpportunityCost(donor?.DisplacementValue ?? 0f);
             // Same-turn reachability remains a legality gate rather than a per-hex fee.
-            // Donor protections for Surveil, started Raid and Hard commitments are unchanged.
             return builder != null && EconomyDonorStructurallyEligible(donor)
                 && builder.Route.TravelCost <= builder.Route.CurrentMovement
                 && netValue >= AiConfigV2.taskScoreEconomyLoanHysteresisThreshold;

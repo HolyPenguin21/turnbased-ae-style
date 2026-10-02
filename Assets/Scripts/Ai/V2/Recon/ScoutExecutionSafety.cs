@@ -33,7 +33,6 @@ namespace Game.Ai.V2
         public static bool StepBlocked(PlayerSetupData player, ArmyData mover, HexCoord hex)
             => StepBlocked(player, hex, StealthSystem.IsArmyFullyHidden(mover));
 
-        // LIVE vantage check — ProvisioningManager / MissionRevalidator. A Surveil vantage is a
         // hex the scout must physically reach and stand on, so it is exactly StepBlocked.
         // `moverArrivesHidden` — ScoutMoverSelector.ArrivesHiddenLive, never the mission's bare
         // stealth wish: the step gate judges the scout's real hidden state.

@@ -195,10 +195,6 @@ namespace Game.EditorTests
             route = Route(3, 3, 3, true, activationApCost: 4);
             choice.Route = route;
             choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
-            var surveil = LoanableScout();
-            surveil.Objective = new ScoutIntent { Kind = ScoutTargetKind.Surveil };
-            Assert.That(DemandLayer.EconomyLoanAllowed(surveil, 30f, choice, 2f,
-                out _), Is.False);
             var hard = LoanableScout();
             hard.Funding = CommitmentTier.Hard;
             Assert.That(DemandLayer.EconomyLoanAllowed(hard, 30f, choice, 2f,

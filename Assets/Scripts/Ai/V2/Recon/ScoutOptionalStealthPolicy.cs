@@ -76,7 +76,6 @@ namespace Game.Ai.V2
 
     public static class ScoutOptionalStealthPolicy
     {
-        // Optional stealth is currently used by Explore; Surveil routes are Required-stealth and
         // never reach this policy. Entering an unvisited frontier is therefore not "risk 0" merely
         // because no detector has been discovered yet: the whole purpose of the move is to reveal
         // information we do not have. This conservative baseline is deliberately below a known
