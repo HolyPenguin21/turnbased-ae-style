@@ -1059,6 +1059,18 @@ namespace Game.Ai.V2
                 return "not_mobile_economy_builder";
 
             MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
+            // Project owner, 2026-10-02: a strong field army belongs to defence/offence, not to
+            // economy. Vex's 20-power army (a hero + 2 bodies, its best of 34 field power) was
+            // released from an intercept and sent to found a base two turns before an enemy fist
+            // of 78 reached its citadel. A free army that is a real share of the player's field
+            // strike potential is never an Economy builder unless it already stands on the site or
+            // is already this site's Economy builder; the demand falls back to a hero-only builder.
+            if (!army.IsGarrison && !route.IsOnTarget
+                && (assignment == null || assignment.Kind != MissionKind.Economy)
+                && army.IsStructuralRaidActor && snap?.Self != null
+                && snap.Self.FieldStrikePotential > 0f
+                && army.EffectiveArmyPower >= AiConfigV2.economyBuilderFistShare * snap.Self.FieldStrikePotential)
+                return "combat_fist_not_a_builder";
             if (assignment != null)
             {
                 if (assignment.Kind == MissionKind.Economy)
