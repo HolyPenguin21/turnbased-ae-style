@@ -502,7 +502,8 @@ namespace Game.UI
             // has nobody to click the button anyway — canRetreat covers both. Also off once the
             // AI side has already committed to its own retreat this round — only one side
             // retreats per round in this design.
-            bool canRetreat = _localArmy != null && !_localArmy.IsGarrison && _retreatingArmy == null;
+            bool canRetreat = _localArmy != null && !_localArmy.IsGarrison && _retreatingArmy == null
+                && (_localArmy.Owner == null || !_localArmy.Owner.IsEliminated);
 
             // With no local human in this fight at all (see ConsiderAiRetreat's own comment on
             // how that's reachable now — a retreat-into-contact or old-hex chain can pair up two
@@ -563,7 +564,11 @@ namespace Game.UI
         // fight-it-out verdict — the caller doesn't need to tell those apart.
         private bool TryAssessSideRetreat(ArmyData army, ArmyData enemy)
         {
-            if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral)
+            // A defeated player's army never gives ground: retreating would MOVE it, and those
+            // armies stay exactly where they were (attackable, never moving) - like a neutral it
+            // fights to the end.
+            if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral
+                || army.Owner.IsEliminated)
                 return false;
 
             BattleAi.RetreatAssessment assessment = _battleEngine != null

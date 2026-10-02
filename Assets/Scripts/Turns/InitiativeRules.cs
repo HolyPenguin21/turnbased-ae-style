@@ -6,6 +6,21 @@ namespace Game.Turns
     // copy of a base-dice count, a max, a price ladder or an AP-by-rank table.
     public static class InitiativeRules
     {
+        // Players who still take part in a round: not eliminated. A defeated player rolls no
+        // dice, holds no turn-order slot (so survivors' ranks and AP are never pushed down by
+        // them), and earns no income; their armies simply stay where they stand.
+        public static System.Collections.Generic.List<Game.Players.PlayerSetupData> ActivePlayers(
+            System.Collections.Generic.IEnumerable<Game.Players.PlayerSetupData> players)
+        {
+            var result = new System.Collections.Generic.List<Game.Players.PlayerSetupData>();
+            if (players == null)
+                return result;
+            foreach (Game.Players.PlayerSetupData p in players)
+                if (p != null && !p.IsEliminated)
+                    result.Add(p);
+            return result;
+        }
+
         // Every player rolls this many dice for free every turn.
         public const int BaseDice = 5;
 

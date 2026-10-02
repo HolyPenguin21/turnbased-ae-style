@@ -711,19 +711,26 @@ namespace Game.Turns
             if (turnOrderPopup == null || GameSession.Players == null || GameSession.Players.Count == 0)
                 return;
 
+            // A defeated player is out of the game's economy and order from the next round on: no
+            // income, no initiative dice, no slot in the turn order (so a survivor's rank - and the
+            // AP that rank pays - is never pushed down by someone who cannot play). Their armies
+            // stay where they stand: attackable, but nothing ever moves them again (their turn
+            // never runs, they never retreat - see BattleScreenUI.TryAssessSideRetreat).
+            List<PlayerSetupData> activePlayers = InitiativeRules.ActivePlayers(GameSession.Players);
+
             CollectResourceIncome();
             GrantProduceResourceIncome();
 
-            foreach (PlayerSetupData player in GameSession.Players)
+            foreach (PlayerSetupData player in activePlayers)
                 PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
 
             // Initiative has one implementation now. Every AI plans from the same immutable
             // pre-purchase state, then all paid purchases are applied before the human sees
             // the popup. There is no V1/random/free fallback and no strategy-version flag.
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
-                GameSession.Players, map, startingDeckCatalog, TurnNumber);
+                activePlayers, map, startingDeckCatalog, TurnNumber);
 
-            turnOrderPopup.Show(GameSession.Players, OnTurnOrderResolved, debugWatchAiTurns);
+            turnOrderPopup.Show(activePlayers, OnTurnOrderResolved, debugWatchAiTurns);
         }
 
         private static readonly ResourceType[] AllResourceTypes =
@@ -738,8 +745,11 @@ namespace Game.Turns
         {
             if (map == null || gameConfig == null)
                 return;
-            IncomeProjection.ForEachHexCollectionGrant(map,
-                (recipient, type, amount) => recipient.AddResource(type, amount));
+            IncomeProjection.ForEachHexCollectionGrant(map, (recipient, type, amount) =>
+            {
+                if (recipient != null && (recipient.Setup == null || !recipient.Setup.IsEliminated))
+                    recipient.AddResource(type, amount);
+            });
         }
 
         private void OnTurnOrderResolved(List<PlayerSetupData> order)
@@ -868,6 +878,8 @@ namespace Game.Turns
                 return;
             foreach (PlayerSetupData player in GameSession.Players)
             {
+                if (player == null || player.IsEliminated)
+                    continue;
                 PlayerRoot root = PlayerRootRegistry.FindFor(player);
                 if (root == null)
                     continue;
