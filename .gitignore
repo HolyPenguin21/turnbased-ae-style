@@ -41,3 +41,5 @@ __pycache__/
 # Crash/log dumps
 sysinfo.txt
 *.stackdump
+
+.claude/settings.local.json

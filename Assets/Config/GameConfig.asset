@@ -484,7 +484,6 @@ MonoBehaviour:
       count: 2
       placementAttempts: 64
       framesPerSecond: 2
-      rotations: 000000000100000002000000030000000400000005000000
       allowedTerrainNames:
       - Desert
       - Sand dunes
@@ -513,7 +512,6 @@ MonoBehaviour:
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
-      rotations: 000000000100000002000000030000000400000005000000
       allowedTerrainNames:
       - Desert
       - Sand dunes
@@ -533,7 +531,6 @@ MonoBehaviour:
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
-      rotations: 000000000100000002000000030000000400000005000000
       allowedTerrainNames:
       - Desert
       - Sand dunes
@@ -562,7 +559,6 @@ MonoBehaviour:
       count: 1
       placementAttempts: 64
       framesPerSecond: 3
-      rotations: 000000000100000002000000030000000400000005000000
       allowedTerrainNames:
       - Desert
       - Sand dunes
@@ -720,7 +716,6 @@ MonoBehaviour:
         count: 2
         placementAttempts: 64
         framesPerSecond: 3
-        rotations: 000000000100000002000000030000000400000005000000
         allowedTerrainNames:
         - Desert
         - Sand dunes
@@ -749,7 +744,6 @@ MonoBehaviour:
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
-        rotations: 000000000100000002000000030000000400000005000000
         allowedTerrainNames:
         - Desert
         - Sand dunes
@@ -769,7 +763,6 @@ MonoBehaviour:
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
-        rotations: 000000000100000002000000030000000400000005000000
         allowedTerrainNames:
         - Desert
         - Sand dunes
@@ -798,7 +791,6 @@ MonoBehaviour:
         count: 1
         placementAttempts: 64
         framesPerSecond: 3
-        rotations: 000000000100000002000000030000000400000005000000
         allowedTerrainNames:
         - Desert
         - Sand dunes
