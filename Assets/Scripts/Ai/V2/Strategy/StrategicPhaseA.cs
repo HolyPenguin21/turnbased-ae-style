@@ -434,6 +434,8 @@ namespace Game.Ai.V2
                             istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
                             result.CardsPlayed++;
                             result.InfrastructureBuilt++;
+                            if (istate.Demand.Capability == CapabilityKind.DevelopmentInfrastructure)
+                                DevelopmentOutcomeTelemetry.RecordFacilityBuilt(player, ctx.TurnNumber);
                             result.CapabilityDeliveries++;
                         }
                         AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
@@ -722,6 +724,8 @@ namespace Game.Ai.V2
                         snap = WorldAnalysis.RefreshStrategicKnowledge(
                             snap, player, root, hand, ctx);
                     }
+                    DevelopmentOutcomeTelemetry.RecordUpgrade(player, ctx.TurnNumber,
+                        up.Executed, up.ChallengeWon, up.Attached);
                     AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
                         + $"{chosenDemand.Explain} :: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
                     continue;
