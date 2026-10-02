@@ -398,7 +398,7 @@ namespace Game.EditorTests
             Assert.That(stale.IntelAgeTurns, Is.GreaterThan(fresh.IntelAgeTurns),
                 "intel age is still tracked on the objective");
             Assert.That(unstamped.IntelAgeTurns,
-                Is.GreaterThanOrEqualTo(AiConfigV2.scoutSurveilStaleTurnsHi),
+                Is.GreaterThanOrEqualTo(AiConfigV2.reconIntelStaleTurnsHi),
                 "an unstamped record means 'age unknown', never 'observed on turn 0'");
         }
 

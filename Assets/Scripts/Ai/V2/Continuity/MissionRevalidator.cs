@@ -196,20 +196,8 @@ namespace Game.Ai.V2
 
             // Scout: the objective met live (one dispatch for every kind), then each kind's own
             // invalidation of the provisioned execution hex.
-            if (ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
-                    pm.TrackedArmyId, pm.BaselineObservedTurn))
+            if (ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex))
                 return MissionValidity.StaleGoalMet;
-
-            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
-            {
-                // The mover's arrival state (ScoutMoverSelector.ArrivesHiddenLive): hidden now, or
-                // the Required entry provisioning reserved and preparation performs.
-                if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
-                        ctx.TurnNumber, ScoutMoverSelector.ArrivesHiddenLive(
-                            StealthSystem.IsArmyFullyHidden(mover), pm.StealthApReserved)))
-                    return MissionValidity.StaleTargetInvalidated;
-                return MissionValidity.Valid;
-            }
 
             // AirSweep is an aviation pass toward a moving anchor; it is never goal-met by
             // observation and its route safety is re-proved by the air step director every step.
@@ -218,6 +206,14 @@ namespace Game.Ai.V2
 
             if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {
+                if (!pm.ExecutionHex.Equals(pm.FocusHex))
+                {
+                    if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
+                            ctx.TurnNumber, ScoutMoverSelector.ArrivesHiddenLive(
+                                StealthSystem.IsArmyFullyHidden(mover), pm.StealthApReserved)))
+                        return MissionValidity.StaleTargetInvalidated;
+                    return MissionValidity.Valid;
+                }
                 if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;

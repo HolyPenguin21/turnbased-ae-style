@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // RefreshStrategicKnowledge whose KnowledgeVersion moved, i.e. potentially several times inside
     // one turn. This is deliberate and load-bearing, NOT an oversight: the readers below depend on
     // it. ReconObjectiveEvaluator.RefreshAt / BuildRefreshObjectives drop a hex whose intel age fell
-    // under scoutSurveilStaleTurnsLo, and ScoutObjectiveEvaluator decides a durable Refresh intent
+    // under reconIntelStaleTurnsLo, and ScoutObjectiveEvaluator decides a durable Refresh intent
     // is satisfied from the same age — so a scout that just re-observed its target hex must be
     // visible here in the SAME turn, or the AI would keep re-proposing a job it already completed.
     //
@@ -36,13 +36,13 @@ namespace Game.Ai.V2
 
         public static void Clear() => ByPlayer.Clear();
 
-        // THE Recon staleness rule for one piece of intel: age under scoutSurveilStaleTurnsLo is
-        // current (0 / not stale), ramping to fully stale (1) at scoutSurveilStaleTurnsHi. Every
+        // THE Recon staleness rule for one piece of intel: age under reconIntelStaleTurnsLo is
+        // current (0 / not stale), ramping to fully stale (1) at reconIntelStaleTurnsHi. Every
         // Recon score and validity gate reads these two, never its own copy of the thresholds.
         public static float Staleness(float ageTurns) =>
-            Curves.Ramp(ageTurns, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
+            Curves.Ramp(ageTurns, AiConfigV2.reconIntelStaleTurnsLo, AiConfigV2.reconIntelStaleTurnsHi);
 
-        public static bool IsStaleAge(int ageTurns) => ageTurns >= AiConfigV2.scoutSurveilStaleTurnsLo;
+        public static bool IsStaleAge(int ageTurns) => ageTurns >= AiConfigV2.reconIntelStaleTurnsLo;
 
         public static void Capture(PlayerSetupData player, int turn, int knowledgeVersion,
             IReadOnlyDictionary<HexCoord, int> lastObserved)

@@ -84,7 +84,7 @@ namespace Game.Ai.V2
             // Mission objectives are strategic priors, never durable destination identities.
             // Mode switching and strategic heading reassignment are separate hysteresis decisions.
             // Recon S4 — the mode follows the kind of the mission the actor is bound to (an Explore
-            // job explores, a Refresh / Surveil job refreshes); only the time hold stops two
+            // job explores, a Refresh job refreshes); only the time hold stops two
             // proposals of one pass from ping-ponging it. A map-wide score margin used to pin a
             // Refresh job to Explore scoring for as long as the map was mostly unexplored.
             bool modeChanged = false;

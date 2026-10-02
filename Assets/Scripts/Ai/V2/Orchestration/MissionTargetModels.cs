@@ -61,13 +61,11 @@ namespace Game.Ai.V2
     }
 
     // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
-    // observed hex whose frozen IntelAge is stale; Surveil -> a stale honest contact's last-known
-    // hex (Contact non-null); AirSweep -> an AVIATION-ONLY observation pass whose FocusHex is the
+    // observed hex whose frozen IntelAge is stale; AirSweep -> an AVIATION-ONLY observation pass whose FocusHex is the
     // strategic sweep anchor (enemy army concentration, else enemy citadel): the wing flies toward
     // it as deep as its refuel endurance allows and returns — never a ground job, never "met" by
-    // simply seeing the anchor. The numeric identities remain Explore=0, Surveil=1, Refresh=2,
-    // AirSweep=3.
-    public enum ScoutTargetKind { Explore, Surveil, Refresh, AirSweep }
+    // simply seeing the anchor. The numeric identities remain Explore=0, Refresh=2, AirSweep=3.
+    public enum ScoutTargetKind { Explore = 0, Refresh = 2, AirSweep = 3 }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a
@@ -79,7 +77,6 @@ namespace Game.Ai.V2
     {
         public HexCoord FocusHex;
         public ScoutTargetKind Kind;
-        public EnemyContactSnapshot Contact;   // non-null ONLY for Surveil
 
         public StealthRequirement Stealth;
         public float DetectionRisk;            // [0..1] — 0 unless the enemy can actually detect stealth here

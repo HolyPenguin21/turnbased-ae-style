@@ -686,17 +686,17 @@ namespace Game.EditorTests
             };
             var routes = Enumerable.Range(1, 5).Select(id => new EconomyBuilderRouteSnapshot
                 { ArmyId = id, TravelCost = 4 }).ToList();
-            var surveil = new MissionIntent
+            var protectedScout = new MissionIntent
             {
                 Kind = MissionKind.Scout, Status = IntentStatus.Active, PreferredMoverArmyId = 3,
-                Funding = CommitmentTier.Soft,
-                Objective = new ScoutIntent { Kind = ScoutTargetKind.Surveil },
+                Funding = CommitmentTier.Hard,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Refresh },
             };
             var commitments = new ActorCommitments();
             commitments.Claim(4);
 
             string Why(int id) => DemandLayer.EconomyBuilderCandidateRejection(snap, Site, routes, id,
-                new[] { surveil }, commitments);
+                new[] { protectedScout }, commitments);
 
             Assert.That(Why(1), Is.EqualTo("garrison_without_extraction_route"));
             Assert.That(Why(2), Is.EqualTo("not_mobile_economy_builder"));

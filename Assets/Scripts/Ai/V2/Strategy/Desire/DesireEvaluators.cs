@@ -27,16 +27,14 @@ namespace Game.Ai.V2
     //  + WorthIt/AiPower which are pure). No registries, no live game state — that is what lets
     //  Tools/radar-sim drive it against hand-built snapshots.
     //
-    //  RECON is ONE axis with THREE named contributions (see AiConfigV2):
+    //  RECON is one axis with exploration, map refresh and enemy blindness contributions:
     //    exploration   — DECAYS as the reachable map opens (state-driven, no turn term).
-    //    surveillance  — SUSTAINED all game: a non-burning baseline + a stale-contact bump.
     //    enemyBlindness— an opponent is fielded (honest opponent list) but we have zero honest
     //                    sightings of it. Magnitude only.
     //
-    //  The deep-rework keeps those raw diagnostics but derives two continuous strategic lanes:
+    //  Two continuous strategic lanes:
     //    ExplorePressure — frontier pressure from unexplored reachable ground.
-    //    RefreshPressure — frozen per-hex IntelAge pressure, never-observed cells excluded, with
-    //                      contact surveillance as a floor so known stale enemies still matter.
+    //    RefreshPressure — frozen per-hex IntelAge and strategic-site pressure.
     //  The frozen IntelAge snapshot is captured during WorldAnalysis and therefore cannot change
     //  retroactively while the operational phase is moving scouts one hex at a time.
     //
@@ -49,10 +47,7 @@ namespace Game.Ai.V2
     //  on the same axis. Offensive restraint while home is threatened is the Raid/Attack
     //  TaskScore's CitadelThreatRisk slot; ActiveDefence carries its own threat severity.
     //
-    //  The breakdown (DesireBreakdown) is returned alongside the vector so MissionLayer picks the
-    //  RIGHT mission from it (exploration -> VisitHex, surveillance -> watch a stale zone,
-    //  enemyBlindness -> AirRecon; BestOpportunity -> the raid target) instead of re-deriving the
-    //  same analysis and drifting from it.
+    //  DesireBreakdown supplies the lane pressures to MissionLayer without re-deriving them.
     //
     //  Smoothing: symmetric low-pass on Recon + Aggression only (AiConfigV2.desireSmoothing).
     //  ECO/DEV placeholders and the two out-of-simplex scalars are unsmoothed — a threat scalar
@@ -62,7 +57,6 @@ namespace Game.Ai.V2
     public sealed class DesireBreakdown
     {
         public float ReconExploration;
-        public float ReconSurveillance;
         public float ReconEnemyBlindness;
         public float ReconExplorePressure;
         public float ReconRefreshPressure;
@@ -150,17 +144,15 @@ namespace Game.Ai.V2
             // Reaction refreshes objective facts but never advances Radar twice in one turn.
             bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
             float exploration = ReconExploration(snapshot);
-            float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
             float explorePressure = exploration;
-            float refreshPressure = ReconRefreshPressure(snapshot, surveillance);
+            float refreshPressure = ReconRefreshPressure(snapshot);
             float rawRecon = Mathf.Clamp01(
                 AiConfigV2.reconWeightExploration * explorePressure
-                + AiConfigV2.reconWeightSurveillance * refreshPressure
+                + AiConfigV2.reconWeightRefresh * refreshPressure
                 + AiConfigV2.reconWeightBlindness * blindness);
 
             breakdown.ReconExploration = exploration;
-            breakdown.ReconSurveillance = surveillance;
             breakdown.ReconEnemyBlindness = blindness;
             breakdown.ReconExplorePressure = explorePressure;
             breakdown.ReconRefreshPressure = refreshPressure;
@@ -218,7 +210,7 @@ namespace Game.Ai.V2
         // (ReconMissionPlanner.Propose runs mid-turn against a LIVE snapshot while the rest of
         // DesireBreakdown/Radar stays frozen from the turn's single Evaluate() — recomputing the
         // whole radar mid-turn would re-introduce the oscillation that decision explicitly
-        // avoided). This mutates ONLY the Explore/Refresh/Surveillance/Blindness fields in place
+        // avoided). This mutates ONLY the Explore/Refreshlance/Blindness fields in place
         // on the already-frozen breakdown, from the current snapshot, so a frontier completion
         // mid-turn is reflected before the next mission is proposed. No smoothing, no radar
         // renormalization, no other axis touched.
@@ -227,11 +219,9 @@ namespace Game.Ai.V2
             if (snapshot?.Self == null || snapshot.MapKnowledge == null || breakdown == null)
                 return;
             float exploration = ReconExploration(snapshot);
-            float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
-            float refreshPressure = ReconRefreshPressure(snapshot, surveillance);
+            float refreshPressure = ReconRefreshPressure(snapshot);
             breakdown.ReconExploration = exploration;
-            breakdown.ReconSurveillance = surveillance;
             breakdown.ReconEnemyBlindness = blindness;
             breakdown.ReconExplorePressure = exploration;
             breakdown.ReconRefreshPressure = refreshPressure;
@@ -335,31 +325,12 @@ namespace Game.Ai.V2
             return Mathf.Min(need.Total, Mathf.Clamp01(surplus * need.Total * feasibility));
         }
 
-        private static float ReconSurveillance(WorldSnapshot snap)
-        {
-            IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
-            float staleShare = 0f;
-            if (contacts != null && contacts.Count > 0)
-            {
-                var targetable = contacts
-                    .Where(c => c.Position.HasValue)
-                    .ToList();
-                if (targetable.Count > 0)
-                    staleShare = targetable.Count(c => c.Knowledge == ContactKnowledge.LastKnown)
-                        / (float)targetable.Count;
-            }
-            return Mathf.Clamp01(AiConfigV2.reconSurveillanceBaseline
-                + AiConfigV2.reconStaleShareWeight * staleShare);
-        }
-
-        // Spec §4 — RefreshPressure is a composite, not max(surveillance, avg IntelAge). It sums a
         // baseline, whole-map strategic IntelAge, the honest-contact stale share (extracted from
-        // `surveillance`, which itself carries the baseline), own-asset perimeter staleness, an
         // enemy-facing corridor staleness sample, and coarse enemy-concentration direction pressure.
-        private static float ReconRefreshPressure(WorldSnapshot snap, float surveillance)
+        private static float ReconRefreshPressure(WorldSnapshot snap)
         {
             if (snap?.Self == null)
-                return Mathf.Clamp01(surveillance);
+                return Mathf.Clamp01(AiConfigV2.reconRefreshBaseline);
 
             float intelAge = ReconIntelSnapshotRegistry.StalePressure(snap);
             IReadOnlyDictionary<HexCoord, int> observed = ReconIntelSnapshotRegistry.LastObservedFor(snap);
@@ -381,17 +352,8 @@ namespace Game.Ai.V2
                 ? Mathf.Clamp01(dir.EnemyPresenceWeight / Mathf.Max(1f, AiConfigV2.reconRefreshConcentrationNorm))
                 : 0f;
 
-            // `surveillance` already folds in reconSurveillanceBaseline; strip it back out so the
-            // stale-contact term carries only the honest-contact stale share, not the baseline a
-            // second time (spec §4 — the baseline is added once, explicitly, below).
-            float staleContacts = AiConfigV2.reconStaleShareWeight > 0f
-                ? Mathf.Clamp01((surveillance - AiConfigV2.reconSurveillanceBaseline)
-                    / AiConfigV2.reconStaleShareWeight)
-                : 0f;
-
-            float sum = AiConfigV2.reconSurveillanceBaseline
+            float sum = AiConfigV2.reconRefreshBaseline
                 + AiConfigV2.reconRefreshWeightIntelAge * intelAge
-                + AiConfigV2.reconRefreshWeightStaleContacts * staleContacts
                 + AiConfigV2.reconRefreshWeightPerimeter * perimeter
                 + AiConfigV2.reconRefreshWeightCorridor * corridor
                 + AiConfigV2.reconRefreshWeightConcentration * concentration;
@@ -478,7 +440,7 @@ namespace Game.Ai.V2
         {
             AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
                 + $"(explRaw {F(b.ReconExploration)} exploreP {F(b.ReconExplorePressure)} "
-                + $"survRaw {F(b.ReconSurveillance)} refreshP {F(b.ReconRefreshPressure)} "
+                + $"refreshP {F(b.ReconRefreshPressure)} "
                 + $"blind {F(b.ReconEnemyBlindness)})");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
                 + $"radar {F(radar.Weight[DesireAxis.Aggression])} scale {F(RadarValueScale.For(radar, DesireAxis.Aggression))} "

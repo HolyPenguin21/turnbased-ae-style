@@ -31,24 +31,6 @@ namespace Game.EditorTests
             Assert.That(i.Scout.Kind, Is.EqualTo(ScoutTargetKind.Refresh));
             Assert.That(i.Scout.FocusHex, Is.EqualTo(new HexCoord(5, 1)));
             Assert.That(i.Scout.RequiresStealth, Is.True);
-            Assert.That(i.Scout.TrackedArmyId, Is.Null);
-        }
-
-        [Test]
-        public void FreshSurveil_CreatesASoftRoleWithItsContactAndBaseline()
-        {
-            var player = new PlayerSetupData { Nickname = "Recon payload" };
-            MissionTurnOutcome o = Outcome(ScoutTargetKind.Surveil, new HexCoord(6, 6), mover: 10);
-            o.TrackedArmyId = 99;
-            o.BaselineObservedTurn = 3;
-            o.IntentKey = new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil, 99, 0, 0);
-
-            MissionContinuityLayer.ReconcileStep(player, 4, o);
-
-            Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(o.IntentKey, out MissionIntent i), Is.True);
-            Assert.That(i.Funding, Is.EqualTo(CommitmentTier.Soft));
-            Assert.That(i.Scout.TrackedArmyId, Is.EqualTo(99));
-            Assert.That(i.Scout.BaselineObservedTurn, Is.EqualTo(3));
         }
 
         [Test]
@@ -66,35 +48,6 @@ namespace Game.EditorTests
             Assert.That(incumbent.Scout.RequiresStealth, Is.True);
             Assert.That(incumbent.Scout.FocusHex, Is.EqualTo(focus));
             Assert.That(incumbent.LastProgressTurn, Is.EqualTo(4));
-        }
-
-        [Test]
-        public void SurveilRoleAbsorbingAnExplore_DropsItsContactAndSoftFunding()
-        {
-            var player = new PlayerSetupData { Nickname = "Recon payload" };
-            var surveil = new MissionIntent
-            {
-                Kind = MissionKind.Scout, Funding = CommitmentTier.Soft, Status = IntentStatus.Active,
-                Objective = new ScoutIntent
-                {
-                    Kind = ScoutTargetKind.Surveil, FocusHex = new HexCoord(6, 6),
-                    TrackedArmyId = 99, BaselineObservedTurn = 3, RequiresStealth = true,
-                },
-                PreferredMoverArmyId = 10,
-            };
-            surveil.IntentKey = MissionIntentKey.For(surveil);
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            state.Put(surveil);
-            MissionTurnOutcome o = Outcome(ScoutTargetKind.Explore, new HexCoord(2, 2), mover: 10);
-
-            MissionContinuityLayer.ReconcileStep(player, 4, o);
-
-            Assert.That(state.TryGet(o.IntentKey, out MissionIntent absorbed), Is.True);
-            Assert.That(absorbed, Is.SameAs(surveil));
-            Assert.That(absorbed.Scout.Kind, Is.EqualTo(ScoutTargetKind.Explore));
-            Assert.That(absorbed.Scout.TrackedArmyId, Is.Null);
-            Assert.That(absorbed.Scout.RequiresStealth, Is.False);
-            Assert.That(absorbed.Funding, Is.EqualTo(CommitmentTier.None));
         }
 
         // An incumbent whose Explore focus has left the frozen objective list is re-derived from the

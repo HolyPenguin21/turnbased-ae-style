@@ -173,10 +173,10 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
             {
                 HexCoord executionHex = target.FocusHex;
-                if (SurveilVantageSelector.UsesVantage(snap, target))
+                if (ObservationVantageSelector.UsesVantage(snap, target))
                 {
-                    SurveilVantageCandidate? vantage = SurveilVantageSelector.Rank(snap, mover, target)
-                        .Cast<SurveilVantageCandidate?>().FirstOrDefault();
+                    ObservationVantageCandidate? vantage = ObservationVantageSelector.Rank(snap, mover, target)
+                        .Cast<ObservationVantageCandidate?>().FirstOrDefault();
                     if (!vantage.HasValue)
                         continue;
                     executionHex = vantage.Value.ExecutionHex;
@@ -214,7 +214,7 @@ namespace Game.Ai.V2
             float notionalActivationAp = AiConfigV2.scoutNotionalActivationAp;
 
             // Aviation serves only the AirSweep pass (ReconAirCapacityPolicy.IsAirServiceable):
-            // a mover-less ground Refresh/Surveil must not ask for a launch it can never fly.
+            // a mover-less ground Refresh must not ask for a launch it can never fly.
             bool airPlausible = ReconScoutKinds.IsAirSweep(target.Kind) && !target.NeedsStealth;
 
             int fleetBudget = snap?.Self?.Armies != null
@@ -226,13 +226,7 @@ namespace Game.Ai.V2
             est.RecurringActivationAp = notionalActivationAp;
             est.ActivationApNow = notionalActivationAp;
 
-            if (target.Kind == ScoutTargetKind.Surveil)
-            {
-                float req = notionalActivationAp
-                    + (target.Stealth == StealthRequirement.None ? 0f : stealthAp);
-                est.ApMinimum = est.ApDesired = req;
-                est.ApMaximum = Mathf.Max(req, airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f);
-                est.EnergyMinimum = 0f;
+            est.EnergyMinimum = 0f;
                 est.EnergyDesired = est.EnergyMaximum =
                     airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
                 return est;

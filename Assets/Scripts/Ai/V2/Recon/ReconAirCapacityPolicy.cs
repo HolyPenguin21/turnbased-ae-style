@@ -89,7 +89,7 @@ namespace Game.Ai.V2
         // BestAirfieldServiceTaskScore) all read this, so a card is never valued for a job the
         // Recon owner will never hand to an aircraft.
         // Aviation is SUPPORT: it never visits a hex, so it serves only the aviation-only AirSweep
-        // observation pass. Generic Refresh / Surveil stay with ground scouts — an aircraft is no
+        // observation pass. Generic Refresh stay with ground scouts — an aircraft is no
         // longer spent (or valued) on re-checking one hex next to home.
         internal static bool IsAirServiceable(ReconObjective o)
             => o != null

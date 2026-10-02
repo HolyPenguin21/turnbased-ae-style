@@ -11,17 +11,14 @@ namespace Game.Ai.V2
     // One frozen turn produces three explicit Recon opportunity classes:
     // Explore — never/ground-unvisited frontier information;
     // Refresh — stale previously-observed information;
-    // Surveil — stale enemy contact; observation-vantage semantics in provisioning;
     // AirSweep — aviation-only observation pass toward the strategic sweep anchor.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore, Refresh, Surveil, AirSweep }
+    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3 }
 
     public sealed class ReconObjective
     {
         public ReconObjectiveKind Kind;
         public HexCoord FocusHex;
-        public int ContactArmyId;              // Surveil only
-        public EnemyContactSnapshot Contact;   // Surveil only
 
         // Legacy transport kept during migration. Intrinsic value is now owned exclusively by
         // TaskScore; every migrated consumer must observe BaseValue == TaskScore.Value.
@@ -41,9 +38,6 @@ namespace Game.Ai.V2
         {
             get
             {
-                if (Kind == ReconObjectiveKind.Surveil)
-                    return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
-                        ContactArmyId, 0, 0);
                 // One durable sweep identity: the anchor follows the enemy, the operation does not
                 // become a new intent every time the concentration moves.
                 if (Kind == ReconObjectiveKind.AirSweep)
@@ -60,10 +54,8 @@ namespace Game.Ai.V2
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
-            Kind = Kind == ReconObjectiveKind.Surveil ? ScoutTargetKind.Surveil
-                : Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
+            Kind = Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
                 : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
-            Contact = Kind == ReconObjectiveKind.Surveil ? Contact : null,
             Stealth = Stealth,
             DetectionRisk = DetectionRisk,
         };
@@ -106,7 +98,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            // Generic Refresh is NOT enemy-contact surveillance. It revisits map information the
+            // Generic Refresh revisits map information the
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
             ReconDirectionSnapshot direction = null;
@@ -133,13 +125,6 @@ namespace Game.Ai.V2
                 }
             }
             list.AddRange(refresh);
-
-            IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
-            if (contacts != null)
-                foreach (EnemyContactSnapshot c in contacts)
-                    if (c.Knowledge == ContactKnowledge.LastKnown
-                        && c.Position.HasValue && c.Army != null)
-                        list.Add(BuildSurveil(snap, c));
 
             ReconObjective sweep = AirSweepOf(snap);
             if (sweep != null)
@@ -273,17 +258,10 @@ namespace Game.Ai.V2
             {
                 case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
-                case ScoutTargetKind.Surveil:
-                    return SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
-                        preferredMoverArmyId);
                 case ScoutTargetKind.AirSweep: return AirSweepOf(snap, preferredMoverArmyId);
                 default: return null;
             }
         }
-
-        public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c,
-            int? preferredMoverArmyId = null) =>
-            c == null ? null : BuildSurveil(snap, c, preferredMoverArmyId);
 
         // Strike force step 6 — the one rule for an Attack observation need: a site last seen more
         // than attackIntelMaxAgeTurns ago is refreshed as fully stale and maximally relevant.
@@ -296,7 +274,7 @@ namespace Game.Ai.V2
             // Recon audit B2 — only a HARD block (off-map / scout-danger zone) stops the look. A known
             // hostile site is always a visible-arrival block (its garrison would fight, an
             // undefended one would be taken over), so testing that block here dropped EVERY Attack
-            // need; the job is observed from a vantage instead (SurveilVantageSelector.UsesVantage).
+            // need; the job is observed from a vantage instead (ObservationVantageSelector.UsesVantage).
             if (!ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
                 return null;
             if (direction == null)
@@ -388,21 +366,6 @@ namespace Game.Ai.V2
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
-                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
-                    cost.RecurringActivationAp, cost.EtaTurns)),
-                detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
-        }
-
-        private static TaskScore BuildSurveilScore(float stalenessRaw, float contactRelevanceRaw,
-            int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
-        {
-            float activationNow = Mathf.Max(0f, cost.ActivationApNow);
-            float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
-            return new TaskScore(
-                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
-                contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
@@ -534,50 +497,6 @@ namespace Game.Ai.V2
                         hex, age, strategicRaw);
             }
             return objective;
-        }
-
-        private static ReconObjective BuildSurveil(WorldSnapshot snap, EnemyContactSnapshot c,
-            int? preferredMoverArmyId = null)
-        {
-            IReadOnlyList<AssetThreatSnapshot> threats = snap.Threat?.Threats;
-            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
-
-            HexCoord pos = c.Position.Value;
-            int age = c.AgeTurns(snap.TurnNumber);
-            float stalenessRaw = ReconIntelSnapshotRegistry.Staleness(age);
-
-            float maxSeverity = 0f;
-            if (threats != null)
-                foreach (AssetThreatSnapshot t in threats)
-                    if (ReferenceEquals(t.Contact, c) && t.Severity > maxSeverity)
-                        maxSeverity = t.Severity;
-
-            float contactRelevanceRaw = Mathf.Clamp01(stalenessRaw * maxSeverity);
-            int fallbackDistance = bases != null && bases.Count > 0 ? MinDist(bases, pos) : 0;
-            int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, pos, fallbackDistance);
-            float riskRaw = Mathf.Clamp01(Mathf.Max(
-                c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
-                ScoutRiskModel.DetectorRisk(snap, pos)));
-            ScoutCostEstimate cost = MissionCost(snap, pos, ScoutTargetKind.Surveil,
-                StealthRequirement.Required, riskRaw, preferredMoverArmyId);
-
-            TaskScore score = BuildSurveilScore(stalenessRaw, contactRelevanceRaw,
-                homeDist, cost, riskRaw);
-
-            return new ReconObjective
-            {
-                Kind = ReconObjectiveKind.Surveil,
-                FocusHex = pos,
-                ContactArmyId = c.Army?.ArmyId ?? 0,
-                Contact = c,
-                TaskScore = score,
-                BaseValue = score.Value,
-                DetectionRisk = riskRaw,
-                Stealth = StealthRequirement.Required,
-                AgeTurns = age,
-                Severity = maxSeverity,
-                DistanceFromBase = fallbackDistance,
-            };
         }
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);

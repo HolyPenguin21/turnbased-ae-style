@@ -93,7 +93,7 @@ namespace Game.Ai.V2
 
     internal static class AirReconAnchorModel
     {
-        // `missionFocusHex` is the SPECIFIC Refresh/Surveil target
+        // `missionFocusHex` is the SPECIFIC Refresh target
         // Assignment already bound this actor to (ReconAssignmentPlanner.AppendAirCandidates) or
         // the durable ReconPatrolState.StrategicAnchor a continuing sortie was launched for
         // (ReconAirExecutor). It is folded in as ONE MORE strategic anchor/pressure source — the
@@ -120,7 +120,7 @@ namespace Game.Ai.V2
             }
 
             // --- 0. Bound mission objective — the STRONGEST anchor when present: Assignment/
-            //     Continuity already committed this actor to a specific Refresh/Surveil target, and
+            //     Continuity already committed this actor to a specific Refresh target, and
             //     the tactical planner must never independently drift toward a different one. ------
             // Deliberately NOT routed through AddPressure/SectorPressure: that
             // bucket feeds AirReconRouteScorer's `enemyInterest` term, which is Clamp01-capped

@@ -116,7 +116,7 @@ namespace Game.Ai
             public readonly int RecceSpotStrength;
             // The global turn this sighting was last actually (re)observed — carried through from
             // EnemySighting.SeenTurn (see its own comment). Lets a consumer age a last-known
-            // position: Strategy V2's Recon surveillance planner scores a stale contact by
+            // position: ThreatModel can age honest last-known observations by
             // (currentTurn - SeenTurn). 0 for a sighting recorded before the first OnTurnStarted
             // (initial placement) — turn numbering starts at 1, so that default reads as "very old".
             public readonly int SeenTurn;

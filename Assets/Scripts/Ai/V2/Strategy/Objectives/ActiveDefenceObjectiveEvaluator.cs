@@ -434,7 +434,7 @@ namespace Game.Ai.V2
                 preventedDamage: TaskScoreEvaluator.PreventedDamage(
                     t.PotentialDamage * Mathf.Clamp01(assetNorm)),
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
-                    age / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
+                    age / (float)Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi)),
                 ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
         }
     }

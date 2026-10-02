@@ -47,8 +47,6 @@ namespace Game.Ai.V2
         // ExecutionResult.FinalHex. Continuity reads it to tell "arrived at target this turn"
         // apart from "still en route" (e.g. EconomyIntent.ArrivalTurn for MobileCollection).
         public HexCoord FinalHex;
-        public int? TrackedArmyId;
-        public int BaselineObservedTurn;
         public bool HasScoutPayload;
         public MissionKind MissionKind = MissionKind.Scout;
         public bool HasRaidPayload;
@@ -242,7 +240,7 @@ namespace Game.Ai.V2
                 else
                 {
                     satisfied = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind,
-                        pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
+                        pm.FocusHex);
                 }
 
                 if (satisfied)
@@ -317,8 +315,6 @@ namespace Game.Ai.V2
                         o.ScoutKind = r.Provisioned.ScoutKind;
                         o.ScoutRequiresStealth = r.Provisioned.RequiresStealth;
                         o.FocusHex = r.Provisioned.FocusHex;
-                        o.TrackedArmyId = r.Provisioned.TrackedArmyId;
-                        o.BaselineObservedTurn = r.Provisioned.BaselineObservedTurn;
                     }
                 }
 

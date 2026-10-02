@@ -2760,13 +2760,10 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyLoan_HardOrCriticalSurveilCannotBeBorrowed()
+        public void EconomyLoan_HardReconCannotBeBorrowed()
         {
             Assert.That(DemandLayer.EconomyLoanAllowed(
                 ScoutDonor(CommitmentTier.Hard, ScoutTargetKind.Explore), 100f,
-                LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
-            Assert.That(DemandLayer.EconomyLoanAllowed(
-                ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Surveil), 100f,
                 LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
         }
 

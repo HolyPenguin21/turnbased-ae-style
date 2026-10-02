@@ -11,7 +11,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     // Three explicit Recon sub-kinds share one strategic axis:
     // Explore — new ground information; Refresh — stale map information;
-    // Surveil — stale enemy contact. Actor assignment belongs to ReconAssignmentPlanner.
+    // AirSweep — aviation observation. Actor assignment belongs to ReconAssignmentPlanner.
     // ===========================================================================================
     internal static class ReconMissionPlanner
     {
@@ -164,13 +164,12 @@ namespace Game.Ai.V2
         {
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             bool refresh = o.Kind == ReconObjectiveKind.Refresh;
-            bool surveil = o.Kind == ReconObjectiveKind.Surveil;
             bool airSweep = o.Kind == ReconObjectiveKind.AirSweep;
             float rawSubDesire = explore
                 ? bd.ReconExplorePressure
                 : refresh
                     ? bd.ReconRefreshPressure
-                    : surveil ? bd.ReconSurveillance : 0f;
+                    : 0f;
 
             float proximity = Curves.InvRamp(o.DistanceFromBase,
                 AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
@@ -203,12 +202,6 @@ namespace Game.Ai.V2
                     + $"{(o.DirectionPressure >= 1f ? "enemy-concentration" : "enemy-citadel")} "
                     + $"d{o.DistanceFromBase} strategic {F(o.StrategicRelevance)} task {F(o.BaseValue)} "
                     + $"LAS {F(admission)}";
-            }
-            else if (surveil)
-            {
-                explain = $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
-                    + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
-                    + $"task {F(o.BaseValue)} survP {F(rawSubDesire)} LAS {F(admission)}";
             }
             else
             {
