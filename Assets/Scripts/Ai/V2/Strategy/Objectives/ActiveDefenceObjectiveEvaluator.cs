@@ -61,6 +61,10 @@ namespace Game.Ai.V2
         // Regroup only: the canonical Citadel hex.
         public HexCoord? RegroupHex;
         public string Reason;
+        // The defence estimate with the roles the fight really has (our armies DEFEND the asset,
+        // with its terrain + structure defence): the chance the force that stands at the asset holds
+        // against the enemy fist. -1 when the asset is not a Base / Citadel of ours.
+        public float HoldWinChance = -1f;
     }
 
     public sealed class ActiveDefenceObjective
@@ -307,7 +311,16 @@ namespace Game.Ai.V2
                 : usable.Where(a => a.Hex.Equals(citadel.Value)
                     || a.ReachableOwnBaseHexes?.Contains(citadel.Value) == true).ToList();
 
-            if (GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
+            // Project owner, 2026-10-02: the "usable power >= the enemy's power" sum above answers a
+            // field battle on neutral ground. A fist that comes for a Base or a Citadel fights our
+            // garrison and our regrouped armies ON that hex — as the defender, with the structure's
+            // defence, one battle per defending army (WorthIt.EstimateSequential with the roles
+            // swapped). Playtest: Vex held 21 (garrison) + 20 + 25 at its citadel against a 66-power
+            // fist and the symmetric sum judged "75 needed, 45 available" without the garrison or
+            // the structure defence.
+            response.HoldWinChance = HoldChanceAtAsset(snap, objective, citadel, gatherable, opposition);
+            bool holds = response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance;
+            if (holds || GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
                 >= response.RequiredPower)
             {
                 if (gatherable.Any(a => !a.Hex.Equals(citadel.Value)))
@@ -316,7 +329,15 @@ namespace Game.Ai.V2
                     response.RegroupHex = citadel;
                     response.Movers.AddRange(walkers.Where(a => gatherable.Contains(a)
                         && !a.Hex.Equals(citadel.Value)));
-                    response.Reason = "regroup_required";
+                    response.Reason = holds ? "regroup_holds" : "regroup_required";
+                    return response;
+                }
+                if (holds)
+                {
+                    // Everything that can gather already stands at the asset and the defence holds:
+                    // neither a retreat nor a purchase is justified.
+                    response.Kind = ActiveDefenceResponseKind.Defer;
+                    response.Reason = $"asset_holds win={response.HoldWinChance:0.00}";
                     return response;
                 }
                 // Every army that can gather already stands in the Citadel and the same-hex
@@ -332,6 +353,54 @@ namespace Game.Ai.V2
                     + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower
                 ? "no_regroup_point" : "insufficient_power";
             return response;
+        }
+
+        // The chance the defence holds the threatened Base / Citadel: the enemy fist ATTACKS, the
+        // armies standing at the asset (garrison included) and — for the regroup hex — the usable
+        // armies that can gather there DEFEND with the hex's terrain + structure defence. -1 for any
+        // other asset (a facility is not held by standing on it) or when no defender exists.
+        internal static float HoldChanceAtAsset(WorldSnapshot snap, ActiveDefenceObjective objective,
+            HexCoord? regroupHex, IReadOnlyList<ArmySnapshot> gatherable,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition)
+        {
+            if (snap?.Self?.Armies == null || objective == null || opposition == null
+                || opposition.Count == 0 || snap.Observer == null)
+                return -1f;
+            AssetKind kind = objective.Target.ProtectedAssetKind;
+            if (kind != AssetKind.Citadel && kind != AssetKind.Base)
+                return -1f;
+            HexCoord hex = objective.Target.ProtectedAssetHex;
+            // Snapshot-pure: the structure's own defence as remembered (terrain is not in this read, so
+            // the estimate is conservative by exactly that much).
+            float bonus = 0f;
+            if (snap.Known?.Buildings != null)
+                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+                    if (b.Hex.Equals(hex) && b.IsBase && b.Owner == snap.Observer)
+                    {
+                        bonus = Mathf.Max(0f, b.Defense);
+                        break;
+                    }
+            var seen = new HashSet<int>();
+            var defenders = new List<WorthIt.DefendingArmy>();
+            void Add(ArmySnapshot a)
+            {
+                if (a == null || a.IsAir || a.IsPrison || a.Members == null || a.Members.Count == 0
+                    || !seen.Add(a.ArmyId))
+                    return;
+                defenders.Add(new WorthIt.DefendingArmy(a.Members, a.Commander, bonus));
+            }
+            foreach (ArmySnapshot a in snap.Self.Armies)
+                if (a != null && a.Hex.Equals(hex))
+                    Add(a);
+            if (regroupHex.HasValue && regroupHex.Value.Equals(hex) && gatherable != null)
+                foreach (ArmySnapshot a in gatherable)
+                    Add(a);
+            if (defenders.Count == 0)
+                return 0f;
+            var fist = opposition[0];
+            float attackerWins = WorthIt.EstimateSequential(fist.Units, fist.Commander,
+                defenders, bonus).WinChance;
+            return Mathf.Clamp01(1f - attackerWins);
         }
 
         // ---- LIVE (revalidation / post-execution ledger pass) --------------------------------

@@ -27,6 +27,9 @@ namespace Game.Ai.V2
         // field army home: only for a threat that reaches its asset within this many turns. A
         // farther one is deferred (the field armies keep their tasks; the next pass re-decides).
         public const int activeDefenceWithdrawMaxEnemyEta = 2;
+        // A fist that comes for a Base / Citadel is answered by standing on it when the defence
+        // estimate (ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset) reaches this chance.
+        public const float activeDefenceHoldWinChance = 0.70f;
         // 2026-10-01 (user decision) — a preparation's frozen target roster is re-frozen when the
         // peak (TotalMilitaryPotential) grew by more than this share since it was frozen.
         public const float attackTargetRosterRefreezeGrowth = 0.10f;

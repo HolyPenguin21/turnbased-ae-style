@@ -870,6 +870,27 @@ namespace Game.EditorTests
             Members = new[] { new WorthIt.DefenderProfile(1f, false, null, 1f, 1f, 0) },
         };
 
+        // 2026-10-02 — the defence estimate with swapped roles applies to a Base / Citadel only: a
+        // facility is not held by standing on it, and without a known fist there is nothing to rate.
+        [Test]
+        public void ActiveDefence_HoldChanceOnlyForABaseOrCitadelWithAKnownFist()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[]
+            {
+                WeakArmy(owner, 5, new HexCoord(-2, 3), 5f),
+            });
+            ActiveDefenceObjective facility = DefenceObjective(28, new HexCoord(-2, 3));
+            facility.Target.ProtectedAssetKind = AssetKind.Facility;
+            IReadOnlyList<WorthIt.DefendingArmy> fist = ActiveDefenceObjectiveEvaluator.Opposition(snap, 28);
+
+            Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, facility,
+                new HexCoord(0, 0), snap.Self.Armies, fist), Is.EqualTo(-1f));
+            Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, DefenceObjective(28,
+                new HexCoord(-2, 3)), new HexCoord(0, 0), snap.Self.Armies, null), Is.EqualTo(-1f));
+        }
+
         private static ActiveDefenceObjective DefenceObjective(int enemyId, HexCoord assetHex) =>
             new ActiveDefenceObjective
             {

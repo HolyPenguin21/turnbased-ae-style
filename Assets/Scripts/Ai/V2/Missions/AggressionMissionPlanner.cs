@@ -376,6 +376,7 @@ namespace Game.Ai.V2
                             + (response.Kind == ActiveDefenceResponseKind.Regroup ? "REGROUP" : "RETREAT")
                             + $" enemy={objective.Target.EnemyArmyId} reason={response.Reason} "
                             + $"power={response.AvailablePower:0.#}/{response.RequiredPower:0.#} "
+                            + $"hold={(response.HoldWinChance < 0f ? "n/a" : response.HoldWinChance.ToString("0.00"))} "
                             + $"movers=[{string.Join(",", response.Movers.Select(m => m.ArmyId))}]");
                         break;
                 }
