@@ -259,13 +259,14 @@ namespace Game.Ai.V2
             // 2026-10-02 playtest (Rurik/Kryll): a Collector's unit costs 1 Human, but a deferred
             // Base build held ALL the Human (stock 1-3, hold 2-3) for turns, so ~600 collector
             // attempts failed "resources need H=1 have=0" - and the collector is the only thing
-            // that raises the very income the build waits for. A Collector demand exists only for a
-            // resource with useful marginal gain, is one unit, and pays off by income, so like a
-            // build that completes now it may draw on OTHER builds' deferred holds (they shield
+            // that raises the very income the build waits for. A Collector of a SCARCE resource (any of
+            // the four, never a surplus one - EconomyResourceScarce) is one unit and pays off by
+            // income, so like a build that completes now it may draw on OTHER builds' deferred holds (they shield
             // H/E/M/T from non-Economy spending; this IS Economy spending). Every other hold -
             // reaction envelope, Attack continuation, its own build - still counts.
             if (demand != null && demand.RequestingAxis == DesireAxis.Economy
-                && demand.Capability == CapabilityKind.CollectorCapability)
+                && demand.Capability == CapabilityKind.CollectorCapability
+                && demand.EconomyResourceScarce)
                 return new SpendAuthority(null, economyCompletesNow: true);
             string heroBuildOwner = EconomyHeroPrerequisiteOwner(demand);
             if (heroBuildOwner != null)

@@ -176,6 +176,10 @@
         // with spare AP they still run the same turn through the remainder pass.
         public const float raidParkValuePerAp = 2.0f;
         public const float stagingReturnMinFistShare = 0.30f;
+        // A Collector demand draws on other builds' deferred holds only when its resource's
+        // ResourcePriority is at least this (2026-10-02 log averages: Human 0.82, Tech 0.54, Energy
+        // 0.45, Materials 0.37 with 10+ in stock): a scarce resource, not a surplus one.
+        public const float economyCollectorScarcePriority = 0.6f;
         public const float economyIdleBuilderDeliveryTolerance = 0.60f;
         // StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed

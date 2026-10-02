@@ -12,6 +12,7 @@ namespace Game.EditorTests
             var collector = new AxisDemand
             {
                 RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.CollectorCapability,
+                EconomyResourceScarce = true,
             };
             SpendAuthority a = InfrastructureFulfillment.SpendAuthorityFor(collector);
             Assert.That(a.EconomyCompletesNow, Is.True);
@@ -19,10 +20,20 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void SurplusResourceCollectorKeepsRespectingDeferredHolds()
+        {
+            Assert.That(InfrastructureFulfillment.SpendAuthorityFor(new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.CollectorCapability,
+                EconomyResourceScarce = false,
+            }).IsNone, Is.True);
+        }
+
+        [Test]
         public void OtherDemandsKeepRespectingDeferredHolds()
         {
             Assert.That(InfrastructureFulfillment.SpendAuthorityFor(new AxisDemand
-                { RequestingAxis = DesireAxis.Aggression, Capability = CapabilityKind.CollectorCapability }).IsNone, Is.True);
+                { RequestingAxis = DesireAxis.Aggression, Capability = CapabilityKind.CollectorCapability, EconomyResourceScarce = true }).IsNone, Is.True);
             Assert.That(InfrastructureFulfillment.SpendAuthorityFor(new AxisDemand
                 { RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.Hero }).EconomyCompletesNow, Is.False);
             Assert.That(InfrastructureFulfillment.SpendAuthorityFor(null).IsNone, Is.True);

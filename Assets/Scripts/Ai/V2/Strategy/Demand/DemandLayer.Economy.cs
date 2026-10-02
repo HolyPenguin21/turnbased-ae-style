@@ -521,6 +521,7 @@ namespace Game.Ai.V2
                     DesiredAmount = 1f,
                     TargetHex = site.Hex,
                     EconomyResourceType = site.ResourceType,
+                    EconomyResourceScarce = priority >= AiConfigV2.economyCollectorScarcePriority,
                     EconomyBuildCard = claimedCard,
                     EconomyExpectedIncomeGain = gain,
                     EconomySiteValue = score.Value,

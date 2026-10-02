@@ -83,6 +83,10 @@ namespace Game.Ai.V2
         public ScoutCapabilityContext ScoutContext;
         public DevelopmentOpportunity DevOpportunity;
         public ResourceType? EconomyResourceType;
+        // Collector demands only: the resource this collector serves is itself scarce
+        // (TaskScoreEvaluator.ResourcePriority >= AiConfigV2.economyCollectorScarcePriority). Only
+        // then may the collector draw on other builds' deferred holds (SpendAuthorityFor).
+        public bool EconomyResourceScarce;
         public CardData EconomyBuildCard;
         public ResourceCost EconomyBuildResourceCost;
         public float EconomyBuildApCost;
