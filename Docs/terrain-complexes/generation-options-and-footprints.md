@@ -64,3 +64,5 @@ The shader/mesh display and those generator tests require Unity EditMode/PlayMod
   drawn per map (weight = `count`, equal counts give 50/50). Canyon and wreck share the group
   `centerpiece`. A disabled member never takes the draw, so with the wreck disabled the canyon
   is always used. Origins are sampled from the band, not from the whole map.
+- Two separate impassable complexes never stand on neighbouring cells (a footprint cell next to a
+  cell of an already placed blocking complex is rejected), so complexes cannot fuse into one wall.

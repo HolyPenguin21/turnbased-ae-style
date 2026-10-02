@@ -83,6 +83,20 @@ namespace Game.EditorTests
                 "its second cell (4,0) is past the band");
         }
 
+        [Test] public void ImpassableComplexesNeverTouchEachOther()
+        {
+            TerrainComplexTemplate one = Template(new Vector2Int(0, 0));
+            Dictionary<HexCoord, int> data = Assignment();
+            data[new HexCoord(1, 0)] = 1;                        // an already placed lake cell
+            var claimed = new HashSet<HexCoord> { new HexCoord(1, 0) };
+            Assert.That(Validate(one, new HexCoord(2, 0), data, claimed, null, out _), Is.False, "adjacent");
+            Assert.That(Validate(one, new HexCoord(3, 0), data, claimed, null, out _), Is.True, "one hex apart");
+            // A passable neighbour never blocks placement.
+            Assert.That(TerrainComplexPlacement.TryValidate(one, new HexCoord(2, 0), data,
+                new[] { _desert, new TerrainTypeEntry { terrainName = "Acid lake" } }, 1,
+                claimed, null, out _), Is.True);
+        }
+
         [Test] public void ExclusiveGroupKeepsExactlyOneAlternativeAtEvenOdds()
         {
             TerrainComplexTemplate canyon = Template(new Vector2Int(0, 0)); canyon.exclusiveGroup = "centerpiece";

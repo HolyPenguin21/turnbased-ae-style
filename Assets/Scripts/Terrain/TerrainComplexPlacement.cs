@@ -107,6 +107,15 @@ namespace Game.Terrain
                     return false;
                 candidates[i] = h;
             }
+            // Two separate impassable complexes never touch: a footprint cell next to a cell of an
+            // already placed blocking complex would fuse them into one wall (and pinch the ground).
+            if (types[terrainIndex].blocksGroundMovement)
+                foreach (HexCoord cell in footprint)
+                    foreach (HexCoord n in HexGridMath.Neighbors(cell))
+                        if (!footprint.Contains(n) && claimed.Contains(n)
+                            && assignment.TryGetValue(n, out int neighbourType)
+                            && types[neighbourType].blocksGroundMovement)
+                            return false;
             if (!GroundRemainsConnected(assignment, types, footprint, types[terrainIndex].blocksGroundMovement))
                 return false;
             cells = candidates;
