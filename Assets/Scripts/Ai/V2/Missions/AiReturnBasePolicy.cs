@@ -170,7 +170,7 @@ namespace Game.Ai.V2
             return power;
         }
 
-        private static float BaseThreatSeverityAt(WorldSnapshot snap, HexCoord hex)
+        internal static float BaseThreatSeverityAt(WorldSnapshot snap, HexCoord hex)
         {
             float worst = 0f;
             foreach (AssetThreatSnapshot t in snap.Threat?.Threats ?? System.Array.Empty<AssetThreatSnapshot>())

@@ -34,7 +34,7 @@ namespace Game.Ai.V2
             if (avoidCurrentHex && candidates.Any(h => !h.Equals(from)))
                 candidates = candidates.Where(h => !h.Equals(from));
             return candidates.OrderBy(h => routeCosts[h])
-                .ThenBy(h => BaseThreatSeverityAt(snap, h))
+                .ThenBy(h => AiReturnBasePolicy.BaseThreatSeverityAt(snap, h))
                 .ThenByDescending(h => h.Equals(snap.Self.Citadel))
                 .ThenBy(h => h.Q).ThenBy(h => h.R)
                 .Select(h => (HexCoord?)h).FirstOrDefault();

@@ -136,8 +136,7 @@ namespace Game.UI
             }
 
             GameConfig config = _screen != null ? _screen.GameConfig : null;
-            var abilities = EquipmentSystem.EffectiveAbilities(unit.Definition, unit.Equipment);
-            string text = config != null ? config.FormatAbilitiesDetailed(abilities) : string.Empty;
+            string text = config != null ? config.FormatAbilitiesDetailed(unit.Abilities) : string.Empty;
             skillsText.text = text ?? string.Empty;
             skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }
