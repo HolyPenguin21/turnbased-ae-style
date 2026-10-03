@@ -18,8 +18,10 @@ namespace Game.UI
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text typeText;
 
-        // Five compact stat badges, shown for Unit/Hero/Base/Facility cards (Facility uses the
-        // Base mapping; hidden entirely for Tactic/Equipment — see RefreshStatsRow) — each slot is repurposed per CardType rather than having its
+        // Five compact stat badges, shown for Unit/Hero/Base/Facility/Equipment cards (Facility uses
+        // the Base mapping; Tactic alone hides the row — see RefreshStatsRow). Equipment keeps the
+        // Unit slot geometry and shows only the gear's own ATK/DEF/HP/MOVE/RANGE changes. Each slot is
+        // repurposed per CardType rather than having its
         // own dedicated field per stat, since only 5 numbers are ever shown at once and which
         // stat occupies which slot is a deliberate, fixed mapping (see the user's own spec):
         //   AttackBadge slot: Attack (Unit) / Command Rating (Hero) / Level (Base)
@@ -182,19 +184,24 @@ namespace Game.UI
         }
 
         // See the field block's own comment for the fixed per-slot stat mapping. Facility uses
-        // the Base mapping. Tactic and Equipment cards have no unit/hero/building identity of
-        // their own to show stats for, so the whole row is hidden for them rather than showing
-        // 5 zeroes.
+        // the Base mapping. Tactic hides the row. Equipment deliberately keeps the same five
+        // physical slots as Unit and shows only its own ATK/DEF/HP/MOVE/RANGE modifiers — never
+        // a host unit's values or a computed host+equipment total.
         private void RefreshStatsRow(CardDefinition definition)
         {
             if (statsRow == null)
                 return;
 
-            bool show = definition != null
-                && definition.cardType != CardType.Tactic && definition.cardType != CardType.Equipment;
+            bool show = definition != null && definition.cardType != CardType.Tactic;
             statsRow.SetActive(show);
             if (!show)
                 return;
+
+            if (definition.cardType == CardType.Equipment)
+            {
+                RefreshEquipmentStats(definition.equipment);
+                return;
+            }
 
             int slot1, slot2, hp, slot4, slot5;
             switch (definition.cardType)
@@ -230,6 +237,53 @@ namespace Game.UI
             if (hpStatText != null) hpStatText.text = $"{hp}/{hp}";
             if (moveStatText != null) moveStatText.text = slot4.ToString();
             if (rangeStatText != null) rangeStatText.text = slot5.ToString();
+        }
+
+        // Equipment cards use the Unit badge positions as a stable visual vocabulary. The
+        // displayed values come exclusively from EquipmentGrant.statChanges: additive changes
+        // are signed deltas, overrides are absolute "=N" values, and untouched stats stay as
+        // an em dash so all five badge positions remain present.
+        private void RefreshEquipmentStats(EquipmentGrant grant)
+        {
+            if (attackStatText != null) attackStatText.text = FormatEquipmentStat(grant, EquipmentStat.Attack);
+            if (defenseStatText != null) defenseStatText.text = FormatEquipmentStat(grant, EquipmentStat.Defense);
+            if (hpStatText != null) hpStatText.text = FormatEquipmentStat(grant, EquipmentStat.HitPoints);
+            if (moveStatText != null) moveStatText.text = FormatEquipmentStat(grant, EquipmentStat.MoveMax);
+            if (rangeStatText != null) rangeStatText.text = FormatEquipmentStat(grant, EquipmentStat.Range);
+        }
+
+        private static string FormatEquipmentStat(EquipmentGrant grant, EquipmentStat stat)
+        {
+            if (grant?.statChanges == null)
+                return "—";
+
+            int additive = 0;
+            bool hasAdditive = false;
+            bool hasOverride = false;
+            int overrideValue = 0;
+            foreach (EquipmentStatChange change in grant.statChanges)
+            {
+                if (change == null || change.stat != stat)
+                    continue;
+                if (change.isOverride)
+                {
+                    hasOverride = true;
+                    overrideValue = change.amount;
+                }
+                else
+                {
+                    hasAdditive = true;
+                    additive += change.amount;
+                }
+            }
+
+            // EquipmentSystem applies all additive changes first and overrides afterwards, so
+            // when an override exists it is the effective stat instruction this gear provides.
+            if (hasOverride)
+                return $"={overrideValue}";
+            if (!hasAdditive || additive == 0)
+                return "—";
+            return additive > 0 ? $"+{additive}" : additive.ToString();
         }
 
         // Folds the stat changes of an Equipment card attached to this in-hand card (see
