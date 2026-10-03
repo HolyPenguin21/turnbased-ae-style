@@ -113,7 +113,14 @@ namespace Game.UI
             equipmentArtToggle?.Configure(unit?.Equipment, _screen != null ? _screen.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
             if (nameText != null)
+            {
                 nameText.text = unit != null ? unit.Name : string.Empty;
+                // Hide the whole Title bar (TitleText's parent), not just the text, so an empty
+                // cell doesn't keep an empty header strip.
+                Transform title = nameText.transform.parent;
+                GameObject titleObj = title != null && title != transform ? title.gameObject : nameText.gameObject;
+                titleObj.SetActive(unit != null);
+            }
             RefreshSkillsText(unit);
             if (background != null)
                 background.color = isLegalAttackTarget ? LegalAttackColor : isLegalMoveTarget ? LegalMoveColor : CellColor;
