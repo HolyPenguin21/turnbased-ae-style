@@ -31,6 +31,35 @@ namespace Game.Ai.V2
     //  factors are recomputed here ONLY for the arbiter-owned candidates (Draw / Hold / spend).
     public static class StrategicPhaseB
     {
+        // Repeated Phase-B passes replace one reaction's entire envelope. Upsert alone would
+        // retain a resource absent from the next witness (or a prior winner's owner), silently
+        // shielding stock that the new reaction does not need.
+        internal static void RefreshReactionReservation(PlayerSetupData player, int turn,
+            StrategicReactionOpportunity opportunity)
+        {
+            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+                StrategicReservationReason.StrategicReactionPass, opportunity.OwnerKey);
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation
+                {
+                    Owner = opportunity.OwnerKey,
+                    Reason = StrategicReservationReason.StrategicReactionPass,
+                    Resource = StrategicReservedResource.ActionPoints,
+                    Amount = opportunity.ReservedApBudget,
+                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                });
+            foreach (ResourceType rt in ResourceBundle.All)
+                StrategicResourceReservationLedger.Upsert(player, turn,
+                    new StrategicResourceReservation
+                    {
+                        Owner = opportunity.OwnerKey,
+                        Reason = StrategicReservationReason.StrategicReactionPass,
+                        Resource = StrategicResourceReservationLedger.Map(rt),
+                        Amount = opportunity.Envelope?.Get(rt) ?? 0,
+                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                    });
+        }
+
         public static System.Collections.IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
             MaterializationReservation carriedReservation, StrategicPhaseResult result,
@@ -57,30 +86,7 @@ namespace Game.Ai.V2
                 StrategicReactionPass.BuildReactionOpportunity(player, root, ctx, snap);
             if (reactionOpp.IsActionable)
             {
-                StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
-                    new StrategicResourceReservation
-                    {
-                        Owner = reactionOpp.OwnerKey,
-                        Reason = StrategicReservationReason.StrategicReactionPass,
-                        Resource = StrategicReservedResource.ActionPoints,
-                        Amount = reactionOpp.ReservedApBudget,
-                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                    });
-                if (reactionOpp.Envelope != null)
-                    foreach (ResourceType rt in ResourceBundle.All)
-                    {
-                        int n = reactionOpp.Envelope.Get(rt);
-                        if (n <= 0) continue;
-                        StrategicResourceReservationLedger.Upsert(player, ctx.TurnNumber,
-                            new StrategicResourceReservation
-                            {
-                                Owner = reactionOpp.OwnerKey,
-                                Reason = StrategicReservationReason.StrategicReactionPass,
-                                Resource = StrategicResourceReservationLedger.Map(rt),
-                                Amount = n,
-                                ExpirationStage = StrategicReservationExpiry.EndOfReaction,
-                            });
-                    }
+                RefreshReactionReservation(player, ctx.TurnNumber, reactionOpp);
                 AiDebugLog.Write($"[AI][V2]   strat.B — reaction feasible ({reactionOpp.Kind}); reserve BOUNDED "
                     + $"{F(reactionOpp.ReservedApBudget)} AP"
                     + (reactionOpp.Envelope != null ? $" + envelope [{ResCostStr(reactionOpp.Envelope)}]" : "")
@@ -317,3 +323,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

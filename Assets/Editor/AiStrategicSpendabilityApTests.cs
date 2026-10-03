@@ -22,6 +22,7 @@ namespace Game.EditorTests
             OperationContinuationWindow.ClearAll();
             MissionIntentRegistry.Clear();
             ArmyRegistry.Clear();
+            BuildingRegistry.Clear();
         }
 
         // A started Raid's primary (activation 3, 2 MP left) about to take its next Assault step.
@@ -137,6 +138,56 @@ namespace Game.EditorTests
                 support.Members[0].MoveCurrent = 0;
                 Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f));
                 support.Members[0].MoveCurrent = 2;
+                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(rootObject);
+            }
+        }
+
+        [Test]
+        public void PreparationHostOnOwnFacilityStillReservesApToReachAnActualBase()
+        {
+            var player = new PlayerSetupData();
+            var rootObject = new GameObject("attack-preparation-staging-bank-test");
+            try
+            {
+                PlayerRoot root = rootObject.AddComponent<PlayerRoot>();
+                root.ActionPoints = 5;
+                var ctx = new AiTurnContext { TurnNumber = 23 };
+                var hex = new HexCoord(1, 0);
+                var host = new ArmyData { Owner = player, Hex = hex };
+                host.Members.Add(new UnitData
+                {
+                    Owner = player, ActivationApCost = 3, MoveMax = 2, MoveCurrent = 2,
+                });
+                ArmyRegistry.Register(host);
+                var site = new BuildingData { Owner = player, Hex = hex, IsBase = false };
+                BuildingRegistry.Register(hex, site);
+                var intent = new MissionIntent
+                {
+                    Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                    Funding = CommitmentTier.Hard,
+                    Objective = new AttackIntent
+                    {
+                        Target = AttackTargetRef.For(new HexCoord(5, 0),
+                            new PlayerSetupData(), AttackTargetKind.Base),
+                        Phase = AttackMissionPhase.Gather, Preparation = true,
+                        PrimaryArmyId = host.Id,
+                    },
+                };
+                intent.IntentKey = MissionIntentKey.For(intent);
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(2f),
+                    "a facility is not the preparation staging Base");
+                site.IsBase = true;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f),
+                    "the bank must read the current Base identity rather than cache an old hold");
+                site.IsBase = false;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(2f));
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f));
             }
@@ -573,3 +624,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

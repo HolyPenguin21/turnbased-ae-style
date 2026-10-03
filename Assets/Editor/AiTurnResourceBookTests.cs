@@ -1,5 +1,7 @@
 #if UNITY_INCLUDE_TESTS
+using System.Linq;
 using Game.Ai.V2;
+using Game.Cards;
 using Game.Players;
 using NUnit.Framework;
 
@@ -78,6 +80,43 @@ namespace Game.EditorTests
                 Assert.That(Free(), Is.EqualTo(5f));
                 StrategicResourceReservationLedger.ReleaseByOwner(player, turn, "build");
                 Assert.That(Free(), Is.EqualTo(10f));
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
+        [Test]
+        public void RepeatedReactionReplacesTheEnvelopeAndReleasesThePreviousOwner()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 9;
+            StrategicReactionOpportunity Choice(string owner, float ap, ResourceCost envelope) =>
+                new StrategicReactionOpportunity(true, owner, "RespondToDiscovery", ap,
+                    envelope, default, "test", null);
+            try
+            {
+                StrategicPhaseB.RefreshReactionReservation(player, turn,
+                    Choice("old", 3f, new ResourceCost(energy: 4)));
+                StrategicPhaseB.RefreshReactionReservation(player, turn,
+                    Choice("new", 2f, new ResourceCost(materials: 2)));
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Energy), Is.Zero);
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Materials), Is.EqualTo(2f));
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.ActionPoints), Is.EqualTo(2f));
+                Assert.That(StrategicResourceReservationLedger.Rows(player, turn)
+                    .All(r => r.Owner == "new"), Is.True);
+
+                StrategicPhaseB.RefreshReactionReservation(player, turn,
+                    Choice("new", 1f, null));
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Materials), Is.Zero);
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.ActionPoints), Is.EqualTo(1f));
+                StrategicPhaseB.RefreshReactionReservation(player, turn,
+                    Choice("new", 1f, null));
+                Assert.That(StrategicResourceReservationLedger.Rows(player, turn), Has.Count.EqualTo(1),
+                    "an identical re-probe must not stack new rows");
             }
             finally { StrategicResourceReservationLedger.ClearAll(); }
         }
@@ -264,3 +303,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+
