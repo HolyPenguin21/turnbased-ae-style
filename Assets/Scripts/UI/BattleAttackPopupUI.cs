@@ -717,10 +717,13 @@ namespace Game.UI
             if (resultTargetNameText != null)
             {
                 resultTargetNameText.text = _rpCard != null ? _rpCard.displayName : string.Empty;
-                resultTargetNameText.color = BattleCombatantRowUI.CardNameColor;
+                resultTargetNameText.color = Color.white;
             }
             if (resultTargetHpText != null)
-                resultTargetHpText.text = success ? "Success" : string.Empty;
+            {
+                resultTargetHpText.text = success ? "Success" : "Failed";
+                resultTargetHpText.color = Color.white;
+            }
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(false);
 
