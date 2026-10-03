@@ -128,7 +128,11 @@ namespace Game.UI
             _moveSwap.Show(moveStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 3, _hostCardType));
             _rangeSwap.Show(rangeStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 4, _hostCardType));
             _nameSwap.Show(nameOverrideText, _equipment.displayName);
-            _infoSwap.Show(infoText, EquipmentCardText.AttachedCardFace(_equipment, _config));
+            // Only the hand prefab has the new five-slot Equipment view. Keep legacy effect text
+            // in Army/Battle contexts until those modals are migrated to the same template.
+            _infoSwap.Show(infoText, hasEquipmentStatView
+                ? EquipmentCardText.AttachedCardFace(_equipment, _config)
+                : EquipmentCardText.EffectSummary(_equipment, _config));
         }
 
         private void RestoreNow()
