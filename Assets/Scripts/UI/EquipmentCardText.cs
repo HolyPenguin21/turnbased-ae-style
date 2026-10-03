@@ -79,13 +79,56 @@ namespace Game.UI
             return Join(AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
         }
 
-        // The equipment card's own face in hand: who it fits, then added abilities, then stat
-        // changes.
+        // The equipment card's own face while it is still free in hand: compatibility + skills.
+        // Numeric stat changes live in the five stat badges and are deliberately not duplicated here.
         public static string CardFace(CardDefinition equip, GameConfig config)
         {
             if (equip == null)
                 return string.Empty;
-            return Join(HostTags(equip.equipment), AddedAbilities(equip.equipment, config), StatChanges(equip.equipment));
+            return Join(HostTags(equip.equipment), AddedAbilities(equip.equipment, config));
+        }
+
+        // The equipment's description once it is already attached to a host. Compatibility is no
+        // longer useful at that point; numeric stat changes still belong to the stat badges.
+        public static string AttachedCardFace(CardDefinition equip, GameConfig config)
+        {
+            if (equip == null)
+                return string.Empty;
+            return AddedAbilities(equip.equipment, config);
+        }
+
+        // Compact value used by an Equipment card's stat badges. It describes the gear itself,
+        // never a host+gear total. Overrides win because EquipmentSystem applies them after deltas.
+        public static string StatBadgeValue(EquipmentGrant grant, EquipmentStat stat)
+        {
+            if (grant?.statChanges == null)
+                return "—";
+
+            int additive = 0;
+            bool hasAdditive = false;
+            bool hasOverride = false;
+            int overrideValue = 0;
+            foreach (EquipmentStatChange change in grant.statChanges)
+            {
+                if (change == null || change.stat != stat)
+                    continue;
+                if (change.isOverride)
+                {
+                    hasOverride = true;
+                    overrideValue = change.amount;
+                }
+                else
+                {
+                    hasAdditive = true;
+                    additive += change.amount;
+                }
+            }
+
+            if (hasOverride)
+                return $"={overrideValue}";
+            if (!hasAdditive || additive == 0)
+                return "—";
+            return additive > 0 ? $"+{additive}" : additive.ToString();
         }
 
         private static string Join(params string[] lines) =>
