@@ -152,7 +152,7 @@ namespace Game.UI
         // unit once it finally spawns.
         public void RefreshEquipmentToggle()
         {
-            equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig);
+            equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig, Data?.Definition?.cardType);
             RefreshStatsRow(Data?.Definition);
             RefreshAbilityText();
         }
@@ -245,11 +245,11 @@ namespace Game.UI
         // an em dash so all five badge positions remain present.
         private void RefreshEquipmentStats(EquipmentGrant grant)
         {
-            if (attackStatText != null) attackStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Attack);
-            if (defenseStatText != null) defenseStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Defense);
-            if (hpStatText != null) hpStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.HitPoints);
-            if (moveStatText != null) moveStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.MoveMax);
-            if (rangeStatText != null) rangeStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Range);
+            if (attackStatText != null) attackStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 0);
+            if (defenseStatText != null) defenseStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 1);
+            if (hpStatText != null) hpStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 2);
+            if (moveStatText != null) moveStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 3);
+            if (rangeStatText != null) rangeStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 4);
         }
 
 
