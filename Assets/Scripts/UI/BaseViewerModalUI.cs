@@ -186,7 +186,12 @@ namespace Game.UI
                 detailArt.gameObject.SetActive(true);
             }
             if (detailText1 != null)
-                detailText1.text = facility.Name;
+                detailText1.text = $"{facility.Name}\n" +
+                    $"Level {facility.Level}\n" +
+                    $"Structure Points: {facility.StructurePointsCurrent}/{facility.StructurePointsMax}\n" +
+                    $"Defense: {facility.Defense}\n" +
+                    $"Resistance: {facility.Resistance}\n" +
+                    $"Fate: {facility.Fate}";
             if (detailText2 != null)
                 detailText2.text = FormatAbilities(facility.Abilities);
         }
