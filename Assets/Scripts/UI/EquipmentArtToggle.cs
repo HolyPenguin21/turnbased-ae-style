@@ -31,8 +31,15 @@ namespace Game.UI
         // component's own GameObject. Resolved every Configure (not cached in Awake) so it
         // works even if it starts inactive in the prefab.
         [SerializeField] private GameObject buttonVisual;
-        // The card's own stat row/badges — hidden while the equipment is being shown.
+        // Legacy fallback for cards that have not wired individual stat texts yet.
         [SerializeField] private GameObject statsToHideOnHover;
+        // Optional five-slot Equipment view. When wired (Card_Hand), attached Equipment keeps
+        // the row visible and temporarily replaces host totals with the gear's own modifiers.
+        [SerializeField] private TMP_Text attackStatText;
+        [SerializeField] private TMP_Text defenseStatText;
+        [SerializeField] private TMP_Text hpStatText;
+        [SerializeField] private TMP_Text moveStatText;
+        [SerializeField] private TMP_Text rangeStatText;
         // The card's name text — shows the equipment's name while shown, restored afterwards.
         [SerializeField] private TMP_Text nameOverrideText;
         // The card's ability/description text — shows the equipment's effect summary while
@@ -50,6 +57,11 @@ namespace Game.UI
         private bool _savedStatsActive;
         private readonly TextSwap _nameSwap = new TextSwap();
         private readonly TextSwap _infoSwap = new TextSwap();
+        private readonly TextSwap _attackSwap = new TextSwap();
+        private readonly TextSwap _defenseSwap = new TextSwap();
+        private readonly TextSwap _hpSwap = new TextSwap();
+        private readonly TextSwap _moveSwap = new TextSwap();
+        private readonly TextSwap _rangeSwap = new TextSwap();
 
         public void Configure(CardDefinition equipment, GameConfig config)
         {
@@ -97,13 +109,24 @@ namespace Game.UI
                 _savedArt = cardArtImage.sprite;
                 cardArtImage.sprite = _equipment.art;
             }
-            if (statsToHideOnHover != null)
+            bool hasEquipmentStatView = attackStatText != null || defenseStatText != null
+                || hpStatText != null || moveStatText != null || rangeStatText != null;
+            if (statsToHideOnHover != null && !hasEquipmentStatView)
             {
                 _savedStatsActive = statsToHideOnHover.activeSelf;
                 statsToHideOnHover.SetActive(false);
             }
+            if (hasEquipmentStatView && statsToHideOnHover != null)
+                statsToHideOnHover.SetActive(true);
+
+            EquipmentGrant grant = _equipment.equipment;
+            _attackSwap.Show(attackStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Attack));
+            _defenseSwap.Show(defenseStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Defense));
+            _hpSwap.Show(hpStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.HitPoints));
+            _moveSwap.Show(moveStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.MoveMax));
+            _rangeSwap.Show(rangeStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Range));
             _nameSwap.Show(nameOverrideText, _equipment.displayName);
-            _infoSwap.Show(infoText, EquipmentCardText.EffectSummary(_equipment, _config));
+            _infoSwap.Show(infoText, EquipmentCardText.AttachedCardFace(_equipment, _config));
         }
 
         private void RestoreNow()
@@ -114,6 +137,11 @@ namespace Game.UI
 
             if (cardArtImage != null && _savedArt != null)
                 cardArtImage.sprite = _savedArt;
+            _attackSwap.Restore();
+            _defenseSwap.Restore();
+            _hpSwap.Restore();
+            _moveSwap.Restore();
+            _rangeSwap.Restore();
             if (statsToHideOnHover != null)
                 statsToHideOnHover.SetActive(_savedStatsActive);
             _nameSwap.Restore();
