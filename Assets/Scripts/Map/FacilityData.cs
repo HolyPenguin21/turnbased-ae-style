@@ -4,12 +4,10 @@ using UnityEngine;
 
 namespace Game.Map
 {
-    // A Facility card placed into one of a BuildingData's FacilitySlots — the UnitData-
-    // equivalent for a placed Facility, but far smaller: Facilities have no behavior yet (see
-    // CardHandUI.TryDeployIntoBaseModal), just identity and a stub upgrade counter that
-    // BaseSlotCardUI's hover "Improve" button increments with no cost or effect. Abilities is
-    // the same open-tag pattern as BuildingData.Abilities (see UnitAbilities) — populated
-    // from the placed card's own CardDefinition.grantedAbilities, no behavior wired yet.
+    // A Facility card placed into one of a BuildingData's FacilitySlots — the runtime counterpart
+    // of its CardDefinition. It keeps identity, abilities and the building-card stat block needed
+    // by BaseViewerModalUI, while UpgradeLevel remains the existing progression counter used by
+    // facility income upgrades.
     public class FacilityData
     {
         public string Name;
