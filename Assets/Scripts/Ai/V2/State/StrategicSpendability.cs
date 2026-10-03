@@ -213,7 +213,8 @@ namespace Game.Ai.V2
         {
             ArmyData army = ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x != null && x.Id == armyId);
             BuildingData building = army != null ? BuildingRegistry.FindAt(army.Hex) : null;
-            return building != null && building.Owner == player;
+            return building != null && building.Owner == player
+                && (building.IsBase || building.IsStartingCitadel);
         }
 
         // The derived (non-ledger) hold: the next step of continuing Hard operations (AP).
