@@ -1,4 +1,4 @@
-﻿#if UNITY_INCLUDE_TESTS
+#if UNITY_INCLUDE_TESTS
 using System.Linq;
 using Game.Ai.V2;
 using Game.Cards;
@@ -97,8 +97,8 @@ namespace Game.EditorTests
             var force = PlayerForceAnalysis.Calculate(new PlayerSetupData(), null, null, null);
             Assert.That(force.ReadinessPercent, Is.Zero);
             Assert.That(force.ForceReady, Is.False);
-            Assert.That(AttackObjectiveEvaluator.ForceReady(80f, 100f), Is.False);
-            Assert.That(AttackObjectiveEvaluator.ForceReady(80.01f, 100f), Is.True);
+            Assert.That(AttackForceReadiness.ForceReady(80f, 100f), Is.False);
+            Assert.That(AttackForceReadiness.ForceReady(80.01f, 100f), Is.True);
             Assert.That(force.DeployedPercent, Is.Zero);
             Assert.That(force.MobilizationOpen, Is.False);
         }
@@ -106,11 +106,11 @@ namespace Game.EditorTests
         [Test]
         public void MobilizationOpensAtThreeQuartersInclusiveWhileAssaultStaysStrict()
         {
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(135f, 180f), Is.True);
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(134.9f, 180f), Is.False);
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(0f, 0f), Is.False);
-            Assert.That(AttackObjectiveEvaluator.ForceReady(56f, 70f), Is.False);
-            Assert.That(AttackObjectiveEvaluator.ForceReady(56.1f, 70f), Is.True);
+            Assert.That(AttackForceReadiness.MobilizationOpen(135f, 180f), Is.True);
+            Assert.That(AttackForceReadiness.MobilizationOpen(134.9f, 180f), Is.False);
+            Assert.That(AttackForceReadiness.MobilizationOpen(0f, 0f), Is.False);
+            Assert.That(AttackForceReadiness.ForceReady(56f, 70f), Is.False);
+            Assert.That(AttackForceReadiness.ForceReady(56.1f, 70f), Is.True);
         }
 
         [Test]
@@ -128,3 +128,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

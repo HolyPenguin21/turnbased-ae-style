@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -256,7 +256,7 @@ namespace Game.Ai.V2
         public HexCoord? ReturnHex;
 
         // The base the SUPPORT walks back to in RaidMissionPhase.SupportReturn, chosen the same way
-        // (MissionContinuityLayer.SelectReturnBase) and fixed the same way as ReturnHex above — a
+        // (AiReturnBasePolicy.SelectReturnBase) and fixed the same way as ReturnHex above — a
         // separate field because primary and support can be mid-transit to different homes at once
         // (primary already has ReturnHex set from a previous campaign leg).
         public HexCoord? SupportReturnHex;
@@ -350,7 +350,7 @@ namespace Game.Ai.V2
         // Gather support movement starts the intent, but the force threshold remains live
         // until the primary actually starts the assault march.
         public bool AssaultStarted;
-        // T01 — opened by the mobilization trigger (AttackObjectiveEvaluator.MobilizationOpen):
+        // T01 — opened by the mobilization trigger (AttackForceReadiness.MobilizationOpen):
         // a Gather around a host that may still be weak, hero-only or an empty shell on the own
         // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;
         // it becomes an ordinary Assault only once the host strictly clears the current peak.
@@ -495,3 +495,4 @@ namespace Game.Ai.V2
         public IGroundCombatOperation GroundCombat => Objective as IGroundCombatOperation;
     }
 }
+

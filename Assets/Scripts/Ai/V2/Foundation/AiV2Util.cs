@@ -100,7 +100,35 @@ namespace Game.Ai.V2
         // share one; the 2026-10-02 playtest sent a lone Scav Carrier at "Guard@-2,-2" priced
         // against its 2 defenders alone while neutral Army#6 stood on the same hex — four
         // retreats in a row at an estimated win of 1.00). Empty when nothing is known.
-        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target)
+        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target) =>
+            BuildKnownOpposition(snap, target, includeSite: true);
+
+        // Execution historically revalidates only the bound primary encounter. Keep that scope
+        // explicit: do not silently turn a mechanical audit into a different fight projection.
+        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownPrimaryOppositionLive(
+            Game.Players.PlayerSetupData player, RaidTargetRef target)
+        {
+            var guards = new List<KnownEventGuardSnapshot>();
+            if (target.Kind == RaidTargetKind.EventGuard)
+            {
+                Game.Ai.AiMapMemory.GuardStrength? guard = Game.Ai.AiMapMemory.KnownEventGuardStrengthAt(player, target.Hex);
+                if (guard.HasValue)
+                    guards.Add(new KnownEventGuardSnapshot(target.Hex, guard.Value, null,
+                        guard.Value.Defenders?.Count ?? 0));
+            }
+            return BuildKnownOpposition(new WorldSnapshot
+            {
+                Observer = player,
+                Known = new KnownSnapshot
+                {
+                    EnemySightings = Game.Ai.AiMapMemory.AllKnownEnemySightings(player).ToList(),
+                    NeutralSightings = Game.Ai.AiMapMemory.AllKnownNeutralSightings(player).ToList(),
+                    EventGuards = guards,
+                },
+            }, target, includeSite: false);
+        }
+
+        private static IReadOnlyList<WorthIt.DefendingArmy> BuildKnownOpposition(WorldSnapshot snap, RaidTargetRef target, bool includeSite)
         {
             if (snap?.Known == null || !target.HasValue)
                 return System.Array.Empty<WorthIt.DefendingArmy>();
@@ -115,23 +143,24 @@ namespace Game.Ai.V2
             if (target.Kind == RaidTargetKind.EventGuard)
             {
                 hex = target.Hex;
-                AddEventGuard(snap, hex, result);
+                AddEventGuard(snap, hex, result, includeSite);
                 if (result.Count == 0)
                     return System.Array.Empty<WorthIt.DefendingArmy>();
             }
             else
             {
-                Game.Ai.AiMapMemory.KnownEnemySighting? own = null;
-                foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
-                    if (s.ArmyId == target.ArmyId) { own = s; break; }
+                Game.Ai.AiMapMemory.KnownEnemySighting? own =
+                    RaidObjectiveEvaluator.FindSighting(snap, target.ArmyId);
                 if (!own.HasValue)
                     return System.Array.Empty<WorthIt.DefendingArmy>();
                 hex = own.Value.Hex;
                 excludeArmyId = target.ArmyId;
                 result.Add(new WorthIt.DefendingArmy(own.Value.Defenders, own.Value.Commander,
-                    Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner)));
-                AddEventGuard(snap, hex, result);
+                    includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f));
+                if (includeSite) AddEventGuard(snap, hex, result);
             }
+
+            if (!includeSite) return result;
 
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all.OrderBy(x => x.ArmyId))
                 if (s.Hex.Equals(hex) && s.ArmyId != excludeArmyId && s.Defenders != null
@@ -141,7 +170,7 @@ namespace Game.Ai.V2
             return result;
         }
 
-        private static void AddEventGuard(WorldSnapshot snap, HexCoord hex, List<WorthIt.DefendingArmy> into)
+        private static void AddEventGuard(WorldSnapshot snap, HexCoord hex, List<WorthIt.DefendingArmy> into, bool includeSite = true)
         {
             if (snap.Known.EventGuards == null)
                 return;
@@ -149,7 +178,7 @@ namespace Game.Ai.V2
                 if (g.Hex.Equals(hex))
                 {
                     into.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
-                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null)));
+                        includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null) : 0f));
                     return;
                 }
         }
@@ -165,14 +194,10 @@ namespace Game.Ai.V2
             if (target.Kind == RaidTargetKind.EventGuard)
                 return Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
                     snap.Observer, target.Hex, defendingOwner: null);
-            IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
-            foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == target.ArmyId)
-                    return Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
-                        snap.Observer, s.Hex, s.Owner);
-            return 0f;
+            Game.Ai.AiMapMemory.KnownEnemySighting? sighting =
+                RaidObjectiveEvaluator.FindSighting(snap, target.ArmyId);
+            return sighting.HasValue ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
+                snap.Observer, sighting.Value.Hex, sighting.Value.Owner) : 0f;
         }
 
         // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid
@@ -181,3 +206,4 @@ namespace Game.Ai.V2
             KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(armyId));
     }
 }
+

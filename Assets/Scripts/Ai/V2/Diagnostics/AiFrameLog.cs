@@ -202,7 +202,7 @@ namespace Game.Ai.V2
         }
 
         // ---- OBJECTIVES -----------------------------------------------------------------------
-        public static void Objectives(IReadOnlyList<ReconObjective> recon, IReadOnlyList<AggressionObjective> agg)
+        public static void Objectives(IReadOnlyList<ReconObjective> recon, IReadOnlyList<RaidObjective> agg)
         {
             if (!AiConfigV2.frameLogEnabled) return;
             Head("OBJECTIVES");
@@ -213,9 +213,9 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"{P}     {o.Kind}@{o.FocusHex.Q},{o.FocusHex.R}  base {N(o.BaseValue)}  "
                     + $"risk {N2(o.DetectionRisk)}  stealth {o.Stealth}  severity {N2(o.Severity)}");
 
-            agg = agg ?? (IReadOnlyList<AggressionObjective>)System.Array.Empty<AggressionObjective>();
+            agg = agg ?? (IReadOnlyList<RaidObjective>)System.Array.Empty<RaidObjective>();
             AiDebugLog.Write($"{P}   aggression {agg.Count}:");
-            foreach (AggressionObjective o in agg.OrderByDescending(o => o.BaseValue).Take(8))
+            foreach (RaidObjective o in agg.OrderByDescending(o => o.BaseValue).Take(8))
                 AiDebugLog.Write($"{P}     {o.ObjectiveId}@{o.LastKnownHex.Q},{o.LastKnownHex.R}  base {N(o.BaseValue)}  "
                     + $"readyWin {N2(o.ReadyWinChance)}  asmWin {N2(o.AssemblableWinChance)}  def {o.DefenderCount}  "
                     + $"gate {(o.GatePassed ? 1 : 0)}{(o.NeedsCombatPower ? " needsPower" : "")}{(o.NeedsHero ? " needsHero" : "")}");
@@ -245,3 +245,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

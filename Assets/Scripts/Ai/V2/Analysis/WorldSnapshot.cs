@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -499,7 +499,7 @@ namespace Game.Ai.V2
         // included, prisoners excluded) — a different scale from the one-stack measures above.
         // Deployed: live bodies on the map; Available: those plus Unit/Hero cards in hand and
         // remaining deck. Attack mobilization opens on this pair
-        // (AttackObjectiveEvaluator.MobilizationOpen); it never admits a march.
+        // (AttackForceReadiness.MobilizationOpen); it never admits a march.
         public float DeployedPower;
         public float AvailablePower;
         // Mobilization start (B), one-stack scale: the strongest single army the bodies already
@@ -1075,3 +1075,4 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
+

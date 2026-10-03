@@ -281,13 +281,13 @@ namespace Game.Ai.V2
                 && snap.Known?.Buildings != null
                 && snap.Known.Buildings.Any(b =>
                     AttackObjectiveEvaluator.IsHostileStrategicStructure(b, snap.Observer))
-                && !AttackObjectiveEvaluator.ForceReady(snap.Self.FistPower,
+                && !AttackForceReadiness.ForceReady(snap.Self.FistPower,
                     snap.Self.AttackPeak)
                 && deck != null && deck.Any(d => !d.isAviation
                     && (d.cardType == CardType.Unit || d.cardType == CardType.Hero));
             float attackDrawBonus = attackNeedsDeck
                 ? AiConfigV2.tempoDrawDeckValueWeight * Mathf.Clamp01(
-                    (0.80f * snap.Self.AttackPeak - snap.Self.FistPower)
+                    (AttackForceReadiness.RequiredPower(snap.Self.AttackPeak) - snap.Self.FistPower)
                     / Mathf.Max(1f, snap.Self.AttackPeak)) : 0f;
 
             float builderDrawBonus = BuilderHeroDrawBonus(snap, deck) + CollectorDrawBonus(snap, deck);
@@ -518,3 +518,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

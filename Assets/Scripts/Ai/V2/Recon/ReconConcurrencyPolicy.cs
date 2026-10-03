@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // Distinct ground scouts a turn may bind (ReconAssignmentPlanner): fewer once the Attack
         // mobilization is open — its AP belongs to playing and gathering the strike force.
         public static int GroundActorsPerTurn(WorldSnapshot snap) =>
-            AttackObjectiveEvaluator.MobilizationOpen(snap?.Self)
+            AttackForceReadiness.MobilizationOpen(snap?.Self)
                 ? AiConfigV2.reconGroundActorsPerTurnMobilized
                 : AiConfigV2.reconGroundActorsPerTurn;
 
@@ -112,3 +112,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

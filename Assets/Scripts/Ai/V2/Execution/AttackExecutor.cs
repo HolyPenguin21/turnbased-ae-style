@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -486,7 +486,7 @@ namespace Game.Ai.V2
 
         // §46 — either exactly ONE transit step of the support army, or (once it stands on the
         // primary's hex) exactly ONE atomic roster handoff with no movement in the same step. The
-        // handoff itself is the shared TaskExecutor primitive; Attack does not get its own.
+        // handoff itself is the shared GroundCombat reinforcement transaction; Attack does not get its own.
         private static IEnumerator RunReinforcementStep(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ExecutionResult result, ArmyData support, WorldSnapshot snapshot)
         {
@@ -548,7 +548,7 @@ namespace Game.Ai.V2
             result.ReinforcementHandoffAttempted = true;
             // The site's fight decides whether the support's hero should take command of the fist
             // (GroundCombatReinforcement.CommandHandover — the gather projection's same rule).
-            bool handoffOk = TaskExecutor.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
+            bool handoffOk = GroundCombatReinforcementTransaction.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex),
@@ -579,3 +579,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

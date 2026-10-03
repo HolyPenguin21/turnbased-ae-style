@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
@@ -87,7 +87,7 @@ namespace Game.Ai.V2
                     continue;
                 int primaryId = ai.PrimaryArmyId.Value;
 
-                AxisDemand attackShortage = BoundPrimaryShortage(snap, inv, commitments, i,
+                AxisDemand attackShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                     MissionKind.Attack, ai.Target.DiagnosticLabel, primaryId, ai.SupportArmyId,
                     ai.ReinforcementRequestedTurn,
                     AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex),
@@ -95,75 +95,15 @@ namespace Game.Ai.V2
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackCoverageGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
-                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.AttackPeak);
+                    diag, ai.AssaultStarted ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
                 if (attackShortage != null)
                     demands.Add(attackShortage);
             }
 
             AppendUnboundAttackDemand(snap, activeIntents, commitments, diag, demands);
-            AppendHeldBaseGarrisonDemands(snap, diag, demands);
+
         }
 
-        private static TaskScore BuildHeldBaseGarrisonScore() =>
-            new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
-                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
-
-        // Strike force step 7 — a base our field army holds (the fist that just took it) whose
-        // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
-        // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
-        // then weakest, body (ArmyReorganizationCandidates, garrison fill).
-        private static void AppendHeldBaseGarrisonDemands(WorldSnapshot snap, List<string> diag,
-            List<AxisDemand> demands)
-        {
-            IReadOnlyList<ArmySnapshot> armies = snap.Self.Armies
-                ?? (IReadOnlyList<ArmySnapshot>)System.Array.Empty<ArmySnapshot>();
-            foreach (HexCoord baseHex in snap.Self.BaseHexes ?? (IReadOnlyList<HexCoord>)System.Array.Empty<HexCoord>())
-            {
-                ArmySnapshot garrison = armies.FirstOrDefault(a => a != null && a.IsGarrison
-                    && a.Hex.Equals(baseHex));
-                if (garrison == null
-                    || !armies.Any(a => a != null && a.IsStructuralRaidActor && a.Hex.Equals(baseHex)))
-                    continue;
-                // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
-                // ground force: at least one body and the Citadel / Base share of power.
-                float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Self.AvailablePower,
-                    baseHex.Equals(snap.Self.Citadel));
-                int bodies = garrison.Members?.Count ?? 0;
-                float desired = bodies == 0
-                    ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
-                    : floor - garrison.EffectiveArmyPower;
-                if (desired <= AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-                string missing = $"{desired:0.#}";
-                TaskScore score = BuildHeldBaseGarrisonScore();
-                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
-                    + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
-                    + $"task={score.Value:0.##} reason=held_base_garrison_below_floor");
-                demands.Add(new AxisDemand
-                {
-                    RequestingAxis = DesireAxis.Aggression,
-                    Capability = CapabilityKind.FieldCombatPower,
-                    DeliveryShape = CapabilityDeliveryShape.Garrison,
-                    ConsumerMissionKind = MissionKind.Attack,
-                    DesiredAmount = desired,
-                    RequiredCapabilityPower = desired,
-                    RequiredTraits = TraitPreference.None,
-                    MinimumFollowupAp = 0f,
-                    TargetHex = baseHex,
-                    WorldTaskScore = score,
-                    Value = score.Value,
-                    Explain = $"garrison the held base ({baseHex.Q},{baseHex.R}) from hand: "
-                        + $"{missing} power short of its floor {floor:0.#}; task={score.Value:0.##}",
-                });
-            }
-        }
-
-        // Strike force step 4 — the Attack objective with no operation yet. Only the best known
-        // Base/Citadel (the same TaskScore the mission layer ranks by) and only when no free army,
-        // same-hex package nor cross-hex gather can take it above the current force threshold.
-        // A card already in hand can strengthen the free fist through Phase A; an undrawn card
-        // remains Phase B's Draw responsibility.
         // T01 — the measured shortage of a live preparation host: the current 80% peak minus the
         // host's own power, pinned to that exact container (a stronger unrelated army never
         // closes it). Existing troops are gathered first; a host that no card can reach (not on
@@ -174,33 +114,33 @@ namespace Game.Ai.V2
         {
             string at = $"intent={intent.IntentKey} target={ai.Target.DiagnosticLabel} "
                 + $"host={ai.PrimaryArmyId} reason=";
-            if (!ai.PrimaryArmyId.HasValue || commitments == null
-                || !commitments.IsPreparationHost(ai.PrimaryArmyId.Value))
+            ArmySnapshot host = ai.PrimaryArmyId.HasValue
+                ? snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == ai.PrimaryArmyId.Value)
+                : null;
+            float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
+            float have = host?.EffectiveArmyPower ?? 0f;
+            if (host == null)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at}preparation_host_missing "
+                    + $"have={have:0.#} required>{required:0.#}");
+                return null;
+            }
+            if (commitments == null || !commitments.IsPreparationHost(host.ArmyId))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP {at}preparation_host_not_claimed");
                 return null;
             }
-            int hostId = ai.PrimaryArmyId.Value;
-            ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == hostId);
-            float required = 0.80f * snap.Self.AttackPeak;
-            float have = host?.EffectiveArmyPower ?? 0f;
-            if (host == null)
-            {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}preparation_host_clears_power "
-                    + $"have={have:0.#} required>{required:0.#}");
-                return null;
-            }
+            int hostId = host.ArmyId;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex);
             // The march gate is power AND coverage: GroundCombatFeasibility.Clears stays the one
             // owner of coverage, so a host above the power bar is only satisfied when it also
             // damages every known defender (an unobserved site has none and is vacuously covered).
-            bool coverageGap = have > required && !GroundCombatFeasibility.Clears(
-                host.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>(),
-                host.Commander, opposition, GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus,
-                out _, out _);
-            if (have > required && !coverageGap)
+            AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(
+                host, snap.Self.AttackPeak, opposition, hexBonus);
+            bool coverageGap = readiness.PowerReady && !readiness.CombatFeasible;
+            if (readiness.CapabilityReady)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at}preparation_host_clears_power "
                     + $"have={have:0.#} required>{required:0.#}");
@@ -341,7 +281,7 @@ namespace Game.Ai.V2
 
             // A held card Phase A already failed to chain into this exact host (its pinned demand,
             // this turn or the last) is no witness: the two stages answer with one truth.
-            foreach (Game.Cards.CardData c in HandFieldCards(snap))
+            foreach (Game.Cards.CardData c in GroundCombatDemandPolicy.HandFieldCards(snap))
                 if (Strengthens(c.Definition, c.Equipment)
                     && !PreparationDeliveryMemory.NoChainRecently(snap.Observer, host.Id,
                         snap.TurnNumber, StrikeRoster.CardKey(c.Definition)))
@@ -411,7 +351,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
+                    MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -430,7 +370,7 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
                     objective.Opposition, a.ArmyId,
                     GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus).Feasible
-                    && AttackObjectiveEvaluator.ForceReady(a.EffectiveArmyPower,
+                    && AttackForceReadiness.ForceReady(a.EffectiveArmyPower,
                         snap.Self.AttackPeak));
             if (futureActor != null)
             {
@@ -443,7 +383,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
                 requireMovementNow: false,
-                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
+                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -459,7 +399,7 @@ namespace Game.Ai.V2
                 {
                     Opposition = objective.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    MinimumArmyPower = 0.80f * snap.Self.AttackPeak,
+                    MinimumArmyPower = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -485,18 +425,18 @@ namespace Game.Ai.V2
             {
                 // T01 — with no free fist on an own Base the mobilization preparation is the path
                 // (it creates/reuses the host on the Citadel); this demand names nobody.
-                bool open = AttackObjectiveEvaluator.MobilizationOpen(snap.Self);
+                bool open = AttackForceReadiness.MobilizationOpen(snap.Self);
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
                     + "reason=no_free_base_fist_for_direct_card_delivery "
                     + $"mobilization={(open ? "open:preparation_owns_host" : "closed")} "
                     + $"deployed={snap.Self.DeployedPower:0.#} available={snap.Self.AvailablePower:0.#}");
                 return;
             }
-            float required = 0.80f * snap.Self.AttackPeak;
+            float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
             float have = fist?.EffectiveArmyPower ?? 0f;
             // §11 — a fist that already has the numbers yet misses the gate is an assembly /
             // composition gap: strengthening it by a phantom +1 from hand closes nothing.
-            if (have > required)
+            if (AttackForceReadiness.ForceReady(have, snap.Self.AttackPeak))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
                     + $"fist={(fist?.ArmyId ?? 0)} required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "
@@ -531,3 +471,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

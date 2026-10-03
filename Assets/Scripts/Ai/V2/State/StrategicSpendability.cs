@@ -26,7 +26,7 @@ namespace Game.Ai.V2
         internal static bool IsSettled(PlayerSetupData player, int turn) =>
             player != null && SettledTurn.TryGetValue(player, out int t) && t == turn;
 
-        // Attack mobilization gate of this turn (AttackObjectiveEvaluator.MobilizationOpen on the
+        // Attack mobilization gate of this turn (AttackForceReadiness.MobilizationOpen on the
         // turn's scan), stamped by the pipeline: the first preparation step's AP hold reads it.
         private static readonly Dictionary<PlayerSetupData, int> MobilizationOpenTurn =
             new Dictionary<PlayerSetupData, int>();
@@ -311,3 +311,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

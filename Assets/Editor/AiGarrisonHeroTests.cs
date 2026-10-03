@@ -173,12 +173,12 @@ namespace Game.EditorTests
                 DeployedPower = 50f, AvailablePower = 100f,
                 TotalMilitaryPotential = 60f, FieldStrikePotential = 40f,
             };
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(self), Is.False, "50% share, 40 of 48");
+            Assert.That(AttackForceReadiness.MobilizationOpen(self), Is.False, "50% share, 40 of 48");
             self.FieldStrikePotential = 48.1f;
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(self), Is.True, "the field can form the fist");
+            Assert.That(AttackForceReadiness.MobilizationOpen(self), Is.True, "the field can form the fist");
             self.FieldStrikePotential = 40f;
             self.DeployedPower = 75f;
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(self), Is.True, "three quarters deployed");
+            Assert.That(AttackForceReadiness.MobilizationOpen(self), Is.True, "three quarters deployed");
         }
 
         // Busy field armies count (they come back); lone scouts, aviation and the garrison's
@@ -300,3 +300,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

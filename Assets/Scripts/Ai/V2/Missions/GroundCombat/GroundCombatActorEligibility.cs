@@ -10,6 +10,9 @@ namespace Game.Ai.V2
     // What lives here is only the Missions-specific mover ORDERING for the assembly solver.
     internal static class GroundCombatActorEligibility
     {
+        internal static bool IsStructuralActor(ArmySnapshot actor) =>
+            actor != null && actor.IsStructuralRaidActor;
+
         // Free, structurally-eligible ground combat armies for this cycle, mobility-first:
         // already-activated / cheaper activation first, then the least powerful sufficient host
         // (avoids feeding an already-winning raid into an ever larger, ever more expensive stack).
@@ -35,7 +38,7 @@ namespace Game.Ai.V2
         internal static List<ArmySnapshot> EligibleArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
             bool requireMovementNow) =>
             snap.Self.Armies
-                .Where(a => a != null && a.IsStructuralRaidActor
+                .Where(a => IsStructuralActor(a)
                             && (!requireMovementNow || a.CurrentMovement > 0)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId))
                             && (!requireMovementNow
@@ -69,3 +72,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -274,7 +274,7 @@ namespace Game.Ai.V2
             // 2026-10-01 (user decision): a card that builds the Attack's own strike force may use
             // the AP held for the Attack's next step (the derived operation-continuation claim);
             // every other card plays around it.
-            return demand != null && demand.ConsumerMissionKind == MissionKind.Attack
+            return demand != null && demand.UsesAttackContinuationAp
                 ? new SpendAuthority(TurnResourceBook.OperationContinuationOwner, economyCompletesNow: false)
                 : default;
         }
@@ -1050,3 +1050,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

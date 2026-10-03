@@ -184,7 +184,7 @@ namespace Game.Ai.V2
             if (ri.Phase == RaidMissionPhase.Return)
             {
                 // §11 — losing the chosen base is a controlled RETARGET, never a stall.
-                HexCoord? home = KeepOrReselectHome(snap, player, ri.PrimaryArmyId,
+                HexCoord? home = AiReturnBasePolicy.KeepOrReselectHome(snap, player, ri.PrimaryArmyId,
                     ri.ReturnHex, out bool retargeted);
                 if (home == null)
                 {
@@ -244,7 +244,7 @@ namespace Game.Ai.V2
             // this point can even run against a stale actor.
             if (ri.Phase == RaidMissionPhase.SupportReturn && ri.SupportArmyId.HasValue)
             {
-                HexCoord? supportHome = KeepOrReselectHome(snap, player, ri.SupportArmyId,
+                HexCoord? supportHome = AiReturnBasePolicy.KeepOrReselectHome(snap, player, ri.SupportArmyId,
                     ri.SupportReturnHex, out bool supportRetargeted);
                 if (supportHome == null)
                 {
@@ -410,7 +410,7 @@ namespace Game.Ai.V2
             HexCoord? home = raid.RecoveryBaseHex.HasValue && primary != null
                     && primary.Hex.Equals(raid.RecoveryBaseHex.Value)
                 ? raid.RecoveryBaseHex
-                : SelectReturnBase(snap, player, raid.PrimaryArmyId, preferStaging: true);
+                : AiReturnBasePolicy.SelectReturnBase(snap, player, raid.PrimaryArmyId, preferStaging: true);
             if (!home.HasValue)
             {
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=ABANDON intent={intent.IntentKey} "
@@ -433,21 +433,6 @@ namespace Game.Ai.V2
         {
             if (raid == null) return;
             raid.RecoveryBaseHex = null;
-        }
-
-        private static float CurrentRaidWinChance(WorldSnapshot snap, RaidIntent raid)
-        {
-            ArmySnapshot primary = raid != null && raid.PrimaryArmyId.HasValue
-                ? snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                    && a.ArmyId == raid.PrimaryArmyId.Value) : null;
-            if (primary == null) return 0f;
-            var roster = (primary.RecoveryMembers ?? System.Array.Empty<RaidRecoveryMemberSnapshot>())
-                .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
-            GroundCombatFeasibility.Clears(roster, primary.Commander,
-                AiV2Util.KnownOpposition(snap, raid.Target),
-                AiConfigV2.raidMinViableWinChance, AiV2Util.KnownRaidDefenceBonus(snap, raid.Target),
-                out float win, out _);
-            return win;
         }
 
         private static string RefitDecision(RaidRefitActionKind kind) =>
@@ -490,7 +475,7 @@ namespace Game.Ai.V2
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;
-            HexCoord? home = SelectReturnBase(snap, player, supportArmyId, preferStaging: true);
+            HexCoord? home = AiReturnBasePolicy.SelectReturnBase(snap, player, supportArmyId, preferStaging: true);
             if (home == null)
             {
                 // No base to send it home to — never block the Raid on this. Release the support
@@ -597,7 +582,7 @@ namespace Game.Ai.V2
         private static bool RecoveryBaseStillValid(WorldSnapshot snap, PlayerSetupData player,
             int? primaryArmyId, HexCoord? hex)
         {
-            if (!ReturnBaseStillValid(snap, player, primaryArmyId, hex) || !hex.HasValue
+            if (!AiReturnBasePolicy.ReturnBaseStillValid(snap, player, primaryArmyId, hex) || !hex.HasValue
                 || !primaryArmyId.HasValue)
                 return false;
             ArmySnapshot primary = snap?.Self?.Armies?.FirstOrDefault(a => a != null
@@ -624,3 +609,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

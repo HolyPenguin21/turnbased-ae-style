@@ -27,9 +27,9 @@ namespace Game.EditorTests
             };
             WorldSnapshot snap = Snapshot(player, mover, fallback);
 
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, player, mover.ArmyId),
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, player, mover.ArmyId),
                 Is.EqualTo(fallback), "selector deliberately supplies a deterministic fallback");
-            Assert.That(MissionContinuityLayer.ReturnBaseStillValid(
+            Assert.That(AiReturnBasePolicy.ReturnBaseStillValid(
                     snap, player, mover.ArmyId, fallback),
                 Is.True, "validator must not immediately reject the selector's fallback");
         }
@@ -52,10 +52,10 @@ namespace Game.EditorTests
             };
             WorldSnapshot snap = Snapshot(player, mover, oldFallback, reachable);
 
-            Assert.That(MissionContinuityLayer.ReturnBaseStillValid(
+            Assert.That(AiReturnBasePolicy.ReturnBaseStillValid(
                     snap, player, mover.ArmyId, oldFallback),
                 Is.False, "once a real structural route exists, an unreachable fallback is stale");
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, player, mover.ArmyId),
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, player, mover.ArmyId),
                 Is.EqualTo(reachable), "reachable base must outrank the old fallback");
         }
 
@@ -92,3 +92,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

@@ -238,12 +238,12 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snap(null, null);
             var forward = new HexCoord(0, 0);
             snap.Self.BaseHexes = new List<HexCoord> { Citadel, forward };
-            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1)),
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, new HexCoord(3, -1)),
                 Is.EqualTo(forward));
-            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(-6, 4)),
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, new HexCoord(-6, 4)),
                 Is.EqualTo(Citadel));
             snap.Self.BaseHexes = new List<HexCoord>();
-            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1)),
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, new HexCoord(3, -1)),
                 Is.Null);
         }
 
@@ -257,12 +257,13 @@ namespace Game.EditorTests
             snap.Self.BaseHexes = new List<HexCoord> { Citadel, forward };
             var host = new ArmySnapshot { ArmyId = 5, Hex = new HexCoord(-3, 2), IsStructuralRaidActor = true,
                 ReachableOwnBaseHexes = new[] { Citadel } };
-            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1), host),
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, new HexCoord(3, -1), host),
                 Is.EqualTo(Citadel));
             host.ReachableOwnBaseHexes = new HexCoord[0];
-            Assert.That(AttackObjectiveEvaluator.PreparationStagingBase(snap, new HexCoord(3, -1), host),
+            Assert.That(AttackPreparationPolicy.PreparationStagingBase(snap, new HexCoord(3, -1), host),
                 Is.Null);
         }
     }
 }
 #endif
+

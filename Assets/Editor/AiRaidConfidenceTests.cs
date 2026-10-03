@@ -61,7 +61,7 @@ namespace Game.EditorTests
 
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
             CombatOpportunity opportunity = report.NeutralOpportunities.Single();
-            List<AggressionObjective> objectives = AggressionObjectiveEvaluator.Enumerate(snap, report);
+            List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
 
             Assert.That(snap.Threat.Contacts, Is.Empty);
             Assert.That(opportunity.Confidence, Is.EqualTo(AiConfigV2.threatConfidenceExact));
@@ -111,3 +111,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

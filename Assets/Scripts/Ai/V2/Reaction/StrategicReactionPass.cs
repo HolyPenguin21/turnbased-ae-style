@@ -185,7 +185,7 @@ namespace Game.Ai.V2
             // that is exactly what Phase A exists for (Raid accepted -> GatePassed=false because
             // power is short now -> DemandLayer asks for power -> Phase A plays a Unit -> Refresh
             // -> Raid executable). ProbeMaterializationForDiscovery composes the real primitives
-            // (AggressionObjectiveEvaluator + RaidOperationalReadiness + the surplus materialization
+            // (RaidObjectiveEvaluator + RaidOperationalReadiness + the surplus materialization
             // enumerator), not a second planner.
             var witnesses = new List<ReactionWitness>();
             if (targetDriven)
@@ -196,7 +196,7 @@ namespace Game.Ai.V2
                 var activeIntents = MissionIntentRegistry.GetOrCreate(player).All
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
                 AggressionDemandEvaluation aggEval = AggressionDemandEvaluator.Build(snap,
-                    AggressionObjectiveEvaluator.Enumerate(snap, CombatOpportunityAnalyzer.Analyze(snap)),
+                    RaidObjectiveEvaluator.Enumerate(snap, CombatOpportunityAnalyzer.Analyze(snap)),
                     activeIntents, commitments, player);
                 witnesses.AddRange(ReactionOpportunityProbe.ProbeTargetDriven(player, ctx, aggEval, basis));
                 witnesses.AddRange(ReactionOpportunityProbe.ProbeMaterializationForDiscovery(
@@ -232,3 +232,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

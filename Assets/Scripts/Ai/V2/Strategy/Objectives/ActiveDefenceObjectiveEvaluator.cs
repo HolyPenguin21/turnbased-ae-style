@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -233,50 +233,8 @@ namespace Game.Ai.V2
                 return null;
             var response = new ActiveDefenceResponse { Opposition = opposition };
 
-            var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
-            if (withdrawing != null) planExcluded.UnionWith(withdrawing);
-            if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
-            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
-                new GroundCombatAssemblyRequest
-                {
-                    Opposition = opposition,
-                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
-                    PreferredPrimaryArmyId = pinnedActor,
-                    PinToPreferred = pinnedActor.HasValue,
-                    ExcludedArmyIds = planExcluded,
-                });
-            if (plan.Feasible)
-            {
-                response.Kind = ActiveDefenceResponseKind.Intercept;
-                response.Plan = plan;
-                response.ExcludedArmyIds = planExcluded;
-                response.Reason = "direct_response";
+            if (TryDirectResponse(snap, opposition, committed, withdrawing, pinnedActor, response))
                 return response;
-            }
-            if (pinnedActor.HasValue)
-            {
-                // Continuity already re-tested the incumbent's capability this pass; failing the
-                // ready plan here only means it cannot move right now.
-                response.Kind = ActiveDefenceResponseKind.Defer;
-                response.Reason = "incumbent_waits";
-                return response;
-            }
-
-            // Capable but temporarily unavailable: one physical army clears the gate on its own
-            // once its MP returns or its current operation releases it. Buying or retreating
-            // against that would be phantom.
-            float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
-            ArmySnapshot capable = snap.Self.Armies.FirstOrDefault(a => a != null
-                && a.IsStructuralRaidActor
-                && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
-                && GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
-                    a.ArmyId, freshGate).Feasible);
-            if (capable != null)
-            {
-                response.Kind = ActiveDefenceResponseKind.Defer;
-                response.Reason = $"capable_actor_unavailable actor=#{capable.ArmyId}";
-                return response;
-            }
 
             // 2026-10-01 — a regroup / withdrawal is for an imminent threat only (Halden/Cassia
             // T14-T18: 16 activations walking armies home for 15-power contacts several turns out).
@@ -287,10 +245,7 @@ namespace Game.Ai.V2
                 return response;
             }
 
-            var powerExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
-            if (withdrawing != null) powerExcluded.ExceptWith(withdrawing);
-            List<ArmySnapshot> usable = GroundCombatActorEligibility.EligibleArmies(snap,
-                powerExcluded, requireMovementNow: false);
+            List<ArmySnapshot> usable = BuildDefencePool(snap, committed, withdrawing);
             response.RequiredPower = GroundCombatFeasibility.RequiredPower(
                 WorthIt.UnitsOf(opposition), 0f);
             response.AvailablePower = GroundCombatFeasibility.AggregatePower(usable);
@@ -303,10 +258,7 @@ namespace Game.Ai.V2
             // Only armies that stand there or have a route to it can join the regroup: power that
             // can never arrive would keep the regroup from ever being exhausted.
             IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
-            HexCoord? citadel = snap.Observer == null ? (HexCoord?)null
-                : AiTurnController.GarrisonHexFor(snap.Observer);
-            if (citadel.HasValue && !bases.Contains(citadel.Value))
-                citadel = null;
+            HexCoord? citadel = RegroupPoint(snap);
             List<ArmySnapshot> gatherable = !citadel.HasValue ? new List<ArmySnapshot>()
                 : usable.Where(a => a.Hex.Equals(citadel.Value)
                     || a.ReachableOwnBaseHexes?.Contains(citadel.Value) == true).ToList();
@@ -319,39 +271,7 @@ namespace Game.Ai.V2
             // fist and the symmetric sum judged "75 needed, 45 available" without the garrison or
             // the structure defence.
             response.HoldWinChance = HoldChanceAtAsset(snap, objective, citadel, gatherable, opposition);
-            bool holds = response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance;
-            if (holds || GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
-                >= response.RequiredPower)
-            {
-                if (gatherable.Any(a => !a.Hex.Equals(citadel.Value)))
-                {
-                    response.Kind = ActiveDefenceResponseKind.Regroup;
-                    response.RegroupHex = citadel;
-                    response.Movers.AddRange(walkers.Where(a => gatherable.Contains(a)
-                        && !a.Hex.Equals(citadel.Value)));
-                    response.Reason = holds ? "regroup_holds" : "regroup_required";
-                    return response;
-                }
-                if (holds)
-                {
-                    // Everything that can gather already stands at the asset and the defence holds:
-                    // neither a retreat nor a purchase is justified.
-                    response.Kind = ActiveDefenceResponseKind.Defer;
-                    response.Reason = $"asset_holds win={response.HoldWinChance:0.00}";
-                    return response;
-                }
-                // Every army that can gather already stands in the Citadel and the same-hex
-                // assembly still misses the gate: the gap is composition, not distribution.
-                response.Kind = ActiveDefenceResponseKind.Shortage;
-                response.Reason = "regroup_exhausted";
-                return response;
-            }
-
-            response.Kind = ActiveDefenceResponseKind.Shortage;
-            response.Movers.AddRange(walkers.Where(a => !bases.Contains(a.Hex)));
-            response.Reason = !citadel.HasValue && response.AvailablePower
-                    + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower
-                ? "no_regroup_point" : "insufficient_power";
+            ClassifyFallback(snap, response, citadel, gatherable, walkers, bases);
             return response;
         }
 
@@ -506,5 +426,116 @@ namespace Game.Ai.V2
                     age / (float)Mathf.Max(1, AiConfigV2.reconIntelStaleTurnsHi)),
                 ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
         }
+
+        private static bool TryDirectResponse(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> committed,
+            ICollection<int> withdrawing, int? pinnedActor, ActiveDefenceResponse response)
+        {
+            var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            if (withdrawing != null) planExcluded.UnionWith(withdrawing);
+            if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest
+                {
+                    Opposition = opposition,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
+                    PreferredPrimaryArmyId = pinnedActor,
+                    PinToPreferred = pinnedActor.HasValue,
+                    ExcludedArmyIds = planExcluded,
+                });
+            if (plan.Feasible)
+            {
+                response.Kind = ActiveDefenceResponseKind.Intercept;
+                response.Plan = plan;
+                response.ExcludedArmyIds = planExcluded;
+                response.Reason = "direct_response";
+                return true;
+            }
+            if (pinnedActor.HasValue)
+            {
+                // Continuity already re-tested the incumbent's capability this pass; failing the
+                // ready plan here only means it cannot move right now.
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = "incumbent_waits";
+                return true;
+            }
+
+            // Capable but temporarily unavailable: one physical army clears the gate on its own
+            // once its MP returns or its current operation releases it. Buying or retreating
+            // against that would be phantom.
+            float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
+            ArmySnapshot capable = snap.Self.Armies.FirstOrDefault(a => GroundCombatActorEligibility.IsStructuralActor(a)
+                && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
+                && GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
+                    a.ArmyId, freshGate).Feasible);
+            if (capable != null)
+            {
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = $"capable_actor_unavailable actor=#{capable.ArmyId}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static List<ArmySnapshot> BuildDefencePool(WorldSnapshot snap,
+            ISet<int> committed, ICollection<int> withdrawing)
+        {
+            var powerExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            if (withdrawing != null) powerExcluded.ExceptWith(withdrawing);
+            return GroundCombatActorEligibility.EligibleArmies(snap,
+                powerExcluded, requireMovementNow: false);
+        }
+
+        internal static HexCoord? RegroupPoint(WorldSnapshot snap)
+        {
+            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
+            HexCoord? citadel = snap.Observer == null ? (HexCoord?)null
+                : AiTurnController.GarrisonHexFor(snap.Observer);
+            if (citadel.HasValue && !bases.Contains(citadel.Value))
+                citadel = null;
+            return citadel;
+        }
+
+        private static void ClassifyFallback(WorldSnapshot snap, ActiveDefenceResponse response,
+            HexCoord? citadel, List<ArmySnapshot> gatherable, IEnumerable<ArmySnapshot> walkers,
+            IEnumerable<HexCoord> bases)
+        {
+            bool holds = response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance;
+            if (holds || GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
+                >= response.RequiredPower)
+            {
+                if (gatherable.Any(a => !a.Hex.Equals(citadel.Value)))
+                {
+                    response.Kind = ActiveDefenceResponseKind.Regroup;
+                    response.RegroupHex = citadel;
+                    response.Movers.AddRange(walkers.Where(a => gatherable.Contains(a)
+                        && !a.Hex.Equals(citadel.Value)));
+                    response.Reason = holds ? "regroup_holds" : "regroup_required";
+                    return;
+                }
+                if (holds)
+                {
+                    // Everything that can gather already stands at the asset and the defence holds:
+                    // neither a retreat nor a purchase is justified.
+                    response.Kind = ActiveDefenceResponseKind.Defer;
+                    response.Reason = $"asset_holds win={response.HoldWinChance:0.00}";
+                    return;
+                }
+                // Every army that can gather already stands in the Citadel and the same-hex
+                // assembly still misses the gate: the gap is composition, not distribution.
+                response.Kind = ActiveDefenceResponseKind.Shortage;
+                response.Reason = "regroup_exhausted";
+                return;
+            }
+
+            response.Kind = ActiveDefenceResponseKind.Shortage;
+            response.Movers.AddRange(walkers.Where(a => !bases.Contains(a.Hex)));
+            response.Reason = !citadel.HasValue && response.AvailablePower
+                    + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower
+                ? "no_regroup_point" : "insufficient_power";
+            return;
+        }
     }
 }
+

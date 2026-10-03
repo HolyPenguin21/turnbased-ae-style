@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Core;
@@ -54,7 +54,7 @@ namespace Game.Ai.V2
             // Freeze the GENUINE route-existence fact for every structural raid
             // actor against every own base, the exact same SafeStepPathing oracle Provisioning
             // re-runs live for the Return leg (ProvisionReturn's FindNextSafeStep), so a
-            // snapshot-only consumer (MissionContinuityLayer.SelectReturnBase /
+            // snapshot-only consumer (AiReturnBasePolicy.SelectReturnBase /
             // ReturnBaseStillValid) can tell a structurally unreachable base apart from one that is
             // merely temporarily blocked this turn, without doing live pathing itself.
             if (baseHexes.Count > 0)
@@ -551,3 +551,4 @@ namespace Game.Ai.V2
 
     }
 }
+

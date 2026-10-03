@@ -201,7 +201,7 @@ namespace Game.EditorTests
             Assert.That(opp.GatePassed, Is.False);
         }
 
-        // ---- AggressionObjectiveEvaluator: no defender-count cap, base-value floor kept --------
+        // ---- RaidObjectiveEvaluator: no defender-count cap, base-value floor kept --------
 
         [Test]
         public void Enumerate_FiveDefenders_NoLongerRejectedByCount()
@@ -211,7 +211,7 @@ namespace Game.EditorTests
                 defenders: weakDefenders, withOwnArmy: true, closeToBase: true);
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
 
-            List<AggressionObjective> objectives = AggressionObjectiveEvaluator.Enumerate(snap, report);
+            List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
 
             Assert.That(objectives.Any(o => o.Target.Equals(RaidTargetRef.ForNeutralArmy(9))), Is.True);
         }
@@ -223,9 +223,9 @@ namespace Game.EditorTests
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true, closeToBase: true);
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
 
-            List<AggressionObjective> objectives = AggressionObjectiveEvaluator.Enumerate(snap, report);
+            List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
 
-            AggressionObjective obj = objectives.Single();
+            RaidObjective obj = objectives.Single();
             Assert.That(obj.Target.Kind, Is.EqualTo(RaidTargetKind.NeutralArmy));
             Assert.That(obj.Target.ArmyId, Is.EqualTo(42));
             Assert.That(obj.TargetIsNeutral, Is.True);
@@ -244,7 +244,7 @@ namespace Game.EditorTests
             };
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
 
-            List<AggressionObjective> objectives = AggressionObjectiveEvaluator.Enumerate(snap, report);
+            List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
 
             Assert.That(objectives.Any(o => o.Target.Kind == RaidTargetKind.EventGuard
                 && o.Target.Hex.Equals(hex)), Is.True);
@@ -259,9 +259,9 @@ namespace Game.EditorTests
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true, closeToBase: false);
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
 
-            List<AggressionObjective> objectives = AggressionObjectiveEvaluator.Enumerate(snap, report);
+            List<RaidObjective> objectives = RaidObjectiveEvaluator.Enumerate(snap, report);
 
-            AggressionObjective obj = objectives.Single(o => o.Target.Equals(RaidTargetRef.ForNeutralArmy(55)));
+            RaidObjective obj = objectives.Single(o => o.Target.Equals(RaidTargetRef.ForNeutralArmy(55)));
             Assert.That(obj.BaseValue, Is.GreaterThanOrEqualTo(AiConfigV2.raidObjectiveMinBaseValue));
         }
 
@@ -275,7 +275,7 @@ namespace Game.EditorTests
             CombatOpportunityReport neutralReport = CombatOpportunityAnalyzer.Analyze(neutral);
             Assert.That(neutralReport.NeutralOpportunities.Single().Confidence,
                 Is.EqualTo(AiConfigV2.threatConfidenceLastKnown));
-            AggressionObjective neutralRaid = AggressionObjectiveEvaluator.Enumerate(
+            RaidObjective neutralRaid = RaidObjectiveEvaluator.Enumerate(
                 neutral, neutralReport).Single();
             Assert.That(neutralRaid.TaskScore.Staleness, Is.Zero);
             Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
@@ -286,7 +286,7 @@ namespace Game.EditorTests
                 new HexCoord(4, 0), Weak(), withOwnArmy: true);
             eventSnap.TurnNumber = 8;
             CombatOpportunityReport eventReport = CombatOpportunityAnalyzer.Analyze(eventSnap);
-            AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(
+            RaidObjective eventRaid = RaidObjectiveEvaluator.Enumerate(
                 eventSnap, eventReport).Single();
             Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
             Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
@@ -304,7 +304,7 @@ namespace Game.EditorTests
             HexCoord nearHex = new HexCoord(3, 0);
             WorldSnapshot near = SnapshotWithNeutralSighting(armyId: 81, hex: nearHex,
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
-            AggressionObjective nearRaid = AggressionObjectiveEvaluator.Enumerate(near,
+            RaidObjective nearRaid = RaidObjectiveEvaluator.Enumerate(near,
                 CombatOpportunityAnalyzer.Analyze(near)).Single();
             Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(1.5f).Within(0.0001f));
             Assert.That(nearRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward + 1.5f).Within(0.0001f));
@@ -312,13 +312,13 @@ namespace Game.EditorTests
             WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 82,
                 hex: new HexCoord(12, 0),
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
-            AggressionObjective farRaid = AggressionObjectiveEvaluator.Enumerate(far,
+            RaidObjective farRaid = RaidObjectiveEvaluator.Enumerate(far,
                 CombatOpportunityAnalyzer.Analyze(far)).Single();
             Assert.That(farRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
             Assert.That(farRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward - 3f).Within(0.0001f));
 
             WorldSnapshot eventSnap = SnapshotWithEventGuard(nearHex, Weak(), withOwnArmy: true);
-            AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(eventSnap,
+            RaidObjective eventRaid = RaidObjectiveEvaluator.Enumerate(eventSnap,
                 CombatOpportunityAnalyzer.Analyze(eventSnap)).Single();
             Assert.That(eventRaid.TaskScore.OwnTerritoryProximity,
                 Is.EqualTo(nearRaid.TaskScore.OwnTerritoryProximity));
@@ -341,9 +341,9 @@ namespace Game.EditorTests
             high.Self.BestStackPotential = 90f;
             high.Self.TotalMilitaryPotential = 100f;
 
-            AggressionObjective lowRaid = AggressionObjectiveEvaluator.Enumerate(low,
+            RaidObjective lowRaid = RaidObjectiveEvaluator.Enumerate(low,
                 CombatOpportunityAnalyzer.Analyze(low)).Single();
-            AggressionObjective highRaid = AggressionObjectiveEvaluator.Enumerate(high,
+            RaidObjective highRaid = RaidObjectiveEvaluator.Enumerate(high,
                 CombatOpportunityAnalyzer.Analyze(high)).Single();
 
             Assert.That(highRaid.BaseValue, Is.EqualTo(lowRaid.BaseValue));
@@ -601,3 +601,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

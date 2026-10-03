@@ -1,4 +1,4 @@
-﻿#if UNITY_INCLUDE_TESTS
+#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,7 +27,7 @@ namespace Game.EditorTests
         public void FreshAttack_RequiresStrictlyMoreThanFourFifthsOfCurrentPeak(
             float armyPower, bool expected)
         {
-            Assert.That(AttackObjectiveEvaluator.ForceReady(armyPower, 100f), Is.EqualTo(expected));
+            Assert.That(AttackForceReadiness.ForceReady(armyPower, 100f), Is.EqualTo(expected));
         }
 
         [Test]
@@ -488,9 +488,9 @@ namespace Game.EditorTests
             {
                 Sighting(70, new HexCoord(12, 0), Neutral, Body(1f, 1f, 4f, 1)),
             };
-            float nearTask = AggressionObjectiveEvaluator.Enumerate(near,
+            float nearTask = RaidObjectiveEvaluator.Enumerate(near,
                 CombatOpportunityAnalyzer.Analyze(near)).Single().TaskScore.Value;
-            float farTask = AggressionObjectiveEvaluator.Enumerate(far,
+            float farTask = RaidObjectiveEvaluator.Enumerate(far,
                 CombatOpportunityAnalyzer.Analyze(far)).Single().TaskScore.Value;
 
             float nearAxis = StrategyLayer.Evaluate(near, new AiRadarState())
@@ -564,3 +564,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

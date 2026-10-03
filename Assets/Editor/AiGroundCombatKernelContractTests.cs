@@ -188,13 +188,13 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, player, 9),
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, player, 9),
                 Is.EqualTo(justCaptured),
                 "a base we hold NOW is a legal home even before its structure is re-observed");
-            Assert.That(MissionContinuityLayer.ReturnBaseStillValid(snap, player, 9, justLost),
+            Assert.That(AiReturnBasePolicy.ReturnBaseStillValid(snap, player, 9, justLost),
                 Is.False,
                 "a base that left Self.BaseHexes is lost, whatever memory still remembers");
-            Assert.That(MissionContinuityLayer.ReturnBaseStillValid(snap, player, 9, justCaptured),
+            Assert.That(AiReturnBasePolicy.ReturnBaseStillValid(snap, player, 9, justCaptured),
                 Is.True);
         }
 
@@ -224,7 +224,7 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, player, 3), Is.Null,
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, player, 3), Is.Null,
                 "a remembered building must never resurrect a base topology we no longer have");
         }
 
@@ -337,3 +337,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

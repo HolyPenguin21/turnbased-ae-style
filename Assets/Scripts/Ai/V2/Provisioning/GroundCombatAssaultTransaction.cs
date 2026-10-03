@@ -60,7 +60,6 @@ namespace Game.Ai.V2
             new GroundCombatAssaultOutcome { Success = false, Failure = failure };
     }
 
-
     // ===========================================================================================
     //  ATK §28/§46/§47 — the two NON-assault ground-combat legs, shared by every lane.
     //
@@ -86,7 +85,7 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 
         // §47 — the mover walks to an ALREADY CHOSEN destination. This never re-picks the base:
-        // Continuity owns that decision (MissionContinuityLayer.SelectReturnBase).
+        // Continuity owns that decision (AiReturnBasePolicy.SelectReturnBase).
         internal static GroundCombatLegCheck ValidateWalkHome(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded, StableMissionKey key,
             float eps, int? moverArmyId, HexCoord home, string lane, string roleLabel)
@@ -686,7 +685,7 @@ namespace Game.Ai.V2
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
-                        ? 0.80f * session.Snapshot.Self.AttackPeak : 0f,
+                        ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -865,7 +864,7 @@ namespace Game.Ai.V2
             // proposal and execution changes fresh admission, while a started campaign keeps
             // its original commitment and is rechecked for defender coverage above.
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
-                && !AttackObjectiveEvaluator.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
+                && !AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
                     session.Snapshot.Self.AttackPeak))
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible("fresh attack force fell below the current deck peak")));
@@ -994,3 +993,4 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

@@ -1,39 +1,18 @@
 using System.Linq;
+using System.Collections.Generic;
+using System.Globalization;
+using Game.HexGrid;
+using Game.Combat;
+using UnityEngine;
 using Game.Core;
 using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // ===========================================================================================
-    //  RAID OBJECTIVE EVALUATOR  (Strategy V2 build-order step 9 — the single Raid completion/validity home)
-    // ===========================================================================================
-    //  The Aggression counterpart of ScoutObjectiveEvaluator (spec §38). It answers ONLY the
-    //  runtime questions:
-    //    · IsIntentStillValid   — is a durable RaidIntent still a coherent thing to pursue against
-    //                             THIS snapshot? (snapshot read only — MissionContinuityLayer /
-    //                             MissionLayer re-materialisation)
-    //    · IsObjectiveSatisfied — has the target been destroyed / captured / turned non-hostile /
-    //                             consumed? (live read — the ledger's post-execution pass)
-    //
-    //  It is NOT strategic scoring: AggressionObjectiveEvaluator answers "is this known target
-    //  worth considering and how valuable" (BaseValue); this answers "does the concrete target
-    //  operation still exist and is it done".
-    //
-    //  KNOWLEDGE RULES (spec §39). Raid targets are stationary: a neutral encounter army and an
-    //  event guard keep the same target hex while they exist. Loss of current visibility is NEVER
-    //  proof of movement or destruction, so a started Raid keeps its last-known hex and intrinsic
-    //  RaidReward. The live "satisfied" read first resolves positive live ownership and then falls
-    //  back to honest map memory. Neutral encounter armies are not guaranteed to live in
-    //  GameSession.Players, so absence from ordinary player rosters is UNKNOWN while an honest
-    //  hostile/neutral sighting is still remembered. Actual disappearance because somebody else
-    //  destroyed/consumed the target is a separate completion/invalidation edge below.
-    //
-    //  EVENT GUARDS behave differently by nature, not by a weaker rule: they have no ArmyId sighting
-    //  to lose track of, so "no sighting" never applies to them. They are active exactly while
-    //  HexEventRegistry.HasActiveEvent(hex) says so, and satisfied exactly when that entry is
-    //  Consumed (by us or by anyone else) — never inferred from map-memory absence.
-    // ===========================================================================================
+    // The single Raid objective owner: discovery, intrinsic score, honest target facts,
+    // validity and completion. Fight/admission decisions remain with GroundCombat and the
+    // lane's operational-readiness policy; durable lifecycle remains with Continuity.
     public static class RaidObjectiveEvaluator
     {
         // ---- SNAPSHOT (continuity / mission-layer re-materialisation) -----------------------
@@ -83,17 +62,8 @@ namespace Game.Ai.V2
 
         // The tracked target's freshest honest sighting, or null. Physical-army lookup only —
         // callers must branch on RaidTargetKind BEFORE calling this for an EventGuard target.
-        public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId)
-        {
-            if (snap?.Known == null)
-                return null;
-            var all = (snap.Known.EnemySightings ?? System.Linq.Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? System.Linq.Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == trackedArmyId)
-                    return s;
-            return null;
-        }
+        public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId) =>
+            FindSightingIn(snap?.Known?.EnemySightings, snap?.Known?.NeutralSightings, trackedArmyId);
 
         // ---- LIVE (post-execution ledger pass) --------------------------------------------
 
@@ -140,5 +110,173 @@ namespace Game.Ai.V2
                 .Any(s => s.ArmyId == targetArmyId);
             return !rememberedEnemy && !rememberedNeutral;
         }
+
+        public static List<RaidObjective> Enumerate(WorldSnapshot snap, CombatOpportunityReport report)
+        {
+            using var __profile = new Game.Core.ProfileScope("AI/Objectives.Aggression");
+            var list = new List<RaidObjective>();
+            if (snap?.Self == null)
+            {
+                AiDebugLog.Write("[AI][V2][RaidObjective] decision=NONE reason=no_self_snapshot");
+                return list;
+            }
+            IReadOnlyList<CombatOpportunity> candidates = report?.NeutralOpportunities
+                ?? (IReadOnlyList<CombatOpportunity>)System.Array.Empty<CombatOpportunity>();
+            if (candidates.Count == 0)
+            {
+                AiDebugLog.Write("[AI][V2][RaidObjective] decision=NONE reason=no_known_neutral_army_opportunities");
+                return list;
+            }
+
+            foreach (CombatOpportunity o in candidates)
+            {
+                if (!o.TargetIsNeutral)
+                {
+                    AiDebugLog.WriteDeduped(o.Target.DiagnosticLabel,
+                        $"[AI][V2][RaidObjective] decision=REJECT target={o.Target.DiagnosticLabel} reason=target_is_not_neutral");
+                    continue;
+                }
+                if (!o.HasTarget || !o.Target.HasValue)
+                {
+                    AiDebugLog.WriteDeduped("None",
+                        "[AI][V2][RaidObjective] decision=REJECT target=None reason=opportunity_has_no_target");
+                    continue;
+                }
+
+                RaidObjective obj = Build(snap, report, o);
+                if (obj.BaseValue < AiConfigV2.raidObjectiveMinBaseValue)
+                {
+                    // Re-evaluated every cycle for every below-threshold candidate — WriteDeduped
+                    // keeps the reject reason visible without reprinting an unchanged value each time.
+                    AiDebugLog.WriteDeduped(obj.Target.DiagnosticLabel,
+                        $"[AI][V2][RaidObjective] decision=REJECT target={obj.Target.DiagnosticLabel} "
+                        + $"reason=task_value_below_threshold value={F(obj.BaseValue)} min={F(AiConfigV2.raidObjectiveMinBaseValue)}");
+                    continue;
+                }
+
+                list.Add(obj);
+                string frozenGap = !obj.CanCoverAllDefenders ? "coverage"
+                    : obj.NeedsCombatPower ? "assemblability"
+                    : obj.NeedsHero ? "hero_availability" : "none";
+                AiDebugLog.WriteDeduped(obj.Target.DiagnosticLabel,
+                    $"[AI][V2][RaidObjective] decision=ACCEPT target={obj.Target.DiagnosticLabel} "
+                    + $"hex=({obj.LastKnownHex.Q},{obj.LastKnownHex.R}) task={F(obj.BaseValue)} "
+                    + $"readyWin={F(obj.ReadyWinChance)} asmWin={F(obj.AssemblableWinChance)} "
+                    + $"cover={(obj.CanCoverAllDefenders ? 1 : 0)} gate={(obj.GatePassed ? 1 : 0)} "
+                    + $"defenders={obj.DefenderCount} frozenNeedsPower={(obj.NeedsCombatPower ? 1 : 0)} "
+                    + $"frozenNeedsHero={(obj.NeedsHero ? 1 : 0)} frozenPowerDeficit={F(obj.CombatPowerDeficit)} "
+                    + $"frozenGap={frozenGap}");
+            }
+
+            list.Sort((a, b) =>
+            {
+                int c = b.BaseValue.CompareTo(a.BaseValue);
+                return c != 0 ? c : string.CompareOrdinal(a.Target.DiagnosticLabel, b.Target.DiagnosticLabel);
+            });
+            return list;
+        }
+
+        public static RaidObjective ForTrackedArmy(WorldSnapshot snap, CombatOpportunityReport report,
+            int trackedArmyId) => ForTrackedTarget(snap, report, RaidTargetRef.ForNeutralArmy(trackedArmyId));
+
+        public static RaidObjective ForTrackedTarget(WorldSnapshot snap, CombatOpportunityReport report,
+            RaidTargetRef target)
+        {
+            if (report?.All == null || !target.HasValue)
+                return null;
+            foreach (CombatOpportunity o in report.All)
+                if (o.HasTarget && o.TargetIsNeutral && o.Target.Equals(target))
+                    return Build(snap, report, o);
+            return null;
+        }
+
+        internal static TaskScore BuildRaidScore(WorldSnapshot snap, RaidTargetRef target, HexCoord targetHex)
+        {
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
+            // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
+            // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
+            // A Hex Event guard also pays the event's own reward (EventReward), by the guard tier
+            // the observer remembers; a neutral army has no reward beyond RaidReward.
+            return new TaskScore(
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                raidReward: TaskScoreEvaluator.RaidReward(),
+                eventReward: target.Kind == RaidTargetKind.EventGuard
+                    ? TaskScoreEvaluator.EventReward(KnownEventGuardTier(snap, targetHex)) : 0f,
+                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
+        }
+
+        // The remembered guard tier of the event on `hex` (AiMapMemory via Known.EventGuards);
+        // -1 when this observer does not know it.
+        private static int KnownEventGuardTier(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Known?.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                    if (g.Hex.Equals(hex))
+                        return g.Strength.RewardTier;
+            return -1;
+        }
+
+        private static RaidObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
+            CombatOpportunity o)
+        {
+            // Defender power is a combat-difficulty fact, not an expected resource/card reward.
+            // Both neutral-army and guarded-event Raid objectives receive exactly one fixed
+            // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
+            // Raid targets are stationary neutrals or event guards; older sightings do not move them.
+            // IntelAgePenalty stays only for mobile targets (ActiveDefence); Raid and Attack never pay it.
+            TaskScore score = BuildRaidScore(snap, o.Target, o.TargetHex);
+
+            bool haveViable = o.IsViable;
+            bool needsHero = !haveViable && !report.HeroAvailable;
+            bool needsCombatPower = !haveViable;
+
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders = AiV2Util.KnownDefenders(snap, o.Target);
+            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(knownDefenders);
+            float requiredPower = GroundCombatFeasibility.RequiredPower(knownDefenders,
+                AiV2Util.KnownRaidDefenceBonus(snap, o.Target));
+            float deficit = needsCombatPower ? Mathf.Max(1f, requiredPower - snap.Self.FieldPower) : 0f;
+
+            return new RaidObjective
+            {
+                Kind = AggressionObjectiveKind.Raid,
+                Target = o.Target,
+                LastKnownHex = o.TargetHex,
+                TargetOwner = o.TargetOwner,
+                TargetIsNeutral = o.TargetIsNeutral,
+                TaskScore = score,
+                BaseValue = score.Value,
+                Confidence = o.Confidence,
+                ReadyWinChance = o.ReadyWinChance,
+                AssemblableWinChance = o.AssemblableWinChance,
+                CanCoverAllDefenders = o.CanCoverAllDefenders,
+                EstimatedEta = o.Eta,
+                DefenderCount = o.DefenderCount,
+                TargetPower = targetPower,
+                GatePassed = o.GatePassed,
+                NeedsCombatPower = needsCombatPower,
+                NeedsHero = needsHero,
+                CombatPowerDeficit = deficit,
+            };
+        }
+
+        private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+        internal static AiMapMemory.KnownEnemySighting? FindSightingLive(
+            PlayerSetupData player, int targetArmyId) =>
+            FindSightingIn(AiMapMemory.AllKnownEnemySightings(player),
+                AiMapMemory.AllKnownNeutralSightings(player), targetArmyId);
+
+        private static AiMapMemory.KnownEnemySighting? FindSightingIn(
+            IEnumerable<AiMapMemory.KnownEnemySighting> enemies,
+            IEnumerable<AiMapMemory.KnownEnemySighting> neutrals, int armyId)
+        {
+            foreach (AiMapMemory.KnownEnemySighting sighting in
+                (enemies ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
+                    .Concat(neutrals ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>()))
+                if (sighting.ArmyId == armyId)
+                    return sighting;
+            return null;
+        }
     }
 }
+

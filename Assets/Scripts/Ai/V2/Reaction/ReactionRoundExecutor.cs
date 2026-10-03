@@ -87,12 +87,12 @@ namespace Game.Ai.V2
             RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
             Radar radar = assessment.Radar;
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-            List<AggressionObjective> aggressionObjectives =
-                AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
+            List<RaidObjective> aggressionObjectives =
+                RaidObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport);
 
             AiDebugLog.Write($"[AI][V2] reaction — radar {radar.DebugLine()} "
                 + $"aggObjectives={aggressionObjectives.Count} reconObjectives={reconObjectives.Count}");
-            foreach (AggressionObjective ao in aggressionObjectives)
+            foreach (RaidObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   reaction aggObjective — {ao.ObjectiveId} "
                     + $"@{ao.LastKnownHex.Q},{ao.LastKnownHex.R} base "
                     + $"{ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
                 // then every derivative that consumes its Aggression objectives.
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                 aggressionPressureFresh = true;
-                aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                     snapshot, assessment.Breakdown.OpportunityReport);
                 activeIntents = MissionContinuityLayer.ResolveActive(
                     player, snapshot, reconObjectives, aggressionObjectives);
@@ -337,3 +337,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

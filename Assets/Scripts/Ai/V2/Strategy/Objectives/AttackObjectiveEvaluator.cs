@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -125,7 +125,7 @@ namespace Game.Ai.V2
     //  This is an OBJECTIVE EVALUATOR sitting beside
     //  RaidObjectiveEvaluator and ActiveDefenceObjectiveEvaluator at the existing Strategy/Objectives
     //  level — deliberately not a new Manager, Layer or Service, and it owns no actor selection, no
-    //  combat estimator and no movement. AggressionObjectiveEvaluator remains the aggregation owner
+    //  combat estimator and no movement. RaidObjectiveEvaluator remains the aggregation owner
     //  for the Aggression axis.
     //
     //  Knowledge boundary (§19/§20/§65): targets come ONLY from snap.Known.Buildings — this player's
@@ -157,8 +157,8 @@ namespace Game.Ai.V2
         public float BaseValue => TaskScore.Value;
         // T01 — a sanctioned location-only starting Citadel: its coordinates and original owner
         // are allowed knowledge, but the site itself was never observed. Opposition is UNKNOWN
-        // (not "observed empty"): preparation may aim at it, a march may not start until Recon
-        // has actually seen the site (ObservationNeeds publishes it).
+        // (not "observed empty"): preparation may aim at it. Current policy permits a force-ready
+        // host to march using the sanctioned location; ObservationNeeds may still publish it.
         public bool LocationOnly;
 
         public HexCoord Hex => Target.Hex;
@@ -168,30 +168,6 @@ namespace Game.Ai.V2
 
     public static class AttackObjectiveEvaluator
     {
-        // The own Base a mobilization preparation assembles on: of every held own Base
-        // (SelfSnapshot.BaseHexes, starting Citadel included) the one nearest to the target; ties
-        // go to the starting Citadel, then Q, R. Null when no own Base is held. Recomputed every
-        // pass, so a lost Base simply moves the staging point. With a `host` whose route facts
-        // Analysis measured (a structural field army, ArmySnapshot.ReachableOwnBaseHexes) only a
-        // Base it can really reach qualifies — an unreachable staging point would otherwise hold
-        // the preparation in WAIT forever.
-        internal static HexCoord? PreparationStagingBase(WorldSnapshot snap, HexCoord targetHex,
-            ArmySnapshot host = null)
-        {
-            IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
-            if (host != null && host.IsStructuralRaidActor && bases != null)
-                bases = bases.Where(h => h.Equals(host.Hex)
-                    || (host.ReachableOwnBaseHexes != null && host.ReachableOwnBaseHexes.Contains(h)))
-                    .ToList();
-            if (bases == null || bases.Count == 0)
-                return null;
-            HexCoord citadel = snap.Self.Citadel;
-            return bases
-                .OrderBy(h => HexGridMath.Distance(h, targetHex))
-                .ThenByDescending(h => h.Equals(citadel))
-                .ThenBy(h => h.Q).ThenBy(h => h.R)
-                .First();
-        }
 
         // ---- enumeration --------------------------------------------------------------------
 
@@ -272,9 +248,38 @@ namespace Game.Ai.V2
             return result;
         }
 
-        public static AttackObjective ForTrackedTarget(WorldSnapshot snap, AttackTargetRef target) =>
-            !target.HasValue ? null
-                : Enumerate(snap).FirstOrDefault(o => o.Target.Equals(target));
+        public static AttackObjective ForTrackedTarget(WorldSnapshot snap, AttackTargetRef target)
+        {
+            if (!target.HasValue || snap?.Self == null || snap.Observer == null
+                || snap.Self.BaseHexes?.Contains(target.Hex) == true)
+                return null;
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
+                ?? System.Array.Empty<AiMapMemory.KnownBuilding>();
+            foreach (AiMapMemory.KnownBuilding b in buildings)
+                if (b.Hex.Equals(target.Hex) && IsHostileStrategicStructure(b, snap.Observer)
+                    && AttackTargetRef.For(b.Hex, b.Owner,
+                        b.IsStartingCitadel ? AttackTargetKind.Citadel : AttackTargetKind.Base).Equals(target))
+                    return BuildForTarget(snap, b);
+            if (buildings.Any(b => b.Hex.Equals(target.Hex)) || EverObserved(snap, target.Hex))
+                return null;
+            foreach (var (hex, owner) in WorldAnalysis.SanctionedEnemyCitadels(snap))
+                if (AttackTargetRef.For(hex, owner, AttackTargetKind.Citadel).Equals(target))
+                {
+                    AttackObjective located = BuildForTarget(snap,
+                        new AiMapMemory.KnownBuilding(hex, owner, isStartingCitadel: true,
+                            facilityAbilities: null));
+                    located.LocationOnly = true;
+                    return located;
+                }
+            return null;
+        }
+
+        private static AttackObjective BuildForTarget(WorldSnapshot snap, AiMapMemory.KnownBuilding b)
+        {
+            bool hasDirection = WorldAnalysis.TrySelectStrategicDirection(snap, snap.Observer,
+                out HexCoord target, out HexCoord anchor, allowTrueWorldFallback: false);
+            return Build(snap, snap.Observer, b, hasDirection, anchor, target);
+        }
 
         // ---- internal selection priority ------------------------------------------------------
 
@@ -502,7 +507,7 @@ namespace Game.Ai.V2
                 ? WorldAnalysis.CorridorAlignmentToward(anchor, directionTarget, b.Hex,
                     AiConfigV2.attackCorridorDetourScale) : 0f;
 
-            float readiness = Readiness(snap.Self);
+            float readiness = AttackForceReadiness.Readiness(snap.Self);
 
             TaskScore score = BuildAttackScore(snap, b, assetNorm,
                 frontProgress, corridorAlignment, readiness);
@@ -555,55 +560,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // Strike force step 4 — Attack readiness from the SelfSnapshot force measures. Not a gate:
-        // how much of the available force already stands in one fist (assembly: Fist / P_field) and
-        // how much of the reachable ceiling is already on the map (deployment: P_field against
-        // P_deck plus the equipment still in hand/deck). Aviation is parallel support and stays out.
-        // 2026-09-30 (user decision) — once the mobilization gate is open the force IS ready to
-        // mobilize: the slot is full, so every preparation step (MoveHost first) keeps Attack's
-        // priority against fresh work instead of being starved by it.
-        internal static float Readiness(SelfSnapshot self)
-        {
-            if (self == null)
-                return 0f;
-            if (MobilizationOpen(self))
-                return 1f;
-            float assembly = self.FistPower / Mathf.Max(1f, self.FieldPotential);
-            float deployment = self.FieldPotential
-                / Mathf.Max(1f, self.TotalMilitaryPotential + self.Reserve.Equipment);
-            return Curves.Ramp(assembly, AiConfigV2.attackAssemblyReadyLo, AiConfigV2.attackAssemblyReadyHi)
-                * Curves.Ramp(deployment, AiConfigV2.attackDeploymentReadyLo, AiConfigV2.attackDeploymentReadyHi);
-        }
-
-        // Admission uses the current ground-only deck/map ceiling. Strict inequality is
-        // intentional: an army at exactly four fifths still prepares.
-        internal static bool ForceReady(float attackArmyPower, float currentDeckPeakPower) =>
-            currentDeckPeakPower > 0f && attackArmyPower > 0.80f * currentDeckPeakPower;
-
-        // Mobilization opens a new Attack preparation (never a march). Two independent starts
-        // (2026-09-30, user decision); the march itself keeps ForceReady's strict > 80%:
-        //  (A) deck share — at least three quarters of the additive live + hand + remaining-deck
-        //      ground force is already on the map (PlayerForceAnalysis scale). Inclusive; written
-        //      as 4·deployed >= 3·available so exactly three quarters (135 of 180) is not lost to
-        //      the binary rounding of 0.75f.
-        //  (B) field strike force — the bodies already on the field can form the strike army:
-        //      SelfSnapshot.FieldStrikePotential (no active scouts, aviation, heroes' own power or
-        //      mandatory garrison defence; Raid / ActiveDefence armies count — they come back)
-        //      clears the same ForceReady bar on the current deck peak.
-        internal static bool MobilizationOpen(float deployedPower, float availablePower) =>
-            availablePower > 0f && 4f * deployedPower >= 3f * availablePower;
-
-        internal static bool FieldStrikeForceReady(float fieldStrikePotential, float currentDeckPeakPower) =>
-            ForceReady(fieldStrikePotential, currentDeckPeakPower);
-
-        internal static bool MobilizationOpen(SelfSnapshot self) =>
-            self != null && (MobilizationRawOpen(self) || self.MobilizationHeld);
-
-        // The gate as measured this pass, without the hysteresis hold.
-        internal static bool MobilizationRawOpen(SelfSnapshot self) =>
-            self != null && (MobilizationOpen(self.DeployedPower, self.AvailablePower)
-                || FieldStrikeForceReady(self.FieldStrikePotential, self.AttackPeak));
-
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as
         // "age unknown", i.e. maximally stale, never as "observed on turn 0".
         private static int IntelAge(WorldSnapshot snap, AiMapMemory.KnownBuilding b)
@@ -637,3 +593,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }
 }
+

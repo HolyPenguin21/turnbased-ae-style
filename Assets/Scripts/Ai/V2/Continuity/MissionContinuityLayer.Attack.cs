@@ -97,7 +97,7 @@ namespace Game.Ai.V2
                     // only a primary with no container left, or no own base to reach, retires here.
                     HexCoord? withdrawTo = a.OperationStarted && a.PrimaryArmyId.HasValue
                         && ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
-                            ? SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
+                            ? AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
                     if (!withdrawTo.HasValue)
                     {
                         AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
@@ -145,7 +145,7 @@ namespace Game.Ai.V2
                 // The leg was entered by an execution fact (a full/full swap); THIS is where the
                 // destination gets chosen, through the one own-Base selection owner.
                 bool hadHome = a.SupportReturnHex.HasValue;
-                HexCoord? home = KeepOrReselectHome(snap, player, a.SupportArmyId,
+                HexCoord? home = AiReturnBasePolicy.KeepOrReselectHome(snap, player, a.SupportArmyId,
                     a.SupportReturnHex, out bool retargeted);
                 ArmySnapshot support = snap?.Self?.Armies?.FirstOrDefault(x => x != null
                     && x.ArmyId == a.SupportArmyId.Value);
@@ -171,7 +171,7 @@ namespace Game.Ai.V2
             {
                 // §47 — best reachable OWN base, chosen by the one owner. Never a hardcoded
                 // starting Citadel.
-                HexCoord? recoveryHome = KeepOrReselectHome(snap, player, a.PrimaryArmyId,
+                HexCoord? recoveryHome = AiReturnBasePolicy.KeepOrReselectHome(snap, player, a.PrimaryArmyId,
                     a.RecoveryBaseHex, out bool recoveryRetargeted);
                 if (recoveryHome == null)
                 {
@@ -246,7 +246,7 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            HexCoord? recovery = SelectReturnBase(snap, player, a.PrimaryArmyId);
+            HexCoord? recovery = AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId);
             if (recovery == null)
             {
                 AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — no reinforcement "
@@ -273,7 +273,7 @@ namespace Game.Ai.V2
                     && x.ArmyId == r.ArmyId);
                 if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
                     return true;
-                r.BaseHex = KeepOrReselectHome(snap, player, r.ArmyId, r.BaseHex, out _);
+                r.BaseHex = AiReturnBasePolicy.KeepOrReselectHome(snap, player, r.ArmyId, r.BaseHex, out _);
                 bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
                 if (done)
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} donor #{r.ArmyId} "
@@ -454,7 +454,7 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
                 a.PrimaryArmyId, null,
-                minimumArmyPower: 0.80f * snap.Self.AttackPeak);
+                minimumArmyPower: AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -491,7 +491,7 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(hostId);
-            float required = 0.80f * snap.Self.AttackPeak;
+            float required = AttackForceReadiness.RequiredPower(snap.Self.AttackPeak);
             RefreshTargetRoster(snap, intent, a, AiV2Util.ResolveArmy(snap.Observer, hostId));
             string at = $"{intent.IntentKey} host=#{hostId} hex=({host.Hex.Q},{host.Hex.R}) "
                 + $"roster={host.MemberCount}/{host.Capacity} fist={host.EffectiveArmyPower:0.#} "
@@ -567,7 +567,7 @@ namespace Game.Ai.V2
             // The fist assembles on its staging Base (the own Base nearest to the target): a host
             // standing elsewhere walks there first (the planner's MoveHost leg); supports are
             // planned only once it has arrived. No own Base left -> the ordinary stall lifecycle.
-            HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, a.Target.Hex, host);
+            HexCoord? staging = AttackPreparationPolicy.PreparationStagingBase(snap, a.Target.Hex, host);
             if (host.MemberCount > 0 && (!staging.HasValue || !host.Hex.Equals(staging.Value)))
             {
                 if (staging.HasValue)
@@ -623,7 +623,7 @@ namespace Game.Ai.V2
                     // (cheaper or nearer than the bar-setting one) takes over on the next pass.
                     if (snap.TurnNumber - a.PreparationCardWaitSinceTurn
                         >= AiConfigV2.attackPreparationCardWaitTurns
-                        && ClearedAlternativeTarget(snap, a, hostId, out string alt))
+                        && AttackPreparationPolicy.ClearedAlternativeTarget(snap, a.Target, hostId, out string alt))
                     {
                         AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {at} retired — waited "
                             + $"{snap.TurnNumber - a.PreparationCardWaitSinceTurn} turn(s) for "
@@ -636,13 +636,13 @@ namespace Game.Ai.V2
                     $"[AI][V2][Attack][Mobilization] {at} decision=WAIT "
                     + $"next={(sameHexStep ? "same_hex_assembly" : "pinned_card_delivery")} "
                     + $"witness={cardSource ?? "same_hex_body"} "
-                    + $"clearance={DescribeClearance(snap, a, host.EffectiveArmyPower, required)} "
+                    + $"clearance={DescribeClearance(snap, a)} "
                     + $"missing=[{MissingLabel(a.TargetRoster, liveHost)}] gather={plan.Reason}");
                 return true;
             }
             // Name what keeps the host from marching: a fist above the bar can still fail the
             // win-chance gate or leave a known defender no body can damage (coverage).
-            string clearance = DescribeClearance(snap, a, host.EffectiveArmyPower, required);
+            string clearance = DescribeClearance(snap, a);
             AiDebugLog.WriteDeduped(intent.IntentKey + "#wait",
                 $"[AI][V2][Attack][Mobilization] {at} decision=STALL blocker=no_legal_source "
                 + $"clearance={clearance} "
@@ -712,56 +712,14 @@ namespace Game.Ai.V2
         // Why the primary does not clear the target yet: fist_below_bar (power not strictly above
         // the bar), coverage_missing (a known defender no roster body can damage), win_below_gate,
         // or ready (it clears; the assault starts on the next pass).
-        private static string DescribeClearance(WorldSnapshot snap, AttackIntent a, float fist, float required)
+        private static string DescribeClearance(WorldSnapshot snap, AttackIntent a)
         {
-            if (!(fist > required))
-                return "fist_below_bar";
-            if (!a.PrimaryArmyId.HasValue)
-                return "no_primary";
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
-            ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
-                && x.ArmyId == a.PrimaryArmyId.Value);
-            if (primary == null)
-                return "no_primary";
-            bool clears = GroundCombatFeasibility.Clears(
-                (primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList(),
-                primary.Commander, opposition, GroundCombatAdmissionPolicy.AttackCoverageGate,
-                hexBonus, out _, out bool cover);
-            if (clears)
-                return AttackObjectiveEvaluator.ForceReady(primary.EffectiveArmyPower, snap.Self.AttackPeak)
-                    ? "ready" : "fist_below_bar";
-            return cover ? "win_below_gate" : "coverage_missing";
-        }
-
-        // Another OBSERVED hostile structure (never a location-only guess) the host passes the
-        // attack coverage / win-chance gate against right now, in the evaluator's own priority
-        // order. Snapshot-pure: remembered opposition and structural defence only.
-        private static bool ClearedAlternativeTarget(WorldSnapshot snap, AttackIntent a, int hostId,
-            out string label)
-        {
-            label = null;
-            foreach (AttackObjective objective in AttackObjectiveEvaluator.Enumerate(snap))
-            {
-                if (objective == null)
-                    continue;
-                // The evaluator's order is what the fresh pick will follow: only a target that
-                // ranks AHEAD of the current one can take over (otherwise the same one returns).
-                if (objective.Target.Hex.Equals(a.Target.Hex))
-                    return false;
-                if (AttackObjectiveEvaluator.IsLocationOnly(snap, objective.Target)
-                    || objective.Opposition == null || objective.Opposition.Count == 0)
-                    continue;
-                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                    snap, objective.Opposition, hostId, GroundCombatAdmissionPolicy.AttackCoverageGate,
-                    objective.HexDefense);
-                if (!plan.Feasible || !plan.CoversAllDefenders)
-                    continue;
-                label = $"{objective.Target} (win {plan.ProjectedWinChance:0.00})";
-                return true;
-            }
-            return false;
+            ArmySnapshot primary = a.PrimaryArmyId.HasValue
+                ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == a.PrimaryArmyId.Value)
+                : null;
+            return AttackPreparationReadiness.Assess(primary, snap.Self.AttackPeak,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex),
+                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex)).Reason;
         }
 
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
@@ -774,19 +732,19 @@ namespace Game.Ai.V2
             // remembered structural defence still is. The mission/provisioning layers, which do have
             // the map, apply the full bonus before anything is actually funded or executed.
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
-            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, opposition, a.PrimaryArmyId.Value,
-                GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus);
-            if (!a.AssaultStarted && (!plan.Feasible
-                || !AttackObjectiveEvaluator.ForceReady(plan.ProjectedPower,
-                    snap.Self.AttackPeak)))
-                return false;
-            if (plan.Feasible)
+            ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            AttackPreparationAssessment readiness = AttackPreparationReadiness.Assess(
+                primary, snap.Self.AttackPeak, opposition, hexBonus);
+            bool clears = a.AssaultStarted
+                ? readiness.HostAvailable && readiness.StructuralActor && readiness.CombatFeasible
+                : readiness.Ready;
+            if (clears)
             {
-                a.ProjectedWinChance = plan.ProjectedWinChance;
-                a.CoversAllDefenders = plan.CoversAllDefenders;
+                a.ProjectedWinChance = readiness.ProjectedWinChance;
+                a.CoversAllDefenders = readiness.CoversAllDefenders;
             }
-            return plan.Feasible;
+            return clears;
         }
 
         // §41/§46 — is there any EXISTING free army whose merge would improve the primary's odds?
@@ -864,3 +822,4 @@ namespace Game.Ai.V2
             && intent.Status == IntentStatus.Active;
     }
 }
+

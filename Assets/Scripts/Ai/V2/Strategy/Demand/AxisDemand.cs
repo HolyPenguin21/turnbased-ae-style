@@ -65,6 +65,8 @@ namespace Game.Ai.V2
         Melee      = 1 << 3,
     }
 
+    public enum CapabilityConsumerPurpose { Mission, HeldBaseGarrison }
+
     public sealed class AxisDemand
     {
         public string TraceId;
@@ -163,6 +165,10 @@ namespace Game.Ai.V2
         // prevents family-specific delivery finalization (Raid support handoff) from claiming a
         // different operation that happens to request the same capability shape.
         public MissionKind? ConsumerMissionKind;
+        public CapabilityConsumerPurpose ConsumerPurpose;
+
+        internal bool UsesAttackContinuationAp => ConsumerMissionKind == MissionKind.Attack
+            || ConsumerPurpose == CapabilityConsumerPurpose.HeldBaseGarrison;
 
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
@@ -196,3 +202,4 @@ namespace Game.Ai.V2
             Normalized(demand) * AiConfigV2.stratHoldUrgencyMax;
     }
 }
+

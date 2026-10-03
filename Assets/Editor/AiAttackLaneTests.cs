@@ -883,11 +883,12 @@ namespace Game.EditorTests
         public void MobilizationGate_HeldStaysOpenWhileRawIsClosed()
         {
             var closed = new SelfSnapshot { DeployedPower = 10f, AvailablePower = 100f };
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(closed), Is.False);
+            Assert.That(AttackForceReadiness.MobilizationOpen(closed), Is.False);
             var held = new SelfSnapshot { DeployedPower = 10f, AvailablePower = 100f, MobilizationHeld = true };
-            Assert.That(AttackObjectiveEvaluator.MobilizationRawOpen(held), Is.False);
-            Assert.That(AttackObjectiveEvaluator.MobilizationOpen(held), Is.True);
+            Assert.That(AttackForceReadiness.MobilizationRawOpen(held), Is.False);
+            Assert.That(AttackForceReadiness.MobilizationOpen(held), Is.True);
         }
     }
 }
 #endif
+

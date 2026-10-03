@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         // Not ready now, but nothing proves the known pool cannot get there.
         public bool AttainableWithKnownPool => !ReadyExecutable && !ProvenUnreachableWithinKnownPool;
 
-        public static RaidOperationalReadiness Evaluate(WorldSnapshot snap, AggressionObjective objective,
+        public static RaidOperationalReadiness Evaluate(WorldSnapshot snap, RaidObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ActorCommitments commitments,
             CapabilityInventory inventory)
         {
@@ -85,3 +85,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

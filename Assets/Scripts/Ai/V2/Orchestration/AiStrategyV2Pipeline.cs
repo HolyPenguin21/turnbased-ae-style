@@ -129,7 +129,7 @@ namespace Game.Ai.V2
             AiFrameLog.WorldAnalysis(snapshot);
             ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, snapshot);
             // The first Attack preparation step's AP hold reads this turn's mobilization gate.
-            bool mobilizationOpen = AttackObjectiveEvaluator.MobilizationOpen(snapshot.Self);
+            bool mobilizationOpen = AttackForceReadiness.MobilizationOpen(snapshot.Self);
             OperationContinuationWindow.SetMobilizationOpen(player, ctx.TurnNumber, mobilizationOpen);
             if (mobilizationOpen)
                 AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {player.Nickname}: gate open, Phase A plays around "
@@ -153,12 +153,12 @@ namespace Game.Ai.V2
 
             // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
             //     and AggressionMissionLayer (build-order step 9).
-            List<AggressionObjective> aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+            List<RaidObjective> aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                 snapshot, assessment.Breakdown.OpportunityReport);
             // 3e. Development opportunities are NOT enumerated here: DemandLayer.Development calls
             //     DevelopmentOpportunityEvaluator.Enumerate against the settled state of each pass.
 
-            foreach (AggressionObjective ao in aggressionObjectives)
+            foreach (RaidObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"readyWin {ao.ReadyWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
                     snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                     snapshot, assessment.Breakdown.OpportunityReport);
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
@@ -513,7 +513,7 @@ namespace Game.Ai.V2
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                    aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
@@ -557,7 +557,7 @@ namespace Game.Ai.V2
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                        aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                        aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
@@ -644,7 +644,7 @@ namespace Game.Ai.V2
                         // during the previous step is gone from the report in the same turn.
                         StrategyLayer.RefreshAggressionOperationalFacts(
                             snapshot, assessment.Breakdown);
-                        aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                        aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
@@ -1222,7 +1222,7 @@ namespace Game.Ai.V2
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                    aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
@@ -1261,7 +1261,7 @@ namespace Game.Ai.V2
                                 beforeCold, afterCold, null);
                             reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                             StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                            aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                            aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
                                 snapshot, assessment.Breakdown.OpportunityReport);
                             activeIntents = MissionContinuityLayer.ResolveActive(
                                 player, snapshot, reconObjectives, aggressionObjectives);
@@ -1403,7 +1403,7 @@ namespace Game.Ai.V2
         private static List<MissionProposal> BuildMissionSet(WorldSnapshot snapshot,
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<ReconObjective> reconObjectives,
-            IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
+            IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace,
             AiTurnContext ctx, out Dictionary<MissionIntentKey, string> deferredThisPass,
             bool aggressionPressureAlreadyRefreshed = false)
@@ -1544,3 +1544,4 @@ namespace Game.Ai.V2
     // ArmyReorgAnalyzer.cs, ArmyReorganizationPlanner.cs, ReorganizationPlan.cs and
     // HousekeepingExecutor.cs. This orchestration file only calls it (stage 8 above).
 }
+
