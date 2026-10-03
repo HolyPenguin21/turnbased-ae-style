@@ -49,6 +49,7 @@ namespace Game.UI
 
         private CardDefinition _equipment;
         private GameConfig _config;
+        private CardType? _hostCardType;
         private bool _hovering;
         private bool _pressed;
 
@@ -63,11 +64,12 @@ namespace Game.UI
         private readonly TextSwap _moveSwap = new TextSwap();
         private readonly TextSwap _rangeSwap = new TextSwap();
 
-        public void Configure(CardDefinition equipment, GameConfig config)
+        public void Configure(CardDefinition equipment, GameConfig config, CardType? hostCardType = null)
         {
             RestoreNow();                 // undo anything still applied from a previous binding
             _equipment = equipment;
             _config = config;
+            _hostCardType = hostCardType;
             _hovering = false;
             _pressed = false;
 
@@ -120,11 +122,11 @@ namespace Game.UI
             }
 
             EquipmentGrant grant = _equipment.equipment;
-            _attackSwap.Show(attackStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Attack));
-            _defenseSwap.Show(defenseStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Defense));
-            _hpSwap.Show(hpStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.HitPoints));
-            _moveSwap.Show(moveStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.MoveMax));
-            _rangeSwap.Show(rangeStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Range));
+            _attackSwap.Show(attackStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 0, _hostCardType));
+            _defenseSwap.Show(defenseStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 1, _hostCardType));
+            _hpSwap.Show(hpStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 2, _hostCardType));
+            _moveSwap.Show(moveStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 3, _hostCardType));
+            _rangeSwap.Show(rangeStatText, EquipmentCardText.StatBadgeValueForSlot(grant, 4, _hostCardType));
             _nameSwap.Show(nameOverrideText, _equipment.displayName);
             _infoSwap.Show(infoText, EquipmentCardText.AttachedCardFace(_equipment, _config));
         }
