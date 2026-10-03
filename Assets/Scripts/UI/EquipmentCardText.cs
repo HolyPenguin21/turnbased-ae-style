@@ -85,7 +85,7 @@ namespace Game.UI
         {
             if (equip == null)
                 return string.Empty;
-            return Join(HostTags(equip.equipment), AddedAbilities(equip.equipment, config));
+            return Join(AttachTargets(equip.equipment), AddedAbilities(equip.equipment, config));
         }
 
         // The equipment's description once it is already attached to a host. Compatibility is no
@@ -95,6 +95,54 @@ namespace Game.UI
             if (equip == null)
                 return string.Empty;
             return AddedAbilities(equip.equipment, config);
+        }
+
+        // Resolves the five physical badge slots through the card type the Equipment targets.
+        // A free Equipment card derives this from hostKinds; an attached preview passes its actual
+        // host type, so Hero gear uses Command/Fate/HP/Move/Initiative instead of Unit semantics.
+        public static string StatBadgeValueForSlot(EquipmentGrant grant, int slot, CardType? hostType = null)
+        {
+            CardType resolved = hostType ?? ResolveEquipmentHostType(grant);
+            EquipmentStat stat;
+            if (resolved == CardType.Hero)
+            {
+                stat = slot == 0 ? EquipmentStat.CommandRating
+                    : slot == 1 ? EquipmentStat.Fate
+                    : slot == 2 ? EquipmentStat.HitPoints
+                    : slot == 3 ? EquipmentStat.MoveMax
+                    : EquipmentStat.Initiative;
+            }
+            else if (resolved == CardType.Facility || resolved == CardType.Base)
+            {
+                // There is no EquipmentStat for building Level, so slot 1 is intentionally empty.
+                if (slot == 0)
+                    return "—";
+                stat = slot == 1 ? EquipmentStat.Defense
+                    : slot == 2 ? EquipmentStat.HitPoints
+                    : slot == 3 ? EquipmentStat.Resistance
+                    : EquipmentStat.Fate;
+            }
+            else
+            {
+                stat = slot == 0 ? EquipmentStat.Attack
+                    : slot == 1 ? EquipmentStat.Defense
+                    : slot == 2 ? EquipmentStat.HitPoints
+                    : slot == 3 ? EquipmentStat.MoveMax
+                    : EquipmentStat.Range;
+            }
+            return StatBadgeValue(grant, stat);
+        }
+
+        private static CardType ResolveEquipmentHostType(EquipmentGrant grant)
+        {
+            bool unit = grant?.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Unit);
+            bool hero = grant?.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Hero);
+            bool facility = grant?.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Facility);
+            if (hero && !unit && !facility) return CardType.Hero;
+            if (facility && !unit && !hero) return CardType.Facility;
+            // Existing gear is Unit-targeted; mixed host-kind gear keeps the Unit vocabulary on
+            // its free card until an actual host is known, then attached preview uses that host.
+            return CardType.Unit;
         }
 
         // Compact value used by an Equipment card's stat badges. It describes the gear itself,
