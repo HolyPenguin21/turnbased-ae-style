@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
+using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
