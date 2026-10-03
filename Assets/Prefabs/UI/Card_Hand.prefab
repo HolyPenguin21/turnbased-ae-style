@@ -365,6 +365,11 @@ MonoBehaviour:
   cardArtImage: {fileID: 7770000000000000004}
   buttonVisual: {fileID: 1288438340295221923}
   statsToHideOnHover: {fileID: 2820781930590140767}
+  attackStatText: {fileID: 2842737519054869657}
+  defenseStatText: {fileID: 7182153811295366767}
+  hpStatText: {fileID: 1760881199158542525}
+  moveStatText: {fileID: 649522341504723344}
+  rangeStatText: {fileID: 5738819712175383176}
   nameOverrideText: {fileID: 7770000000000000014}
   infoText: {fileID: 7770000000000000018}
 --- !u!1 &2660903223350420155
