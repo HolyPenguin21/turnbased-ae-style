@@ -44,10 +44,23 @@ namespace Game.UI
 
         public event Action SpendClicked;
 
+        // Name colour of the card being built in a Research/Production Challenge (#4B341E).
+        public static readonly Color CardNameColor = new Color32(0x4B, 0x34, 0x1E, 0xFF);
+
         private void Awake()
         {
             if (spendButton != null)
                 spendButton.onClick.AddListener(() => SpendClicked?.Invoke());
+            DisableDecorativeRaycasts(transform);
+        }
+
+        // Purely decorative graphics (labels, dice slots) must not swallow clicks aimed at the
+        // Spend button when they overlap it. Graphics belonging to a Selectable are left alone.
+        private static void DisableDecorativeRaycasts(Transform root)
+        {
+            foreach (Graphic g in root.GetComponentsInChildren<Graphic>(true))
+                if (g.GetComponentInParent<Selectable>(true) == null)
+                    g.raycastTarget = false;
         }
 
         public void Setup(UnitData unit, UnitData sideHero, Sprite factionLogo)
@@ -183,7 +196,7 @@ namespace Game.UI
             if (nameText != null)
             {
                 nameText.text = displayName ?? string.Empty;
-                nameText.color = Color.white;
+                nameText.color = CardNameColor;
             }
             if (hpText != null)
                 hpText.text = string.Empty;
@@ -213,6 +226,7 @@ namespace Game.UI
                 {
                     DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
                     slot.gameObject.SetActive(true);
+                    DisableDecorativeRaycasts(slot.transform);
                     slot.SetImmediate(true);
                     _diceSlots.Add(slot);
                 }
@@ -247,6 +261,7 @@ namespace Game.UI
 
             DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
             slot.gameObject.SetActive(true);
+            DisableDecorativeRaycasts(slot.transform);
             _diceSlots.Add(slot);
 
             int prevLen = _lastDice != null ? _lastDice.Length : 0;
@@ -296,6 +311,7 @@ namespace Game.UI
                     // SetImmediate, no flip animation at all (see the user's own report: no
                     // animated dice in the attack popup, unlike DiceRowUI's turn-order roll).
                     slot.gameObject.SetActive(true);
+                    DisableDecorativeRaycasts(slot.transform);
                     _diceSlots.Add(slot);
                     toAnimate.Add(i);
                 }

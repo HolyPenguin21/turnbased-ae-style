@@ -547,7 +547,7 @@ namespace Game.UI
             attackerRow?.Setup(hero, hero, heroLogo);
             attackerRow?.SetDicePoolSize(ResearchProductionSystem.DicePoolSize);
             attackerRow?.SetSpendInteractable(false);
-            defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, cardLogo);
+            defenderRow?.SetupCardDefender(card != null ? card.displayName : string.Empty, null);
 
             if (rollButton != null)
                 rollButton.interactable = false;
@@ -715,9 +715,12 @@ namespace Game.UI
                 resultTargetArtImage.gameObject.SetActive(targetArt != null);
             }
             if (resultTargetNameText != null)
+            {
                 resultTargetNameText.text = _rpCard != null ? _rpCard.displayName : string.Empty;
+                resultTargetNameText.color = BattleCombatantRowUI.CardNameColor;
+            }
             if (resultTargetHpText != null)
-                resultTargetHpText.text = string.Empty;
+                resultTargetHpText.text = success ? "Success" : string.Empty;
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(false);
 
