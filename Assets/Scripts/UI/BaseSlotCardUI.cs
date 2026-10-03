@@ -44,13 +44,12 @@ namespace Game.UI
         [SerializeField] private GameObject costPreviewRoot;
         [SerializeField] private Image[] costBadgeIcons;
         [SerializeField] private TMP_Text[] costBadgeAmounts;
-        // Same 5-slot layout as CardUI's own StatsRow (Card.prefab), cloned into this prefab for
-        // visual consistency — see CardUI's own field comment for the fixed per-slot mapping.
-        // Base cell only — a Facility cell has no Attack/Defense/HP stats of its own (those
-        // belong to the building hosting it), so this stays hidden there:
+        // Same 5-slot building layout as CardUI's Base/Facility cards:
         //   AttackBadge slot: Level      DefenseBadge slot: Defense
         //   HpBadge slot: Structure Points, REAL current/max
         //   MoveBadge slot: Resistance   RangeBadge slot: Fate
+        // Base reads BuildingData; an installed Facility reads the runtime stats copied into
+        // FacilityData.FromDefinition. Empty/locked Facility slots keep the row hidden.
         [SerializeField] private GameObject statsRow;
         [SerializeField] private TMP_Text attackStatText;
         [SerializeField] private TMP_Text defenseStatText;
@@ -116,7 +115,7 @@ namespace Game.UI
                 artImage.color = _occupied ? Color.white : new Color(1f, 1f, 1f, emptySlotAlpha);
             }
 
-            RefreshStatsRow(isBaseCell, building);
+            RefreshStatsRow(isBaseCell, building, _facility);
 
             if (improveButton != null)
                 improveButton.gameObject.SetActive(false);
@@ -140,23 +139,32 @@ namespace Game.UI
             }
         }
 
-        // See the field block's own comment for the fixed per-slot mapping. Base cell only —
-        // hidden for a Facility cell (locked, empty, or occupied alike), which has no
-        // Attack/Defense/HP identity of its own to show.
-        private void RefreshStatsRow(bool isBaseCell, BuildingData building)
+        // See the field block's own comment for the fixed per-slot building mapping.
+        private void RefreshStatsRow(bool isBaseCell, BuildingData building, FacilityData facility)
         {
             if (statsRow == null)
                 return;
 
-            statsRow.SetActive(isBaseCell);
-            if (!isBaseCell)
+            bool show = isBaseCell || facility != null;
+            statsRow.SetActive(show);
+            if (!show)
                 return;
 
-            if (attackStatText != null) attackStatText.text = building.Level.ToString();
-            if (defenseStatText != null) defenseStatText.text = building.Defense.ToString();
-            if (hpStatText != null) hpStatText.text = $"{building.StructurePointsCurrent}/{building.StructurePointsMax}";
-            if (moveStatText != null) moveStatText.text = building.Resistance.ToString();
-            if (rangeStatText != null) rangeStatText.text = building.Fate.ToString();
+            if (isBaseCell)
+            {
+                if (attackStatText != null) attackStatText.text = building.Level.ToString();
+                if (defenseStatText != null) defenseStatText.text = building.Defense.ToString();
+                if (hpStatText != null) hpStatText.text = $"{building.StructurePointsCurrent}/{building.StructurePointsMax}";
+                if (moveStatText != null) moveStatText.text = building.Resistance.ToString();
+                if (rangeStatText != null) rangeStatText.text = building.Fate.ToString();
+                return;
+            }
+
+            if (attackStatText != null) attackStatText.text = facility.Level.ToString();
+            if (defenseStatText != null) defenseStatText.text = facility.Defense.ToString();
+            if (hpStatText != null) hpStatText.text = $"{facility.StructurePointsCurrent}/{facility.StructurePointsMax}";
+            if (moveStatText != null) moveStatText.text = facility.Resistance.ToString();
+            if (rangeStatText != null) rangeStatText.text = facility.Fate.ToString();
         }
 
         public void OnPointerClick(PointerEventData eventData)
