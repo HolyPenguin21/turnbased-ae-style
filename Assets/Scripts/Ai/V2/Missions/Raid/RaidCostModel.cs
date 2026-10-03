@@ -115,7 +115,7 @@ namespace Game.Ai.V2
                 : Mathf.Min(currentTurnActivationAp, 1f);
             float combatMin = Mathf.Max(0f, target.TargetPower);
             // The one ground-combat requirement owner, on the same known defenders and site bonus
-            // the Raid objective sized its shortage by (AggressionObjectiveEvaluator).
+            // the Raid objective sized its shortage by (RaidObjectiveEvaluator).
             // Never below the minimum: the requirement envelope must stay coherent even when
             // memory no longer resolves the defenders behind a frozen TargetPower.
             float combatDesired = combatMin <= 0f ? 0f
@@ -150,3 +150,4 @@ namespace Game.Ai.V2
         private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }
+

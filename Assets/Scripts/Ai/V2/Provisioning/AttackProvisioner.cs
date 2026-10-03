@@ -232,7 +232,7 @@ namespace Game.Ai.V2
             {
                 // A container is created only on the preparation's staging Base (the own Base
                 // nearest to the target), and never beside an empty shell that could be reused.
-                HexCoord? staging = AttackObjectiveEvaluator.PreparationStagingBase(snap, target.Target.Hex);
+                HexCoord? staging = AttackPreparationPolicy.PreparationStagingBase(snap, target.Target.Hex);
                 if (!staging.HasValue || !hex.Equals(staging.Value))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"attack preparation: ({hex.Q},{hex.R}) is not the staging own Base"));
@@ -517,3 +517,4 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

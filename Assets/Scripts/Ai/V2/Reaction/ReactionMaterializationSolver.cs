@@ -35,7 +35,7 @@ namespace Game.Ai.V2
 
         internal static MaterializationClosure ProjectMaterializationClosure(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
-            ActorCommitments commitments, AggressionObjective objective, RaidOperationalReadiness readiness)
+            ActorCommitments commitments, RaidObjective objective, RaidOperationalReadiness readiness)
         {
             bool needPower = readiness.NeedsPower;
             bool needHero = readiness.NeedsHero;

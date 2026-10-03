@@ -69,7 +69,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionPolicy.AttackCoverageGate, defenderHexDefenseBonus,
                 pinnedArmyId: target.ForceCommitted ? target.PrimaryArmyId : null,
                 minimumArmyPower: target.ForceCommitted ? 0f
-                    : 0.80f * snap.Self.AttackPeak);
+                    : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -246,3 +246,4 @@ namespace Game.Ai.V2
 
     }
 }
+

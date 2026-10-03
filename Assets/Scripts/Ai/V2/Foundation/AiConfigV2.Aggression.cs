@@ -61,7 +61,7 @@ namespace Game.Ai.V2
         //  admission ordering, the resource envelope and the assembly/continuity guards. Cross-lane
         //  ordering stays on BaseValue, AP budget stays on the radar / TurnResourceBook.
         // =======================================================================================
-        // A known neutral target becomes a Raid AggressionObjective only if its canonical TaskScore
+        // A known neutral target becomes a Raid RaidObjective only if its canonical TaskScore
         // has some real strategic merit. This threshold is on the unified TaskScore scale (where
         // RaidReward is 8), not the retired Raid-local 12..90 Lerp scale.
         // Feasibility is still NOT part of this discovery gate: an objective may survive so Demand
@@ -129,3 +129,4 @@ namespace Game.Ai.V2
 
     }
 }
+

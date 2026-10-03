@@ -31,21 +31,22 @@ namespace Game.EditorTests
 
         [Test]
         public void StagingBaseIsTheOwnBaseNearestAKnownEnemyBase()
-            => Assert.That(MissionContinuityLayer.StagingBase(Snap(40f, 100f), Me), Is.EqualTo(new HexCoord(3, 0)));
+            => Assert.That(AiReturnBasePolicy.StagingBase(Snap(40f, 100f), Me), Is.EqualTo(new HexCoord(3, 0)));
 
         [Test]
         public void NoStagingBaseWhileTheFistIsTooWeak()
-            => Assert.That(MissionContinuityLayer.StagingBase(Snap(10f, 100f), Me), Is.Null);
+            => Assert.That(AiReturnBasePolicy.StagingBase(Snap(10f, 100f), Me), Is.Null);
 
         [Test]
         public void RaidReturnPrefersStagingButOtherLegsKeepTheirOwnRule()
         {
             WorldSnapshot snap = Snap(40f, 100f);
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, Me, null, preferStaging: true),
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, Me, null, preferStaging: true),
                 Is.EqualTo(new HexCoord(3, 0)));
-            Assert.That(MissionContinuityLayer.SelectReturnBase(snap, Me, null),
+            Assert.That(AiReturnBasePolicy.SelectReturnBase(snap, Me, null),
                 Is.EqualTo(new HexCoord(-4, 5)), "tie on every rule: starting Citadel first");
         }
     }
 }
 #endif
+

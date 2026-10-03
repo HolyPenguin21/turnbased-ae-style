@@ -687,7 +687,7 @@ namespace Game.EditorTests
             {
                 OpportunityReport = report,
             };
-            AggressionObjective objective = AggressionObjectiveEvaluator.ForTrackedTarget(
+            RaidObjective objective = RaidObjectiveEvaluator.ForTrackedTarget(
                 snap, report, target);
             Assert.That(objective, Is.Not.Null);
             var intent = new MissionIntent
@@ -737,7 +737,7 @@ namespace Game.EditorTests
                 NeutralOpportunities = Array.Empty<CombatOpportunity>(),
             };
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
-                new[] { intent }, Array.Empty<AggressionObjective>()).Single();
+                new[] { intent }, Array.Empty<RaidObjective>()).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
                 + objective.TaskScore.RaidReward
                 - TaskScoreEvaluator.Price(pinned.ActivationApCost)
@@ -783,3 +783,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

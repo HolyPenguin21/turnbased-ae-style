@@ -37,7 +37,7 @@ namespace Game.Ai.V2
             {
                 // The same walk-home rule every lifecycle leg uses: a destination that was lost or
                 // became unreachable is re-picked, never walked to.
-                HexCoord? home = KeepOrReselectHome(snap, player, defence.PrimaryArmyId,
+                HexCoord? home = AiReturnBasePolicy.KeepOrReselectHome(snap, player, defence.PrimaryArmyId,
                     defence.ReturnHex, out bool reselected);
                 if (!home.HasValue || actor.Hex.Equals(home.Value))
                 {
@@ -134,3 +134,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

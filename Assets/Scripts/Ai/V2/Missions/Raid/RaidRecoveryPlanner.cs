@@ -217,7 +217,7 @@ namespace Game.Ai.V2
             ISet<int> unavailableArmyIds, float currentWin, HexCoord? fixedBase = null,
             Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
-            HexCoord? baseHex = fixedBase ?? MissionContinuityLayer.SelectReturnBase(
+            HexCoord? baseHex = fixedBase ?? AiReturnBasePolicy.SelectReturnBase(
                 snap, primary.Owner, primary.ArmyId);
             if (!baseHex.HasValue
                 || !(snap.Self.BaseHexes ?? Array.Empty<HexCoord>()).Contains(baseHex.Value))
@@ -590,3 +590,4 @@ namespace Game.Ai.V2
 
     }
 }
+

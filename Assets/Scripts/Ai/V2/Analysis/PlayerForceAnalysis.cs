@@ -18,15 +18,15 @@ namespace Game.Ai.V2
         // floor. Every Attack ratio below is measured on it, as the AI measures it, so the panel
         // and the log show the same numbers. GroundArmyPotential stays the whole-deck ceiling.
         public readonly float AttackPeak;
-        public float AttackBar => 0.80f * AttackPeak;
+        public float AttackBar => AttackForceReadiness.RequiredPower(AttackPeak);
         public float ReadinessPercent => AttackPeak > 0f
             ? 100f * StrongestArmyPower / AttackPeak : 0f;
-        public bool ForceReady => AttackObjectiveEvaluator.ForceReady(StrongestArmyPower, AttackPeak);
+        public bool ForceReady => AttackForceReadiness.ForceReady(StrongestArmyPower, AttackPeak);
         // Share of the whole additive force already played onto the map; the Attack mobilization
-        // trigger reads exactly this pair (AttackObjectiveEvaluator.MobilizationOpen).
+        // trigger reads exactly this pair (AttackForceReadiness.MobilizationOpen).
         public float DeployedPercent => TotalAvailablePower > 0f
             ? 100f * DeployedPower / TotalAvailablePower : 0f;
-        public bool MobilizationOpen => AttackObjectiveEvaluator.MobilizationOpen(DeployedPower, TotalAvailablePower);
+        public bool MobilizationOpen => AttackForceReadiness.MobilizationOpen(DeployedPower, TotalAvailablePower);
         // Mobilization start (B): the strongest stack the field bodies can already form
         // (WorldAnalysis.FieldStrikePotential — no lone scouts, aviation, heroes' own power or
         // garrison defence floor) against the Attack peak (same army set on both sides).
@@ -34,7 +34,7 @@ namespace Game.Ai.V2
         public float FieldStrikePercent => AttackPeak > 0f
             ? 100f * FieldStrikePotential / AttackPeak : 0f;
         public bool FieldStrikeReady =>
-            AttackObjectiveEvaluator.FieldStrikeForceReady(FieldStrikePotential, AttackPeak);
+            AttackForceReadiness.FieldStrikeForceReady(FieldStrikePotential, AttackPeak);
 
         private PlayerForceAnalysis(float deployed, float total, ArmyData army, float armyPower, float potential,
             float fieldStrike, float attackPeak)
@@ -112,3 +112,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

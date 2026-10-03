@@ -166,7 +166,7 @@ namespace Game.EditorTests
                 MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
                     RaidMissionPhase.Assault, returnHex: null, target: target);
                 MissionIntentKey originalKey = intent.IntentKey;
-                var next = new AggressionObjective
+                var next = new RaidObjective
                 {
                     Target = RaidTargetRef.ForNeutralArmy(101),
                     LastKnownHex = new HexCoord(7, 1),
@@ -175,7 +175,7 @@ namespace Game.EditorTests
                 };
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap,
-                    aggressionObjectives: new List<AggressionObjective> { next });
+                    aggressionObjectives: new List<RaidObjective> { next });
                 ActorCommitments commitments = ActorCommitments.FromIntents(active, snap, null);
 
                 Assert.That(active, Does.Contain(intent));
@@ -350,3 +350,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

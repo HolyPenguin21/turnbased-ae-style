@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Players;
@@ -69,7 +69,7 @@ namespace Game.Ai.V2
                 + string.Join(";", (snapshot.Threat?.Threats ?? System.Array.Empty<AssetThreatSnapshot>())
                     .Select(WorldAnalysis.ThreatKey)
                     .OrderBy(x => x, System.StringComparer.Ordinal));
-            string generation = string.Join(",", AggressionDemandEvaluator.GroundGenerationOffers(snapshot)
+            string generation = string.Join(",", GroundCombatDemandPolicy.GroundGenerationOffers(snapshot)
                 .Select(o => $"{o.Card.displayName}:{o.Mode}@{o.FacilityHex.Q},{o.FacilityHex.R}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string handCards = string.Join(",", (self.Hand
@@ -99,3 +99,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

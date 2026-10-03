@@ -12,8 +12,8 @@ namespace Game.EditorTests
         public void NeutralRaidReward_IsEightAndIndependentOfDefenderPowerValue()
         {
             RaidTargetRef target = RaidTargetRef.ForNeutralArmy(42);
-            AggressionObjective weak = Evaluate(target, 0.1f);
-            AggressionObjective strong = Evaluate(target, 1000f);
+            RaidObjective weak = Evaluate(target, 0.1f);
+            RaidObjective strong = Evaluate(target, 1000f);
 
             Assert.That(weak.TaskScore.RaidReward, Is.EqualTo(8f));
             Assert.That(strong.TaskScore.RaidReward, Is.EqualTo(8f));
@@ -26,9 +26,9 @@ namespace Game.EditorTests
         [Test]
         public void EventGuardRaid_ReceivesSameFixedReward_PlusTheEventReward()
         {
-            AggressionObjective guard = Evaluate(
+            RaidObjective guard = Evaluate(
                 RaidTargetRef.ForEventGuard(new HexCoord(3, 0)), 999f);
-            AggressionObjective neutral = Evaluate(RaidTargetRef.ForNeutralArmy(42), 999f);
+            RaidObjective neutral = Evaluate(RaidTargetRef.ForNeutralArmy(42), 999f);
 
             Assert.That(guard.TaskScore.RaidReward, Is.EqualTo(AiConfigV2.RaidReward));
             // No remembered guard here: the unknown-tier reward.
@@ -71,7 +71,7 @@ namespace Game.EditorTests
             Assert.That(lifecycle.Value, Is.Zero);
         }
 
-        private static AggressionObjective Evaluate(RaidTargetRef target, float defenderValue)
+        private static RaidObjective Evaluate(RaidTargetRef target, float defenderValue)
         {
             HexCoord hex = new HexCoord(3, 0);
             var opportunity = new CombatOpportunity(
@@ -88,8 +88,9 @@ namespace Game.EditorTests
                 NeutralOpportunities = new[] { opportunity },
             };
             var snap = new WorldSnapshot { Self = new SelfSnapshot() };
-            return AggressionObjectiveEvaluator.ForTrackedTarget(snap, report, target);
+            return RaidObjectiveEvaluator.ForTrackedTarget(snap, report, target);
         }
     }
 }
 #endif
+

@@ -27,7 +27,7 @@ namespace Game.Ai.V2
             var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
 
-            foreach ((AggressionObjective obj, GroundCombatAssemblyPlan plan) in eval.ReadyExecutable)
+            foreach ((RaidObjective obj, GroundCombatAssemblyPlan plan) in eval.ReadyExecutable)
             {
                 if (obj == null || plan == null || !targetIds.Contains(obj.TargetArmyId))
                     continue;

@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     public static partial class DemandLayer
     {
         private static IEnumerable<AxisDemand> AggressionDemands(WorldSnapshot snap, DesireBreakdown b,
-            IReadOnlyList<AggressionObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
+            IReadOnlyList<RaidObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player)
         {
             AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
@@ -38,3 +38,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

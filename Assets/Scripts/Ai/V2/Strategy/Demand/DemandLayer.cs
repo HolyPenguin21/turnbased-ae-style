@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     public static partial class DemandLayer
     {
         public static List<AxisDemand> Generate(WorldSnapshot snap, DesireBreakdown breakdown,
-            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
+            IReadOnlyList<ReconObjective> objectives, IReadOnlyList<RaidObjective> aggressionObjectives,
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
             PlayerRoot root = null, ISet<DesireAxis> dirtyAxes = null)
