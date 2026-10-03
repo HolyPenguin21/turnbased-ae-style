@@ -111,13 +111,13 @@ namespace Game.UI
             }
             bool hasEquipmentStatView = attackStatText != null || defenseStatText != null
                 || hpStatText != null || moveStatText != null || rangeStatText != null;
-            if (statsToHideOnHover != null && !hasEquipmentStatView)
+            if (statsToHideOnHover != null)
             {
                 _savedStatsActive = statsToHideOnHover.activeSelf;
-                statsToHideOnHover.SetActive(false);
+                statsToHideOnHover.SetActive(hasEquipmentStatView || _savedStatsActive);
+                if (!hasEquipmentStatView)
+                    statsToHideOnHover.SetActive(false);
             }
-            if (hasEquipmentStatView && statsToHideOnHover != null)
-                statsToHideOnHover.SetActive(true);
 
             EquipmentGrant grant = _equipment.equipment;
             _attackSwap.Show(attackStatText, EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Attack));
