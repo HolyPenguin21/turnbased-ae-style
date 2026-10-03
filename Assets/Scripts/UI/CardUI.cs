@@ -245,46 +245,13 @@ namespace Game.UI
         // an em dash so all five badge positions remain present.
         private void RefreshEquipmentStats(EquipmentGrant grant)
         {
-            if (attackStatText != null) attackStatText.text = FormatEquipmentStat(grant, EquipmentStat.Attack);
-            if (defenseStatText != null) defenseStatText.text = FormatEquipmentStat(grant, EquipmentStat.Defense);
-            if (hpStatText != null) hpStatText.text = FormatEquipmentStat(grant, EquipmentStat.HitPoints);
-            if (moveStatText != null) moveStatText.text = FormatEquipmentStat(grant, EquipmentStat.MoveMax);
-            if (rangeStatText != null) rangeStatText.text = FormatEquipmentStat(grant, EquipmentStat.Range);
+            if (attackStatText != null) attackStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Attack);
+            if (defenseStatText != null) defenseStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Defense);
+            if (hpStatText != null) hpStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.HitPoints);
+            if (moveStatText != null) moveStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.MoveMax);
+            if (rangeStatText != null) rangeStatText.text = EquipmentCardText.StatBadgeValue(grant, EquipmentStat.Range);
         }
 
-        private static string FormatEquipmentStat(EquipmentGrant grant, EquipmentStat stat)
-        {
-            if (grant?.statChanges == null)
-                return "—";
-
-            int additive = 0;
-            bool hasAdditive = false;
-            bool hasOverride = false;
-            int overrideValue = 0;
-            foreach (EquipmentStatChange change in grant.statChanges)
-            {
-                if (change == null || change.stat != stat)
-                    continue;
-                if (change.isOverride)
-                {
-                    hasOverride = true;
-                    overrideValue = change.amount;
-                }
-                else
-                {
-                    hasAdditive = true;
-                    additive += change.amount;
-                }
-            }
-
-            // EquipmentSystem applies all additive changes first and overrides afterwards, so
-            // when an override exists it is the effective stat instruction this gear provides.
-            if (hasOverride)
-                return $"={overrideValue}";
-            if (!hasAdditive || additive == 0)
-                return "—";
-            return additive > 0 ? $"+{additive}" : additive.ToString();
-        }
 
         // Folds the stat changes of an Equipment card attached to this in-hand card (see
         // CardData.Equipment) into the badge values just computed from the base CardDefinition,
