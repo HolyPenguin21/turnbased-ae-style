@@ -30,6 +30,7 @@ namespace Game.UI
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
         [SerializeField] private TMP_Text nameText;
+        [SerializeField] private TMP_Text skillsText;
         // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
         // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
         [SerializeField] private EquipmentArtToggle equipmentArtToggle;
@@ -107,9 +108,11 @@ namespace Game.UI
                 artImage.sprite = unit != null ? unit.Art : null;
                 artImage.gameObject.SetActive(unit != null);
             }
-            equipmentArtToggle?.Configure(unit?.Equipment, _screen != null ? _screen.GameConfig : null);
+            equipmentArtToggle?.Configure(unit?.Equipment, _screen != null ? _screen.GameConfig : null,
+                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
+            RefreshSkillsText(unit);
             if (background != null)
                 background.color = isLegalAttackTarget ? LegalAttackColor : isLegalMoveTarget ? LegalMoveColor : CellColor;
             if (attackIcon != null)
@@ -117,6 +120,24 @@ namespace Game.UI
 
             RefreshStatsRow(unit);
             RefreshActingHighlight(isActingUnit);
+        }
+
+        private void RefreshSkillsText(UnitData unit)
+        {
+            if (skillsText == null)
+                return;
+            if (unit == null)
+            {
+                skillsText.text = string.Empty;
+                skillsText.gameObject.SetActive(false);
+                return;
+            }
+
+            GameConfig config = _screen != null ? _screen.GameConfig : null;
+            var abilities = EquipmentSystem.EffectiveAbilities(unit.Definition, unit.Equipment);
+            string text = config != null ? config.FormatAbilitiesDetailed(abilities) : string.Empty;
+            skillsText.text = text ?? string.Empty;
+            skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }
 
         private void RefreshActingHighlight(bool isActingUnit)
