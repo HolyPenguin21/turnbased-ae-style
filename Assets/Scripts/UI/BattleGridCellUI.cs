@@ -136,7 +136,7 @@ namespace Game.UI
             }
 
             GameConfig config = _screen != null ? _screen.GameConfig : null;
-            string text = config != null ? config.FormatAbilitiesDetailed(unit.Abilities) : string.Empty;
+            string text = config != null ? config.FormatAbilities(unit.Abilities) : string.Empty;
             skillsText.text = text ?? string.Empty;
             skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }
