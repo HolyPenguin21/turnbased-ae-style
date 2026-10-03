@@ -116,7 +116,7 @@ namespace Game.UI
             {
                 // There is no EquipmentStat for building Level, so slot 1 is intentionally empty.
                 if (slot == 0)
-                    return "—";
+                    return "-";
                 stat = slot == 1 ? EquipmentStat.Defense
                     : slot == 2 ? EquipmentStat.HitPoints
                     : slot == 3 ? EquipmentStat.Resistance
@@ -146,11 +146,13 @@ namespace Game.UI
         }
 
         // Compact value used by an Equipment card's stat badges. It describes the gear itself,
-        // never a host+gear total. Overrides win because EquipmentSystem applies them after deltas.
+        // never a host+gear total. Positive additive and override values are shown as plain
+        // numbers; negative values keep their minus sign, and untouched slots show "-".
+        // Overrides still win because EquipmentSystem applies them after deltas.
         public static string StatBadgeValue(EquipmentGrant grant, EquipmentStat stat)
         {
             if (grant?.statChanges == null)
-                return "—";
+                return "-";
 
             int additive = 0;
             bool hasAdditive = false;
@@ -173,10 +175,10 @@ namespace Game.UI
             }
 
             if (hasOverride)
-                return $"={overrideValue}";
+                return overrideValue.ToString();
             if (!hasAdditive || additive == 0)
-                return "—";
-            return additive > 0 ? $"+{additive}" : additive.ToString();
+                return "-";
+            return additive.ToString();
         }
 
         private static string Join(params string[] lines) =>

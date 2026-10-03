@@ -240,9 +240,9 @@ namespace Game.UI
         }
 
         // Equipment cards use the Unit badge positions as a stable visual vocabulary. The
-        // displayed values come exclusively from EquipmentGrant.statChanges: additive changes
-        // are signed deltas, overrides are absolute "=N" values, and untouched stats stay as
-        // an em dash so all five badge positions remain present.
+        // displayed values come exclusively from EquipmentGrant.statChanges: positive additive
+        // and override values are plain numbers, negative values keep their minus sign, and
+        // untouched stats show "-" so all five badge positions remain present.
         private void RefreshEquipmentStats(EquipmentGrant grant)
         {
             if (attackStatText != null) attackStatText.text = EquipmentCardText.StatBadgeValueForSlot(grant, 0);
