@@ -41,7 +41,9 @@ namespace Game.EditorTests
             ["Execution/ReconAirExecutor.cs"] = 34,
             ["Execution/ReconGroundExecutor.cs"] = 2,
             // +1 (T01): the preparation step measures its physical AP delta like every lane.
-            ["Execution/TaskExecutor.cs"] = 12,
+            ["Execution/ActiveDefenceExecutor.cs"] = 1,
+            ["Execution/RaidExecutor.cs"] = 1,
+            ["Execution/TaskExecutor.cs"] = 10,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
             ["Materialization/MaterializationExecutor.cs"] = 25,

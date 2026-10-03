@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // fist marches only through the ordinary strict >80% peak + coverage path. The objective is
         // the objective owner's best (Enumerate's TaskScore order), incl. a location-only starting
         // Citadel. The fist is assembled on the own Base nearest to the target
-        // (AttackObjectiveEvaluator.PreparationStagingBase), where cards land in it directly.
+        // (AttackPreparationPolicy.PreparationStagingBase), where cards land in it directly.
         // Host order: an existing free field army (one already on the staging Base first; one
         // elsewhere first walks there — MoveHost) > an empty reusable shell on the staging Base >
         // a container created there (CreateArmyWithMember when a legal same-hex first member
