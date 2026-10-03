@@ -178,7 +178,8 @@ namespace Game.UI
             if (hiddenBadgeRoot != null)
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
 
-            equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null);
+            equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null,
+                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
 
             // Preview-only element — never part of the Army Viewer's own card face. On the
             // Card_Army prefab skillsText and moveText are wired to the SAME label (it plays
@@ -267,7 +268,7 @@ namespace Game.UI
             }
             else if (card.cardType == CardType.Equipment)
             {
-                text = EquipmentCardText.AttachTargets(card.equipment);
+                text = EquipmentCardText.CardFace(card, config);
             }
             else
             {
@@ -296,10 +297,21 @@ namespace Game.UI
             if (statsRow == null)
                 return;
 
-            bool show = card != null && (card.cardType == CardType.Hero || card.cardType == CardType.Unit);
+            bool show = card != null && (card.cardType == CardType.Hero
+                || card.cardType == CardType.Unit || card.cardType == CardType.Equipment);
             statsRow.SetActive(show);
             if (!show)
                 return;
+
+            if (card.cardType == CardType.Equipment)
+            {
+                if (attackStatText != null) attackStatText.text = EquipmentCardText.StatBadgeValueForSlot(card.equipment, 0);
+                if (defenseStatText != null) defenseStatText.text = EquipmentCardText.StatBadgeValueForSlot(card.equipment, 1);
+                if (hpStatText != null) hpStatText.text = EquipmentCardText.StatBadgeValueForSlot(card.equipment, 2);
+                if (moveStatText != null) moveStatText.text = EquipmentCardText.StatBadgeValueForSlot(card.equipment, 3);
+                if (rangeStatText != null) rangeStatText.text = EquipmentCardText.StatBadgeValueForSlot(card.equipment, 4);
+                return;
+            }
 
             int slot1, slot2, slot5;
             if (card.cardType == CardType.Hero)
