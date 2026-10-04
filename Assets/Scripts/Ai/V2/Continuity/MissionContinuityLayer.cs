@@ -1494,6 +1494,7 @@ namespace Game.Ai.V2
             if (leg.Value.Phase == AttackMissionPhase.Reinforcement)
             {
                 intent.Attack.SupportArmyId = null;
+                intent.Attack.RendezvousHex = null;
                 intent.Attack.ReinforcementRequestedTurn = -1;
                 return true;
             }
@@ -1615,7 +1616,9 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    if (o.AttackTarget.SupportArmyId.HasValue)
+                    // The primary's own walk to the rendezvous only names the support; it never
+                    // (re)binds it — Continuity alone does, and may already have released it.
+                    if (o.AttackTarget.SupportArmyId.HasValue && !o.AttackTarget.PrimaryRendezvousLeg)
                         ai.SupportArmyId = o.AttackTarget.SupportArmyId;
                     if (o.AttackTarget.RecoveryBaseHex.HasValue)
                         ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
@@ -1624,7 +1627,20 @@ namespace Game.Ai.V2
                     // handoff semantics and the same SupportReturn leg the Raid lane uses.
                     // The destination itself is chosen by ResolveAttackIntent, which has the
                     // snapshot and the player: AdvanceIntent only records the immutable fact.
-                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                    // 2026-10-04 — a committed Assault does not wait for that walk: the support's
+                    // container goes home as a GatherReturn leg beside the operation, and the
+                    // primary resumes its march at once.
+                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue && ai.AssaultStarted
+                        && o.AttackTarget.Phase == AttackMissionPhase.Reinforcement)
+                    {
+                        int handedOver = ai.SupportArmyId.Value;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == handedOver))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = handedOver });
+                        ai.SupportArmyId = null;
+                        ai.RendezvousHex = null;
+                        ai.Phase = AttackMissionPhase.Assault;
+                    }
+                    else if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
                         ai.Phase = AttackMissionPhase.SupportReturn;
                 }
                 // §17 — the operation's turn-local side-strike marker. Continuity is the only

@@ -112,8 +112,14 @@ namespace Game.Ai.V2
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
         internal const float ContinuationWinChanceFloor = 0.55f;
 
-        // Attack checks known defender coverage without imposing a probability threshold.
+        // Attack imposes no probability threshold; whether it checks known defender coverage is
+        // RequiresCoverage's answer (AiConfigV2.attackRequiresDefenderCoverage).
         internal const float AttackCoverageGate = 0f;
+
+        // Does a fight admitted at `gate` require every known defender to be damageable? Always
+        // for Raid / ActiveDefence; for Attack's no-threshold gate only while the test switch is on.
+        internal static bool RequiresCoverage(float gate) =>
+            gate > AttackCoverageGate || AiConfigV2.attackRequiresDefenderCoverage;
 
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.

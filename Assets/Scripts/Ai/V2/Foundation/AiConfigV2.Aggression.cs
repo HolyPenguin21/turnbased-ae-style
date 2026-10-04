@@ -105,6 +105,16 @@ namespace Game.Ai.V2
         // strike that raises the primary's win chance by at least this much is flown.
         public const int attackAirSupportLeadTurns = 1;
         public const float attackAirSupportMinWinGain = 0.05f;
+        // 2026-10-04 (user decision, TEST BEHAVIOR) — Attack does not require known defender
+        // coverage (WorthIt.CanDamageAll), neither before nor during the assault: a fist may march
+        // on a site holding a defender none of its bodies can damage. Only Attack's no-threshold
+        // gate (GroundCombatAdmissionPolicy.AttackCoverageGate) reads it; Raid / ActiveDefence keep
+        // coverage. Static, not const, so tests can exercise both rules.
+        public static bool attackRequiresDefenderCoverage = false;
+        // A committed Assault meets an existing support only on the primary's own route to the
+        // target (it never backtracks); the primary may hold at the meeting hex for at most this
+        // many turns waiting for the support. A support that needs longer does not stop the march.
+        public const int attackReinforcementMaxWaitTurns = 1;
         // Perf pre-filter:
         // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
         // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per

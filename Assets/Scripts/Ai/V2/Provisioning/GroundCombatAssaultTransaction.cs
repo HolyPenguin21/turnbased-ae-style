@@ -146,12 +146,15 @@ namespace Game.Ai.V2
 
         // §46 — the support convoy leg. `atRendezvous` tells the caller whether this step is the
         // atomic same-hex roster handoff or another transit step toward the primary.
+        // `meetingHex` (a committed Attack's rendezvous on the primary's route): the support walks
+        // there instead of to the primary's current hex, and waits there for the primary; the
+        // handoff still needs both armies on one hex.
         internal static GroundCombatLegCheck ValidateReinforcement(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             string lane, out bool atRendezvous, bool allowCommandHandover = false,
-            bool capacityIsProgress = false)
+            bool capacityIsProgress = false, HexCoord? meetingHex = null)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -166,8 +169,13 @@ namespace Game.Ai.V2
                     ProvisionFailure.MoverContended(
                         $"{lane} reinforcement support #{support.Id} is claimed by another mission or leg")));
 
-            HexCoord rendezvous = primary.Hex;
-            atRendezvous = support.Hex.Equals(rendezvous);
+            atRendezvous = support.Hex.Equals(primary.Hex);
+            HexCoord rendezvous = atRendezvous ? primary.Hex : meetingHex ?? primary.Hex;
+            if (!atRendezvous && support.Hex.Equals(rendezvous))
+                return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.MoverContended(
+                        $"{lane} reinforcement support #{support.Id} waits on the rendezvous "
+                        + $"({rendezvous.Q},{rendezvous.R}) for primary #{primary.Id}")));
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.

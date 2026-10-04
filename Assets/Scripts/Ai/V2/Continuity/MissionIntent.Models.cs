@@ -390,6 +390,10 @@ namespace Game.Ai.V2
         public int AirSupportAttemptedTurn = -1;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
+        // 2026-10-04 — a committed Assault's Reinforcement is one concrete operation: the bound
+        // SupportArmyId meets the primary on this hex of the primary's own route to the target
+        // (GroundCombatRendezvous). Null outside that Reinforcement; Continuity owns it.
+        public HexCoord? RendezvousHex;
         public int ReinforcementRequestedTurn = -1;
         // ATK §17 — the game turn this operation last took an opportunistic side strike. At most
         // one per Attack per turn, so the operation can never degenerate into a hunt. A plain

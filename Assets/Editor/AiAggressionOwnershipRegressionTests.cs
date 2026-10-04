@@ -91,14 +91,27 @@ namespace Game.EditorTests
             Assert.That(AttackPreparationReadiness.Assess(host, 90f, EmptySite(), 0f).Ready, Is.True);
         }
 
-        [Test]
-        public void AbovePowerBarWithoutDefenderCoverageIsNotReady()
+        // Coverage gates the march only while AiConfigV2.attackRequiresDefenderCoverage is on
+        // (2026-10-04 test behavior: off).
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AbovePowerBarWithoutDefenderCoverage_IsReadyOnlyWhenCoverageIsWaived(bool required)
         {
-            AttackPreparationAssessment result = AttackPreparationReadiness.Assess(Actor(7, Home),
-                100f, DefendedSite(), 0f);
-            Assert.That(result.PowerReady, Is.True);
-            Assert.That(result.Ready, Is.False);
-            Assert.That(result.Reason, Is.EqualTo("coverage_missing"));
+            bool previous = AiConfigV2.attackRequiresDefenderCoverage;
+            AiConfigV2.attackRequiresDefenderCoverage = required;
+            try
+            {
+                AttackPreparationAssessment result = AttackPreparationReadiness.Assess(Actor(7, Home),
+                    100f, DefendedSite(), 0f);
+                Assert.That(result.PowerReady, Is.True);
+                Assert.That(result.CoversAllDefenders, Is.False);
+                Assert.That(result.Ready, Is.EqualTo(!required));
+                Assert.That(result.Reason, Is.EqualTo(required ? "coverage_missing" : "ready"));
+            }
+            finally
+            {
+                AiConfigV2.attackRequiresDefenderCoverage = previous;
+            }
         }
 
         [Test]

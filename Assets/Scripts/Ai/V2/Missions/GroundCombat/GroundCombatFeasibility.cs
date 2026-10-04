@@ -60,7 +60,10 @@ namespace Game.Ai.V2
                 ? 1f
                 : WorthIt.EstimateSequential(attackers, attackerCommander, opposition,
                     defenderHexDefenseBonus).WinChance;
-            return cover && win >= minWinChance;
+            // `cover` stays the honest fact for logs and CoversAllDefenders; whether it gates this
+            // fight is the admission policy's answer.
+            return (cover || !GroundCombatAdmissionPolicy.RequiresCoverage(minWinChance))
+                && win >= minWinChance;
         }
 
         // THE numeric "power needed to clear these defenders" every Aggression lane sizes a

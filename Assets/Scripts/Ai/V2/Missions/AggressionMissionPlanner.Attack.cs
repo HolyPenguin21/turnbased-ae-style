@@ -405,6 +405,11 @@ namespace Game.Ai.V2
 
             if (!a.SupportArmyId.HasValue)
             {
+                // 2026-10-04 — a committed Assault's support is bound by Continuity alone, together
+                // with its rendezvous (ResolveCommittedAssault); a support released mid-pass is
+                // re-decided there on the next reconciliation, never by the batch solve.
+                if (a.AssaultStarted)
+                    return;
                 // §46 — an EXISTING free army is an actor-contention decision, not a capability
                 // request: it belongs in the SAME batch solve the assault legs run through, exactly
                 // as the Raid lane's unpinned reinforcement leg already does. Without this leg the
@@ -422,15 +427,29 @@ namespace Game.Ai.V2
             if (support == null)
                 return;
 
+            // 2026-10-04 — a committed Assault's Reinforcement meets on the primary's route: the
+            // primary keeps walking toward the target up to the rendezvous while the support walks
+            // there too; the handoff happens once both stand on it.
+            HexCoord? meet = a.RendezvousHex;
+            bool primaryArrived = !meet.HasValue || primary.Hex.Equals(meet.Value);
+            if (!primaryArrived)
+                AppendAttackPrimaryToRendezvous(intent, a, primary, meet.Value, proposals);
+            // A support already waiting on the rendezvous has nothing to do until the primary
+            // arrives.
+            if (!primaryArrived && support.Hex.Equals(meet.Value))
+                return;
+            HexCoord supportDestination = meet ?? primary.Hex;
+
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
-                support, primary.Hex, out int eta);
+                support, supportDestination, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Reinforcement,
                 Target = a.Target,
                 PrimaryArmyId = a.PrimaryArmyId,
                 SupportArmyId = a.SupportArmyId,
-                DestinationHex = primary.Hex,
+                DestinationHex = supportDestination,
+                RendezvousHex = meet,
                 EstimatedEta = eta,
                 OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };
@@ -446,7 +465,45 @@ namespace Game.Ai.V2
                 DurableFundingTier = intent.Funding,
                 Requirements = requirements,
                 Explain = $"Attack Reinforcement support #{support.ArmyId} -> primary "
-                    + $"#{a.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+                    + $"#{a.PrimaryArmyId} at ({supportDestination.Q},{supportDestination.R})",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            proposals.Add(proposal);
+        }
+
+        // The primary's half of a committed Reinforcement: one more step along its route toward
+        // the target, ending on the rendezvous Continuity chose (never behind the primary). A
+        // lifecycle leg of the Hard operation, so its intrinsic score stays neutral.
+        private static void AppendAttackPrimaryToRendezvous(MissionIntent intent, AttackIntent a,
+            ArmySnapshot primary, HexCoord rendezvous, List<MissionProposal> proposals)
+        {
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                primary, rendezvous, out int eta);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.Reinforcement,
+                PrimaryRendezvousLeg = true,
+                Target = a.Target,
+                PrimaryArmyId = a.PrimaryArmyId,
+                SupportArmyId = a.SupportArmyId,
+                DestinationHex = rendezvous,
+                RendezvousHex = rendezvous,
+                EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = 0f,
+                Score = default(TaskScore),
+                LocalAdmissionScore = 0f,
+                PreferredMoverArmyId = primary.ArmyId,
+                FromDurableIntent = true,
+                DurableFundingTier = intent.Funding,
+                Requirements = requirements,
+                Explain = $"Attack Reinforcement primary #{primary.ArmyId} -> rendezvous "
+                    + $"({rendezvous.Q},{rendezvous.R}) on its route to {a.Target.DiagnosticLabel}",
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
             proposals.Add(proposal);

@@ -153,9 +153,12 @@ namespace Game.Ai.V2
         {
             switch (at.Phase)
             {
+                // The support convoy and (committed Assault) the primary's own walk to the same
+                // rendezvous are two legs: never one provisioning/cooldown slot.
                 case AttackMissionPhase.Reinforcement:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Reinforcement,
-                        at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
+                        at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R,
+                        detailId: at.PrimaryRendezvousLeg ? 1 : 0);
                 case AttackMissionPhase.SupportReturn:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.SupportReturn,
                         at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
