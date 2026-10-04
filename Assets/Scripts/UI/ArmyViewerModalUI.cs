@@ -834,10 +834,13 @@ namespace Game.UI
         // displaying (VisibleMembers' result) using the same ComputeCapacity rule, so it always
         // agrees with what's on screen. Identical to _currentArmy.EffectiveCapacity whenever
         // `members` is the unfiltered roster (owner/edit mode).
+        // An airfield shows its stored aircraft plus the slots the one shared rule still leaves
+        // free (AviationRules.FreeAirfieldCapacity — own wings standing on the hex land into it).
         private int EffectiveCapacityFor(List<UnitData> members) =>
-            _currentArmy != null
-                ? System.Math.Max(ArmyData.ComputeCapacity(members, _currentArmy.IsGarrison), members.Count)
-                : 0;
+            _currentArmy == null ? 0
+            : _currentArmy.IsAirfield
+                ? members.Count + Game.Aviation.AviationRules.FreeAirfieldCapacity(_currentArmy.Hex, _currentArmy.Owner)
+            : System.Math.Max(ArmyData.ComputeCapacity(members, _currentArmy.IsGarrison), members.Count);
 
         // One slot per point of EffectiveCapacity, not just one per actual Member — the empty
         // ones render as faint placeholders (see ArmyUnitCardUI.Setup) so it's obvious a card

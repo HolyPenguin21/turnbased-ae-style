@@ -489,40 +489,20 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Ground-combat targets a strike sortie could hit, from the same fog-honest facts the
-        // Raid and Attack lanes read: every combat opportunity with known defenders
-        // (CombatOpportunityAnalyzer - neutral and hostile armies) and every hostile Attack
-        // structure with a known garrison (AttackObjectiveEvaluator.KnownSiteDefenders).
+        // Ground-combat targets a new aircraft would actually serve: the targets of EXISTING tasks
+        // (Attack in Assault, weak Raid, ActiveDefence threats) that still want air support and are
+        // not covered by a free formed wing — the same demand wing formation reads
+        // (AviationRebasePlanner.CombatSupportTargets). Never an arbitrary sighting outside a
+        // task, and never a Hex Event guard: aviation does not interact with events at all.
         private static List<HexCoord> KnownStrikeTargets(WorldSnapshot snap, PlayerSetupData player)
         {
-            // The same target set CombatOpportunityAnalyzer.Analyze(snap).All enumerates (enemy
-            // sightings, neutral sightings, event guards — in that order), read directly: only the
-            // hex and "has known defenders" matter here, so running its Monte Carlo was pure cost.
-            var targets = new List<HexCoord>();
-            void AddSighting(HexCoord hex, int defenderCount)
-            {
-                if (defenderCount > 0 && !targets.Contains(hex))
-                    targets.Add(hex);
-            }
-            if (snap?.Self != null && snap.Known != null)
-            {
-                foreach (AiMapMemory.KnownEnemySighting t in snap.Known.EnemySightings
-                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                    AddSighting(t.Hex, t.Defenders?.Count ?? 0);
-                foreach (AiMapMemory.KnownEnemySighting t in snap.Known.NeutralSightings
-                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                    AddSighting(t.Hex, t.Defenders?.Count ?? 0);
-                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards
-                    ?? (IReadOnlyList<KnownEventGuardSnapshot>)System.Array.Empty<KnownEventGuardSnapshot>())
-                    AddSighting(g.Hex, g.Defenders?.Count ?? 0);
-            }
-            foreach (AiMapMemory.KnownBuilding b in snap?.Known?.Buildings
-                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)System.Array.Empty<AiMapMemory.KnownBuilding>())
-                if (AttackObjectiveEvaluator.IsHostileStrategicStructure(b, player)
-                    && AttackObjectiveEvaluator.KnownSiteDefenders(snap, b.Hex).Count > 0
-                    && !targets.Contains(b.Hex))
-                    targets.Add(b.Hex);
-            return targets;
+            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            List<HexCoord> targets = AviationRebasePlanner.CombatSupportTargets(snap, intents);
+            int freeWings = ArmyRegistry.AllForOwner(player).Count(a => AviationRules.IsValidAirArmy(a)
+                && AirSortieRegistry.ForArmy(player, a) == null
+                && !GroundCombatLegs.HeldAirSupportArmyIdsOf(intents).Contains(a.Id));
+            return freeWings >= targets.Count ? new List<HexCoord>() : targets;
         }
 
         // The nearest strike target a sortie from this airfield proves it can reach and come back

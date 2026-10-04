@@ -25,6 +25,9 @@ namespace Game.Ai.V2
             {
                 yield return RunActiveDefenceStepCore(player, ctx, pm, result);
                 if (result.StopReason != ExecutionStopReason.StepCompleted) break;
+                // An air-support series that turned home has handed the wing to aviation recovery.
+                if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport
+                    && !GroundCombatAirSupport.SortieLive(player, pm.MoverArmyId, out _)) break;
             }
             FinishActiveDefence(player, root, pm, result, apBefore);
         }
@@ -50,6 +53,12 @@ namespace Game.Ai.V2
             {
                 result.StopReason = ctx?.Map == null
                     ? ExecutionStopReason.TargetInvalidated : ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+
+            if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.AirSupport)
+            {
+                yield return RunAirSupportStep(player, ctx, pm, result, army);
                 yield break;
             }
 
@@ -165,6 +174,38 @@ namespace Game.Ai.V2
             else if (!moved) result.StopReason = ExecutionStopReason.MoveRejected;
             else result.StopReason = army.CurrentMovement > 0
                 ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
+        }
+
+        // The wing's strike-series step against the threat at its honest current hex
+        // (re-read from memory every step: a moving threat is followed). Nothing is read from a
+        // global registry or a projection: only the real strike changes the world, and its
+        // published observation is what the next pass learns from.
+        private static IEnumerator RunAirSupportStep(PlayerSetupData player, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, ArmyData wing)
+        {
+            int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
+            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
+                .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
+                    && !s.Owner.IsNeutral)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            if (!AviationRules.IsValidAirArmy(wing) || !witness.HasValue
+                || !pm.ActiveDefenceTarget.AirSupportLandingHex.HasValue)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            HexCoord targetHex = witness.Value.Hex;
+            pm.ExecutionHex = targetHex;
+            pm.ActiveDefenceTarget.LastKnownHex = targetHex;
+            pm.ActiveDefenceTarget.LastObservedTurn = witness.Value.SeenTurn;
+            PlayerRoot root = PlayerRootRegistry.FindFor(player);
+            yield return GroundCombatLegStep.AirStrikeSortie(player, root, ctx, pm, result, wing,
+                targetHex, pm.ActiveDefenceTarget.AirSupportLandingHex.Value,
+                AirStrikePolicy.DefenceSupport(enemyId), "DefenceSupport",
+                $"flies to strike threat #{enemyId}");
+            // The real strike publishes the hex (VisionSystem.NotifyContentChanged); whether the
+            // threat is gone is then read from honest memory by Continuity on the next pass.
         }
 
         private static void FinishActiveDefence(PlayerSetupData player, PlayerRoot root,

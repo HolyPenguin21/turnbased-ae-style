@@ -58,31 +58,19 @@ namespace Game.Ai.V2
         // deliberately does not predict or avoid AA zones: route admission here is only movement,
         // landing capacity, endurance and resource feasibility.
 
-        // How many MORE aircraft `hex` can actually receive right now. The engine itself only
-        // capacity-checks the STORED container (new card deployment, see
-        // AviationRules.FreeAirfieldCapacity/ArmyActions.DeployUnitFromCard) — a landed,
-        // already-launched air army is a separate ArmyData the move layer never caps. This is
-        // deliberately MORE conservative than the engine: it also counts every other already-landed
-        // air army's aircraft against the same capacity, so the AI never voluntarily stacks more
-        // aircraft onto one airfield hex than its stated capacity. It also subtracts every OTHER
-        // active sortie's claim on this landing hex via ReservedLandingSlots below — an in-flight
-        // sortie is as real a claim on its slot as an aircraft already sitting there.
-        //
+        // How many MORE aircraft `hex` can receive for a planned landing: the one game rule
+        // (AviationRules.FreeAirfieldCapacity — stored aircraft and own wings standing on the hex)
+        // minus every OTHER active sortie's claim on this landing hex (ReservedLandingSlots): an
+        // in-flight sortie is as real a claim on its slot as an aircraft already sitting there.
         // `excluding` — the mover's own air army, so a sortie re-checking its ALREADY-chosen
-        // landing hex mid-flight does not count itself against its own capacity (as a landed army
-        // or, via its own AirSortie, as a reservation).
+        // landing hex never counts itself (as a standing wing or as a reservation).
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
         {
-            int capacity = AviationRules.AirfieldCapacityAt(hex, owner);
-            if (capacity <= 0)
+            int free = AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
+            if (free <= 0)
                 return 0;
-            int used = AviationRules.FindAirfieldAt(hex, owner)?.Members.Count ?? 0;
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-                if (army != excluding && army.Owner == owner && AviationRules.IsAirArmy(army))
-                    used += army.Members.Count;
             AirSortie excludingTask = excluding != null ? AirSortieRegistry.ForArmy(owner, excluding) : null;
-            used += ReservedLandingSlots(hex, owner, excludingTask);
-            return Mathf.Max(0, capacity - used);
+            return Mathf.Max(0, free - ReservedLandingSlots(hex, owner, excludingTask));
         }
 
         // How many of `hex`'s free slots are already spoken for by OTHER active Strike/Recon/Rebase
@@ -752,8 +740,9 @@ namespace Game.Ai.V2
                         + $"({decision.TargetHex.Q},{decision.TargetHex.R}).");
                     yield break;
                 }
-                bool launched = AviationActions.TryLaunch(airfield, decision.AircraftToLaunch.ToList(),
-                    ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection, out airArmy, out string failReason);
+                // The one formation path; without an ownership view it never repurposes an army.
+                bool launched = AviationWingPreparation.TryForm(player, ctx, airfield,
+                    decision.AircraftToLaunch.ToList(), null, out airArmy, out string failReason);
                 if (!launched || airArmy == null)
                 {
                     AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — {failReason}");

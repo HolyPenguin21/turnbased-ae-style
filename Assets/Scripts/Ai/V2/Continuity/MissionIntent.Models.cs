@@ -61,7 +61,15 @@ namespace Game.Ai.V2
             phase == ActiveDefencePhase.Return
                 ? new MissionIntentKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Return,
                     moverArmyId ?? 0, returnHex?.Q ?? 0, returnHex?.R ?? 0)
-                : ForActiveDefence(enemyArmyId);
+                : phase == ActiveDefencePhase.AirSupport
+                    ? ForActiveDefenceAirSupport(enemyArmyId)
+                    : ForActiveDefence(enemyArmyId);
+
+        // The air support of one threat: identified by the enemy army it answers, on its own
+        // SubKind so it never collides with (or overwrites) that threat's ground Intercept.
+        public static MissionIntentKey ForActiveDefenceAirSupport(int enemyArmyId) =>
+            new MissionIntentKey(MissionKind.ActiveDefence,
+                (int)ActiveDefencePhase.AirSupport, enemyArmyId, 0, 0);
 
         // The ONE Economy objective encoding, shared by MissionIntentKey, StableMissionKey (and
         // so every Economy reservation owner key): a recovery walk is identified by its actor, a
@@ -166,7 +174,9 @@ namespace Game.Ai.V2
             if (Kind == MissionKind.ActiveDefence)
                 return SubKind == (int)ActiveDefencePhase.Return
                     ? $"Intent(ActiveDefence Return #{ObjectiveId} -> {Q},{R})"
-                    : $"Intent(ActiveDefence Army#{ObjectiveId})";
+                    : SubKind == (int)ActiveDefencePhase.AirSupport
+                        ? $"Intent(ActiveDefence AirSupport Army#{ObjectiveId})"
+                        : $"Intent(ActiveDefence Army#{ObjectiveId})";
             if (Kind == MissionKind.Economy)
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             if (Kind == MissionKind.Development)
@@ -324,6 +334,12 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
+        // AirSupport phase only: the bound wing — deliberately not PrimaryArmyId, so no ground
+        // logic (assembly, assault transaction, ground claims) ever reads an aircraft as its actor.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        public int AirSupportBoundTurn;
+        public bool AirSupportSortieSeen;
     }
 
     // ATK §22 — the durable Attack operation. ONE intent is ONE target structure (§7): a hostile

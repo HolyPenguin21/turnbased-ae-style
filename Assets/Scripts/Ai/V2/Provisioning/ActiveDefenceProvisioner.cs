@@ -26,6 +26,8 @@ namespace Game.Ai.V2
 
             if (target.Phase == ActiveDefencePhase.Return)
                 return ProvisionReturn(player, root, ctx, session, funded, target);
+            if (target.Phase == ActiveDefencePhase.AirSupport)
+                return ProvisionAirSupport(player, root, ctx, session, funded, target);
 
             AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.AllKnownEnemySightings(player)
                 .Where(s => s.ArmyId == target.EnemyArmyId && s.Owner != null
@@ -87,6 +89,46 @@ namespace Game.Ai.V2
                 // this one number exactly once.
                 ClaimedAp = assault.ActualAp,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
+        }
+
+        // The wing striking the threat: the one GroundCombatAirSupport provisioning, aimed at the
+        // threat's honest last-known hex (it follows the threat). Nothing about the ground
+        // response is required — no PrimaryArmyId, no intercept win chance.
+        private static ProvisioningResult ProvisionAirSupport(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            ActiveDefenceMissionTarget target)
+        {
+            if (!target.AirSupportArmyId.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "active defence air support has no wing"));
+            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.AllKnownEnemySightings(player)
+                .Where(s => s.ArmyId == target.EnemyArmyId && s.Owner != null
+                    && !s.Owner.IsNeutral && s.Owner != player)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            if (!sighting.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"active defence air support: enemy #{target.EnemyArmyId} has no honest sighting"));
+            if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
+                    "active-defence", out AirSupportWing w, out ProvisionFailure wingFailure))
+                return ProvisioningResult.Fail(wingFailure);
+            HexCoord targetHex = sighting.Value.Hex;
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
+                    "active-defence", eps, out HexCoord landing, out float ap, out float energy,
+                    out ProvisionFailure finishFailure))
+                return ProvisioningResult.Fail(finishFailure);
+            target.LastKnownHex = targetHex;
+            target.LastObservedTurn = sighting.Value.SeenTurn;
+            target.AirSupportLandingHex = landing;
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                Kind = MissionKind.ActiveDefence, MoverArmyId = w.Wing.Id,
+                FocusHex = targetHex, ExecutionHex = targetHex,
+                ActiveDefenceTarget = target,
+                ClaimedAp = ap, ClaimedEnergy = energy,
+                ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
+            });
         }
 
         private static ProvisioningResult ProvisionReturn(PlayerSetupData player, PlayerRoot root,

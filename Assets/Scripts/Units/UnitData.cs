@@ -91,6 +91,12 @@ namespace Game.Units
         public int ConsecutiveUnlandedEnds;
         public bool HasEmergencyFlightPenalty;
         public bool HasAirAttackedThisTurn;
+        // This aircraft's current sortie has already paid its launch (ActivationApCost +
+        // LaunchEnergyCost). Lives on the card instance, not the army: it survives turn changes
+        // and transfers between airborne stacks, so neither a new turn nor a new shell makes an
+        // airborne aircraft pay again, and a stored aircraft joining a paid stack still owes its
+        // own share. Cleared only by a completed landing (AviationRules.ResetAfterLanding).
+        public bool SortieLaunchPaid;
 
         // The card this unit was originally deployed from, if any — carried over at spawn time
         // (see HexSelectionController.Factory.SpawnUnit) purely so a container that can lose its

@@ -40,10 +40,46 @@ namespace Game.Aviation
             return IsAirfieldBuilding(building, owner) ? building.AirfieldCapacity : 0;
         }
 
-        public static int FreeAirfieldCapacity(HexCoord hex, PlayerSetupData owner)
+        // THE free-slot rule of an airfield, shared by card deployment, transfers, formation,
+        // landing planning, rebase, the real landing and UI:
+        //   capacity − aircraft stored in the container − aircraft of the owner's own air armies
+        //   standing on the hex (they land into it at the end of this turn).
+        // `excluding` — an air army whose own aircraft must not be counted against itself (a wing
+        // re-checking the field it is landing at, or a stack transferring into the container).
+        // AI in-flight landing reservations are a planning claim layered on top of this by
+        // AiAirSortiePlanner.FreeLandingCapacity — never a second capacity formula.
+        public static int FreeAirfieldCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
         {
-            ArmyData airfield = FindAirfieldAt(hex, owner);
-            return Mathf.Max(0, AirfieldCapacityAt(hex, owner) - (airfield?.Members.Count ?? 0));
+            int free = FreeStorageSlots(hex, owner);
+            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
+                if (army != excluding && army.Owner == owner && IsAirArmy(army))
+                    free -= army.Members.Count;
+            return Mathf.Max(0, free);
+        }
+
+        // capacity − stored aircraft only: the slots the real landing transaction converts a
+        // standing wing's claim into (AviationActions.LandInSlotOrder). Every wing on the hex is
+        // landed in turn against this, so two wings can never be landed into one slot.
+        public static int FreeStorageSlots(HexCoord hex, PlayerSetupData owner)
+        {
+            int capacity = AirfieldCapacityAt(hex, owner);
+            if (capacity <= 0)
+                return 0;
+            return Mathf.Max(0, capacity - (FindAirfieldAt(hex, owner)?.Members.Count ?? 0));
+        }
+
+        // Keeps an army's stored air/ground flag and its marker in step with its roster after a
+        // transfer or landing: a stack of aircraft is an air army, an emptied former wing is an
+        // ordinary empty shell again (free for ground or air reuse). Containers never change.
+        public static void SyncAirArmyShell(ArmyData army, HexSelectionController hexSelection)
+        {
+            if (army == null || army.IsAirfield || army.IsGarrison || army.IsPrison)
+                return;
+            bool air = IsAirArmy(army);
+            if (army.IsAirArmy == air)
+                return;
+            army.IsAirArmy = air;
+            hexSelection?.RefreshArmyAirLook(army);
         }
 
         public static bool CanContain(ArmyData target, UnitData unit)
@@ -138,6 +174,8 @@ namespace Game.Aviation
                 return;
             aircraft.ConsecutiveUnlandedEnds = 0;
             aircraft.HasEmergencyFlightPenalty = false;
+            // A completed landing ends the sortie: the next take-off is a new, paid launch.
+            aircraft.SortieLaunchPaid = false;
         }
     }
 }

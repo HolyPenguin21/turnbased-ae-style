@@ -53,6 +53,8 @@ namespace Game.Ai.V2
                     + $":{i.Raid?.Target.DiagnosticLabel}"
                     + $":{i.Raid?.Phase}{i.Attack?.Phase}{i.ActiveDefence?.Phase}"
                     + $":{i.Raid?.SupportArmyId}{i.Attack?.SupportArmyId}"
+                    // A bound support wing changes which task targets still want aviation.
+                    + $":air{GroundCombatLegs.HeldAirSupportArmyId(i)}"
                     + $":{i.Raid?.ReinforcementRequestedTurn}{i.Attack?.ReinforcementRequestedTurn}"
                     + $":{(i.Attack?.Preparation == true ? "P" : "")}{(i.Attack?.AssaultStarted == true ? "A" : "")}"
                     + $":sup{string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i))}")

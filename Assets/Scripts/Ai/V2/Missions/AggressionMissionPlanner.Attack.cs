@@ -308,7 +308,8 @@ namespace Game.Ai.V2
                 return;
             ArmySnapshot wing = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == a.AirSupportArmyId.Value && x.IsAir && !x.IsAirfield);
-            if (wing == null)
+            if (wing == null
+                || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, wing.ArmyId, snap.TurnNumber))
                 return;
             int eta = GroundCombatAirSupport.SortieEta(wing, a.Target.Hex);
             var target = new AttackMissionTarget

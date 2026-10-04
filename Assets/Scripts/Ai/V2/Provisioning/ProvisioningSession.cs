@@ -21,11 +21,6 @@ namespace Game.Ai.V2
         public float ApClaimed { get; private set; }
         // Cumulative current-turn aviation Energy claimed in this planning pass.
         public float EnergyClaimed { get; private set; }
-        // Cumulative NEXT-turn activation promised by multi-turn aviation admitted earlier in the
-        // same pass. This prevents several wings from independently spending the same projected
-        // Energy/AP. It is ephemeral; next round derives the real bank from live airborne armies.
-        public float NextTurnAirEnergyClaimed { get; private set; }
-        public float NextTurnAirApClaimed { get; private set; }
         public readonly HashSet<int> ClaimedArmyIds = new HashSet<int>();
         // Durable ownership is distinct from same-pass claims. Provisioning must preserve both:
         // the batch solvers filter with this set, and Raid live revalidation uses it for hosts and
@@ -64,8 +59,6 @@ namespace Game.Ai.V2
             _successful[k] = m;
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;
-            NextTurnAirEnergyClaimed += m.ClaimedNextTurnAirEnergy;
-            NextTurnAirApClaimed += m.ClaimedNextTurnAirAp;
             ClaimedArmyIds.Add(m.MoverArmyId);
             // A deferred garrison-extraction mission's MoverArmyId is a synthetic negative id; the
             // garrison and the chosen container (if one already exists — Shell/Host tiers) are the

@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Game.Aviation
 {
-    public enum AirStrikePolicyKind { Standard, RaidSupport }
+    public enum AirStrikePolicyKind { Standard, RaidSupport, DefenceSupport }
 
     // A transient policy supplied by the caller that owns the mission. Standard preserves the
     // ordinary endpoint strike exactly; RaidSupport pins one physical target and a survivor floor.
@@ -32,6 +32,9 @@ namespace Game.Aviation
         public static AirStrikePolicy Standard => new AirStrikePolicy(AirStrikePolicyKind.Standard);
         public static AirStrikePolicy RaidSupport(int targetArmyId) =>
             new AirStrikePolicy(AirStrikePolicyKind.RaidSupport, targetArmyId, 1);
+        // ActiveDefence: the one threatening army the defence answers, struck to destruction.
+        public static AirStrikePolicy DefenceSupport(int targetArmyId) =>
+            new AirStrikePolicy(AirStrikePolicyKind.DefenceSupport, targetArmyId, 0);
     }
 
     // Map/UI adapter for aviation combat. Ordinary ground contact and aviation share
@@ -84,6 +87,9 @@ namespace Game.Aviation
             airArmy.LastAirStrikeHex = hex;
             airArmy.LastAirStrikeAttacked = result.Attacked;
         }
+
+        // Dice source of the headless strike path only (never used while a popup exists).
+        public static System.Random HeadlessRng = new System.Random();
 
         public sealed class AirStrikeResult
         {
@@ -190,7 +196,8 @@ namespace Game.Aviation
                 if (pool.Count == 0)
                     break;
 
-                (UnitData target, ArmyData targetArmy) = pool[Random.Range(0, pool.Count)];
+                (UnitData target, ArmyData targetArmy) = pool[attackPopup != null
+                    ? Random.Range(0, pool.Count) : HeadlessRng.Next(pool.Count)];
                 aircraft.HasAirAttackedThisTurn = true;
                 Game.Map.StealthSystem.ExitStealth(target);
                 if (result != null)
@@ -203,24 +210,37 @@ namespace Game.Aviation
                 int? defenderPoolOverride = target.IsHero ? target.FateMax : (int?)null;
 
                 bool resolved = false;
-                attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
-                    onResolved: roll =>
+                void Apply(BattleChallengeRollResult roll)
+                {
+                    BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
+                        aircraft, target, roll,
+                        attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
+                        null, defenderHero);
+                    resolved = true;
+                    if (result != null)
+                        result.DamageDealt += Mathf.Max(0, application.Damage);
+                    if (application.DefenderDied)
                     {
-                        BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
-                            aircraft, target, roll,
-                            attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
-                            null, defenderHero);
-                        resolved = true;
-                        if (result != null)
-                            result.DamageDealt += Mathf.Max(0, application.Damage);
-                        if (application.DefenderDied)
-                        {
-                            targetArmy.Members.Remove(target);
-                            Game.Map.StealthSystem.OnUnitRemoved(target);
-                        }
-                    },
-                    defenderPoolSize: defenderPoolOverride);
-                yield return new WaitUntil(() => resolved);
+                        targetArmy.Members.Remove(target);
+                        Game.Map.StealthSystem.OnUnitRemoved(target);
+                    }
+                }
+                if (attackPopup != null)
+                {
+                    attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
+                        onResolved: Apply, defenderPoolSize: defenderPoolOverride);
+                    yield return new WaitUntil(() => resolved);
+                }
+                else
+                {
+                    // Headless (no popup in the scene, e.g. automated tests): the same pools the
+                    // popup rolls — aircraft Attack vs the target's Defense (a hero's FateMax) —
+                    // through the same ResolveStandaloneAttack; dice from HeadlessRng, no Fate duel.
+                    int defensePool = defenderPoolOverride ?? target.Defense;
+                    Apply(new BattleChallengeRollResult(
+                        BattleSimulationKernel.RollDice(Mathf.Max(0, aircraft.Attack), HeadlessRng),
+                        BattleSimulationKernel.RollDice(Mathf.Max(0, defensePool), HeadlessRng), 0, 0));
+                }
 
                 hexSelection?.RestackArmiesOn(targetArmy.Hex, null);
                 if (targetArmy.Members.Count == 0)

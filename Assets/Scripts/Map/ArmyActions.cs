@@ -93,6 +93,41 @@ namespace Game.Map
             return army;
         }
 
+        // THE activation gate and debit for an army's next action (move order or stationary air
+        // strike), shared by the human order path, the route arrow and the AI. Costs come from
+        // ArmyData.PendingActivationApCost/EnergyCost: a ground army once per turn, an air army
+        // once per sortie (members already flagged SortieLaunchPaid are free). Nothing is spent
+        // unless the whole cost is affordable.
+        public static bool CanAffordActivation(ArmyData army, PlayerRoot root)
+        {
+            if (army == null)
+                return false;
+            if (!army.RequiresActivationPayment)
+                return true;
+            return root != null && root.CanSpendActionPoints(army.PendingActivationApCost)
+                && root.GetResource(ResourceType.Energy) >= army.PendingActivationEnergyCost;
+        }
+
+        public static bool TryPayActivation(ArmyData army, PlayerRoot root)
+        {
+            if (!CanAffordActivation(army, root))
+                return false;
+            if (army.RequiresActivationPayment)
+            {
+                int ap = army.PendingActivationApCost;
+                int energy = army.PendingActivationEnergyCost;
+                if (ap > 0)
+                    root.SpendActionPoints(ap);
+                if (energy > 0)
+                    root.AddResource(ResourceType.Energy, -energy);
+            }
+            if (AviationRules.IsAirArmy(army))
+                foreach (UnitData member in army.Members)
+                    member.SortieLaunchPaid = true;
+            army.MarkActivated();
+            return true;
+        }
+
         public static int EffectiveDeployApCost(CardDefinition definition)
         {
             if (definition == null)
@@ -227,7 +262,7 @@ namespace Game.Map
                 return false;
             }
             if (destination.IsAirfield
-                && destination.Members.Count >= AviationRules.AirfieldCapacityAt(deploymentHex, owner))
+                && AviationRules.FreeAirfieldCapacity(deploymentHex, owner) < 1)
             {
                 failReason = $"The airfield at {deploymentHex} is full.";
                 return false;
@@ -323,7 +358,12 @@ namespace Game.Map
                     : "Ground units and heroes cannot join aviation.";
                 return false;
             }
-            if (target.IsAirfield && target.Members.Count >= AviationRules.AirfieldCapacityAt(target.Hex, target.Owner))
+            if (target.IsAirfield && unit.IsAviation && !source.Hex.Equals(target.Hex))
+            {
+                failReason = $"{unit.Name} must be at the airfield to land there.";
+                return false;
+            }
+            if (target.IsAirfield && AviationRules.FreeAirfieldCapacity(target.Hex, target.Owner, source) < 1)
             {
                 failReason = $"The airfield at {target.Hex} is full.";
                 return false;
@@ -343,34 +383,30 @@ namespace Game.Map
                 return false;
             }
 
+            // Aviation never pays on a transfer: an aircraft that has not yet paid its sortie
+            // launch (UnitData.SortieLaunchPaid) is charged by its stack's next flight action
+            // (TryPayActivation), and storing an aircraft in its airfield is a landing.
             PlayerRoot targetRoot = null;
-            bool requiresCharge = target.RequiresActivationCharge(unit);
-            int energyCost = requiresCharge && unit.IsAviation ? unit.LaunchEnergyCost : 0;
+            bool requiresCharge = !unit.IsAviation && target.RequiresActivationCharge(unit);
             if (requiresCharge)
             {
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost)
-                    || targetRoot.GetResource(ResourceType.Energy) < energyCost)
+                if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unit.Name} to {target.Name} "
-                        + $"({unit.ActivationApCost} AP, {energyCost} Energy needed — it already moved this turn).";
+                        + $"({unit.ActivationApCost} AP needed — it already moved this turn).";
                     return false;
                 }
             }
 
             source.Members.Remove(unit);
-            if (promoteToAirArmy)
-            {
-                target.IsAirArmy = true;
-                hexSelectionController?.RefreshArmyAirLook(target);
-            }
             target.AddMemberSorted(unit);
+            if (target.IsAirfield)
+                AviationRules.ResetAfterLanding(unit);
+            AviationRules.SyncAirArmyShell(source, hexSelectionController);
+            AviationRules.SyncAirArmyShell(target, hexSelectionController);
             if (requiresCharge)
-            {
                 targetRoot?.SpendActionPoints(unit.ActivationApCost);
-                if (energyCost > 0)
-                    targetRoot?.AddResource(ResourceType.Energy, -energyCost);
-            }
             target.MarkUnitActivationPaid(unit);
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
@@ -477,8 +513,13 @@ namespace Game.Map
                 failReason = $"The batch wouldn't fit in {target.Name}.";
                 return false;
             }
+            if (target.IsAirfield && distinct.Any(u => u.IsAviation) && !source.Hex.Equals(target.Hex))
+            {
+                failReason = $"Aircraft must be at the airfield at {target.Hex} to land there.";
+                return false;
+            }
             if (target.IsAirfield
-                && projectedTarget.Count > AviationRules.AirfieldCapacityAt(target.Hex, target.Owner))
+                && distinct.Count - back.Count > AviationRules.FreeAirfieldCapacity(target.Hex, target.Owner, source))
             {
                 failReason = $"The airfield at {target.Hex} is full.";
                 return false;
@@ -486,20 +527,19 @@ namespace Game.Map
 
             if (!requireChargeNow)
                 return true;
-            var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
-            var chargeableBack = back.Where(source.RequiresActivationCharge).ToList();
+            // Aviation is never charged on a transfer (see TransferMember): its launch is paid by
+            // the stack's next flight action through TryPayActivation.
+            var chargeable = distinct.Where(u => !u.IsAviation && target.RequiresActivationCharge(u)).ToList();
+            var chargeableBack = back.Where(u => !u.IsAviation && source.RequiresActivationCharge(u)).ToList();
             if (chargeable.Count > 0 || chargeableBack.Count > 0)
             {
                 totalApCost = TransferMembersApCost(chargeable, target)
                     + TransferMembersApCost(chargeableBack, source);
-                totalEnergyCost = chargeable.Concat(chargeableBack)
-                    .Where(u => u.IsAviation).Sum(u => u.LaunchEnergyCost);
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost)
-                    || targetRoot.GetResource(ResourceType.Energy) < totalEnergyCost)
+                if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
                 {
                     failReason = $"Not enough action points to add the batch to {target.Name} "
-                        + $"({totalApCost} AP, {totalEnergyCost} Energy needed — it already moved this turn).";
+                        + $"({totalApCost} AP needed — it already moved this turn).";
                     return false;
                 }
             }
@@ -538,9 +578,15 @@ namespace Game.Map
                 source.AddMemberSorted(unit);
             if (promoteToCommander != null && target.Members.IndexOf(promoteToCommander) > 0)
                 target.TryReorderCommander(promoteToCommander, out _);
+            if (target.IsAirfield)
+                foreach (UnitData unit in units)
+                    AviationRules.ResetAfterLanding(unit);
+            if (source.IsAirfield)
+                foreach (UnitData unit in back)
+                    AviationRules.ResetAfterLanding(unit);
+            AviationRules.SyncAirArmyShell(source, hexSelectionController);
+            AviationRules.SyncAirArmyShell(target, hexSelectionController);
             targetRoot?.SpendActionPoints(totalApCost);
-            if (totalEnergyCost > 0)
-                targetRoot?.AddResource(ResourceType.Energy, -totalEnergyCost);
             foreach (UnitData unit in units)
                 target.MarkUnitActivationPaid(unit);
             foreach (UnitData unit in back)

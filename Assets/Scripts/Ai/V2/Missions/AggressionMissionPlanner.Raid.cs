@@ -393,7 +393,9 @@ namespace Game.Ai.V2
             HexCoord landing;
             if (ri.Phase == RaidMissionPhase.AirSupport)
             {
-                if (!ri.AirSupportArmyId.HasValue)
+                if (!ri.AirSupportArmyId.HasValue
+                    || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, ri.AirSupportArmyId.Value,
+                        snap.TurnNumber))
                     return null;
                 airId = ri.AirSupportArmyId.Value;
                 scored = RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, airId);

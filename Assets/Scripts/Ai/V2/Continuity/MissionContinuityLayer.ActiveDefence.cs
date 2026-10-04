@@ -24,6 +24,8 @@ namespace Game.Ai.V2
             MissionIntent intent, List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)
         {
             ActiveDefenceIntent defence = intent.ActiveDefence;
+            if (defence?.Phase == ActiveDefencePhase.AirSupport)
+                return ResolveActiveDefenceAirSupport(player, snap, intent, defence);
             ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                 && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
             if (defence == null || actor == null || ShouldReap(intent, snap?.TurnNumber ?? 0))
@@ -101,6 +103,47 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // AirSupport — the wing striking this threat beside the ground answer. Kept while the
+        // threat is still a listed objective (honest memory; the ground Intercept may have ended,
+        // be regrouping, retreating or never have existed) and the wing still flies its strike
+        // series or was bound this turn and has not launched yet. A lost contact, a finished threat
+        // or a series that is over ends only this intent; an airborne wing then flies home
+        // (GroundCombatAirSupport.ReleaseOrphanStrikes), never left holding forever.
+        private static bool ResolveActiveDefenceAirSupport(PlayerSetupData player, WorldSnapshot snap,
+            MissionIntent intent, ActiveDefenceIntent defence)
+        {
+            int turn = snap?.TurnNumber ?? 0;
+            bool flying = GroundCombatAirSupport.SortieLive(player, defence.AirSupportArmyId,
+                out bool wingValid);
+            if (flying)
+                defence.AirSupportSortieSeen = true;
+            ActiveDefenceObjective objective =
+                ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+            string end = !defence.AirSupportArmyId.HasValue ? "no_wing"
+                : !wingValid ? "wing_lost"
+                : objective == null ? "threat_no_longer_listed"
+                : !flying && (defence.AirSupportSortieSeen || defence.AirSupportBoundTurn < turn)
+                    ? (defence.AirSupportSortieSeen ? "series_over" : "never_took_off")
+                : ShouldReap(intent, turn) ? "reaped"
+                : null;
+            if (end != null)
+            {
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][AirSupport][Continuity] decision=END "
+                    + $"{intent.IntentKey} wing={defence.AirSupportArmyId} reason={end}");
+                return false;
+            }
+            ActiveDefenceMissionTarget current = objective.Target;
+            defence.LastKnownHex = current.LastKnownHex;
+            defence.LastObservedTurn = current.LastObservedTurn;
+            defence.Confidence = current.Confidence;
+            defence.ProtectedAssetHex = current.ProtectedAssetHex;
+            defence.ProtectedAssetKind = current.ProtectedAssetKind;
+            defence.ProtectedAssetValue = current.ProtectedAssetValue;
+            defence.ThreatSeverity = current.ThreatSeverity;
+            ResumeTransientSuspension(intent);
+            return true;
+        }
+
         private static void CreateActiveDefenceIntent(MissionIntentState state,
             MissionTurnOutcome o, int turn)
         {
@@ -114,9 +157,16 @@ namespace Game.Ai.V2
                 ProtectedAssetKind = t.ProtectedAssetKind,
                 ProtectedAssetValue = t.ProtectedAssetValue,
                 ThreatSeverity = t.ThreatSeverity,
-                PrimaryArmyId = o.MoverArmyId ?? t.PrimaryArmyId,
+                // The AirSupport mover is the wing: it is kept apart from the ground actor slot.
+                PrimaryArmyId = t.Phase == ActiveDefencePhase.AirSupport ? null
+                    : o.MoverArmyId ?? t.PrimaryArmyId,
                 ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
+                AirSupportArmyId = t.Phase == ActiveDefencePhase.AirSupport
+                    ? o.MoverArmyId ?? t.AirSupportArmyId : null,
+                AirSupportLandingHex = t.AirSupportLandingHex,
+                AirSupportBoundTurn = turn,
+                AirSupportSortieSeen = t.Phase == ActiveDefencePhase.AirSupport,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);

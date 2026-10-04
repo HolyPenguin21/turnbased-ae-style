@@ -79,8 +79,10 @@ namespace Game.Ai.V2
     {
         // Was ReconAirExecutor.MaxAirActorsPerTurn — hoisted so the capacity snapshot honours the
         // same per-turn ceiling the executor enforces (it stops after this many air actors,
-        // continued + newly launched combined).
-        public const int MaxAirReconActorsPerTurn = 2;
+        // continued + newly launched combined). One AirSweep actor per turn: a continuing sortie
+        // and a fresh launch share the single slot. Mandatory returns and other aviation
+        // operations are not Recon actors and never count against it.
+        public const int MaxAirReconActorsPerTurn = 1;
 
         // The ONE rule for "can aviation service this Recon objective at all": generic Observation
         // only — never Explore/GroundTraversal (a physical visit), never a stealth-Required or
@@ -160,8 +162,8 @@ namespace Game.Ai.V2
                 .OrderBy(a => a.Id))
             {
                 detail.AirborneWings.Add(new AirObservationSlot(a.Id,
-                    a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
-                    a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
+                    Mathf.Max(0, a.PendingActivationApCost),
+                    Mathf.Max(0, a.PendingActivationEnergyCost)));
             }
 
             // Budget bases for the loose WorldAnalysis fallback greedy below. STRUCTURAL only —
@@ -176,13 +178,13 @@ namespace Game.Ai.V2
             // capped here; Assignment/Provisioning own those decisions.
             foreach (ArmyData a in ownAir
                 .Where(a => IsReadyStandaloneWing(player, a))
-                .OrderBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost))
-                .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
+                .OrderBy(a => Mathf.Max(0, a.PendingActivationEnergyCost))
+                .ThenBy(a => Mathf.Max(0, a.PendingActivationApCost))
                 .ThenBy(a => a.Id))
             {
                 detail.SpareCandidatesInOrder.Add(new AirObservationSlot(a.Id,
-                    a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost),
-                    a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
+                    Mathf.Max(0, a.PendingActivationApCost),
+                    Mathf.Max(0, a.PendingActivationEnergyCost)));
             }
 
             // Recon never materializes aircraft from storage. AirSweep may only use an already

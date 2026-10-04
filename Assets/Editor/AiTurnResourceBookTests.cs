@@ -177,7 +177,6 @@ namespace Game.EditorTests
             var mission = new ProvisionedMission
             {
                 MoverArmyId = 17, ClaimedAp = 2f, ClaimedEnergy = 3f,
-                ClaimedNextTurnAirAp = 1f, ClaimedNextTurnAirEnergy = 4f,
             };
             var key = default(StableMissionKey);
             session.RegisterSuccess(key, mission);
@@ -185,8 +184,6 @@ namespace Game.EditorTests
             Assert.That(session.Successful, Has.Count.EqualTo(1));
             Assert.That(session.ApClaimed, Is.EqualTo(2f));
             Assert.That(session.EnergyClaimed, Is.EqualTo(3f));
-            Assert.That(session.NextTurnAirApClaimed, Is.EqualTo(1f));
-            Assert.That(session.NextTurnAirEnergyClaimed, Is.EqualTo(4f));
             Assert.That(session.ClaimedArmyIds, Does.Contain(17));
         }
 

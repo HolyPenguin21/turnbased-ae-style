@@ -146,8 +146,12 @@ namespace Game.EditorTests
             Assert.That(defence.SupportArmyId, Is.Null);
             Assert.That(typeof(ActiveDefenceIntent).GetField("SupportArmyId"), Is.Null);
             Assert.That(typeof(ActiveDefenceMissionTarget).GetField("SupportArmyId"), Is.Null);
+            // AirSupport (2026-10-04) holds an aircraft wing in its own field, never a ground
+            // support army; the ground phases keep their numeric values.
             Assert.That(System.Enum.GetNames(typeof(ActiveDefencePhase)),
-                Is.EquivalentTo(new[] { "Intercept", "Return" }));
+                Is.EquivalentTo(new[] { "Intercept", "Return", "AirSupport" }));
+            Assert.That((int)ActiveDefencePhase.Intercept, Is.Zero);
+            Assert.That((int)ActiveDefencePhase.Return, Is.EqualTo(1));
         }
 
         [Test]

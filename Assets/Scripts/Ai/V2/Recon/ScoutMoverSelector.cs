@@ -59,10 +59,6 @@ namespace Game.Ai.V2
         // AirSortieReservationAdmission -> AviationSortieReservationEvaluator) consumes — no layer
         // below Provisioning re-probes a route to re-derive it.
         public readonly float RouteScore;
-        // If the proven air route spans another turn, this is the one next-turn activation Energy
-        // that must remain fundable. It is 0 for Ground and same-turn air candidates.
-        public readonly float NextTurnEnergy;
-        public readonly float NextTurnAp;
 
         // Executor identity. Both supported kinds carry a real ArmySnapshot.
         public readonly ScoutExecutorKind ExecutorKind;
@@ -80,8 +76,7 @@ namespace Game.Ai.V2
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
             ScoutExecutorKind executorKind = ScoutExecutorKind.Ground,
             float requiredEnergy = 0f, float routeScore = 0f,
-            int sourceGarrisonArmyId = 0, int materializationArmyId = 0, float nextTurnEnergy = 0f,
-            float nextTurnAp = 0f)
+            int sourceGarrisonArmyId = 0, int materializationArmyId = 0)
         {
             Army = army;
             ExecutionHex = executionHex;
@@ -95,8 +90,6 @@ namespace Game.Ai.V2
             ExecutorKind = executorKind;
             RequiredEnergy = requiredEnergy;
             RouteScore = routeScore;
-            NextTurnEnergy = nextTurnEnergy;
-            NextTurnAp = nextTurnAp;
             SourceGarrisonArmyId = sourceGarrisonArmyId;
             MaterializationArmyId = materializationArmyId;
         }

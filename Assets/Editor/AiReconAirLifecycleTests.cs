@@ -52,24 +52,6 @@ namespace Game.EditorTests
                 new List<UnitData> { unit }), Is.EqualTo(expected));
         }
 
-        [Test]
-        public void FutureActivationBudget_UsesCumulativeEnergyAndGuaranteedApFloor()
-        {
-            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
-                null, null, energyAvailableAfterCurrentActivation: 5f,
-                nextTurnEnergyCost: 5f, nextTurnApCost: 6f, out _), Is.True);
-
-            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
-                null, null, energyAvailableAfterCurrentActivation: 5f,
-                nextTurnEnergyCost: 6f, nextTurnApCost: 6f, out string energyBlock), Is.False);
-            Assert.That(energyBlock, Is.EqualTo("insufficient_next_turn_air_energy"));
-
-            Assert.That(AviationContinuationBudget.CanGuaranteeNextActivation(
-                null, null, energyAvailableAfterCurrentActivation: 10f,
-                nextTurnEnergyCost: 5f, nextTurnApCost: 7f, out string apBlock), Is.False);
-            Assert.That(apBlock, Is.EqualTo("insufficient_guaranteed_next_turn_ap"));
-        }
-
         [TestCase(0, 0, 0)]
         [TestCase(1, 0, 1)]
         [TestCase(2, 0, 2)]
@@ -154,7 +136,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void StationaryStrike_RequiresActivationButDoesNotRequireMovement()
+        public void StationaryStrike_PaysOnlyAnUnpaidLaunchAndNeedsNoMovement()
         {
             var owner = new PlayerSetupData();
             GameObject rootObject = new GameObject("stationary-air-activation-root");
@@ -176,7 +158,7 @@ namespace Game.EditorTests
                 Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.False);
                 root.AddResource(ResourceType.Energy, 3);
                 Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.True,
-                    "a strike spends no MP but still needs AP and Energy to activate");
+                    "a strike spends no MP but an unpaid launch still needs AP and Energy");
                 var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
                 Assert.That(AviationActions.ResolveStationaryStrike(presenter, wing).MoveNext(), Is.False,
                     "an empty hex cannot consume activation resources");
@@ -185,8 +167,11 @@ namespace Game.EditorTests
                 root.ActionPoints = 0;
                 Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.False);
                 wing.MarkActivated();
+                Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.False,
+                    "a turn activation is not a paid sortie launch");
+                wing.Members[0].SortieLaunchPaid = true;
                 Assert.That(AviationActions.CanActivateForStationaryStrike(wing), Is.True,
-                    "an already activated wing may strike without paying twice");
+                    "a wing on a paid sortie strikes without paying twice");
             }
             finally
             {

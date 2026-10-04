@@ -95,11 +95,6 @@ namespace Game.Ai.V2
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
         public float ClaimedEnergy;
-        // Cross-turn aviation claim. These are planning-pass commitments only; the next
-        // round's real Energy bank is derived again from the actually-airborne armies by
-        // PreTurnCapacityAnalysis.
-        public float ClaimedNextTurnAirEnergy;
-        public float ClaimedNextTurnAirAp;
         public bool StealthApReserved;
         // State version after provisioning completed. In the current batch adapter several
         // provisioned missions may coexist; the future selected-only loop executes immediately

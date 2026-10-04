@@ -155,16 +155,14 @@ namespace Game.Aviation
             AviationCombatPresenter.AirStrikeResult result = null) =>
             ResolveStationaryStrike(presenter, airArmy, AirStrikePolicy.Standard, result);
 
-        // A stationary strike spends no MP, but it still activates the wing once this turn.
-        // Movement and stationary combat must pay the same AP/Energy before their first action.
+        // A stationary strike spends no MP. During a paid sortie it is free; it pays only the
+        // launch share still owed by members that have not paid yet (the same
+        // ArmyActions.CanAffordActivation/TryPayActivation every move order uses).
         public static bool CanActivateForStationaryStrike(ArmyData airArmy)
         {
             if (!AviationRules.IsValidAirArmy(airArmy))
                 return false;
-            PlayerRoot root = PlayerRootRegistry.FindFor(airArmy.Owner);
-            return root != null && (airArmy.HasActivatedThisTurn
-                || (root.CanSpendActionPoints(airArmy.ActivationApCost)
-                    && root.GetResource(ResourceType.Energy) >= airArmy.ActivationEnergyCost));
+            return ArmyActions.CanAffordActivation(airArmy, PlayerRootRegistry.FindFor(airArmy.Owner));
         }
 
         public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
@@ -173,19 +171,18 @@ namespace Game.Aviation
             if (presenter == null || !CanActivateForStationaryStrike(airArmy)
                 || !CanStrikeAtCurrentHex(airArmy, policy))
                 yield break;
-            if (!airArmy.HasActivatedThisTurn)
-            {
-                PlayerRoot root = PlayerRootRegistry.FindFor(airArmy.Owner);
-                root.SpendActionPoints(airArmy.ActivationApCost);
-                if (airArmy.ActivationEnergyCost > 0)
-                    root.AddResource(ResourceType.Energy, -airArmy.ActivationEnergyCost);
-                airArmy.MarkActivated();
-            }
+            if (!ArmyActions.TryPayActivation(airArmy, PlayerRootRegistry.FindFor(airArmy.Owner)))
+                yield break;
             yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, policy, result);
         }
 
-        // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel
-        // condition only: cards stay in their formed air army instead of being transferred.
+        // THE completed landing (end of turn on an owned airfield — AviationTurnLifecycle, or any
+        // caller that lands a wing explicitly): the wing's aircraft go back into the airfield's
+        // container in slot order, as many as its free storage (AviationRules.FreeStorageSlots)
+        // allows. Each landed aircraft is
+        // refuelled and its sortie closed (ResetAfterLanding — no repair); the emptied wing stays
+        // registered as an ordinary empty shell for later ground or air use. Returns the number
+        // of aircraft landed; any that found no slot stay airborne in the wing.
         public static int LandInSlotOrder(ArmyData airArmy, HexSelectionController hexSelection)
         {
             if (!AviationRules.IsValidAirArmy(airArmy))
@@ -194,10 +191,21 @@ namespace Game.Aviation
             if (airfield == null)
                 return 0;
 
-            foreach (UnitData aircraft in airArmy.Members)
+            int free = AviationRules.FreeStorageSlots(airArmy.Hex, airArmy.Owner);
+            var landing = airArmy.Members.Take(System.Math.Max(0, free)).ToList();
+            foreach (UnitData aircraft in landing)
+            {
+                airArmy.Members.Remove(aircraft);
                 AviationRules.ResetAfterLanding(aircraft);
-            hexSelection?.RestackArmiesOn(airArmy.Hex, null);
-            return airArmy.Members.Count;
+                airfield.AddMemberSorted(aircraft);
+            }
+            if (landing.Count > 0)
+            {
+                AviationRules.SyncAirArmyShell(airArmy, hexSelection);
+                hexSelection?.RestackArmiesOn(airArmy.Hex, null);
+                VisionSystem.NotifyContentChanged(airArmy.Hex);
+            }
+            return landing.Count;
         }
     }
 }

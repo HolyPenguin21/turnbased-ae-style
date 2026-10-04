@@ -159,12 +159,12 @@ namespace Game.EditorTests
             };
 
             AviationCombatEstimator.AirStrikeEstimate support =
-                AviationCombatEstimator.EstimateAirStrike(aircraft, 0f, 0f, defenders,
+                AviationCombatEstimator.EstimateAirStrike(aircraft, defenders,
                     AirStrikePolicy.RaidSupport(42));
 
             AviationCombatEstimator.AirStrikeEstimate snapshotSupport =
                 AviationCombatEstimator.EstimateAirStrike(
-                    aircraft.Select(x => (float)x.Attack).ToList(), 0f, 0f, defenders,
+                    aircraft.Select(WorthIt.FromLiveUnit).ToList(), defenders,
                     AirStrikePolicy.RaidSupport(42));
 
             Assert.That(support.WipeProbability, Is.Zero);

@@ -143,43 +143,25 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "raid air support requires one exact physical neutral target and wing"));
             // The one air support (GroundCombatAirSupport): the wing and its sortie state, then the
-            // raid's own target checks, then the shared route / worth / envelope finish.
+            // raid's own honest target check, then the shared route / envelope finish.
             if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
-                    target.LastKnownHex, "raid", out AirSupportWing w, out ProvisionFailure wingFailure))
+                    "raid", out AirSupportWing w, out ProvisionFailure wingFailure))
                 return ProvisioningResult.Fail(wingFailure);
 
-            AiMapMemory.KnownEnemySighting? sighting = (session.Snapshot?.Known?.NeutralSightings
+            // The raid's target must still be remembered (honest memory, any age). Whether it is
+            // really there, and an event guard is never a strike target, is decided by the real
+            // strike on arrival (AviationCombatPresenter.FindAirStrikeTargetsAt) — never by a
+            // global registry read here.
+            bool remembered = (session.Snapshot?.Known?.NeutralSightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(s => s.ArmyId == target.Target.ArmyId)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
-            ArmyData defender = ArmyRegistry.AllAt(target.LastKnownHex)
-                .FirstOrDefault(a => a != null && a.Id == target.Target.ArmyId
-                    && a.Owner != null && a.Owner.IsNeutral && a.Members.Count > 1
-                    && !HexEventRegistry.IsEventGuardArmy(target.LastKnownHex, a));
-            // The same freshness window RaidRecoveryPlanner chose this wing under
-            // (raidAirSupportSightingMaxAgeTurns); a stricter this-turn-only re-check rejected
-            // every strike planned on a routine 1-2-turn-old re-scout.
-            if (!w.Returning && (!sighting.HasValue
-                    || session.Snapshot.TurnNumber - sighting.Value.SeenTurn
-                        > AiConfigV2.raidAirSupportSightingMaxAgeTurns
-                    || defender == null))
+                .Any(s => s.ArmyId == target.Target.ArmyId);
+            if (!w.Continuing && !remembered)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "raid air support target is stale, absent, event-owned, or has only one defender"));
+                    "raid air support target is no longer remembered"));
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiV2Util.KnownDefenders(session.Snapshot, target.Target);
-            ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
-            WorthIt.SideCommander defenderCommander = sighting?.Commander ?? default;
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w,
-                    target.LastKnownHex,
-                    new[] { new WorthIt.DefendingArmy(defenders, defenderCommander) },
-                    sighting?.DefenseSum ?? 0f, sighting?.AttackSum ?? 0f,
-                    AirStrikePolicy.RaidSupport(target.Target.ArmyId),
-                    opp => primary == null || defenders.Count == 0 ? 0f
-                        : WorthIt.WinChance(primary, WorthIt.UnitsOf(opp), 0f, defenderCommander),
-                    "raid", eps, out HexCoord landing, out float ap, out float energy,
-                    out float nextTurnEnergy, out float nextTurnAp,
-                    out ProvisionFailure finishFailure))
+                    target.LastKnownHex, "raid", eps, out HexCoord landing, out float ap,
+                    out float energy, out ProvisionFailure finishFailure))
                 return ProvisioningResult.Fail(finishFailure);
             ArmyData wing = w.Wing;
 
@@ -198,8 +180,6 @@ namespace Game.Ai.V2
                 RaidLastKnownHex = target.LastKnownHex,
                 RaidTargetIsNeutral = true,
                 ClaimedAp = ap, ClaimedEnergy = energy,
-                ClaimedNextTurnAirEnergy = nextTurnEnergy,
-                ClaimedNextTurnAirAp = nextTurnAp,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });
         }

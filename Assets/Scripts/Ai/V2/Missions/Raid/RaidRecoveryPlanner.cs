@@ -149,21 +149,13 @@ namespace Game.Ai.V2
             ISet<int> unavailableArmyIds, float currentWin,
             int? fixedWingArmyId = null)
         {
+            // Raid's own strike policy: one exact physical neutral target, at least one survivor
+            // left for the ground capture — so it needs a remembered roster of two or more. The age
+            // of that memory is NOT a gate: the strike resolves against what is really there.
             if (raid.Target.Kind != RaidTargetKind.NeutralArmy
                 || raid.AirSupportAttemptedTurn == snap.TurnNumber || WorthIt.UnitsOf(opposition).Count <= 1)
                 return RaidRecoveryProjection.None(currentWin,
                     "air support is not eligible for this recovery decision");
-
-            AiMapMemory.KnownEnemySighting? sighting =
-                (snap.Known?.NeutralSightings
-                    ?? Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(x => x.ArmyId == raid.Target.ArmyId)
-                .Select(x => (AiMapMemory.KnownEnemySighting?)x)
-                .FirstOrDefault();
-            if (!sighting.HasValue || snap.TurnNumber - sighting.Value.SeenTurn
-                    > AiConfigV2.raidAirSupportSightingMaxAgeTurns)
-                return RaidRecoveryProjection.None(currentWin,
-                    "air support requires a recent neutral sighting");
 
             if (!GroundCombatAirSupport.LandingBase(snap, raid.LastKnownHex).HasValue)
                 return RaidRecoveryProjection.None(currentWin,
@@ -174,8 +166,7 @@ namespace Game.Ai.V2
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
                 "no free air wing produces a viable canonical recovery plan");
             foreach (AirSupportOption o in GroundCombatAirSupport.Options(snap, opposition,
-                raid.LastKnownHex, sighting.Value.DefenseSum, sighting.Value.AttackSum,
-                AirStrikePolicy.RaidSupport(raid.Target.ArmyId),
+                raid.LastKnownHex, AirStrikePolicy.RaidSupport(raid.Target.ArmyId),
                 opp => Win(CombatRoster(primary), primary.Commander, opp, hexBonus, out _),
                 currentWin, unavailableArmyIds, fixedWingArmyId))
             {
@@ -185,7 +176,7 @@ namespace Game.Ai.V2
                     RaidMissionPhase.AirSupport, null, null, o.WingArmyId, o.LandingHex,
                     o.EtaTurns, o.Ap, o.Resources, 2, currentWin, o.WinAfter, score, default,
                     $"air support #{o.WingArmyId} reaches {o.WinAfter:0.00} "
-                    + $"(first strike ETA {o.FirstStrikeEta}) "
+                    + $"(first strike ETA {o.FirstStrikeEta}, {o.StrikeTurns} strike turn(s)) "
                     + $"with canonical score {score.Value:0.00}");
                 if (!best.Viable || Compare(option, best) < 0)
                     best = option;

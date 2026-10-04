@@ -7,30 +7,29 @@ using UnityEngine;
 
 namespace Game.Combat
 {
-    // Pure, side-effect-free readout of what a NOT-YET-FLOWN AirStrike sortie would probably do to
-    // a known target roster (2026-08-26, AirStrike/Raid coordination spec, project owner's own
-    // report — item 4). Sits next to WorthIt (the AI's own other pure combat-estimate home) rather
-    // than inside AviationCombatPresenter itself, which is a MonoBehaviour UI adapter that actually
-    // RUNS the real strike (see its own RunAirStrike) and must never be driven from a planning
-    // pass. Reuses the exact same dice mechanic RunAirStrike's own BattleAttackPopupUI.Begin call
-    // resolves through — WorthIt.RollSuccesses (50/50 per die, same as ChallengeResolver.RollDice)
-    // and AbilityMagnitudes.Default.CeramicArmorReduction applied last, same order ResolveDamage
-    // itself applies it — never a second, AI-only damage formula.
+    // Pure, side-effect-free readout of what a NOT-YET-FLOWN air strike series would probably do to
+    // a known target roster. Sits next to WorthIt (the AI's other pure combat-estimate home) rather
+    // than inside AviationCombatPresenter, the MonoBehaviour that RUNS the real strike
+    // (RunAirStrike) and must never be driven from a planning pass.
     //
-    // Deliberately mirrors RunAirStrike's own SHAPE, not WorthIt.SimulateOneBattle's: sequential
-    // per-aircraft attacks, never a round-robin turn order (an air strike has no return fire — see
-    // RunAirStrike's own comment, "no retaliation in this pass"), each one hitting a single
-    // uniformly-random still-alive defender, same as CollectStrikeTargets/pool[Random.Range(...)]
-    // picks for real. Attacker-side abilities (Hyperkinetic/Pyrokinetic/CriticalDamage) are left
-    // out on purpose, same reasoning WorthIt.CanDamage's own comment already gives for every other
-    // AI pre-contact estimate in this codebase: skipping them can only make this MORE cautious than
-    // a real strike, never falsely confident.
+    // Shape — the real air strike, not a ground battle: each aircraft attacks once per strike turn,
+    // one uniformly-random still-alive defender, with no return fire. Mechanics — the real one:
+    // every attack is ONE armed exchange of the shared BattleSimulationKernel.ResolveExchange
+    // (the same dice, Fate duel and BattleResolutionRules.ResolveGroundAttack the real
+    // BattleEngine.ResolveStandaloneAttack applies), the aircraft's attack pool against the
+    // target's Defense — a hero's FateMax, already folded into DefenderProfile.Defense — with the
+    // defending commander's Fate (the real strike passes the target army's hero as defenderHero).
+    // The aircraft side has no hero and therefore no Fate.
+    //
+    // A local System.Random seeded from the inputs drives the trials; UnityEngine.Random (the
+    // game's RNG) is never touched. Within one WorthIt estimate-cache scope (one AI turn) equal
+    // inputs return the memoised estimate; the key is the complete input (see AppendKey).
     public static class AviationCombatEstimator
     {
-        // Own trial count, not a shared constant with WorthIt.MonteCarloTrials — this estimator's
-        // own per-call cost (a handful of aircraft against a handful of known defenders) is
-        // unrelated to WorthIt's, it just happens to land on the same number.
-        private const int Trials = 100;
+        // Same bounded budget as WorthIt's ground Monte Carlo.
+        internal const int Trials = 25;
+        private const int KeyVersion = 1;
+        private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
         {
@@ -38,20 +37,12 @@ namespace Game.Combat
             public readonly float ExpectedAttackAfter;
             public readonly IReadOnlyList<WorthIt.DefenderProfile> ExpectedDefendersAfter;
             public readonly float ExpectedDamage;
-            // Three added 2026-08-26 (air-strike scoring rework, project owner's own spec section
-            // 2 — "уничтожение юнитов") — read off the SAME Trials completed strikes ExpectedDamage
-            // already averages over, never a second simulation pass. KillAnyProbability: fraction of
-            // trials where at least one defender died. ExpectedKillCount: mean defenders killed per
-            // trial. WipeProbability: fraction of trials where EVERY defender died (a stronger,
-            // per-trial reading than "ExpectedDefendersAfter ended up empty", which only says the
-            // AVERAGE remaining roster is empty and can hide a coin-flip wipe behind a merely-heavy
-            // average casualty count).
+            // Read off the same trials ExpectedDamage averages over, never a second pass.
             public readonly float KillAnyProbability;
             public readonly float ExpectedKillCount;
             public readonly float WipeProbability;
-            // For each ExpectedDefendersAfter entry, its index in the knownDefenders the estimate
-            // was run on — so a caller that passed several defending armies back to back can
-            // split the survivors back into those armies (GroundCombatAirSupport.AfterStrike).
+            // For each ExpectedDefendersAfter entry, its index in the defenders the estimate was
+            // run on (GroundCombatAirSupport.AfterStrike splits survivors back into their armies).
             public readonly IReadOnlyList<int> SurvivorSourceIndices;
 
             public AirStrikeEstimate(float expectedDefenseAfter, float expectedAttackAfter,
@@ -70,50 +61,44 @@ namespace Game.Combat
             }
         }
 
-        // `knownDefense`/`knownAttack`/`knownDefenders` — the exact same three numbers
-        // AirStrikeTask.StrikeTarget already carries (see that struct's own comment), never read
-        // from AiMapMemory directly here: this is a pure function over caller-supplied data, no
-        // registry/memory lookups of its own, so it can never leak an unknown enemy characteristic
-        // the caller didn't already have honest access to.
-        //
-        // Null/empty `knownDefenders` (no remembered per-unit composition, only an aggregate
-        // Defense/Attack sum) reports the strike as a no-op — the aggregate numbers pass through
-        // unchanged. There's no per-unit roster here to simulate a random-target strike against
-        // (WorthIt likewise treats an unknown roster as nothing to fight).
-        //
-        // Monte Carlo, not a closed form (same reasoning WorthIt's own top comment gives) —
-        // MonteCarloTrials complete sequential strikes, averaged per-defender remaining HP. A
-        // defender whose average remaining HP lands at/below zero is dropped from
-        // ExpectedDefendersAfter entirely (expected dead); every survivor keeps its own real
-        // Attack/Defense/CeramicArmor/TypeTags/Initiative, just with HitPoints replaced by its own
-        // average REMAINING hp across the trials it lived — the caller's own next WinChance call
-        // then fights a Monte Carlo battle against an already-wounded defender, same way a real
-        // ground raid arriving after a real air strike would.
-        public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft, float knownDefense, float knownAttack,
-            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
-            => EstimateAirStrike(aircraft, knownDefense, knownAttack, knownDefenders,
-                AirStrikePolicy.Standard);
-
+        // Live-roster overload (the aircraft as they fly now).
         public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft,
-            float knownDefense, float knownAttack,
-            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy) =>
-            EstimateAirStrike(
-                aircraft?.Where(x => x != null).Select(x => (float)x.Attack).ToList(),
-                knownDefense, knownAttack, knownDefenders, policy);
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy,
+            int strikePasses = 1, int defenderFate = 0) =>
+            EstimateAirStrike(aircraft?.Where(x => x != null).Select(WorthIt.FromLiveUnit).ToList(),
+                knownDefenders, policy, strikePasses, defenderFate);
 
-        // Snapshot-safe overload for strategic planning. The live UnitData overload above and
-        // planning both enter this same estimator; only the immutable attack facts differ.
-        public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<float> aircraftAttack,
-            float knownDefense, float knownAttack,
-            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy)
+        // `aircraft` — the attackers' current profiles (Attack and Abilities are read).
+        // `knownDefenders` — the remembered target roster. Null/empty means the roster is UNKNOWN:
+        // nothing is simulated (no fictitious empty fight) and the estimate is a no-op with zero
+        // damage; callers must treat it as "unknown", never as "no target".
+        // `strikePasses` — strike turns in the series (AviationRange.StrikeTurns); each pass every
+        // aircraft attacks once, wounds carry over between passes.
+        public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy,
+            int strikePasses = 1, int defenderFate = 0)
         {
-            if (aircraftAttack == null || aircraftAttack.Count == 0
-                || knownDefenders == null || knownDefenders.Count == 0)
-                return new AirStrikeEstimate(knownDefense, knownAttack,
+            if (aircraft == null || aircraft.Count == 0
+                || knownDefenders == null || knownDefenders.Count == 0 || strikePasses <= 0)
+                return new AirStrikeEstimate(SumDefense(knownDefenders), SumAttack(knownDefenders),
                     knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
 
-            var rng = new System.Random(BuildSeed(aircraftAttack, knownDefenders));
-            int n = knownDefenders.Count;
+            AbilityMagnitudes magnitudes = AbilityMagnitudes.Default;
+            int[] key = BuildKey(aircraft, knownDefenders, policy, strikePasses, defenderFate, magnitudes);
+            if (TryCached(key, out AirStrikeEstimate cached))
+                return cached;
+            AirStrikeEstimate result = Simulate(aircraft, knownDefenders, policy, strikePasses,
+                Mathf.Max(0, defenderFate), magnitudes, Seed(key));
+            Store(key, result);
+            return result;
+        }
+
+        private static AirStrikeEstimate Simulate(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
+            int defenderFate, AbilityMagnitudes magnitudes, int seed)
+        {
+            var rng = new System.Random(seed);
+            int n = defenders.Count;
             var hpSum = new float[n];
             float totalDamageSum = 0f;
             int killAnyTrials = 0, wipeTrials = 0;
@@ -122,41 +107,51 @@ namespace Game.Combat
             for (int trial = 0; trial < Trials; trial++)
             {
                 var hp = new float[n];
+                var attack = new int[n];
+                var defense = new int[n];
                 for (int i = 0; i < n; i++)
-                    hp[i] = Mathf.Max(1f, knownDefenders[i].HitPoints);
+                {
+                    hp[i] = Mathf.Max(1f, defenders[i].HitPoints);
+                    attack[i] = Mathf.RoundToInt(defenders[i].Attack);
+                    defense[i] = Mathf.RoundToInt(defenders[i].Defense);
+                }
                 float startHp = hp.Sum();
-
                 var alive = new List<int>(n);
                 for (int i = 0; i < n; i++)
                     alive.Add(i);
+                int fate = defenderFate;
 
-                foreach (float attack in aircraftAttack)
+                for (int pass = 0; pass < passes; pass++)
                 {
-                    if (alive.Count <= policy.MinimumSurvivors)
-                        break; // nothing left standing this trial either — matches RunAirStrike's own early-out
-                    int idx = alive[rng.Next(alive.Count)];
-                    int atk = WorthIt.RollSuccesses(attack, rng);
-                    int def = WorthIt.RollSuccesses(knownDefenders[idx].Defense, rng);
-                    int damage = Mathf.Max(0, atk - def);
-                    if (knownDefenders[idx].HasCeramicArmor)
-                        damage = Mathf.Max(0, damage - AbilityMagnitudes.Default.CeramicArmorReduction);
-                    hp[idx] -= damage;
-                    if (hp[idx] <= 0f)
+                    foreach (WorthIt.DefenderProfile plane in aircraft)
                     {
-                        hp[idx] = 0f;
-                        alive.Remove(idx);
+                        // Matches RunAirStrike: stop once only the policy's survivors remain.
+                        if (alive.Count <= policy.MinimumSurvivors)
+                            break;
+                        int idx = alive[rng.Next(alive.Count)];
+                        int attackerFate = 0;
+                        BattleSimExchangeOutcome outcome = BattleSimulationKernel.ResolveExchange(
+                            Mathf.RoundToInt(plane.Attack), defense[idx], plane.Abilities,
+                            defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref fate,
+                            Mathf.CeilToInt(hp[idx]), magnitudes, rng);
+                        float hpLeft = hp[idx];
+                        BattleSimulationKernel.ApplyPrimaryOutcome(outcome, plane.Abilities,
+                            defenders[idx].Abilities, ref hpLeft, ref attack[idx], ref defense[idx],
+                            magnitudes, out _);
+                        hp[idx] = Mathf.Max(0f, hpLeft);
+                        if (hp[idx] <= 0f)
+                            alive.Remove(idx);
                     }
                 }
 
                 for (int i = 0; i < n; i++)
                     hpSum[i] += hp[i];
                 totalDamageSum += startHp - hp.Sum();
-
-                int killedThisTrial = n - alive.Count;
-                killCountSum += killedThisTrial;
-                if (killedThisTrial >= 1)
+                int killed = n - alive.Count;
+                killCountSum += killed;
+                if (killed >= 1)
                     killAnyTrials++;
-                if (killedThisTrial == n)
+                if (killed == n)
                     wipeTrials++;
             }
 
@@ -167,39 +162,125 @@ namespace Game.Combat
             {
                 float meanHp = hpSum[i] / Trials;
                 if (meanHp <= 0.01f)
-                    continue; // expected dead on average — dropped from the post-strike roster entirely
-                WorthIt.DefenderProfile original = knownDefenders[i];
-                expectedDefenders.Add(new WorthIt.DefenderProfile(original.Defense, original.HasCeramicArmor, original.TypeTags,
-                    original.Attack, meanHp, original.Initiative, original.Abilities));
+                    continue; // expected dead on average
+                WorthIt.DefenderProfile o = defenders[i];
+                expectedDefenders.Add(new WorthIt.DefenderProfile(o.Defense, o.HasCeramicArmor, o.TypeTags,
+                    o.Attack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
+                    o.IsHero, o.FateMax, o.IsSummoned));
                 survivorIndices.Add(i);
-                expectedDefense += original.Defense;
-                expectedAttack += original.Attack;
+                expectedDefense += o.Defense;
+                expectedAttack += o.Attack;
             }
 
-            return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders, totalDamageSum / Trials,
-                (float)killAnyTrials / Trials, killCountSum / Trials, (float)wipeTrials / Trials,
-                survivorIndices);
+            return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders,
+                totalDamageSum / Trials, (float)killAnyTrials / Trials, killCountSum / Trials,
+                (float)wipeTrials / Trials, survivorIndices);
         }
 
-        // Deterministic per-matchup seed, same reasoning as WorthIt.BuildSeed's own comment — built
-        // only from the raw numeric stats describing the matchup (never GetHashCode() of a string/
-        // object), so the same aircraft roster against the same known defenders always plays out
-        // the same Trials strikes.
-        private static int BuildSeed(IReadOnlyList<float> aircraftAttack,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders)
+        private static float SumDefense(IReadOnlyList<WorthIt.DefenderProfile> d) =>
+            d == null ? 0f : d.Sum(x => x.Defense);
+        private static float SumAttack(IReadOnlyList<WorthIt.DefenderProfile> d) =>
+            d == null ? 0f : d.Sum(x => x.Attack);
+
+        // ---- cache (one WorthIt estimate-cache scope) ----------------------------------------
+        private static readonly Dictionary<string, AirStrikeEstimate> Cache =
+            new Dictionary<string, AirStrikeEstimate>();
+        private static int _cacheScope = int.MinValue;
+        internal static int CacheHits { get; private set; }
+        internal static int CacheMisses { get; private set; }
+
+        private static bool TryCached(int[] key, out AirStrikeEstimate estimate)
+        {
+            estimate = default;
+            if (!WorthIt.EstimateCacheActive)
+                return false;
+            if (_cacheScope != WorthIt.EstimateCacheScopeId)
+            {
+                Cache.Clear();
+                _cacheScope = WorthIt.EstimateCacheScopeId;
+            }
+            if (Cache.TryGetValue(KeyString(key), out estimate))
+            {
+                CacheHits++;
+                return true;
+            }
+            CacheMisses++;
+            return false;
+        }
+
+        private static void Store(int[] key, AirStrikeEstimate estimate)
+        {
+            if (!WorthIt.EstimateCacheActive || _cacheScope != WorthIt.EstimateCacheScopeId)
+                return;
+            if (Cache.Count >= CacheMaxEntries)
+                Cache.Clear();
+            Cache[KeyString(key)] = estimate;
+        }
+
+        private static string KeyString(int[] key) => string.Join(",", key);
+
+        // The COMPLETE input of one estimate: every aircraft's simulated attack facts, every
+        // defender profile field the simulation reads (current HP, max HP, Defense incl. hero
+        // FateMax, Attack, abilities, type tags), the policy (exact target / survivor floor), the
+        // number of strike passes, the defending commander's Fate, the magnitudes and the trial
+        // count. A damaged, re-equipped or reduced roster under the same army id is a new key.
+        internal static int[] BuildKey(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
+            int defenderFate, AbilityMagnitudes m)
+        {
+            var buf = new List<int> { KeyVersion, Trials, passes, defenderFate, (int)policy.Kind,
+                policy.ExactTargetArmyId ?? int.MinValue, policy.MinimumSurvivors,
+                System.BitConverter.SingleToInt32Bits(m.CriticalDamageMultiplier),
+                m.HyperkineticBonusDamage, m.CeramicArmorReduction, m.PyrokineticBonusDamage,
+                m.BerserkAttackGain, m.BerserkDefenseLoss };
+            void Profile(WorthIt.DefenderProfile p)
+            {
+                buf.Add(System.BitConverter.SingleToInt32Bits(p.Attack));
+                buf.Add(System.BitConverter.SingleToInt32Bits(p.Defense));
+                buf.Add(System.BitConverter.SingleToInt32Bits(p.HitPoints));
+                buf.Add(System.BitConverter.SingleToInt32Bits(p.MaxHitPoints));
+                buf.Add(p.IsHero ? 1 : 0);
+                buf.Add(p.FateMax);
+                int abilities = p.Abilities?.Count ?? -1;
+                buf.Add(abilities);
+                for (int i = 0; i < abilities; i++)
+                    buf.Add(StableHash(p.Abilities[i]));
+                int tags = p.TypeTags?.Count ?? -1;
+                buf.Add(tags);
+                for (int i = 0; i < tags; i++)
+                    buf.Add((int)p.TypeTags[i]);
+            }
+            buf.Add(-1000 - aircraft.Count);
+            foreach (WorthIt.DefenderProfile a in aircraft)
+                Profile(a);
+            buf.Add(-2000 - defenders.Count);
+            foreach (WorthIt.DefenderProfile d in defenders)
+                Profile(d);
+            return buf.ToArray();
+        }
+
+        // Deterministic per-matchup seed built only from the numeric key (never object hashes).
+        private static int Seed(int[] key)
         {
             unchecked
             {
                 int hash = 17;
-                foreach (float attack in aircraftAttack)
-                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(attack);
-                hash = hash * 31 + 7919; // separates the aircraft roster from the defender roster below
-                foreach (WorthIt.DefenderProfile defender in defenders)
-                {
-                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(defender.Defense);
-                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(defender.HitPoints);
-                }
+                foreach (int v in key)
+                    hash = hash * 31 + v;
                 return hash;
+            }
+        }
+
+        private static int StableHash(string s)
+        {
+            if (s == null)
+                return 0;
+            unchecked
+            {
+                int h = 23;
+                foreach (char c in s)
+                    h = h * 31 + c;
+                return h;
             }
         }
     }

@@ -83,8 +83,8 @@ namespace Game.Ai.V2
         }
 
         // The support wing's sortie: the one GroundCombatAirSupport provisioning. The site must
-        // still be the operation's target with fresh defenders (unless the wing is already on its
-        // way home); the strike is judged on the primary's own sequential fight at the site.
+        // still be the live operation's target; the defenders need not be known or fresh (the
+        // strike resolves against what is really there on arrival), and no win gain is re-proved.
         private static ProvisioningResult ProvisionAirSupport(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             AttackMissionTarget target, StableMissionKey key, float eps)
@@ -95,40 +95,19 @@ namespace Game.Ai.V2
                     "attack air support requires one bound wing and its landing base"));
             HexCoord targetHex = target.Target.Hex;
             if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
-                    targetHex, "attack", out AirSupportWing w, out ProvisionFailure wingFailure))
+                    "attack", out AirSupportWing w, out ProvisionFailure wingFailure))
                 return ProvisioningResult.Fail(wingFailure);
 
-            MissionIntent intent = null;
             MissionIntentRegistry.GetOrCreate(player).TryGet(MissionIntentKey.ForAttack(target.Target),
-                out intent);
-            ArmyData primary = intent?.Attack?.PrimaryArmyId is int primaryId
-                ? AiV2Util.ResolveArmy(player, primaryId) : null;
-            List<AiMapMemory.KnownEnemySighting> site = (snap?.Known?.EnemySightings
-                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(s => s.Hex.Equals(targetHex) && s.Defenders != null && s.Defenders.Count > 0)
-                .ToList();
-            if (!w.Returning && (primary == null || site.Count == 0
-                    || AttackObjectiveEvaluator.EvaluateTarget(snap, target.Target)
-                        != AttackObjectiveEvaluator.AttackTargetStatus.Continue
-                    || site.Any(s => snap.TurnNumber - s.SeenTurn > AiConfigV2.attackIntelMaxAgeTurns)))
+                out MissionIntent intent);
+            if (intent?.Attack == null
+                || AttackObjectiveEvaluator.EvaluateTarget(snap, target.Target)
+                    != AttackObjectiveEvaluator.AttackTargetStatus.Continue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "attack air support site is no longer the target, has no fresh defenders, "
-                    + "or the primary is gone"));
+                    "attack air support site is no longer a live Attack target"));
 
-            IReadOnlyList<WorthIt.DefendingArmy> opposition =
-                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
-            List<WorthIt.DefenderProfile> roster = primary == null
-                ? new List<WorthIt.DefenderProfile>()
-                : primary.Members.Where(u => AiArmyRoles.IsGroundBattleBody(u))
-                    .Select(WorthIt.FromLiveUnit).ToList();
-            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(primary?.Commander);
             if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
-                    opposition, site.Sum(s => s.DefenseSum), site.Sum(s => s.AttackSum),
-                    AirStrikePolicy.Standard,
-                    opp => WorthIt.EstimateSequential(roster, commander, opp, hexBonus).WinChance,
                     "attack", eps, out HexCoord landing, out float ap, out float energy,
-                    out float nextTurnEnergy, out float nextTurnAp,
                     out ProvisionFailure finishFailure))
                 return ProvisioningResult.Fail(finishFailure);
 
@@ -144,8 +123,6 @@ namespace Game.Ai.V2
                 AttackTarget = target,
                 ClaimedAp = ap,
                 ClaimedEnergy = energy,
-                ClaimedNextTurnAirEnergy = nextTurnEnergy,
-                ClaimedNextTurnAirAp = nextTurnAp,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });
         }

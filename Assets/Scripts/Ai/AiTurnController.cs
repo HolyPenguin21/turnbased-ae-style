@@ -685,8 +685,7 @@ namespace Game.Ai
         // arbitration, never a viable one.
         internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
-                && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
-                    && root.GetResource(ResourceType.Energy) >= army.ActivationEnergyCost));
+                && ArmyActions.CanAffordActivation(army, root);
 
         // Trailer for an action's own log line — "what did this actually cost", read as a
         // before/after snapshot around the spend rather than off the CardDefinition/ResourceCost

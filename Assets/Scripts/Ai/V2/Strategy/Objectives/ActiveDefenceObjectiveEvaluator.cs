@@ -13,7 +13,11 @@ namespace Game.Ai.V2
     // Intercept — one capable army (or a same-hex assembly around it) meets the enemy.
     // Return — one army withdraws: to the Citadel to regroup when the defensive power exists but is
     // spread over several field armies, or to its own base when the power does not exist at all.
-    public enum ActiveDefencePhase { Intercept, Return }
+    // AirSupport — a free wing strikes the same threat in parallel with whatever the ground answer
+    // is (Intercept, Regroup, Shortage or no ground responder at all). A technical assignment of
+    // the same ActiveDefence objective, with its own intent and key; appended so the numeric values
+    // of Intercept/Return never change.
+    public enum ActiveDefencePhase { Intercept, Return, AirSupport }
 
     public struct ActiveDefenceMissionTarget
     {
@@ -31,6 +35,9 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
+        // AirSupport only: the wing (never a ground PrimaryArmyId) and its landing base.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
     }
 
     // The ONE answer to "how does this player respond to this threat", shared by the Mission
