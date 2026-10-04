@@ -62,6 +62,142 @@ namespace Game.EditorTests
             return _root;
         }
 
+        [Test]
+        public void ProfileSnapshot_DetachesAndProtectsAbilityAndTypeLists()
+        {
+            var abilities = new List<string> { UnitAbilities.Berserk };
+            var tags = new List<UnitTypeTag> { default };
+            var profile = new WorthIt.DefenderProfile(2f, false, tags, attack: 3f,
+                hitPoints: 40f, abilities: abilities);
+            abilities.Clear();
+            tags.Clear();
+            Assert.That(profile.Abilities, Does.Contain(UnitAbilities.Berserk));
+            Assert.That(profile.TypeTags.Count, Is.EqualTo(1));
+            Assert.That(((IList<string>)profile.Abilities).IsReadOnly, Is.True);
+            Assert.That(((IList<UnitTypeTag>)profile.TypeTags).IsReadOnly, Is.True);
+        }
+
+        [Test]
+        public void Estimator_CachedResultCannotBeMutatedThroughReadOnlyInterfaces()
+        {
+            var planes = new[] { Profile(attack: 8f) };
+            var targets = new[] { new AviationCombatEstimator.DefendingAirArmy(1,
+                new[] { Profile(hp: 100f) }, new[] { 0 }) };
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                var estimate = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(
+                    planes, targets, AirStrikePolicy.Standard);
+                Assert.That(estimate.ExpectedDefendersAfter.Count, Is.EqualTo(1));
+                Assert.That(((IList<WorthIt.DefenderProfile>)estimate.ExpectedDefendersAfter).IsReadOnly, Is.True);
+                Assert.That(((IList<int>)estimate.SurvivorSourceIndices).IsReadOnly, Is.True);
+                int hits = AviationCombatEstimator.CacheHits;
+                var hit = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(
+                    planes, targets, AirStrikePolicy.Standard);
+                Assert.That(AviationCombatEstimator.CacheHits, Is.EqualTo(hits + 1));
+                Assert.That(hit.ExpectedDefendersAfter[0].HitPoints,
+                    Is.EqualTo(estimate.ExpectedDefendersAfter[0].HitPoints));
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
+        [Test]
+        public void AirCache_InputChangesMatchColdResults_AndNewScopeStartsEmpty()
+        {
+            var planes = new[] { Profile(attack: 8f) };
+            WorthIt.DefenderProfile Target(float hp = 100f, float attack = 2f, float defense = 2f,
+                int initiative = 1, bool ground = true, bool summoned = false,
+                bool hero = false, int fateMax = 0, string ability = null, bool ceramic = false,
+                float maxHp = 120f) => new WorthIt.DefenderProfile(defense, ceramic,
+                    attack: attack, hitPoints: hp, initiative: initiative,
+                    abilities: ability == null ? null : new[] { ability }, maxHitPoints: maxHp,
+                    isGroundCombatant: ground, isHero: hero, fateMax: fateMax, isSummoned: summoned);
+            var profiles = new[] { Target(), Target(hp: 80f), Target(attack: 9f), Target(defense: 5f),
+                Target(initiative: 4), Target(ground: false), Target(summoned: true),
+                Target(hero: true, fateMax: 3), Target(ability: UnitAbilities.Berserk),
+                Target(ceramic: true), Target(maxHp: 160f) };
+            var cached = new List<AviationCombatEstimator.AirStrikeEstimate>();
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                int misses = AviationCombatEstimator.CacheMisses;
+                int hits = AviationCombatEstimator.CacheHits;
+                foreach (var profile in profiles)
+                {
+                    var armies = new[] { new AviationCombatEstimator.DefendingAirArmy(1,
+                        new[] { profile }, new[] { 2 }) };
+                    cached.Add(AviationCombatEstimator.EstimateAirStrikeAgainstArmies(
+                        planes, armies, AirStrikePolicy.Standard, 2));
+                    AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, armies, AirStrikePolicy.Standard, 2);
+                }
+                Assert.That(AviationCombatEstimator.CacheMisses, Is.EqualTo(misses + profiles.Length));
+                Assert.That(AviationCombatEstimator.CacheHits, Is.EqualTo(hits + profiles.Length));
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+            for (int i = 0; i < profiles.Length; i++)
+            {
+                var cold = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes,
+                    new[] { new AviationCombatEstimator.DefendingAirArmy(1, new[] { profiles[i] }, new[] { 2 }) },
+                    AirStrikePolicy.Standard, 2);
+                Assert.That(cold.ExpectedDamage, Is.EqualTo(cached[i].ExpectedDamage));
+                Assert.That(AviationCombatEstimator.BuildKey(planes, cold.ExpectedDefendersAfter,
+                    AirStrikePolicy.Standard, 2, 0, AbilityMagnitudes.Default),
+                    Is.EqualTo(AviationCombatEstimator.BuildKey(planes, cached[i].ExpectedDefendersAfter,
+                        AirStrikePolicy.Standard, 2, 0, AbilityMagnitudes.Default)));
+                Assert.That(cold.SurvivorSourceIndices, Is.EqualTo(cached[i].SurvivorSourceIndices));
+                Assert.That(cold.ExpectedCurrentFatesAfter, Is.EqualTo(cached[i].ExpectedCurrentFatesAfter));
+            }
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                int misses = AviationCombatEstimator.CacheMisses;
+                AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes,
+                    new[] { new AviationCombatEstimator.DefendingAirArmy(1, new[] { profiles[0] }, new[] { 2 }) },
+                    AirStrikePolicy.Standard, 2);
+                Assert.That(AviationCombatEstimator.CacheMisses, Is.EqualTo(misses + 1));
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
+        [Test]
+        public void AirProjection_SpentFateStaysSpentInGroundCommander()
+        {
+            var body = Profile(hp: 100f);
+            var roster = new AviationCombatEstimator.DefendingAirArmy(7,
+                new[] { HeroProfile(4), body }, new[] { 0, 0 });
+            var estimate = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(
+                new[] { Profile(attack: 0f) }, new[] { roster }, AirStrikePolicy.Standard);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { body },
+                new WorthIt.SideCommander(1, 4), 0f, 7) };
+            var targets = new[] { new AiMapMemory.KnownAirSighting(default, null, 1, true, roster) };
+            var after = GroundCombatAirSupport.AfterAirStrike(opposition, targets, estimate);
+            Assert.That(after.Single().Commander.Present, Is.True);
+            Assert.That(after.Single().Commander.Fate, Is.Zero,
+                "a surviving hero does not recover spent Fate between air and ground combat");
+            Assert.That(estimate.ExpectedCurrentFatesAfter[0], Is.Zero);
+            Assert.That(((IList<int>)estimate.ExpectedCurrentFatesAfter).IsReadOnly, Is.True);
+        }
+
+        [Test]
+        public void LiveCommander_UsesCurrentFateAfterStandaloneStrike()
+        {
+            var hero = new UnitData { IsHero = true, Initiative = 2, FateMax = 4, Fate = 1 };
+            Assert.That(WorthIt.SideCommander.Of(hero).Fate, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GroundObservation_DetachesRosterFromProducer()
+        {
+            var profiles = new List<WorthIt.DefenderProfile> { Profile(hp: 40f) };
+            var observation = new AiMapMemory.KnownEnemySighting(default, null, "seen", 1, 1f, 1f, profiles);
+            var guard = new AiMapMemory.GuardStrength(1f, 1f, profiles);
+            profiles.Clear();
+            Assert.That(observation.Defenders.Count, Is.EqualTo(1));
+            Assert.That(guard.Defenders.Count, Is.EqualTo(1));
+            Assert.That(((IList<WorthIt.DefenderProfile>)observation.Defenders).IsReadOnly, Is.True);
+            Assert.That(((IList<WorthIt.DefenderProfile>)guard.Defenders).IsReadOnly, Is.True);
+        }
+
         // ---- A. payment ------------------------------------------------------------------------
 
         [Test]
@@ -643,7 +779,7 @@ namespace Game.EditorTests
             var observer = new PlayerSetupData();
             var enemy = new PlayerSetupData();
             var body = new UnitData { Owner = enemy, Attack = 2, Defense = 1,
-                HitPointsCurrent = 30, HitPointsMax = 30 };
+                HitPointsCurrent = 30, HitPointsMax = 60 };
             var hero = new UnitData { Owner = enemy, IsHero = true, Fate = 3, FateMax = 4,
                 HitPointsCurrent = 12, HitPointsMax = 12 };
             var hidden = new UnitData { Owner = enemy, IsHero = true, IsHidden = true,
@@ -672,6 +808,7 @@ namespace Game.EditorTests
                 Assert.That(observed.Roster.Units.Count(u => u.IsHero), Is.EqualTo(1));
                 Assert.That(observed.Roster.CurrentFates[1], Is.EqualTo(3));
                 Assert.That(snap.Known.EnemySightings.Single().Defenders.Count, Is.EqualTo(1));
+                Assert.That(snap.Known.EnemySightings.Single().Defenders[0].MaxHitPoints, Is.EqualTo(60f));
                 var opposition = new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(body) },
                     WorthIt.SideCommander.Of(hero), 2f, army.Id) };
                 var options = GroundCombatAirSupport.Options(snap, opposition, target,
@@ -741,7 +878,7 @@ namespace Game.EditorTests
                 indices.Select(i => target.Roster.Units[i]).ToList(), 0, survivorSourceIndices: indices);
             var after = GroundCombatAirSupport.AfterAirStrike(opposition, new[] { target }, estimate);
             Assert.That(after.Count, Is.EqualTo(3));
-            Assert.That(after[0].Commander.Fate, Is.EqualTo(commanderSurvives ? 4 : 2));
+            Assert.That(after[0].Commander.Fate, Is.EqualTo(commanderSurvives ? 3 : 1));
             Assert.That(after[0].DefenseBonusOverride, Is.EqualTo(2f));
             Assert.That(after[0].ArmyId, Is.EqualTo(7));
             Assert.That(after[1].Equals(opposition[1]), Is.True);
