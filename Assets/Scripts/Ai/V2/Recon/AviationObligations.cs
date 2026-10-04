@@ -11,7 +11,8 @@ namespace Game.Ai.V2
     //  rebases (AviationRebasePlanner.FindMandatoryContinuations) are settled BEFORE any card play
     //  of the turn. The pipeline defers the initial Phase A and every strategic re-admission while
     //  one is pending, and admits the collected axes once in a single pass when they are done. The
-    //  order itself protects their activation AP / Energy, so no reservation holds it.
+    //  order keeps the physical return first; it costs nothing (the sortie launch was paid once),
+    //  so no AP / Energy is protected or reserved for it.
     //
     //  An obligation that cannot progress is stalled for the turn (AviationObligationStallRegistry)
     //  and stops counting, so an unaffordable or blocked wing never freezes card play.
@@ -23,9 +24,9 @@ namespace Game.Ai.V2
             && (AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber).Count > 0
                 || ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx).Count > 0);
 
-        // The activation AP the pending obligations will spend this turn. The order above protects
-        // it from card play; a spend made before that order (the turn-start hand refill) must
-        // leave it untouched itself.
+        // The activation AP the pending obligations will spend this turn: an airborne wing has
+        // already paid its sortie launch, so this is 0 unless an unpaid aircraft joined it
+        // (ArmyData.PendingActivationApCost). A returning wing never needs AP protected.
         internal static int ActivationAp(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx == null)
@@ -34,8 +35,8 @@ namespace Game.Ai.V2
             wings.UnionWith(ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx));
             int ap = 0;
             foreach (ArmyData wing in wings)
-                if (wing != null && !wing.HasActivatedThisTurn)
-                    ap += System.Math.Max(0, wing.ActivationApCost);
+                if (wing != null)
+                    ap += System.Math.Max(0, wing.PendingActivationApCost);
             return ap;
         }
     }

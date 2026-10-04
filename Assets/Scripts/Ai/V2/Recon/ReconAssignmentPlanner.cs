@@ -409,8 +409,7 @@ namespace Game.Ai.V2
 
                 list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
                     1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
-                    requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore,
-                    nextTurnEnergy: choice.NextTurnEnergy, nextTurnAp: choice.NextTurnAp));
+                    requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
             }
         }
 

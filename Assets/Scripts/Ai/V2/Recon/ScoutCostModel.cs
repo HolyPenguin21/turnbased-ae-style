@@ -114,16 +114,16 @@ namespace Game.Ai.V2
             int? preferredMoverArmyId = null)
         {
             // AirSweep has no ground actor to plan. Price the incumbent wing itself when known: a
-            // wing already activated this turn continues its outbound leg for 0 AP / 0 Energy
-            // (the sortie was paid at launch), otherwise its own real activation cost.
+            // wing on a paid sortie continues for 0 AP / 0 Energy on any turn (the launch was paid
+            // once), otherwise its own launch cost (ArmySnapshot.PendingActivation*).
             if (ReconScoutKinds.IsAirSweep(target.Kind) && preferredMoverArmyId.HasValue)
             {
                 ArmySnapshot wing = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                     && a.IsAir && a.ArmyId == preferredMoverArmyId.Value);
                 if (wing != null)
                 {
-                    float ap = wing.HasActivatedThisTurn ? 0f : Mathf.Max(0, wing.ActivationApCost);
-                    float energy = wing.HasActivatedThisTurn ? 0f : Mathf.Max(0, wing.ActivationEnergyCost);
+                    float ap = Mathf.Max(0, wing.PendingActivationApCost);
+                    float energy = Mathf.Max(0, wing.PendingActivationEnergyCost);
                     return new ScoutCostEstimate
                     {
                         MoverKnown = true,

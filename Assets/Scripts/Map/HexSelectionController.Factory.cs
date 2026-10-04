@@ -93,8 +93,11 @@ namespace Game.Map
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
                 : null;
-            if (ownerCatalog?.airArmyPrefab != null)
-                army.Controller.Visual.ApplyPrefabAppearance(ownerCatalog.airArmyPrefab);
+            // Both directions: a shell promoted to an air army, and a landed wing whose aircraft
+            // went back into the airfield (an ordinary empty shell again).
+            MapObjectVisual prefab = AviationRules.IsAirArmy(army) ? ownerCatalog?.airArmyPrefab : ownerCatalog?.armyPrefab;
+            if (prefab != null)
+                army.Controller.Visual.ApplyPrefabAppearance(prefab);
         }
 
         public void DeleteArmyIfEmptied(ArmyData army)

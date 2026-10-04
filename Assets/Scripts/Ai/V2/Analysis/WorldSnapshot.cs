@@ -271,6 +271,11 @@ namespace Game.Ai.V2
         public int ActivationApCost;
         public int ActivationEnergyCost;   // game rule: non-zero ONLY for a real air army
         public bool HasActivatedThisTurn;
+        // Frozen ArmyData.PendingActivationApCost/EnergyCost — what this army's NEXT action really
+        // costs. For an air army that is its sortie launch (0/0 once paid, for the rest of the
+        // sortie, across turns); aviation planning must read these, never HasActivatedThisTurn.
+        public int PendingActivationApCost;
+        public int PendingActivationEnergyCost;
         // Exact per-army activation ledger frozen from ArmyData. Needed because a unit may leave
         // and rejoin the same army in one turn without paying its activation share twice.
         public IReadOnlyCollection<int> ActivationCoveredUnitRuntimeIds =

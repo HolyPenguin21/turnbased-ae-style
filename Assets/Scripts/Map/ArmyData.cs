@@ -184,6 +184,24 @@ namespace Game.Map
             ? Members.Sum(m => m.LaunchEnergyCost)
             : 0;
 
+        // THE cost of this army's next action (a move order or a stationary air strike) — read
+        // by the route arrow, the order check, the real debit (ArmyActions.TryPayActivation) and
+        // AI planning alike. A ground army pays its activation once per turn. An air army pays its
+        // launch once per sortie: only members whose SortieLaunchPaid is not yet set are charged,
+        // so continuing a paid sortie — this turn or any later one — costs 0 AP / 0 Energy.
+        public int PendingActivationApCost => AviationRules.IsAirArmy(this)
+            ? Members.Where(m => !m.SortieLaunchPaid).Sum(m => m.ActivationApCost)
+            : HasActivatedThisTurn ? 0 : ActivationApCost;
+
+        public int PendingActivationEnergyCost => AviationRules.IsAirArmy(this)
+            ? Members.Where(m => !m.SortieLaunchPaid).Sum(m => m.LaunchEnergyCost)
+            : 0;
+
+        // Whether this army's next action still has something to pay (see above).
+        public bool RequiresActivationPayment => AviationRules.IsAirArmy(this)
+            ? Members.Any(m => !m.SortieLaunchPaid)
+            : !HasActivatedThisTurn;
+
         // Shared movement — every member advances in lockstep, capped by whichever one has the
         // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an

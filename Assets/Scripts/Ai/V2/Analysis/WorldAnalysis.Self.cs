@@ -457,6 +457,8 @@ namespace Game.Ai.V2
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
+                PendingActivationApCost = a.PendingActivationApCost,
+                PendingActivationEnergyCost = a.PendingActivationEnergyCost,
                 ActivationCoveredUnitRuntimeIds = ArmyRegistry.AllForOwner(a.Owner)
                     .Where(other => other != null)
                     .SelectMany(other => other.Members)

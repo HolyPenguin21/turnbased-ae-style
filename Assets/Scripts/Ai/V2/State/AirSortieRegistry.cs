@@ -27,6 +27,13 @@ namespace Game.Ai.V2
         public HexCoord TargetHex;   // current travel destination: the action hex while Outbound, the landing hex after
         public HexCoord LandingHex;  // owned airfield this sortie is committed to landing at
         public bool Outbound = true; // false from launch for Rebase: destination is its landing
+        // Strike only: the turn the wing chose to end over its target (proved safe by
+        // AiAirSortiePlanner.CanEndTurnHereAndRecover) to strike again on its next turn. The
+        // support leg is not proposed again for that turn; null otherwise.
+        public int? HeldTurn;
+        // A former support series flying home: it struck under its task's own policy, so the
+        // generic recovery leg never adds a Standard strike on the way out.
+        public bool NoRecoveryStrike;
     }
 
     public static class AirSortieRegistry

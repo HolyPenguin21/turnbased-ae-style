@@ -18,16 +18,18 @@ namespace Game.Aviation
                 return messages;
             foreach (ArmyData airArmy in ArmyRegistry.AllForOwner(owner).Where(AviationRules.IsAirArmy).ToList())
             {
-                // Landing is intentionally a state condition, not a transfer into a container:
-                // the formed air army persists on a friendly barracks hex for its next sortie.
-                // No EnsureAirfield here: the Base creation boundary materializes its persistent
-                // container. Landing still resets the formed air army in place and never creates
-                // or transfers cards between containers.
+                // Ending the turn on an owned airfield is THE completed landing: the aircraft go
+                // back into the airfield container (refuelled, sortie closed, no repair) and the
+                // wing stays as an empty shell (AviationActions.LandInSlotOrder). Merely passing
+                // through an airfield mid-turn lands nothing. Aircraft that find no free slot stay
+                // airborne and take the ordinary unlanded end below.
                 if (AviationRules.IsOwnedAirfieldAt(airArmy.Hex, owner))
                 {
-                    foreach (UnitData aircraft in airArmy.Members)
-                        AviationRules.ResetAfterLanding(aircraft);
-                    continue;
+                    int landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
+                    if (airArmy.Members.Count == 0)
+                        continue;
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full — {airArmy.Members.Count} aircraft could not land"
+                        + (landed > 0 ? $" ({landed} landed)." : "."));
                 }
                 int destroyed = 0;
                 foreach (UnitData aircraft in airArmy.Members.ToList())

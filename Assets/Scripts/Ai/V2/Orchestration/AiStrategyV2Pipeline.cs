@@ -257,7 +257,7 @@ namespace Game.Ai.V2
             if (!AviationObligations.Pending(player, ctx))
             {
                 AviationRebasePlan formation = AviationRebasePlanner.BuildFormationPlan(
-                    snapshot, player, root, ctx, reconObjectives);
+                    snapshot, player, root, ctx, reconObjectives, activeIntents, actorCommitments);
                 if (formation != null)
                 {
                     bool formedWing = false;
@@ -1275,6 +1275,19 @@ namespace Game.Ai.V2
                             yield return RunTypedAdmissions();
                         }
                     }
+                }
+
+                // Air-support safety net: a wing still over its target that cannot safely end
+                // another turn there (its strike leg was not run, or found nothing) flies home now
+                // instead of taking fuel damage. Free: the sortie launch was already paid.
+                foreach (ArmyData unsafeWing in GroundCombatAirSupport.RecallUnsafeStrikes(player, ctx.Map))
+                {
+                    bool recalledMoved = false;
+                    yield return AviationRebasePlanner.ExecuteContinuation(
+                        player, root, ctx, unsafeWing, v => recalledMoved = v,
+                        allowRecoveryStrike: false);
+                    if (recalledMoved)
+                        V2StateVersion.Bump();
                 }
 
                 // Cold Phase A and the following typed admissions may have created or

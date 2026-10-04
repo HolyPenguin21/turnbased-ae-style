@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Ai;
 using Game.Aviation;
 using Game.Cards;
+using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -33,23 +34,21 @@ namespace Game.Ai.V2
         // (AviationActions.TryLaunch: "forming a stack is not a take-off"); the sortie itself is
         // still admitted and paid by the ordinary Recon funding. Source == Destination.
         public bool FormOnly;
+        // The ownership view the formation may reuse armies under (null: never repurpose).
+        public ActorCommitments Commitments;
     }
 
     internal static class AviationRebasePlanner
     {
+        // The relocation pays ONE sortie launch (AP + Energy at the neutral resource price — no
+        // snapshot here). A multi-turn route costs nothing more: continuing a paid sortie is free
+        // on every later turn (ArmyData.PendingActivation*), so there is no recurring delivery.
         internal static TaskScore ScoreImprovement(TaskScore sourceService,
-            TaskScore destinationService, int activationAp, int energyCost,
-            int requiredTurns = 1)
+            TaskScore destinationService, int activationAp, int energyCost)
         {
-            int futureActivations = Mathf.Max(0, requiredTurns - 1);
-            // Launch Energy of every activation of the flight at the neutral resource price (no
-            // snapshot here), the first activation now, the later ones as recurring AP.
             float price = TaskScoreEvaluator.Price(ActionPrice.Ap(activationAp)
-                + energyCost * (1 + futureActivations) * AiConfigV2.actionPriceResourceAp);
-            float delivery = TaskScoreEvaluator.Price(
-                ActionPrice.RecurringAp(activationAp, requiredTurns));
-            return TaskScoreEvaluator.NetChange(
-                sourceService, destinationService, price, delivery);
+                + energyCost * AiConfigV2.actionPriceResourceAp);
+            return TaskScoreEvaluator.NetChange(sourceService, destinationService, price);
         }
 
         // A launched multi-turn rebase is a physical landing obligation, not a fresh strategic
@@ -81,20 +80,34 @@ namespace Game.Ai.V2
             return result.Distinct().OrderBy(a => a.Id).ToList();
         }
 
-        // A stored aircraft cannot fly a sweep: Recon binds only already FORMED wings and
-        // LaunchRoutine used to be reachable only through a Rebase, so aircraft parked in an airfield
-        // that no better airfield outranked never flew (2026-10-02 playtest: Korrin's Wasp sat in
-        // its home airfield from T6 to T17 while every AirSweep failed NoExecutableStep). This
-        // proposes forming ONE wing from storage when the canonical service projection proves a
-        // sweep from this very airfield (BestAirfieldServiceTaskScore: route, endurance, launch rule
-        // and the sortie's own AP/Energy price already folded into the value) and the sortie is
-        // affordable from SPENDABLE resources — the same bank view that protects card play and the
-        // hand refill. Capped by the wings that already exist and the serviceable sweeps.
+        // A stored aircraft cannot fly: Recon and every combat-support lane bind only FORMED
+        // wings (2026-10-02 playtest: Korrin's Wasp sat in its home airfield from T6 to T17 while
+        // every AirSweep failed NoExecutableStep). This proposes forming ONE wing from storage,
+        // for an application an existing task really has and no free formed wing already covers:
+        //   · Recon — an AirSweep the canonical service projection proves from this airfield
+        //     (BestAirfieldServiceTaskScore), capped by the one-actor AirSweep limit;
+        //   · combat support — an Attack in Assault with no wing, an ActiveDefence threat with no
+        //     air support, a weak Raid (Reinforcement) on a neutral roster of two or more — with a
+        //     proven sortie route from this airfield to that target.
+        // Either way the launch must fit the SPENDABLE bank now (the same view that protects card
+        // play). Forming is free; the shell comes from AviationWingPreparation (reuse first).
         internal static AviationRebasePlan BuildFormationPlan(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives,
+            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
+        {
+            if (player == null || root == null || ctx?.Map == null)
+                return null;
+            AviationRebasePlan plan = BuildReconFormation(snap, player, root, ctx, objectives)
+                ?? BuildCombatFormation(snap, player, root, ctx, activeIntents, commitments);
+            if (plan != null)
+                plan.Commitments = commitments;
+            return plan;
+        }
+
+        private static AviationRebasePlan BuildReconFormation(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives)
         {
-            if (player == null || root == null || ctx?.Map == null || objectives == null
-                || objectives.Count == 0)
+            if (objectives == null || objectives.Count == 0)
                 return null;
             int serviceable = objectives.Count(ReconAirCapacityPolicy.IsAirServiceable);
             if (serviceable == 0)
@@ -105,45 +118,122 @@ namespace Game.Ai.V2
                 return null;
 
             AviationRebasePlan best = null;
+            foreach ((ArmyData source, IReadOnlyList<UnitData> group) in AffordableStoredGroups(player, root, ctx))
+            {
+                TaskScore service = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
+                    snap, player, ctx, group, source.Hex, objectives, out int coverage, out string witness);
+                if (coverage <= 0 || service.Value <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+                if (best != null && service.Value <= best.Utility + AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+                best = FormPlan(source, group, service, witness);
+            }
+            return best;
+        }
+
+        // Targets of existing ground-combat tasks that want air support and have no wing yet.
+        internal static List<HexCoord> CombatSupportTargets(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var targets = new List<HexCoord>();
+            int turn = snap?.TurnNumber ?? 0;
+            foreach (MissionIntent i in activeIntents ?? System.Array.Empty<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active)
+                    continue;
+                AttackIntent a = i.Attack;
+                if (a != null && a.Phase == AttackMissionPhase.Assault && !a.AirSupportArmyId.HasValue
+                    && a.AirSupportAttemptedTurn != turn)
+                    targets.Add(a.Target.Hex);
+                RaidIntent r = i.Raid;
+                if (r != null && r.Target.Kind == RaidTargetKind.NeutralArmy
+                    && r.Phase == RaidMissionPhase.Reinforcement && !r.AirSupportArmyId.HasValue
+                    && WorthIt.UnitsOf(AiV2Util.KnownOpposition(snap, r.Target)).Count > 1)
+                    targets.Add(r.LastKnownHex);
+            }
+            var supported = new HashSet<int>((activeIntents ?? System.Array.Empty<MissionIntent>())
+                .Where(i => i?.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport)
+                .Select(i => i.ActiveDefence.EnemyArmyId));
+            foreach (ActiveDefenceObjective o in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+                if (!supported.Contains(o.Target.EnemyArmyId)
+                    && ActiveDefenceObjectiveEvaluator.Opposition(snap, o.Target.EnemyArmyId) != null)
+                    targets.Add(o.Target.LastKnownHex);
+            return targets.Distinct().ToList();
+        }
+
+        private static AviationRebasePlan BuildCombatFormation(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments)
+        {
+            if (snap == null || activeIntents == null)
+                return null;
+            List<HexCoord> targets = CombatSupportTargets(snap, activeIntents);
+            if (targets.Count == 0)
+                return null;
+            // Free formed wings already cover that many targets.
+            int freeWings = ArmyRegistry.AllForOwner(player).Count(a => AviationRules.IsValidAirArmy(a)
+                && AirSortieRegistry.ForArmy(player, a) == null && a.CurrentMovement > 0
+                && (commitments == null || !commitments.IsArmyClaimed(a.Id)));
+            if (freeWings >= targets.Count)
+                return null;
+
+            AviationRebasePlan best = null;
+            int bestTurns = int.MaxValue;
+            foreach ((ArmyData source, IReadOnlyList<UnitData> group) in AffordableStoredGroups(player, root, ctx))
+                foreach (HexCoord target in targets)
+                {
+                    Sortie? same = AiAirSortiePlanner.TryPlanSortieFromStorage(source.Hex, group, target, ctx.Map, player);
+                    MultiTurnSortie? multi = same.HasValue ? null
+                        : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(source.Hex, group, target, ctx.Map, player);
+                    if (!same.HasValue && !multi.HasValue)
+                        continue;
+                    int turns = same.HasValue ? 1 : multi.Value.RequiredTurns;
+                    if (turns >= bestTurns)
+                        continue;
+                    bestTurns = turns;
+                    best = FormPlan(source, group, default,
+                        $"combat support ({target.Q},{target.R}) in {turns} turn(s)");
+                }
+            return best;
+        }
+
+        // One-aircraft groups whose launch fits the spendable bank now.
+        private static IEnumerable<(ArmyData Source, IReadOnlyList<UnitData> Group)> AffordableStoredGroups(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
+            float spendableEnergy = StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy);
             foreach (ArmyData source in ArmyRegistry.AllForOwner(player)
                 .Where(AviationRules.IsAirfield)
-                .OrderBy(a => a.Hex.Q).ThenBy(a => a.Hex.R))
-            {
+                .OrderBy(a => a.Hex.Q).ThenBy(a => a.Hex.R).ToList())
                 foreach (UnitData aircraft in source.Members
-                    .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId))
+                    .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId).ToList())
                 {
                     IReadOnlyList<UnitData> group = new[] { aircraft };
                     if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
                         continue;
                     int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                     int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
-                    if (ap > StrategicSpendability.SpendableAp(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon)
+                    if (ap > spendableAp + AiConfigV2.allocatorSliceEpsilon
+                        || energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
                         continue;
-                    if (energy > StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
-                        + AiConfigV2.allocatorSliceEpsilon)
-                        continue;
-                    TaskScore service = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
-                        snap, player, ctx, group, source.Hex, objectives, out int coverage, out string witness);
-                    if (coverage <= 0 || service.Value <= AiConfigV2.allocatorSliceEpsilon)
-                        continue;
-                    if (best != null && service.Value <= best.Utility + AiConfigV2.allocatorSliceEpsilon)
-                        continue;
-                    best = new AviationRebasePlan
-                    {
-                        SourceHex = source.Hex,
-                        DestinationHex = source.Hex,
-                        Aircraft = group,
-                        Score = service,
-                        ActivationAp = 0,
-                        EnergyCost = 0,
-                        SourceWitness = "stored",
-                        DestinationWitness = witness,
-                        FormOnly = true,
-                    };
+                    yield return (source, group);
                 }
-            }
-            return best;
         }
+
+        private static AviationRebasePlan FormPlan(ArmyData source, IReadOnlyList<UnitData> group,
+            TaskScore service, string witness) => new AviationRebasePlan
+            {
+                SourceHex = source.Hex,
+                DestinationHex = source.Hex,
+                Aircraft = group,
+                Score = service,
+                ActivationAp = 0,
+                EnergyCost = 0,
+                SourceWitness = "stored",
+                DestinationWitness = witness,
+                FormOnly = true,
+            };
 
         private static IEnumerator ExecuteFormation(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, AviationRebasePlan plan, System.Action<bool> setChanged)
@@ -162,18 +252,16 @@ namespace Game.Ai.V2
                 AiDebugLog.Write("[AI][V2][Aviation][FormWing] cancelled — AP/Energy held by the resource bank");
                 yield break;
             }
-            bool formed = AviationActions.TryLaunch(source, plan.Aircraft.ToList(),
-                ctx.StartingDeckCatalog?.GetCatalog(player.Faction), ctx.HexSelection,
-                out ArmyData wing, out string why);
-            if (!formed || wing == null)
+            if (!AviationWingPreparation.TryForm(player, ctx, source, plan.Aircraft, plan.Commitments,
+                    out ArmyData wing, out string how) || wing == null)
             {
-                AiDebugLog.Write($"[AI][V2][Aviation][FormWing] failed — {why}");
+                AiDebugLog.Write($"[AI][V2][Aviation][FormWing] failed — {how}");
                 yield break;
             }
-            AiDebugLog.Write($"[AI][V2][Aviation][FormWing] {player.Nickname}: \"{wing.Name}\" formed from "
-                + $"{plan.Aircraft.Count} stored aircraft at ({plan.SourceHex.Q},{plan.SourceHex.R}) "
+            AiDebugLog.Write($"[AI][V2][Aviation][FormWing] {player.Nickname}: \"{wing.Name}\" #{wing.Id} formed from "
+                + $"{plan.Aircraft.Count} stored aircraft at ({plan.SourceHex.Q},{plan.SourceHex.R}) ({how}) "
                 + $"service={plan.Score.Value:0.00} witness={plan.DestinationWitness ?? "none"} "
-                + $"(sortie price ap {ap} energy {energy} is paid by Recon funding, not here)");
+                + $"(sortie launch ap {ap} energy {energy} is paid by the funded leg, not here)");
             setChanged?.Invoke(true);
             yield return AiTurnController.WaitStep(ctx);
         }
@@ -225,14 +313,9 @@ namespace Game.Ai.V2
                             player, root, ctx, ResourceType.Energy);
                         if (energy > spendableEnergy + AiConfigV2.allocatorSliceEpsilon)
                             continue;
-                        if (route.Value.RequiredTurns > 1
-                            && !AviationContinuationBudget.CanGuaranteeNextActivation(
-                                player, ctx.Map, spendableEnergy - energy, energy, ap, out _))
-                            continue;
 
                         TaskScore score = ScoreImprovement(
-                            sourceService, destinationService, ap, energy,
-                            route.Value.RequiredTurns);
+                            sourceService, destinationService, ap, energy);
                         if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         var candidate = new AviationRebasePlan
@@ -290,13 +373,6 @@ namespace Game.Ai.V2
                 AiDebugLog.Write("[AI][V2][Aviation][Rebase] cancelled — AP/Energy held by the resource bank");
                 yield break;
             }
-            if (liveRoute.Value.RequiredTurns > 1
-                && !AviationContinuationBudget.CanGuaranteeNextActivation(
-                    player, ctx.Map, spendableEnergy - liveEnergy, liveEnergy, liveAp, out string block))
-            {
-                AiDebugLog.Write($"[AI][V2][Aviation][Rebase] cancelled — future activation not guaranteed ({block})");
-                yield break;
-            }
 
             var before = new HashSet<int>(ArmyRegistry.AllForOwner(player).Select(a => a.Id));
             var decision = new AiDecision
@@ -346,8 +422,12 @@ namespace Game.Ai.V2
                 + $"witness={plan.DestinationWitness ?? "none"}");
         }
 
+        // `allowRecoveryStrike` — false when the wing comes straight from a task's strike series:
+        // that series already struck under the task's own policy (e.g. RaidSupport's survivor
+        // floor) and a Standard strike on the way out must not override it.
         internal static IEnumerator ExecuteContinuation(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ArmyData wing, System.Action<bool> setChanged)
+            AiTurnContext ctx, ArmyData wing, System.Action<bool> setChanged,
+            bool allowRecoveryStrike = true)
         {
             if (player == null || root == null || ctx?.Map == null || wing == null)
                 yield break;
@@ -362,7 +442,8 @@ namespace Game.Ai.V2
             // mission released it. If it starts this continuation on an enemy-occupied hex and a
             // landing is still recoverable inside live endurance, take the free stationary strike
             // first; movement remains untouched and the return continues below.
-            if (!AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+            if (allowRecoveryStrike && !task.NoRecoveryStrike
+                && !AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
                 && AviationActions.CanActivateForStationaryStrike(wing)
                 && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player))
             {

@@ -111,12 +111,8 @@ namespace Game.Map
             // actually be issued this turn, so don't draw a route implying it can (mirrors
             // IssueMoveOrder's own AP check further down, just applied to the preview instead of
             // the actual order).
-            bool needsActivation = !army.HasActivatedThisTurn;
-            int energyCost = needsActivation ? army.ActivationEnergyCost : 0;
             PlayerRoot ownerRoot = PlayerRootRegistry.FindFor(army.Owner);
-            bool canAffordActivation = !needsActivation
-                || (ownerRoot != null && ownerRoot.CanSpendActionPoints(army.ActivationApCost)
-                    && ownerRoot.GetResource(ResourceType.Energy) >= energyCost);
+            bool canAffordActivation = ArmyActions.CanAffordActivation(army, ownerRoot);
             if (army.CurrentMovement <= 0 || !canAffordActivation)
             {
                 if (_pathArrow != null)
@@ -190,8 +186,8 @@ namespace Game.Map
             var points = new List<Vector3>(path.Hexes.Count);
             foreach (HexCoord hex in path.Hexes)
                 points.Add(map.HexToWorld(hex));
-            int apCost = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
-            int energyCost = army.HasActivatedThisTurn ? 0 : army.ActivationEnergyCost;
+            int apCost = army.PendingActivationApCost;
+            int energyCost = army.PendingActivationEnergyCost;
             // path.TotalCost is always terrain-weighted (see HexPathfinder.FindPath) — an air
             // army actually spends flat 1 MP per hex (see AviationRules.MovementCost, what
             // ArmyController.MoveRoutine really charges), so the preview must show that instead.
@@ -507,12 +503,11 @@ namespace Game.Map
             // so a bigger army costs more to get moving) is only spent the first time this
             // army is given a move order in a turn — every move order after that, for the
             // rest of the turn, costs MoveCurrent only. See ArmyData.HasActivatedThisTurn.
-            bool needsActivation = !army.HasActivatedThisTurn;
-            int energyCost = needsActivation ? army.ActivationEnergyCost : 0;
-            if (needsActivation && (!ownerRoot.CanSpendActionPoints(army.ActivationApCost)
-                || ownerRoot.GetResource(ResourceType.Energy) < energyCost))
+            // An air army instead pays its launch once per sortie (ArmyData.PendingActivation*):
+            // continuing a paid sortie, this turn or a later one, is free.
+            if (!ArmyActions.CanAffordActivation(army, ownerRoot))
             {
-                NotifyMoveBlocked(army, $"Not enough resources to move {army.Name} ({army.ActivationApCost} AP, {energyCost} Energy needed).");
+                NotifyMoveBlocked(army, $"Not enough resources to move {army.Name} ({army.PendingActivationApCost} AP, {army.PendingActivationEnergyCost} Energy needed).");
                 return MoveOrderResult.InsufficientActionPoints;
             }
 
@@ -691,15 +686,8 @@ namespace Game.Map
                 },
                 beforeFirstStep: () =>
                 {
-                    if (army.HasActivatedThisTurn) return true;
-                    int ap = army.ActivationApCost;
-                    int energy = army.ActivationEnergyCost;
-                    if (!ownerRoot.CanSpendActionPoints(ap)
-                        || ownerRoot.GetResource(ResourceType.Energy) < energy) return false;
-                    ownerRoot.SpendActionPoints(ap);
-                    if (energy > 0) ownerRoot.AddResource(ResourceType.Energy, -energy);
-                    army.MarkActivated();
-                    return true;
+                    if (!army.RequiresActivationPayment && army.HasActivatedThisTurn) return true;
+                    return ArmyActions.TryPayActivation(army, ownerRoot);
                 },
                 onStepStarted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: false),
                 onStepCompleted: (from, to) => ObserveMovingArmyStep(army, from, to, completed: true),

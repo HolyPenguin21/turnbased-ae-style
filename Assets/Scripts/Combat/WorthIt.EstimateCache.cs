@@ -85,8 +85,13 @@ namespace Game.Combat
             }
         }
 
+        // Identity of the current cache scope. Sibling estimators that memo inside the same scope
+        // (AviationCombatEstimator) clear their own entries whenever this changes.
+        public static int EstimateCacheScopeId { get; private set; }
+
         public static void BeginEstimateCacheScope()
         {
+            EstimateCacheScopeId++;
             EstimateCacheEntries.Clear();
             _estimateCacheStats = default;
             _estimateCacheActive = true;
@@ -97,6 +102,7 @@ namespace Game.Combat
             EstimateCacheStats stats = CurrentEstimateCacheStats;
             EstimateCacheEntries.Clear();
             _estimateCacheActive = false;
+            EstimateCacheScopeId++;
             return stats;
         }
 

@@ -57,6 +57,11 @@ namespace Game.Ai.V2
                     proposals.Add(proposal);
                 }
 
+            // Air support of every listed threat, decided independently of the ground answer below
+            // (Intercept, Defer, Regroup, Shortage or none): a separate technical assignment of the
+            // same objective that never touches the ground response, its actor or its key.
+            AppendActiveDefenceAirSupport(snap, activeIntents, committed, proposals);
+
             HashSet<int> withdrawing = ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(activeIntents);
             // The army an opening Attack preparation would host in: an Intercept that takes it pays
             // that preparation's value (MoverOpportunityCost). Resolved once, only when needed.
@@ -188,6 +193,90 @@ namespace Game.Ai.V2
                 proposals.Add(proposal);
                 AiDebugLog.WriteDeduped(target.EnemyArmyId.ToString(),
                     $"[AI][V2][ActiveDefence][Admission] decision=PROPOSE enemy={target.EnemyArmyId} actor={actor.ArmyId} score={actorScore.Value:0.00}");
+            }
+        }
+
+        // The wing striking one threat. An incumbent AirSupport intent keeps its bound wing (leg
+        // re-proposed each turn until its series ends; not while it holds over the target this
+        // turn). A fresh one takes the best free formed wing for the threat's honest contact hex —
+        // no ground intercept, win gain or intel age required; the existing objective, a route and
+        // the launch fitting the free bank (provisioning) are the whole basis.
+        private static void AppendActiveDefenceAirSupport(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
+            List<MissionProposal> proposals)
+        {
+            if (snap?.Self?.Armies == null)
+                return;
+            var unavailable = new HashSet<int>(committed ?? (ISet<int>)new HashSet<int>());
+            foreach (ArmySnapshot w in snap.Self.Armies)
+                if (w != null && w.IsAir && AirSortieRegistry.ForArmy(snap.Observer,
+                        AiV2Util.ResolveArmy(snap.Observer, w.ArmyId)) != null)
+                    unavailable.Add(w.ArmyId);
+
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            {
+                int enemyId = objective.Target.EnemyArmyId;
+                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active
+                    && i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport
+                    && i.ActiveDefence.EnemyArmyId == enemyId);
+                int? fixedWing = incumbent?.ActiveDefence?.AirSupportArmyId;
+                if (incumbent != null && (!fixedWing.HasValue
+                        || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, fixedWing.Value,
+                            snap.TurnNumber)))
+                    continue;
+                IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                    ActiveDefenceObjectiveEvaluator.Opposition(snap, enemyId);
+                if (opposition == null)
+                    continue; // no honest contact position — nothing to fly to
+                HexCoord targetHex = objective.Target.LastKnownHex;
+                AirStrikePolicy policy = AirStrikePolicy.DefenceSupport(enemyId);
+                List<AirSupportOption> options = GroundCombatAirSupport.Ranked(
+                    GroundCombatAirSupport.Options(snap, opposition, targetHex, policy, null, 0f,
+                        fixedWing.HasValue ? null : unavailable, fixedWing));
+                if (options.Count == 0)
+                    continue;
+                AirSupportOption best = options[0];
+                ArmySnapshot wing = snap.Self.Armies.First(a => a != null && a.ArmyId == best.WingArmyId);
+                if (fixedWing == null)
+                    unavailable.Add(wing.ArmyId);
+
+                float totalHp = WorthIt.UnitsOf(opposition).Sum(u => u.HitPoints);
+                // Expected share of the threat the series removes; an unknown roster is neutral.
+                float effect = best.RosterKnown && totalHp > 0f
+                    ? UnityEngine.Mathf.Clamp01(best.ExpectedDamage / totalHp) : 0.5f;
+                float launchPrice = best.Ap + best.Resources.Energy * AiConfigV2.actionPriceResourceAp;
+                TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore, effect,
+                    launchPrice, 0f, best.EtaTurns);
+
+                ActiveDefenceMissionTarget target = objective.Target;
+                target.Phase = ActiveDefencePhase.AirSupport;
+                target.PrimaryArmyId = null;
+                target.AirSupportArmyId = wing.ArmyId;
+                target.AirSupportLandingHex = incumbent?.ActiveDefence?.AirSupportLandingHex ?? best.LandingHex;
+                target.EstimatedEta = best.EtaTurns;
+                var proposal = new MissionProposal
+                {
+                    Kind = MissionKind.ActiveDefence,
+                    Target = target,
+                    BaseValue = score.Value,
+                    Score = score,
+                    LocalAdmissionScore = score.Value,
+                    PreferredMoverArmyId = wing.ArmyId,
+                    FromDurableIntent = incumbent != null,
+                    DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
+                    Requirements = GroundCombatAirSupport.LegRequirements(wing, targetHex, best.EtaTurns),
+                    Explain = $"ActiveDefence enemy #{enemyId} AirSupport wing #{wing.ArmyId} "
+                        + $"-> {best.StrikeTurns} strike turn(s), land "
+                        + $"({target.AirSupportLandingHex.Value.Q},{target.AirSupportLandingHex.Value.R}) "
+                        + $"task {score.Value:0.00}",
+                };
+                proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+                proposals.Add(proposal);
+                AiDebugLog.WriteDeduped(enemyId + "#air",
+                    $"[AI][V2][ActiveDefence][AirSupport] decision=PROPOSE enemy={enemyId} "
+                    + $"wing={wing.ArmyId} incumbent={(incumbent != null ? 1 : 0)} "
+                    + $"strikeTurns={best.StrikeTurns} damage={best.ExpectedDamage:0.0} score={score.Value:0.00}");
             }
         }
 

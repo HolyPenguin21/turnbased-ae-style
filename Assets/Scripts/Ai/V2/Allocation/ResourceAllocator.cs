@@ -193,6 +193,9 @@ namespace Game.Ai.V2
             ad.Phase == ActiveDefencePhase.Return
                 ? new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Return,
                     ad.PrimaryArmyId ?? 0, ad.ReturnHex?.Q ?? 0, ad.ReturnHex?.R ?? 0)
+                : ad.Phase == ActiveDefencePhase.AirSupport
+                    ? new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.AirSupport,
+                        ad.EnemyArmyId, 0, 0)
                 : new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Intercept,
                     ad.EnemyArmyId, 0, 0);
 
@@ -256,7 +259,9 @@ namespace Game.Ai.V2
                     : Kind == MissionKind.ActiveDefence
                         ? (SubKind == (int)ActiveDefencePhase.Return
                             ? $"ActiveDefence(Return #{TargetId} {Q},{R})"
-                            : $"ActiveDefence(Intercept #{TargetId})")
+                            : SubKind == (int)ActiveDefencePhase.AirSupport
+                                ? $"ActiveDefence(AirSupport #{TargetId})"
+                                : $"ActiveDefence(Intercept #{TargetId})")
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
                         : Kind == MissionKind.Development

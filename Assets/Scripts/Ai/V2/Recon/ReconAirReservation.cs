@@ -37,12 +37,9 @@ namespace Game.Ai.V2
         public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
         public readonly int ExcludeArmyId;  // the actor being evaluated (real existing actor)
         public readonly int RequiredTurns;
-        public readonly int NextTurnEnergy; // one activation protected if this candidate ends airborne
-        public readonly int NextTurnAp;     // fresh activation AP required on that next turn
 
         public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore,
-            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1, int nextTurnEnergy = 0,
-            int nextTurnAp = 0)
+            int excludeArmyId, float activationAp = 0f, int requiredTurns = 1)
         {
             ActivationAp = activationAp;
             Feasible = feasible;
@@ -51,8 +48,6 @@ namespace Game.Ai.V2
             RouteScore = routeScore;
             ExcludeArmyId = excludeArmyId;
             RequiredTurns = requiredTurns;
-            NextTurnEnergy = nextTurnEnergy;
-            NextTurnAp = nextTurnAp;
         }
 
         internal static readonly AirStructuralFeasibility No = new AirStructuralFeasibility(false, default, 0, 0f, -1);
@@ -93,8 +88,8 @@ namespace Game.Ai.V2
             ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.Pick(
                 player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx,
                 missionFocusHex: missionFocusHex, diagnostics: diagnostics);
-            int launchEnergy = wing.HasActivatedThisTurn ? 0
-                : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
+            // The sortie launch only (0 once paid — continuation is free on every later turn).
+            int launchEnergy = UnityEngine.Mathf.Max(0, wing.PendingActivationEnergyCost);
             int excludeArmyId = wing.Id;
 
             // Structural capacity is not "the scorer returned SOME non-hard-rejected route" — it is
@@ -110,12 +105,8 @@ namespace Game.Ai.V2
                 return AirStructuralFeasibility.No;
             }
 
-            bool spansNextTurn = choice.Value.RequiredTurns > 1;
-            int nextTurnEnergy = spansNextTurn ? UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost) : 0;
-            int nextTurnAp = spansNextTurn ? UnityEngine.Mathf.Max(0, wing.ActivationApCost) : 0;
             return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score,
-                excludeArmyId, choice.Value.ActivationAp, choice.Value.RequiredTurns, nextTurnEnergy,
-                nextTurnAp);
+                excludeArmyId, choice.Value.ActivationAp, choice.Value.RequiredTurns);
         }
 
         // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)

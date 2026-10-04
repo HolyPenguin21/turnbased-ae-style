@@ -134,8 +134,6 @@ namespace Game.Ai.V2
                 ExecutionHex = executionHex,
                 ClaimedAp = realAp,
                 ClaimedEnergy = realEnergy,
-                ClaimedNextTurnAirEnergy = exec.NextTurnEnergy,
-                ClaimedNextTurnAirAp = exec.NextTurnAp,
                 ClaimedPhysical = new ResourceVector(0f, 0f, realEnergy, 0f, 0f),
                 StealthApReserved = false,
                 RequiresStealth = false,
@@ -182,12 +180,8 @@ namespace Game.Ai.V2
                 Mathf.CeilToInt(Mathf.Max(0f, realAp)),
                 Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
                 exec.RouteScore,
-                exec.NextTurnEnergy,
-                exec.NextTurnAp,
                 AirSpendableEnergyLeft(player, root, ctx, session),
-                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
-                session.NextTurnAirEnergyClaimed,
-                session.NextTurnAirApClaimed);
+                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)));
             AiDebugLog.Write(decision.ToLog(label));
 
             return decision.ShouldReserve

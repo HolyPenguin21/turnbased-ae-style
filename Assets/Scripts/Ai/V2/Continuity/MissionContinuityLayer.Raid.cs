@@ -33,7 +33,21 @@ namespace Game.Ai.V2
 
             if (ri.Phase == RaidMissionPhase.AirSupport)
             {
-                if (!GroundCombatAirSupport.SortieLive(player, ri.AirSupportArmyId, out _))
+                // The strike series never holds back a ground assault that is ready: once the
+                // (really struck, re-observed) target is one the primary clears alone, the raid
+                // assaults and the wing — no longer held — flies home (ReleaseOrphanStrikes).
+                if (GroundCombatAirSupport.SortieLive(player, ri.AirSupportArmyId, out _)
+                    && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
+                {
+                    AiDebugLog.Write($"[AI][V2][Raid][AirSupport] wing #{ri.AirSupportArmyId} "
+                        + "released — the primary now clears the target alone; Assault");
+                    ri.AirSupportAttemptedTurn = snap.TurnNumber;
+                    ri.AirSupportArmyId = null;
+                    ri.AirSupportLandingHex = null;
+                    ri.Phase = RaidMissionPhase.Assault;
+                    ClearRaidRecovery(ri);
+                }
+                else if (!GroundCombatAirSupport.SortieLive(player, ri.AirSupportArmyId, out _))
                 {
                     int? released = ri.AirSupportArmyId;
                     ri.AirSupportAttemptedTurn = snap.TurnNumber;

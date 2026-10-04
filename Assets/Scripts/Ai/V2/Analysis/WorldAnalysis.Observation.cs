@@ -241,6 +241,8 @@ namespace Game.Ai.V2
             && a.CurrentMovement == b.CurrentMovement
             && a.ActivationApCost == b.ActivationApCost
             && a.ActivationEnergyCost == b.ActivationEnergyCost
+            && a.PendingActivationApCost == b.PendingActivationApCost
+            && a.PendingActivationEnergyCost == b.PendingActivationEnergyCost
             && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
             && a.IsSoloRecce == b.IsSoloRecce
             && a.IsStructuralRaidActor == b.IsStructuralRaidActor

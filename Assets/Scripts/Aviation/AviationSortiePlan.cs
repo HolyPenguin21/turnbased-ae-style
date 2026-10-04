@@ -115,6 +115,59 @@ namespace Game.Aviation
             return SafeUnlandedEndsRemaining(aircraft) > 0 ? movement : movement / 2;
         }
 
+        // How many of its own turns a group can strike one target in a single sortie: fly
+        // `outboundHexes` out (this turn's `firstTurnMovement`, then `maxMovement` per later turn),
+        // strike on arrival, hold over the target for further strike turns, then fly
+        // `returnHexes` home. Every turn-end away from an airfield consumes one of `safeEnds`;
+        // the plan never exceeds them (no fuel damage). Approach and return turns therefore eat
+        // into the strike turns — it is NOT simply safeEnds + 1. Intermediate airfields are
+        // ignored (conservative). 0 when not even one strike-and-return fits.
+        public static int StrikeTurns(int firstTurnMovement, int maxMovement, int safeEnds,
+            int outboundHexes, int returnHexes)
+        {
+            int best = 0;
+            for (int strikes = 1; strikes <= Mathf.Max(0, safeEnds) + 1; strikes++)
+            {
+                if (!StrikeCalendarFits(firstTurnMovement, maxMovement, safeEnds, outboundHexes,
+                        returnHexes, strikes))
+                    break;
+                best = strikes;
+            }
+            return best;
+        }
+
+        private static bool StrikeCalendarFits(int firstTurnMovement, int maxMovement, int safeEnds,
+            int outboundHexes, int returnHexes, int strikes)
+        {
+            int mp = Mathf.Max(0, firstTurnMovement);
+            int ends = 0;
+            bool Fly(int hexes)
+            {
+                int left = Mathf.Max(0, hexes);
+                while (left > 0)
+                {
+                    int step = Mathf.Min(mp, left);
+                    left -= step;
+                    mp -= step;
+                    if (left <= 0)
+                        break;
+                    if (++ends > safeEnds || maxMovement <= 0)
+                        return false;
+                    mp = maxMovement;
+                }
+                return true;
+            }
+            if (!Fly(outboundHexes))
+                return false;
+            for (int held = 1; held < strikes; held++)
+            {
+                if (++ends > safeEnds)
+                    return false;
+                mp = maxMovement;
+            }
+            return Fly(returnHexes);
+        }
+
         public static IReadOnlyList<HexCoord> CombineRoute(HexPath outbound, HexPath returnPath)
         {
             var hexes = new List<HexCoord>(outbound.Hexes);

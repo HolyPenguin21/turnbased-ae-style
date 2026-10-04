@@ -9,34 +9,45 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // One way an already-fielded free wing can support a ground fight: fly to the target hex,
-    // strike its defenders and keep its physical flight lifecycle independent of the ground mission.
+    // One way an already-fielded free wing can support an existing ground-combat task (Attack,
+    // Raid, ActiveDefence): fly to the task's target, strike it over one or more of its own turns,
+    // fly home. It is a technical assignment serving that task, never a strategic goal of its own.
     internal readonly struct AirSupportOption
     {
         internal readonly int WingArmyId;
         internal readonly HexCoord LandingHex;
         internal readonly int EtaTurns;
         internal readonly int FirstStrikeEta;
+        // Strike turns the series can deliver before it must land (AviationRange.StrikeTurns).
+        internal readonly int StrikeTurns;
+        // Expected damage of the whole series against the KNOWN roster; 0 when the roster is
+        // unknown (RosterKnown false) — never a fictitious fight against an empty roster.
+        internal readonly float ExpectedDamage;
+        internal readonly bool RosterKnown;
+        // The lane's own win read after the expected series (== current when the roster is unknown).
         internal readonly float WinAfter;
-        // Activation AP now (0 when already paid this turn) and per extra turn.
+        // The sortie launch now (0 / 0 when the wing already flies a paid sortie).
         internal readonly float Ap;
+        // Always 0: continuing a paid sortie costs nothing on later turns.
         internal readonly float RecurringAp;
-        // Launch Energy of every activation the sortie needs.
         internal readonly ResourceVector Resources;
 
         internal AirSupportOption(int wingArmyId, HexCoord landingHex, int etaTurns,
-            int firstStrikeEta, float winAfter, float ap, float recurringAp, ResourceVector resources)
+            int firstStrikeEta, int strikeTurns, float expectedDamage, bool rosterKnown,
+            float winAfter, float ap, ResourceVector resources)
         {
             WingArmyId = wingArmyId;
             LandingHex = landingHex;
             EtaTurns = etaTurns;
             FirstStrikeEta = firstStrikeEta;
+            StrikeTurns = strikeTurns;
+            ExpectedDamage = expectedDamage;
+            RosterKnown = rosterKnown;
             WinAfter = winAfter;
             Ap = ap;
-            RecurringAp = recurringAp;
+            RecurringAp = 0f;
             Resources = resources;
         }
-
     }
 
     // A resolved wing and its current sortie state, for the provisioning half below.
@@ -44,47 +55,46 @@ namespace Game.Ai.V2
     {
         internal readonly ArmyData Wing;
         internal readonly AirSortie Active;
-        // An existing strike sortie toward this target (outbound) or on its way home.
+        // An existing strike sortie this lane already flies (outbound or holding over the target).
         internal readonly bool Continuing;
-        internal readonly bool Returning;
 
-        internal AirSupportWing(ArmyData wing, AirSortie active, bool continuing, bool returning)
+        internal AirSupportWing(ArmyData wing, AirSortie active, bool continuing)
         {
             Wing = wing;
             Active = active;
             Continuing = continuing;
-            Returning = returning;
         }
     }
 
     // ===========================================================================================
-    //  THE ONE AIR SUPPORT OF A GROUND FIGHT — shared by Raid (a recovery option of its
-    //  AirSupport phase) and Attack (a strike on the site's defenders before the assault).
-    //  Each lane keeps its own target identity, its own before/after win read (`winAgainst`), its
-    //  own strike policy and its own lifecycle; the wing choice, strike estimate, landing base,
-    //  leg requirements, sortie provisioning and flight step exist once. Repeat strikes are NOT
-    //  estimated here: they belong to the common airborne lifecycle and TurnsWithoutRefuel.
+    //  THE ONE AIR SUPPORT OF A GROUND-COMBAT TASK — shared by Raid (a recovery option of its
+    //  AirSupport phase), Attack (a side leg beside the assault) and ActiveDefence (a separate
+    //  AirSupport intent of the same threat). Each lane keeps its own target identity, win read and
+    //  strike policy; wing choice, the strike-series calendar and estimate, landing base, leg
+    //  requirements, sortie provisioning and the flight cycle exist once.
+    //
+    //  Admission is the existing task plus a free wing, a recoverable route and the launch cost
+    //  fitting the free bank — no arrival window, no intel age, no minimum win gain. A known roster
+    //  only ranks the options (and rejects a wing that physically cannot damage it).
     // ===========================================================================================
     internal static class GroundCombatAirSupport
     {
-        // Every free wing's way to support the fight at `targetHex`, strictly improving the lane's
-        // win (`winAgainst` over the opposition after the expected strike) on `currentWin`. The
-        // opposition's bodies are struck in UnitsOf order; survivors are split back into their
-        // armies (AfterStrike), so a multi-army site keeps its sequential battles.
         internal static List<AirSupportOption> Options(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, HexCoord targetHex,
-            float knownDefense, float knownAttack, AirStrikePolicy policy,
-            Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst, float currentWin,
-            ISet<int> unavailableArmyIds, int? fixedWingArmyId = null)
+            AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
+            float currentWin, ISet<int> unavailableArmyIds, int? fixedWingArmyId = null)
         {
             var result = new List<AirSupportOption>();
-            if (snap?.Self?.Armies == null || winAgainst == null)
+            if (snap?.Self?.Armies == null)
                 return result;
             HexCoord? landing = LandingBase(snap, targetHex);
             if (!landing.HasValue)
                 return result;
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
             List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
+            bool rosterKnown = defenders.Count > 0;
+            int defenderFate = opposition.Where(o => o.Commander.Present)
+                .Select(o => o.Commander.Fate).DefaultIfEmpty(0).Max();
 
             foreach (ArmySnapshot wing in snap.Self.Armies
                 .Where(x => x != null && x.IsAir && !x.IsAirfield && !x.IsPrison
@@ -93,43 +103,65 @@ namespace Game.Ai.V2
                     && (unavailableArmyIds == null || !unavailableArmyIds.Contains(x.ArmyId)))
                 .OrderBy(x => x.ArmyId))
             {
-                List<float> attacks = (wing.RecoveryMembers
+                List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
                         ?? Array.Empty<RaidRecoveryMemberSnapshot>())
                     .Where(x => x.IsAviation)
                     .OrderBy(x => x.UnitIndex)
-                    .Select(x => x.CurrentProfile.Attack).ToList();
-                if (attacks.Count == 0)
+                    .Select(x => x.CurrentProfile).ToList();
+                if (attackers.Count == 0)
                     continue;
 
-                AviationCombatEstimator.AirStrikeEstimate estimate =
-                    AviationCombatEstimator.EstimateAirStrike(attacks, knownDefense, knownAttack,
-                        defenders, policy);
-                if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
-                    || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors)
+                int strikeTurns = StrikeTurns(wing, targetHex, landing.Value);
+                if (strikeTurns <= 0)
                     continue;
-                IReadOnlyList<int> firstSources = SourceIndices(estimate, defenders.Count);
-                float after = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
-                    firstSources));
-                if (after <= currentWin + AiConfigV2.allocatorSliceEpsilon)
-                    continue;
+
+                float damage = 0f;
+                float winAfter = currentWin;
+                if (rosterKnown)
+                {
+                    AviationCombatEstimator.AirStrikeEstimate estimate =
+                        AviationCombatEstimator.EstimateAirStrike(attackers, defenders, policy,
+                            strikeTurns, defenderFate);
+                    // A wing that physically cannot hurt the known roster serves nothing; the
+                    // RaidSupport survivor floor stays the raid's own policy.
+                    if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
+                        || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors)
+                        continue;
+                    damage = estimate.ExpectedDamage;
+                    if (winAgainst != null)
+                        winAfter = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
+                            SourceIndices(estimate, defenders.Count)));
+                }
 
                 int eta = SortieEta(wing, targetHex);
-
-                float finalAfter = after;
-                int finalEta = eta;
-
-                float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
-                float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
-                result.Add(new AirSupportOption(wing.ArmyId, landing.Value, finalEta, eta,
-                    finalAfter, ap, wing.ActivationApCost,
-                    new ResourceVector(0f, 0f, energy, 0f, 0f)));
+                result.Add(new AirSupportOption(wing.ArmyId, landing.Value, eta, eta, strikeTurns,
+                    damage, rosterKnown, winAfter, wing.PendingActivationApCost,
+                    new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f)));
             }
             return result;
         }
 
+        // The ONE ranking of support options: more expected damage of the series, a better lane
+        // win, then sooner, cheaper, lower id.
+        internal static List<AirSupportOption> Ranked(IEnumerable<AirSupportOption> options) =>
+            (options ?? Enumerable.Empty<AirSupportOption>())
+                .OrderByDescending(o => o.ExpectedDamage)
+                .ThenByDescending(o => o.WinAfter)
+                .ThenBy(o => o.EtaTurns)
+                .ThenBy(o => o.Ap)
+                .ThenBy(o => o.Resources.Energy)
+                .ThenBy(o => o.WingArmyId)
+                .ToList();
+
+        // Strike turns this wing can deliver at `target` and still land at `landing`
+        // (geometric planning read; provisioning and execution re-prove the live route).
+        internal static int StrikeTurns(ArmySnapshot wing, HexCoord target, HexCoord landing) =>
+            wing == null ? 0 : AviationRange.StrikeTurns(wing.CurrentMovement,
+                Math.Max(1, wing.MaxMovement), wing.SafeUnlandedEndsRemaining,
+                HexGridMath.Distance(wing.Hex, target), HexGridMath.Distance(target, landing));
+
         // The opposition after a strike: each survivor goes back to the army it came from (by its
-        // index in UnitsOf(opposition)); an army with no survivor leaves the fight. Without
-        // indices (no strike happened) the survivors are the opposition itself.
+        // index in UnitsOf(opposition)); an army with no survivor leaves the fight.
         internal static IReadOnlyList<WorthIt.DefendingArmy> AfterStrike(
             IReadOnlyList<WorthIt.DefendingArmy> opposition,
             IReadOnlyList<WorthIt.DefenderProfile> survivors, IReadOnlyList<int> sourceIndices)
@@ -178,13 +210,13 @@ namespace Game.Ai.V2
         internal static int SortieEta(ArmySnapshot wing, HexCoord target) =>
             AiV2Util.TurnsToCover(wing, HexGridMath.Distance(wing.Hex, target));
 
-        // The requirements of a support sortie leg: the wing's activation AP and launch Energy
-        // (none once activated this turn), its distance and ETA.
+        // The requirements of a support sortie leg: the sortie launch (0 / 0 on a paid sortie, on
+        // every turn of it), its distance and ETA.
         internal static MissionRequirements LegRequirements(ArmySnapshot wing, HexCoord destination,
             int etaTurns)
         {
-            float activation = wing != null && !wing.HasActivatedThisTurn ? wing.ActivationApCost : 0f;
-            float energy = wing != null && !wing.HasActivatedThisTurn ? wing.ActivationEnergyCost : 0f;
+            float activation = wing?.PendingActivationApCost ?? 0f;
+            float energy = wing?.PendingActivationEnergyCost ?? 0f;
             return new MissionRequirements
             {
                 RequiresArmy = true, RequiresHero = false, MoverKnown = wing != null,
@@ -195,28 +227,35 @@ namespace Game.Ai.V2
             };
         }
 
-        // Is this wing still a valid air army flying a sortie right now?
+        // Is this wing still a valid air army flying a support (Strike) sortie right now?
         internal static bool SortieLive(PlayerSetupData player, int? wingArmyId, out bool wingValid)
         {
             ArmyData wing = wingArmyId.HasValue ? AiV2Util.ResolveArmy(player, wingArmyId.Value) : null;
             wingValid = wing != null && AviationRules.IsValidAirArmy(wing);
             AirSortie sortie = wingValid ? AirSortieRegistry.ForArmy(player, wing) : null;
-            // Ground support owns only the strike leg. Once execution converts the sortie to
-            // Rebase after the strike, the mission releases the wing and generic aviation
-            // obligations own the physical return.
+            // The task owns the wing only while it flies the strike series. Once execution turns
+            // the sortie into Rebase (series over), generic aviation obligations own the return.
             return sortie != null && sortie.Kind == AirSortieKind.Strike;
         }
 
-        // An airborne strike sortie is a physical landing obligation. When no operation holds its
-        // wing any more (GroundCombatLegs.HeldAirSupportArmyId — the operation retired, released
-        // the wing, or its leg failed), it is turned into the existing landing obligation: the
-        // same sortie, homebound to its own landing base, continued by
-        // AviationRebasePlanner.FindMandatoryContinuations (settled before any card play —
-        // AviationObligations). Only this owner creates Strike sorties (GroundCombatLegStep).
+        // The wing already ended this turn over its target to strike again next turn (the
+        // executor's HOLD): its support leg is not proposed again this turn.
+        internal static bool HoldingThisTurn(PlayerSetupData player, int wingArmyId, int turn)
+        {
+            ArmyData wing = AiV2Util.ResolveArmy(player, wingArmyId);
+            AirSortie sortie = wing != null ? AirSortieRegistry.ForArmy(player, wing) : null;
+            return sortie != null && sortie.Kind == AirSortieKind.Strike && sortie.HeldTurn == turn;
+        }
+
+        // An airborne strike sortie is a physical landing obligation. When no task holds its wing
+        // any more (GroundCombatLegs.HeldAirSupportArmyId — the task retired, released the wing,
+        // or its target ended), the same sortie is turned homebound to its landing base and
+        // continued by AviationRebasePlanner.FindMandatoryContinuations (settled before card play).
         internal static void ReleaseOrphanStrikes(PlayerSetupData player, IEnumerable<MissionIntent> intents)
         {
             if (player == null)
                 return;
+            PurgeLanded(player);
             var held = new HashSet<int>((intents ?? Enumerable.Empty<MissionIntent>())
                 .Select(GroundCombatLegs.HeldAirSupportArmyId)
                 .Where(id => id.HasValue).Select(id => id.Value));
@@ -225,21 +264,68 @@ namespace Game.Ai.V2
                 if (sortie == null || sortie.Kind != AirSortieKind.Strike || sortie.Army == null
                     || held.Contains(sortie.Army.Id))
                     continue;
-                sortie.Kind = AirSortieKind.Rebase;
-                sortie.Outbound = false;
-                sortie.TargetHex = sortie.LandingHex;
-                AiDebugLog.Write($"[AI][V2][AirSupport] wing #{sortie.Army.Id} no longer held by an "
-                    + $"operation — flies home to ({sortie.LandingHex.Q},{sortie.LandingHex.R})");
+                SendHome(player, sortie, "no longer held by a task");
             }
+        }
+
+        // A completed landing (AviationActions.LandInSlotOrder) puts the aircraft back into the
+        // airfield and leaves an ordinary empty shell under the same army id. Every per-wing AI
+        // flight record of such an army is closed here, so a later reuse of that shell starts a
+        // fresh sortie instead of inheriting a finished one.
+        internal static void PurgeLanded(PlayerSetupData player)
+        {
+            foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
+                if (sortie?.Army == null || !AviationRules.IsValidAirArmy(sortie.Army))
+                    AirSortieRegistry.Remove(player, sortie);
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player).ToList())
+            {
+                if (army == null || AviationRules.IsValidAirArmy(army)
+                    || !ReconAirSortieRegistry.TryGet(player, army.Id, out _))
+                    continue;
+                ReconAirSortieRegistry.Retire(player, army.Id);
+                ReconPatrolStateRegistry.Retire(player, army.Id, "air wing landed");
+            }
+        }
+
+        // End-of-turn safety net: a support wing still over its target that could not safely end
+        // another turn there (its strike leg was not run this turn, or ran out of options) is
+        // turned home now. Returns the wings that still have movement to fly home this turn.
+        internal static List<ArmyData> RecallUnsafeStrikes(PlayerSetupData player, HexMap map)
+        {
+            var recalled = new List<ArmyData>();
+            if (player == null || map == null)
+                return recalled;
+            foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
+            {
+                ArmyData wing = sortie?.Army;
+                if (sortie == null || sortie.Kind != AirSortieKind.Strike || wing == null
+                    || !AviationRules.IsValidAirArmy(wing)
+                    || AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                    || AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, map, player))
+                    continue;
+                SendHome(player, sortie, "cannot safely end another turn over the target");
+                if (wing.CurrentMovement > 0)
+                    recalled.Add(wing);
+            }
+            return recalled;
+        }
+
+        internal static void SendHome(PlayerSetupData player, AirSortie sortie, string why)
+        {
+            sortie.Kind = AirSortieKind.Rebase;
+            sortie.Outbound = false;
+            sortie.TargetHex = sortie.LandingHex;
+            sortie.NoRecoveryStrike = true;
+            AiDebugLog.Write($"[AI][V2][AirSupport] wing #{sortie.Army?.Id} {why} — flies home to "
+                + $"({sortie.LandingHex.Q},{sortie.LandingHex.R})");
         }
 
         // ---- provisioning -------------------------------------------------------------------
 
         // The wing itself: alive, ours, not claimed this pass, and either free of any sortie or
-        // already flying a strike sortie toward this very target (or home from it).
+        // already flying this lane's strike series (its target may have moved — ActiveDefence).
         internal static bool TryResolveWing(PlayerSetupData player, ProvisioningSession session,
-            int wingArmyId, HexCoord targetHex, string lane, out AirSupportWing resolved,
-            out ProvisionFailure failure)
+            int wingArmyId, string lane, out AirSupportWing resolved, out ProvisionFailure failure)
         {
             resolved = default;
             failure = default;
@@ -251,96 +337,56 @@ namespace Game.Ai.V2
                 return false;
             }
             AirSortie active = AirSortieRegistry.ForArmy(player, wing);
-            bool continuing = active != null && active.Kind == AirSortieKind.Strike
-                && (active.Outbound && active.TargetHex.Equals(targetHex) || !active.Outbound);
-            bool returning = active != null && active.Kind == AirSortieKind.Strike && !active.Outbound;
+            bool continuing = active != null && active.Kind == AirSortieKind.Strike;
             if (active != null && !continuing)
             {
                 failure = ProvisionFailure.MoverContended($"wing #{wing.Id} is reserved by another sortie");
                 return false;
             }
-            resolved = new AirSupportWing(wing, active, continuing, returning);
+            resolved = new AirSupportWing(wing, active, continuing);
             return true;
         }
 
-        // The rest of the sortie: a recoverable route (unless it continues one), a strike
-        // that really moves the lane's fight (`winAgainst`, the same read the lane planned on), and
-        // the AP/Energy the funded envelope and the spendable Energy allow, including the next activation when the route spans turns.
+        // The rest of the sortie: a live recoverable route (start or keep striking at the target
+        // and still land in endurance) and the launch AP/Energy fitting the funded envelope, the
+        // turn's AP and the free Energy after reservations and earlier claims this pass. A paid
+        // sortie costs 0 / 0. No future activation is reserved and no win gain is re-proved.
         internal static bool TryFinishWing(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, AirSupportWing w, HexCoord targetHex,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float knownDefense, float knownAttack,
-            AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
             string lane, float eps, out HexCoord landing, out float ap, out float energy,
-            out float nextTurnEnergy, out float nextTurnAp, out ProvisionFailure failure)
+            out ProvisionFailure failure)
         {
             ArmyData wing = w.Wing;
             failure = default;
+            landing = default;
             ap = 0f;
             energy = 0f;
-            nextTurnEnergy = 0f;
-            nextTurnAp = 0f;
-            int requiredTurns = 1;
-            if (w.Returning)
-            {
-                // The strike leg is over. Prove the remaining landing route without sending the
-                // wing back through the old combat target.
-                HexCoord? sameTurn = AiAirSortiePlanner.TryReplan(wing, ctx.Map, player);
-                MultiTurnSortie? multi = sameTurn.HasValue ? null
-                    : AiAirSortiePlanner.TryReplanMultiTurnReturn(wing, ctx.Map, player);
-                if (!sameTurn.HasValue && !multi.HasValue)
-                {
-                    landing = default;
-                    failure = ProvisionFailure.NoExecutableStep(
-                        $"wing #{wing.Id} has no recoverable landing route after {lane} support");
-                    return false;
-                }
-                landing = sameTurn ?? multi.Value.LandingHex;
-                requiredTurns = multi?.RequiredTurns ?? 1;
-            }
-            else
-            {
-                // New and continuing outbound wings use the same live route proof.
-                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
-                MultiTurnSortie? multi = sameTurn.HasValue ? null
-                    : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
-                if (!sameTurn.HasValue && !multi.HasValue)
-                {
-                    landing = default;
-                    failure = ProvisionFailure.NoExecutableStep(
-                        $"wing #{wing.Id} has no recoverable route to the {lane} target");
-                    return false;
-                }
-                landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
-                requiredTurns = sameTurn.HasValue ? 1 : multi.Value.RequiredTurns;
 
-                if (!w.Continuing)
-                {
-                    opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
-                    List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
-                    AviationCombatEstimator.AirStrikeEstimate estimate =
-                        AviationCombatEstimator.EstimateAirStrike(wing.Members, knownDefense, knownAttack,
-                            defenders, policy);
-                    float beforeWin = winAgainst(opposition);
-                    float afterWin = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
-                        SourceIndices(estimate, defenders.Count)));
-                    if (estimate.ExpectedDamage <= eps
-                        || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors
-                        || afterWin <= beforeWin + eps)
-                    {
-                        failure = ProvisionFailure.SortieNotWorthwhile(
-                            $"{lane} air support does not improve the primary's projected odds");
-                        return false;
-                    }
-                }
+            Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
+            MultiTurnSortie? multi = sameTurn.HasValue ? null
+                : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
+            if (!sameTurn.HasValue && !multi.HasValue)
+            {
+                failure = ProvisionFailure.NoExecutableStep(
+                    $"wing #{wing.Id} has no recoverable route to the {lane} target");
+                return false;
             }
+            landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
 
-            ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
-            energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
+            ap = wing.PendingActivationApCost;
+            energy = wing.PendingActivationEnergyCost;
             if (ap > funded.Tentative.Ap + eps || energy > funded.PhysicalDraw.Energy + eps)
             {
                 failure = ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(ap, new ResourceVector(0f, 0f, energy, 0f, 0f)),
                     $"{lane} support wing #{wing.Id} exceeds AP/Energy envelope");
+                return false;
+            }
+            float turnApLeft = StrategicSpendability.SpendableAp(player, root, ctx) - session.ApClaimed;
+            if (ap > turnApLeft + eps)
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: {lane} support wing #{wing.Id} needs {ap:0.##}, {turnApLeft:0.##} left");
                 return false;
             }
             float energyLeft = ProvisioningManager.AirSpendableEnergyLeft(player, root, ctx, session);
@@ -350,22 +396,6 @@ namespace Game.Ai.V2
                     $"spendable Energy exhausted: {lane} support wing #{wing.Id} needs {energy:0.##}, "
                     + $"{energyLeft:0.##} left after reservations and earlier claims this pass");
                 return false;
-            }
-
-            if (requiredTurns > 1)
-            {
-                nextTurnEnergy = Math.Max(0, wing.ActivationEnergyCost);
-                nextTurnAp = Math.Max(0, wing.ActivationApCost);
-                if (!AviationContinuationBudget.CanGuaranteeNextActivation(
-                        player, ctx.Map, energyLeft - energy,
-                        session.NextTurnAirEnergyClaimed + nextTurnEnergy,
-                        session.NextTurnAirApClaimed + nextTurnAp,
-                        out string continuationBlock))
-                {
-                    failure = ProvisionFailure.NoExecutableStep(
-                        $"{lane} support wing #{wing.Id} cannot guarantee next-turn activation ({continuationBlock})");
-                    return false;
-                }
             }
             return true;
         }

@@ -73,8 +73,10 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
-            if (root != null && !mover.HasActivatedThisTurn && mover.ActivationApCost > 0
-                && root.ActionPoints < mover.ActivationApCost)
+            // The mover's real next-action cost: once per turn for ground, once per sortie for an
+            // air wing (0 on every later step and turn of a paid sortie).
+            if (root != null && mover.PendingActivationApCost > 0
+                && root.ActionPoints < mover.PendingActivationApCost)
                 return MissionValidity.StaleUnaffordable;
 
             // Return is a noncapturing obligation, not a substitute Assault/LocalCapture.

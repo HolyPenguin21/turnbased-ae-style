@@ -6,11 +6,6 @@ namespace Game.Ai.V2
     {
         public const int raidRecoveryMaxWaitTurns = 2;
         public const float raidRepairMinWinChanceGain = 0.001f;
-        // How many turns old a neutral sighting may be and still authorize an air strike. An
-        // exact-this-turn-only requirement makes AirSupport fire almost exclusively on first
-        // contact; a small window lets it fire on a routine re-scout too, at the cost of striking a
-        // roster that may be up to this many turns stale.
-        public const int raidAirSupportSightingMaxAgeTurns = 2;
         // The last combat army on an own Citadel/Base stays put while a known hostile force that
         // can damage it is at most this many turns away
         // (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender).
@@ -102,11 +97,6 @@ namespace Game.Ai.V2
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
         public const float attackGatherMinWinGain = 0.05f;
-        // Air support of the fist: the strike lands at least one and at most this many turns before
-        // the primary reaches the site (so it is not raced by the assault itself), and only a
-        // strike that raises the primary's win chance by at least this much is flown.
-        public const int attackAirSupportLeadTurns = 1;
-        public const float attackAirSupportMinWinGain = 0.05f;
         // 2026-10-04 (user decision, TEST BEHAVIOR) — Attack does not require known defender
         // coverage (WorthIt.CanDamageAll), neither before nor during the assault: a fist may march
         // on a site holding a defender none of its bodies can damage. Only Attack's no-threshold

@@ -80,8 +80,8 @@ namespace Game.Ai.V2
             // Read live composition rather than a turn-start snapshot.
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                 + AbilityParams.GetBestRecceRadius(airArmy);
-            float activationAp = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationApCost;
-            float activationEnergy = airArmy.HasActivatedThisTurn ? 0f : airArmy.ActivationEnergyCost;
+            float activationAp = airArmy.PendingActivationApCost;
+            float activationEnergy = airArmy.PendingActivationEnergyCost;
             var choices = new List<StepChoice>();
 
             foreach (HexCoord h in HexGridMath.Neighbors(airArmy.Hex))

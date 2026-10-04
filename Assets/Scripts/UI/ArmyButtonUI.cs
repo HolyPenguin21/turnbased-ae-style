@@ -57,9 +57,9 @@ namespace Game.UI
                 return;
             }
 
-            label.text = Army.HasActivatedThisTurn || Army.ActivationApCost <= 0
+            label.text = Army.PendingActivationApCost <= 0
                 ? $"{Army.Name} - {Army.CurrentMovement}/{Army.MaxMovement}"
-                : $"{Army.Name} - {Army.ActivationApCost}AP, {Army.CurrentMovement}/{Army.MaxMovement}";
+                : $"{Army.Name} - {Army.PendingActivationApCost}AP, {Army.CurrentMovement}/{Army.MaxMovement}";
         }
     }
 }
