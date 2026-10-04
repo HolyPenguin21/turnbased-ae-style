@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Aviation;
 using Game.Map;
 using Game.Players;
 
@@ -40,6 +41,18 @@ namespace Game.Ai.V2
     {
         private static readonly Dictionary<PlayerSetupData, List<AirSortie>> ByPlayer =
             new Dictionary<PlayerSetupData, List<AirSortie>>();
+
+        static AirSortieRegistry()
+        {
+            AviationRules.ReservedLandingSlots = ReservedSlots;
+        }
+
+        private static int ReservedSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding)
+            => For(owner).Where(s => s?.Army != null && s.Army != excluding
+                && s.Army.Owner == owner && AviationRules.IsValidAirArmy(s.Army)
+                && s.LandingHex.Equals(hex) && !s.Army.Hex.Equals(hex)
+                && ArmyRegistry.AllForOwner(owner).Contains(s.Army))
+                .GroupBy(s => s.Army.Id).Sum(g => g.First().Army.Members.Count);
 
         public static void Clear() => ByPlayer.Clear();
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Ai;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -77,8 +78,65 @@ namespace Game.Ai.V2
     //  fitting the free bank — no arrival window, no intel age, no minimum win gain. A known roster
     //  only ranks the options (and rejects a wing that physically cannot damage it).
     // ===========================================================================================
-    internal static class GroundCombatAirSupport
+    internal static partial class GroundCombatAirSupport
     {
+        internal static List<AiMapMemory.KnownAirSighting> KnownAirTargets(WorldSnapshot snap,
+            HexCoord hex, AirStrikePolicy policy) =>
+            (snap?.Known?.AirSightings ?? Array.Empty<AiMapMemory.KnownAirSighting>())
+                .Where(s => s.Hex.Equals(hex) && s.Owner != snap.Observer
+                    && (!policy.ExactTargetArmyId.HasValue || s.ArmyId == policy.ExactTargetArmyId.Value))
+                .OrderBy(s => s.ArmyId).ToList();
+
+        internal static int KnownTargetCount(WorldSnapshot snap, HexCoord hex, AirStrikePolicy policy,
+            IReadOnlyList<WorthIt.DefendingArmy> legacyOpposition) =>
+            snap?.Known?.AirSightings != null
+                ? KnownAirTargets(snap, hex, policy).Sum(s => s.Roster.Units.Count)
+                : WorthIt.UnitsOf(legacyOpposition).Count;
+
+        // Apply only the struck armies to the ground package. Event guards and other targets of
+        // the later ground battle retain their own roster/commander/terrain facts.
+        internal static IReadOnlyList<WorthIt.DefendingArmy> AfterAirStrike(
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            IReadOnlyList<AiMapMemory.KnownAirSighting> targets,
+            AviationCombatEstimator.AirStrikeEstimate estimate)
+        {
+            var projected = new Dictionary<int, (List<WorthIt.DefenderProfile> Bodies, WorthIt.SideCommander Commander)>();
+            var survivors = new Dictionary<int, WorthIt.DefenderProfile>();
+            for (int i = 0; i < estimate.ExpectedDefendersAfter.Count; i++)
+                survivors[estimate.SurvivorSourceIndices != null ? estimate.SurvivorSourceIndices[i] : i]
+                    = estimate.ExpectedDefendersAfter[i];
+            int offset = 0;
+            foreach (var target in targets)
+            {
+                var bodies = new List<WorthIt.DefenderProfile>();
+                WorthIt.SideCommander commander = default;
+                for (int i = 0; i < target.Roster.Units.Count; i++)
+                    if (survivors.TryGetValue(offset + i, out var unit))
+                    {
+                        if (unit.IsGroundCombatant) bodies.Add(unit);
+                        if (unit.IsHero && !commander.Present && target.Roster.CommanderIndex >= 0)
+                            commander = new WorthIt.SideCommander(unit.Initiative, unit.FateMax);
+                    }
+                if (target.Roster.CommanderIndex >= 0
+                    && survivors.TryGetValue(offset + target.Roster.CommanderIndex, out var survivingCommander))
+                    commander = new WorthIt.SideCommander(survivingCommander.Initiative, survivingCommander.FateMax);
+                projected[target.ArmyId] = (bodies, commander);
+                offset += target.Roster.Units.Count;
+            }
+            var result = new List<WorthIt.DefendingArmy>();
+            foreach (WorthIt.DefendingArmy army in opposition ?? Array.Empty<WorthIt.DefendingArmy>())
+                if (army.ArmyId.HasValue && projected.TryGetValue(army.ArmyId.Value, out var after))
+                {
+                    if (after.Bodies.Count > 0 || after.Commander.Present)
+                        result.Add(new WorthIt.DefendingArmy(after.Bodies,
+                            targets.First(t => t.ArmyId == army.ArmyId.Value).Roster.CommanderIndex < 0
+                                ? army.Commander : after.Commander,
+                            army.DefenseBonusOverride, army.ArmyId));
+                }
+                else result.Add(army);
+            return result;
+        }
+
         internal static List<AirSupportOption> Options(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, HexCoord targetHex,
             AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
@@ -88,10 +146,15 @@ namespace Game.Ai.V2
             if (snap?.Self?.Armies == null)
                 return result;
             HexCoord? landing = LandingBase(snap, targetHex);
-            if (!landing.HasValue)
+            if (ReferenceEquals(snap.Map, null) && !landing.HasValue)
                 return result;
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
-            List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
+            // BuildKnown always supplies this collection. Null retains the legacy contract for
+            // synthetic/older snapshots; production must never build air targets from ground guards.
+            bool observedAir = snap?.Known?.AirSightings != null;
+            var airTargets = KnownAirTargets(snap, targetHex, policy);
+            List<WorthIt.DefenderProfile> defenders = observedAir
+                ? airTargets.SelectMany(s => s.Roster.Units).ToList() : WorthIt.UnitsOf(opposition);
             bool rosterKnown = defenders.Count > 0;
             int defenderFate = opposition.Where(o => o.Commander.Present)
                 .Select(o => o.Commander.Fate).DefaultIfEmpty(0).Max();
@@ -103,6 +166,26 @@ namespace Game.Ai.V2
                     && (unavailableArmyIds == null || !unavailableArmyIds.Contains(x.ArmyId)))
                 .OrderBy(x => x.ArmyId))
             {
+                if (!ReferenceEquals(snap.Map, null) && observedAir)
+                {
+                    ArmyData live = AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId);
+                    if (live == null) continue;
+                    AirSortie active = AirSortieRegistry.ForArmy(snap.Observer, live);
+                    if (active != null && (!fixedWingArmyId.HasValue || active.Kind != AirSortieKind.Strike))
+                        continue;
+                    var projection = ProjectService(snap, snap.Observer, snap.Map, live.Members,
+                        live.Hex, new CombatAirSupportRequest(default, targetHex, policy, default), live);
+                    if (!projection.HasValue) continue;
+                    CombatAirService service = projection.Value;
+                    float projectedWin = service.RosterKnown && winAgainst != null
+                        ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
+                    result.Add(new AirSupportOption(wing.ArmyId, service.Landing, service.FirstStrikeEta,
+                        service.FirstStrikeEta, service.StrikeTurns,
+                        service.RosterKnown ? service.Estimate.ExpectedDamage : 0f,
+                        service.RosterKnown, projectedWin, service.Ap,
+                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f)));
+                    continue;
+                }
                 List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
                         ?? Array.Empty<RaidRecoveryMemberSnapshot>())
                     .Where(x => x.IsAviation)
@@ -114,14 +197,24 @@ namespace Game.Ai.V2
                 int strikeTurns = StrikeTurns(wing, targetHex, landing.Value);
                 if (strikeTurns <= 0)
                     continue;
+                int eta = SortieEta(wing, targetHex);
+                ArmyData liveWing = eta <= 1 ? AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId) : null;
+                bool[] firstPassSpent = liveWing == null ? null :
+                    (wing.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
+                        .Where(x => x.IsAviation).OrderBy(x => x.UnitIndex)
+                        .Select(x => x.UnitIndex >= 0 && x.UnitIndex < liveWing.Members.Count
+                            && liveWing.Members[x.UnitIndex].HasAirAttackedThisTurn).ToArray();
 
                 float damage = 0f;
                 float winAfter = currentWin;
                 if (rosterKnown)
                 {
                     AviationCombatEstimator.AirStrikeEstimate estimate =
-                        AviationCombatEstimator.EstimateAirStrike(attackers, defenders, policy,
-                            strikeTurns, defenderFate);
+                        observedAir
+                            ? AviationCombatEstimator.EstimateAirStrikeAgainstArmies(attackers,
+                                airTargets.Select(t => t.Roster).ToList(), policy, strikeTurns, firstPassSpent)
+                            : AviationCombatEstimator.EstimateAirStrike(attackers, defenders, policy,
+                                strikeTurns, defenderFate);
                     // A wing that physically cannot hurt the known roster serves nothing; the
                     // RaidSupport survivor floor stays the raid's own policy.
                     if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
@@ -129,11 +222,11 @@ namespace Game.Ai.V2
                         continue;
                     damage = estimate.ExpectedDamage;
                     if (winAgainst != null)
-                        winAfter = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
-                            SourceIndices(estimate, defenders.Count)));
+                        winAfter = winAgainst(observedAir ? AfterAirStrike(opposition, airTargets, estimate)
+                            : AfterStrike(opposition, estimate.ExpectedDefendersAfter,
+                                SourceIndices(estimate, defenders.Count)));
                 }
 
-                int eta = SortieEta(wing, targetHex);
                 result.Add(new AirSupportOption(wing.ArmyId, landing.Value, eta, eta, strikeTurns,
                     damage, rosterKnown, winAfter, wing.PendingActivationApCost,
                     new ResourceVector(0f, 0f, wing.PendingActivationEnergyCost, 0f, 0f)));
@@ -186,7 +279,8 @@ namespace Game.Ai.V2
             var result = new List<WorthIt.DefendingArmy>();
             for (int a = 0; a < opposition.Count; a++)
                 if (perArmy[a].Count > 0)
-                    result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander));
+                    result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander,
+                        opposition[a].DefenseBonusOverride, opposition[a].ArmyId));
             return result;
         }
 

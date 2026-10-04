@@ -469,6 +469,27 @@ namespace Game.EditorTests
             Assert.That(materialGain.Value, Is.GreaterThan(0f));
         }
 
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(3)]
+        public void AirfieldService_PricesOneLaunch_WithoutRecurringDeliveryAp(int eta)
+        {
+            // Exercise the existing service projection without changing its production visibility.
+            var project = typeof(NonCombatCardPlayer).GetMethod("CopyReconScoreWithAirDelivery",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic);
+            Assert.That(project, Is.Not.Null);
+            var intrinsic = new TaskScore(infoGain: 5f, winChance: 2f, delivery: 9f);
+            var actual = (TaskScore)project.Invoke(null, new object[]
+                { null, intrinsic, eta, 2 * eta, 2, 3, 2, 0f });
+            Assert.That(actual.Delivery, Is.Zero,
+                "a two/three-turn sortie never pays another ground activation");
+            Assert.That(actual.CardPrice, Is.EqualTo(TaskScoreEvaluator.Price(
+                ActionPrice.Ap(3f) + ActionPrice.Resources(
+                    t => t == ResourceType.Energy ? 2f : 0f))));
+            Assert.That(actual.InfoGain, Is.EqualTo(intrinsic.InfoGain));
+            Assert.That(actual.WinChance, Is.EqualTo(intrinsic.WinChance));
+        }
+
         [Test]
         public void AviationRebaseCandidate_UsesRealRouteCapacityAndCurrentReconObjective()
         {

@@ -153,7 +153,8 @@ namespace Game.Ai.V2
             // left for the ground capture — so it needs a remembered roster of two or more. The age
             // of that memory is NOT a gate: the strike resolves against what is really there.
             if (raid.Target.Kind != RaidTargetKind.NeutralArmy
-                || raid.AirSupportAttemptedTurn == snap.TurnNumber || WorthIt.UnitsOf(opposition).Count <= 1)
+                || raid.AirSupportAttemptedTurn == snap.TurnNumber || GroundCombatAirSupport.KnownTargetCount(snap, raid.LastKnownHex,
+                    AirStrikePolicy.RaidSupport(raid.Target.ArmyId), opposition) <= 1)
                 return RaidRecoveryProjection.None(currentWin,
                     "air support is not eligible for this recovery decision");
 

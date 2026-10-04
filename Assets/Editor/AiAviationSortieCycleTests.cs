@@ -1,9 +1,11 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Aviation;
 using Game.Combat;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -147,6 +149,17 @@ namespace Game.EditorTests
             Assert.That(wing.PendingActivationEnergyCost, Is.EqualTo(2));
         }
 
+        [Test]
+        public void AviationCardPrice_HasNoImaginaryRecurringFlightCharge()
+        {
+            var card = new CardData(new CardDefinition { isAviation = true });
+            var candidate = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,
+                card, null, null, null, 0f, witnessedUsefulApDemand: 100f,
+                actualApCost: 2f, actualResourceCost: new ResourceCost());
+            Assert.That(candidate.Breakdown.ResourceEfficiency,
+                Is.EqualTo(-ActionPrice.ToCardScore(ActionPrice.Ap(2f))));
+        }
+
         // ---- landing, shells and capacity ------------------------------------------------------
 
         [Test]
@@ -209,6 +222,117 @@ namespace Game.EditorTests
             var lone = Wing(new HexCoord(1, 0), stored);
             Assert.That(ArmyActions.TransferMember(stored, lone, airfield, null, out _), Is.False,
                 "an aircraft away from the airfield cannot land into it");
+        }
+
+        [Test]
+        public void InFlightReservation_ProtectsDomainCapacity_AndArrivalCountsOnce()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 3);
+            airfield.AddMemberSorted(Plane(1, 1));
+            ArmyData returning = Wing(new HexCoord(2, 0), Plane(1, 1));
+            var reservation = new AirSortie { Army = returning, LandingHex = home };
+            AirSortieRegistry.Add(_owner, reservation);
+            AirSortieRegistry.Add(_owner, reservation); // duplicate records cannot reserve twice
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner, returning), Is.EqualTo(2));
+            ArmyData standing = Wing(home, Plane(1, 1));
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.Zero);
+            Assert.That(AviationActions.LandInSlotOrder(standing, null), Is.EqualTo(1));
+            Assert.That(airfield.Members.Count, Is.EqualTo(2));
+            Assert.That(AviationRules.FreeStorageSlots(home, _owner), Is.Zero,
+                "the remaining slot belongs to the returning wing");
+            ArmyRegistry.MoveArmy(returning, home);
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.Zero,
+                "arrival replaces the in-flight claim with the standing wing");
+            Assert.That(AviationActions.LandInSlotOrder(returning, null), Is.EqualTo(1));
+            Assert.That(airfield.Members.Count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void ReservedLastSlot_RejectsTransfer_AndRetargetingReleasesIt()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 1);
+            ArmyData returning = Wing(new HexCoord(2, 0), Plane(1, 1));
+            var reservation = new AirSortie { Army = returning, LandingHex = home };
+            AirSortieRegistry.Add(_owner, reservation);
+            UnitData other = Plane(1, 1);
+            ArmyData standing = Wing(home, other);
+            Assert.That(ArmyActions.TransferMember(other, standing, airfield, null, out _), Is.False);
+            Assert.That(standing.Members, Does.Contain(other));
+            Assert.That(airfield.Members, Is.Empty);
+            reservation.LandingHex = new HexCoord(4, 0);
+            Assert.That(ArmyActions.TransferMember(other, standing, airfield, null, out string why),
+                Is.True, why);
+            Assert.That(airfield.Members, Does.Contain(other));
+        }
+
+        [Test]
+        public void InvalidReservation_DoesNotHoldSlots_AndClearReleasesClaims()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            Airfield(home, capacity: 2);
+            ArmyData wing = Wing(new HexCoord(1, 0), Plane(1, 1));
+            AirSortieRegistry.Add(_owner, new AirSortie { Army = wing, LandingHex = home });
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
+            wing.Members.Clear();
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
+            wing.AddMemberSorted(Plane(1, 1));
+            AirSortieRegistry.Clear();
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RejectedUnloadAndBoard_ChangesNeitherRosterNorActivationNorBank(bool paidGarrison)
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 8);
+            var ground = new ArmyData { Owner = _owner, Hex = home };
+            var unit = new UnitData { Owner = _owner, ActivationApCost = 1 };
+            ground.AddMemberSorted(unit);
+            var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            if (paidGarrison) garrison.MarkActivated();
+            var aircraft = Enumerable.Range(0, paidGarrison ? 1 : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false) + 1)
+                .Select(_ => Plane(1, 1)).ToList();
+            foreach (var plane in aircraft) airfield.AddMemberSorted(plane);
+            Root().ActionPoints = 10;
+            Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
+                aircraft, null, out _), Is.False);
+            Assert.That(ground.Members, Is.EqualTo(new[] { unit }));
+            Assert.That(garrison.Members, Is.Empty);
+            Assert.That(airfield.Members, Is.EqualTo(aircraft));
+            Assert.That(garrison.RequiresActivationCharge(unit), Is.EqualTo(paidGarrison));
+            Assert.That(_root.ActionPoints, Is.EqualTo(10));
+            Assert.That(ground.IsAirArmy, Is.False);
+        }
+
+        [Test]
+        public void UnloadAndBoard_CommitsBothRosters_WithoutRestoringAircraftState()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 2);
+            UnitData plane = Plane(2, 3);
+            plane.HitPointsCurrent = 1;
+            plane.MoveCurrent = 1;
+            plane.HasAirAttackedThisTurn = true;
+            airfield.AddMemberSorted(plane);
+            var ground = new ArmyData { Owner = _owner, Hex = home };
+            var unit = new UnitData { Owner = _owner };
+            ground.AddMemberSorted(unit);
+            var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
+                new[] { plane }, null, out string why), Is.True, why);
+            Assert.That(garrison.Members, Is.EqualTo(new[] { unit }));
+            Assert.That(ground.Members, Is.EqualTo(new[] { plane }));
+            Assert.That(airfield.Members, Is.Empty);
+            Assert.That(ground.IsAirArmy, Is.True);
+            Assert.That(ground.PendingActivationApCost, Is.EqualTo(2));
+            Assert.That(ground.PendingActivationEnergyCost, Is.EqualTo(3));
+            Assert.That(plane.HitPointsCurrent, Is.EqualTo(1));
+            Assert.That(plane.MoveCurrent, Is.EqualTo(1));
+            Assert.That(plane.HasAirAttackedThisTurn, Is.True);
         }
 
         // ---- B. strike-series calendar ---------------------------------------------------------
@@ -303,6 +427,31 @@ namespace Game.EditorTests
             }
         }
 
+        [Test]
+        public void HeadlessStrike_KeepsUnspentHeroFate()
+        {
+            var enemy = new PlayerSetupData();
+            HexCoord hex = new HexCoord(2, 0);
+            var target = new ArmyData { Owner = enemy, Hex = hex };
+            var hero = new UnitData { Owner = enemy, IsHero = true, FateMax = 3, Fate = 3,
+                HitPointsMax = 100, HitPointsCurrent = 100 };
+            target.AddMemberSorted(hero);
+            ArmyRegistry.Register(target);
+            UnitData plane = Plane(1, 1);
+            plane.Attack = 0;
+            plane.SortieLaunchPaid = true;
+            ArmyData wing = Wing(hex, plane);
+            var presenterObject = new GameObject("aviation-fate-presenter");
+            try
+            {
+                var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
+                Run(AviationActions.ResolveStationaryStrike(presenter, wing, AirStrikePolicy.Standard));
+                Assert.That(plane.HasAirAttackedThisTurn, Is.True, "the real strike was resolved");
+                Assert.That(hero.Fate, Is.EqualTo(3), "no incoming damage: the defender has no reason to spend Fate");
+            }
+            finally { Object.DestroyImmediate(presenterObject); }
+        }
+
         // ---- events --------------------------------------------------------------------------
 
         [Test]
@@ -334,6 +483,26 @@ namespace Game.EditorTests
                 planes, new List<WorthIt.DefenderProfile>(), AirStrikePolicy.Standard);
             Assert.That(e.ExpectedDamage, Is.Zero);
             Assert.That(e.ExpectedDefendersAfter, Is.Empty);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Estimator_ProjectsBerserkStats_AndHeroesKeepTheirFateMaxPool(bool hero)
+        {
+            var attackers = new[] { Profile(attack: 40f) };
+            var defender = new WorthIt.DefenderProfile(8f, false, attack: 2f,
+                hitPoints: 1000f, maxHitPoints: 1000f,
+                abilities: new[] { UnitAbilities.Berserk }, isHero: hero, fateMax: 12);
+            var estimate = AviationCombatEstimator.EstimateAirStrike(attackers,
+                new[] { defender }, AirStrikePolicy.Standard, 3);
+            Assert.That(estimate.ExpectedDefendersAfter.Count, Is.EqualTo(1));
+            var after = estimate.ExpectedDefendersAfter[0];
+            Assert.That(after.HitPoints, Is.LessThan(defender.HitPoints));
+            Assert.That(after.Attack, Is.GreaterThan(defender.Attack));
+            if (hero) Assert.That(after.Defense, Is.EqualTo(12f));
+            else Assert.That(after.Defense, Is.LessThan(defender.Defense));
+            Assert.That(estimate.ExpectedAttackAfter, Is.EqualTo(after.Attack));
+            Assert.That(estimate.ExpectedDefenseAfter, Is.EqualTo(after.Defense));
         }
 
         [Test]
@@ -394,7 +563,543 @@ namespace Game.EditorTests
             Assert.That(b.ExpectedKillCount, Is.EqualTo(a.ExpectedKillCount));
         }
 
+        [Test]
+        public void GroupedStrike_ExactPolicyIgnoresOtherArmies()
+        {
+            var planes = new[] { Profile(attack: 8f) };
+            var target = new AviationCombatEstimator.DefendingAirArmy(7,
+                new[] { Profile(hp: 20f), HeroProfile(3) }, new[] { 0, 2 });
+            var other = new AviationCombatEstimator.DefendingAirArmy(8,
+                new[] { Profile(hp: 1000f) }, new[] { 0 });
+            var alone = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes,
+                new[] { target }, AirStrikePolicy.RaidSupport(7), 3);
+            var alongside = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes,
+                new[] { other, target }, AirStrikePolicy.RaidSupport(7), 3);
+            Assert.That(alongside.ExpectedDamage, Is.EqualTo(alone.ExpectedDamage));
+            Assert.That(alongside.SurvivorSourceIndices, Is.EquivalentTo(alone.SurvivorSourceIndices));
+            Assert.That(alongside.ExpectedDefendersAfter.Count, Is.LessThanOrEqualTo(2));
+        }
+
+        [Test]
+        public void GroupedStrike_CurrentFateAndArmyPartitionInvalidateCache()
+        {
+            var planes = new[] { Profile(attack: 7f) };
+            var hero = HeroProfile(4);
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                int misses = AviationCombatEstimator.CacheMisses;
+                int hits = AviationCombatEstimator.CacheHits;
+                var together = new AviationCombatEstimator.DefendingAirArmy(1,
+                    new[] { hero, Profile(hp: 20f) }, new[] { 3, 0 });
+                AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, new[] { together }, AirStrikePolicy.Standard);
+                AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, new[] { together }, AirStrikePolicy.Standard);
+                AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, new[] {
+                    new AviationCombatEstimator.DefendingAirArmy(1, together.Units, new[] { 0, 0 }) }, AirStrikePolicy.Standard);
+                AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, new[] {
+                    new AviationCombatEstimator.DefendingAirArmy(1, new[] { hero }, new[] { 3 }),
+                    new AviationCombatEstimator.DefendingAirArmy(2, new[] { Profile(hp: 20f) }, new[] { 0 }) }, AirStrikePolicy.Standard);
+                Assert.That(AviationCombatEstimator.CacheMisses, Is.EqualTo(misses + 3));
+                Assert.That(AviationCombatEstimator.CacheHits, Is.EqualTo(hits + 1));
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
+        [Test]
+        public void GroupedStrike_CommanderFateDoesNotProtectAnotherArmy()
+        {
+            var planes = new[] { Profile(attack: 6f) };
+            var hero = HeroProfile(8);
+            var body = Profile(defense: 8f, hp: 1000f);
+            var together = new[] { new AviationCombatEstimator.DefendingAirArmy(1,
+                new[] { hero, body }, new[] { 10000, 0 }) };
+            var separate = new[] {
+                new AviationCombatEstimator.DefendingAirArmy(1, new[] { hero }, new[] { 10000 }),
+                new AviationCombatEstimator.DefendingAirArmy(2, new[] { body }, new[] { 0 }) };
+            float protectedDamage = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, together,
+                AirStrikePolicy.Standard, 5).ExpectedDamage;
+            float separateDamage = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, separate,
+                AirStrikePolicy.Standard, 5).ExpectedDamage;
+            Assert.That(separateDamage, Is.GreaterThan(protectedDamage),
+                "the other army's body must not borrow the hero's current Fate");
+        }
+
+        [Test]
+        public void GroupedStrike_SpentAircraftSkipOnlyFirstPass()
+        {
+            var planes = new[] { Profile(attack: 8f) };
+            var targets = new[] { new AviationCombatEstimator.DefendingAirArmy(1,
+                new[] { Profile(hp: 100f) }, new[] { 0 }) };
+            var spent = new[] { true };
+            Assert.That(AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, targets,
+                AirStrikePolicy.Standard, 1, spent).ExpectedDamage, Is.Zero);
+            Assert.That(AviationCombatEstimator.EstimateAirStrikeAgainstArmies(planes, targets,
+                AirStrikePolicy.Standard, 2, spent).ExpectedDamage, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void AirObservation_VisibleRosterFlowsThroughSnapshotToSupport_WithoutHiddenHero()
+        {
+            var observer = new PlayerSetupData();
+            var enemy = new PlayerSetupData();
+            var body = new UnitData { Owner = enemy, Attack = 2, Defense = 1,
+                HitPointsCurrent = 30, HitPointsMax = 30 };
+            var hero = new UnitData { Owner = enemy, IsHero = true, Fate = 3, FateMax = 4,
+                HitPointsCurrent = 12, HitPointsMax = 12 };
+            var hidden = new UnitData { Owner = enemy, IsHero = true, IsHidden = true,
+                Fate = 99, FateMax = 99 };
+            WorldSnapshot snap = SupportSnapshot(false, out HexCoord target);
+            snap.Observer = observer;
+            var army = new ArmyData { Owner = enemy, Hex = target, Name = "observed" };
+            army.Members.AddRange(new[] { body, hero, hidden });
+            const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Static;
+            var armies = (Dictionary<HexCoord, List<ArmyData>>)typeof(ArmyRegistry)
+                .GetField("ByHex", flags).GetValue(null);
+            var visible = (Dictionary<PlayerSetupData, HashSet<HexCoord>>)typeof(VisionSystem)
+                .GetField("Visible", flags).GetValue(null);
+            AiMapMemory.Clear();
+            armies[target] = new List<ArmyData> { army };
+            visible[observer] = new HashSet<HexCoord> { target };
+            try
+            {
+                AiMapMemory.RefreshVisibleForTest(observer);
+                var buildKnown = typeof(WorldAnalysis).GetMethod("BuildKnown", flags);
+                snap.Known = (KnownSnapshot)buildKnown.Invoke(null,
+                    new object[] { observer, System.Array.Empty<HexCoord>() });
+                var observed = snap.Known.AirSightings.Single();
+                Assert.That(observed.Roster.Units.Count, Is.EqualTo(2));
+                Assert.That(observed.Roster.Units.Count(u => u.IsHero), Is.EqualTo(1));
+                Assert.That(observed.Roster.CurrentFates[1], Is.EqualTo(3));
+                Assert.That(snap.Known.EnemySightings.Single().Defenders.Count, Is.EqualTo(1));
+                var opposition = new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(body) },
+                    WorthIt.SideCommander.Of(hero), 2f, army.Id) };
+                var options = GroundCombatAirSupport.Options(snap, opposition, target,
+                    AirStrikePolicy.RaidSupport(army.Id), null, 0.4f, null);
+                Assert.That(options.Count, Is.EqualTo(1));
+                Assert.That(options[0].RosterKnown, Is.True);
+                Assert.That(options[0].ExpectedDamage, Is.GreaterThan(0f));
+                int knowledge = AiMapMemory.KnowledgeVersionFor(observer);
+                long routes = AiMapMemory.RouteMemoryVersionFor(observer);
+                hero.Fate = 0;
+                AiMapMemory.RefreshVisibleForTest(observer);
+                Assert.That(AiMapMemory.KnowledgeVersionFor(observer), Is.GreaterThan(knowledge));
+                Assert.That(AiMapMemory.RouteMemoryVersionFor(observer), Is.EqualTo(routes));
+                Assert.That(observed.Roster.CurrentFates[1], Is.EqualTo(3), "old snapshot stays immutable");
+                Assert.That(AiMapMemory.AllKnownAirSightings(observer).Single().Roster.CurrentFates[1], Is.Zero);
+                visible[observer].Clear();
+                AiMapMemory.RefreshVisibleForTest(observer);
+                Assert.That(AiMapMemory.AllKnownAirSightings(observer).Count(), Is.EqualTo(1),
+                    "fog does not erase the last observation");
+                armies.Remove(target);
+                visible[observer].Add(target);
+                AiMapMemory.RefreshVisibleForTest(observer);
+                Assert.That(AiMapMemory.AllKnownAirSightings(observer), Is.Empty);
+            }
+            finally
+            {
+                armies.Remove(target);
+                visible.Remove(observer);
+                AiMapMemory.Clear();
+            }
+        }
+
+        [Test]
+        public void AirObservation_CopiesFateAndDetectsFateOnlyChanges()
+        {
+            var profiles = new[] { HeroProfile(4), Profile() };
+            var fates = new[] { 3, 99 };
+            var roster = new AviationCombatEstimator.DefendingAirArmy(7, profiles, fates);
+            var before = new AiMapMemory.KnownAirSighting(default, _owner, 1, true, roster);
+            fates[0] = 0;
+            profiles[0] = HeroProfile(9);
+            Assert.That(roster.CurrentFates[0], Is.EqualTo(3));
+            Assert.That(roster.CurrentFates[1], Is.Zero);
+            Assert.That(roster.Units[0].FateMax, Is.EqualTo(4));
+            var after = new AiMapMemory.KnownAirSighting(default, _owner, 1, true,
+                new AviationCombatEstimator.DefendingAirArmy(7, roster.Units, fates));
+            Assert.That(AiMapMemory.SameAirSighting(before, after), Is.False);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AfterAirStrike_PreservesUnstruckArmiesAndGuard_AndTransfersCommander(bool commanderSurvives)
+        {
+            var body = Profile(hp: 10f);
+            var firstHero = HeroProfile(4);
+            var secondHero = HeroProfile(2);
+            var commander = new WorthIt.SideCommander(0, 4);
+            var opposition = new[] {
+                new WorthIt.DefendingArmy(new[] { body }, commander, 2f, 7),
+                new WorthIt.DefendingArmy(new[] { body }, commander, 0f, 8),
+                new WorthIt.DefendingArmy(new[] { body }, default, 5f) };
+            var target = new AiMapMemory.KnownAirSighting(default, _owner, 1, true,
+                new AviationCombatEstimator.DefendingAirArmy(7,
+                    new[] { body, firstHero, secondHero }, new[] { 0, 3, 1 }, 1));
+            var indices = commanderSurvives ? new[] { 0, 1, 2 } : new[] { 0, 2 };
+            var estimate = new AviationCombatEstimator.AirStrikeEstimate(0, 0,
+                indices.Select(i => target.Roster.Units[i]).ToList(), 0, survivorSourceIndices: indices);
+            var after = GroundCombatAirSupport.AfterAirStrike(opposition, new[] { target }, estimate);
+            Assert.That(after.Count, Is.EqualTo(3));
+            Assert.That(after[0].Commander.Fate, Is.EqualTo(commanderSurvives ? 4 : 2));
+            Assert.That(after[0].DefenseBonusOverride, Is.EqualTo(2f));
+            Assert.That(after[0].ArmyId, Is.EqualTo(7));
+            Assert.That(after[1].Equals(opposition[1]), Is.True);
+            Assert.That(after[2].Equals(opposition[2]), Is.True);
+        }
+
+        [Test]
+        public void AirObservation_FateOnlyChangeInvalidatesContact()
+        {
+            var hero = HeroProfile(4);
+            WorldSnapshot Snapshot(int fate) => new WorldSnapshot { Known = new KnownSnapshot {
+                AirSightings = new[] { new AiMapMemory.KnownAirSighting(default, _owner, 1, true,
+                    new AviationCombatEstimator.DefendingAirArmy(7, new[] { hero }, new[] { fate })) } } };
+            var method = typeof(WorldAnalysis).GetMethod("ChangedContactIds",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            Assert.That(method, Is.Not.Null);
+            var changed = (HashSet<int>)method.Invoke(null, new object[] { Snapshot(3), Snapshot(0) });
+            Assert.That(changed, Does.Contain(7));
+            var unchanged = (HashSet<int>)method.Invoke(null, new object[] { Snapshot(3), Snapshot(3) });
+            Assert.That(unchanged, Is.Empty);
+        }
+
+        [Test]
+        public void AfterAirStrike_DeadOnlyHeroRemovesCommander()
+        {
+            var body = Profile();
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { body },
+                new WorthIt.SideCommander(3, 4), 0f, 7) };
+            var target = new AiMapMemory.KnownAirSighting(default, _owner, 1, true,
+                new AviationCombatEstimator.DefendingAirArmy(7,
+                    new[] { body, HeroProfile(4) }, new[] { 0, 2 }));
+            var after = GroundCombatAirSupport.AfterAirStrike(opposition, new[] { target },
+                new AviationCombatEstimator.AirStrikeEstimate(0, 0, new[] { body }, 12,
+                    survivorSourceIndices: new[] { 0 }));
+            Assert.That(after[0].Commander.Present, Is.False);
+            Assert.That(after[0].Units.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void AfterAirStrike_UnobservedCommanderIsNotDeclaredDead()
+        {
+            var body = Profile();
+            var commander = new WorthIt.SideCommander(3, 4);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { body }, commander, 2f, 7) };
+            var target = new AiMapMemory.KnownAirSighting(default, _owner, 1, true,
+                new AviationCombatEstimator.DefendingAirArmy(7, new[] { body }, new[] { 0 }, -1));
+            var after = GroundCombatAirSupport.AfterAirStrike(opposition, new[] { target },
+                new AviationCombatEstimator.AirStrikeEstimate(0, 0, new[] { body }, 0,
+                    survivorSourceIndices: new[] { 0 }));
+            Assert.That(after[0].Commander.Equals(commander), Is.True);
+        }
+
+        [Test]
+        public void RaidAirTargetCount_IncludesVisibleHero_AndExcludesOtherArmiesAndGuards()
+        {
+            var target = new HexCoord(3, -1);
+            var body = Profile();
+            var owner = new PlayerSetupData();
+            var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
+                AirSightings = new[] {
+                    new AiMapMemory.KnownAirSighting(target, owner, 1, true,
+                        new AviationCombatEstimator.DefendingAirArmy(7,
+                            new[] { body, HeroProfile(4) }, new[] { 0, 2 })),
+                    new AiMapMemory.KnownAirSighting(target, owner, 1, true,
+                        new AviationCombatEstimator.DefendingAirArmy(8,
+                            new[] { body, body, body }, new[] { 0, 0, 0 })) } } };
+            var ground = new[] { new WorthIt.DefendingArmy(new[] { body, body, body, body }, default) };
+            Assert.That(GroundCombatAirSupport.KnownTargetCount(snap, target,
+                AirStrikePolicy.RaidSupport(7), ground), Is.EqualTo(2));
+            Assert.That(GroundCombatAirSupport.KnownTargetCount(snap, target,
+                AirStrikePolicy.RaidSupport(99), ground), Is.Zero);
+        }
+
         // ---- support options, keys, claims, recon cap ---------------------------------------
+
+        [Test]
+        public void CombatRequests_PreserveDistinctRaidPoliciesAtOneHex_AndSkipAttemptedTurn()
+        {
+            var target = new HexCoord(4, 0);
+            var neutral = new PlayerSetupData { IsNeutral = true };
+            var snap = new WorldSnapshot { Observer = _owner, TurnNumber = 3,
+                Known = new KnownSnapshot {
+                    EnemySightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>(),
+                    NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>(),
+                    AirSightings = new[] { 7, 8 }.Select(id => new AiMapMemory.KnownAirSighting(target,
+                        neutral, 3, true, new AviationCombatEstimator.DefendingAirArmy(id,
+                            new[] { Profile(), Profile() }, new[] { 0, 0 }))).ToList() } };
+            var intents = new[] { 7, 8 }.Select(id => new MissionIntent { Kind = MissionKind.Raid,
+                Status = IntentStatus.Active, Objective = new RaidIntent { Target = RaidTargetRef.ForNeutralArmy(id),
+                    LastKnownHex = target, Phase = RaidMissionPhase.Reinforcement, AirSupportAttemptedTurn = -1 } }).ToList();
+            foreach (var intent in intents) intent.IntentKey = MissionIntentKey.For(intent);
+            var requests = AviationRebasePlanner.CombatSupportTargets(snap, intents);
+            Assert.That(requests.Count, Is.EqualTo(2));
+            Assert.That(requests.Select(r => r.Key).Distinct().Count(), Is.EqualTo(2));
+            Assert.That(requests.Select(r => r.Policy.ExactTargetArmyId), Is.EquivalentTo(new int?[] { 7, 8 }));
+            Assert.That(requests.All(r => r.Policy.MinimumSurvivors == 1), Is.True);
+            intents[0].Raid.AirSupportAttemptedTurn = 3;
+            Assert.That(AviationRebasePlanner.CombatSupportTargets(snap, intents).Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CombatProjection_ActualRouteRejectsPlane_AndAdmitsMultiTurnHelicopter()
+        {
+            HexMap map = Line(4, out GameObject mapObject);
+            try
+            {
+                ArmyData field = Airfield(default, 2);
+                UnitData aircraft = Plane(1, 1);
+                field.Members.Add(aircraft);
+                var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
+                    AirSightings = System.Array.Empty<AiMapMemory.KnownAirSighting>() } };
+                var request = new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7),
+                    new HexCoord(4, 0), AirStrikePolicy.DefenceSupport(7), new TaskScore(preventedDamage: 10));
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    new[] { aircraft }, field.Hex, request), Is.Null);
+                aircraft.TurnsWithoutRefuel = 1;
+                var service = GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    new[] { aircraft }, field.Hex, request);
+                Assert.That(service.HasValue, Is.True);
+                Assert.That(service.Value.RouteCost, Is.EqualTo(8));
+                Assert.That(service.Value.StrikeTurns, Is.EqualTo(2));
+                Assert.That(service.Value.RosterKnown, Is.False);
+                Assert.That(service.Value.Score.Value, Is.GreaterThan(0f));
+                aircraft.HasAirAttackedThisTurn = true;
+                aircraft.TurnsWithoutRefuel = 0;
+                request = new CombatAirSupportRequest(request.Key, new HexCoord(1, 0), request.Policy, request.Score);
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    new[] { aircraft }, field.Hex, request), Is.Null, "stored aircraft do not regain their strike");
+                aircraft.HasAirAttackedThisTurn = false;
+                aircraft.MoveCurrent = 1;
+                Assert.That(AiAirSortiePlanner.TryPlanSortieFromStorage(field.Hex,
+                    new[] { aircraft }, request.Target, map, _owner), Is.Null,
+                    "remaining movement cannot cover an outward step and a return step");
+            }
+            finally { Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
+        public void CombatProjection_SpentPlaneDoesNotCountAsCurrentTurnService()
+        {
+            HexMap map = Line(1, out GameObject mapObject);
+            var actorObject = new GameObject("air-support-actor");
+            try
+            {
+                Airfield(default, 2);
+                UnitData aircraft = Plane(1, 1);
+                ArmyData wing = Wing(default, aircraft);
+                wing.Controller = actorObject.AddComponent<ArmyController>();
+                var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
+                    AirSightings = System.Array.Empty<AiMapMemory.KnownAirSighting>() } };
+                var request = new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7),
+                    new HexCoord(1, 0), AirStrikePolicy.DefenceSupport(7), new TaskScore(preventedDamage: 10));
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    wing.Members, wing.Hex, request, wing).HasValue, Is.True);
+                aircraft.HasAirAttackedThisTurn = true;
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    wing.Members, wing.Hex, request, wing), Is.Null);
+            }
+            finally { Object.DestroyImmediate(actorObject); Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
+        public void CombatCoverage_UsesJointLandingCapacity_WithoutPublishingClaims()
+        {
+            HexMap map = Line(2, out GameObject mapObject);
+            var actors = new List<GameObject>();
+            try
+            {
+                Airfield(default, 1);
+                var wings = new List<ArmyData>();
+                for (int i = 0; i < 2; i++)
+                {
+                    var actor = new GameObject("air-coverage-actor"); actors.Add(actor);
+                    var wing = Wing(new HexCoord(1, 0), Plane(1, 1));
+                    wing.Controller = actor.AddComponent<ArmyController>(); wings.Add(wing);
+                }
+                Root().ActionPoints = 10; _root.AddResource(ResourceType.Energy, 10);
+                var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
+                    AirSightings = System.Array.Empty<AiMapMemory.KnownAirSighting>() } };
+                var requests = new[] {
+                    new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7), new HexCoord(2, 0),
+                        AirStrikePolicy.DefenceSupport(7), new TaskScore(preventedDamage: 10)),
+                    new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(8), new HexCoord(2, 0),
+                        AirStrikePolicy.DefenceSupport(8), new TaskScore(preventedDamage: 10)) };
+                var ctx = new AiTurnContext { Map = map };
+                var remaining = GroundCombatAirSupport.UncoveredRequests(snap, _owner, _root, ctx,
+                    requests, new ActorCommitments());
+                Assert.That(remaining.Count, Is.EqualTo(1));
+                Assert.That(AiAirSortiePlanner.FreeLandingCapacity(default, _owner), Is.EqualTo(1));
+                Assert.That(AirSortieRegistry.For(_owner), Is.Empty);
+                Assert.That(_root.ActionPoints, Is.EqualTo(10));
+                Assert.That(_root.GetResource(ResourceType.Energy), Is.EqualTo(10));
+                BuildingRegistry.FindAt(default).AirfieldCapacity = 2;
+                _root.ActionPoints = 1;
+                Assert.That(GroundCombatAirSupport.UncoveredRequests(snap, _owner, _root, ctx,
+                    requests, new ActorCommitments()).Count, Is.EqualTo(1), "joint AP bank");
+                _root.ActionPoints = 10;
+                _root.AddResource(ResourceType.Energy, -9);
+                Assert.That(GroundCombatAirSupport.UncoveredRequests(snap, _owner, _root, ctx,
+                    requests, new ActorCommitments()).Count, Is.EqualTo(1), "joint Energy bank");
+                var claims = new ActorCommitments(); claims.Claim(wings[0].Id); claims.Claim(wings[1].Id);
+                Assert.That(GroundCombatAirSupport.UncoveredRequests(snap, _owner, _root, ctx,
+                    requests, claims).Count, Is.EqualTo(2));
+            }
+            finally { foreach (var actor in actors) Object.DestroyImmediate(actor); Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
+        public void AviationPurchase_CombatOnlyTaskCreatesValuedCandidate_WithoutCreatingAGoal()
+        {
+            HexMap map = Line(1, out GameObject mapObject);
+            MissionIntentRegistry.Clear();
+            try
+            {
+                Airfield(default, 2);
+                Root().ActionPoints = 10; _root.AddResource(ResourceType.Energy, 10);
+                var target = new HexCoord(1, 0);
+                var neutral = new PlayerSetupData { IsNeutral = true };
+                var snap = new WorldSnapshot { Observer = _owner, TurnNumber = 1,
+                    Self = new SelfSnapshot { Armies = System.Array.Empty<ArmySnapshot>(),
+                        BaseHexes = new[] { default(HexCoord) } },
+                    Known = new KnownSnapshot { EnemySightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>(),
+                        NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>(),
+                        Buildings = System.Array.Empty<AiMapMemory.KnownBuilding>(),
+                        AirSightings = new[] { new AiMapMemory.KnownAirSighting(target, neutral, 1, true,
+                            new AviationCombatEstimator.DefendingAirArmy(7,
+                                new[] { Profile(hp: 20), Profile(hp: 20) }, new[] { 0, 0 })) } } };
+                var intent = new MissionIntent { Kind = MissionKind.Raid, Status = IntentStatus.Active,
+                    Objective = new RaidIntent { Target = RaidTargetRef.ForNeutralArmy(7),
+                        LastKnownHex = target, Phase = RaidMissionPhase.Reinforcement, TargetIsNeutral = true } };
+                intent.IntentKey = MissionIntentKey.For(intent);
+                MissionIntentRegistry.GetOrCreate(_owner).Put(intent);
+                var card = new CardData(new CardDefinition { isAviation = true, attack = 6,
+                    moveMax = 6, activationApCost = 0, launchEnergyCost = 0 });
+                var hand = new AiHandData(null, _owner.Faction, 0); hand.Hand.Add(card);
+                var ctx = new AiTurnContext { Map = map, TurnNumber = 1 };
+                Assert.That(ReconObjectiveEvaluator.Enumerate(snap), Is.Empty);
+                var build = typeof(NonCombatCardPlayer).GetMethod("BuildAviationPlays",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                var arguments = new object[] { card, null, snap, _owner, _root, hand, ctx,
+                    new List<string>(), null, false };
+                var candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
+                Assert.That(candidates.Count, Is.EqualTo(1));
+                Assert.That(candidates[0].Explain, Does.Contain("serviceTask="));
+                Assert.That(candidates[0].Explain, Does.Contain(intent.IntentKey.ToString()));
+                Assert.That(MissionIntentRegistry.GetOrCreate(_owner).Count, Is.EqualTo(1));
+                MissionIntentRegistry.Clear();
+                candidates = (List<NonCombatCardPlayer.NonCombatPlay>)build.Invoke(null, arguments);
+                Assert.That(candidates, Is.Empty, "a sighting alone must not invent a task for aviation");
+            }
+            finally { MissionIntentRegistry.Clear(); Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
+        public void Coverage_AnUnreachableWingDoesNotCoverATask()
+        {
+            var match = GroundCombatAirSupport.MatchCoverage(1, 1, (r, w) => false, _ => true);
+            Assert.That(match, Is.Empty);
+        }
+
+        [Test]
+        public void Coverage_OneWingCannotCoverTwoDistinctTasksAtTheSameHex()
+        {
+            var requests = new[] {
+                new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7), default,
+                    AirStrikePolicy.DefenceSupport(7), new TaskScore(preventedDamage: 10)),
+                new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(8), default,
+                    AirStrikePolicy.DefenceSupport(8), new TaskScore(preventedDamage: 10)) };
+            var match = GroundCombatAirSupport.MatchCoverage(requests.Length, 1, (r, w) => true, _ => true);
+            Assert.That(match.Count, Is.EqualTo(1));
+            Assert.That(requests[0].Key.Equals(requests[1].Key), Is.False);
+        }
+
+        [Test]
+        public void Coverage_ReassignsAFlexibleWingToPreserveAConstrainedTask()
+        {
+            var match = GroundCombatAirSupport.MatchCoverage(2, 2, (r, w) => w == 0 || r == 0, _ => true);
+            Assert.That(match.Count, Is.EqualTo(2));
+            Assert.That(match[0], Is.EqualTo(1));
+            Assert.That(match[1], Is.EqualTo(0));
+        }
+
+        [Test]
+        public void Coverage_RetriesATaskAfterAnotherExecutableAssignmentOpensCapacity()
+        {
+            var match = GroundCombatAirSupport.MatchCoverage(2, 2, (r, w) => r == w,
+                a => !a.Values.Contains(0) || a.Values.Contains(1));
+            Assert.That(match.Count, Is.EqualTo(2));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Coverage_JointBankRejectsTwoIndividuallyAffordableLaunches(bool apBank)
+        {
+            int[] ap = apBank ? new[] { 2, 2 } : new[] { 0, 0 };
+            int[] energy = apBank ? new[] { 0, 0 } : new[] { 2, 2 };
+            var match = GroundCombatAirSupport.MatchCoverage(2, 2, (r, w) => true,
+                a => a.Keys.Sum(w => ap[w]) <= 2 && a.Keys.Sum(w => energy[w]) <= 2);
+            Assert.That(match.Count, Is.EqualTo(1));
+            Assert.That(match.Values.Distinct().Count(), Is.EqualTo(match.Count));
+        }
+
+        [Test]
+        public void Coverage_JointLandingClaimDoesNotCountTwoWingsInOneSlot()
+        {
+            var match = GroundCombatAirSupport.MatchCoverage(2, 2, (r, w) => true, a => a.Count <= 1);
+            Assert.That(match.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Coverage_ClaimedActorsAreNotBorrowedFromRecon()
+        {
+            var commitments = new ActorCommitments();
+            commitments.Claim(0);
+            var match = GroundCombatAirSupport.MatchCoverage(2, 2,
+                (r, w) => !commitments.IsArmyClaimed(w), _ => true);
+            Assert.That(match.Count, Is.EqualTo(1));
+            Assert.That(match.Keys, Does.Not.Contain(0));
+            Assert.That(commitments.IsArmyClaimed(0), Is.True);
+        }
+
+        [Test]
+        public void StoredOutboundBudget_UsesRemainingMovement_AndEmergencyPenalty()
+        {
+            var aircraft = new UnitData { IsAviation = true, MoveMax = 8, MoveCurrent = 2 };
+            Assert.That(AviationRange.FirstTurnOutboundBudget(new[] { aircraft }), Is.EqualTo(1));
+            aircraft.TurnsWithoutRefuel = 1;
+            Assert.That(AviationRange.FirstTurnOutboundBudget(new[] { aircraft }), Is.EqualTo(2));
+            aircraft.HasEmergencyFlightPenalty = true;
+            Assert.That(AviationRange.FirstTurnOutboundBudget(new[] { aircraft }), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void CombatServiceScore_InheritsTaskAndPaysLaunchOnlyOnce()
+        {
+            var intrinsic = new TaskScore(preventedDamage: 10f);
+            var one = GroundCombatAirSupport.ServiceScore(intrinsic, 0.5f, 2, 3, 1);
+            var many = GroundCombatAirSupport.ServiceScore(intrinsic, 0.5f, 2, 3, 5);
+            Assert.That(one.PreventedDamage, Is.EqualTo(intrinsic.PreventedDamage));
+            Assert.That(many.CardPrice, Is.EqualTo(one.CardPrice));
+            Assert.That(one.Delivery, Is.Zero);
+            Assert.That(many.Delivery, Is.Zero);
+            Assert.That(one.Value, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void CombatServiceScore_EntersAviationCardOperationalValue()
+        {
+            var service = GroundCombatAirSupport.ServiceScore(new TaskScore(raidReward: 10),
+                0.5f, 1, 1, 2);
+            var card = new CardData(new CardDefinition { isAviation = true });
+            var candidate = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,
+                card, null, null, null, 0f, operationalTask: service);
+            var without = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,
+                card, null, null, null, 0f);
+            Assert.That(candidate.Breakdown.OperationalTaskValue, Is.EqualTo(service.Value));
+            Assert.That(candidate.NetScore - without.NetScore, Is.EqualTo(service.Value).Within(0.0001f));
+        }
 
         [Test]
         public void SupportOptions_UnknownDefenders_StillOfferTheWingWithoutAFakeEstimate()
@@ -422,6 +1127,29 @@ namespace Game.EditorTests
                 AirStrikePolicy.Standard, _ => 0.1f, 0.1f, null);
             Assert.That(options, Has.Count.EqualTo(1), "no minimum improvement of the ground win");
             Assert.That(options[0].ExpectedDamage, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void AfterStrike_PreservesEachSurvivingArmiesDefenceBonus_IncludingZeroAndUnknown()
+        {
+            var body = Profile(attack: 2f, defense: 1f, hp: 4f);
+            var opposition = new[]
+            {
+                new WorthIt.DefendingArmy(new[] { body }, default, 100f),
+                new WorthIt.DefendingArmy(new[] { body }, default, 0f),
+                new WorthIt.DefendingArmy(new[] { body }, default, 3f),
+                new WorthIt.DefendingArmy(new[] { body }, default),
+            };
+            var projected = GroundCombatAirSupport.AfterStrike(opposition,
+                new[] { body, body, body }, new[] { 1, 2, 3 });
+            Assert.That(projected.Count, Is.EqualTo(3), "the wiped army leaves the package");
+            Assert.That(projected[0].DefenseBonus(9f), Is.Zero,
+                "known zero must not acquire the site's fallback structure defence");
+            Assert.That(projected[1].DefenseBonus(9f), Is.EqualTo(3f));
+            Assert.That(projected[2].DefenseBonusOverride.HasValue, Is.False,
+                "unknown retains the caller's fallback contract");
+            Assert.That(projected[2].DefenseBonus(9f), Is.EqualTo(9f));
+            Assert.That(opposition[0].Units.Count, Is.EqualTo(1), "projection is read-only");
         }
 
         [Test]

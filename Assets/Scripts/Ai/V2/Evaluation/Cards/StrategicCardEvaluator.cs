@@ -673,9 +673,8 @@ namespace Game.Ai.V2
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
             bool hasAirCapacity = snap?.Self != null
                 && (snap.Self.AirborneReconWings + snap.Self.SpareAirObservationSorties) > 0;
-            // Calibration detail for the Equipment devPipeline floor and the Aviation upkeep
-            // penalty — merged into bd.EffectDetail below so both are visible on the SAME
-            // strat.nonCombat AiDebug line, for tuning against a real game.
+            // Calibration detail for the Equipment devPipeline floor, merged into the
+            // strat.nonCombat AiDebug line for tuning against a real game.
             string calibrationDetail = null;
 
             switch (kind)
@@ -734,25 +733,11 @@ namespace Game.Ai.V2
                 hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f,
                 spendableResource);
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
-            // Aviation sortie-upkeep penalty — a new wing does not just cost its own AP/resources
-            // to deploy, it keeps drawing apAirSortieApProxy AP/turn to actually fly afterwards.
-            // Dynamic, not flat: scaled by ncCtx.EffectiveMarginalApUtility (the SAME [0..1] "is AP
-            // already the binding constraint right now" ramp every other dynamic effect in this
-            // file uses) and by effectRecurringHorizonTurns (the SAME bounded pay-back horizon the
-            // ApBonus/Produce recurring model uses), since upkeep recurs every future turn. At full
-            // AP pressure this can fully offset nonCombatAviationNoAirGap — a wing you cannot
-            // afford to fly is not a real capability gain.
-            float aviationUpkeepPenalty = kind == NonCombatRole.Aviation
-                ? ActionPrice.ToCardScore(AiConfigV2.apAirSortieApProxy
-                    * AiConfigV2.effectRecurringHorizonTurns) * ncCtx.EffectiveMarginalApUtility
-                : 0f;
-            if (kind == NonCombatRole.Aviation)
-                bd.EffectDetail = JoinDetail(bd.EffectDetail,
-                    $"aviation upkeep marginalApUtil={ncCtx.EffectiveMarginalApUtility.ToString("0.00", CultureInfo.InvariantCulture)} "
-                    + $"penalty={(-aviationUpkeepPenalty).ToString("0.00", CultureInfo.InvariantCulture)}");
+            // The card is priced here. A concrete sortie pays its launch in provisioning;
+            // paid airborne continuation has no recurring AP cost.
             bd.ResourceEfficiency = -(ActionPrice.ToCardScore(ActionPrice.Ap(apCost))
                                       + StrategicResourceCostValue(pricedResources, snap, spendableResource, player)
-                                      + genStepPenalty + aviationUpkeepPenalty);
+                                      + genStepPenalty);
             // Challenge cost is certain; every benefit of the minted card is success-contingent.
             bd.GenerationRiskDiscount = generation != null
                 ? GenerationExpectedValueDiscount(bd, Mathf.Clamp01(generation.SuccessChance))

@@ -436,7 +436,7 @@ namespace Game.Ai.V2
                 .OrderBy(s => s.ArmyId)
                 .Select(s => new WorthIt.DefendingArmy(
                     s.Defenders, s.Commander,
-                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner)))
+                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId))
                 .ToList();
         }
 

@@ -194,7 +194,7 @@ namespace Game.Ai.V2
             EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                 c?.Army != null && c.Army.ArmyId == enemyArmyId && c.Position.HasValue);
             return contact == null ? null
-                : new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) };
+                : new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander, armyId: enemyArmyId) };
         }
 
         // Armies already walking an ActiveDefence Return leg (a regroup or a withdrawal).

@@ -18,7 +18,7 @@ namespace Game.Combat
     // (the same dice, Fate duel and BattleResolutionRules.ResolveGroundAttack the real
     // BattleEngine.ResolveStandaloneAttack applies), the aircraft's attack pool against the
     // target's Defense — a hero's FateMax, already folded into DefenderProfile.Defense — with the
-    // defending commander's Fate (the real strike passes the target army's hero as defenderHero).
+    // target hero's own current Fate, or its army commander's current Fate for a body target.
     // The aircraft side has no hero and therefore no Fate.
     //
     // A local System.Random seeded from the inputs drives the trials; UnityEngine.Random (the
@@ -28,7 +28,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 1;
+        private const int KeyVersion = 3;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
@@ -59,6 +59,79 @@ namespace Game.Combat
                 ExpectedKillCount = expectedKillCount;
                 WipeProbability = wipeProbability;
             }
+        }
+
+        // One air-target army. Profiles are in observed roster order; each hero owns its own
+        // current Fate. Army identity is retained until the strike policy has filtered targets.
+        public readonly struct DefendingAirArmy
+        {
+            public readonly int ArmyId;
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> Units;
+            public readonly IReadOnlyList<int> CurrentFates;
+            public readonly int CommanderIndex;
+            public DefendingAirArmy(int armyId, IReadOnlyList<WorthIt.DefenderProfile> units,
+                IReadOnlyList<int> currentFates, int? commanderIndex = null)
+            {
+                ArmyId = armyId;
+                var profiles = (units ?? System.Array.Empty<WorthIt.DefenderProfile>())
+                    .Select(p => new WorthIt.DefenderProfile(p.Defense, p.HasCeramicArmor,
+                        System.Array.AsReadOnly((p.TypeTags ?? System.Array.Empty<Game.Cards.UnitTypeTag>()).ToArray()),
+                        p.Attack, p.HitPoints, p.Initiative,
+                        System.Array.AsReadOnly((p.Abilities ?? System.Array.Empty<string>()).ToArray()),
+                        p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned)).ToArray();
+                Units = System.Array.AsReadOnly(profiles);
+                int commander = commanderIndex ?? Enumerable.Range(0, profiles.Length)
+                    .Where(i => profiles[i].IsHero).DefaultIfEmpty(-1).First();
+                CommanderIndex = commander >= 0 && commander < Units.Count && Units[commander].IsHero
+                    ? commander : -1;
+                CurrentFates = System.Array.AsReadOnly(Enumerable.Range(0, profiles.Length)
+                    .Select(i => profiles[i].IsHero && currentFates != null && i < currentFates.Count
+                        ? Mathf.Max(0, currentFates[i]) : 0).ToArray());
+            }
+        }
+
+        public static AirStrikeEstimate EstimateAirStrikeAgainstArmies(IReadOnlyList<UnitData> aircraft,
+            IReadOnlyList<DefendingAirArmy> armies, AirStrikePolicy policy, int strikePasses = 1,
+            IReadOnlyList<bool> firstPassSpent = null) =>
+            EstimateAirStrikeAgainstArmies(aircraft?.Where(x => x != null).Select(WorthIt.FromLiveUnit).ToList(),
+                armies, policy, strikePasses, firstPassSpent);
+
+        public static AirStrikeEstimate EstimateAirStrikeAgainstArmies(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
+            IReadOnlyList<DefendingAirArmy> armies, AirStrikePolicy policy, int strikePasses = 1,
+            IReadOnlyList<bool> firstPassSpent = null)
+        {
+            var defenders = new List<WorthIt.DefenderProfile>();
+            var groups = new List<int>();
+            var fates = new List<int>();
+            var commanders = new List<int>();
+            foreach (DefendingAirArmy army in armies ?? System.Array.Empty<DefendingAirArmy>())
+            {
+                if (policy.ExactTargetArmyId.HasValue && army.ArmyId != policy.ExactTargetArmyId.Value)
+                    continue;
+                int group = groups.Count; // unique partition label, independent of global army IDs
+                for (int i = 0; i < army.Units.Count; i++)
+                {
+                    defenders.Add(army.Units[i]);
+                    groups.Add(group);
+                    commanders.Add(army.CommanderIndex >= 0 ? group + army.CommanderIndex : -1);
+                    fates.Add(army.CurrentFates[i]);
+                }
+            }
+            if (aircraft == null || aircraft.Count == 0 || defenders.Count == 0 || strikePasses <= 0)
+                return new AirStrikeEstimate(SumDefense(defenders), SumAttack(defenders), defenders, 0f);
+            var magnitudes = AbilityMagnitudes.Default;
+            int[] spent = Enumerable.Range(0, aircraft.Count)
+                .Select(i => firstPassSpent != null && i < firstPassSpent.Count && firstPassSpent[i] ? 1 : 0).ToArray();
+            int[] key = BuildKey(aircraft, defenders, policy, strikePasses, 0, magnitudes)
+                .Concat(new[] { -3000 }).Concat(groups)
+                .Concat(new[] { -4000 }).Concat(fates)
+                .Concat(new[] { -5000 }).Concat(commanders)
+                .Concat(new[] { -6000 }).Concat(spent).ToArray();
+            if (TryCached(key, out AirStrikeEstimate cached)) return cached;
+            AirStrikeEstimate result = Simulate(aircraft, defenders, policy, strikePasses, 0,
+                magnitudes, Seed(key), groups.ToArray(), fates.ToArray(), commanders.ToArray(), spent);
+            Store(key, result);
+            return result;
         }
 
         // Live-roster overload (the aircraft as they fly now).
@@ -95,11 +168,15 @@ namespace Game.Combat
 
         private static AirStrikeEstimate Simulate(IReadOnlyList<WorthIt.DefenderProfile> aircraft,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, AirStrikePolicy policy, int passes,
-            int defenderFate, AbilityMagnitudes magnitudes, int seed)
+            int defenderFate, AbilityMagnitudes magnitudes, int seed,
+            int[] groups = null, int[] currentFates = null, int[] commanders = null, int[] firstPassSpent = null)
         {
             var rng = new System.Random(seed);
             int n = defenders.Count;
             var hpSum = new float[n];
+            var attackSum = new float[n];
+            var defenseSum = new float[n];
+            var survivalCount = new int[n];
             float totalDamageSum = 0f;
             int killAnyTrials = 0, wipeTrials = 0;
             float killCountSum = 0f;
@@ -120,20 +197,37 @@ namespace Game.Combat
                 for (int i = 0; i < n; i++)
                     alive.Add(i);
                 int fate = defenderFate;
+                int[] fates = currentFates != null ? (int[])currentFates.Clone() : null;
 
                 for (int pass = 0; pass < passes; pass++)
                 {
-                    foreach (WorthIt.DefenderProfile plane in aircraft)
+                    for (int aircraftIndex = 0; aircraftIndex < aircraft.Count; aircraftIndex++)
                     {
+                        if (pass == 0 && firstPassSpent != null && firstPassSpent[aircraftIndex] != 0) continue;
+                        WorthIt.DefenderProfile plane = aircraft[aircraftIndex];
                         // Matches RunAirStrike: stop once only the policy's survivors remain.
                         if (alive.Count <= policy.MinimumSurvivors)
                             break;
                         int idx = alive[rng.Next(alive.Count)];
                         int attackerFate = 0;
+                        int fateOwner = -1;
+                        if (groups != null)
+                        {
+                            if (defenders[idx].IsHero) fateOwner = idx;
+                            else if (commanders[idx] >= 0 && alive.Contains(commanders[idx]))
+                                fateOwner = commanders[idx];
+                            else if (commanders[idx] >= 0) foreach (int candidate in alive)
+                                if (groups[candidate] == groups[idx] && defenders[candidate].IsHero)
+                                { fateOwner = candidate; break; }
+                        }
+                        int remainingFate = fates == null ? fate : fateOwner >= 0 ? fates[fateOwner] : 0;
                         BattleSimExchangeOutcome outcome = BattleSimulationKernel.ResolveExchange(
-                            Mathf.RoundToInt(plane.Attack), defense[idx], plane.Abilities,
-                            defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref fate,
+                            Mathf.RoundToInt(plane.Attack),
+                            defenders[idx].IsHero ? defenders[idx].FateMax : defense[idx], plane.Abilities,
+                            defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref remainingFate,
                             Mathf.CeilToInt(hp[idx]), magnitudes, rng);
+                        if (fates == null) fate = remainingFate;
+                        else if (fateOwner >= 0) fates[fateOwner] = remainingFate;
                         float hpLeft = hp[idx];
                         BattleSimulationKernel.ApplyPrimaryOutcome(outcome, plane.Abilities,
                             defenders[idx].Abilities, ref hpLeft, ref attack[idx], ref defense[idx],
@@ -145,7 +239,15 @@ namespace Game.Combat
                 }
 
                 for (int i = 0; i < n; i++)
+                {
                     hpSum[i] += hp[i];
+                    if (hp[i] > 0f)
+                    {
+                        survivalCount[i]++;
+                        attackSum[i] += attack[i];
+                        defenseSum[i] += defenders[i].IsHero ? defenders[i].FateMax : defense[i];
+                    }
+                }
                 totalDamageSum += startHp - hp.Sum();
                 int killed = n - alive.Count;
                 killCountSum += killed;
@@ -164,12 +266,16 @@ namespace Game.Combat
                 if (meanHp <= 0.01f)
                     continue; // expected dead on average
                 WorthIt.DefenderProfile o = defenders[i];
-                expectedDefenders.Add(new WorthIt.DefenderProfile(o.Defense, o.HasCeramicArmor, o.TypeTags,
-                    o.Attack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
+                // Standalone air strikes retain Berserk changes; carry the surviving trials'
+                // stats into the subsequent ground estimate as well as their wounds.
+                float meanAttack = attackSum[i] / survivalCount[i];
+                float meanDefense = defenseSum[i] / survivalCount[i];
+                expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
+                    meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
                     o.IsHero, o.FateMax, o.IsSummoned));
                 survivorIndices.Add(i);
-                expectedDefense += o.Defense;
-                expectedAttack += o.Attack;
+                expectedDefense += meanDefense;
+                expectedAttack += meanAttack;
             }
 
             return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders,
@@ -241,6 +347,10 @@ namespace Game.Combat
                 buf.Add(System.BitConverter.SingleToInt32Bits(p.MaxHitPoints));
                 buf.Add(p.IsHero ? 1 : 0);
                 buf.Add(p.FateMax);
+                buf.Add(p.IsGroundCombatant ? 1 : 0);
+                buf.Add(p.IsSummoned ? 1 : 0);
+                buf.Add(p.Initiative);
+                buf.Add(p.HasCeramicArmor ? 1 : 0);
                 int abilities = p.Abilities?.Count ?? -1;
                 buf.Add(abilities);
                 for (int i = 0; i < abilities; i++)

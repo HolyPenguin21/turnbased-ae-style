@@ -18,8 +18,8 @@ namespace Game.Ai.V2
     //    1. a free empty army (ReusableArmySelector — unclaimed, not a preparation host);
     //    2. a free ground army that can legally unload its WHOLE roster into the hex garrison
     //       (final garrison roster validated by ArmyActions' own transfer rules); the unload and
-    //       the aircraft transfer are one atomic operation — a refused second step rolls the
-    //       first back, so no half-unloaded army is ever left behind;
+    //       aircraft boarding are validated together before either roster changes; a paid
+    //       garrison join is declined and formation falls back to a new wing;
     //    3. a new wing (AviationActions.TryLaunch, the existing free formation rule).
     //  Ids, names, units, equipment, HP, remaining movement and spent strikes are never touched:
     //  only container membership changes.
@@ -107,14 +107,8 @@ namespace Game.Ai.V2
             ArmyData garrison = GarrisonAt(player, airfield);
             if (garrison == null)
                 return false;
-            List<UnitData> roster = ground.Members.ToList();
-            if (!ArmyActions.TransferMembersAtomic(roster, ground, garrison, hexSelection, out _))
-                return false;
-            if (ArmyActions.TransferMembersAtomic(aircraft, airfield, ground, hexSelection, out _))
-                return true;
-            // Roll back: the army must end exactly as it was.
-            ArmyActions.TransferMembersAtomic(roster, garrison, ground, hexSelection, out _);
-            return false;
+            return ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield, aircraft,
+                hexSelection, out _);
         }
     }
 }

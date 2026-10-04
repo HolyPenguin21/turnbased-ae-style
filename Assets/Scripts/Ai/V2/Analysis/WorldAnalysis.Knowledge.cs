@@ -26,6 +26,7 @@ namespace Game.Ai.V2
             List<HexCoord> eventGuardHexes = AiMapMemory.KnownEventGuardHexes(player).ToList();
             var known = new KnownSnapshot
             {
+                AirSightings = AiMapMemory.AllKnownAirSightings(player).ToList(),
                 // A defeated player's armies stand still for good: they are neither a threat nor an
                 // objective. (Route blocking and scout detection still read AiMapMemory directly -
                 // the army physically occupies its hex.)

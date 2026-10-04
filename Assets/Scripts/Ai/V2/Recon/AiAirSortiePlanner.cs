@@ -59,44 +59,12 @@ namespace Game.Ai.V2
         // landing capacity, endurance and resource feasibility.
 
         // How many MORE aircraft `hex` can receive for a planned landing: the one game rule
-        // (AviationRules.FreeAirfieldCapacity — stored aircraft and own wings standing on the hex)
-        // minus every OTHER active sortie's claim on this landing hex (ReservedLandingSlots): an
+        // (AviationRules.FreeAirfieldCapacity — storage, standing wings and reserved landings): an
         // in-flight sortie is as real a claim on its slot as an aircraft already sitting there.
         // `excluding` — the mover's own air army, so a sortie re-checking its ALREADY-chosen
         // landing hex never counts itself (as a standing wing or as a reservation).
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
-        {
-            int free = AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
-            if (free <= 0)
-                return 0;
-            AirSortie excludingTask = excluding != null ? AirSortieRegistry.ForArmy(owner, excluding) : null;
-            return Mathf.Max(0, free - ReservedLandingSlots(hex, owner, excludingTask));
-        }
-
-        // How many of `hex`'s free slots are already spoken for by OTHER active Strike/Recon/Rebase
-        // sorties committed to land there but not physically there yet (still outbound, or inbound
-        // but not yet arrived — see AirSortie.LandingHex). Landed aircraft are NOT counted again
-        // here — FreeLandingCapacity's own ArmyRegistry loop already counts anything physically
-        // sitting on `hex`. `excludingTask` lets a sortie re-checking its OWN already-chosen
-        // landing hex exclude its own prior claim, the same role FreeLandingCapacity's `excluding`
-        // plays against the ArmyRegistry loop. Without this, two independently-launched groups
-        // could both claim the same single free slot, since neither outbound flight is visible to
-        // the other's capacity check until it lands.
-        private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AirSortie excludingTask)
-        {
-            int reserved = 0;
-            foreach (AirSortie task in AirSortieRegistry.For(owner))
-            {
-                if (task == excludingTask)
-                    continue;
-                if (task.Army == null || !task.LandingHex.Equals(hex) || task.Army.Hex.Equals(hex))
-                    continue;
-                reserved += task.Army.Members.Count;
-            }
-            return reserved;
-        }
-
-
+            => AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
 
         // AI-AIR-02 — can this airborne group END the current turn on the hex it is standing on
         // RIGHT NOW, taking NO further movement this turn, and still be guaranteed a legal recovery
@@ -148,12 +116,13 @@ namespace Game.Ai.V2
         }
 
 
-        public static Sortie? TryPlanSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+        public static Sortie? TryPlanSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            System.Func<HexCoord, int> additionalLandingClaims = null)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanSortieCore(airArmy.Hex, airArmy, army => army.CurrentMovement, path => AviationRules.PathMoveCost(airArmy, path),
-                airArmy.Members.Count, 0, actionHex, map, owner);
+                airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
 
         // Same "start -> action hex -> owned airfield with capacity" plan, computed for aircraft
@@ -161,8 +130,8 @@ namespace Game.Ai.V2
         // AirStrikeTask.FindLaunchCandidates) — used to decide whether launching at all is even
         // worth it, and to pick the target/landing pair a LaunchAirStrike/LaunchAirRecon candidate
         // carries. No ArmyData exists yet to read CurrentMovement/PathMoveCost off, so this uses
-        // each aircraft's own fresh EffectiveMoveMax (nothing's been spent yet this turn — a stored
-        // aircraft never moves before it launches) and a flat 1-MP-per-hex cost (see
+        // each aircraft's own EffectiveMoveCurrent. Freshly deployed cards have their full
+        // budget; aircraft that landed/transferred back this turn retain their spent movement and a flat 1-MP-per-hex cost (see
         // AviationRules.PathMoveCost's own comment — every air army pays exactly that, regardless
         // of terrain).
         public static Sortie? TryPlanSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
@@ -170,7 +139,7 @@ namespace Game.Ai.V2
         {
             if (aircraft == null || aircraft.Count == 0)
                 return null;
-            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
@@ -185,7 +154,7 @@ namespace Game.Ai.V2
         {
             if (aircraft == null || aircraft.Count == 0 || sourceHex.Equals(destinationHex))
                 return null;
-            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             return PlanExactRebase(sourceHex, null, aircraft, movement, aircraft.Count,
                 destinationHex, map, owner);
         }
@@ -240,7 +209,8 @@ namespace Game.Ai.V2
         // not participate in strategic route admission.
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
-            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            System.Func<HexCoord, int> additionalLandingClaims = null)
         {
             if (map == null || owner == null)
                 return null;
@@ -256,7 +226,8 @@ namespace Game.Ai.V2
             int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
+                int freeSlots = AviationRules.FreeAirfieldCapacity(landing, owner, excludingFromCapacity,
+                    additionalLandingClaims?.Invoke(landing) ?? 0);
                 if (landing.Equals(startHex))
                     freeSlots += vacatingAtStart;
                 if (freeSlots < requiredSlots)
@@ -281,12 +252,13 @@ namespace Game.Ai.V2
         }
 
 
-        public static MultiTurnSortie? TryPlanMultiTurnSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+        public static MultiTurnSortie? TryPlanMultiTurnSortie(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            System.Func<HexCoord, int> additionalLandingClaims = null)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanMultiTurnSortieCore(airArmy.Hex, airArmy, airArmy.Members, airArmy.CurrentMovement,
-                path => AviationRules.PathMoveCost(airArmy, path), airArmy.Members.Count, 0, actionHex, map, owner);
+                path => AviationRules.PathMoveCost(airArmy, path), airArmy.Members.Count, 0, actionHex, map, owner, additionalLandingClaims);
         }
 
         public static MultiTurnSortie? TryPlanMultiTurnSortieFromStorage(HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft,
@@ -294,7 +266,7 @@ namespace Game.Ai.V2
         {
             if (aircraft == null || aircraft.Count == 0)
                 return null;
-            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             return PlanMultiTurnSortieCore(airfieldHex, null, aircraft, movement, path => path.Hexes.Count - 1,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
@@ -310,7 +282,8 @@ namespace Game.Ai.V2
         // (SafeUnlandedEndsRemaining <= 0) — such wings use the single-turn route proof.
         private static MultiTurnSortie? PlanMultiTurnSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             IReadOnlyList<UnitData> aircraft, int firstTurnMovement, System.Func<HexPath, int> pathCost,
-            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
+            int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner,
+            System.Func<HexCoord, int> additionalLandingClaims = null)
         {
             if (map == null || owner == null)
                 return null;
@@ -327,7 +300,8 @@ namespace Game.Ai.V2
             int bestCost = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
-                int freeSlots = FreeLandingCapacity(landing, owner, excludingFromCapacity);
+                int freeSlots = AviationRules.FreeAirfieldCapacity(landing, owner, excludingFromCapacity,
+                    additionalLandingClaims?.Invoke(landing) ?? 0);
                 if (landing.Equals(startHex))
                     freeSlots += vacatingAtStart;
                 if (freeSlots < requiredSlots)

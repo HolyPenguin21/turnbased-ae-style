@@ -44,6 +44,39 @@ namespace Game.Ai
     // never turn a hidden army into a targetable hex; that always goes through this memory.
     public static class AiMapMemory
     {
+        // Aviation has a different target pool from ground contact. This store is observed
+        // only on visible hexes; it never changes the existing ground/route sightings.
+        public readonly struct KnownAirSighting
+        {
+            public readonly HexCoord Hex;
+            public readonly PlayerSetupData Owner;
+            public readonly int SeenTurn;
+            public readonly bool IsGroundArmy;
+            public readonly AviationCombatEstimator.DefendingAirArmy Roster;
+            public int ArmyId => Roster.ArmyId;
+            public KnownAirSighting(HexCoord hex, PlayerSetupData owner, int seenTurn,
+                bool isGroundArmy, AviationCombatEstimator.DefendingAirArmy roster)
+            {
+                Hex = hex; Owner = owner; SeenTurn = seenTurn;
+                IsGroundArmy = isGroundArmy; Roster = roster;
+            }
+        }
+
+        private static readonly Dictionary<PlayerSetupData, Dictionary<int, KnownAirSighting>> AirSightings =
+            new Dictionary<PlayerSetupData, Dictionary<int, KnownAirSighting>>();
+
+        public static IEnumerable<KnownAirSighting> AllKnownAirSightings(PlayerSetupData player) =>
+            player != null && AirSightings.TryGetValue(player, out var sightings)
+                ? sightings.Values.OrderBy(s => s.ArmyId)
+                : Enumerable.Empty<KnownAirSighting>();
+
+        internal static bool SameAirSighting(KnownAirSighting a, KnownAirSighting b) =>
+            a.ArmyId == b.ArmyId && a.Hex.Equals(b.Hex) && a.Owner == b.Owner
+            && a.SeenTurn == b.SeenTurn && a.IsGroundArmy == b.IsGroundArmy
+            && a.Roster.CommanderIndex == b.Roster.CommanderIndex
+            && SameProfiles(a.Roster.Units, b.Roster.Units)
+            && a.Roster.CurrentFates.SequenceEqual(b.Roster.CurrentFates);
+
         private class EnemySighting
         {
             // The physical army's own stable ArmyData.Id — this is now the dictionary key in
@@ -533,6 +566,7 @@ namespace Game.Ai
             _knowledgeVersionSeed++;
             KnownResourceHexes.Clear();
             EnemySightings.Clear();
+            AirSightings.Clear();
             KnownEventGuards.Clear();
             KnownBuildings.Clear();
             RefutedStartingCitadels.Clear();
@@ -749,7 +783,9 @@ namespace Game.Ai
             {
                 WorthIt.DefenderProfile x = a[i];
                 WorthIt.DefenderProfile y = b[i];
-                if (x.Attack != y.Attack || x.Defense != y.Defense
+                if (x.IsHero != y.IsHero || x.FateMax != y.FateMax
+                    || x.IsGroundCombatant != y.IsGroundCombatant || x.IsSummoned != y.IsSummoned
+                    || x.Attack != y.Attack || x.Defense != y.Defense
                     || x.HitPoints != y.HitPoints || x.MaxHitPoints != y.MaxHitPoints
                     || x.Initiative != y.Initiative || x.HasCeramicArmor != y.HasCeramicArmor
                     || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
@@ -812,6 +848,9 @@ namespace Game.Ai
                 KnownBuildings[player] = buildings;
             }
 
+            if (!AirSightings.TryGetValue(player, out var airSightings))
+                AirSightings[player] = airSightings = new Dictionary<int, KnownAirSighting>();
+
             // Route-relevant changes only ever touch `sightings` (KnownResourceHexes/
             // KnownEventGuards never feed SafeRouteBlocker. KnownBuildings now do: known foreign
             // structures are blocked for every non-Attack AI movement, so owner/existence changes
@@ -837,6 +876,28 @@ namespace Game.Ai
                         || !SameResourceHex(previousResource, nextResource))
                         knowledgeChanged = true;
                     resources[hex] = nextResource;
+                }
+
+                var observedAirIds = new HashSet<int>();
+                foreach (ArmyData army in AviationCombatPresenter.FindAirStrikeTargetsAt(hex, player))
+                {
+                    var visible = army.Members.Where(u => !StealthSystem.IsHiddenFrom(u, player)).ToList();
+                    var roster = new AviationCombatEstimator.DefendingAirArmy(army.Id,
+                        visible.Select(WorthIt.FromLiveUnit).ToList(),
+                        visible.Select(u => u.IsHero ? u.Fate : 0).ToList(),
+                        visible.IndexOf(army.Commander));
+                    var sighting = new KnownAirSighting(hex, army.Owner, _currentTurn,
+                        BattleInitiator.IsEngageable(army, player), roster);
+                    observedAirIds.Add(army.Id);
+                    if (!airSightings.TryGetValue(army.Id, out var priorAir)
+                        || !SameAirSighting(priorAir, sighting)) knowledgeChanged = true;
+                    airSightings[army.Id] = sighting;
+                }
+                foreach (int id in airSightings.Where(kv => kv.Value.Hex.Equals(hex)
+                    && !observedAirIds.Contains(kv.Key)).Select(kv => kv.Key).ToList())
+                {
+                    airSightings.Remove(id);
+                    knowledgeChanged = true;
                 }
 
                 // A hex can contain several armies (ArmyRegistry's explicit contract). Observe
