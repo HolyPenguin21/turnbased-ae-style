@@ -28,7 +28,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 1;
+        private const int KeyVersion = 2;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
@@ -100,6 +100,9 @@ namespace Game.Combat
             var rng = new System.Random(seed);
             int n = defenders.Count;
             var hpSum = new float[n];
+            var attackSum = new float[n];
+            var defenseSum = new float[n];
+            var survivalCount = new int[n];
             float totalDamageSum = 0f;
             int killAnyTrials = 0, wipeTrials = 0;
             float killCountSum = 0f;
@@ -131,7 +134,8 @@ namespace Game.Combat
                         int idx = alive[rng.Next(alive.Count)];
                         int attackerFate = 0;
                         BattleSimExchangeOutcome outcome = BattleSimulationKernel.ResolveExchange(
-                            Mathf.RoundToInt(plane.Attack), defense[idx], plane.Abilities,
+                            Mathf.RoundToInt(plane.Attack),
+                            defenders[idx].IsHero ? defenders[idx].FateMax : defense[idx], plane.Abilities,
                             defenders[idx].TypeTags, defenders[idx].Abilities, ref attackerFate, ref fate,
                             Mathf.CeilToInt(hp[idx]), magnitudes, rng);
                         float hpLeft = hp[idx];
@@ -145,7 +149,15 @@ namespace Game.Combat
                 }
 
                 for (int i = 0; i < n; i++)
+                {
                     hpSum[i] += hp[i];
+                    if (hp[i] > 0f)
+                    {
+                        survivalCount[i]++;
+                        attackSum[i] += attack[i];
+                        defenseSum[i] += defenders[i].IsHero ? defenders[i].FateMax : defense[i];
+                    }
+                }
                 totalDamageSum += startHp - hp.Sum();
                 int killed = n - alive.Count;
                 killCountSum += killed;
@@ -164,12 +176,16 @@ namespace Game.Combat
                 if (meanHp <= 0.01f)
                     continue; // expected dead on average
                 WorthIt.DefenderProfile o = defenders[i];
-                expectedDefenders.Add(new WorthIt.DefenderProfile(o.Defense, o.HasCeramicArmor, o.TypeTags,
-                    o.Attack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
+                // Standalone air strikes retain Berserk changes; carry the surviving trials'
+                // stats into the subsequent ground estimate as well as their wounds.
+                float meanAttack = attackSum[i] / survivalCount[i];
+                float meanDefense = defenseSum[i] / survivalCount[i];
+                expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
+                    meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
                     o.IsHero, o.FateMax, o.IsSummoned));
                 survivorIndices.Add(i);
-                expectedDefense += o.Defense;
-                expectedAttack += o.Attack;
+                expectedDefense += meanDefense;
+                expectedAttack += meanAttack;
             }
 
             return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders,
@@ -241,6 +257,10 @@ namespace Game.Combat
                 buf.Add(System.BitConverter.SingleToInt32Bits(p.MaxHitPoints));
                 buf.Add(p.IsHero ? 1 : 0);
                 buf.Add(p.FateMax);
+                buf.Add(p.IsGroundCombatant ? 1 : 0);
+                buf.Add(p.IsSummoned ? 1 : 0);
+                buf.Add(p.Initiative);
+                buf.Add(p.HasCeramicArmor ? 1 : 0);
                 int abilities = p.Abilities?.Count ?? -1;
                 buf.Add(abilities);
                 for (int i = 0; i < abilities; i++)

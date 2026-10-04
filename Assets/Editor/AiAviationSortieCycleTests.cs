@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Ai.V2;
 using Game.Aviation;
 using Game.Combat;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -147,6 +148,17 @@ namespace Game.EditorTests
             Assert.That(wing.PendingActivationEnergyCost, Is.EqualTo(2));
         }
 
+        [Test]
+        public void AviationCardPrice_HasNoImaginaryRecurringFlightCharge()
+        {
+            var card = new CardData(new CardDefinition { isAviation = true });
+            var candidate = StrategicCardEvaluator.ScoreNonCombat(NonCombatRole.Aviation,
+                card, null, null, null, 0f, witnessedUsefulApDemand: 100f,
+                actualApCost: 2f, actualResourceCost: new ResourceCost());
+            Assert.That(candidate.Breakdown.ResourceEfficiency,
+                Is.EqualTo(-ActionPrice.ToCardScore(ActionPrice.Ap(2f))));
+        }
+
         // ---- landing, shells and capacity ------------------------------------------------------
 
         [Test]
@@ -209,6 +221,117 @@ namespace Game.EditorTests
             var lone = Wing(new HexCoord(1, 0), stored);
             Assert.That(ArmyActions.TransferMember(stored, lone, airfield, null, out _), Is.False,
                 "an aircraft away from the airfield cannot land into it");
+        }
+
+        [Test]
+        public void InFlightReservation_ProtectsDomainCapacity_AndArrivalCountsOnce()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 3);
+            airfield.AddMemberSorted(Plane(1, 1));
+            ArmyData returning = Wing(new HexCoord(2, 0), Plane(1, 1));
+            var reservation = new AirSortie { Army = returning, LandingHex = home };
+            AirSortieRegistry.Add(_owner, reservation);
+            AirSortieRegistry.Add(_owner, reservation); // duplicate records cannot reserve twice
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner, returning), Is.EqualTo(2));
+            ArmyData standing = Wing(home, Plane(1, 1));
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.Zero);
+            Assert.That(AviationActions.LandInSlotOrder(standing, null), Is.EqualTo(1));
+            Assert.That(airfield.Members.Count, Is.EqualTo(2));
+            Assert.That(AviationRules.FreeStorageSlots(home, _owner), Is.Zero,
+                "the remaining slot belongs to the returning wing");
+            ArmyRegistry.MoveArmy(returning, home);
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.Zero,
+                "arrival replaces the in-flight claim with the standing wing");
+            Assert.That(AviationActions.LandInSlotOrder(returning, null), Is.EqualTo(1));
+            Assert.That(airfield.Members.Count, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void ReservedLastSlot_RejectsTransfer_AndRetargetingReleasesIt()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 1);
+            ArmyData returning = Wing(new HexCoord(2, 0), Plane(1, 1));
+            var reservation = new AirSortie { Army = returning, LandingHex = home };
+            AirSortieRegistry.Add(_owner, reservation);
+            UnitData other = Plane(1, 1);
+            ArmyData standing = Wing(home, other);
+            Assert.That(ArmyActions.TransferMember(other, standing, airfield, null, out _), Is.False);
+            Assert.That(standing.Members, Does.Contain(other));
+            Assert.That(airfield.Members, Is.Empty);
+            reservation.LandingHex = new HexCoord(4, 0);
+            Assert.That(ArmyActions.TransferMember(other, standing, airfield, null, out string why),
+                Is.True, why);
+            Assert.That(airfield.Members, Does.Contain(other));
+        }
+
+        [Test]
+        public void InvalidReservation_DoesNotHoldSlots_AndClearReleasesClaims()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            Airfield(home, capacity: 2);
+            ArmyData wing = Wing(new HexCoord(1, 0), Plane(1, 1));
+            AirSortieRegistry.Add(_owner, new AirSortie { Army = wing, LandingHex = home });
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(1));
+            wing.Members.Clear();
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
+            wing.AddMemberSorted(Plane(1, 1));
+            AirSortieRegistry.Clear();
+            Assert.That(AviationRules.FreeAirfieldCapacity(home, _owner), Is.EqualTo(2));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RejectedUnloadAndBoard_ChangesNeitherRosterNorActivationNorBank(bool paidGarrison)
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 8);
+            var ground = new ArmyData { Owner = _owner, Hex = home };
+            var unit = new UnitData { Owner = _owner, ActivationApCost = 1 };
+            ground.AddMemberSorted(unit);
+            var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            if (paidGarrison) garrison.MarkActivated();
+            var aircraft = Enumerable.Range(0, paidGarrison ? 1 : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false) + 1)
+                .Select(_ => Plane(1, 1)).ToList();
+            foreach (var plane in aircraft) airfield.AddMemberSorted(plane);
+            Root().ActionPoints = 10;
+            Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
+                aircraft, null, out _), Is.False);
+            Assert.That(ground.Members, Is.EqualTo(new[] { unit }));
+            Assert.That(garrison.Members, Is.Empty);
+            Assert.That(airfield.Members, Is.EqualTo(aircraft));
+            Assert.That(garrison.RequiresActivationCharge(unit), Is.EqualTo(paidGarrison));
+            Assert.That(_root.ActionPoints, Is.EqualTo(10));
+            Assert.That(ground.IsAirArmy, Is.False);
+        }
+
+        [Test]
+        public void UnloadAndBoard_CommitsBothRosters_WithoutRestoringAircraftState()
+        {
+            HexCoord home = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(home, capacity: 2);
+            UnitData plane = Plane(2, 3);
+            plane.HitPointsCurrent = 1;
+            plane.MoveCurrent = 1;
+            plane.HasAirAttackedThisTurn = true;
+            airfield.AddMemberSorted(plane);
+            var ground = new ArmyData { Owner = _owner, Hex = home };
+            var unit = new UnitData { Owner = _owner };
+            ground.AddMemberSorted(unit);
+            var garrison = new ArmyData { Owner = _owner, Hex = home, IsGarrison = true };
+            Assert.That(ArmyActions.TryUnloadAndBoardAircraft(ground, garrison, airfield,
+                new[] { plane }, null, out string why), Is.True, why);
+            Assert.That(garrison.Members, Is.EqualTo(new[] { unit }));
+            Assert.That(ground.Members, Is.EqualTo(new[] { plane }));
+            Assert.That(airfield.Members, Is.Empty);
+            Assert.That(ground.IsAirArmy, Is.True);
+            Assert.That(ground.PendingActivationApCost, Is.EqualTo(2));
+            Assert.That(ground.PendingActivationEnergyCost, Is.EqualTo(3));
+            Assert.That(plane.HitPointsCurrent, Is.EqualTo(1));
+            Assert.That(plane.MoveCurrent, Is.EqualTo(1));
+            Assert.That(plane.HasAirAttackedThisTurn, Is.True);
         }
 
         // ---- B. strike-series calendar ---------------------------------------------------------
@@ -303,6 +426,31 @@ namespace Game.EditorTests
             }
         }
 
+        [Test]
+        public void HeadlessStrike_KeepsUnspentHeroFate()
+        {
+            var enemy = new PlayerSetupData();
+            HexCoord hex = new HexCoord(2, 0);
+            var target = new ArmyData { Owner = enemy, Hex = hex };
+            var hero = new UnitData { Owner = enemy, IsHero = true, FateMax = 3, Fate = 3,
+                HitPointsMax = 100, HitPointsCurrent = 100 };
+            target.AddMemberSorted(hero);
+            ArmyRegistry.Register(target);
+            UnitData plane = Plane(1, 1);
+            plane.Attack = 0;
+            plane.SortieLaunchPaid = true;
+            ArmyData wing = Wing(hex, plane);
+            var presenterObject = new GameObject("aviation-fate-presenter");
+            try
+            {
+                var presenter = presenterObject.AddComponent<AviationCombatPresenter>();
+                Run(AviationActions.ResolveStationaryStrike(presenter, wing, AirStrikePolicy.Standard));
+                Assert.That(plane.HasAirAttackedThisTurn, Is.True, "the real strike was resolved");
+                Assert.That(hero.Fate, Is.EqualTo(3), "no incoming damage: the defender has no reason to spend Fate");
+            }
+            finally { Object.DestroyImmediate(presenterObject); }
+        }
+
         // ---- events --------------------------------------------------------------------------
 
         [Test]
@@ -334,6 +482,26 @@ namespace Game.EditorTests
                 planes, new List<WorthIt.DefenderProfile>(), AirStrikePolicy.Standard);
             Assert.That(e.ExpectedDamage, Is.Zero);
             Assert.That(e.ExpectedDefendersAfter, Is.Empty);
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Estimator_ProjectsBerserkStats_AndHeroesKeepTheirFateMaxPool(bool hero)
+        {
+            var attackers = new[] { Profile(attack: 40f) };
+            var defender = new WorthIt.DefenderProfile(8f, false, attack: 2f,
+                hitPoints: 1000f, maxHitPoints: 1000f,
+                abilities: new[] { UnitAbilities.Berserk }, isHero: hero, fateMax: 12);
+            var estimate = AviationCombatEstimator.EstimateAirStrike(attackers,
+                new[] { defender }, AirStrikePolicy.Standard, 3);
+            Assert.That(estimate.ExpectedDefendersAfter.Count, Is.EqualTo(1));
+            var after = estimate.ExpectedDefendersAfter[0];
+            Assert.That(after.HitPoints, Is.LessThan(defender.HitPoints));
+            Assert.That(after.Attack, Is.GreaterThan(defender.Attack));
+            if (hero) Assert.That(after.Defense, Is.EqualTo(12f));
+            else Assert.That(after.Defense, Is.LessThan(defender.Defense));
+            Assert.That(estimate.ExpectedAttackAfter, Is.EqualTo(after.Attack));
+            Assert.That(estimate.ExpectedDefenseAfter, Is.EqualTo(after.Defense));
         }
 
         [Test]

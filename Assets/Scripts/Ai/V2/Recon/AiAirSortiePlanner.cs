@@ -59,44 +59,12 @@ namespace Game.Ai.V2
         // landing capacity, endurance and resource feasibility.
 
         // How many MORE aircraft `hex` can receive for a planned landing: the one game rule
-        // (AviationRules.FreeAirfieldCapacity — stored aircraft and own wings standing on the hex)
-        // minus every OTHER active sortie's claim on this landing hex (ReservedLandingSlots): an
+        // (AviationRules.FreeAirfieldCapacity — storage, standing wings and reserved landings): an
         // in-flight sortie is as real a claim on its slot as an aircraft already sitting there.
         // `excluding` — the mover's own air army, so a sortie re-checking its ALREADY-chosen
         // landing hex never counts itself (as a standing wing or as a reservation).
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
-        {
-            int free = AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
-            if (free <= 0)
-                return 0;
-            AirSortie excludingTask = excluding != null ? AirSortieRegistry.ForArmy(owner, excluding) : null;
-            return Mathf.Max(0, free - ReservedLandingSlots(hex, owner, excludingTask));
-        }
-
-        // How many of `hex`'s free slots are already spoken for by OTHER active Strike/Recon/Rebase
-        // sorties committed to land there but not physically there yet (still outbound, or inbound
-        // but not yet arrived — see AirSortie.LandingHex). Landed aircraft are NOT counted again
-        // here — FreeLandingCapacity's own ArmyRegistry loop already counts anything physically
-        // sitting on `hex`. `excludingTask` lets a sortie re-checking its OWN already-chosen
-        // landing hex exclude its own prior claim, the same role FreeLandingCapacity's `excluding`
-        // plays against the ArmyRegistry loop. Without this, two independently-launched groups
-        // could both claim the same single free slot, since neither outbound flight is visible to
-        // the other's capacity check until it lands.
-        private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AirSortie excludingTask)
-        {
-            int reserved = 0;
-            foreach (AirSortie task in AirSortieRegistry.For(owner))
-            {
-                if (task == excludingTask)
-                    continue;
-                if (task.Army == null || !task.LandingHex.Equals(hex) || task.Army.Hex.Equals(hex))
-                    continue;
-                reserved += task.Army.Members.Count;
-            }
-            return reserved;
-        }
-
-
+            => AviationRules.FreeAirfieldCapacity(hex, owner, excluding);
 
         // AI-AIR-02 — can this airborne group END the current turn on the hex it is standing on
         // RIGHT NOW, taking NO further movement this turn, and still be guaranteed a legal recovery

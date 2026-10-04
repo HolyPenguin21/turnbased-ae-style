@@ -235,11 +235,25 @@ namespace Game.Aviation
                 {
                     // Headless (no popup in the scene, e.g. automated tests): the same pools the
                     // popup rolls — aircraft Attack vs the target's Defense (a hero's FateMax) —
-                    // through the same ResolveStandaloneAttack; dice from HeadlessRng, no Fate duel.
+                    // through the same ResolveStandaloneAttack; dice and the AI Fate duel from HeadlessRng.
                     int defensePool = defenderPoolOverride ?? target.Defense;
-                    Apply(new BattleChallengeRollResult(
-                        BattleSimulationKernel.RollDice(Mathf.Max(0, aircraft.Attack), HeadlessRng),
-                        BattleSimulationKernel.RollDice(Mathf.Max(0, defensePool), HeadlessRng), 0, 0));
+                    var challenge = new BattleChallengeSession(BattleChallengeMode.GroundCombat,
+                        aircraft, target, aircraft.Attack, defensePool, 0, defenderHero?.Fate ?? 0,
+                        AbilityMagnitudes.Default,
+                        rollDice: count => BattleSimulationKernel.RollDice(count, HeadlessRng));
+                    challenge.Roll();
+                    while (challenge.TryNextFateTurn(out bool defenderTurn))
+                    {
+                        bool spent = false;
+                        while (challenge.ShouldAiSpend(defenderTurn)
+                            && challenge.TrySpend(defenderTurn, out _, out bool hit))
+                        {
+                            spent = true;
+                            if (!hit) break;
+                        }
+                        challenge.ReportFateTurn(spent);
+                    }
+                    Apply(challenge.ToRollResult());
                 }
 
                 hexSelection?.RestackArmiesOn(targetArmy.Hex, null);

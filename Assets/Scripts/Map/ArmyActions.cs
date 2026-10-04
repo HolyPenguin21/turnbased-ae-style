@@ -600,6 +600,55 @@ namespace Game.Map
             return true;
         }
 
+        // Aviation preparation is one container transaction, never a paid transfer followed by
+        // a best-effort rollback. Zero-cost preparation declines an activated garrison join that
+        // would owe AP; its caller can form a new wing without disturbing the ground army.
+        public static bool TryUnloadAndBoardAircraft(ArmyData ground, ArmyData garrison,
+            ArmyData airfield, IReadOnlyList<UnitData> aircraft,
+            HexSelectionController hexSelection, out string failReason)
+        {
+            failReason = "Invalid air-wing preparation.";
+            if (ground == null || garrison == null || airfield == null || aircraft == null
+                || aircraft.Count == 0 || ground == garrison || ground == airfield
+                || !garrison.IsGarrison || !airfield.IsAirfield || ground.IsGarrison
+                || ground.IsPrison || ground.IsAirfield || AviationRules.IsAirArmy(ground)
+                || ground.Owner != garrison.Owner || ground.Owner != airfield.Owner
+                || !ground.Hex.Equals(garrison.Hex) || !ground.Hex.Equals(airfield.Hex)
+                || aircraft.Any(u => u == null || !u.IsAviation || !airfield.Members.Contains(u))
+                || aircraft.Distinct().Count() != aircraft.Count
+                || ground.Members.Any(u => u == null || u.IsAviation || u.IsPrisoner))
+                return false;
+            var roster = ground.Members.ToList();
+            if (!CanTransferMembers(roster, ground, garrison, null, null,
+                    out _, out int ap, out _, out failReason))
+                return false;
+            if (ap != 0 || ArmyData.ComputeCapacity(aircraft, false) < aircraft.Count)
+            {
+                failReason = ap != 0 ? "Preparing this wing would charge ground activation."
+                    : "The aircraft do not fit in the emptied shell.";
+                return false;
+            }
+            ground.Members.Clear();
+            foreach (UnitData unit in roster)
+            {
+                garrison.AddMemberSorted(unit);
+                garrison.MarkUnitActivationPaid(unit);
+            }
+            foreach (UnitData unit in aircraft)
+            {
+                airfield.Members.Remove(unit);
+                ground.AddMemberSorted(unit);
+                ground.MarkUnitActivationPaid(unit);
+            }
+            AviationRules.SyncAirArmyShell(ground, hexSelection);
+            hexSelection?.RestackArmiesOn(ground.Hex, null);
+            PublishRosterChange(ground, garrison,
+                roster.Concat(aircraft).Any(u => AbilityParams.GetBestRecceRadius(u) > 0));
+            // The airfield also changed, on the same already-published hex.
+            failReason = null;
+            return true;
+        }
+
         public static bool CanSwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
             out string failReason)
         {

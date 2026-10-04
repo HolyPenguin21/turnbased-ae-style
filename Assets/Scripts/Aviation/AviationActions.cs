@@ -191,7 +191,7 @@ namespace Game.Aviation
             if (airfield == null)
                 return 0;
 
-            int free = AviationRules.FreeStorageSlots(airArmy.Hex, airArmy.Owner);
+            int free = AviationRules.FreeStorageSlots(airArmy.Hex, airArmy.Owner, airArmy);
             var landing = airArmy.Members.Take(System.Math.Max(0, free)).ToList();
             foreach (UnitData aircraft in landing)
             {
