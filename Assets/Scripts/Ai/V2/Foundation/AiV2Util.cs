@@ -185,7 +185,7 @@ namespace Game.Ai.V2
                 hex = own.Value.Hex;
                 excludeArmyId = target.ArmyId;
                 result.Add(new WorthIt.DefendingArmy(own.Value.Defenders, own.Value.Commander,
-                    includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f));
+                    includeSite ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, own.Value.Owner) : 0f, own.Value.ArmyId));
                 if (includeSite) AddEventGuard(snap, hex, result);
             }
 
@@ -195,7 +195,7 @@ namespace Game.Ai.V2
                 if (s.Hex.Equals(hex) && s.ArmyId != excludeArmyId && s.Defenders != null
                     && s.Owner != snap.Observer)
                     result.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
-                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner)));
+                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
             return result;
         }
 

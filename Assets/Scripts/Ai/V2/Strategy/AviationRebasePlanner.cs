@@ -148,7 +148,9 @@ namespace Game.Ai.V2
                 RaidIntent r = i.Raid;
                 if (r != null && r.Target.Kind == RaidTargetKind.NeutralArmy
                     && r.Phase == RaidMissionPhase.Reinforcement && !r.AirSupportArmyId.HasValue
-                    && WorthIt.UnitsOf(AiV2Util.KnownOpposition(snap, r.Target)).Count > 1)
+                    && GroundCombatAirSupport.KnownTargetCount(snap, r.LastKnownHex,
+                        AirStrikePolicy.RaidSupport(r.Target.ArmyId),
+                        AiV2Util.KnownOpposition(snap, r.Target)) > 1)
                     targets.Add(r.LastKnownHex);
             }
             var supported = new HashSet<int>((activeIntents ?? System.Array.Empty<MissionIntent>())

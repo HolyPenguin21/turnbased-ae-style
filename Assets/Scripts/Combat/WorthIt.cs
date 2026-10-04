@@ -720,13 +720,15 @@ namespace Game.Combat
             // Exact terrain+structure bonus for THIS defending army when known. Null preserves the
             // legacy caller contract and falls back to EstimateSequential's shared hex bonus.
             public readonly float? DefenseBonusOverride;
+            public readonly int? ArmyId;
 
             public DefendingArmy(IReadOnlyCollection<DefenderProfile> units, SideCommander commander,
-                float? defenseBonusOverride = null)
+                float? defenseBonusOverride = null, int? armyId = null)
             {
                 Units = units ?? System.Array.Empty<DefenderProfile>();
                 Commander = commander;
                 DefenseBonusOverride = defenseBonusOverride;
+                ArmyId = armyId;
             }
 
             public float DefenseBonus(float fallback) => DefenseBonusOverride ?? fallback;
@@ -744,7 +746,7 @@ namespace Game.Combat
         {
             var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Select(a => new DefendingArmy(WithBattleSummons(a.Units), a.Commander,
-                    a.DefenseBonusOverride))
+                    a.DefenseBonusOverride, a.ArmyId))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
                 .ToList();
             if (armies.Count <= 1)

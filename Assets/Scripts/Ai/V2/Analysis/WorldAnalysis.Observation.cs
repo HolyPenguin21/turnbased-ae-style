@@ -181,6 +181,15 @@ namespace Game.Ai.V2
             foreach (int id in old.Keys)
                 if (!current.ContainsKey(id))
                     changed.Add(id);
+            var oldAir = (before?.Known?.AirSightings ?? System.Array.Empty<AiMapMemory.KnownAirSighting>())
+                .ToDictionary(s => s.ArmyId);
+            var newAir = (after?.Known?.AirSightings ?? System.Array.Empty<AiMapMemory.KnownAirSighting>())
+                .ToDictionary(s => s.ArmyId);
+            foreach (var pair in newAir)
+                if (!oldAir.TryGetValue(pair.Key, out var previous)
+                    || !AiMapMemory.SameAirSighting(previous, pair.Value)) changed.Add(pair.Key);
+            foreach (int id in oldAir.Keys)
+                if (!newAir.ContainsKey(id)) changed.Add(id);
             return changed;
         }
 

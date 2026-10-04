@@ -592,6 +592,7 @@ namespace Game.Ai.V2
     // =======================================================================================
     public sealed class KnownSnapshot
     {
+        public IReadOnlyList<AiMapMemory.KnownAirSighting> AirSightings;
         public IReadOnlyList<AiMapMemory.KnownEnemySighting> EnemySightings;
         public IReadOnlyList<AiMapMemory.KnownEnemySighting> NeutralSightings;
         public IReadOnlyList<AiMapMemory.KnownBuilding> Buildings;
