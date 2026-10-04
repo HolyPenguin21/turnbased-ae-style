@@ -573,7 +573,7 @@ MonoBehaviour:
     mountainsTerrainName: Mountains
     mountainRangeCount: 3
     mountainRangeLength: 2
-    borderDepthFraction: 0.5
+    borderDepthFraction: 1
     borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
     borderRaggedness: 0.85
     borderNoiseScale: 0.22
