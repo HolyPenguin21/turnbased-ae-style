@@ -50,10 +50,12 @@ namespace Game.Combat
                 float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f,
                 IReadOnlyList<int> survivorSourceIndices = null)
             {
-                SurvivorSourceIndices = survivorSourceIndices;
+                SurvivorSourceIndices = survivorSourceIndices == null ? null
+                    : System.Array.AsReadOnly(survivorSourceIndices.ToArray());
                 ExpectedDefenseAfter = expectedDefenseAfter;
                 ExpectedAttackAfter = expectedAttackAfter;
-                ExpectedDefendersAfter = expectedDefendersAfter;
+                ExpectedDefendersAfter = expectedDefendersAfter == null ? null
+                    : System.Array.AsReadOnly(expectedDefendersAfter.ToArray());
                 ExpectedDamage = expectedDamage;
                 KillAnyProbability = killAnyProbability;
                 ExpectedKillCount = expectedKillCount;
@@ -73,12 +75,7 @@ namespace Game.Combat
                 IReadOnlyList<int> currentFates, int? commanderIndex = null)
             {
                 ArmyId = armyId;
-                var profiles = (units ?? System.Array.Empty<WorthIt.DefenderProfile>())
-                    .Select(p => new WorthIt.DefenderProfile(p.Defense, p.HasCeramicArmor,
-                        System.Array.AsReadOnly((p.TypeTags ?? System.Array.Empty<Game.Cards.UnitTypeTag>()).ToArray()),
-                        p.Attack, p.HitPoints, p.Initiative,
-                        System.Array.AsReadOnly((p.Abilities ?? System.Array.Empty<string>()).ToArray()),
-                        p.MaxHitPoints, p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned)).ToArray();
+                var profiles = (units ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToArray();
                 Units = System.Array.AsReadOnly(profiles);
                 int commander = commanderIndex ?? Enumerable.Range(0, profiles.Length)
                     .Where(i => profiles[i].IsHero).DefaultIfEmpty(-1).First();

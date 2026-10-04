@@ -992,14 +992,16 @@ namespace Game.Combat
                 FateMax = Mathf.Max(0, fateMax);
                 Defense = isHero ? Mathf.Max(0, fateMax) : defense;
                 HasCeramicArmor = hasCeramicArmor;
-                TypeTags = typeTags ?? System.Array.Empty<UnitTypeTag>();
+                // Profiles cross observation and estimate-cache boundaries. Own the nested lists
+                // so a readonly profile cannot retain mutable live/caller state.
+                TypeTags = System.Array.AsReadOnly((typeTags ?? System.Array.Empty<UnitTypeTag>()).ToArray());
                 Attack = attack;
                 HitPoints = hitPoints;
                 MaxHitPoints = maxHitPoints > 0f ? maxHitPoints : hitPoints;
                 Initiative = initiative;
-                Abilities = abilities ?? (hasCeramicArmor
+                Abilities = System.Array.AsReadOnly((abilities ?? (hasCeramicArmor
                     ? (IReadOnlyList<string>)new[] { UnitAbilities.CeramicArmor }
-                    : System.Array.Empty<string>());
+                    : System.Array.Empty<string>())).ToArray());
             }
         }
 

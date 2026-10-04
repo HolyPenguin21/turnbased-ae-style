@@ -177,7 +177,7 @@ namespace Game.Ai
                 MemberCount = memberCount;
                 DefenseSum = defenseSum;
                 AttackSum = attackSum;
-                Defenders = defenders;
+                Defenders = defenders == null ? null : System.Array.AsReadOnly(defenders.ToArray());
                 HasAntiAir = hasAntiAir;
                 RecceRadius = recceRadius;
                 RecceSpotStrength = recceSpotStrength;
@@ -227,7 +227,7 @@ namespace Game.Ai
                 RewardTier = rewardTier;
                 Defense = defense;
                 Attack = attack;
-                Defenders = defenders;
+                Defenders = defenders == null ? null : System.Array.AsReadOnly(defenders.ToArray());
                 Name = name;
             }
         }
@@ -958,8 +958,7 @@ namespace Game.Ai
                         // rule every other field here already follows for resource hexes/army sightings/event guards. There is no in-field HP regen in
                         // this game (only UnitRepair, base-side) for that assumption to have been
                         // protecting against.
-                        Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
-                            m.TypeTags.ToList(), m.Attack, m.HitPointsCurrent, m.Initiative, m.Abilities.ToList())).ToList(),
+                        Defenders = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                         // Scanned over the FULL roster (not just nonHero above) — nothing rules out
                         // a hero carrying an AA ability, and this flag only ever feeds a
                         // conservative "don't fly recon here" gate, never a combat estimate, so
