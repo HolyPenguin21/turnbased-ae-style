@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Game.Ai;
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -12,8 +14,10 @@ namespace Game.Ai.V2
     // "is there a fight", "what must stay home" or "how badly do we need force".
     internal readonly struct ForceNeed
     {
-        // Share of the known fights (neutral armies, event guards, known enemy armies) our
-        // ready or assemblable force cannot take now (CombatOpportunity.IsViable).
+        // Share of the known fights our force cannot take now: neutral armies, event guards and
+        // known enemy armies our ready or assemblable force cannot win (CombatOpportunity.IsViable),
+        // and (2026-10-04) known defended hostile Bases/Citadels whose garrison needs more power
+        // than our strongest stack can form (GroundCombatDemandPolicy.RequiredSitePower).
         public readonly float Offensive;
         // How far our best force is from out-classing the known enemy players (1 - RelativeEdge);
         // zero without enemy intel.
@@ -59,6 +63,17 @@ namespace Game.Ai.V2
             || (snap?.Known?.EnemySightings?.Count ?? 0) > 0
             || (snap?.Known?.Buildings?.Any(b => b.Owner != null && b.Owner != snap.Observer
                 && !b.Owner.IsNeutral && !b.Owner.IsEliminated) ?? false);
+
+        // 2026-10-04 — the Radar's Aggression witness: a known fight, OR a war target that needs no
+        // sighting — an opponent's sanctioned starting-Citadel coordinates (the location-only Attack
+        // objective, WorldAnalysis.SanctionedEnemyCitadels) or an open Attack mobilization gate.
+        // Without it a player that has not met (or has wiped out) every field force held a zero
+        // Aggression weight and its Attack preparation competed only for leftovers. Development's
+        // need keeps the stricter HasMilitaryWitness below: a location is no measured fight.
+        internal static bool HasAggressionWitness(WorldSnapshot snap) =>
+            HasKnownCombatActivity(snap)
+            || AttackForceReadiness.MobilizationOpen(snap?.Self)
+            || WorldAnalysis.SanctionedEnemyCitadels(snap).Any();
 
         // A live military witness: a known fight, or an asset threat at/above the shared trigger.
         // The one gate behind "Attack/Defence created a need" for every force-building score.
@@ -144,6 +159,9 @@ namespace Game.Ai.V2
                 if (!o.IsViable)
                     unwinnable++;
             }
+            AttackSiteTerms(snap, out int siteKnown, out int siteUnwinnable);
+            known += siteKnown;
+            unwinnable += siteUnwinnable;
             float offensive = known == 0 ? 0f : unwinnable / (float)known;
             CheapTerms(snap, out float enemy, out float defensive, out float surplus);
             return new ForceNeed(offensive, enemy, defensive, true, surplus);
@@ -160,9 +178,10 @@ namespace Game.Ai.V2
             if (!HasMilitaryWitness(snap))
                 return "unwitnessed";
             CheapTerms(snap, out float enemy, out float defensive, out float surplus);
+            AttackSiteTerms(snap, out int siteKnown, out int siteUnwinnable);
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             return $"enemy={enemy.ToString("R", inv)}|def={defensive.ToString("R", inv)}"
-                + $"|surplus={surplus.ToString("R", inv)}"
+                + $"|surplus={surplus.ToString("R", inv)}|sites={siteKnown}/{siteUnwinnable}"
                 + $"|offensive={Fnv64(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap)):x16}";
         }
 
@@ -176,6 +195,36 @@ namespace Game.Ai.V2
                 hash *= 1099511628211UL;
             }
             return hash;
+        }
+
+        // 2026-10-04 — the Attack side of the Offensive term (no Monte Carlo, so ChangeKey can carry
+        // it exactly): every known hostile Base/Citadel with a known garrison is a known fight; it
+        // is out of reach when the power that garrison needs on its own hex
+        // (GroundCombatDemandPolicy.RequiredSitePower, the Attack shortage sizing) exceeds the
+        // strongest stack our field can form. Location-only and unobserved-empty sites are no
+        // measured fight and stay out.
+        private static void AttackSiteTerms(WorldSnapshot snap, out int known, out int unwinnable)
+        {
+            known = 0;
+            unwinnable = 0;
+            PlayerSetupData observer = snap?.Observer;
+            if (observer == null || snap.Known?.Buildings == null || snap.Self == null)
+                return;
+            float own = Mathf.Max(snap.Self.FieldPower, snap.Self.BestStackPotential);
+            foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+            {
+                if (!AttackObjectiveEvaluator.IsHostileStrategicStructure(b, observer)
+                    || (snap.Self.BaseHexes != null && snap.Self.BaseHexes.Contains(b.Hex)))
+                    continue;
+                List<Game.Combat.WorthIt.DefendingArmy> opposition =
+                    AttackObjectiveEvaluator.KnownSiteOpposition(snap, b.Hex);
+                if (Game.Combat.WorthIt.UnitsOf(opposition).Count == 0)
+                    continue;
+                known++;
+                if (own < GroundCombatDemandPolicy.RequiredSitePower(opposition,
+                        AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, b.Hex)))
+                    unwinnable++;
+            }
         }
 
         // The need terms that are cheap to compute (no Monte Carlo).

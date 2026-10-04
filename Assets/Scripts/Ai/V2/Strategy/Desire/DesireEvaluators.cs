@@ -23,9 +23,16 @@ namespace Game.Ai.V2
     //                                   Radar   (weights sum to 1)
     //
     //  Each evaluator is response curves (one curve per input factor -> contribution, summed),
-    //  the V1 AiStrategyDirector style — NOT fuzzy logic. Reads ONLY the snapshot (+ AiConfigV2,
-    //  + WorthIt/AiPower which are pure). No registries, no live game state — that is what lets
-    //  Tools/radar-sim drive it against hand-built snapshots.
+    //  the V1 AiStrategyDirector style — NOT fuzzy logic. Reads the snapshot (+ AiConfigV2,
+    //  + WorthIt/AiPower which are pure) and no live game state — that is what lets
+    //  Tools/radar-sim drive it against hand-built snapshots. Two read-only owners are consulted
+    //  through their snapshot-keyed APIs: the frozen per-turn IntelAge (ReconIntelSnapshotRegistry)
+    //  and the Attack observation need (AttackObjectiveEvaluator.ObservationNeeds, which reads the
+    //  live intent registry); an empty registry simply contributes nothing.
+    //
+    //  AGGRESSION (2026-10-04): raw = readiness while a war witness exists
+    //  (ForceNeedModel.HasAggressionWitness: a known fight, a sanctioned enemy starting Citadel or
+    //  an open mobilization gate); its surplus term ignores the threat reserve (see ComputeSurplus).
     //
     //  RECON is one axis with exploration, map refresh and enemy blindness contributions:
     //    exploration   — DECAYS as the reachable map opens (state-driven, no turn term).
@@ -171,7 +178,7 @@ namespace Game.Ai.V2
             float readiness = (surplus + ecoGate + relativeEdge) / 3f;
             float strategicThreat = MilitaryThreat(snapshot, underSiege);
             float rawAggression = Mathf.Clamp01(
-                ForceNeedModel.HasKnownCombatActivity(snapshot) ? readiness : 0f);
+                ForceNeedModel.HasAggressionWitness(snapshot) ? readiness : 0f);
 
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
@@ -353,12 +360,30 @@ namespace Game.Ai.V2
                 ? Mathf.Clamp01(dir.EnemyPresenceWeight / Mathf.Max(1f, AiConfigV2.reconRefreshConcentrationNorm))
                 : 0f;
 
+            float attackTarget = AttackObservationPressure(snap, observed, turn);
+
             float sum = AiConfigV2.reconRefreshBaseline
                 + AiConfigV2.reconRefreshWeightIntelAge * intelAge
                 + AiConfigV2.reconRefreshWeightPerimeter * perimeter
                 + AiConfigV2.reconRefreshWeightCorridor * corridor
-                + AiConfigV2.reconRefreshWeightConcentration * concentration;
+                + AiConfigV2.reconRefreshWeightConcentration * concentration
+                + AiConfigV2.reconRefreshWeightAttackTarget * attackTarget;
             return Mathf.Clamp01(sum);
+        }
+
+        // 2026-10-04 — a site Attack asked Recon to observe (AttackObjectiveEvaluator.ObservationNeeds,
+        // the one owner: the target of a live operation, or the enemy Citadel when no hostile
+        // structure is known yet): 1 while one of them was never observed or is older than the
+        // Attack intel limit (attackIntelMaxAgeTurns), else 0. One hex inside the whole-map IntelAge
+        // average barely moved the axis, so the Refresh it needs could compete at a cold weight.
+        private static float AttackObservationPressure(WorldSnapshot snap,
+            IReadOnlyDictionary<HexCoord, int> observed, int turn)
+        {
+            foreach (HexCoord hex in AttackObjectiveEvaluator.ObservationNeeds(snap))
+                if (observed == null || !observed.TryGetValue(hex, out int seen)
+                    || turn - seen > AiConfigV2.attackIntelMaxAgeTurns)
+                    return 1f;
+            return 0f;
         }
 
         private static float RegionStaleness(IReadOnlyDictionary<HexCoord, int> observed, int turn,
@@ -397,12 +422,16 @@ namespace Game.Ai.V2
             return (opponentFielded && !hasConcreteHonestPosition) ? AiConfigV2.reconBlindnessMagnitude : 0f;
         }
 
+        // 2026-10-04 — the Radar's surplus is the force above the fixed home guard only. The
+        // defensive reserve known threats demand is still measured and logged, but it no longer
+        // shrinks the surplus: that made a home threat damp the whole Aggression axis — and with
+        // it ActiveDefence, the answer to that very threat (the hidden siege damp the file header
+        // rules out). Offensive restraint under threat is the Raid/Attack CitadelThreatRisk slot.
         private static void ComputeSurplus(WorldSnapshot snap, out float requiredReserve, out float freePower)
         {
             float reserve = ForceNeedModel.DefensiveReserveForThreats(snap.Threat?.Threats, log: true);
-            reserve = Mathf.Max(reserve, AiConfigV2.aggHomeGuardFloor);
-            requiredReserve = reserve;
-            freePower = Mathf.Max(0f, snap.Self.TotalPower - reserve);
+            requiredReserve = Mathf.Max(reserve, AiConfigV2.aggHomeGuardFloor);
+            freePower = Mathf.Max(0f, snap.Self.TotalPower - AiConfigV2.aggHomeGuardFloor);
         }
 
         private static float MilitaryThreat(WorldSnapshot snap, bool underSiege)

@@ -25,6 +25,7 @@
         public const float reconRefreshWeightPerimeter = 0.25f;     // staleness of hexes around own bases/citadel
         public const float reconRefreshWeightCorridor = 0.20f;      // staleness sampled between own citadel and the nearest known enemy
         public const float reconRefreshWeightConcentration = 0.15f; // coarse enemy-concentration direction pressure
+        public const float reconRefreshWeightAttackTarget = 0.30f;  // 2026-10-04: an Attack observation need is unseen or older than attackIntelMaxAgeTurns
         public const int reconRefreshPerimeterRadius = 3;           // ring radius around each own asset for the perimeter term
         public const int reconRefreshCorridorRadius = 2;            // sample radius around the citadel<->enemy midpoint
         public const float reconRefreshConcentrationNorm = 3f;      // this many true-world enemy armies -> concentration term 1

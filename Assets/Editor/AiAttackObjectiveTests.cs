@@ -503,6 +503,130 @@ namespace Game.EditorTests
                 "Raid-specific score changes must not feed Radar and then all Aggression peers");
         }
 
+        // ---- 2026-10-04 Radar triggers --------------------------------------------------------
+
+        private static PlayerSetupData OpponentWithCitadel(HexCoord citadel) =>
+            new PlayerSetupData
+            {
+                Nickname = "Far", ColorIndex = 6, CitadelHexQ = citadel.Q, CitadelHexR = citadel.R,
+            };
+
+        private static void WithOpponent(WorldSnapshot snap, PlayerSetupData opponent) =>
+            snap.TrueWorld = new TrueWorldSnapshot
+            {
+                Opponents = new[] { new OpponentSnapshot { Player = opponent, ArmyCount = 1 } },
+            };
+
+        [Test]
+        public void AggressionWitness_SanctionedCitadelOrOpenMobilizationNeedsNoSighting()
+        {
+            WorldSnapshot blind = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            Assert.That(ForceNeedModel.HasKnownCombatActivity(blind), Is.False);
+            Assert.That(ForceNeedModel.HasAggressionWitness(blind), Is.False,
+                "no fight and no war target: Aggression stays cold");
+
+            WorldSnapshot located = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            WithOpponent(located, OpponentWithCitadel(new HexCoord(9, 0)));
+            Assert.That(ForceNeedModel.HasAggressionWitness(located), Is.True,
+                "an opponent's starting Citadel by coordinates is an Attack objective");
+            Assert.That(ForceNeedModel.HasMilitaryWitness(located), Is.False,
+                "a location is no measured fight: Development need keeps its stricter witness");
+
+            WorldSnapshot mobilized = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            mobilized.Self.DeployedPower = 80f;
+            mobilized.Self.AvailablePower = 100f;
+            Assert.That(ForceNeedModel.HasAggressionWitness(mobilized), Is.True,
+                "an open mobilization gate is a war in preparation");
+        }
+
+        [Test]
+        public void Radar_SanctionedCitadelAloneKeepsTheAggressionAxisWarm()
+        {
+            WorldSnapshot blind = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            WorldSnapshot located = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            WithOpponent(located, OpponentWithCitadel(new HexCoord(9, 0)));
+
+            Assert.That(StrategyLayer.Evaluate(blind, new AiRadarState()).Desires.Raw[DesireAxis.Aggression],
+                Is.Zero);
+            Assert.That(StrategyLayer.Evaluate(located, new AiRadarState()).Desires.Raw[DesireAxis.Aggression],
+                Is.GreaterThan(0f), "the Attack preparation is not left to the zero-Radar remainder");
+        }
+
+        // The threat reserve used to shrink the surplus term, i.e. a home threat damped the axis
+        // ActiveDefence lives on. The earlier siege test had no threatening army, so no reserve.
+        [Test]
+        public void Radar_HomeThreatReserveDoesNotDampAggression()
+        {
+            WorldSnapshot calm = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            WorldSnapshot threatened = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            calm.Self.TotalPower = 20f;
+            threatened.Self.TotalPower = 20f;
+            threatened.Threat.Threats = new[] { Threat(0.9f) };
+
+            RadarAssessment calmRadar = StrategyLayer.Evaluate(calm, new AiRadarState());
+            RadarAssessment threatRadar = StrategyLayer.Evaluate(threatened, new AiRadarState());
+
+            Assert.That(threatRadar.Breakdown.RequiredDefensiveReserve,
+                Is.GreaterThan(calmRadar.Breakdown.RequiredDefensiveReserve), "the reserve is still measured");
+            Assert.That(threatRadar.Desires.Raw[DesireAxis.Aggression],
+                Is.EqualTo(calmRadar.Desires.Raw[DesireAxis.Aggression]).Within(0.0001f),
+                "a home threat must not starve ActiveDefence through the shared axis");
+        }
+
+        [Test]
+        public void Radar_ReconRefreshRisesForALiveAttackTargetNeverObserved()
+        {
+            WorldSnapshot idle = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            WorldSnapshot attacking = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            MissionIntentRegistry.Clear();
+            try
+            {
+                float idleRefresh = StrategyLayer.Evaluate(idle, new AiRadarState())
+                    .Breakdown.ReconRefreshPressure;
+                MissionIntentRegistry.GetOrCreate(Us).Put(new MissionIntent
+                {
+                    Kind = MissionKind.Attack,
+                    Status = IntentStatus.Active,
+                    IntentKey = MissionIntentKey.ForAttack(AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base)),
+                    Objective = new AttackIntent
+                    {
+                        Target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base),
+                        Phase = AttackMissionPhase.Assault,
+                        PrimaryArmyId = 7,
+                    },
+                });
+                float attackRefresh = StrategyLayer.Evaluate(attacking, new AiRadarState())
+                    .Breakdown.ReconRefreshPressure;
+
+                Assert.That(attackRefresh - idleRefresh,
+                    Is.EqualTo(AiConfigV2.reconRefreshWeightAttackTarget).Within(0.0001f),
+                    "the live Attack's unobserved target is its own Refresh term");
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void ForceNeed_DefendedHostileBaseBeyondOurStrongestStackIsAnUnwinnableFight()
+        {
+            WorthIt.DefenderProfile[] garrison = { Body(9f, 6f, 20f, 4), Body(9f, 6f, 20f, 4) };
+            WorldSnapshot weak = Snap(new[] { B(RedBase, Red) }, new[] { OurBase },
+                new[] { Sighting(50, RedBase, Red, garrison) });
+            WorldSnapshot strong = Snap(new[] { B(RedBase, Red) }, new[] { OurBase },
+                new[] { Sighting(50, RedBase, Red, garrison) });
+            WorldSnapshot unobserved = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            weak.Self.FieldPower = 1f;
+            strong.Self.FieldPower = 500f;
+
+            Assert.That(ForceNeedModel.ChangeKey(weak), Does.Contain("sites=1/1"));
+            Assert.That(ForceNeedModel.ChangeKey(strong), Does.Contain("sites=1/0"));
+            Assert.That(ForceNeedModel.ChangeKey(unobserved), Does.Contain("sites=0/0"),
+                "a site without a known garrison is no measured fight");
+            Assert.That(ForceNeedModel.JustifiedForceNeed(weak).Offensive, Is.EqualTo(1f).Within(0.0001f));
+        }
+
         // ---- helpers ---------------------------------------------------------------------
 
         private static AiMapMemory.KnownBuilding B(HexCoord hex, PlayerSetupData owner,

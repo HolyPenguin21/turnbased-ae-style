@@ -50,7 +50,9 @@ namespace Game.Ai.V2
         public const float aggSurplusRampHi = 0.60f;
         // RequiredDefensiveReserve = Σ over threatened Citadel/Base/Facility assets of
         //   strongestThreateningContact.EffectiveArmyPower * aggDefenceConfidenceMargin,
-        //   floored at aggHomeGuardFloor. OffensiveFreePower = max(0, TotalPower - reserve).
+        //   floored at aggHomeGuardFloor (diagnostic + ForceNeed.Defensive).
+        //   OffensiveFreePower = max(0, TotalPower - aggHomeGuardFloor): since 2026-10-04 the
+        //   threat reserve no longer damps the Radar surplus (it starved ActiveDefence).
         public const float aggDefenceConfidenceMargin = 1.30f;
         public const float aggHomeGuardFloor = 3f; // AiPower units (one Light Infantry alone = 4.85)
         public const float aggEcoGateLo = 0.50f;        // ecoGate = Lerp(this, 1, EconomicSecurity)

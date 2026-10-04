@@ -114,8 +114,16 @@ events), ActiveDefence (hostile field armies threatening owned assets), and Atta
 (hostile Base/Citadel capture for strategic war and game
 completion). Raid, ActiveDefence and Attack use the shared canonical TaskScore and
 receive the same Aggression Radar scale. There is no task-family pressure layer
-inside Aggression. Raw Aggression uses known combat activity, broad force readiness
-and the general asset-threat signal; it does not read an objective's TaskScore.
+inside Aggression. Raw Aggression is broad force readiness (surplus above the fixed home
+guard, economic security, edge over the known enemy) while a war witness exists
+(`ForceNeedModel.HasAggressionWitness`: known combat activity, a sanctioned enemy
+starting Citadel, or an open Attack mobilization gate); home threat moves it in neither
+direction (2026-10-04: the threat reserve no longer shrinks its surplus term), and it
+does not read an objective's TaskScore. Recon's RefreshPressure carries an Attack
+observation term (`AttackObjectiveEvaluator.ObservationNeeds` unseen or older than
+`attackIntelMaxAgeTurns`). Development's `ForceNeed.Offensive` counts known defended
+hostile Bases/Citadels our strongest stack cannot reach (`RequiredSitePower`) beside
+the field fights.
 
 Radar answers which **axis** matters now. `TaskScore` answers how good a concrete
 world task is. `EffectiveValue` is the intrinsic `BaseValue` multiplied by that
