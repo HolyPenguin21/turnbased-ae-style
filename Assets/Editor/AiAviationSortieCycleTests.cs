@@ -593,6 +593,29 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AfterStrike_PreservesEachSurvivingArmiesDefenceBonus_IncludingZeroAndUnknown()
+        {
+            var body = Profile(attack: 2f, defense: 1f, hp: 4f);
+            var opposition = new[]
+            {
+                new WorthIt.DefendingArmy(new[] { body }, default, 100f),
+                new WorthIt.DefendingArmy(new[] { body }, default, 0f),
+                new WorthIt.DefendingArmy(new[] { body }, default, 3f),
+                new WorthIt.DefendingArmy(new[] { body }, default),
+            };
+            var projected = GroundCombatAirSupport.AfterStrike(opposition,
+                new[] { body, body, body }, new[] { 1, 2, 3 });
+            Assert.That(projected.Count, Is.EqualTo(3), "the wiped army leaves the package");
+            Assert.That(projected[0].DefenseBonus(9f), Is.Zero,
+                "known zero must not acquire the site's fallback structure defence");
+            Assert.That(projected[1].DefenseBonus(9f), Is.EqualTo(3f));
+            Assert.That(projected[2].DefenseBonusOverride.HasValue, Is.False,
+                "unknown retains the caller's fallback contract");
+            Assert.That(projected[2].DefenseBonus(9f), Is.EqualTo(9f));
+            Assert.That(opposition[0].Units.Count, Is.EqualTo(1), "projection is read-only");
+        }
+
+        [Test]
         public void ActiveDefenceAirSupport_HasItsOwnKey_AndHoldsOnlyTheWing()
         {
             MissionIntentKey intercept = MissionIntentKey.ForActiveDefence(41);

@@ -186,7 +186,8 @@ namespace Game.Ai.V2
             var result = new List<WorthIt.DefendingArmy>();
             for (int a = 0; a < opposition.Count; a++)
                 if (perArmy[a].Count > 0)
-                    result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander));
+                    result.Add(new WorthIt.DefendingArmy(perArmy[a], opposition[a].Commander,
+                        opposition[a].DefenseBonusOverride));
             return result;
         }
 
