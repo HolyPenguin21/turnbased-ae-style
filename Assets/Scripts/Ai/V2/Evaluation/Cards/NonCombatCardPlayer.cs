@@ -666,8 +666,9 @@ namespace Game.Ai.V2
                     ? launchEnergy : 0f, snap));
             TaskScore sortie = TaskScoreEvaluator.WithExecution(s, new TaskScore(
                 winChance: s.WinChance,
-                cardPrice: sortieNow,
-                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(Mathf.Max(0, activationAp), eta))));
+                // Airborne continuation is free. ETA remains part of the route projection above;
+                // it must not turn a single sortie launch into recurring ground activation.
+                cardPrice: sortieNow));
             // The airfield the sortie launches from is part of this task's own exposure.
             return TaskScore.FromSlots(slot => slot == TaskSlot.HexThreatRisk
                 ? sortie.HexThreatRisk + airfieldThreatRisk : sortie[slot]);
