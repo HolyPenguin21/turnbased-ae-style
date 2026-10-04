@@ -25,8 +25,9 @@ namespace Game.Ai.V2
             CombatFeasible = feasible;
             ProjectedWinChance = win;
             CoversAllDefenders = cover;
+            // Coverage is named only where it actually gated the fight (a test switch may waive it).
             Reason = !HostAvailable ? "no_primary" : !PowerReady ? "fist_below_bar"
-                : !cover ? "coverage_missing" : !feasible ? "win_below_gate"
+                : !feasible ? (!cover ? "coverage_missing" : "win_below_gate")
                 : !StructuralActor ? "actor_ineligible" : "ready";
         }
     }

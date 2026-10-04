@@ -61,12 +61,41 @@ namespace Game.Ai.V2
             if (actor == null) return int.MaxValue;
             // Synthetic analysis fixtures have no map; live Scan always supplies it.
             if (snap?.Map == null) return HexGridMath.Distance(actor.Hex, target);
+            return TravelRoute(snap, actor, target, arrivesHidden, maxMovement)?.TotalCost ?? int.MaxValue;
+        }
+
+        // The route TravelCost measures (start hex first), or null when there is none. Without a
+        // map (synthetic fixtures) a straight hex line stands in, one cost point per hex.
+        internal static HexPath TravelRoute(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
+            bool arrivesHidden = false, int? maxMovement = null)
+        {
+            if (actor == null) return null;
+            if (snap?.Map == null) return StraightLine(actor.Hex, target);
             int budget = maxMovement ?? actor.MaxMovement;
             bool Block(HexCoord h) => !actor.IsAir &&
                 ((!h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true)
                 || (snap.Map.TryGetTerrainAt(h, out var entry) && entry.moveCost > budget));
             return HexPathfinder.FindPath(snap.Map, actor.Hex, target, blockHex: Block,
-                flatCost: actor.IsAir)?.TotalCost ?? int.MaxValue;
+                flatCost: actor.IsAir);
+        }
+
+        private static HexPath StraightLine(HexCoord from, HexCoord to)
+        {
+            var hexes = new List<HexCoord> { from };
+            HexCoord at = from;
+            while (!at.Equals(to))
+            {
+                HexCoord best = at;
+                int bestDistance = int.MaxValue;
+                foreach (HexCoord n in HexGridMath.Neighbors(at))
+                {
+                    int d = HexGridMath.Distance(n, to);
+                    if (d < bestDistance) { best = n; bestDistance = d; }
+                }
+                at = best;
+                hexes.Add(at);
+            }
+            return new HexPath(hexes, hexes.Count - 1);
         }
 
         // Ceiling integer division, guarded against a non-positive divisor. Identical body in six

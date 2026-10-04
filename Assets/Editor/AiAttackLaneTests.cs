@@ -194,14 +194,19 @@ namespace Game.EditorTests
                 capable, capable.Attack, null, out _);
             Assert.That(capable.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
 
-            // Cannot clear, but a strong free army could join -> Reinforcement, no demand yet.
-            MissionIntent needsHelp = AttackIntent(AttackMissionPhase.Assault, 7);
-            MissionContinuityLayer.ResolveAttackIntent(Us,
-                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
-                    new[] { OurBase }),
-                needsHelp, needsHelp.Attack, null, out _);
-            Assert.That(needsHelp.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
-            Assert.That(needsHelp.Attack.ReinforcementRequestedTurn, Is.EqualTo(-1));
+            // Cannot clear (coverage required), but a strong free army on the same hex could join
+            // -> Reinforcement bound to it, met right there, no demand.
+            using (Coverage(required: true))
+            {
+                MissionIntent needsHelp = AttackIntent(AttackMissionPhase.Assault, 7);
+                MissionContinuityLayer.ResolveAttackIntent(Us,
+                    DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
+                        new[] { OurBase }),
+                    needsHelp, needsHelp.Attack, null, out _);
+                Assert.That(needsHelp.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+                Assert.That(needsHelp.Attack.SupportArmyId, Is.EqualTo(8));
+                Assert.That(needsHelp.Attack.ReinforcementRequestedTurn, Is.EqualTo(-1));
+            }
         }
 
         [Test]
@@ -263,14 +268,18 @@ namespace Game.EditorTests
             Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
         }
 
+        // Before the assault march only: a committed Assault never asks Production for support
+        // (CommittedAssault_FreshIntelNeverCreatesASupportArmyDemand).
         [Test]
         public void LostAttackSupport_WeakPrimaryStaysRequestableForTheCurrentPass()
         {
+            using IDisposable coverage = Coverage(required: true);
             var primary = new ArmyData { Owner = Us, Hex = EnRoute };
             primary.Members.Add(new UnitData { Owner = Us });
             ArmyRegistry.Register(primary);
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement,
                 primary.Id, supportId: 9999);
+            intent.Attack.AssaultStarted = false;
             intent.Attack.ReinforcementRequestedTurn = 5;
             WorldSnapshot snap = DefendedSite(
                 new[] { Army(primary.Id, EnRoute, Weak()) }, new[] { OurBase });
@@ -324,10 +333,14 @@ namespace Game.EditorTests
             Assert.That(intent.Attack.ReinforcementRequestedTurn, Is.EqualTo(6));
         }
 
+        // Before the assault march only (a Gather that fell apart): a committed Assault never
+        // withdraws for weak odds (CommittedAssault_FreshIntelWithoutSupportContinuesTheAssault).
         [Test]
         public void NoReinforcementProspect_WithdrawsAStartedOperationAndRetiresAnUnstartedOne()
         {
+            using IDisposable coverage = Coverage(required: true);
             MissionIntent started = AttackIntent(AttackMissionPhase.Reinforcement, 7);
+            started.Attack.AssaultStarted = false;
             bool keepStarted = MissionContinuityLayer.ResolveAttackIntent(Us,
                 DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
                 started, started.Attack, null, out _);
@@ -654,7 +667,9 @@ namespace Game.EditorTests
             WorldSnapshot snap = DefendedSite(
                 new[] { Army(7, EnRoute, Weak()), Army(9, EnRoute, Strong()) },
                 new[] { OurBase }, alsoOwnBuilding: true);
+            // Before the assault march (a gather that fell apart): the batch solve picks the support.
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7);
+            intent.Attack.AssaultStarted = false;
             var proposals = new List<MissionProposal>();
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
@@ -690,6 +705,36 @@ namespace Game.EditorTests
                 "asking for a NEW capability is the Demand layer's decision, not the planner's");
         }
 
+        // 2026-10-04 — a committed Reinforcement proposes both halves: the primary walks along its
+        // route to the rendezvous, the bound support walks to the same hex (not to the primary).
+        [Test]
+        public void AppendAttack_CommittedReinforcement_BothArmiesWalkToTheRendezvous()
+        {
+            HexCoord meet = new HexCoord(5, 0);
+            WorldSnapshot snap = DefendedSite(
+                new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Strong()) },
+                new[] { OurBase }, alsoOwnBuilding: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 8);
+            intent.Attack.RendezvousHex = meet;
+            var proposals = new List<MissionProposal>();
+
+            AggressionMissionLayer.AppendAttack(snap, new[] { intent },
+                new HashSet<int> { 7, 8 }, proposals, null,
+                new Dictionary<MissionIntentKey, string>());
+
+            List<MissionProposal> legProposals = proposals
+                .Where(p => p.Target is AttackMissionTarget t && t.Phase == AttackMissionPhase.Reinforcement)
+                .ToList();
+            Assert.That(legProposals, Has.Count.EqualTo(2));
+            List<AttackMissionTarget> legs = legProposals.Select(p => (AttackMissionTarget)p.Target).ToList();
+            Assert.That(legs.Single(t => t.PrimaryRendezvousLeg).DestinationHex, Is.EqualTo(meet));
+            Assert.That(legs.Single(t => !t.PrimaryRendezvousLeg).DestinationHex, Is.EqualTo(meet));
+            Assert.That(MissionAdmissionPolicy.Conflicts(legProposals[0], legProposals[1]), Is.False,
+                "the two halves are complementary, funded together");
+            Assert.That(StableMissionKey.For(legProposals[0]),
+                Is.Not.EqualTo(StableMissionKey.For(legProposals[1])));
+        }
+
         // ---- ATK review P2-5/P2-6 — Attack rides the Aggression lane/axis and pool --------
 
         [Test]
@@ -711,7 +756,224 @@ namespace Game.EditorTests
                 Is.EqualTo(CapabilityPoolExhaustionRegistry.PoolFor(raid)));
         }
 
+        // ---- 2026-10-04 committed Assault: fresh intel never revokes the operation -------------
+        //
+        // "Coverage required" stands in for "fresh defenders: the primary no longer clears the
+        // site" (with Attack's zero win gate, coverage is the only thing a committed primary can
+        // lose); the default test behavior (coverage off) is covered by the low-win case.
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void CommittedAssault_FreshIntelWithoutSupportContinuesTheAssault(bool coverageRequired)
+        {
+            using IDisposable coverage = Coverage(coverageRequired);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
+                intent, intent.Attack, null, out bool captured);
+
+            Assert.That(keep, Is.True);
+            Assert.That(captured, Is.False);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault),
+                "no existing reinforcement: the primary keeps marching, it neither waits nor withdraws");
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.RecoveryBaseHex, Is.Null);
+        }
+
+        [Test]
+        public void CommittedAssault_FreshIntelNeverCreatesASupportArmyDemand()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase });
+            MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, intent.Attack, null, out _);
+            // A reusable shell exists: before commitment this would be an IndependentFieldArmy.
+            var inventory = new CapabilityInventory
+            {
+                ReusableEmptyArmies = new[] { new ArmyData { Owner = Us, Hex = OurBase } },
+            };
+            var diag = new List<string>();
+            var demands = new List<AxisDemand>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, new[] { intent }, null, inventory,
+                diag, demands);
+
+            Assert.That(demands.Where(d => d.ConsumerIntentKey.Equals(intent.IntentKey)), Is.Empty);
+            Assert.That(diag.Any(d => d.Contains("committed_assault_uses_existing_support_only")), Is.True);
+        }
+
+        [Test]
+        public void CommittedAssault_UsefulSupportIsInterceptedAheadOnThePrimarysRoute()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            // Primary at (4,0) marching on (6,0); the support one hex behind it.
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Strong()) },
+                    new[] { OurBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+            Assert.That(intent.Attack.SupportArmyId, Is.EqualTo(8));
+            Assert.That(intent.Attack.RendezvousHex, Is.EqualTo(new HexCoord(5, 0)),
+                "the support catches up ahead, the primary keeps advancing");
+            Assert.That(HexGridMath.Distance(intent.Attack.RendezvousHex.Value, RedBase),
+                Is.LessThanOrEqualTo(HexGridMath.Distance(EnRoute, RedBase)), "never behind the primary");
+        }
+
+        [Test]
+        public void CommittedAssault_SupportThatDoesNotImproveThePrimaryIsIgnored()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(3, 0), Weak()) },
+                    new[] { OurBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+        }
+
+        [Test]
+        public void CommittedAssault_SupportTooFarBehindIsRejectedAndTheAssaultContinues()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            // Meeting it would hold the primary for several turns (or send it back): rejected.
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, new HexCoord(-4, 0), Strong()) },
+                    new[] { OurBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.RendezvousHex, Is.Null);
+        }
+
+        [Test]
+        public void Rendezvous_IsAlwaysOnThePrimarysRouteAndNeverTheTarget()
+        {
+            ArmySnapshot primary = Army(7, EnRoute, Weak());
+            ArmySnapshot ahead = Army(8, new HexCoord(5, -1), Strong());
+            RendezvousPlan? plan = GroundCombatRendezvous.SelectForward(null, primary, ahead, RedBase,
+                AiConfigV2.attackReinforcementMaxWaitTurns, out _);
+
+            Assert.That(plan.HasValue, Is.True);
+            Assert.That(plan.Value.Hex, Is.Not.EqualTo(RedBase));
+            Assert.That(plan.Value.WaitTurns, Is.EqualTo(0), "a support ahead waits for the primary");
+            Assert.That(HexGridMath.Distance(plan.Value.Hex, RedBase),
+                Is.LessThanOrEqualTo(HexGridMath.Distance(EnRoute, RedBase)));
+
+            ArmySnapshot farBehind = Army(9, new HexCoord(-4, 0), Strong());
+            Assert.That(GroundCombatRendezvous.SelectForward(null, primary, farBehind, RedBase,
+                AiConfigV2.attackReinforcementMaxWaitTurns, out string why).HasValue, Is.False);
+            Assert.That(why, Does.Contain("no non-retreat rendezvous"));
+        }
+
+        [Test]
+        public void CommittedAssault_LostSupportFallsBackToTheAssaultNotRecovery()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 9999);
+            intent.Attack.RendezvousHex = new HexCoord(5, 0);
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()) }, new[] { OurBase, AltBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(keep, Is.True);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.RendezvousHex, Is.Null);
+        }
+
+        [Test]
+        public void CommittedAssault_LostSupportIsReplacedByAnotherExistingOne()
+        {
+            using IDisposable coverage = Coverage(required: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 9999);
+            intent.Attack.RendezvousHex = new HexCoord(5, 0);
+            MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
+                    new[] { OurBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+            Assert.That(intent.Attack.SupportArmyId, Is.EqualTo(8));
+        }
+
+        [Test]
+        public void CommittedAssault_NonCombatRemnantStillWithdraws()
+        {
+            ArmySnapshot remnant = Army(7, EnRoute, Weak());
+            remnant.IsStructuralRaidActor = false;
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Assault, 7);
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { remnant }, new[] { OurBase, AltBase }),
+                intent, intent.Attack, null, out _);
+
+            Assert.That(keep, Is.True);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn),
+                "a primary that can no longer fight at all is a structural end, not fresh intel");
+        }
+
+        [Test]
+        public void CommittedHandoff_SupportWalksHomeBesideTheResumedAssault()
+        {
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 8);
+            intent.Attack.RendezvousHex = EnRoute;
+            MissionIntentRegistry.GetOrCreate(Us).Put(intent);
+            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+            outcome.MoverArmyId = 8;
+            outcome.MadeProgress = true;
+            outcome.Outcome = ExecutionOutcome.ProductiveStop;
+            outcome.ReinforcementHandoffAttempted = true;
+            AttackMissionTarget leg = outcome.AttackTarget;
+            leg.Phase = AttackMissionPhase.Reinforcement;
+            leg.SupportArmyId = 8;
+            leg.DestinationHex = EnRoute;
+            outcome.AttackTarget = leg;
+
+            MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
+
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault),
+                "the primary does not wait for the support's walk home");
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.RendezvousHex, Is.Null);
+            Assert.That(intent.Attack.GatherReturns.Select(r => r.ArmyId), Does.Contain(8));
+        }
+
+        [Test]
+        public void GatherThenAssault_FirstExecutedMarchStepCommitsTheOperation()
+        {
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Gather, 7);
+            Assert.That(intent.Attack.AssaultStarted, Is.False);
+            // Continuity turned the gather into an Assault; nothing has marched yet.
+            intent.Attack.Phase = AttackMissionPhase.Assault;
+            MissionIntentRegistry.GetOrCreate(Us).Put(intent);
+            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+            outcome.MadeProgress = true;
+            outcome.StepsMoved = 1;
+            outcome.Outcome = ExecutionOutcome.ProductiveStop;
+
+            MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
+
+            Assert.That(intent.Attack.AssaultStarted, Is.True);
+        }
+
         // ---- helpers ---------------------------------------------------------------------
+
+        private sealed class CoverageSwitch : IDisposable
+        {
+            private readonly bool _previous;
+            internal CoverageSwitch(bool required)
+            {
+                _previous = AiConfigV2.attackRequiresDefenderCoverage;
+                AiConfigV2.attackRequiresDefenderCoverage = required;
+            }
+            public void Dispose() => AiConfigV2.attackRequiresDefenderCoverage = _previous;
+        }
+
+        private static IDisposable Coverage(bool required) => new CoverageSwitch(required);
 
         private static MissionProposal AttackProposal(AttackMissionPhase phase, HexCoord hex,
             PlayerSetupData owner, int primaryId)

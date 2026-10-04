@@ -61,6 +61,19 @@ namespace Game.Ai.V2
                 }
                 case AttackMissionPhase.Gather when target.PreparationStep != AttackPreparationStep.None:
                     return ProvisionPreparation(player, root, session, funded, target, key, eps);
+                // A committed Reinforcement's primary walking along its route to the rendezvous:
+                // the walk-home leg's validation (already there is never "satisfied" — the
+                // operation goes on with the handoff).
+                case AttackMissionPhase.Reinforcement when target.PrimaryRendezvousLeg:
+                {
+                    ArmyData walker = target.PrimaryArmyId.HasValue
+                        ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
+                    if (walker != null && walker.Hex.Equals(target.DestinationHex))
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"attack primary #{walker.Id} already stands on its rendezvous"));
+                    return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
+                        target.PrimaryArmyId, "primary to rendezvous");
+                }
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
                     return ProvisionReinforcement(player, root, ctx, session, funded, target, key, eps);
@@ -482,21 +495,26 @@ namespace Game.Ai.V2
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
                 "attack", out bool atRendezvous, allowCommandHandover: true,
-                capacityIsProgress: target.CommanderLeg);
+                capacityIsProgress: target.CommanderLeg, meetingHex: target.RendezvousHex);
             if (!check.Ok)
                 return check.Failure;
 
-            // The primary must not be handed to another mission while the convoy is in transit.
-            session.ClaimedArmyIds.Add(primary.Id);
+            // The primary must not be handed to another mission while the convoy is in transit —
+            // unless it is itself still walking to the rendezvous (its own leg claims it then).
+            bool primaryStillWalks = target.RendezvousHex.HasValue
+                && !primary.Hex.Equals(target.RendezvousHex.Value);
+            if (!primaryStillWalks)
+                session.ClaimedArmyIds.Add(primary.Id);
 
             target.SupportArmyId = check.Mover.Id;
-            target.DestinationHex = primary.Hex;
+            HexCoord meetAt = atRendezvous ? primary.Hex : target.RendezvousHex ?? primary.Hex;
+            target.DestinationHex = meetAt;
             target.DefenderHexDefenseBonus = hexBonus;
             target.DefenderCount = WorthIt.UnitsOf(opposition).Count;
 
             AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
                 + $"{(target.Phase == AttackMissionPhase.Gather ? "GATHER" : "REINFORCE")} "
-                + $"support #{check.Mover.Id} -> primary #{primary.Id} at ({primary.Hex.Q},{primary.Hex.R}) "
+                + $"support #{check.Mover.Id} -> primary #{primary.Id} at ({meetAt.Q},{meetAt.R}) "
                 + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(check.ActivationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -504,8 +522,8 @@ namespace Game.Ai.V2
                 Key = key,
                 Kind = MissionKind.Attack,
                 MoverArmyId = check.Mover.Id,
-                FocusHex = primary.Hex,
-                ExecutionHex = primary.Hex,
+                FocusHex = meetAt,
+                ExecutionHex = meetAt,
                 AttackTarget = target,
                 AttackHandoffReady = atRendezvous,
                 ClaimedPhysical = funded.PhysicalDraw,

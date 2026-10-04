@@ -95,11 +95,16 @@ namespace Game.Ai.V2
                 // same host, and a side leg (a donor walking home, the support wing) runs beside
                 // every other leg:
                 // complementary work, funded together, never one-per-pass.
+                // A committed Reinforcement's two halves (the primary walking to the rendezvous,
+                // the support walking there) are complementary too.
                 return !(GroundCombatLegs.IsAttackSideLeg(aaTarget.Phase)
                     || GroundCombatLegs.IsAttackSideLeg(abTarget.Phase)
                     || aaTarget.Phase == AttackMissionPhase.Gather
                         && abTarget.Phase == AttackMissionPhase.Gather
-                        && aaTarget.SupportArmyId != abTarget.SupportArmyId);
+                        && aaTarget.SupportArmyId != abTarget.SupportArmyId
+                    || aaTarget.Phase == AttackMissionPhase.Reinforcement
+                        && abTarget.Phase == AttackMissionPhase.Reinforcement
+                        && aaTarget.PrimaryRendezvousLeg != abTarget.PrimaryRendezvousLeg);
 
             if (UsesGroundCombatAssignmentRegistry(a) && UsesGroundCombatAssignmentRegistry(b))
             {

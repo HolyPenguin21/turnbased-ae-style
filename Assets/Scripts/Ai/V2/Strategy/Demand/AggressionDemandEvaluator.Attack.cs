@@ -13,10 +13,11 @@ namespace Game.Ai.V2
     //
     //  A mechanical partial of the existing Aggression demand owner. Two things may create a
     //  demand here:
-    //    * a PROVEN structural shortage of a bound, live Attack operation: its primary no longer
-    //      cannot reach the current force threshold or cover the known defenders — the same gate the phase machine turns
-    //      to Reinforcement on (one owner), so a delivered support is really used — and no
-    //      existing free army could fix that by joining it;
+    //    * a PROVEN structural shortage of a bound, live Attack operation that has NOT yet begun
+    //      its assault march: its primary cannot reach the current force threshold or cover the
+    //      known defenders — the same gate the phase machine turns to Reinforcement on (one
+    //      owner), so a delivered support is really used — and no existing free army could fix
+    //      that by joining it. A committed Assault never asks (existing support only);
     //    * strike force step 4 — the best known Base/Citadel objective that no army can take even
     //      at the current force threshold, pinned to the free fist on an own Base
     //      (AppendUnboundAttackDemand). The target is a real, known structure, so this names a
@@ -80,6 +81,18 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // 2026-10-04 — a committed Assault (the fist already marches on the target) is
+                // reinforced only by armies already on the map (Continuity binds one when it can
+                // meet the primary on its route); it never asks Production for a new support army,
+                // and worse defender news never waits for one.
+                if (ai.AssaultStarted)
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP intent={i.IntentKey} "
+                        + $"target={ai.Target.DiagnosticLabel} primary={ai.PrimaryArmyId} "
+                        + $"phase={ai.Phase} reason=committed_assault_uses_existing_support_only");
+                    continue;
+                }
+
                 // Only a BOUND operation may ask for anything. Without a claimed primary there is
                 // no proven obligation yet — the fresh-objective path owns that case.
                 if (!ai.PrimaryArmyId.HasValue || commitments == null
@@ -95,7 +108,7 @@ namespace Game.Ai.V2
                     // Coverage is independent of the dynamic force requirement.
                     GroundCombatAdmissionPolicy.AttackCoverageGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
-                    diag, ai.AssaultStarted ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                    diag, AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
                 if (attackShortage != null)
                     demands.Add(attackShortage);
             }
@@ -259,6 +272,7 @@ namespace Game.Ai.V2
             // target is served by a card that closes target coverage — not only by one filling a
             // missing slot of the strongest-power roster.
             bool coverageGap = coverageTarget.HasValue
+                && GroundCombatAdmissionPolicy.RequiresCoverage(GroundCombatAdmissionPolicy.AttackCoverageGate)
                 && MaterializationDeliveryPolicy.UncoveredDefenderCount(snap, host.Members, null,
                     coverageTarget.Value) > 0;
             bool ExactlyMissing(Game.Cards.CardDefinition d) =>

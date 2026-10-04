@@ -47,6 +47,7 @@ namespace Game.Ai.V2
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
                 case AttackMissionPhase.Gather when target.PreparationStep == AttackPreparationStep.MoveHost:
+                case AttackMissionPhase.Reinforcement when target.PrimaryRendezvousLeg:
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
                 case AttackMissionPhase.Reinforcement:
@@ -500,11 +501,20 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            HexCoord rendezvous = primary.Hex;
+            // The handoff needs both on one hex; until then the support walks to the committed
+            // rendezvous on the primary's route when there is one, else to the primary itself.
+            bool together = support.Hex.Equals(primary.Hex);
+            HexCoord rendezvous = together ? primary.Hex : target.RendezvousHex ?? primary.Hex;
             pm.ExecutionHex = rendezvous;
 
-            if (!support.Hex.Equals(rendezvous))
+            if (!together)
             {
+                if (support.Hex.Equals(rendezvous))
+                {
+                    // Already waiting on the meeting hex: nothing to do until the primary arrives.
+                    result.StopReason = ExecutionStopReason.MoveRejected;
+                    yield break;
+                }
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
                     $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",

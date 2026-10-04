@@ -91,6 +91,11 @@ namespace Game.Ai.V2
         public HexCoord DestinationHex;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
+        // Committed-Assault Reinforcement only (AttackIntent.RendezvousHex): the support walks here
+        // instead of chasing the primary's current hex; the handoff still needs both on one hex.
+        public HexCoord? RendezvousHex;
+        // That Reinforcement's other leg: the PRIMARY walks along its route to RendezvousHex.
+        public bool PrimaryRendezvousLeg;
         // The honest site facts this leg was planned against (§30/§31).
         public float DefenderHexDefenseBonus;
         public int DefenderCount;

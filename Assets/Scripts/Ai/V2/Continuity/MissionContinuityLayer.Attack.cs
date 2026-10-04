@@ -126,6 +126,7 @@ namespace Game.Ai.V2
                 int lostSupportId = a.SupportArmyId.Value;
                 a.SupportArmyId = null;
                 a.SupportReturnHex = null;
+                a.RendezvousHex = null;
                 a.ReinforcementRequestedTurn = -1;
                 supportLostThisPass = true;
                 if (a.Phase == AttackMissionPhase.SupportReturn)
@@ -204,6 +205,8 @@ namespace Game.Ai.V2
 
             // ---- §24 the Assault / Reinforcement decision --------------------------------------
             bool clears = AttackPrimaryClearsTarget(snap, a);
+            if (a.AssaultStarted)
+                return ResolveCommittedAssault(snap, intent, a, clears, unavailableArmyIds);
             if (clears)
             {
                 if (a.Phase != AttackMissionPhase.Assault)
@@ -214,8 +217,10 @@ namespace Game.Ai.V2
                 return true;
             }
 
-            // The primary cannot take the site. Reinforcement is the answer while there is any
-            // prospect of one; only a started operation with no prospect withdraws (§47).
+            // Before the assault march (a Gather that fell apart, an Assault whose first march step
+            // has not run yet): the primary cannot take the site. Reinforcement is the answer while
+            // there is any prospect of one; only a started operation with no prospect withdraws
+            // (§47). A committed Assault never comes here (ResolveCommittedAssault).
             if (a.Phase != AttackMissionPhase.Reinforcement)
             {
                 a.Phase = AttackMissionPhase.Reinforcement;
@@ -259,6 +264,136 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} phase -> RecoveryReturn "
                 + $"({recovery.Value.Q},{recovery.Value.R}); operation no longer viable");
             return true;
+        }
+
+        // 2026-10-04 — a COMMITTED Assault (AssaultStarted: the fist began its march on the target).
+        // Worse news about the defenders never revokes it: no RecoveryReturn, no Production
+        // request (AppendAttackDemands skips it), no new strategic target. The only question is
+        // whether an army ALREADY on the map can join the primary on its route to the target:
+        //   primary clears                         -> Assault (a bound support is released)
+        //   it does not, a bound support still
+        //     improves it and still meets it ahead -> Reinforcement continues (rendezvous refreshed)
+        //   otherwise the best other such support  -> Reinforcement with that one
+        //   none                                   -> Assault continues with the current roster
+        // Structural ends (target captured / invalidated, primary only a remnant or gone) are
+        // decided above, by the same rules as before.
+        private static bool ResolveCommittedAssault(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, bool clears, ISet<int> unavailableArmyIds)
+        {
+            a.ReinforcementRequestedTurn = -1;
+            if (clears)
+            {
+                if (a.Phase != AttackMissionPhase.Assault)
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} phase {a.Phase} -> Assault "
+                        + $"(primary #{a.PrimaryArmyId} clears the site"
+                        + (a.SupportArmyId.HasValue ? $"; support #{a.SupportArmyId} released)" : ")"));
+                ReleaseCommittedReinforcement(a);
+                return true;
+            }
+
+            ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+
+            if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
+            {
+                ArmySnapshot bound = snap.Self.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == a.SupportArmyId.Value);
+                string why = null;
+                RendezvousPlan? meet = null;
+                if (bound == null || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, bound,
+                        opposition, hexBonus, allowCommandHandover: true, allowCompleteTransfer: true))
+                    why = "no longer improves the primary";
+                else
+                    meet = GroundCombatRendezvous.SelectForward(snap, primary, bound, a.Target.Hex,
+                        AiConfigV2.attackReinforcementMaxWaitTurns, out why, keep: a.RendezvousHex);
+                if (meet.HasValue)
+                {
+                    if (!a.RendezvousHex.HasValue || !a.RendezvousHex.Value.Equals(meet.Value.Hex))
+                        AiDebugLog.Write($"[AI][V2][Attack][Reinforcement] {intent.IntentKey} support "
+                            + $"#{a.SupportArmyId} -> primary #{a.PrimaryArmyId} {meet.Value.Describe()}");
+                    a.RendezvousHex = meet.Value.Hex;
+                    return true;
+                }
+                AiDebugLog.Write($"[AI][V2][Attack][Reinforcement] {intent.IntentKey} support "
+                    + $"#{a.SupportArmyId} dropped: {why}; looking for another existing support");
+                ReleaseCommittedReinforcement(a);
+            }
+
+            int? supportId = FindOperationalReinforcement(snap, intent, a, primary, opposition,
+                hexBonus, unavailableArmyIds, out RendezvousPlan plan, out string none);
+            if (supportId.HasValue)
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Reinforcement] {intent.IntentKey} support "
+                    + $"#{supportId.Value} improves primary #{a.PrimaryArmyId}; {plan.Describe()}; "
+                    + $"phase {a.Phase} -> Reinforcement");
+                a.Phase = AttackMissionPhase.Reinforcement;
+                a.SupportArmyId = supportId;
+                a.RendezvousHex = plan.Hex;
+                return true;
+            }
+
+            a.Phase = AttackMissionPhase.Assault;
+            AiDebugLog.WriteDeduped(intent.IntentKey + "#committed",
+                $"[AI][V2][Attack][Continuity] {intent.IntentKey} primary #{a.PrimaryArmyId} no longer "
+                + $"clears {a.Target.DiagnosticLabel} ({DescribeClearance(snap, a)}); existing "
+                + $"reinforcement candidate none ({none}); committed assault continues");
+            return true;
+        }
+
+        // The committed Reinforcement's support: an EXISTING free army the one assembly owner says
+        // improves the primary (ReinforcementSupportCandidates — the same handoff projection
+        // Provisioning and Execution run), that can meet it on its route to the target
+        // (GroundCombatRendezvous). Least primary wait, then the support's cheapest walk, then the
+        // lowest id. Armies this operation already sends home are never recalled.
+        private static int? FindOperationalReinforcement(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ArmySnapshot primary, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float hexBonus, ISet<int> unavailableArmyIds, out RendezvousPlan best, out string none)
+        {
+            best = default;
+            none = "no free army improves the primary";
+            var excluded = unavailableArmyIds == null ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            foreach (AttackGatherReturn r in a.GatherReturns)
+                excluded.Add(r.ArmyId);
+            List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
+                a.PrimaryArmyId.Value, opposition, excluded, hexBonus, allowCommandHandover: true);
+            int? bestId = null;
+            var rejected = new List<string>();
+            foreach (int id in candidates.OrderBy(x => x))
+            {
+                ArmySnapshot support = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == id);
+                RendezvousPlan? meet = GroundCombatRendezvous.SelectForward(snap, primary, support,
+                    a.Target.Hex, AiConfigV2.attackReinforcementMaxWaitTurns, out string why);
+                if (!meet.HasValue)
+                {
+                    rejected.Add($"#{id}: handoff improves primary but {why}");
+                    continue;
+                }
+                if (!bestId.HasValue || meet.Value.WaitTurns < best.WaitTurns
+                    || (meet.Value.WaitTurns == best.WaitTurns && meet.Value.SupportCost < best.SupportCost))
+                {
+                    bestId = id;
+                    best = meet.Value;
+                }
+            }
+            if (rejected.Count > 0)
+            {
+                none = $"{candidates.Count} improving support(s) rejected";
+                AiDebugLog.WriteDeduped(intent.IntentKey + "#support-rejected",
+                    $"[AI][V2][Attack][Reinforcement] {intent.IntentKey} support rejected: "
+                    + string.Join(" | ", rejected));
+            }
+            return bestId;
+        }
+
+        // Ends a committed Reinforcement that never handed off: the support is simply free again.
+        private static void ReleaseCommittedReinforcement(AttackIntent a)
+        {
+            a.Phase = AttackMissionPhase.Assault;
+            a.SupportArmyId = null;
+            a.RendezvousHex = null;
         }
 
         // Strike force step 5 — gather donors that already handed over walk home. The base is

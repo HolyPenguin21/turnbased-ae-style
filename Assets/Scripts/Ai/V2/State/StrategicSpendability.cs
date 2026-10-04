@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using UnityEngine;
@@ -114,7 +115,8 @@ namespace Game.Ai.V2
         // EconomyBuildCompletion closes for a build that finishes now. Protected: the unpaid
         // activation of every army the operation's CURRENT leg moves (Raid Assault -> primary,
         // Reinforcement -> support; Attack Assault -> primary, Gather -> each walking support,
-        // Reinforcement -> support; ActiveDefence Intercept -> primary) that can still act this
+        // Reinforcement -> support, plus a committed Assault's primary still walking to the
+        // rendezvous; ActiveDefence Intercept -> primary) that can still act this
         // turn (has not activated, has movement). Lifecycle legs (returns, recovery) own no
         // protection — they carry no operation value (MissionIntent.IsLifecycleLeg). Live:
         // activation, loss, a phase change or the end of the operation releases it at once; after
@@ -199,7 +201,14 @@ namespace Game.Ai.V2
                         yield return a.PrimaryArmyId.Value;
                 }
                 else if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
+                {
                     yield return a.SupportArmyId.Value;
+                    // 2026-10-04 — a committed Reinforcement's primary still walking along its
+                    // route to the rendezvous is the operation's own leg too.
+                    if (a.RendezvousHex.HasValue && a.PrimaryArmyId.HasValue
+                        && !IsAt(player, a.PrimaryArmyId.Value, a.RendezvousHex.Value))
+                        yield return a.PrimaryArmyId.Value;
+                }
             }
             else if (intent.ActiveDefence != null)
             {
@@ -208,6 +217,10 @@ namespace Game.Ai.V2
                     yield return d.PrimaryArmyId.Value;
             }
         }
+
+        private static bool IsAt(PlayerSetupData player, int armyId, HexCoord hex) =>
+            ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x != null && x.Id == armyId)
+                ?.Hex.Equals(hex) == true;
 
         private static bool OnOwnBase(PlayerSetupData player, int armyId)
         {

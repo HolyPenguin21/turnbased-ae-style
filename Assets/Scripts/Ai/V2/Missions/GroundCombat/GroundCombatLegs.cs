@@ -81,8 +81,11 @@ namespace Game.Ai.V2
                             || attack.Phase == AttackMissionPhase.Gather
                             || attack.Phase == AttackMissionPhase.SupportReturn
                             || attack.Phase == AttackMissionPhase.GatherReturn)
-                        && attack.SupportArmyId == armyId)
-                    || (attack.Phase == AttackMissionPhase.RecoveryReturn
+                        && attack.SupportArmyId == armyId
+                        && !attack.PrimaryRendezvousLeg)
+                    || ((attack.Phase == AttackMissionPhase.RecoveryReturn
+                            || (attack.Phase == AttackMissionPhase.Reinforcement
+                                && attack.PrimaryRendezvousLeg))
                         && attack.PrimaryArmyId == armyId);
             if (mission?.Target is ActiveDefenceMissionTarget defence)
                 return defence.Phase == ActiveDefencePhase.Return
