@@ -111,7 +111,7 @@ namespace Game.Aviation
         {
             if (aircraft == null || aircraft.Count == 0)
                 return 0;
-            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            int movement = aircraft.Min(AviationRules.EffectiveMoveCurrent);
             return SafeUnlandedEndsRemaining(aircraft) > 0 ? movement : movement / 2;
         }
 

@@ -97,6 +97,8 @@ namespace Game.Ai.V2
         {
             if (player == null || root == null || ctx?.Map == null)
                 return null;
+            if (commitments == null && activeIntents != null)
+                commitments = ActorCommitments.FromIntents(activeIntents, snap, objectives);
             AviationRebasePlan plan = BuildReconFormation(snap, player, root, ctx, objectives)
                 ?? BuildCombatFormation(snap, player, root, ctx, activeIntents, commitments);
             if (plan != null)
@@ -132,10 +134,10 @@ namespace Game.Ai.V2
         }
 
         // Targets of existing ground-combat tasks that want air support and have no wing yet.
-        internal static List<HexCoord> CombatSupportTargets(WorldSnapshot snap,
+        internal static List<CombatAirSupportRequest> CombatSupportTargets(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents)
         {
-            var targets = new List<HexCoord>();
+            var targets = new List<CombatAirSupportRequest>();
             int turn = snap?.TurnNumber ?? 0;
             foreach (MissionIntent i in activeIntents ?? System.Array.Empty<MissionIntent>())
             {
@@ -144,23 +146,34 @@ namespace Game.Ai.V2
                 AttackIntent a = i.Attack;
                 if (a != null && a.Phase == AttackMissionPhase.Assault && !a.AirSupportArmyId.HasValue
                     && a.AirSupportAttemptedTurn != turn)
-                    targets.Add(a.Target.Hex);
+                {
+                    var objective = AttackObjectiveEvaluator.ForTrackedTarget(snap, a.Target);
+                    if (objective != null) targets.Add(new CombatAirSupportRequest(i.IntentKey,
+                        a.Target.Hex, AirStrikePolicy.Standard, objective.TaskScore));
+                }
                 RaidIntent r = i.Raid;
                 if (r != null && r.Target.Kind == RaidTargetKind.NeutralArmy
                     && r.Phase == RaidMissionPhase.Reinforcement && !r.AirSupportArmyId.HasValue
+                    && r.AirSupportAttemptedTurn != turn
                     && GroundCombatAirSupport.KnownTargetCount(snap, r.LastKnownHex,
                         AirStrikePolicy.RaidSupport(r.Target.ArmyId),
                         AiV2Util.KnownOpposition(snap, r.Target)) > 1)
-                    targets.Add(r.LastKnownHex);
+                    targets.Add(new CombatAirSupportRequest(i.IntentKey, r.LastKnownHex,
+                        AirStrikePolicy.RaidSupport(r.Target.ArmyId),
+                        RaidObjectiveEvaluator.BuildRaidScore(snap, r.Target, r.LastKnownHex)));
             }
             var supported = new HashSet<int>((activeIntents ?? System.Array.Empty<MissionIntent>())
-                .Where(i => i?.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport)
+                .Where(i => i?.Status == IntentStatus.Active
+                    && i.ActiveDefence?.Phase == ActiveDefencePhase.AirSupport)
                 .Select(i => i.ActiveDefence.EnemyArmyId));
             foreach (ActiveDefenceObjective o in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
                 if (!supported.Contains(o.Target.EnemyArmyId)
                     && ActiveDefenceObjectiveEvaluator.Opposition(snap, o.Target.EnemyArmyId) != null)
-                    targets.Add(o.Target.LastKnownHex);
-            return targets.Distinct().ToList();
+                    targets.Add(new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(
+                        ActiveDefencePhase.AirSupport, o.Target.EnemyArmyId, null, null), o.Target.LastKnownHex,
+                        AirStrikePolicy.DefenceSupport(o.Target.EnemyArmyId), o.TaskScore));
+            return targets.GroupBy(t => t.Key).Select(g => g.First())
+                .OrderByDescending(t => t.Score.Value).ThenBy(t => t.Key.ToString()).ToList();
         }
 
         private static AviationRebasePlan BuildCombatFormation(WorldSnapshot snap, PlayerSetupData player,
@@ -169,32 +182,26 @@ namespace Game.Ai.V2
         {
             if (snap == null || activeIntents == null)
                 return null;
-            List<HexCoord> targets = CombatSupportTargets(snap, activeIntents);
-            if (targets.Count == 0)
-                return null;
-            // Free formed wings already cover that many targets.
-            int freeWings = ArmyRegistry.AllForOwner(player).Count(a => AviationRules.IsValidAirArmy(a)
-                && AirSortieRegistry.ForArmy(player, a) == null && a.CurrentMovement > 0
-                && (commitments == null || !commitments.IsArmyClaimed(a.Id)));
-            if (freeWings >= targets.Count)
-                return null;
-
+            List<CombatAirSupportRequest> targets = GroundCombatAirSupport.UncoveredRequests(
+                snap, player, root, ctx, CombatSupportTargets(snap, activeIntents), commitments);
             AviationRebasePlan best = null;
-            int bestTurns = int.MaxValue;
+            int bestEta = int.MaxValue, bestRoute = int.MaxValue;
             foreach ((ArmyData source, IReadOnlyList<UnitData> group) in AffordableStoredGroups(player, root, ctx))
-                foreach (HexCoord target in targets)
+                foreach (CombatAirSupportRequest target in targets)
                 {
-                    Sortie? same = AiAirSortiePlanner.TryPlanSortieFromStorage(source.Hex, group, target, ctx.Map, player);
-                    MultiTurnSortie? multi = same.HasValue ? null
-                        : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(source.Hex, group, target, ctx.Map, player);
-                    if (!same.HasValue && !multi.HasValue)
+                    var service = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
+                        group, source.Hex, target);
+                    if (!service.HasValue || service.Value.Score.Value <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
-                    int turns = same.HasValue ? 1 : multi.Value.RequiredTurns;
-                    if (turns >= bestTurns)
+                    if (best != null && (service.Value.Score.Value < best.Utility - AiConfigV2.allocatorSliceEpsilon
+                        || (Mathf.Abs(service.Value.Score.Value - best.Utility) <= AiConfigV2.allocatorSliceEpsilon
+                            && (service.Value.FirstStrikeEta > bestEta
+                                || (service.Value.FirstStrikeEta == bestEta && service.Value.RouteCost >= bestRoute)))))
                         continue;
-                    bestTurns = turns;
-                    best = FormPlan(source, group, default,
-                        $"combat support ({target.Q},{target.R}) in {turns} turn(s)");
+                    bestEta = service.Value.FirstStrikeEta;
+                    bestRoute = service.Value.RouteCost;
+                    best = FormPlan(source, group, service.Value.Score,
+                        $"combat support {target.Key} in {service.Value.FirstStrikeEta} turn(s)");
                 }
             return best;
         }

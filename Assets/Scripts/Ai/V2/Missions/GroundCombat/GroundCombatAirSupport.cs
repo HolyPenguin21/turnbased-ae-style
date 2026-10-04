@@ -78,7 +78,7 @@ namespace Game.Ai.V2
     //  fitting the free bank — no arrival window, no intel age, no minimum win gain. A known roster
     //  only ranks the options (and rejects a wing that physically cannot damage it).
     // ===========================================================================================
-    internal static class GroundCombatAirSupport
+    internal static partial class GroundCombatAirSupport
     {
         internal static List<AiMapMemory.KnownAirSighting> KnownAirTargets(WorldSnapshot snap,
             HexCoord hex, AirStrikePolicy policy) =>
@@ -146,7 +146,7 @@ namespace Game.Ai.V2
             if (snap?.Self?.Armies == null)
                 return result;
             HexCoord? landing = LandingBase(snap, targetHex);
-            if (!landing.HasValue)
+            if (ReferenceEquals(snap.Map, null) && !landing.HasValue)
                 return result;
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
             // BuildKnown always supplies this collection. Null retains the legacy contract for
@@ -166,6 +166,26 @@ namespace Game.Ai.V2
                     && (unavailableArmyIds == null || !unavailableArmyIds.Contains(x.ArmyId)))
                 .OrderBy(x => x.ArmyId))
             {
+                if (!ReferenceEquals(snap.Map, null) && observedAir)
+                {
+                    ArmyData live = AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId);
+                    if (live == null) continue;
+                    AirSortie active = AirSortieRegistry.ForArmy(snap.Observer, live);
+                    if (active != null && (!fixedWingArmyId.HasValue || active.Kind != AirSortieKind.Strike))
+                        continue;
+                    var projection = ProjectService(snap, snap.Observer, snap.Map, live.Members,
+                        live.Hex, new CombatAirSupportRequest(default, targetHex, policy, default), live);
+                    if (!projection.HasValue) continue;
+                    CombatAirService service = projection.Value;
+                    float projectedWin = service.RosterKnown && winAgainst != null
+                        ? winAgainst(AfterAirStrike(opposition, airTargets, service.Estimate)) : currentWin;
+                    result.Add(new AirSupportOption(wing.ArmyId, service.Landing, service.FirstStrikeEta,
+                        service.FirstStrikeEta, service.StrikeTurns,
+                        service.RosterKnown ? service.Estimate.ExpectedDamage : 0f,
+                        service.RosterKnown, projectedWin, service.Ap,
+                        new ResourceVector(0f, 0f, service.Energy, 0f, 0f)));
+                    continue;
+                }
                 List<WorthIt.DefenderProfile> attackers = (wing.RecoveryMembers
                         ?? Array.Empty<RaidRecoveryMemberSnapshot>())
                     .Where(x => x.IsAviation)

@@ -248,9 +248,8 @@ namespace Game.Ai.V2
                 // Expected share of the threat the series removes; an unknown roster is neutral.
                 float effect = best.RosterKnown && totalHp > 0f
                     ? UnityEngine.Mathf.Clamp01(best.ExpectedDamage / totalHp) : 0.5f;
-                float launchPrice = best.Ap + best.Resources.Energy * AiConfigV2.actionPriceResourceAp;
-                TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore, effect,
-                    launchPrice, 0f, best.EtaTurns);
+                TaskScore score = GroundCombatAirSupport.ServiceScore(objective.TaskScore, effect,
+                    best.Ap, best.Resources.Energy, best.EtaTurns);
 
                 ActiveDefenceMissionTarget target = objective.Target;
                 target.Phase = ActiveDefencePhase.AirSupport;

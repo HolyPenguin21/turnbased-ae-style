@@ -51,9 +51,11 @@ namespace Game.Aviation
         // on an AI planner, and there remains only one authoritative sortie registry.
         internal static System.Func<HexCoord, PlayerSetupData, ArmyData, int> ReservedLandingSlots;
 
-        public static int FreeAirfieldCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
+        public static int FreeAirfieldCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null,
+            int additionalClaims = 0)
         {
-            int free = FreeStorageSlots(hex, owner, excluding);
+            if (AirfieldCapacityAt(hex, owner) <= 0) return 0;
+            int free = RawStorageSlots(hex, owner, excluding) - additionalClaims;
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
                 if (army != excluding && army.Owner == owner && IsAirArmy(army))
                     free -= army.Members.Count;
@@ -65,12 +67,12 @@ namespace Game.Aviation
         // landed in turn against this, so two wings can never be landed into one slot.
         public static int FreeStorageSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
         {
-            int capacity = AirfieldCapacityAt(hex, owner);
-            if (capacity <= 0)
-                return 0;
-            return Mathf.Max(0, capacity - (FindAirfieldAt(hex, owner)?.Members.Count ?? 0)
-                - (ReservedLandingSlots?.Invoke(hex, owner, excluding) ?? 0));
+            return Mathf.Max(0, RawStorageSlots(hex, owner, excluding));
         }
+
+        private static int RawStorageSlots(HexCoord hex, PlayerSetupData owner, ArmyData excluding) =>
+            AirfieldCapacityAt(hex, owner) - (FindAirfieldAt(hex, owner)?.Members.Count ?? 0)
+                - (ReservedLandingSlots?.Invoke(hex, owner, excluding) ?? 0);
 
         // Keeps an army's stored air/ground flag and its marker in step with its roster after a
         // transfer or landing: a stack of aircraft is an air army, an emptied former wing is an

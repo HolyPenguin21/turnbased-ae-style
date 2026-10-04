@@ -434,8 +434,8 @@ namespace Game.Ai.V2
                 uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
                     - (airborne + spare);
             }
-            List<HexCoord> strikeTargets = judgeUse && def.attack > 0
-                ? KnownStrikeTargets(snap, player) : null;
+            List<CombatAirSupportRequest> strikeTargets = judgeUse && def.attack > 0
+                ? KnownStrikeTargets(snap, player, root, ctx, objectives) : null;
             List<UnitData> projected = ProjectedAircraft(def, player);
 
             foreach (HexCoord airfield in airfields)
@@ -447,13 +447,18 @@ namespace Game.Ai.V2
                         snap, player, ctx, def, airfield, objectives, out coverage, out witness)
                     : NoMarginalAirService(out coverage, out witness);
                 string use = coverage > 0 ? "recon" : null;
-                if (judgeUse && use == null)
-                {
-                    HexCoord? strike = FirstReachableStrikeTarget(ctx, player, projected, airfield,
-                        strikeTargets);
-                    if (strike.HasValue)
-                        use = $"strike@({strike.Value.Q},{strike.Value.R})";
-                }
+                if (judgeUse && strikeTargets != null)
+                    foreach (CombatAirSupportRequest target in strikeTargets)
+                    {
+                        var combat = GroundCombatAirSupport.ProjectService(snap, player, ctx.Map,
+                            projected, airfield, target);
+                        if (!combat.HasValue || combat.Value.Score.Value <= AiConfigV2.allocatorSliceEpsilon
+                            || (use != null && combat.Value.Score.Value <= service.Value)) continue;
+                        service = combat.Value.Score;
+                        coverage = 1;
+                        witness = $"{target.Key}; first strike in {combat.Value.FirstStrikeEta} turn(s)";
+                        use = $"strike@({target.Target.Q},{target.Target.R})";
+                    }
                 if (judgeUse && use == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
@@ -494,32 +499,15 @@ namespace Game.Ai.V2
         // not covered by a free formed wing — the same demand wing formation reads
         // (AviationRebasePlanner.CombatSupportTargets). Never an arbitrary sighting outside a
         // task, and never a Hex Event guard: aviation does not interact with events at all.
-        private static List<HexCoord> KnownStrikeTargets(WorldSnapshot snap, PlayerSetupData player)
+        private static List<CombatAirSupportRequest> KnownStrikeTargets(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            IReadOnlyList<ReconObjective> objectives)
         {
             List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
-            List<HexCoord> targets = AviationRebasePlanner.CombatSupportTargets(snap, intents);
-            int freeWings = ArmyRegistry.AllForOwner(player).Count(a => AviationRules.IsValidAirArmy(a)
-                && AirSortieRegistry.ForArmy(player, a) == null
-                && !GroundCombatLegs.HeldAirSupportArmyIdsOf(intents).Contains(a.Id));
-            return freeWings >= targets.Count ? new List<HexCoord>() : targets;
-        }
-
-        // The nearest strike target a sortie from this airfield proves it can reach and come back
-        // from (the same storage sortie planners air support and recon launches use).
-        private static HexCoord? FirstReachableStrikeTarget(AiTurnContext ctx, PlayerSetupData player,
-            List<UnitData> projected, HexCoord airfield, List<HexCoord> targets)
-        {
-            if (targets == null || targets.Count == 0)
-                return null;
-            foreach (HexCoord t in targets.OrderBy(t => HexGridMath.Distance(airfield, t))
-                .ThenBy(t => t.Q).ThenBy(t => t.R))
-            {
-                if (AiAirSortiePlanner.TryPlanSortieFromStorage(airfield, projected, t, ctx.Map, player).HasValue
-                    || AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(airfield, projected, t, ctx.Map, player).HasValue)
-                    return t;
-            }
-            return null;
+            ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
+            return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,
+                AviationRebasePlanner.CombatSupportTargets(snap, intents), commitments);
         }
 
         // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's
