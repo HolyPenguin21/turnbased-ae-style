@@ -1059,7 +1059,7 @@ namespace Game.EditorTests
             var match = GroundCombatAirSupport.MatchCoverage(2, 2,
                 (r, w) => !commitments.IsArmyClaimed(w), _ => true);
             Assert.That(match.Count, Is.EqualTo(1));
-            Assert.That(match.Keys, Does.Not.Contain(0));
+            Assert.That(match.Keys, Has.No.Member(0));
             Assert.That(commitments.IsArmyClaimed(0), Is.True);
         }
 
