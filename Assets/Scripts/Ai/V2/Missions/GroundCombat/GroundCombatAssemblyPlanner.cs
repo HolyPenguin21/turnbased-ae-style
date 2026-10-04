@@ -124,7 +124,9 @@ namespace Game.Ai.V2
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
-            proposal != null && proposal.Kind == MissionKind.Attack ? AttackCoverageGate
+            proposal != null && proposal.Kind == MissionKind.Attack
+                ? proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
+                    ? FreshStartWinChanceGate : AttackCoverageGate
             : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
                 && proposal.PreferredMoverArmyId == actorId);
@@ -389,4 +391,5 @@ namespace Game.Ai.V2
 
     }
 }
+
 

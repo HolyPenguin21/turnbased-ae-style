@@ -144,7 +144,12 @@ namespace Game.Ai.V2
                     $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Attack structure "
                     + "under its expected owner"));
 
-            HexCoord targetHex = target.Target.Hex;
+            if (target.IsIntermediateAssault
+                && AttackObjectiveEvaluator.EvaluateTarget(snap, target.IntermediateTarget)
+                    != AttackObjectiveEvaluator.AttackTargetStatus.Continue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    "intermediate base changed; replan the main operation"));
+            HexCoord targetHex = target.AssaultTarget.Hex;
             // Re-read the site from the CURRENT snapshot rather than trusting the proposal's frozen
             // copy: a fresh observation between planning and provisioning is exactly the kind of
             // honest news that must reach the estimator.
@@ -512,4 +517,5 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+
 

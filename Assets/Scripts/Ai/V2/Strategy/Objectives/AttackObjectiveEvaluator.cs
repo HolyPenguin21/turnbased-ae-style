@@ -77,6 +77,10 @@ namespace Game.Ai.V2
     {
         public AttackMissionPhase Phase;
         public AttackTargetRef Target;
+        // Target stays the operation identity; AssaultTarget is only this funded local fight.
+        public AttackTargetRef IntermediateTarget;
+        public bool IsIntermediateAssault => Phase == AttackMissionPhase.Assault && IntermediateTarget.HasValue;
+        public AttackTargetRef AssaultTarget => IsIntermediateAssault ? IntermediateTarget : Target;
         public int? PrimaryArmyId;
         // The army this leg moves for Reinforcement / SupportReturn / Gather.
         public int? SupportArmyId;
@@ -598,4 +602,5 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }
 }
+
 

@@ -691,6 +691,7 @@ namespace Game.Ai.V2
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
+                    AllowSameHexAssembly = !(proposal.Target is AttackMissionTarget local && local.IsIntermediateAssault),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
                         ? AttackForceReadiness.RequiredPower(session.Snapshot.Self.AttackPeak) : 0f,
@@ -1001,4 +1002,5 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+
 
