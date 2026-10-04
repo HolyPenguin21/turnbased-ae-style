@@ -186,8 +186,8 @@ namespace Game.Combat
         // A side's battle commander (ArmyData.Commander — the army's first hero). Heroes never
         // fight, but the commander's Initiative is added to every combatant of its side
         // (BattleTurnOrder) and its Fate buys rerolls in every exchange (BattleAttackPopupUI's
-        // duel). Fate is FateMax: it refills at the start of every battle
-        // (UnitData.ReplenishFateForNewBattle), so any future fight starts with the full pool.
+        // duel). Live reads retain current Fate: a preceding standalone air strike can spend it.
+        // Completed ground encounters replenish Fate; card-only projections start full.
         public readonly struct SideCommander
         {
             public readonly bool Present;
@@ -202,7 +202,7 @@ namespace Game.Combat
             }
 
             public static SideCommander Of(UnitData hero) =>
-                hero == null ? default : new SideCommander(hero.Initiative, hero.FateMax);
+                hero == null ? default : new SideCommander(hero.Initiative, hero.Fate);
             // A hero that is still a card (an event guard, a hero about to be played).
             public static SideCommander Of(CardDefinition hero) =>
                 hero == null ? default : new SideCommander(hero.initiative, hero.fate);
@@ -813,7 +813,8 @@ namespace Game.Combat
                 {
                     DefendingArmy a = order[ai];
                     int commanderIndex = FirstLivingHeroIndex(attackers);
-                    int refreshedAttackerFate = commanderIndex >= 0 ? attackers[commanderIndex].HeroFate : 0;
+                    int refreshedAttackerFate = ai == 0 ? attackerCommander.Fate
+                        : commanderIndex >= 0 ? attackers[commanderIndex].HeroFate : 0;
                     result = SimulateOneBattle(attackers,
                         new List<BattleUnit>(defenderTemplates[ai]), rng,
                         refreshedAttackerFate, a.Commander.Fate, magnitudes);

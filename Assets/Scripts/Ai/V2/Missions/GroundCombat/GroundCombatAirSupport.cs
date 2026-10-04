@@ -102,24 +102,33 @@ namespace Game.Ai.V2
         {
             var projected = new Dictionary<int, (List<WorthIt.DefenderProfile> Bodies, WorthIt.SideCommander Commander)>();
             var survivors = new Dictionary<int, WorthIt.DefenderProfile>();
+            var survivorFates = new Dictionary<int, int>();
             for (int i = 0; i < estimate.ExpectedDefendersAfter.Count; i++)
-                survivors[estimate.SurvivorSourceIndices != null ? estimate.SurvivorSourceIndices[i] : i]
-                    = estimate.ExpectedDefendersAfter[i];
+            {
+                int source = estimate.SurvivorSourceIndices != null ? estimate.SurvivorSourceIndices[i] : i;
+                survivors[source] = estimate.ExpectedDefendersAfter[i];
+                if (estimate.ExpectedCurrentFatesAfter != null && i < estimate.ExpectedCurrentFatesAfter.Count)
+                    survivorFates[source] = estimate.ExpectedCurrentFatesAfter[i];
+            }
             int offset = 0;
             foreach (var target in targets)
             {
                 var bodies = new List<WorthIt.DefenderProfile>();
+                WorthIt.SideCommander CommanderAt(int index, WorthIt.DefenderProfile hero) =>
+                    new WorthIt.SideCommander(hero.Initiative,
+                        survivorFates.TryGetValue(offset + index, out int remaining)
+                            ? remaining : target.Roster.CurrentFates[index]);
                 WorthIt.SideCommander commander = default;
                 for (int i = 0; i < target.Roster.Units.Count; i++)
                     if (survivors.TryGetValue(offset + i, out var unit))
                     {
                         if (unit.IsGroundCombatant) bodies.Add(unit);
                         if (unit.IsHero && !commander.Present && target.Roster.CommanderIndex >= 0)
-                            commander = new WorthIt.SideCommander(unit.Initiative, unit.FateMax);
+                            commander = CommanderAt(i, unit);
                     }
                 if (target.Roster.CommanderIndex >= 0
                     && survivors.TryGetValue(offset + target.Roster.CommanderIndex, out var survivingCommander))
-                    commander = new WorthIt.SideCommander(survivingCommander.Initiative, survivingCommander.FateMax);
+                    commander = CommanderAt(target.Roster.CommanderIndex, survivingCommander);
                 projected[target.ArmyId] = (bodies, commander);
                 offset += target.Roster.Units.Count;
             }

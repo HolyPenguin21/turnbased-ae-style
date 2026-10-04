@@ -28,7 +28,7 @@ namespace Game.Combat
     {
         // Same bounded budget as WorthIt's ground Monte Carlo.
         internal const int Trials = 25;
-        private const int KeyVersion = 3;
+        private const int KeyVersion = 4;
         private const int CacheMaxEntries = 20000;
 
         public readonly struct AirStrikeEstimate
@@ -44,12 +44,16 @@ namespace Game.Combat
             // For each ExpectedDefendersAfter entry, its index in the defenders the estimate was
             // run on (GroundCombatAirSupport.AfterStrike splits survivors back into their armies).
             public readonly IReadOnlyList<int> SurvivorSourceIndices;
+            // Remaining current Fate, aligned with survivors; air strikes do not replenish it.
+            public readonly IReadOnlyList<int> ExpectedCurrentFatesAfter;
 
             public AirStrikeEstimate(float expectedDefenseAfter, float expectedAttackAfter,
                 IReadOnlyList<WorthIt.DefenderProfile> expectedDefendersAfter, float expectedDamage,
                 float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f,
-                IReadOnlyList<int> survivorSourceIndices = null)
+                IReadOnlyList<int> survivorSourceIndices = null, IReadOnlyList<int> expectedCurrentFatesAfter = null)
             {
+                ExpectedCurrentFatesAfter = expectedCurrentFatesAfter == null ? null
+                    : System.Array.AsReadOnly(expectedCurrentFatesAfter.ToArray());
                 SurvivorSourceIndices = survivorSourceIndices == null ? null
                     : System.Array.AsReadOnly(survivorSourceIndices.ToArray());
                 ExpectedDefenseAfter = expectedDefenseAfter;
@@ -174,6 +178,7 @@ namespace Game.Combat
             var attackSum = new float[n];
             var defenseSum = new float[n];
             var survivalCount = new int[n];
+            var fateSum = new float[n];
             float totalDamageSum = 0f;
             int killAnyTrials = 0, wipeTrials = 0;
             float killCountSum = 0f;
@@ -241,6 +246,7 @@ namespace Game.Combat
                     if (hp[i] > 0f)
                     {
                         survivalCount[i]++;
+                        if (defenders[i].IsHero) fateSum[i] += fates == null ? fate : fates[i];
                         attackSum[i] += attack[i];
                         defenseSum[i] += defenders[i].IsHero ? defenders[i].FateMax : defense[i];
                     }
@@ -256,6 +262,7 @@ namespace Game.Combat
 
             var expectedDefenders = new List<WorthIt.DefenderProfile>();
             var survivorIndices = new List<int>();
+            var survivingFates = new List<int>();
             float expectedDefense = 0f, expectedAttack = 0f;
             for (int i = 0; i < n; i++)
             {
@@ -271,13 +278,14 @@ namespace Game.Combat
                     meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
                     o.IsHero, o.FateMax, o.IsSummoned));
                 survivorIndices.Add(i);
+                survivingFates.Add(Mathf.RoundToInt(fateSum[i] / survivalCount[i]));
                 expectedDefense += meanDefense;
                 expectedAttack += meanAttack;
             }
 
             return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders,
                 totalDamageSum / Trials, (float)killAnyTrials / Trials, killCountSum / Trials,
-                (float)wipeTrials / Trials, survivorIndices);
+                (float)wipeTrials / Trials, survivorIndices, survivingFates);
         }
 
         private static float SumDefense(IReadOnlyList<WorthIt.DefenderProfile> d) =>

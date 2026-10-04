@@ -145,6 +145,7 @@ namespace Game.EditorTests
                     Is.EqualTo(AviationCombatEstimator.BuildKey(planes, cached[i].ExpectedDefendersAfter,
                         AirStrikePolicy.Standard, 2, 0, AbilityMagnitudes.Default)));
                 Assert.That(cold.SurvivorSourceIndices, Is.EqualTo(cached[i].SurvivorSourceIndices));
+                Assert.That(cold.ExpectedCurrentFatesAfter, Is.EqualTo(cached[i].ExpectedCurrentFatesAfter));
             }
             WorthIt.BeginEstimateCacheScope();
             try
@@ -156,6 +157,32 @@ namespace Game.EditorTests
                 Assert.That(AviationCombatEstimator.CacheMisses, Is.EqualTo(misses + 1));
             }
             finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
+        [Test]
+        public void AirProjection_SpentFateStaysSpentInGroundCommander()
+        {
+            var body = Profile(hp: 100f);
+            var roster = new AviationCombatEstimator.DefendingAirArmy(7,
+                new[] { HeroProfile(4), body }, new[] { 0, 0 });
+            var estimate = AviationCombatEstimator.EstimateAirStrikeAgainstArmies(
+                new[] { Profile(attack: 0f) }, new[] { roster }, AirStrikePolicy.Standard);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { body },
+                new WorthIt.SideCommander(1, 4), 0f, 7) };
+            var targets = new[] { new AiMapMemory.KnownAirSighting(default, null, 1, true, roster) };
+            var after = GroundCombatAirSupport.AfterAirStrike(opposition, targets, estimate);
+            Assert.That(after.Single().Commander.Present, Is.True);
+            Assert.That(after.Single().Commander.Fate, Is.Zero,
+                "a surviving hero does not recover spent Fate between air and ground combat");
+            Assert.That(estimate.ExpectedCurrentFatesAfter[0], Is.Zero);
+            Assert.That(((IList<int>)estimate.ExpectedCurrentFatesAfter).IsReadOnly, Is.True);
+        }
+
+        [Test]
+        public void LiveCommander_UsesCurrentFateAfterStandaloneStrike()
+        {
+            var hero = new UnitData { IsHero = true, Initiative = 2, FateMax = 4, Fate = 1 };
+            Assert.That(WorthIt.SideCommander.Of(hero).Fate, Is.EqualTo(1));
         }
 
         [Test]
@@ -851,7 +878,7 @@ namespace Game.EditorTests
                 indices.Select(i => target.Roster.Units[i]).ToList(), 0, survivorSourceIndices: indices);
             var after = GroundCombatAirSupport.AfterAirStrike(opposition, new[] { target }, estimate);
             Assert.That(after.Count, Is.EqualTo(3));
-            Assert.That(after[0].Commander.Fate, Is.EqualTo(commanderSurvives ? 4 : 2));
+            Assert.That(after[0].Commander.Fate, Is.EqualTo(commanderSurvives ? 3 : 1));
             Assert.That(after[0].DefenseBonusOverride, Is.EqualTo(2f));
             Assert.That(after[0].ArmyId, Is.EqualTo(7));
             Assert.That(after[1].Equals(opposition[1]), Is.True);
