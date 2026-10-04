@@ -43,7 +43,7 @@ namespace Game.Ai.V2
                 .OrderBy(a => a.ArmyId)
                 .Select(a => $"{a.ArmyId}:{a.MemberCount}:{a.EffectiveArmyPower.ToString("0.##", inv)}"
                     + $":{(a.IsStructuralRaidActor ? "S" : "")}{(a.IsGarrison ? "G" : "")}"
-                    + $":{(a.CurrentMovement > 0 ? 1 : 0)}{(a.HasActivatedThisTurn ? 1 : 0)}"
+                    + $":mp={a.CurrentMovement}/{a.MaxMovement}:act={(a.HasActivatedThisTurn ? 1 : 0)}"
                     // A hero's hex decides the preparation host's capacity hero and a lone-hero
                     // host (2026-09-30), so a hero-carrying army is positioned too.
                     + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero ? $":{a.Hex.Q},{a.Hex.R}" : "")));
@@ -53,6 +53,7 @@ namespace Game.Ai.V2
                     + $":{i.Raid?.Target.DiagnosticLabel}"
                     + $":{i.Raid?.Phase}{i.Attack?.Phase}{i.ActiveDefence?.Phase}"
                     + $":{i.Raid?.SupportArmyId}{i.Attack?.SupportArmyId}"
+                    + $":local={i.Attack?.IntermediateTarget.DiagnosticLabel}:{i.Attack?.LastOpportunisticStrikeTurn}"
                     // A bound support wing changes which task targets still want aviation.
                     + $":air{GroundCombatLegs.HeldAirSupportArmyId(i)}"
                     + $":{i.Raid?.ReinforcementRequestedTurn}{i.Attack?.ReinforcementRequestedTurn}"

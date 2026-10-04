@@ -66,10 +66,11 @@ namespace Game.Ai.V2
 
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.AttackCoverageGate, defenderHexDefenseBonus,
-                pinnedArmyId: target.ForceCommitted ? target.PrimaryArmyId : null,
+                GroundCombatAdmissionPolicy.AssaultGate(proposal, target.PrimaryArmyId ?? -1), defenderHexDefenseBonus,
+                pinnedArmyId: target.ForceCommitted || target.IsIntermediateAssault ? target.PrimaryArmyId : null,
                 minimumArmyPower: target.ForceCommitted ? 0f
-                    : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak));
+                    : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
+                allowSameHexAssembly: !target.IsIntermediateAssault);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -81,7 +82,7 @@ namespace Game.Ai.V2
         private static List<int> EnumerateEligible(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
             float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null,
-            float minimumArmyPower = 0f) =>
+            float minimumArmyPower = 0f, bool allowSameHexAssembly = true) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
@@ -89,6 +90,7 @@ namespace Game.Ai.V2
                 ExcludedArmyIds = unavailableArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 MinimumArmyPower = minimumArmyPower,
+                AllowSameHexAssembly = allowSameHexAssembly,
                 PreferredPrimaryArmyId = pinnedArmyId,
                 PinToPreferred = pinnedArmyId.HasValue,
             });
@@ -246,4 +248,5 @@ namespace Game.Ai.V2
 
     }
 }
+
 

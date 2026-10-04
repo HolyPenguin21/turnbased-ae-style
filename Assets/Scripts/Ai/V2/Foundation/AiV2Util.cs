@@ -79,7 +79,7 @@ namespace Game.Ai.V2
                 flatCost: actor.IsAir);
         }
 
-        private static HexPath StraightLine(HexCoord from, HexCoord to)
+        internal static HexPath StraightLine(HexCoord from, HexCoord to)
         {
             var hexes = new List<HexCoord> { from };
             HexCoord at = from;
@@ -235,4 +235,5 @@ namespace Game.Ai.V2
             KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(armyId));
     }
 }
+
 

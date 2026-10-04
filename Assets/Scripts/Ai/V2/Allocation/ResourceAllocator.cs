@@ -181,6 +181,10 @@ namespace Game.Ai.V2
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.RecoveryReturn,
                         at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
                 default:
+                    if (at.IsIntermediateAssault)
+                        return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Assault,
+                            at.IntermediateTarget.ExpectedOwnerId, at.IntermediateTarget.Hex.Q,
+                            at.IntermediateTarget.Hex.R, actorId: at.PrimaryArmyId ?? 0, detailId: 1);
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Assault,
                         at.Target.ExpectedOwnerId, at.Target.Hex.Q, at.Target.Hex.R);
             }
@@ -1065,3 +1069,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

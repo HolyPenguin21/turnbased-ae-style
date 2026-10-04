@@ -192,7 +192,10 @@ namespace Game.Ai.V2
                     case AttackObjectiveEvaluator.AttackTargetStatus.Invalidated:
                         return MissionValidity.StaleTargetInvalidated;
                     default:
-                        return MissionValidity.Valid;
+                        return attack.IsIntermediateAssault
+                            && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.IntermediateTarget)
+                                != AttackObjectiveEvaluator.AttackTargetStatus.Continue
+                            ? MissionValidity.StaleTargetInvalidated : MissionValidity.Valid;
                 }
             }
 
@@ -244,3 +247,4 @@ namespace Game.Ai.V2
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;
     }
 }
+

@@ -1224,6 +1224,21 @@ namespace Game.Ai.V2
             // from the proposal (GroundCombatLegs.AttackLegOf): it shares the operation's
             // IntentKey, so the generic branches below would otherwise end the whole operation.
             AttackMissionTarget? attackLeg = GroundCombatLegs.AttackLegOf(o);
+            // Failure of an optional base leg never invalidates its MAIN target. Claims/AP are
+            // reconciled normally by the allocator; Continuity drops only the local choice.
+            if (attackLeg.HasValue && attackLeg.Value.IsIntermediateAssault
+                && !o.ObjectiveSatisfied && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.Outcome == ExecutionOutcome.Blocked && !o.MadeProgress))
+            {
+                if (intent?.Attack != null)
+                {
+                    intent.Attack.IntermediateTarget = AttackTargetRef.None;
+                    intent.Attack.LastOpportunisticStrikeTurn = turn;
+                }
+                AiDebugLog.Write($"[AI][V2][Attack][Intermediate] {o.IntentKey} "
+                    + "local leg rejected; main operation preserved, no further detour this turn");
+                return;
+            }
             if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
             {
                 AttackMissionTarget leg = attackLeg.Value;
@@ -1573,7 +1588,11 @@ namespace Game.Ai.V2
                 AttackIntent ai = intent.Attack;
                 ai.OperationStarted |= o.OperationStarted;
                 if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
+                {
                     ai.AssaultStarted = true;
+                    ai.IntermediateTarget = o.AttackOpportunisticStrike
+                        ? AttackTargetRef.None : o.AttackTarget.IntermediateTarget;
+                }
                 if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
                 {
                     // Audit F7 — an attempted handoff (full, partial or rejected) ends that
@@ -2101,4 +2120,5 @@ namespace Game.Ai.V2
                     : "?";
     }
 }
+
 

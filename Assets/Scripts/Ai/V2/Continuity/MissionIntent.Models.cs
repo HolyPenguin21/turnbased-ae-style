@@ -358,6 +358,8 @@ namespace Game.Ai.V2
         // THE target identity. Hex + expected owner + kind live in one object (§21), never in
         // separate fields that can drift apart.
         public AttackTargetRef Target;
+        // Optional local base, pinned only after an actual Assault step. Never an intent key.
+        public AttackTargetRef IntermediateTarget;
         public AttackMissionPhase Phase;
         // True once the operation has physically begun (a step taken, a battle fought). Until then
         // there is nothing to protect and the objective may be freely re-picked — same rule the
@@ -515,4 +517,5 @@ namespace Game.Ai.V2
         public IGroundCombatOperation GroundCombat => Objective as IGroundCombatOperation;
     }
 }
+
 

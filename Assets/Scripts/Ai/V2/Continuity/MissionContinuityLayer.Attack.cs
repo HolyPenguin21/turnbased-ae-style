@@ -58,6 +58,15 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // A local capture/ownership change or a phase change releases only the detour.
+            if (a.IntermediateTarget.HasValue && (a.Phase != AttackMissionPhase.Assault
+                || AttackObjectiveEvaluator.EvaluateTarget(snap, a.IntermediateTarget)
+                    != AttackObjectiveEvaluator.AttackTargetStatus.Continue))
+            {
+                a.IntermediateTarget = AttackTargetRef.None;
+                a.LastOpportunisticStrikeTurn = snap.TurnNumber;
+            }
+
             // ---- the primary must still exist as a real ground force ---------------------------
             // RecoveryReturn only walks the survivors home, so it needs a live ground container,
             // not a structural combat actor (the gate ActorCommitments already claims it under,
@@ -945,4 +954,5 @@ namespace Game.Ai.V2
             && intent.Status == IntentStatus.Active;
     }
 }
+
 

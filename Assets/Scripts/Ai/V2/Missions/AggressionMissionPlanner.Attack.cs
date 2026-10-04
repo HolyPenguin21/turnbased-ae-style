@@ -99,17 +99,22 @@ namespace Game.Ai.V2
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
 
-                IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
+                AttackObjective intermediate = AttackIntermediateBasePolicy.Select(snap, incumbent?.Attack, objectives);
+                AttackObjective assaultObjective = intermediate ?? objective;
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = assaultObjective.Opposition;
                 // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
                 // that hex actually get". Never a live BuildingRegistry read.
                 float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
-                    snap, ctx?.Map, objective.Hex);
+                    snap, ctx?.Map, assaultObjective.Hex);
 
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                        WinChanceGate = intermediate != null
+                            ? GroundCombatAdmissionPolicy.FreshStartWinChanceGate
+                            : GroundCombatAdmissionPolicy.AttackCoverageGate,
+                        AllowSameHexAssembly = intermediate == null,
                         MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                         PreferredPrimaryArmyId = pinnedActor,
@@ -152,7 +157,9 @@ namespace Game.Ai.V2
                 // projections Raid and ActiveDefence use — never a host-only figure.
                 int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
                     ?? actor.MaxMovement;
-                int distance = AiV2Util.TravelCost(snap, actor, objective.Hex, maxMovement: projectedMove);
+                int distance = intermediate != null
+                    ? AttackIntermediateBasePolicy.Route(snap, actor, actor.Hex, assaultObjective.Hex)?.TotalCost ?? int.MaxValue
+                    : AiV2Util.TravelCost(snap, actor, assaultObjective.Hex, maxMovement: projectedMove);
                 if (distance == int.MaxValue)
                 {
                     if (incumbent != null)
@@ -162,7 +169,7 @@ namespace Game.Ai.V2
                 int eta = AiV2Util.CeilDiv(distance,
                     Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
-                TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, actor,
+                TaskScore score = AttackObjectiveEvaluator.WithResponse(assaultObjective, actor,
                     plan.ProjectedWinChance, eta, 0f, projectedAp);
 
                 // Once the assembled actor strictly clears the force threshold, it may march.
@@ -171,10 +178,11 @@ namespace Game.Ai.V2
                 {
                     Phase = AttackMissionPhase.Assault,
                     Target = objective.Target,
+                    IntermediateTarget = intermediate?.Target ?? AttackTargetRef.None,
                     PrimaryArmyId = actor.ArmyId,
-                    DestinationHex = objective.Hex,
+                    DestinationHex = assaultObjective.Hex,
                     DefenderHexDefenseBonus = hexBonus,
-                    DefenderCount = objective.DefenderCount,
+                    DefenderCount = assaultObjective.DefenderCount,
                     ProjectedWinChance = plan.ProjectedWinChance,
                     CoversAllDefenders = plan.CoversAllDefenders,
                     ForceCommitted = incumbent?.Attack?.AssaultStarted == true,
@@ -203,12 +211,13 @@ namespace Game.Ai.V2
                         RequiresArmy = true,
                         ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
                         EtaTurns = eta, EstimatedDistance = distance,
-                        CombatPowerMinimum = objective.TargetPower,
-                        CombatPowerDesired = objective.TargetPower,
+                        CombatPowerMinimum = assaultObjective.TargetPower,
+                        CombatPowerDesired = assaultObjective.TargetPower,
                     },
                     Explain = $"Attack {objective.Target.DiagnosticLabel} "
+                        + (intermediate == null ? "" : $"via {intermediate.Target.DiagnosticLabel} ")
                         + $"task {F(score.Value)} win {F(plan.ProjectedWinChance)} "
-                        + $"defenders {objective.DefenderCount} hexDef {F(hexBonus)} eta {eta}",
+                        + $"defenders {assaultObjective.DefenderCount} hexDef {F(hexBonus)} eta {eta}",
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
 
@@ -224,6 +233,12 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (intermediate != null)
+                    AiDebugLog.Write($"[AI][V2][Attack][Intermediate] decision=PROPOSE "
+                        + $"main={objective.Target.DiagnosticLabel} base={intermediate.Target.DiagnosticLabel} "
+                        + $"actor=#{actor.ArmyId} win={F(plan.ProjectedWinChance)} ap={F(ap)} "
+                        + $"mainDefenders={(objective.LocationOnly ? "unknown" : "known")} "
+                        + "reason=current_host_clears_observed_base_on_route");
                 (incumbent == null ? freshCandidates : proposals).Add(proposal);
                 attackProposed = true;
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
@@ -592,4 +607,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

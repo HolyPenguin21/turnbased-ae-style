@@ -18,9 +18,9 @@ namespace Game.Ai.V2
     //  the world, the settled-step loop takes a fresh snapshot, typed invalidation re-admits the
     //  Aggression lane, and the NEXT step is decided against that fresh world.
     //
-    //  Movement authority (§26/§27) comes from the one policy owner: every approach step is plain
-    //  Transit and only the terminal step INTO the target may seek a takeover, so an operation can
-    //  never incidentally capture some other structure it walks across.
+    //  Movement authority comes from the one policy owner: approach steps are TransitCapture,
+    //  and only the terminal step into the funded assault site may seek combat and capture.
+    //  That site may be a planned intermediate Base; Target remains the main operation identity.
     //
     //  A peer executor file beside ReconGroundExecutor / ReconAirExecutor — the established shape
     //  for a lane's own step semantics, not a new architectural layer.
@@ -311,7 +311,15 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            HexCoord targetHex = target.Target.Hex;
+            if (target.IsIntermediateAssault
+                && AttackObjectiveEvaluator.EvaluateTarget(snapshot, target.IntermediateTarget)
+                    != AttackObjectiveEvaluator.AttackTargetStatus.Continue)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            HexCoord targetHex = target.AssaultTarget.Hex;
             pm.ExecutionHex = targetHex;
 
             if (army.CurrentMovement <= 0)
@@ -323,17 +331,17 @@ namespace Game.Ai.V2
             // §9/§10 — the ONE tactical decision this step is allowed to take: a weak enemy field
             // army on the way may be destroyed first. This changes only where THIS step walks; the
             // strategic target above is untouched and no intent, proposal or demand is produced.
-            AttackTacticalStrike strike = AttackTacticalOpportunity.Select(player, ctx.Map,
-                snapshot, army, target, ctx.TurnNumber);
+            AttackTacticalStrike strike = target.IsIntermediateAssault ? AttackTacticalStrike.None
+                : AttackTacticalOpportunity.Select(player, ctx.Map,
+                    snapshot, army, target, ctx.TurnNumber);
             HexCoord waypoint = strike.HasValue ? strike.Hex : targetHex;
 
             HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint,
                 profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
             {
-                // §27 — a route blocked by another known hostile structure simply has no safe step
-                // here. That is what makes "capture the Base in the way first" fall out of routing
-                // and scoring instead of being a scripted rule.
+                // The route to the funded site is no longer executable. Planning may choose
+                // an intermediate Base on the next settled pass; Execution never re-picks it.
                 result.StopReason = ExecutionStopReason.NoSafeStep;
                 result.NeedsReplan = true;
                 yield break;
@@ -351,7 +359,8 @@ namespace Game.Ai.V2
             var decision = AiDecision.Move(army, next.Value, strike.HasValue
                 ? $"V2 attack — tactical strike on enemy #{strike.EnemyArmyId} en route to "
                     + target.Target.DiagnosticLabel
-                : $"V2 attack — assault {target.Target.DiagnosticLabel}", 0f, authority);
+                : $"V2 attack — assault {target.AssaultTarget.DiagnosticLabel}"
+                    + (target.IsIntermediateAssault ? $" en route to {target.Target.DiagnosticLabel}" : ""), 0f, authority);
             AiDebugLog.WriteDeduped($"attack-route#{army.Id}@{before.Q},{before.R}",
                 $"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({before.Q},{before.R}) -> "
                 + $"({waypoint.Q},{waypoint.R}) next=({next.Value.Q},{next.Value.R}) "
@@ -373,8 +382,22 @@ namespace Game.Ai.V2
             if (operationStarted)
                 result.ActualActorArmyId = pm.MoverArmyId;
 
+            bool intermediateCaptured = target.IsIntermediateAssault
+                && AttackObjectiveEvaluator.EvaluateTargetLive(player, target.IntermediateTarget)
+                    == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
+            if (intermediateCaptured)
+            {
+                result.InfrastructureChanged = true;
+                result.AttackOpportunisticStrike = true;
+                AiDebugLog.Write($"[AI][V2][Attack][Intermediate] decision=CAPTURED "
+                    + $"base={target.IntermediateTarget.DiagnosticLabel} main={target.Target.DiagnosticLabel} "
+                    + "main_operation_continues=1");
+            }
+
             if (trace.BattleOccurred)
             {
+                if (target.IsIntermediateAssault)
+                    result.AttackOpportunisticStrike = true;
                 result.CombatChanged = true;
                 // §16/§17 — the diversion was actually spent. Record it as an execution FACT so
                 // Continuity stamps the operation's once-per-turn marker; this Attack cannot divert
@@ -403,6 +426,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (target.IsIntermediateAssault && endHex.Equals(targetHex))
+            {
+                // A local objective is progress, not ReachedGoal for the durable operation.
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                result.NeedsReplan = true;
+                yield break;
+            }
             if (endHex.Equals(targetHex))
             {
                 // §8/§61 — the structure changed hands. Publishing the infrastructure fact is what
@@ -589,4 +619,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
