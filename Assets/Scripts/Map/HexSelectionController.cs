@@ -893,7 +893,7 @@ namespace Game.Map
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();
             armyButtonRow?.Hide();
-            researchProductionModal?.Show(mode, human, hero);
+            researchProductionModal?.Show(mode, human, hero, ResolveFactionLogo(human));
         }
 
         // Create pressed in the modal (spec §13). Everything here is re-validated against the
@@ -934,11 +934,14 @@ namespace Game.Map
             researchProductionModal.SetBusy(true);
 
             // Start the animated Challenge through its dedicated presentation entry point.
-            Sprite logo = cardHandUI.StartingDeckCatalog != null
-                ? cardHandUI.StartingDeckCatalog.GetCatalog(human.Faction)?.logo
-                : null;
+            Sprite logo = ResolveFactionLogo(human);
             attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art, OnResearchProductionResolved);
         }
+
+        private Sprite ResolveFactionLogo(PlayerSetupData player) =>
+            player != null && cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(player.Faction)?.logo
+                : null;
 
         // 9/10. Challenge finished (Fate was already restored inside the popup). On success mint
         // a produced CardData and hand it over; on failure do nothing (AP/resources stay spent).

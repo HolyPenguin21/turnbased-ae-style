@@ -30,6 +30,9 @@ namespace Game.UI
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text titleText;
         [SerializeField] private Button closeButton;
+        // Faction logo of the player who opened the modal — same title-bar logo as
+        // ArmyViewerModalUI.factionLogo; hidden when the faction has no logo.
+        [SerializeField] private Image factionLogo;
 
         [Header("Grid")]
         [SerializeField] private Transform gridContainer;
@@ -121,8 +124,8 @@ namespace Game.UI
         // Opened by HexSelectionController once Research/Production eligibility already passed.
         // `player` supplies the faction filter; `hero` is the qualifying Researcher/Assembler
         // Hero found by HexSelectionController (first match by the existing search — no picker UI
-        // yet when several qualify).
-        public void Show(ResearchProductionMode mode, PlayerSetupData player, UnitData hero)
+        // yet when several qualify). `logo` is that player's faction logo (null hides it).
+        public void Show(ResearchProductionMode mode, PlayerSetupData player, UnitData hero, Sprite logo)
         {
             bool wasShowing = IsShowing;
 
@@ -145,6 +148,11 @@ namespace Game.UI
             }
             if (titleText != null)
                 titleText.text = mode == ResearchProductionMode.Research ? "Research" : "Production";
+            if (factionLogo != null)
+            {
+                factionLogo.sprite = logo;
+                factionLogo.gameObject.SetActive(logo != null);
+            }
 
             RefreshHeroPanel();
             RefreshGrid();
