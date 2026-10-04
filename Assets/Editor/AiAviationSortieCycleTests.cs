@@ -319,8 +319,8 @@ namespace Game.EditorTests
             HexEventRegistry.Set(hex, null, "Guard", null, neutral, null);
 
             List<ArmyData> targets = AviationCombatPresenter.FindAirStrikeTargetsAt(hex, _owner);
-            Assert.That(targets, Does.Not.Contain(guard));
-            Assert.That(targets, Does.Contain(roaming));
+            Assert.That(targets, Has.No.Member(guard));
+            Assert.That(targets, Has.Member(roaming));
             Assert.That(HexEventRegistry.FindAt(hex).Triggered, Is.False);
         }
 
