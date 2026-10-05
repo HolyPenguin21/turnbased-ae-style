@@ -26,6 +26,7 @@ namespace Game.UI
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
         public event Action VisibilityChanged;
         public event Action Hidden;
+        public event Action HumanTurnShown;
 
         private void Update()
         {
@@ -48,6 +49,7 @@ namespace Game.UI
         {
             SetButton(true, () => onConfirm?.Invoke());
             Display($"Your turn, {NameOf(player)}");
+            if (player != null && player.IsHuman) HumanTurnShown?.Invoke();
         }
 
         // A one-off blocking hint — dismissing it just closes it, no external callback.

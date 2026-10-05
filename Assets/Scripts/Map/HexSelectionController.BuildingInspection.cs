@@ -15,6 +15,7 @@ namespace Game.Map
     {
         private void LateUpdate()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             if (baseViewerModal == null || targetCamera == null || turnController == null
                 || Mouse.current == null || !Mouse.current.leftButton.wasPressedThisFrame)
                 return;

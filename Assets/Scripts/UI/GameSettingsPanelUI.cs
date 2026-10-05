@@ -8,6 +8,7 @@ namespace Game.UI
 {
     public sealed class GameSettingsPanelUI : MonoBehaviour
     {
+        public event System.Action Closed;
         [SerializeField] private MainMenuController menuController;
         [SerializeField] private Slider masterVolumeSlider;
         [SerializeField] private TMP_Text masterVolumeLabel;
@@ -48,6 +49,7 @@ namespace Game.UI
         private void OnMusicChanged(float value) { if (settings != null) settings.MusicVolume = value; }
         private void Update()
         {
+            if (GameMenuPanelUI.GameplayInputBlocked) return; // In-game Escape is owned by the menu stack.
             if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
             {
                 GameAudioManager.Instance?.PlayClick(); Close();
@@ -58,6 +60,7 @@ namespace Game.UI
             settings?.Save();
             if (menuController != null) menuController.OnSettingsClosed();
             else gameObject.SetActive(false);
+            Closed?.Invoke();
         }
         private void OnDisable()
         {

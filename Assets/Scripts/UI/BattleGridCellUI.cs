@@ -206,6 +206,7 @@ namespace Game.UI
         // been harmless.
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (eventData.button == PointerEventData.InputButton.Right)
             {
                 _screen?.OnCellClicked(this);
@@ -249,6 +250,7 @@ namespace Game.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (!_draggable || Unit == null)
                 return;
             _ghost = CreateGhost();
@@ -263,6 +265,7 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (!IsDragging || _ghost == null)
                 return;
             UIDragUtility.ApplyScreenDelta(_ghost, eventData, _rootCanvas);
@@ -276,7 +279,8 @@ namespace Game.UI
             if (_ghost != null)
                 Destroy(_ghost.gameObject);
             _ghost = null;
-            _screen?.TryDropOnCell(this, eventData.position);
+            if (!UIFocusUtility.IsGameplayInputBlocked)
+                _screen?.TryDropOnCell(this, eventData.position);
         }
 
         // A quick slide from this cell's own position to `destination` — used for the Round

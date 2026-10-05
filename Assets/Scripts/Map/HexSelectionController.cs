@@ -416,6 +416,7 @@ namespace Game.Map
         // popupPanel's Confirm button (TurnConfirmed), not the instant it becomes their turn.
         private bool IsInputAllowed()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return false;
             if (turnController == null)
                 return true;
             if (turnController.TurnNumber == 0)

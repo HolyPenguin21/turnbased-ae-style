@@ -55,7 +55,7 @@ namespace Game.Audio
             foreach (var popup in root.GetComponentsInChildren<AaChoicePopupUI>(true))
                 BindPopup(popup, () => popup.IsShowing, h => popup.VisibilityChanged += h, h => popup.VisibilityChanged -= h);
             foreach (var popup in root.GetComponentsInChildren<PopupPanelUI>(true))
-                BindPopup(popup, () => popup.IsShowing, h => popup.VisibilityChanged += h, h => popup.VisibilityChanged -= h);
+                BindHumanTurnPopup(popup);
         }
         public void BindButton(Button button)
         {
@@ -80,6 +80,14 @@ namespace Game.Audio
             var binder = manager != null ? manager.GetComponent<SceneUIAudioBinder>() : null;
             if (binder != null) binder.BindSubtree(root.gameObject);
             else BindButtons(root.gameObject);
+        }
+        private void BindHumanTurnPopup(PopupPanelUI popup)
+        {
+            if (popups.ContainsKey(popup)) return;
+            var binding = new PopupBinding { Owner = popup, Remove = h => popup.HumanTurnShown -= h };
+            binding.Handler = () => GameAudioManager.Instance?.PlayInfo();
+            popups.Add(popup, binding);
+            popup.HumanTurnShown += binding.Handler;
         }
         private void BindPopup(Component owner, Func<bool> isShowing, Action<Action> add, Action<Action> remove)
         {

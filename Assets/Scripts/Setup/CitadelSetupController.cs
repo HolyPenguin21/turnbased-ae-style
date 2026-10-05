@@ -573,6 +573,7 @@ namespace Game.Setup
 
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             if (!_canPlace)
                 return;
 
