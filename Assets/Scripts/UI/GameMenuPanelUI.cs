@@ -46,11 +46,11 @@ namespace Game.UI
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
         private static void ResetStatics() { instance = null; blockedThroughFrame = -1; }
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        private static void RestoreInstance() => instance = UnityEngine.Object.FindFirstObjectByType<GameMenuPanelUI>();
+        private static void RestoreInstance() => instance = UnityEngine.Object.FindAnyObjectByType<GameMenuPanelUI>();
         private void OnEnable()
         {
             instance = this;
-            turnController = UnityEngine.Object.FindFirstObjectByType<Game.Turns.GameTurnController>();
+            turnController = UnityEngine.Object.FindAnyObjectByType<Game.Turns.GameTurnController>();
             if (turnController != null) turnController.TurnStateChanged += RefreshBattleAvailability;
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
@@ -125,7 +125,7 @@ namespace Game.UI
         {
             groups.Clear();
             var seen = new HashSet<CanvasGroup>();
-            foreach (var canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (var canvas in UnityEngine.Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include))
             {
                 if (canvas.gameObject.scene != gameObject.scene || canvas.transform.IsChildOf(transform)) continue;
                 if (canvas.transform.parent != null && canvas.transform.parent.GetComponentInParent<Canvas>(true) != null) continue;

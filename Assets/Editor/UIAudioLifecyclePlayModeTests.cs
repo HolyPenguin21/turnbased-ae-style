@@ -259,7 +259,7 @@ namespace Game.EditorTests
             Assert.AreEqual(1, button.GetComponents<UIButtonSound>().Length);
             yield return SceneManager.UnloadSceneAsync(scene);
             Assert.AreSame(manager, GameAudioManager.Instance);
-            Assert.AreEqual(1, Object.FindObjectsByType<GameAudioManager>(FindObjectsSortMode.None).Length);
+            Assert.AreEqual(1, Object.FindObjectsByType<GameAudioManager>().Length);
             scene = SceneManager.CreateScene("audio-lifecycle-scene");
             button = New("reloaded-scene-button").AddComponent<Button>();
             SceneManager.MoveGameObjectToScene(button.gameObject, scene);
