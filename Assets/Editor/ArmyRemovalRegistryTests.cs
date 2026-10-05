@@ -62,7 +62,7 @@ namespace Game.EditorTests
             ArmyRegistry.Unregister(army, _death);
             ArmyRegistry.MoveArmy(army, new HexCoord(3, 0));
             Assert.That(army.Hex, Is.EqualTo(_death));
-            Assert.That(ArmyRegistry.AllForOwner(_owner), Does.Not.Contain(army));
+            Assert.That(ArmyRegistry.AllForOwner(_owner), Has.None.EqualTo(army));
             Assert.That(AiV2Util.ResolveArmy(_owner, army.Id), Is.Null);
         }
 
@@ -157,7 +157,7 @@ namespace Game.EditorTests
             ArmyRegistry.Unregister(lost, _death);
             AirSortieRegistry.Remove(_owner, lost.Id);
             AirSortieRegistry.Remove(_owner, lost.Id);
-            Assert.That(AirSortieRegistry.For(_owner), Does.Not.Contain(lostSortie));
+            Assert.That(AirSortieRegistry.For(_owner), Has.None.EqualTo(lostSortie));
             Assert.That(AirSortieRegistry.For(_owner), Does.Contain(otherSortie));
         }
 
