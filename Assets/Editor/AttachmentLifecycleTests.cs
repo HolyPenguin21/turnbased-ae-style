@@ -2,6 +2,7 @@
 using System.Reflection;
 using TMPro;
 using Game.Ai;
+using Game.Ai.V2;
 using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
@@ -28,6 +29,7 @@ namespace Game.EditorTests
         public void SetUp()
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); PlayerRootRegistry.Clear();
+            StrategicResourceReservationLedger.ClearAll();
             VisionSystem.Configure(null);
             _owner = new PlayerSetupData();
             _root = PlayerRoot.Create(_owner, "attachment transaction witness");
@@ -43,8 +45,80 @@ namespace Game.EditorTests
         public void TearDown()
         {
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); PlayerRootRegistry.Clear();
+            StrategicResourceReservationLedger.ClearAll();
             AiHandRegistry.Clear(); VisionSystem.Configure(null);
             Object.DestroyImmediate(_scene); Object.DestroyImmediate(_root.gameObject);
+        }
+
+        [TestCase(AttachmentSlot.Equipment, StrategicReservedResource.Tech, false)]
+        [TestCase(AttachmentSlot.Mutator, StrategicReservedResource.Tech, false)]
+        [TestCase(AttachmentSlot.Equipment, StrategicReservedResource.ActionPoints, false)]
+        [TestCase(AttachmentSlot.Mutator, StrategicReservedResource.ActionPoints, false)]
+        [TestCase(AttachmentSlot.Equipment, StrategicReservedResource.Tech, true)]
+        [TestCase(AttachmentSlot.Mutator, StrategicReservedResource.Tech, true)]
+        public void StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(AttachmentSlot slot,
+            StrategicReservedResource reserved, bool produced)
+        {
+            var definition = AttachmentSlotTests.Attachment(slot);
+            definition.apCost = 3; definition.activationApCost = 1;
+            definition.resourceCost = new ResourceCost { tech = 4 };
+            var card = new CardData(definition) { ResearchProductionCreated = produced };
+            var hand = new AiHandData(null, default, 0); hand.AddCard(card);
+            var unit = AttachmentSlotTests.Body(); unit.Owner = _owner;
+            var army = new ArmyData { Owner = _owner }; army.Members.Add(unit); ArmyRegistry.Register(army);
+            var ctx = new AiTurnContext { TurnNumber = 1 };
+            var play = new NonCombatCardPlayer.NonCombatPlay
+                { Card = card, Kind = NonCombatCardPlayer.PlayKind.Equipment, EquipHost = unit };
+            // The hold arrives after candidate creation, so execution must query the bank anew.
+            StrategicResourceReservationLedger.Upsert(_owner, 1, new StrategicResourceReservation
+            {
+                Owner = "other-build", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                Resource = reserved, Amount = reserved == StrategicReservedResource.Tech ? 10 : 20,
+                ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            });
+            int version = V2StateVersion.Current;
+            var result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand, ctx);
+            bool blocked = !produced;
+            Assert.That(result.Played, Is.EqualTo(!blocked));
+            if (blocked)
+            {
+                Assert.That(result.StateChanged, Is.False);
+                Assert.That(V2StateVersion.Current, Is.EqualTo(version));
+                Assert.That(_root.ActionPoints, Is.EqualTo(20));
+                Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(10));
+                Assert.That(EquipmentSystem.GetAttachment(unit, definition), Is.Null);
+                Assert.That(hand.Hand.Contains(card), Is.True);
+                StrategicResourceReservationLedger.ReleaseByOwner(_owner, 1, "other-build");
+                result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+            }
+            Assert.That(_root.ActionPoints, Is.EqualTo(produced ? 19 : 17));
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(produced ? 10 : 6));
+            Assert.That(hand.Hand.Contains(card), Is.False);
+            Assert.That(EquipmentSystem.GetAttachment(unit, definition), Is.SameAs(definition));
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void StandaloneAttachmentDoesNotPayForARecipientRemovedAfterPlanning(AttachmentSlot slot)
+        {
+            var definition = AttachmentSlotTests.Attachment(slot);
+            definition.apCost = 3; definition.resourceCost = new ResourceCost { tech = 4 };
+            var card = new CardData(definition);
+            var hand = new AiHandData(null, default, 0); hand.AddCard(card);
+            var unit = AttachmentSlotTests.Body(); unit.Owner = _owner;
+            var army = new ArmyData { Owner = _owner }; army.Members.Add(unit); ArmyRegistry.Register(army);
+            var play = new NonCombatCardPlayer.NonCombatPlay
+                { Card = card, Kind = NonCombatCardPlayer.PlayKind.Equipment, EquipHost = unit };
+            army.Members.Clear();
+            var result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand,
+                new AiTurnContext { TurnNumber = 1 });
+            Assert.That(result.Played, Is.False);
+            Assert.That(result.StateChanged, Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(20));
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(10));
+            Assert.That(EquipmentSystem.GetAttachment(unit, definition), Is.Null);
+            Assert.That(hand.Hand.Contains(card), Is.True);
         }
 
         [TestCase(AttachmentSlot.Equipment)]

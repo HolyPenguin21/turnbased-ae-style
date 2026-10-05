@@ -128,7 +128,9 @@ namespace Game.Ai.V2
                         : string.Empty;
                     return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                         + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}:"
-                        + $"roster={DefenderFingerprint(a.MembersWithHeroes)}{operatorState}";
+                        + $"roster={DefenderFingerprint(a.MembersWithHeroes)}"
+                        + $":mutators={string.Join(",", (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>()).Select(x => x ? "1" : "0"))}"
+                        + operatorState;
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())

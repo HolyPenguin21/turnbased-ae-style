@@ -159,22 +159,13 @@ namespace Game.Ai.V2
             }
             // The frozen card view (SelfSnapshot.PoolCards), coherent with the frozen Armies:
             // the live Hand/Deck lists may already miss a card whose unit Armies does not show yet.
-            IEnumerable<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)> cards =
-                snap.Self.PoolCards
-                ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-                    .Where(c => c?.Definition != null)
-                    .Select(c => (c.Definition, c.Equipment, c.Mutator, true))
-                    .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
-                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, (CardDefinition)null, false)));
-            foreach ((CardDefinition d, CardDefinition equipment, CardDefinition mutator, bool inHand) in cards)
+            foreach ((CardDefinition d, CardDefinition equipment, CardDefinition mutator, bool inHand) in PoolCards(snap))
             {
                 Grant(d);
                 if (equipment != null) Grant(equipment);
                 if (mutator != null) Grant(mutator);
                 if (d.cardType != CardType.Unit) continue;
-                var profile = AiPower.ToDefenderProfile(d);
-                if (equipment?.equipment != null) profile = Equipped(profile, equipment.equipment);
-                if (mutator?.equipment != null) profile = Equipped(profile, mutator.equipment);
+                var profile = AiPower.ToDefenderProfile(d, equipment, mutator);
                 if (mutator != null) occupiedMutators.Add(attackers.Count);
                 attackers.Add(profile);
                 if (inHand) hand++; else deck++;
@@ -388,7 +379,14 @@ namespace Game.Ai.V2
             return report;
         }
 
-        // Everything that could form the assemblable roster: bodies on the map and in hand.
+        private static IEnumerable<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>
+            PoolCards(WorldSnapshot snap) => snap.Self.PoolCards
+                ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                    .Where(c => c?.Definition != null).Select(c => (c.Definition, c.Equipment, c.Mutator, true))
+                    .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
+                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, (CardDefinition)null, false)));
+
+        // Everything that could form the assemblable roster: bodies on the map and in the frozen hand.
         private static List<WorthIt.DefenderProfile> AssemblableBodies(WorldSnapshot snap)
         {
             var bodies = new List<WorthIt.DefenderProfile>();
@@ -397,12 +395,9 @@ namespace Game.Ai.V2
                 if (a == null || a.IsPrison) continue;
                 if (a.Members != null) bodies.AddRange(a.Members);
             }
-            foreach (CardData card in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-            {
-                CardDefinition d = card?.Definition;
-                if (d != null && d.cardType == CardType.Unit)
-                    bodies.Add(AiPower.ToDefenderProfile(d));
-            }
+            foreach (var card in PoolCards(snap))
+                if (card.InHand && card.Card.cardType == CardType.Unit)
+                    bodies.Add(AiPower.ToDefenderProfile(card.Card, card.Equipment, card.Mutator));
             return bodies;
         }
 

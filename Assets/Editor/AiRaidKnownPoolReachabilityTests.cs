@@ -93,6 +93,37 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ViabilityFingerprintReadsCanonicalAttachmentsFromFrozenHand()
+        {
+            var host = UnitCard(4);
+            var equipment = AttackEquipment(8); equipment.equipment.statChanges[0].isOverride = true;
+            var mutator = AttackEquipment(2); mutator.attachmentSlot = AttachmentSlot.Mutator;
+            var snap = Snapshot(); snap.Known = new KnownSnapshot();
+            snap.Self.Hand = new[] { new CardData(host) { Equipment = equipment, Mutator = mutator } };
+            snap.Self.PoolCards = new[] { (host, equipment, mutator, true) };
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Does.Contain("|bodies=[4/"),
+                "Map fighter remains the first body");
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Does.Contain(";10/"),
+                "Held fighter must use Base -> Equipment -> Mutator");
+        }
+
+        [Test]
+        public void ViabilityFingerprintDoesNotReadLaterLiveHandMutations()
+        {
+            var host = UnitCard(20);
+            var live = new List<CardData> { new CardData(host) };
+            var snap = Snapshot(); snap.Known = new KnownSnapshot();
+            snap.Self.Hand = live;
+            snap.Self.PoolCards = new[] { (host, (CardDefinition)null, (CardDefinition)null, true) };
+            string frozen = CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap);
+            live.Clear();
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Is.EqualTo(frozen));
+            snap.Self.PoolCards = new (CardDefinition, CardDefinition, CardDefinition, bool)[0];
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Is.Not.EqualTo(frozen),
+                "A refreshed snapshot must read the new hand");
+        }
+
+        [Test]
         public void WholePoolCannotDamageDefender_IsProvenUnreachable()
         {
             Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(

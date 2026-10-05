@@ -52,6 +52,87 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void OccupancyOnlyChangePublishesCapabilityInvalidation()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var before = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[]
+                { new ArmySnapshot { ArmyId = 9, NonHeroMutatorOccupied = new[] { false } } } } };
+            var after = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[]
+                { new ArmySnapshot { ArmyId = 9, NonHeroMutatorOccupied = new[] { true } } } } };
+            try
+            {
+                WorldAnalysis.PublishStepObservationDelta(player, 1,
+                    new WorldAnalysis.StepObservationStamp(before, default, null),
+                    new WorldAnalysis.StepObservationStamp(after, default, null), null);
+                Assert.That(StrategicInterruptRegistry.Peek(player, 1).Reasons.HasFlag(
+                    StrategicInvalidationReason.Capability), Is.True);
+            }
+            finally { StrategicInterruptRegistry.ClearAll(); }
+        }
+
+        [Test]
+        [TestCase(AttachmentSlot.Equipment, false)]
+        [TestCase(AttachmentSlot.Mutator, false)]
+        [TestCase(AttachmentSlot.Equipment, true)]
+        [TestCase(AttachmentSlot.Mutator, true)]
+        public void PortfolioCostCountsOnlyTheNewAttachmentAndPopReleasesConsumption(AttachmentSlot slot, bool produced)
+        {
+            var host = Host(); host.apCost = 2; host.resourceCost = new ResourceCost { human = 1 };
+            var card = new CardData(host);
+            var alreadyPaid = Attachment(slot == AttachmentSlot.Mutator ? AttachmentSlot.Equipment : AttachmentSlot.Mutator);
+            alreadyPaid.resourceCost = new ResourceCost { tech = 99 };
+            if (slot == AttachmentSlot.Mutator) card.Equipment = alreadyPaid;
+            else card.Mutator = alreadyPaid;
+            var definition = Attachment(slot); definition.apCost = 3; definition.activationApCost = 1;
+            definition.resourceCost = new ResourceCost { tech = 2 };
+            var attachment = new CardData(definition) { ResearchProductionCreated = produced };
+            var plan = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy,
+                null, card, 0, attachment, 1, new PlacementOption(default, DeploymentKind.ExistingArmy, null),
+                EquipmentSystem.EffectiveAbilities(card, definition));
+            Assert.That(plan.ApCost, Is.EqualTo(produced ? 3 : 5));
+            Assert.That(plan.ResCost.human, Is.EqualTo(1));
+            Assert.That(plan.ResCost.tech, Is.EqualTo(produced ? 0 : 2));
+            var consumed = new MaterializationConsumptionState();
+            var token = consumed.Push(plan);
+            Assert.That(consumed.CardsDisjoint(plan), Is.False);
+            Assert.That(consumed.ExternalDisjoint(attachment, null, null), Is.False,
+                "Standalone and chained play cannot both spend the same attachment");
+            Assert.That(consumed.ApUsed, Is.EqualTo(plan.ApCost));
+            Assert.That(consumed.TechUsed, Is.EqualTo(plan.ResCost.tech));
+            consumed.Pop(token);
+            Assert.That(consumed.CardsDisjoint(plan), Is.True);
+            Assert.That(consumed.ApUsed, Is.Zero);
+            Assert.That(consumed.HumanUsed, Is.Zero);
+            Assert.That(consumed.TechUsed, Is.Zero);
+        }
+
+        [Test]
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void GeneratedAttachmentPaysOneStakeAndClaimsOneGenerationSource(AttachmentSlot slot)
+        {
+            var definition = Attachment(slot); definition.apCost = 3; definition.activationApCost = 1;
+            definition.resourceCost = new ResourceCost { tech = 2 };
+            var host = Host(); host.apCost = 2; host.resourceCost = new ResourceCost { human = 1 };
+            var card = new CardData(host);
+            var source = new GenerationStep { CardDef = definition, ProducesEquipment = true, CardKey = "source:card" };
+            var plan = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
+                null, source, card, 0, true, new PlacementOption(default, DeploymentKind.ExistingArmy, null),
+                EquipmentSystem.EffectiveAbilities(card, definition));
+            Assert.That(plan.ApCost, Is.EqualTo(6));
+            Assert.That(plan.ResCost.tech, Is.EqualTo(2), "Stake is paid once; minted attachment has no resource charge");
+            Assert.That(plan.ResCost.human, Is.EqualTo(1));
+            var consumed = new MaterializationConsumptionState();
+            var token = consumed.Push(plan);
+            Assert.That(consumed.GenerationAttempts, Is.EqualTo(1));
+            Assert.That(consumed.ExternalDisjoint(null, source.CardKey, null), Is.False);
+            consumed.Pop(token);
+            Assert.That(consumed.GenerationAttempts, Is.Zero);
+            Assert.That(consumed.ExternalDisjoint(null, source.CardKey, null), Is.True);
+            Assert.That(consumed.TechUsed, Is.Zero);
+        }
+
+        [Test]
         public void LegacyDefinitionDefaultsToEquipmentWithoutDataMigration()
         {
             Assert.That(new CardDefinition().attachmentSlot, Is.EqualTo(AttachmentSlot.Equipment));

@@ -297,6 +297,8 @@ namespace Game.Ai.V2
             && a.Capacity == b.Capacity
             && a.OccupiedBattleSlots == b.OccupiedBattleSlots
             && a.StrategicCoverage == b.StrategicCoverage
+            && (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>())
+                .SequenceEqual(b.NonHeroMutatorOccupied ?? System.Array.Empty<bool>())
             && SameCombatProfiles(a.Members, b.Members);
 
         private static bool SameCombatProfiles(

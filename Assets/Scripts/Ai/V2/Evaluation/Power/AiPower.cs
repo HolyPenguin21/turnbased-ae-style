@@ -244,6 +244,19 @@ namespace Game.Ai.V2
                 c.grantedAbilities,
                 isGroundCombatant: c.cardType != CardType.Hero);
 
+        // Frozen card attachments use the same canonical projection as hand UI and deployment.
+        public static WorthIt.DefenderProfile ToDefenderProfile(CardDefinition c,
+            CardDefinition equipment, CardDefinition mutator)
+        {
+            if (equipment?.equipment == null && mutator?.equipment == null) return ToDefenderProfile(c);
+            var state = EquipmentSystem.Project(c, equipment, mutator);
+            return new WorthIt.DefenderProfile(state.Stats[EquipmentStat.Defense],
+                state.Abilities.Contains(UnitAbilities.CeramicArmor), c.unitTypeTags,
+                state.Stats[EquipmentStat.Attack], state.Stats[EquipmentStat.HitPoints],
+                state.Stats[EquipmentStat.Initiative], state.Abilities,
+                isGroundCombatant: c.cardType != CardType.Hero);
+        }
+
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage
         // and hero-count only, not front/reach balance). Used for enemy contacts in the
