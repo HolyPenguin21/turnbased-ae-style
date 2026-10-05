@@ -111,6 +111,8 @@ namespace Game.UI
 
         public void Setup(CardHandUI hand, CardData data, float restingScale, float hoverScale, float hoverLift, float animDuration, float dragHoverShrink)
         {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             _hand = hand;
             Data = data;
             _restingScale = restingScale;

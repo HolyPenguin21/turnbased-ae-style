@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Reflection;
+using TMPro;
 using Game.Ai;
 using Game.Aviation;
 using Game.Cards;
@@ -11,6 +12,7 @@ using Game.UI;
 using Game.Units;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Game.EditorTests
 {
@@ -43,6 +45,65 @@ namespace Game.EditorTests
             ArmyRegistry.Clear(); BuildingRegistry.Clear(); PlayerRootRegistry.Clear();
             AiHandRegistry.Clear(); VisionSystem.Configure(null);
             Object.DestroyImmediate(_scene); Object.DestroyImmediate(_root.gameObject);
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void HandCardRebindDuringAttachmentPreviewKeepsNewHostNameAndArt(AttachmentSlot slot)
+        {
+            var go = new GameObject("hand card rebind", typeof(RectTransform));
+            go.transform.SetParent(_scene.transform);
+            var ui = go.AddComponent<CardUI>();
+            var art = go.AddComponent<Image>();
+            var labelGo = new GameObject("name", typeof(RectTransform));
+            labelGo.transform.SetParent(go.transform);
+            var label = labelGo.AddComponent<TextMeshProUGUI>();
+            var button = new GameObject("attachment toggle");
+            button.transform.SetParent(go.transform);
+            var toggle = button.AddComponent<EquipmentArtToggle>();
+            void Field(object target, string name, object value) => target.GetType()
+                .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(target, value);
+            Field(ui, "rectTransform", go.GetComponent<RectTransform>());
+            Field(ui, "artImage", art); Field(ui, "nameText", label);
+            Field(ui, slot == AttachmentSlot.Mutator ? "mutatorArtToggle" : "equipmentArtToggle", toggle);
+            Field(toggle, "cardArtImage", art); Field(toggle, "nameOverrideText", label);
+            var attachment = AttachmentSlotTests.Attachment(slot); attachment.displayName = "Attachment";
+            var oldHost = AttachmentSlotTests.Host(); oldHost.displayName = "Old host";
+            var newHost = AttachmentSlotTests.Host(); newHost.displayName = "New host";
+            var sprite = Sprite.Create(Texture2D.whiteTexture, new Rect(0, 0, 1, 1), Vector2.zero);
+            attachment.art = sprite; newHost.art = sprite;
+            try
+            {
+                var card = new CardData(oldHost);
+                if (slot == AttachmentSlot.Mutator) card.Mutator = attachment;
+                else card.Equipment = attachment;
+                ui.Setup(null, card, 1, 1, 0, 0, 1);
+                toggle.OnPointerEnter(null);
+                Assert.That(label.text, Is.EqualTo("Attachment"));
+                ui.Setup(null, new CardData(newHost), 1, 1, 0, 0, 1);
+                Assert.That(label.text, Is.EqualTo("New host"));
+                Assert.That(art.sprite, Is.SameAs(sprite));
+                Assert.That(button.activeSelf, Is.False);
+            }
+            finally { Object.DestroyImmediate(sprite); }
+        }
+
+        [Test]
+        public void RepairAfterMaximumClampClearsOnlyHitPointConsumption()
+        {
+            var unit = AttachmentSlotTests.Body(); unit.Owner = _owner;
+            unit.HitPointsCurrent = 2; unit.MoveCurrent = 1; unit.Fate = 1;
+            EquipmentSystem.ApplyAttachments(unit,
+                AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.HitPoints, 4, true), null);
+            var hex = new HexCoord(88, -31);
+            var building = new BuildingData { Owner = _owner, Hex = hex, IsBase = true };
+            BuildingRegistry.Register(hex, building);
+            Assert.That(UnitRepair.TryRepair(unit, hex, _root, out var reason), Is.True, reason);
+            EquipmentSystem.ApplyAttachments(unit, null,
+                AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.HitPoints, 6));
+            Assert.That(unit.HitPointsCurrent, Is.EqualTo(10));
+            Assert.That(unit.MoveCurrent, Is.EqualTo(1));
+            Assert.That(unit.Fate, Is.EqualTo(1));
         }
 
         [TestCase(AttachmentSlot.Equipment, false, false)]

@@ -447,6 +447,7 @@ namespace Game.Ai.V2
                 Capacity = a.Capacity,
                 OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
+                NonHeroMutatorOccupied = isOwn ? nonHero.Select(u => u.Mutator != null).ToList() : null,
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
                 RecoveryMembers = a.Members.Select((u, index) => ToRaidRecoveryMember(
                     a, u, index, viewer, isOwn)).ToList(),
@@ -571,4 +572,3 @@ namespace Game.Ai.V2
 
     }
 }
-

@@ -135,20 +135,27 @@ namespace Game.Ai.V2
         private static PoolBox BuildKnownPool(WorldSnapshot snap)
         {
             var attackers = new List<WorthIt.DefenderProfile>();
-            var grants = new List<EquipmentGrant>();
+            var grants = new List<CardDefinition>();
+            var occupiedMutators = new HashSet<int>();
             int map = 0, hand = 0, deck = 0, outputs = 0;
 
             void Grant(CardDefinition d)
             {
                 if (d != null && d.cardType == CardType.Equipment && d.equipment != null)
-                    grants.Add(d.equipment);
+                    grants.Add(d);
             }
 
             foreach (ArmySnapshot a in snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)System.Array.Empty<ArmySnapshot>())
             {
                 if (a == null || a.IsPrison || a.Members == null) continue;
-                foreach (WorthIt.DefenderProfile m in a.Members)
-                    if (m.IsGroundCombatant) { attackers.Add(m); map++; }
+                for (int memberIndex = 0; memberIndex < a.Members.Count; memberIndex++)
+                {
+                    WorthIt.DefenderProfile m = a.Members[memberIndex];
+                    if (!m.IsGroundCombatant) continue;
+                    if (a.NonHeroMutatorOccupied != null && memberIndex < a.NonHeroMutatorOccupied.Count
+                        && a.NonHeroMutatorOccupied[memberIndex]) occupiedMutators.Add(attackers.Count);
+                    attackers.Add(m); map++;
+                }
             }
             // The frozen card view (SelfSnapshot.PoolCards), coherent with the frozen Armies:
             // the live Hand/Deck lists may already miss a card whose unit Armies does not show yet.
@@ -168,6 +175,7 @@ namespace Game.Ai.V2
                 var profile = AiPower.ToDefenderProfile(d);
                 if (equipment?.equipment != null) profile = Equipped(profile, equipment.equipment);
                 if (mutator?.equipment != null) profile = Equipped(profile, mutator.equipment);
+                if (mutator != null) occupiedMutators.Add(attackers.Count);
                 attackers.Add(profile);
                 if (inHand) hand++; else deck++;
             }
@@ -184,8 +192,15 @@ namespace Game.Ai.V2
 
             int baseCount = attackers.Count;
             for (int i = 0; i < baseCount; i++)
-                foreach (EquipmentGrant g in grants)
-                    attackers.Add(Equipped(attackers[i], g));
+                foreach (CardDefinition attachment in grants)
+                {
+                    var host = attackers[i];
+                    if (attachment.attachmentSlot == AttachmentSlot.Mutator
+                        && (occupiedMutators.Contains(i) || !EquipmentSystem.FitsHostCore(attachment,
+                            host.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit,
+                            host.TypeTags != null ? new List<UnitTypeTag>(host.TypeTags) : null, out _))) continue;
+                    attackers.Add(Equipped(host, attachment.equipment));
+                }
 
             if (attackers.Any(a => a.Abilities != null && a.Abilities.Contains(UnitAbilities.RaiseTheRots)))
             {

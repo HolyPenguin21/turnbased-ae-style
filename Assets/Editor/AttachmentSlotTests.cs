@@ -231,6 +231,28 @@ namespace Game.EditorTests
             Assert.That(forward.FateMax - forward.Fate, Is.EqualTo(3));
         }
 
+        [TestCase(EquipmentStat.MoveMax)]
+        [TestCase(EquipmentStat.Fate)]
+        public void RefillClearsConsumptionHiddenByAnAttachmentMaximumClamp(EquipmentStat stat)
+        {
+            var unit = Body();
+            unit.MoveCurrent = 1; unit.Fate = 0; unit.HitPointsCurrent = 4;
+            // The first attachment clamps the spent resource at a smaller maximum.
+            EquipmentSystem.ApplyAttachments(unit, Attachment(AttachmentSlot.Equipment, stat, 2, replace: true), null);
+            if (stat == EquipmentStat.MoveMax) unit.ReplenishMoveForNewTurn();
+            else unit.ReplenishFateForNewBattle();
+            // Spending after the refill must still survive a later increase.
+            if (stat == EquipmentStat.MoveMax) unit.MoveCurrent--;
+            else unit.Fate--;
+            var mutator = Attachment(AttachmentSlot.Mutator, stat, 4);
+            Assert.That(EquipmentSystem.CurrentAfterAttachment(unit, stat, 6), Is.EqualTo(5));
+            EquipmentSystem.ApplyAttachments(unit, null, mutator);
+            Assert.That(stat == EquipmentStat.MoveMax ? unit.MoveCurrent : unit.Fate, Is.EqualTo(5));
+            Assert.That(unit.HitPointsCurrent, Is.EqualTo(4), "Refill must not heal HP");
+            Assert.That(stat == EquipmentStat.MoveMax ? unit.Fate : unit.MoveCurrent,
+                Is.EqualTo(stat == EquipmentStat.MoveMax ? 0 : 1), "Other consumption must survive");
+        }
+
         [Test]
         public void SlotAwareProjectionDoesNotInventPreviouslySpentHeroFateAsAnUpgrade()
         {

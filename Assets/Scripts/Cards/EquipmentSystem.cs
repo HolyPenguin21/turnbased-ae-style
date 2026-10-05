@@ -142,6 +142,17 @@ namespace Game.Cards
             return Mathf.Clamp(current + Mathf.Max(0, nextMax - maximum), 0, nextMax);
         }
 
+        // An explicit refill/repair starts a new consumption history for that resource.
+        // Ordinary current-value deltas cannot distinguish a refill from a maximum clamp.
+        internal static void ReconcileResourceRefill(UnitData unit, EquipmentStat stat)
+        {
+            if (!unit.AttachmentResources.HasValue) return;
+            unit.AttachmentResources = new AttachmentResourceState(
+                stat == EquipmentStat.HitPoints ? unit.HitPointsMax - unit.HitPointsCurrent : SpentResource(unit, EquipmentStat.HitPoints),
+                stat == EquipmentStat.MoveMax ? unit.MoveMax - unit.MoveCurrent : SpentResource(unit, EquipmentStat.MoveMax),
+                stat == EquipmentStat.Fate ? unit.FateMax - unit.Fate : SpentResource(unit, EquipmentStat.Fate), unit);
+        }
+
         // Full projected state, shared by hand UI and AI. Canonical slot order is independent
         // of installation order. A candidate replaces only its corresponding projected slot.
         public static PredictedEquipmentState Project(CardDefinition host, CardDefinition equipment,
@@ -322,7 +333,7 @@ namespace Game.Cards
             return true;
         }
 
-        private static bool FitsHostCore(CardDefinition equipment, EquipmentHostKind kind,
+        internal static bool FitsHostCore(CardDefinition equipment, EquipmentHostKind kind,
             ICollection<UnitTypeTag> hostTags, out string reason)
         {
             reason = null;

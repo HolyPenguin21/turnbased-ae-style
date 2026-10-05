@@ -107,6 +107,7 @@ namespace Game.Units
             root.SpendActionPoints(apCost);
             cost.PayFrom(root);
             unit.HitPointsCurrent = unit.HitPointsMax;
+            EquipmentSystem.ReconcileResourceRefill(unit, EquipmentStat.HitPoints);
             // Repair does not move the army or alter its vision footprint. Its visible HP does
             // change, however: publish the finished mutation at the unit's actual live hex so
             // an already-watching AI refreshes EnemySightings without a full vision recompute.

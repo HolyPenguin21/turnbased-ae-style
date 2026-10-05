@@ -202,6 +202,7 @@ namespace Game.Units
         public void ReplenishMoveForNewTurn()
         {
             MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);
+            EquipmentSystem.ReconcileResourceRefill(this, EquipmentStat.MoveMax);
         }
 
         // Fate isn't a "gained per turn" resource like Move, and doesn't refill on the strategic
@@ -211,6 +212,7 @@ namespace Game.Units
         public void ReplenishFateForNewBattle()
         {
             Fate = FateMax;
+            EquipmentSystem.ReconcileResourceRefill(this, EquipmentStat.Fate);
         }
     }
 }

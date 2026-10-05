@@ -58,6 +58,41 @@ namespace Game.EditorTests
         };
 
         [Test]
+        [TestCase(false, false, true)]
+        [TestCase(true, true, true)]
+        [TestCase(true, false, false)]
+        public void HypotheticalMutatorRequiresBioAndAnUnoccupiedFrozenSlot(bool bio, bool occupied, bool unreachable)
+        {
+            var mutator = AttackEquipment(16);
+            mutator.attachmentSlot = AttachmentSlot.Mutator;
+            mutator.equipment.hostKinds.Add(EquipmentHostKind.Unit);
+            var snap = Snapshot(deck: new[] { mutator });
+            snap.Self.Armies = new[] { new ArmySnapshot
+            {
+                MemberCount = 1,
+                Members = new[] { new WorthIt.DefenderProfile(2, false,
+                    new[] { bio ? UnitTypeTag.Bio : UnitTypeTag.Mechanical }, 4, 5, 1) },
+                NonHeroMutatorOccupied = new[] { occupied },
+            } };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, Wall, 0, out _),
+                Is.EqualTo(unreachable));
+        }
+
+        [Test]
+        public void HandMutatorCannotBeStackedWithAnotherKnownMutator()
+        {
+            var host = UnitCard(4); host.unitTypeTags.Add(UnitTypeTag.Bio);
+            var existing = AttackEquipment(1); existing.attachmentSlot = AttachmentSlot.Mutator;
+            var candidate = AttackEquipment(16); candidate.attachmentSlot = AttachmentSlot.Mutator;
+            candidate.equipment.hostKinds.Add(EquipmentHostKind.Unit);
+            var snap = Snapshot(deck: new[] { candidate });
+            snap.Self.Armies = new ArmySnapshot[0];
+            snap.Self.PoolCards = new[] { (host, (CardDefinition)null, existing, true),
+                (candidate, (CardDefinition)null, (CardDefinition)null, false) };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, Wall, 0, out _), Is.True);
+        }
+
+        [Test]
         public void WholePoolCannotDamageDefender_IsProvenUnreachable()
         {
             Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(

@@ -110,16 +110,32 @@ The existing EquipmentArtToggle class and .meta GUID are retained. Two instances
 Differential baseline is pinned to the original task revision, never to the modified code. The original baseline has 26 distinct existing Editor-stub errors. After incorporating master 941d17eb, both that exact upstream baseline and the feature have 27: the same 26 plus the upstream Canvas lookup overload unsupported by the old reference DLLs. There are zero feature-added compiler errors. Test compilation succeeds with the project verification reference DLLs and temporary net472 compatibility copies. Normal SDK/MSBuild entry points fail in this sandbox's process reporting; the same Roslyn compiler, package references and project test sources were invoked directly. The temporary managed Mathf test stub receives Log10 on both baseline/current sides for the existing Audio code; this is not a gameplay change and is not included in the repository. After the upstream rebase, test-only copies map the new Canvas lookup overload to the old explicit-sort overload supported by the reference DLLs. Neither workaround modifies gameplay sources or their baselines.
 
 - Existing baseline tests passing outside Unity: 774.
-- Current tests passing outside Unity: 795; no previously passing test fails.
-- New AttachmentSlotTests: 21/21 passed, including both install orders, add/override and ability-family interactions, legacy Equipment parity, runtime preservation, conflicting maximum changes and spent-Fate valuation.
-- New AttachmentLifecycleTests: 15 cases require Unity native engine. They cannot execute here (PlayerColorPalette/UnityEngine native initialization); they are explicitly pending, not reported as passed.
+- Current tests passing outside Unity: 802; no previously passing test fails.
+- New AttachmentSlotTests: 23/23 passed, including both install orders, add/override and ability-family interactions, legacy Equipment parity, runtime preservation, conflicting maximum changes and spent-Fate valuation.
+- New AttachmentLifecycleTests: 18 cases require Unity native engine. They cannot execute here (PlayerColorPalette/UnityEngine native initialization); they are explicitly pending, not reported as passed.
 - Existing runnable Equipment matchup / Hero matchup / Production Scout chain tests retain their results. Native-bound failures remain native-bound.
 - verify_full.js: all three edited prefabs have zero missing references, duplicate IDs or Int64 overflow.
 - verify_types.js: all three edited prefabs have no checked reference type mismatches.
 - git diff --check: clean.
 
-Run the complete EditMode suite in Unity `6000.5.4f1`, especially the 15 lifecycle cases. Manually exercise RMB attach → own hand/live Bio target → cancellation/turn change; both indicator previews and restoration; Unit/Hero deploy into garrison/existing army; and produced activation AP with no second resource debit. Full Unity compilation, scene loading, native payment/vision and interactive UI are not claimed verified by the external test harness.
+Run the complete EditMode suite in Unity `6000.5.4f1`, especially the 18 lifecycle cases. Manually exercise RMB attach → own hand/live Bio target → cancellation/turn change; both indicator previews and restoration; Unit/Hero deploy into garrison/existing army; and produced activation AP with no second resource debit. Full Unity compilation, scene loading, native payment/vision and interactive UI are not claimed verified by the external test harness.
 
 ## Deferred
 
 Real Mutator content, syringe art, final prefab positioning/anchors/sizes, Research catalog content, balance and evaluator review against real cards. No new gameplay content was authored.
+
+
+## Second review (2026-10-05)
+
+The follow-up review found and fixed four omissions. These are local behavior corrections within the attachment feature.
+
+| Finding | Correction and affected files |
+| --- | --- |
+| A maximum clamp retained hidden Move/Fate consumption after an explicit refill; a later attachment could resurrect that old consumption. Full repair had the same HP problem. | EquipmentSystem.ReconcileResourceRefill resets only the restored resource and reconciles the others. Called from UnitData turn/battle refills and UnitRepair after payment/healing. Two failing witnesses reproduced Move/Fate before the fix; both now pass. Repair has a Unity lifecycle witness. |
+| CardUI.Setup wrote a new host name/art before restoring an active old attachment preview. Configure then restored stale host values. | Revert both toggles before rebinding CardUI. Native UI witnesses cover both slots, including name/art restoration and indicator hiding. |
+| HumanVisualMemory's copied UnitData omitted attachment references. | Snapshot both Equipment and Mutator. A passing witness verifies the observed slots remain stable after live references change. |
+| Known-pool reachability hypothetically applied Mutators to non-Bio or already mutated hosts. | Keep CardDefinition in the existing grant loop, reuse FitsHostCore for Mutator compatibility, and freeze own non-hero Mutator occupancy alongside ArmySnapshot.Members. Hand occupancy is read from frozen PoolCards. Changes are in CombatOpportunityAnalyzer, WorldSnapshot and WorldAnalysis.Self. Four new passing witnesses cover Bio, free/occupied live slots and occupied hand slots; all nine reachability tests pass. Existing Equipment heuristic and valuation formulas are unchanged. |
+
+The resource bank, payment amounts, Research/Production creation paths, reservation ownership and mission executors remain unchanged. The new factual occupancy array is rebuilt by the existing snapshot cycle; no cache or bank ownership layer was added. Live attachment still uses the existing vision/content notifications.
+
+Final external verification: 802 passing tests; all 774 baseline passes retained; 23/23 pure attachment tests; 9/9 known-pool reachability tests; 5/5 HumanVisualMemory tests. The 18 native attachment lifecycle cases remain pending in Unity 6000.5.4f1. Raw reference-compilation errors are compared against the immutable baseline rather than reported as a Unity build. Both prefab YAML validators pass.

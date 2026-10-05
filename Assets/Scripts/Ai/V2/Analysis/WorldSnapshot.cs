@@ -221,6 +221,8 @@ namespace Game.Ai.V2
         // candidate -> army direction (an aura buffing "Armored" must see an Armored HERO ally too;
         // `Members` above is deliberately non-hero for WorthIt combat estimates).
         public IReadOnlyList<WorthIt.DefenderProfile> MembersWithHeroes = System.Array.Empty<WorthIt.DefenderProfile>();
+        // Parallel to Members; keeps known-pool Mutator projections from filling an occupied slot.
+        public IReadOnlyList<bool> NonHeroMutatorOccupied;
         // Parallel factual arrays for own non-hero Members. Demand uses them to price the exact
         // minimal Economy escort before Allocation; Provisioning only executes that decision.
         public IReadOnlyList<int> NonHeroActivationApCosts = System.Array.Empty<int>();
@@ -1091,5 +1093,4 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
-
 
