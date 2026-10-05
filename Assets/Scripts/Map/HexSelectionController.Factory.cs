@@ -104,27 +104,28 @@ namespace Game.Map
         {
             if (army == null || army.Members.Count > 0)
                 return;
-            // Going empty is itself a content change any watcher needs, whether or not the shell
-            // below survives — the Barracks/Airfield branch keeps the ArmyData/marker alive as a
-            // persistent empty container, which used to mean callers relying solely on this method
-            // (e.g. AviationActions.ReturnAircraftToDeck) never told anyone the hex just lost its
-            // whole roster. ArmyRegistry.Unregister below already publishes on the normal path —
-            // this makes the guarded "kept as a shell" path do the same instead of silently
-            // skipping it.
-            VisionSystem.NotifyContentChanged(army.Hex);
+            ArmyController controller = army.Controller;
+            HexCoord actualHex = controller != null ? controller.CurrentHex : army.Hex;
+            // Persistent containers survive at their indexed building. A travelling army
+            // killed over another building is not a new empty container at either endpoint.
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (building != null && building.Owner == army.Owner
+            if ((controller == null || !controller.IsMoving) && building != null && building.Owner == army.Owner
                 && (building.HasAbility(UnitAbilities.Barracks)
                     || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
-                return;
-            ArmyRegistry.Unregister(army);
-            if (_selectedArmy == army.Controller)
-                SetSelectedArmy(null);
-            if (army.Controller != null)
             {
-                Destroy(army.Controller.gameObject);
-                army.Controller = null;
+                VisionSystem.NotifyContentChanged(army.Hex);
+                return;
             }
+            if (controller != null) controller.CancelMovement();
+            if (_selectedArmy == controller)
+                SetSelectedArmy(null);
+            // Detach before publishing removal so subscribers cannot see a live controller
+            // for the deleted army. Cancellation never executes the arrival callback.
+            army.Controller = null;
+            army.PendingAirStrikePolicy = null;
+            ArmyRegistry.Unregister(army, actualHex);
+            if (controller != null)
+                Destroy(controller.gameObject);
         }
 
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)

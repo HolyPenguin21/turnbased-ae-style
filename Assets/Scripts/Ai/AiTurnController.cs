@@ -292,6 +292,8 @@ namespace Game.Ai
                     trace.RecordResolvedEncounter(army.Id, attacker, defender);
                 battleScreenForTrace.EncounterResolved += observeEncounter;
             }
+            ArmyController orderController = null;
+            bool orderStarted = false;
             try
             {
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
@@ -418,6 +420,7 @@ namespace Game.Ai
                 army.LastAirStrikeAttacked = false;
                 army.PendingAirStrikePolicy = decision.AirStrikePolicy;
             }
+            orderController = army.Controller;
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
                     trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null,
@@ -431,11 +434,12 @@ namespace Game.Ai
                     // mover keeps its stealth and remaining movement and walks on.
                     allowAiEventExplore: decision.AllowsGroundCombat)
                 : MoveOrderResult.CannotMove;
+            orderStarted = moveResult == MoveOrderResult.Started;
             if (trace != null)
                 trace.MoveResult = moveResult;
 
             if (army.Controller != null)
-                yield return new WaitUntil(() => !army.Controller.IsMoving);
+                yield return new WaitUntil(() => army.Controller == null || !army.Controller.IsMoving);
 
             // Physical arrival — captured NOW, before any battle below can destroy the mover, so a
             // caller can still tell where the scout got to (and count the step) even if it dies.
@@ -509,8 +513,10 @@ namespace Game.Ai
             }
             finally
             {
-                if (army.Controller == null || !army.Controller.IsMoving)
-                    army.PendingAirStrikePolicy = null;
+                if (orderStarted && orderController != null && army.Controller == orderController
+                    && orderController.IsMoving)
+                    orderController.CancelMovement();
+                army.PendingAirStrikePolicy = null;
                 if (observeEncounter != null)
                     battleScreenForTrace.EncounterResolved -= observeEncounter;
             }
@@ -739,3 +745,4 @@ namespace Game.Ai
         }
     }
 }
+

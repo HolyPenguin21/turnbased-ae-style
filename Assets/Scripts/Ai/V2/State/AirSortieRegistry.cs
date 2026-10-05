@@ -81,8 +81,14 @@ namespace Game.Ai.V2
 
         public static void Remove(PlayerSetupData player, ArmyData army)
         {
-            if (player != null && army != null && ByPlayer.TryGetValue(player, out List<AirSortie> list))
-                list.RemoveAll(s => s.Army == army);
+            if (army != null) Remove(player, army.Id);
+        }
+
+        public static void Remove(PlayerSetupData player, int armyId)
+        {
+            if (player != null && ByPlayer.TryGetValue(player, out List<AirSortie> list))
+                list.RemoveAll(s => s.Army != null && s.Army.Id == armyId);
         }
     }
 }
+
