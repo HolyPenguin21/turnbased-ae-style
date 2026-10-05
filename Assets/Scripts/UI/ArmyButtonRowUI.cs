@@ -93,6 +93,7 @@ namespace Game.UI
                 {
                     ArmyData army = _armies[i];
                     ArmyButtonUI button = Instantiate(gameConfig.armyButtonPrefab, buttonContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
                     // The garrison always stays clickable (it opens its modal, never a move
                     // selection — see HexSelectionController.OnArmyButtonClicked), regardless
                     // of what's currently selected.

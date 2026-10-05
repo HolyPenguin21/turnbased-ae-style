@@ -33,12 +33,12 @@ namespace Game.UI
 
             if (buyButton != null)
             {
-                buyButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(buyButton);
                 buyButton.onClick.AddListener(() => _onBuy?.Invoke(_type));
             }
             if (refundButton != null)
             {
-                refundButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(refundButton);
                 refundButton.onClick.AddListener(() => _onRefund?.Invoke(_type));
             }
         }

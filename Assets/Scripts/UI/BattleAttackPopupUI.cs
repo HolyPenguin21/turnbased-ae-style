@@ -253,7 +253,10 @@ namespace Game.UI
         private void Update()
         {
             if (IsShowing && resultStateRoot != null && resultStateRoot.activeSelf && UIFocusUtility.WasSpacePressed())
+            {
+                Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
+            }
         }
 
         // attackerHero/defenderHero are that SIDE's hero if present (may be null) — Fate is a

@@ -261,6 +261,7 @@ namespace Game.UI
             {
                 CardDefinition card = _cards[i];
                 ArmyUnitCardUI view = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(view);
                 view.SetupPreview(card, gameConfig, OnCardClicked);
                 view.SetSlot(SlotPosition(i - start), animated: false);
                 _cardViews.Add(view);

@@ -860,6 +860,7 @@ namespace Game.UI
             {
                 UnitData member = i < shown.Count ? shown[i] : null;
                 ArmyUnitCardUI card = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, member);
                 card.SetSlot(SlotPosition(i), animated: false);
                 _cards.Add(card);

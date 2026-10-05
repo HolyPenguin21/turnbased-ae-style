@@ -127,13 +127,13 @@ namespace Game.UI
             _canImprove = isBaseCell && modal.CanManageCurrentBuilding;
             if (improveButton != null)
             {
-                improveButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(improveButton);
                 if (_canImprove)
                     improveButton.onClick.AddListener(() => _modal.UpgradeBase());
             }
             if (repairButton != null)
             {
-                repairButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(repairButton);
                 if (isBaseCell && modal.CanManageCurrentBuilding)
                     repairButton.onClick.AddListener(() => _modal.RepairBase());
             }

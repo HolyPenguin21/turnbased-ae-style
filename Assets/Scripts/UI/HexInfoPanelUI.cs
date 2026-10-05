@@ -50,7 +50,7 @@ namespace Game.UI
             garrisonButton.gameObject.SetActive(visible);
             if (visible)
             {
-                garrisonButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(garrisonButton);
                 garrisonButton.onClick.AddListener(() => onClick?.Invoke());
             }
         }
@@ -65,7 +65,7 @@ namespace Game.UI
             baseButton.gameObject.SetActive(visible);
             if (visible)
             {
-                baseButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(baseButton);
                 baseButton.onClick.AddListener(() => onClick?.Invoke());
             }
         }
@@ -81,7 +81,7 @@ namespace Game.UI
             researchButton.gameObject.SetActive(visible);
             if (visible)
             {
-                researchButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(researchButton);
                 researchButton.onClick.AddListener(() => onClick?.Invoke());
             }
         }
@@ -94,7 +94,7 @@ namespace Game.UI
             productionButton.gameObject.SetActive(visible);
             if (visible)
             {
-                productionButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(productionButton);
                 productionButton.onClick.AddListener(() => onClick?.Invoke());
             }
         }

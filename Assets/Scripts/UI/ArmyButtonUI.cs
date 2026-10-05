@@ -39,7 +39,7 @@ namespace Game.UI
                 // no extra styling needed. Never disabled for the garrison specifically — see
                 // ArmyButtonRowUI.Show, which is the one that decides `selected` per-army.
                 button.interactable = !selected;
-                button.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(button);
                 button.onClick.AddListener(() => onClick?.Invoke(army));
             }
         }

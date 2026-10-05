@@ -56,6 +56,7 @@ namespace Game.UI
                         && _battleEngine.CanGroundAttack(_currentActingUnit, unit);
 
                     BattleGridCellUI cell = Instantiate(gridCellPrefab, gridContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(cell);
                     cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
                     _cells.Add(cell);
                 }

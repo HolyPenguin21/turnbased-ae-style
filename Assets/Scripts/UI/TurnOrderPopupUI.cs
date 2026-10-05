@@ -61,6 +61,7 @@ namespace Game.UI
             if (!UIFocusUtility.WasSpacePressed())
                 return;
 
+            Game.Audio.GameAudioManager.Instance?.PlayClick();
             if (rollButton != null && rollButton.gameObject.activeSelf)
                 RollAll();
             else if (continueButton != null && continueButton.gameObject.activeSelf)
@@ -84,6 +85,7 @@ namespace Game.UI
                 foreach (PlayerSetupData player in players)
                 {
                     DiceRowUI row = Instantiate(rowPrefab, rowContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(row);
                     row.SetPlayer(player, TurnOrderResolver.DiceCountFor(player));
                     _rows.Add(row);
                     _rowByPlayer[player] = row;
@@ -101,7 +103,7 @@ namespace Game.UI
             if (rollButton != null)
             {
                 rollButton.gameObject.SetActive(true);
-                rollButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(rollButton);
                 rollButton.onClick.AddListener(RollAll);
             }
 
@@ -199,7 +201,7 @@ namespace Game.UI
             if (continueButton != null)
             {
                 continueButton.gameObject.SetActive(true);
-                continueButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(continueButton);
                 continueButton.onClick.AddListener(() => Finish(resolution.Order));
             }
 

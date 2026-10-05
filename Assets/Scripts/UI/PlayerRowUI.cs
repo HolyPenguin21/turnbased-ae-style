@@ -76,7 +76,7 @@ namespace Game.UI
 
             if (removeButton != null)
             {
-                removeButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(removeButton);
                 removeButton.onClick.AddListener(() => onRemoveRequested?.Invoke(this));
             }
         }

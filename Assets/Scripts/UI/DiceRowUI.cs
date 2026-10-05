@@ -79,7 +79,11 @@ namespace Game.UI
                 return;
 
             for (int i = 0; i < count; i++)
-                _diceSlots.Add(Instantiate(diceSlotPrefab, diceContainer));
+            {
+                DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
+                _diceSlots.Add(slot);
+            }
         }
     }
 }

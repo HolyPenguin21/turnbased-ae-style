@@ -470,6 +470,7 @@ namespace Game.Turns
                 return;
             if (_turnConfirmedFrame == Time.frameCount)
                 return;
+            Game.Audio.GameAudioManager.Instance?.PlayClick();
             OnEndTurnClicked();
         }
 
@@ -490,7 +491,7 @@ namespace Game.Turns
             if (endTurnButton != null)
             {
                 endTurnButton.interactable = false;
-                endTurnButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(endTurnButton);
                 endTurnButton.onClick.AddListener(OnEndTurnClicked);
             }
             TurnNumber = 0;

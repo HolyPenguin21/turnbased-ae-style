@@ -662,6 +662,7 @@ namespace Game.UI
                     UnitData queued = _turnOrder[i];
                     Color ownerColor = queued.Owner != null ? PlayerColorPalette.Colors[queued.Owner.ColorIndex] : Color.white;
                     BattleTurnOrderIconUI icon = Instantiate(turnQueueIconPrefab, turnQueueContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(icon);
                     icon.Setup(queued, ResolveCatalog(queued.Owner)?.logo, ownerColor, i == _turnIndex);
                     _queueIcons.Add(icon);
                 }

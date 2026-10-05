@@ -225,6 +225,7 @@ namespace Game.UI
                 for (int i = 0; i < count; i++)
                 {
                     DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
                     slot.gameObject.SetActive(true);
                     DisableDecorativeRaycasts(slot.transform);
                     slot.SetImmediate(true);
@@ -260,6 +261,7 @@ namespace Game.UI
             }
 
             DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
             slot.gameObject.SetActive(true);
             DisableDecorativeRaycasts(slot.transform);
             _diceSlots.Add(slot);
@@ -303,6 +305,7 @@ namespace Game.UI
                 for (int i = 0; i < dice.Length; i++)
                 {
                     DiceSlotUI slot = Instantiate(diceSlotPrefab, diceContainer);
+                    Game.Audio.SceneUIAudioBinder.BindCreatedRoot(slot);
                     // diceSlotPrefab is wired (in the scene) to an inactive template object
                     // rather than DiceRow.prefab's always-active DiceSlot prefab asset — Unity's
                     // Instantiate carries an inactive source's activeSelf over to the clone, so

@@ -29,7 +29,10 @@ namespace Game.UI
         private void Update()
         {
             if (IsShowing && UIFocusUtility.WasSpacePressed())
+            {
+                Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
+            }
         }
 
         public void Show(Action onOk)

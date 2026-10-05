@@ -155,7 +155,7 @@ namespace Game.UI
             if (repairButton != null)
             {
                 repairButton.gameObject.SetActive(false);
-                repairButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(repairButton);
                 if (unit != null)
                     repairButton.onClick.AddListener(() => _modal.RepairUnit(unit));
             }
@@ -165,7 +165,7 @@ namespace Game.UI
             if (stealthButton != null)
             {
                 stealthButton.gameObject.SetActive(false);
-                stealthButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(stealthButton);
                 if (unit != null)
                     stealthButton.onClick.AddListener(() =>
                     {

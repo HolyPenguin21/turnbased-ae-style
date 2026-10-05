@@ -177,13 +177,13 @@ namespace Game.UI
             if (fightButton != null)
             {
                 fightButton.gameObject.SetActive(true);
-                fightButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(fightButton);
                 fightButton.onClick.AddListener(() => { Hide(); onFight?.Invoke(); });
             }
             if (delayButton != null)
             {
                 delayButton.gameObject.SetActive(true);
-                delayButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(delayButton);
                 delayButton.onClick.AddListener(() => { Hide(); onDelay?.Invoke(); });
             }
         }
@@ -200,7 +200,7 @@ namespace Game.UI
             if (fightButton != null)
             {
                 fightButton.gameObject.SetActive(true);
-                fightButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(fightButton);
                 fightButton.onClick.AddListener(() => { Hide(); onContinue?.Invoke(); });
             }
             if (delayButton != null)

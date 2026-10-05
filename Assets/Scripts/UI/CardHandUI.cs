@@ -499,6 +499,7 @@ namespace Game.UI
             for (int i = 0; i < hand.Hand.Count && i < MaxVisible; i++)
             {
                 CardUI card = Instantiate(cardPrefab, handContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, hand.Hand[i], restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
                 card.SetHome(new Vector2(SlotX(i), 0f), animated: false);
                 card.transform.SetAsLastSibling();
@@ -586,6 +587,7 @@ namespace Game.UI
                 return;
 
             CardUI card = Instantiate(cardPrefab, handContainer);
+            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
             card.Setup(this, data, restingScale, hoverScale, hoverLift, animDuration, dragHoverShrink);
             _cards.Add(card);
             // Scroll so the newly added card is actually visible, not silently added past the

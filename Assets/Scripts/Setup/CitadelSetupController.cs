@@ -109,7 +109,7 @@ namespace Game.Setup
             if (confirmButton != null)
             {
                 confirmButton.interactable = false;
-                confirmButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(confirmButton);
                 confirmButton.onClick.AddListener(OnConfirmClicked);
             }
 
@@ -580,6 +580,7 @@ namespace Game.Setup
             // click — i.e. only after a valid hex has actually been picked.
             if (confirmButton != null && confirmButton.interactable && UIFocusUtility.WasSpacePressed())
             {
+                Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnConfirmClicked();
                 return;
             }

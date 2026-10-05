@@ -54,12 +54,12 @@ namespace Game.UI
 
             if (attackButton != null)
             {
-                attackButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(attackButton);
                 attackButton.onClick.AddListener(() => { Hide(); onAttack?.Invoke(); });
             }
             if (skipButton != null)
             {
-                skipButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(skipButton);
                 skipButton.onClick.AddListener(() => { Hide(); onSkip?.Invoke(); });
             }
 

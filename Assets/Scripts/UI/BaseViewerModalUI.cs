@@ -145,6 +145,7 @@ namespace Game.UI
             for (int i = 0; i < cellCount; i++)
             {
                 BaseSlotCardUI card = Instantiate(gameConfig.baseSlotCardPrefab, gridContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
                 card.Setup(this, i, _currentBuilding);
                 _cards.Add(card);
             }

@@ -50,6 +50,7 @@ namespace Game.UI
                 if (action == null)
                     continue;
                 ResourceActionButtonUI button = Instantiate(gameConfig.resourceActionButtonPrefab, buttonContainer);
+                Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
                 button.Setup(action);
                 _buttons.Add(button);
             }

@@ -59,7 +59,7 @@ namespace Game.UI
 
             if (okButton != null)
             {
-                okButton.onClick.RemoveAllListeners();
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(okButton);
                 okButton.onClick.AddListener(Hide);
             }
             if (panelRoot != null)
@@ -134,7 +134,10 @@ namespace Game.UI
             if (okButton == null || !okButton.gameObject.activeInHierarchy || !okButton.interactable)
                 return;
             if (UIFocusUtility.WasSpacePressed())
+            {
+                Game.Audio.GameAudioManager.Instance?.PlayClick();
                 Hide();
+            }
         }
     }
 }

@@ -40,7 +40,10 @@ namespace Game.UI
         private void Update()
         {
             if (IsShowing && UIFocusUtility.WasSpacePressed())
+            {
+                Game.Audio.GameAudioManager.Instance?.PlayClick();
                 OnOkClicked();
+            }
         }
 
         // autoCloseNoHuman: per the user's own request — an AI-vs-AI (or AI-vs-neutrals/event

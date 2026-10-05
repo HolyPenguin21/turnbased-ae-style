@@ -42,6 +42,7 @@ namespace Game.Setup
                 return;
             if (UIFocusUtility.IsTextFieldFocused())
                 return;
+            Game.Audio.GameAudioManager.Instance?.PlayClick();
             OnStartGameClicked();
         }
 
@@ -131,6 +132,7 @@ namespace Game.Setup
             if (data == null) return;
 
             PlayerRowUI row = Instantiate(gameConfig.playerRowPrefab, playerListContainer);
+            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(row);
             row.Bind(data, RefreshButtons, OnRemoveRowClicked);
             _rows.Add(row);
             RefreshButtons();
