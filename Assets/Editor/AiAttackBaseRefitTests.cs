@@ -132,20 +132,38 @@ namespace Game.EditorTests
         [Test]
         public void Followup_ProtectsOnlyAddedActivationWhileBankProtectsAssault()
         {
-            var primary = new ArmyData { Owner = player, Hex = Base };
-            primary.Members.Add(Body(2, activation: 2));
-            var attack = Attack(); attack.PrimaryArmyId = primary.Id;
-            MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent {
-                IntentKey = MissionIntentKey.ForAttack(attack.Target), Kind = MissionKind.Attack,
-                Status = IntentStatus.Active, Funding = CommitmentTier.Hard, Objective = attack });
-            var final = primary.Members.Concat(new[] { Body(5, activation: 1) }).ToList();
-            var ctx = new AiTurnContext { TurnNumber = 7 };
-            Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx), Is.EqualTo(1));
-            OperationContinuationWindow.Settle(player, 7);
-            Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx), Is.EqualTo(3));
-            primary.MarkActivated();
-            Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx), Is.Zero);
+            var obj = new UnityEngine.GameObject("attack-refit-followup-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 6;
+                var primary = new ArmyData { Owner = player, Hex = Base };
+                primary.Members.Add(Body(2, activation: 2)); ArmyRegistry.Register(primary);
+                var attack = Attack(); attack.PrimaryArmyId = primary.Id;
+                MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent {
+                    IntentKey = MissionIntentKey.ForAttack(attack.Target), Kind = MissionKind.Attack,
+                    Status = IntentStatus.Active, Funding = CommitmentTier.Hard, Objective = attack });
+                var final = primary.Members.Concat(new[] { Body(5, activation: 1) }).ToList();
+                var ctx = new AiTurnContext { TurnNumber = 7 };
+                Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx, root), Is.EqualTo(1));
+                OperationContinuationWindow.Settle(player, 7);
+                Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx, root), Is.EqualTo(3));
+                primary.MarkActivated();
+                Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx, root), Is.Zero);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
         }
+        [Test]
+        public void PartialHandoff_ReportsPhysicalCardPlayAndRequiresReplan()
+        {
+            var result = new MaterializationResult { CardDeployed = true, Deployed = false,
+                StateChanged = true, PlacementStale = true, ApSpent = 2,
+                FailReason = "handoff rejected" };
+            Assert.That(result.Outcome.Played, Is.True);
+            Assert.That(result.Outcome.Succeeded, Is.False);
+            Assert.That(result.Outcome.NeedsReplan, Is.True);
+            Assert.That(result.Outcome.ApSpent, Is.EqualTo(2));
+        }
+
         [Test]
         public void RepeatedRefits_ReplaceOneActorsFollowupPromise()
         {
@@ -212,6 +230,41 @@ namespace Game.EditorTests
                 Assert.That(root.ActionPoints, Is.EqualTo(6));
                 Assert.That(StrategicResourceReservationLedger.Active(player, 7,
                     StrategicReservedResource.ActionPoints), Is.EqualTo(2));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [TestCase(4, false, 3)] [TestCase(6, true, 0)]
+        public void FundingProjection_RequiresPrimaryAndOtherOperationTogether(int ap, bool funded, int followup)
+        {
+            var obj = new UnityEngine.GameObject("attack-refit-operation-prefix-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = ap;
+                // Lower actor id is protected first; the primary falls outside the prefix at 4 AP.
+                var other = new ArmyData { Owner = player, Hex = new HexCoord(0, 0) };
+                other.Members.Add(Body(2, activation: 2)); ArmyRegistry.Register(other);
+                var raid = new MissionIntent { Kind = MissionKind.Raid, Status = IntentStatus.Active,
+                    Funding = CommitmentTier.Hard, Objective = new RaidIntent {
+                        Phase = RaidMissionPhase.Assault, OperationStarted = true, PrimaryArmyId = other.Id } };
+                raid.IntentKey = MissionIntentKey.For(raid);
+                MissionIntentRegistry.GetOrCreate(player).Put(raid);
+                var primary = new ArmyData { Owner = player, Hex = Base };
+                primary.Members.Add(Body(2, activation: 3)); ArmyRegistry.Register(primary);
+                var attack = Attack(); attack.PrimaryArmyId = primary.Id;
+                MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent {
+                    IntentKey = MissionIntentKey.ForAttack(attack.Target), Kind = MissionKind.Attack,
+                    Status = IntentStatus.Active, Funding = CommitmentTier.Hard, Objective = attack });
+                var ctx = new AiTurnContext { TurnNumber = 7 };
+                var final = new[] { Body(9, activation: 3) };
+                var plan = new MaterializationPlan { AttackRefitPrimaryId = primary.Id };
+                Assert.That(AttackBaseRefitPolicy.FollowupAp(player, primary, attack, final, ctx, root),
+                    Is.EqualTo(followup));
+                Assert.That(AttackBaseRefitPolicy.OnwardFunded(plan, player, root, ctx, 1, final),
+                    Is.EqualTo(funded));
+                Assert.That(StrategicSpendability.OperationContinuationHold(player, root, ctx),
+                    Is.EqualTo(ap == 4 ? 2 : 5));
+                Assert.That(root.ActionPoints, Is.EqualTo(ap));
             }
             finally { UnityEngine.Object.DestroyImmediate(obj); }
         }

@@ -43,7 +43,7 @@ namespace Game.Ai.V2
                 || !AttackBaseRefitPolicy.KeepsMovement(primary, h)
                 || !AttackBaseRefitPolicy.KeepsCoverage(primary, h, snap, attack)) return false;
             int followup = AttackBaseRefitPolicy.FollowupAp(player, primary, attack,
-                AttackBaseRefitPolicy.FinalRoster(primary, h), ctx);
+                AttackBaseRefitPolicy.FinalRoster(primary, h), ctx, root);
             int cost = GroundCombatReinforcement.HandoffApCost(h, primary, support);
             int movement = primary.CurrentMovement;
             if (StrategicSpendability.SpendableAp(player, root, ctx, authority) < cost + followup

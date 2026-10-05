@@ -150,7 +150,7 @@ namespace Game.Ai.V2
 
             if (demand.AttackLocalRefit
                 && (!AttackBaseRefitPolicy.Validate(p, snapshot, player, out var refitHandoff, out _)
-                    || !AttackBaseRefitPolicy.FollowupStillCurrent(p, player, ctx, refitHandoff)
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(p, player, ctx, refitHandoff, root)
                     || !AttackBaseRefitPolicy.OnwardFunded(p, player, root, ctx, p.ApCost,
                         AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
                             p.AttackRefitPrimaryId.Value), refitHandoff)))) return;

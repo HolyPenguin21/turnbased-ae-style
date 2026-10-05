@@ -119,7 +119,7 @@ namespace Game.Ai.V2
             if (plan.AttackRefitPrimaryId.HasValue
                 && (snap == null || snap.TurnNumber != ctx.TurnNumber
                     || !AttackBaseRefitPolicy.Validate(plan, snap, player, out var refitHandoff, out _)
-                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, ctx, refitHandoff)
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, ctx, refitHandoff, root)
                     || !AttackBaseRefitPolicy.OnwardFunded(plan, player, root, ctx, plan.ApCost,
                         AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
                             plan.AttackRefitPrimaryId.Value), refitHandoff))
@@ -221,6 +221,7 @@ namespace Game.Ai.V2
             }
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
+            res.CardDeployed = play.Deployed;
             res.ApSpent = apStart - root.ActionPoints;
             if (play.StateChanged)
                 res.StateChanged = true;

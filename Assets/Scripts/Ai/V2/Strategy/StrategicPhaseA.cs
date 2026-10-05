@@ -103,7 +103,7 @@ namespace Game.Ai.V2
                 var attack = primary == null ? null
                     : AttackBaseRefitPolicy.Resolve(player, id, primary.Hex, ctx.TurnNumber);
                 apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
-                    : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx));
+                    : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
             }
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
@@ -778,6 +778,7 @@ namespace Game.Ai.V2
 
                 if (!play.Deployed)
                 {
+                    if (play.CardDeployed) result.CardsPlayed++;
                     AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                         + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
                         + $"att={(play.Attached ? 1 : 0)}");
@@ -810,7 +811,7 @@ namespace Game.Ai.V2
                         var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
                         var attack = AttackBaseRefitPolicy.Resolve(player, primary.Id, primary.Hex, ctx.TurnNumber);
                         apBudget.ReserveActorFollowup(primary.Id,
-                            AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx));
+                            AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
                     }
                     else
                         apBudget.ReserveFollowup(selected.FollowupAp);

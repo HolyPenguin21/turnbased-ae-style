@@ -146,6 +146,7 @@ namespace Game.Ai.V2
     {
         public bool StateChanged;
         public bool Deployed;
+        public bool CardDeployed;                 // physical play can succeed before a refit handoff fails
         public bool Generated;
         public bool GenerationAttempted;
         public bool Attached;
@@ -165,7 +166,7 @@ namespace Game.Ai.V2
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
             succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent,
-            resourcesSpent: ResourcesSpent, played: Deployed, generated: Generated, attached: Attached,
+            resourcesSpent: ResourcesSpent, played: Deployed || CardDeployed, generated: Generated, attached: Attached,
             moved: false, created: ArmyCreated, needsReplan: PlacementStale,
             stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }

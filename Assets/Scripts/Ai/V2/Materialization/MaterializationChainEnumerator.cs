@@ -27,7 +27,7 @@ namespace Game.Ai.V2
         {
             if (demand.AttackLocalRefit)
                 return AttackBaseRefitPolicy.Enumerate(snap, player, hand, ctx, demand, commitments,
-                    reservation, excludeCards);
+                    reservation, excludeCards, root);
             // A Collector card is deployed SOLO for the exact same reason a Recce card is —
             // it founds/keeps its own cheap, disposable single-unit army rather than diluting
             // into an existing one (see AxisDemand.CapabilityKind.CollectorCapability).

@@ -42,7 +42,7 @@ namespace Game.Ai.V2
 
         internal static List<MaterializationPlan> Enumerate(WorldSnapshot snap, PlayerSetupData player,
             AiHandData hand, AiTurnContext ctx, AxisDemand demand, ActorCommitments commitments,
-            MaterializationReservation reservation, ISet<CardData> excluded)
+            MaterializationReservation reservation, ISet<CardData> excluded, PlayerRoot root = null)
         {
             var plans = new List<MaterializationPlan>();
             if (player == null || hand == null || demand == null
@@ -84,7 +84,7 @@ namespace Game.Ai.V2
                 var roster = FinalRoster(primary, handoff);
                 // The bank already protects a funded assault's activation; keep only the extra
                 // charge here. Reinforcement/settled windows still protect the full activation.
-                plan.AttackRefitFollowupAp = FollowupAp(player, primary, intent, roster, ctx);
+                plan.AttackRefitFollowupAp = FollowupAp(player, primary, intent, roster, ctx, root);
                 plans.Add(plan);
             }
             for (int index = 0; index < hand.Hand.Count; index++)
@@ -174,39 +174,39 @@ namespace Game.Ai.V2
         }
 
         internal static int FollowupAp(PlayerSetupData player, ArmyData primary,
-            AttackIntent attack, IEnumerable<UnitData> roster, AiTurnContext ctx)
+            AttackIntent attack, IEnumerable<UnitData> roster, AiTurnContext ctx, PlayerRoot root = null)
         {
             int total = primary.ProjectedActivationApCost(roster);
             if (attack == null || ctx == null || OperationContinuationWindow.IsSettled(player, ctx.TurnNumber)
                 || attack.Phase != AttackMissionPhase.Assault || primary.CurrentMovement <= 0)
                 return total;
-            var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
-                i.Status == IntentStatus.Active && i.Attack == attack);
-            return intent?.Funding == CommitmentTier.Hard
-                ? Math.Max(0, total - primary.ActivationApCost) : total;
+            return Math.Max(0, total - (int)StrategicSpendability.OperationContinuationCredit(
+                player, root, ctx, primary.Id));
         }
 
         internal static bool FollowupStillCurrent(MaterializationPlan plan, PlayerSetupData player,
-            AiTurnContext ctx, HandoffPlan handoff)
+            AiTurnContext ctx, HandoffPlan handoff, PlayerRoot root = null)
         {
             var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
             var attack = Resolve(player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
             return primary != null && attack != null
                 && plan.AttackRefitFollowupAp == FollowupAp(player, primary, attack,
-                    FinalRoster(primary, handoff), ctx);
+                    FinalRoster(primary, handoff), ctx, root);
         }
 
-        // Additional to the default-bank check: the resulting primary must be able to activate
-        // even when its old activation did not fit the bank's protected prefix.
+        // Preserve other operation actors' holds while replacing this primary's own credit
+        // with the activation of its final roster, including when it was outside the prefix.
         internal static bool OnwardFunded(MaterializationPlan plan, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, float remainingChainCost, IEnumerable<UnitData> roster)
         {
             var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
             if (primary == null) return false;
             int activation = primary.ProjectedActivationApCost(roster);
+            float otherOperations = StrategicSpendability.OperationContinuationHold(player, root, ctx)
+                - StrategicSpendability.OperationContinuationCredit(player, root, ctx, primary.Id);
             return StrategicSpendability.SpendableAp(player, root, ctx,
                 new SpendAuthority(TurnResourceBook.OperationContinuationOwner, false))
-                >= remainingChainCost + activation;
+                >= remainingChainCost + activation + otherOperations;
         }
 
         internal static string RosterKey(ArmyData army) => army == null ? "-" : $"activated:{army.HasActivatedThisTurn}|" + string.Join(";",
