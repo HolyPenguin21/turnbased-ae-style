@@ -50,21 +50,21 @@ namespace Game.UI
                 : string.Join(" ", tags.Select(UnitAbilities.PrettyName));
         }
 
-        // "Range = 1, Defense +2, HP +3" — override shows "= value", additive a signed number.
-        // Empty when the grant changes no stats.
+        // The same plain-value convention as the stat badges; negative values keep their sign.
         public static string StatChanges(EquipmentGrant grant)
+            => FormatStatChanges(grant?.statChanges);
+
+        private static string FormatStatChanges(IEnumerable<EquipmentStatChange> changes)
         {
-            if (grant?.statChanges == null || grant.statChanges.Count == 0)
+            if (changes == null)
                 return string.Empty;
             var parts = new List<string>();
-            foreach (EquipmentStatChange change in grant.statChanges)
+            foreach (EquipmentStatChange change in changes)
             {
                 if (change == null)
                     continue;
                 string name = StatName(change.stat);
-                parts.Add(change.isOverride
-                    ? $"{name} = {change.amount}"
-                    : $"{name} {(change.amount >= 0 ? "+" : "")}{change.amount}");
+                parts.Add($"{name} {change.amount}");
             }
             return parts.Count == 0 ? string.Empty : string.Join(", ", parts);
         }
@@ -85,11 +85,32 @@ namespace Game.UI
         {
             if (equip == null)
                 return string.Empty;
-            string targets = AttachTargets(equip.equipment);
-            if (equip.attachmentSlot == AttachmentSlot.Mutator)
-                targets = Join("Bio required", targets);
-            return Join(targets, AddedAbilities(equip.equipment, config));
+            return Join(AttachmentTargets(equip), AddedAbilities(equip.equipment, config),
+                UnbadgedStatChanges(equip.equipment));
         }
+
+        private static string AttachmentTargets(CardDefinition equip)
+        {
+            string targets = AttachTargets(equip.equipment);
+            if (equip.attachmentSlot != AttachmentSlot.Mutator)
+                return targets;
+            var kinds = equip.equipment?.hostKinds;
+            string hosts = kinds == null ? string.Empty
+                : string.Join(" or ", kinds.Select(k => k.ToString()));
+            return Join("Bio required", hosts);
+        }
+
+        // Unit badges cover Attack/Defense/HP/Move/Range. Initiative and activation AP
+        // still need readable text, including while an attachment is being previewed.
+        private static string UnbadgedStatChanges(EquipmentGrant grant)
+            => FormatStatChanges(grant?.statChanges?.Where(c => c != null
+                && (c.stat == EquipmentStat.ActivationApCost
+                    || (c.stat == EquipmentStat.Initiative
+                        && ResolveEquipmentHostType(grant) == CardType.Unit))));
+
+        // The result detail has no stat badges, so include the complete existing effect summary.
+        public static string Description(CardDefinition equip, GameConfig config)
+            => equip == null ? string.Empty : Join(AttachmentTargets(equip), EffectSummary(equip, config));
 
         // The equipment's description once it is already attached to a host. Compatibility is no
         // longer useful at that point; numeric stat changes still belong to the stat badges.
@@ -97,7 +118,7 @@ namespace Game.UI
         {
             if (equip == null)
                 return string.Empty;
-            return AddedAbilities(equip.equipment, config);
+            return Join(AddedAbilities(equip.equipment, config), UnbadgedStatChanges(equip.equipment));
         }
 
         // Resolves the five physical badge slots through the card type the Equipment targets.

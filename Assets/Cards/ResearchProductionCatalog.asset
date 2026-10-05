@@ -18,11 +18,45 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 8f35a40e04424fa7a3fa5220c7c2bdb8, type: 2}
   - {fileID: 11400000, guid: c7d27e53b32c458d83fbfe43e8732dee, type: 2}
   researchCards:
-  - cardKey: neutral.equipment.bio.plasma-gun
+  - cardKey: neutral.mutator.dermal-plating
     factionRestriction: 2
-  - cardKey: neutral.equipment.armored.plasma-cannon
+  - cardKey: neutral.mutator.reactive-marrow
     factionRestriction: 2
-  - cardKey: neutral.equipment.mechanical.nuclear-engine
+  - cardKey: neutral.mutator.reinforced-skeleton
+    factionRestriction: 2
+  - cardKey: neutral.mutator.pain-suppression
+    factionRestriction: 2
+  - cardKey: neutral.mutator.regenerative-culture
+    factionRestriction: 2
+  - cardKey: neutral.mutator.hyper-regeneration
+    factionRestriction: 2
+  - cardKey: neutral.mutator.survivor-strain
+    factionRestriction: 2
+  - cardKey: neutral.mutator.adrenal-surge
+    factionRestriction: 2
+  - cardKey: neutral.mutator.metabolic-overdrive
+    factionRestriction: 2
+  - cardKey: neutral.mutator.predator-reflexes
+    factionRestriction: 2
+  - cardKey: neutral.mutator.neural-accelerator
+    factionRestriction: 2
+  - cardKey: neutral.mutator.rapid-synapse
+    factionRestriction: 2
+  - cardKey: neutral.mutator.hunter-glands
+    factionRestriction: 2
+  - cardKey: neutral.mutator.enhanced-senses
+    factionRestriction: 2
+  - cardKey: neutral.mutator.wanderer-strain
+    factionRestriction: 2
+  - cardKey: neutral.mutator.chameleon-tissue
+    factionRestriction: 2
+  - cardKey: neutral.mutator.fortunate-genome
+    factionRestriction: 2
+  - cardKey: neutral.mutator.ghost-genome
+    factionRestriction: 2
+  - cardKey: neutral.mutator.hunter-genome
+    factionRestriction: 2
+  - cardKey: neutral.mutator.reflex-genome
     factionRestriction: 2
   productionCards:
   - cardKey: neutral.equipment.bio.flamer

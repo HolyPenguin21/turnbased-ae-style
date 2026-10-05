@@ -142,7 +142,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0000000008000000
     grantedAbilities:
     - ProduceHuman
     resourceYield:
@@ -186,7 +186,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0000000008000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -229,7 +229,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0800000007000000
+    unitTypeTags: 000000000800000007000000
     grantedAbilities:
     - Researcher
     resourceYield:
@@ -273,7 +273,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0800000007000000
+    unitTypeTags: 000000000800000007000000
     grantedAbilities:
     - Assembler
     resourceYield:
@@ -317,7 +317,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0000000008000000
     grantedAbilities:
     - RapidReaction
     resourceYield:
@@ -361,7 +361,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0000000008000000
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -404,7 +404,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags: 08000000
+    unitTypeTags: 0000000008000000
     grantedAbilities:
     - r1s6
     - Stealth4
@@ -449,7 +449,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags: 0800000007000000
+    unitTypeTags: 000000000800000007000000
     grantedAbilities:
     - ApBonus
     resourceYield:
