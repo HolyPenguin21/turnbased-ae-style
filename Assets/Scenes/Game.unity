@@ -38371,6 +38371,7 @@ MonoBehaviour:
   blockingRoot: {fileID: 1960000011}
   menuPanel: {fileID: 1960000015}
   optionsPanel: {fileID: 1950000004}
+  battleScreen: {fileID: 8880000000000000035}
   gearButton: {fileID: 1960000010}
   optionsButton: {fileID: 1960000027}
   saveButton: {fileID: 1960000036}

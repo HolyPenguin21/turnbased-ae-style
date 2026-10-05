@@ -163,6 +163,34 @@ namespace Game.EditorTests
             menu.OpenMenu(); overlay.SetActive(false);
             Assert.IsFalse(menu.IsShowing); Assert.IsFalse(group.interactable); Assert.IsTrue(group.blocksRaycasts);
         }
+        [UnityTest] public IEnumerator BattleHidesGearAndRejectsMenuUntilBattleCloses()
+        {
+            var battleRoot = New("menu-battle-state"); battleRoot.SetActive(false);
+            var battle = battleRoot.AddComponent<BattleScreenUI>(); Set(battle, "panelRoot", battleRoot);
+            var overlay = New("battle-locked-menu"); overlay.SetActive(false);
+            var menu = overlay.AddComponent<GameMenuPanelUI>();
+            var block = New("battle-menu-block"); block.transform.SetParent(overlay.transform); block.SetActive(false);
+            var panel = New("battle-menu-panel"); panel.transform.SetParent(block.transform);
+            var gear = New("battle-menu-gear").AddComponent<Button>(); gear.transform.SetParent(overlay.transform);
+            Set(menu, "blockingRoot", block); Set(menu, "menuPanel", panel);
+            Set(menu, "gearButton", gear); Set(menu, "battleScreen", battle);
+            overlay.SetActive(true);
+            Assert.IsTrue(gear.gameObject.activeSelf);
+            battleRoot.SetActive(true); RaiseVisibility(battle);
+            Assert.IsFalse(gear.gameObject.activeSelf);
+            menu.OpenMenu(); Assert.IsFalse(menu.IsShowing);
+            Assert.IsFalse(block.activeSelf);
+            battleRoot.SetActive(false); RaiseVisibility(battle);
+            Assert.IsTrue(gear.gameObject.activeSelf);
+            menu.OpenMenu(); Assert.IsTrue(menu.IsShowing);
+            // AI combat may start while the menu is already open.
+            battleRoot.SetActive(true); RaiseVisibility(battle);
+            Assert.IsFalse(menu.IsShowing); Assert.IsFalse(block.activeSelf);
+            Assert.IsFalse(gear.gameObject.activeSelf);
+            battleRoot.SetActive(false); RaiseVisibility(battle);
+            Assert.IsTrue(gear.gameObject.activeSelf);
+            yield return null;
+        }
         [UnityTest] public IEnumerator MenuBlocksArmyAndBattleDragsAlreadyCapturedByEventSystem()
         {
             var es = EventSystem.current != null ? EventSystem.current : New("drag-events").AddComponent<EventSystem>();

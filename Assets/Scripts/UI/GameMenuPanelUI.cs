@@ -13,6 +13,7 @@ namespace Game.UI
         [SerializeField] private GameObject blockingRoot;
         [SerializeField] private GameObject menuPanel;
         [SerializeField] private GameSettingsPanelUI optionsPanel;
+        [SerializeField] private BattleScreenUI battleScreen;
         [SerializeField] private Button gearButton;
         [SerializeField] private Button optionsButton;
         [SerializeField] private Button saveButton;
@@ -28,6 +29,7 @@ namespace Game.UI
         private static GameMenuPanelUI instance;
         private static int blockedThroughFrame = -1;
         public bool IsShowing { get; private set; }
+        private bool BattleActive => battleScreen != null && battleScreen.IsShowing;
         public event Action VisibilityChanged;
         public static bool GameplayInputBlocked => (instance != null && instance.IsShowing) || blockedThroughFrame == Time.frameCount;
         public static bool OwnsKeyboardSelection
@@ -50,12 +52,19 @@ namespace Game.UI
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
+            if (battleScreen != null) battleScreen.VisibilityChanged += RefreshBattleAvailability;
             if (saveButton != null) saveButton.interactable = false;
             if (loadButton != null) loadButton.interactable = false;
+            RefreshBattleAvailability();
+        }
+        private void RefreshBattleAvailability()
+        {
+            if (BattleActive && IsShowing) ContinueGame();
+            if (gearButton != null) gearButton.gameObject.SetActive(!IsShowing && !BattleActive);
         }
         public void OpenMenu()
         {
-            if (IsShowing || blockingRoot == null || menuPanel == null) return;
+            if (BattleActive || IsShowing || blockingRoot == null || menuPanel == null) return;
             instance = this; // Also supports entering Play Mode without domain/scene reload.
             previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
@@ -87,15 +96,16 @@ namespace Game.UI
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
             RestoreGameplayCanvases();
-            if (gearButton != null) gearButton.gameObject.SetActive(true);
+            if (gearButton != null) gearButton.gameObject.SetActive(!BattleActive);
             VisibilityChanged?.Invoke();
             var selectable = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
-            else gearButton?.Select();
+            else if (!BattleActive) gearButton?.Select();
             previousSelection = null;
         }
         private void Update()
         {
+            if (BattleActive) return;
             if (Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame || UIFocusUtility.IsTextFieldFocused()) return;
             Game.Audio.GameAudioManager.Instance?.PlayClick();
             blockedThroughFrame = Time.frameCount;
@@ -135,6 +145,7 @@ namespace Game.UI
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
+            if (battleScreen != null) battleScreen.VisibilityChanged -= RefreshBattleAvailability;
             if (instance == this) instance = null;
         }
     }
