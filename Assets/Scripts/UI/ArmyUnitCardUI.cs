@@ -82,6 +82,7 @@ namespace Game.UI
         // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
         // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
         [SerializeField] private EquipmentArtToggle equipmentArtToggle;
+        [SerializeField] private EquipmentArtToggle mutatorArtToggle;
         // Preview mode only (see SetupPreview): for a research/production catalog card, the text
         // describing what it does — who it fits, the skills it grants, the stats it changes (see
         // EquipmentCardText for an Equipment card; the ability list otherwise). Kept hidden in
@@ -119,6 +120,8 @@ namespace Game.UI
 
         public void Setup(ArmyViewerModalUI modal, UnitData unit)
         {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             _modal = modal;
             Unit = unit;
 
@@ -178,7 +181,11 @@ namespace Game.UI
             if (hiddenBadgeRoot != null)
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
 
+            equipmentArtToggle?.SetPeer(mutatorArtToggle);
+            mutatorArtToggle?.SetPeer(equipmentArtToggle);
             equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null,
+                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
+            mutatorArtToggle?.Configure(unit?.Mutator, _modal != null ? _modal.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
 
             // Preview-only element — never part of the Army Viewer's own card face. On the
@@ -196,6 +203,8 @@ namespace Game.UI
         // is inert while _previewMode is set.
         public void SetupPreview(CardDefinition card, GameConfig config, Action<CardDefinition> onClick)
         {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             _previewMode = true;
             _previewCard = card;
             _previewClick = onClick;
@@ -227,6 +236,7 @@ namespace Game.UI
             if (stealthButton != null) stealthButton.gameObject.SetActive(false);
             if (hiddenBadgeRoot != null) hiddenBadgeRoot.SetActive(false);
             equipmentArtToggle?.Configure(null, null);
+            mutatorArtToggle?.Configure(null, null);
 
             ShowCardCostPreview(card);
             RefreshSkillsText(card, config);
@@ -465,6 +475,7 @@ namespace Game.UI
             repairButton?.gameObject.SetActive(false);
             stealthButton?.gameObject.SetActive(false);
             equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             HideCostPreview();
         }
 

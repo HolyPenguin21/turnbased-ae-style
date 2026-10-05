@@ -567,7 +567,7 @@ namespace Game.Ai.V2
         // with the frozen Armies above. Hand/Deck are the live AiHandData lists: a card played
         // after the build is gone from them while its unit is not yet in Armies, so a known-pool
         // proof must never read them directly. Null in hand-built test snapshots (then Hand/Deck).
-        public IReadOnlyList<(CardDefinition Card, CardDefinition Equipment, bool InHand)> PoolCards;
+        public IReadOnlyList<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)> PoolCards;
         public IReadOnlyList<CardDefinition> Deck;   // still-drawable pool (multiset, order unknown)
         public int HandCapacity;
         public bool HasFreeHandSlot;

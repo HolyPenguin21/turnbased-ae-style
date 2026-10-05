@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Map;
 using Game.Units;
 using UnityEngine;
@@ -9,13 +10,196 @@ namespace Game.Cards
     // of ArmyActions.DeployUnitFromCard for gear. Two attach targets, per the project owner's
     // own spec: a live UnitData already in an army, or a not-yet-spawned Unit/Hero CardData
     // still in hand (the grant then rides along and is applied by ArmyActions.DeployUnitFromCard
-    // when that card is finally played). One slot per host, checked as "Equipment == null".
+    // when that card is finally played). Two independent permanent slots per host.
     // There is no un-attach (the manual: "Once placed an attachment card can never be removed").
     //
     // Cost to attach is the equipment card's own apCost + resourceCost (same fields every card
     // has) — spent once, here, whichever target kind it's attached to.
     public static class EquipmentSystem
     {
+        public static CardDefinition GetAttachment(CardData host, CardDefinition attachment)
+            => attachment?.attachmentSlot == AttachmentSlot.Mutator ? host?.Mutator : host?.Equipment;
+
+        public static CardDefinition GetAttachment(UnitData host, CardDefinition attachment)
+            => attachment?.attachmentSlot == AttachmentSlot.Mutator ? host?.Mutator : host?.Equipment;
+
+        private static void SetAttachment(CardData host, CardDefinition attachment)
+        {
+            if (attachment.attachmentSlot == AttachmentSlot.Mutator) host.Mutator = attachment;
+            else host.Equipment = attachment;
+        }
+
+        // Install from a hand card once, before the spawned unit is published. sourceCard owns
+        // both references; the optional legacy Equipment argument is only a fallback.
+        public static void ApplyAttachments(UnitData unit, CardDefinition equipment, CardDefinition mutator)
+        {
+            if (equipment != null) Install(equipment, unit);
+            if (mutator != null) Install(mutator, unit);
+        }
+
+        private static void Install(CardDefinition attachment, UnitData unit)
+        {
+            if (!unit.AttachmentBase.HasValue)
+                unit.AttachmentBase = new PredictedEquipmentState(ReadStats(unit), new List<string>(unit.Abilities));
+            bool first = unit.Equipment == null && unit.Mutator == null;
+            if (first)
+                unit.AttachmentResources = new AttachmentResourceState(unit.HitPointsMax - unit.HitPointsCurrent,
+                    unit.MoveMax - unit.MoveCurrent, unit.FateMax - unit.Fate, unit);
+            if (attachment.attachmentSlot == AttachmentSlot.Mutator) unit.Mutator = attachment;
+            else unit.Equipment = attachment;
+
+            if (first)
+            {
+                // Preserve the existing one-Equipment gameplay, including current/max semantics.
+                Apply(attachment.equipment, unit);
+                unit.AttachmentApplied = new PredictedEquipmentState(ReadStats(unit), new List<string>(unit.Abilities));
+                var usage = unit.AttachmentResources.Value;
+                unit.AttachmentResources = new AttachmentResourceState(usage.HpSpent, usage.MoveSpent, usage.FateSpent, unit);
+                return;
+            }
+
+            PredictedEquipmentState projected = PredictSlots(unit.AttachmentBase.Value,
+                unit.Equipment, unit.Mutator);
+            PredictedEquipmentState next = MergeRuntimeState(unit, projected);
+            WriteStats(unit, next.Stats);
+            unit.Abilities.Clear();
+            unit.Abilities.UnionWith(next.Abilities);
+            unit.AttachmentApplied = projected;
+        }
+
+        public static Dictionary<EquipmentStat, int> DefinitionStats(CardDefinition host)
+            => new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = host.attack,
+                [EquipmentStat.Defense] = host.defenseRating,
+                [EquipmentStat.Resistance] = host.resistanceRating,
+                [EquipmentStat.Range] = host.range,
+                [EquipmentStat.HitPoints] = host.hitPoints,
+                [EquipmentStat.MoveMax] = host.moveMax,
+                [EquipmentStat.Initiative] = host.initiative,
+                [EquipmentStat.ActivationApCost] = host.grantedAbilities != null
+                    && host.grantedAbilities.Contains(UnitAbilities.RapidReaction) ? 0 : host.activationApCost,
+                [EquipmentStat.CommandRating] = host.commandRating,
+                [EquipmentStat.Fate] = host.fate,
+            };
+
+        private static Dictionary<EquipmentStat, int> ReadStats(UnitData host)
+            => new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = host.Attack,
+                [EquipmentStat.Defense] = host.Defense,
+                [EquipmentStat.Resistance] = host.Resistance,
+                [EquipmentStat.Range] = host.Range,
+                [EquipmentStat.HitPoints] = host.HitPointsMax,
+                [EquipmentStat.MoveMax] = host.MoveMax,
+                [EquipmentStat.Initiative] = host.Initiative,
+                [EquipmentStat.ActivationApCost] = host.ActivationApCost,
+                [EquipmentStat.CommandRating] = host.CommandRating,
+                [EquipmentStat.Fate] = host.FateMax,
+            };
+
+        private static void WriteStats(UnitData unit, IReadOnlyDictionary<EquipmentStat, int> stats)
+        {
+            int hpSpent = SpentResource(unit, EquipmentStat.HitPoints);
+            int moveSpent = SpentResource(unit, EquipmentStat.MoveMax);
+            int fateSpent = SpentResource(unit, EquipmentStat.Fate);
+            unit.HitPointsCurrent = Mathf.Clamp(stats[EquipmentStat.HitPoints] - hpSpent,
+                unit.HitPointsCurrent > 0 ? 1 : 0, stats[EquipmentStat.HitPoints]);
+            unit.MoveCurrent = Mathf.Clamp(stats[EquipmentStat.MoveMax] - moveSpent, 0, stats[EquipmentStat.MoveMax]);
+            unit.Fate = Mathf.Clamp(stats[EquipmentStat.Fate] - fateSpent, 0, stats[EquipmentStat.Fate]);
+            unit.AttachmentResources = new AttachmentResourceState(hpSpent, moveSpent, fateSpent, unit);
+            unit.Attack = stats[EquipmentStat.Attack]; unit.Defense = stats[EquipmentStat.Defense];
+            unit.Resistance = stats[EquipmentStat.Resistance]; unit.Range = stats[EquipmentStat.Range];
+            unit.HitPointsMax = stats[EquipmentStat.HitPoints]; unit.MoveMax = stats[EquipmentStat.MoveMax];
+            unit.Initiative = stats[EquipmentStat.Initiative]; unit.ActivationApCost = stats[EquipmentStat.ActivationApCost];
+            unit.CommandRating = stats[EquipmentStat.CommandRating]; unit.FateMax = stats[EquipmentStat.Fate];
+        }
+
+        // Preserve consumption even when an intermediate attachment lowered a maximum and
+        // clamped current. A later canonical rebuild must not interpret that clamp as healing.
+        private static int SpentResource(UnitData unit, EquipmentStat stat)
+        {
+            var usage = unit.AttachmentResources;
+            if (stat == EquipmentStat.HitPoints)
+                return Mathf.Max(0, usage.HasValue ? usage.Value.HpSpent + usage.Value.LastHp - unit.HitPointsCurrent
+                    : unit.HitPointsMax - unit.HitPointsCurrent);
+            if (stat == EquipmentStat.MoveMax)
+                return Mathf.Max(0, usage.HasValue ? usage.Value.MoveSpent + usage.Value.LastMove - unit.MoveCurrent
+                    : unit.MoveMax - unit.MoveCurrent);
+            return Mathf.Max(0, usage.HasValue ? usage.Value.FateSpent + usage.Value.LastFate - unit.Fate
+                : unit.FateMax - unit.Fate);
+        }
+
+        public static int CurrentAfterAttachment(UnitData unit, EquipmentStat stat, int nextMax)
+        {
+            if (unit.AttachmentResources.HasValue)
+                return Mathf.Clamp(nextMax - SpentResource(unit, stat),
+                    stat == EquipmentStat.HitPoints && unit.HitPointsCurrent > 0 ? 1 : 0, nextMax);
+            int current = stat == EquipmentStat.HitPoints ? unit.HitPointsCurrent
+                : stat == EquipmentStat.MoveMax ? unit.MoveCurrent : unit.Fate;
+            int maximum = stat == EquipmentStat.HitPoints ? unit.HitPointsMax
+                : stat == EquipmentStat.MoveMax ? unit.MoveMax : unit.FateMax;
+            return Mathf.Clamp(current + Mathf.Max(0, nextMax - maximum), 0, nextMax);
+        }
+
+        // Full projected state, shared by hand UI and AI. Canonical slot order is independent
+        // of installation order. A candidate replaces only its corresponding projected slot.
+        public static PredictedEquipmentState Project(CardDefinition host, CardDefinition equipment,
+            CardDefinition mutator, CardDefinition candidate = null)
+            => PredictSlots(new PredictedEquipmentState(DefinitionStats(host),
+                host.grantedAbilities != null ? new List<string>(host.grantedAbilities) : new List<string>()),
+                equipment, mutator, candidate);
+
+        public static PredictedEquipmentState Project(CardData host, CardDefinition candidate = null)
+            => Project(host.Definition, host.Equipment, host.Mutator, candidate);
+
+        public static List<string> EffectiveAbilities(CardData host, CardDefinition candidate = null)
+            => host?.Definition == null ? new List<string>() : new List<string>(Project(host, candidate).Abilities);
+
+        public static PredictedEquipmentState PredictAttachment(CardDefinition candidate, UnitData unit)
+        {
+            if (!unit.AttachmentBase.HasValue || !unit.AttachmentApplied.HasValue)
+                return Predict(candidate?.equipment, ReadStats(unit), unit.Abilities);
+            PredictedEquipmentState next = PredictSlots(unit.AttachmentBase.Value, unit.Equipment, unit.Mutator, candidate);
+            return MergeRuntimeState(unit, next);
+        }
+
+        // Replacing a permanent projection must not discard temporary combat changes.
+        private static PredictedEquipmentState MergeRuntimeState(UnitData unit, PredictedEquipmentState next)
+        {
+            var stats = ReadStats(unit);
+            PredictedEquipmentState previous = unit.AttachmentApplied.Value;
+            foreach (EquipmentStat stat in new List<EquipmentStat>(stats.Keys))
+                stats[stat] += next.Stats[stat] - previous.Stats[stat];
+            var abilities = new HashSet<string>(next.Abilities);
+            foreach (string ability in unit.Abilities)
+                if (!previous.Abilities.Contains(ability)) abilities.Add(ability);
+            foreach (string ability in previous.Abilities)
+                if (!unit.Abilities.Contains(ability)) abilities.Remove(ability);
+            return new PredictedEquipmentState(stats, new List<string>(abilities));
+        }
+
+        private static PredictedEquipmentState PredictSlots(PredictedEquipmentState baseline,
+            CardDefinition equipment, CardDefinition mutator, CardDefinition candidate = null)
+        {
+            if (candidate != null)
+            {
+                if (candidate.attachmentSlot == AttachmentSlot.Mutator) mutator = candidate;
+                else equipment = candidate;
+            }
+            var stats = new Dictionary<EquipmentStat, int>();
+            foreach (var pair in baseline.Stats) stats[pair.Key] = pair.Value;
+            IReadOnlyList<string> abilities = baseline.Abilities;
+            foreach (CardDefinition attachment in new[] { equipment, mutator })
+            {
+                if (attachment?.equipment == null) continue;
+                PredictedEquipmentState next = Predict(attachment.equipment, stats, abilities);
+                foreach (var pair in next.Stats) stats[pair.Key] = pair.Value;
+                abilities = next.Abilities;
+            }
+            return new PredictedEquipmentState(stats, abilities);
+        }
+
         // --- family matching (for EquipmentGrant.clearAbilityFamilies) ----------------------
         // Delegates to AbilityParams so the parameterized-tag grammar (r<N>s<M>, Stealth<N>)
         // stays defined in exactly one file.
@@ -83,7 +267,7 @@ namespace Game.Cards
                 return false;
             }
             EquipmentHostKind kind = target.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            return CanAttachCore(equipment, apCost, resourceCost, kind, target.TypeTags, target.Equipment != null, owner, out reason);
+            return CanAttachCore(equipment, apCost, resourceCost, kind, target.TypeTags, GetAttachment(target, equipment) != null, owner, out reason);
         }
 
         // Same checks against a card still in hand — host kind/tags come from the card's own
@@ -103,7 +287,7 @@ namespace Game.Cards
                     out ICollection<UnitTypeTag> hostTags, out reason))
                 return false;
             return CanAttachCore(equipment, apCost, resourceCost, kind, hostTags,
-                targetCard.Equipment != null, owner, out reason);
+                GetAttachment(targetCard, equipment) != null, owner, out reason);
         }
 
         // Pure definition-level compatibility for planners and previews. Slot occupancy, AP and
@@ -148,6 +332,17 @@ namespace Game.Cards
                 return false;
             }
             EquipmentGrant grant = equipment.equipment;
+            if (equipment.attachmentSlot != AttachmentSlot.Equipment && equipment.attachmentSlot != AttachmentSlot.Mutator)
+            {
+                reason = "Unknown attachment slot.";
+                return false;
+            }
+            if (equipment.attachmentSlot == AttachmentSlot.Mutator
+                && (hostTags == null || !hostTags.Contains(UnitTypeTag.Bio)))
+            {
+                reason = "Mutators require a Bio unit or hero.";
+                return false;
+            }
 
             if (grant.hostKinds == null || !grant.hostKinds.Contains(kind))
             {
@@ -179,7 +374,7 @@ namespace Game.Cards
 
             if (slotTaken)
             {
-                reason = "This already has equipment attached.";
+                reason = $"This already has {equipment.attachmentSlot.ToString().ToLowerInvariant()} attached.";
                 return false;
             }
 
@@ -204,8 +399,7 @@ namespace Game.Cards
                 return false;
             PayCost(equipment, equipment != null ? equipment.apCost : 0,
                 equipment != null ? equipment.resourceCost : null, owner);
-            Apply(equipment.equipment, target);
-            target.Equipment = equipment;
+            Install(equipment, target);
             RefreshLiveHostObservation(target);
             return true;
         }
@@ -218,7 +412,7 @@ namespace Game.Cards
                 equipment != null ? equipment.resourceCost : null, owner);
             // Not applied now — the grant is stashed on the card and applied to the spawned
             // UnitData by ArmyActions.DeployUnitFromCard when this card is finally played.
-            targetCard.Equipment = equipment;
+            SetAttachment(targetCard, equipment);
             return true;
         }
 
@@ -233,8 +427,7 @@ namespace Game.Cards
                 return false;
             PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
-            Apply(equipment.equipment, target);
-            target.Equipment = equipment;
+            Install(equipment, target);
             RefreshLiveHostObservation(target);
             return true;
         }
@@ -246,7 +439,7 @@ namespace Game.Cards
                 return false;
             PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
-            targetCard.Equipment = equipment;
+            SetAttachment(targetCard, equipment);
             return true;
         }
 
@@ -430,6 +623,16 @@ namespace Game.Cards
                 stats[EquipmentStat.ActivationApCost] = 0;
 
             return new PredictedEquipmentState(stats, abilities);
+        }
+    }
+
+    internal readonly struct AttachmentResourceState
+    {
+        internal readonly int HpSpent, MoveSpent, FateSpent, LastHp, LastMove, LastFate;
+        internal AttachmentResourceState(int hpSpent, int moveSpent, int fateSpent, UnitData unit)
+        {
+            HpSpent = hpSpent; MoveSpent = moveSpent; FateSpent = fateSpent;
+            LastHp = unit.HitPointsCurrent; LastMove = unit.MoveCurrent; LastFate = unit.Fate;
         }
     }
 

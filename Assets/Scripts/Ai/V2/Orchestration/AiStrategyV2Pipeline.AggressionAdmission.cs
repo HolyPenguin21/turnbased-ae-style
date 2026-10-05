@@ -80,7 +80,7 @@ namespace Game.Ai.V2
                 .Where(c => c?.Definition != null && (c.Definition.cardType == Game.Cards.CardType.Unit
                     || c.Definition.cardType == Game.Cards.CardType.Hero
                     || c.Definition.cardType == Game.Cards.CardType.Equipment))
-                .Select(c => $"{c.Definition.displayName}+{c.Equipment?.displayName}"
+                .Select(c => $"{c.Definition.displayName}+{c.Equipment?.displayName}+{c.Mutator?.displayName}"
                     + (c.ResearchProductionCreated ? "*" : ""))
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string bases = string.Join(";", (self.BaseHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())

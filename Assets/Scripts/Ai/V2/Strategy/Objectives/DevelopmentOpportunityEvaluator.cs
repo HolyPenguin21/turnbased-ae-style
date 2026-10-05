@@ -241,7 +241,7 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
             CardData operatorCard = actor != null ? null : hand.Hand
                 .Where(c => c?.Definition?.cardType == CardType.Hero
-                    && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment)
+                    && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)
                         .Contains(ResearchProductionSystem.RoleAbility(mode))
                     && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
                         CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _))
@@ -363,23 +363,15 @@ namespace Game.Ai.V2
                 CardDefinition operatorDefinition = operatorCard?.Definition
                     ?? generatedOperator?.CardDef ?? deckOperator;
                 CardDefinition operatorEquipment = operatorCard?.Equipment;
-                int fate = operatorDefinition.fate;
-                if (operatorEquipment?.equipment != null)
-                {
-                    PredictedEquipmentState projected = EquipmentSystem.Predict(
-                        operatorEquipment.equipment,
-                        new Dictionary<EquipmentStat, int> { [EquipmentStat.Fate] = fate },
-                        operatorDefinition.grantedAbilities);
-                    if (projected.Stats.TryGetValue(EquipmentStat.Fate, out int equippedFate))
-                        fate = equippedFate;
-                }
+                var operatorState = EquipmentSystem.Project(operatorDefinition, operatorEquipment, operatorCard?.Mutator);
+                int fate = operatorState.Stats[EquipmentStat.Fate];
                 // Unregistered preview used only for the canonical probability calculation,
                 // never as a generation/execution actor.
                 projectedActor = new UnitData { Fate = Mathf.Max(0, fate), IsHero = true,
                     Owner = player, OriginatingCard = operatorDefinition,
-                    Equipment = operatorEquipment };
+                    Equipment = operatorEquipment, Mutator = operatorCard?.Mutator };
                 projectedActor.Abilities.UnionWith(MaterializationChainMatching.EffectiveAbilities(
-                    operatorDefinition, operatorEquipment));
+                    operatorDefinition, operatorEquipment, operatorCard?.Mutator));
             }
             float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
                 .Sum(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)

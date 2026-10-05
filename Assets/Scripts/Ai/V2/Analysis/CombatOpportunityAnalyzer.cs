@@ -152,21 +152,23 @@ namespace Game.Ai.V2
             }
             // The frozen card view (SelfSnapshot.PoolCards), coherent with the frozen Armies:
             // the live Hand/Deck lists may already miss a card whose unit Armies does not show yet.
-            IEnumerable<(CardDefinition Card, CardDefinition Equipment, bool InHand)> cards =
+            IEnumerable<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)> cards =
                 snap.Self.PoolCards
                 ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
                     .Where(c => c?.Definition != null)
-                    .Select(c => (c.Definition, c.Equipment, true))
+                    .Select(c => (c.Definition, c.Equipment, c.Mutator, true))
                     .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
-                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, false)));
-            foreach ((CardDefinition d, CardDefinition equipment, bool inHand) in cards)
+                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, (CardDefinition)null, false)));
+            foreach ((CardDefinition d, CardDefinition equipment, CardDefinition mutator, bool inHand) in cards)
             {
                 Grant(d);
                 if (equipment != null) Grant(equipment);
+                if (mutator != null) Grant(mutator);
                 if (d.cardType != CardType.Unit) continue;
-                attackers.Add(equipment?.equipment != null
-                    ? Equipped(AiPower.ToDefenderProfile(d), equipment.equipment)
-                    : AiPower.ToDefenderProfile(d));
+                var profile = AiPower.ToDefenderProfile(d);
+                if (equipment?.equipment != null) profile = Equipped(profile, equipment.equipment);
+                if (mutator?.equipment != null) profile = Equipped(profile, mutator.equipment);
+                attackers.Add(profile);
                 if (inHand) hand++; else deck++;
             }
             DevelopmentReadiness dev = snap.Development;

@@ -226,11 +226,7 @@ namespace Game.Ai.V2
                     if (d == null || d.isAviation
                         || (d.cardType != CardType.Unit && d.cardType != CardType.Hero))
                         continue;
-                    IReadOnlyList<string> eff = c.Equipment?.equipment != null
-                        ? EquipmentSystem.EffectiveAbilities(
-                            d.grantedAbilities != null ? new List<string>(d.grantedAbilities) : new List<string>(),
-                            c.Equipment.equipment)
-                        : (IReadOnlyList<string>)(d.grantedAbilities ?? (IReadOnlyList<string>)System.Array.Empty<string>());
+                    IReadOnlyList<string> eff = EquipmentSystem.EffectiveAbilities(c);
                     bool cardRecce = AbilityParams.AbilitiesHaveAnyRecce(eff);
                     // review-r4 finding 8.1 — coverage is read BEFORE the recce short-circuit:
                     // DeriveRoles gives a Scout+AntiAir card BOTH the Scout AND the AntiAir role, so
@@ -238,7 +234,7 @@ namespace Game.Ai.V2
                     // the EFFECTIVE stat line (attached equipment folded in at the stats level).
                     // P1 ARCH — the coverage roles come from StrategicEffectRegistry, not a fixed
                     // ability list. (CoverageOf applies its own !recce gate to MobileCombat.)
-                    AiPower.ProjectedStrategicLine line = AiPower.EffectiveLine(d, c.Equipment?.equipment);
+                    AiPower.ProjectedStrategicLine line = AiPower.EffectiveCardLine(c);
                     coverage = coverage.Union(StrategicEffectRegistry.CoverageOf(eff, line.MoveMax));
                     if (cardRecce)
                         continue;   // a recce card is a scout, not standing combat mass
@@ -1216,7 +1212,7 @@ namespace Game.Ai.V2
             if (host == null || eq?.equipment == null)
                 return 0f;
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv);
-            float fit = HandCardMatchupFit(eq.equipment, host, p?.BaseCardInHand?.Equipment?.equipment, snap);
+            float fit = HandCardMatchupFit(eq.equipment, host, p?.BaseCardInHand?.Equipment?.equipment, snap, p?.BaseCardInHand, eq);
             return EquipmentUpgradeValue(delta, fit, host.cardType == CardType.Unit);
         }
 
@@ -1228,7 +1224,7 @@ namespace Game.Ai.V2
                 return 0f;
             EquipmentDelta delta = EquipmentDeltaParts(equipDef, host, snap, inv);
             float fit = army?.Members != null
-                ? UnitMatchupFit(equipDef.equipment, host, army.Members, snap) : 0f;
+                ? UnitMatchupFit(equipDef.equipment, host, army.Members, snap, equipDef) : 0f;
             return EquipmentUpgradeValue(delta, fit, IsCombatRecipient(null, host));
         }
 
@@ -1244,15 +1240,15 @@ namespace Game.Ai.V2
             if (grant == null)
                 return 0f;
             if (cand.RecipientUnit != null && army?.Members != null)
-                return UnitMatchupFit(grant, cand.RecipientUnit, army.Members, snap);
+                return UnitMatchupFit(grant, cand.RecipientUnit, army.Members, snap, cand.Card);
             if (cand.RecipientKind == DevRecipientKind.HandCard)
                 return HandCardMatchupFit(grant, cand.RecipientCard?.Definition,
-                    cand.RecipientCard?.Equipment?.equipment, snap);
+                    cand.RecipientCard?.Equipment?.equipment, snap, cand.RecipientCard, cand.Card);
             return 0f;
         }
 
         private static float UnitMatchupFit(EquipmentGrant grant, UnitData recipient,
-            IReadOnlyCollection<UnitData> members, WorldSnapshot snap)
+            IReadOnlyCollection<UnitData> members, WorldSnapshot snap, CardDefinition candidate = null)
         {
             List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             int comparable = 0;
@@ -1262,7 +1258,7 @@ namespace Game.Ai.V2
                 if (threat.Units == null || threat.Units.Count == 0)
                     continue;
                 comparable++;
-                if (ImprovesGroundCombatOutcome(recipient, members, grant, threat))
+                if (ImprovesGroundCombatOutcome(recipient, members, grant, threat, candidate: candidate))
                     improved++;
             }
             return comparable > 0 ? (float)improved / comparable : 0f;
@@ -1270,15 +1266,17 @@ namespace Game.Ai.V2
 
         // Only a Unit card is a new WorthIt combat body; a hand Hero is not (fit 0 by design).
         private static float HandCardMatchupFit(EquipmentGrant grant, CardDefinition host,
-            EquipmentGrant existing, WorldSnapshot snap)
+            EquipmentGrant existing, WorldSnapshot snap, CardData hostCard = null, CardDefinition candidate = null)
         {
             if (grant == null || host == null || host.cardType != CardType.Unit)
                 return 0f;
             List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             if (threats.Count == 0)
                 return 0f;
-            AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
-            AiPower.ProjectedStrategicLine after = AiPower.EffectiveLine(host, existing, grant);
+            AiPower.ProjectedStrategicLine before = hostCard != null
+                ? AiPower.EffectiveCardLine(hostCard) : AiPower.EffectiveLine(host, existing);
+            AiPower.ProjectedStrategicLine after = hostCard != null && candidate != null
+                ? AiPower.EffectiveCardLine(hostCard, candidate) : AiPower.EffectiveLine(host, existing, grant);
             WorthIt.DefenderProfile Profile(AiPower.ProjectedStrategicLine line) =>
                 new WorthIt.DefenderProfile(line.Defense,
                     line.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
@@ -1327,7 +1325,7 @@ namespace Game.Ai.V2
         // without mutating gameplay UnitData or pretending the grant created a new combat body.
         internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
             IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
-            WorthIt.DefendingArmy threat, float hexBonus = 0f)
+            WorthIt.DefendingArmy threat, float hexBonus = 0f, CardDefinition candidate = null)
         {
             IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
             if (recipient == null || recipient.IsHero || grant == null || members == null
@@ -1343,15 +1341,19 @@ namespace Game.Ai.V2
                 [EquipmentStat.HitPoints] = recipient.HitPointsMax,
                 [EquipmentStat.Initiative] = recipient.Initiative,
             };
-            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, stats, recipient.Abilities);
+            PredictedEquipmentState predicted = candidate != null && (recipient.Mutator != null
+                || candidate.attachmentSlot == AttachmentSlot.Mutator)
+                ? EquipmentSystem.PredictAttachment(candidate, recipient)
+                : EquipmentSystem.Predict(grant, stats, recipient.Abilities);
             int attack = predicted.Stats.TryGetValue(EquipmentStat.Attack, out int atk)
                 ? atk : recipient.Attack;
             int defense = predicted.Stats.TryGetValue(EquipmentStat.Defense, out int def)
                 ? def : recipient.Defense;
             int maxHp = predicted.Stats.TryGetValue(EquipmentStat.HitPoints, out int hp)
                 ? hp : recipient.HitPointsMax;
-            int currentHp = Mathf.Clamp(recipient.HitPointsCurrent
-                + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
+            int currentHp = candidate != null && (recipient.Mutator != null || candidate.attachmentSlot == AttachmentSlot.Mutator)
+                ? EquipmentSystem.CurrentAfterAttachment(recipient, EquipmentStat.HitPoints, maxHp)
+                : Mathf.Clamp(recipient.HitPointsCurrent + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
             int initiative = predicted.Stats.TryGetValue(EquipmentStat.Initiative, out int init)
                 ? init : recipient.Initiative;
             var projected = new WorthIt.DefenderProfile(defense,
@@ -1450,6 +1452,14 @@ namespace Game.Ai.V2
                         before[kv.Key] = kv.Value;
                 abilities = current.Abilities;
             }
+            if (hostCard?.Mutator != null || equipDef.attachmentSlot == AttachmentSlot.Mutator)
+            {
+                var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
+                before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+                abilities = current.Abilities;
+                return ScoreEquipmentDelta(grant, before, abilities, host.cardType == CardType.Hero, snap, inv,
+                    EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef));
+            }
             return ScoreEquipmentDelta(grant, before, abilities, host.cardType == CardType.Hero, snap, inv);
         }
 
@@ -1496,16 +1506,28 @@ namespace Game.Ai.V2
             };
             IReadOnlyList<string> ab = host.Abilities != null
                 ? new List<string>(host.Abilities) : (IReadOnlyList<string>)System.Array.Empty<string>();
-            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv);
+            PredictedEquipmentState? projected = null;
+            if (host.Mutator != null || equipDef.attachmentSlot == AttachmentSlot.Mutator)
+            {
+                var next = EquipmentSystem.PredictAttachment(equipDef, host);
+                var stats = next.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+                // The existing evaluator scores current Fate, rather than FateMax. Preserve
+                // that input contract instead of counting already spent Fate as an upgrade.
+                if (stats.TryGetValue(EquipmentStat.Fate, out int maxFate))
+                    stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host, EquipmentStat.Fate, maxFate);
+                projected = new PredictedEquipmentState(stats, next.Abilities);
+            }
+            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected);
         }
 
         // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative/Resistance, hero Fate,
         // added/lost damage abilities); Tactical = what it cannot (Move, Range, activation AP,
         // Command, strategic roles - roles already gate themselves on a present threat).
         private static EquipmentDelta ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
-            IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv)
+            IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv,
+            PredictedEquipmentState? projected = null)
         {
-            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, hostAbilities);
+            PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
                 predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value) ? value : before[stat];
 
@@ -1655,17 +1677,10 @@ namespace Game.Ai.V2
 
         private static bool CardCarriesStealth(CardData c) =>
             c?.Definition != null
-            && AbilityParams.AbilitiesHaveAnyStealth(EffAbilities(c.Definition, c.Equipment));
+            && AbilityParams.AbilitiesHaveAnyStealth(MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator));
 
         private static bool GrantAddsStealth(EquipmentGrant grant) =>
             grant?.addAbilities != null && grant.addAbilities.Any(a => AbilityParams.TryGetStealthLevel(a, out _));
-
-        private static IReadOnlyList<string> EffAbilities(CardDefinition def, CardDefinition attachedEquipment)
-        {
-            var baseList = def?.grantedAbilities != null ? new List<string>(def.grantedAbilities) : new List<string>();
-            if (attachedEquipment?.equipment == null) return baseList;
-            return EquipmentSystem.EffectiveAbilities(baseList, attachedEquipment.equipment);
-        }
 
         internal static float StrategicResourceCostValue(ResourceCost c) =>
             StrategicResourceCostValue(c, null);

@@ -47,6 +47,11 @@ namespace Game.UI
         // battle grid cell): the name alone then carries the disclosure.
         [SerializeField] private TMP_Text infoText;
 
+        // The existing component/GUID renders either slot; no parallel hover implementation.
+        private EquipmentArtToggle _peer;
+        public void SetPeer(EquipmentArtToggle peer) => _peer = peer;
+        private void OnDisable() => Revert();
+
         private CardDefinition _equipment;
         private GameConfig _config;
         private CardType? _hostCardType;
@@ -104,6 +109,7 @@ namespace Game.UI
         {
             if (_showing)
                 return;
+            _peer?.Revert();
             _showing = true;
 
             if (cardArtImage != null && _equipment.art != null)
@@ -141,7 +147,7 @@ namespace Game.UI
                 return;
             _showing = false;
 
-            if (cardArtImage != null && _savedArt != null)
+            if (cardArtImage != null && _equipment?.art != null)
                 cardArtImage.sprite = _savedArt;
             _attackSwap.Restore();
             _defenseSwap.Restore();

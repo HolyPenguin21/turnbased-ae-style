@@ -7,12 +7,10 @@ namespace Game.Cards
     {
         public CardDefinition Definition;
 
-        // A CardType.Equipment card attached to THIS Unit/Hero card while it's still in hand
-        // (see EquipmentSystem / the attach flow in CardHandUI) — one slot, per the project
-        // owner's own call. Null until something's attached. Carried onto the spawned UnitData
-        // (and applied to its stats/abilities) when this card is finally deployed — see
-        // ArmyActions.DeployUnitFromCard. Meaningless on an Equipment card's own CardData.
+        // Independent permanent attachments carried onto UnitData at deployment. Both kinds
+        // remain CardType.Equipment; the attachment definition selects its destination slot.
         public CardDefinition Equipment;
+        public CardDefinition Mutator;
 
         // True ONLY for a CardData minted by a successful Research/Production Challenge (see
         // BattleAttackPopupUI.BeginResearchProduction and HexSelectionController's R/P

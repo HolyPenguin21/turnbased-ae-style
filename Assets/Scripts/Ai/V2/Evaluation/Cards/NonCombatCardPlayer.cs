@@ -832,7 +832,7 @@ namespace Game.Ai.V2
                     continue;
                 foreach (UnitData u in army.Members)
                 {
-                    if (u == null || u.IsAviation || u.Equipment != null)
+                    if (u == null || u.IsAviation || EquipmentSystem.GetAttachment(u, equipCard.Definition) != null)
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;

@@ -48,9 +48,9 @@ namespace Game.Ai.V2
                 bool needsStealth = (demand.RequiredTraits & TraitPreference.Stealth) != 0;
                 IReadOnlyList<string> projectedAbilities = def.grantedAbilities;
                 bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(projectedAbilities);
-                if (card.Equipment?.equipment != null)
+                if (card.Equipment?.equipment != null || card.Mutator?.equipment != null)
                 {
-                    projectedAbilities = EquipmentSystem.EffectiveAbilities(def.grantedAbilities, card.Equipment.equipment);
+                    projectedAbilities = EquipmentSystem.EffectiveAbilities(card);
                     hasStealth = AbilityParams.AbilitiesHaveAnyStealth(projectedAbilities);
                 }
                 if (needsStealth && !hasStealth)

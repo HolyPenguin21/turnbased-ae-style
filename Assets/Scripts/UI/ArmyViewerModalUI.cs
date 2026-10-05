@@ -429,6 +429,8 @@ namespace Game.UI
                 // the abilities/stats above by EquipmentSystem.Apply, this just names the source.
                 if (unit.Equipment != null)
                     text += $"\nEquipment: {unit.Equipment.displayName}";
+                if (unit.Mutator != null)
+                    text += $"\nMutator: {unit.Mutator.displayName}";
                 detailText.text = text;
             }
         }

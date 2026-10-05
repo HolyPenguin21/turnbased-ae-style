@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                     || !MaterializationChainMatching.MatchesCapabilityDef(def, demand.Capability))
                     continue;
 
-                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment, card.Mutator);
                 if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability, requiredResourceType,
                             recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, def))
                     && MaterializationChainMatching.MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
@@ -73,7 +73,7 @@ namespace Game.Ai.V2
                             card, i, null, -1, opt, baseAbilities));
                 }
 
-                if (card.Equipment == null)
+                if (card.Equipment == null || card.Mutator == null)
                 {
                     for (int j = 0; j < handList.Count; j++)
                     {
@@ -81,9 +81,10 @@ namespace Game.Ai.V2
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
                         if (eqDef == null || Excluded(eq) || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
+                            || EquipmentSystem.GetAttachment(card, eqDef) != null
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
-                        List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
+                        List<string> projected = EquipmentSystem.EffectiveAbilities(card, eqDef);
                         if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability, requiredResourceType,
                             recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, def))
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
@@ -108,11 +109,11 @@ namespace Game.Ai.V2
                     {
                         CardData host = handList[i];
                         CardDefinition hd = host?.Definition;
-                        if (hd == null || Excluded(host) || NotPinnedBase(host) || hd.isAviation || host.Equipment != null
+                        if (hd == null || Excluded(host) || NotPinnedBase(host) || hd.isAviation || EquipmentSystem.GetAttachment(host, gd) != null
                             || !MaterializationChainMatching.MatchesCapabilityDef(hd, demand.Capability) || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                             continue;
                         IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
-                        List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
+                        List<string> projected = EquipmentSystem.EffectiveAbilities(host, gd);
                         if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability, requiredResourceType,
                             recceMayFight: demand.AttackFistIsPreparationHost || StrikeRoster.IsPeakBody(snap, hd))
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
@@ -209,7 +210,7 @@ namespace Game.Ai.V2
                 // Only a Recce UNIT must be deployed solo in surplus. A Recce HERO can instead
                 // legally lead an existing body formation, which does not create a solo scout.
                 bool soloOnly = recce && !hero;
-                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment, card.Mutator);
 
                 foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments,
                              soloOnly, phaseBSurplus: true))
@@ -220,16 +221,17 @@ namespace Game.Ai.V2
                     direct.FinalCapability = cap;
                     candidates.Add(direct);
 
-                    if (!AiConfigV2.surplusAllowAttach || card.Equipment != null) continue;
+                    if (!AiConfigV2.surplusAllowAttach || (card.Equipment != null && card.Mutator != null)) continue;
                     for (int j = 0; j < handList.Count; j++)
                     {
                         if (j == i) continue;
                         CardData eq = handList[j];
                         CardDefinition eqDef = eq?.Definition;
                         if (eqDef == null || eqDef.cardType != CardType.Equipment || eqDef.equipment == null
+                            || EquipmentSystem.GetAttachment(card, eqDef) != null
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
-                        List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
+                        List<string> projected = EquipmentSystem.EffectiveAbilities(card, eqDef);
                         CapabilityKind projectedCap = SurplusCapability(def, projected, opt);
                         if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, projectedCap)) continue;
                         MaterializationPlan att = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy, null,
@@ -260,14 +262,14 @@ namespace Game.Ai.V2
                         {
                             CardData host = handList[i];
                             CardDefinition hd = host?.Definition;
-                            if (hd == null || hd.isAviation || host.Equipment != null
+                            if (hd == null || hd.isAviation || EquipmentSystem.GetAttachment(host, gd) != null
                                 || (reservation?.ClaimsDevelopmentOperatorCard(host) ?? false)
                                 || (hd.cardType != CardType.Unit && hd.cardType != CardType.Hero)
                                 || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                                 continue;
 
                             IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
-                            List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
+                            List<string> projected = EquipmentSystem.EffectiveAbilities(host, gd);
                             bool recce = AbilityParams.AbilitiesHaveAnyRecce(projected);
                             bool hero = hd.cardType == CardType.Hero;
                             bool soloOnly = recce && !hero;

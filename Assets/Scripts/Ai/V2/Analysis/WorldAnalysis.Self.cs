@@ -89,8 +89,8 @@ namespace Game.Ai.V2
             self.Hand = hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>();
             self.Deck = hand?.RemainingDeck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>();
             self.PoolCards = self.Hand.Where(c => c?.Definition != null)
-                .Select(c => (c.Definition, c.Equipment, true))
-                .Concat(self.Deck.Where(d => d != null).Select(d => (d, (CardDefinition)null, false)))
+                .Select(c => (c.Definition, c.Equipment, c.Mutator, true))
+                .Concat(self.Deck.Where(d => d != null).Select(d => (d, (CardDefinition)null, (CardDefinition)null, false)))
                 .ToList();
             self.HandCapacity = hand?.Capacity ?? 0;
             self.HasFreeHandSlot = hand?.HasFreeSlot ?? false;
@@ -271,20 +271,25 @@ namespace Game.Ai.V2
 
             // Each free ground host as "the combat gain of this item on it" (0 = does not fit).
             var hosts = new List<System.Func<CardDefinition, float>>();
-            foreach (ArmyData a in ownArmies)
-                foreach (UnitData u in a.Members)
-                    if (u != null && !u.IsAviation && !u.IsPrisoner && u.Equipment == null
-                        && u.OriginatingCard != null)
-                        hosts.Add(eq => EquipmentSystem.FitsHost(eq, u.OriginatingCard, out _)
-                            ? StrategicCardEvaluator.EquipmentDeltaParts(eq, u).Combat : 0f);
-            foreach (CardData c in self.Hand)
-                if (IsGroundHostCard(c?.Definition) && c.Equipment == null)
-                    hosts.Add(eq => EquipmentSystem.FitsHost(eq, c.Definition, out _)
-                        ? StrategicCardEvaluator.EquipmentDeltaParts(eq, c).Combat : 0f);
-            foreach (CardDefinition d in self.Deck)
-                if (IsGroundHostCard(d))
-                    hosts.Add(eq => EquipmentSystem.FitsHost(eq, d, out _)
-                        ? StrategicCardEvaluator.EquipmentDeltaParts(eq, d).Combat : 0f);
+            foreach (AttachmentSlot slot in new[] { AttachmentSlot.Equipment, AttachmentSlot.Mutator })
+            {
+                foreach (ArmyData a in ownArmies)
+                    foreach (UnitData u in a.Members)
+                        if (u != null && !u.IsAviation && !u.IsPrisoner && u.OriginatingCard != null
+                            && (slot == AttachmentSlot.Equipment ? u.Equipment == null : u.Mutator == null))
+                            hosts.Add(eq => eq.attachmentSlot == slot
+                                && EquipmentSystem.FitsHost(eq, u.OriginatingCard, out _)
+                                    ? StrategicCardEvaluator.EquipmentDeltaParts(eq, u).Combat : 0f);
+                foreach (CardData c in self.Hand)
+                    if (IsGroundHostCard(c?.Definition)
+                        && (slot == AttachmentSlot.Equipment ? c.Equipment == null : c.Mutator == null))
+                        hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, c.Definition, out _)
+                            ? StrategicCardEvaluator.EquipmentDeltaParts(eq, c).Combat : 0f);
+                foreach (CardDefinition d in self.Deck)
+                    if (IsGroundHostCard(d))
+                        hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, d, out _)
+                            ? StrategicCardEvaluator.EquipmentDeltaParts(eq, d).Combat : 0f);
+            }
 
             var pairs = new List<(float gain, int item, int host)>();
             for (int e = 0; e < equipment.Count; e++)

@@ -66,6 +66,13 @@ namespace Game.Ai.V2
             if (def == null)
                 return new ProjectedBodyStats(1, AiConfigV2.scoutNotionalActivationAp);
 
+            if (plan.BaseCardInHand?.Mutator != null
+                || (plan.GeneratedEquipmentDef ?? plan.EquipmentInHand?.Definition)?.attachmentSlot == AttachmentSlot.Mutator)
+            {
+                var line = AiPower.ProjectMaterialization(plan);
+                return new ProjectedBodyStats(line.MoveMax, line.ActivationApCost);
+            }
+
             int move = def.moveMax;
             int activationAp = def.activationApCost;
             CardDefinition equipment = EffectiveEquipmentDef(plan);

@@ -82,7 +82,7 @@ namespace Game.EditorTests
         public void FrozenPoolCards_WinOverLiveHand()
         {
             WorldSnapshot snap = Snapshot();
-            snap.Self.PoolCards = new[] { (UnitCard(20), (CardDefinition)null, true) };
+            snap.Self.PoolCards = new[] { (UnitCard(20), (CardDefinition)null, (CardDefinition)null, true) };
             Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(
                 snap, Wall, 0f, out _), Is.False);
         }

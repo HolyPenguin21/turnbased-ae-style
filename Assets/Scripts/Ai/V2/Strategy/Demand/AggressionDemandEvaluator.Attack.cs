@@ -291,26 +291,26 @@ namespace Game.Ai.V2
                     coverageTarget.Value) > 0;
             bool ExactlyMissing(Game.Cards.CardDefinition d) =>
                 missing != null && missing.Any(m => !m.IsHero && m.Key == StrikeRoster.CardKey(d));
-            bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null) =>
+            bool Strengthens(Game.Cards.CardDefinition d, Game.Cards.CardDefinition equipped = null, Game.Cards.CardDefinition mutator = null) =>
                 d != null && !d.isAviation
                 && MaterializationChainMatching.MatchesCapabilityDef(d, CapabilityKind.FieldCombatPower)
                 && MaterializationChainMatching.AbilitiesSatisfyCapability(
-                    MaterializationChainMatching.EffectiveAbilities(d, equipped), d.cardType,
+                    MaterializationChainMatching.EffectiveAbilities(d, equipped, mutator), d.cardType,
                     CapabilityKind.FieldCombatPower, recceMayFight: true)
                 && (host.CanFitAdditionalCard(d)
                     || releasableSlot && d.cardType == Game.Cards.CardType.Unit && ExactlyMissing(d))
                 && MaterializationDeliveryPolicy.StrengthensArmy(host.Members, d,
-                    AiPower.EffectiveLine(d, equipped?.equipment))
+                    AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment))
                 && (coverageGap
                     ? MaterializationDeliveryPolicy.ClosesTargetCoverage(snap, host.Members, d,
                         coverageTarget.Value)
                     : StrikeRoster.FillsMissing(missing, d,
-                        AiPower.EffectiveLine(d, equipped?.equipment).BasePower));
+                        AiPower.EffectiveLine(d, equipped?.equipment, mutator?.equipment).BasePower));
 
             // A held card Phase A already failed to chain into this exact host (its pinned demand,
             // this turn or the last) is no witness: the two stages answer with one truth.
             foreach (Game.Cards.CardData c in GroundCombatDemandPolicy.HandFieldCards(snap))
-                if (Strengthens(c.Definition, c.Equipment)
+                if (Strengthens(c.Definition, c.Equipment, c.Mutator)
                     && !PreparationDeliveryMemory.NoChainRecently(snap.Observer, host.Id,
                         snap.TurnNumber, StrikeRoster.CardKey(c.Definition)))
                     return $"hand_card:{c.Definition.displayName}";
