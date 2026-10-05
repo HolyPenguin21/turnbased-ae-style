@@ -141,8 +141,9 @@ namespace Game.EditorTests
                 foreach (var change in c.equipment.statChanges)
                 {
                     Assert.That(change.isOverride, Is.False);
-                    Assert.That(new[] { EquipmentStat.Attack, EquipmentStat.Range,
-                        EquipmentStat.CommandRating, EquipmentStat.Resistance }, Does.Not.Contain(change.stat));
+                    Assert.That(change.stat == EquipmentStat.Attack || change.stat == EquipmentStat.Range
+                        || change.stat == EquipmentStat.CommandRating || change.stat == EquipmentStat.Resistance,
+                        Is.False, change.stat.ToString());
                     Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 2 : 1));
                     if (hero) Assert.That(change.stat, Is.EqualTo(EquipmentStat.Fate));
                 }
