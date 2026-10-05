@@ -56,7 +56,7 @@ namespace Game.UI
         public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender,
             Sprite attackerFactionLogo, Sprite defenderFactionLogo,
             bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null,
-            int initiativeTieBreakSeed = 0, string retreatPreview = null)
+            int initiativeTieBreakSeed = 0)
         {
             _onStartRound = onStartRound;
             _onRetreat = onRetreat;
@@ -71,7 +71,7 @@ namespace Game.UI
             {
                 string message = !string.IsNullOrEmpty(retreatingArmyName)
                     ? $"{retreatingArmyName} is retreating this round!"
-                    : retreatPreview ?? string.Empty;
+                    : string.Empty;
                 retreatMessageText.text = message;
                 retreatMessageText.gameObject.SetActive(!string.IsNullOrEmpty(message));
             }

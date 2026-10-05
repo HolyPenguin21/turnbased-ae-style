@@ -41,6 +41,7 @@ namespace Game.UI
         [SerializeField] private TMP_Text defenderArmyInfo;
         [SerializeField] private Button fightButton;
         [SerializeField] private TMP_Text fightButtonLabel;
+        [SerializeField] private Button fastResolveButton;
         [SerializeField] private Button delayButton;
         // Resolved per-army via ResolveCatalog(army.Owner) — same StartingDeckCatalog.GetCatalog
         // per-owner pattern ArmyViewerModalUI already uses, so a neutral defender (Faction.Neutral,
@@ -105,6 +106,8 @@ namespace Game.UI
         // scene safe to open before those references are assigned.
         private void ResolveFixedSlotBindings()
         {
+            if (fastResolveButton == null)
+                fastResolveButton = FindPanelComponent<Button>("Button_FastResolve");
             if (attackerFactionLogo == null)
                 attackerFactionLogo = FindPanelComponent<Image>("Attacker_FactionLogo");
             if (attackerCommanderArt == null)
@@ -150,6 +153,8 @@ namespace Game.UI
         {
             if (fightButton != null)
                 fightButton.interactable = interactable;
+            if (fastResolveButton != null)
+                fastResolveButton.interactable = interactable;
             if (delayButton != null)
                 delayButton.interactable = interactable;
         }
@@ -162,7 +167,7 @@ namespace Game.UI
         // delayed/queued paths) rather than the global VisionSystem.CurrentViewer, which in a
         // hot-seat game may currently belong to a different human than whoever this popup is
         // actually opening for.
-        public void Show(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action onFight, Action onDelay)
+        public void Show(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action<bool> onFight, Action onDelay)
         {
             Populate(hex, participants, observer);
             // A defender with no combat-capable unit left (hero-only army/garrison) isn't fought
@@ -174,12 +179,7 @@ namespace Game.UI
             if (fightButtonLabel != null)
                 fightButtonLabel.text = captureOnly ? "Capture" : "To Battle";
 
-            if (fightButton != null)
-            {
-                fightButton.gameObject.SetActive(true);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(fightButton);
-                fightButton.onClick.AddListener(() => { Hide(); onFight?.Invoke(); });
-            }
+            BindFightOptions(onFight);
             if (delayButton != null)
             {
                 delayButton.gameObject.SetActive(true);
@@ -191,20 +191,31 @@ namespace Game.UI
         // The informational form — a delayed battle is actually starting now, at the turn
         // boundary: every player has already passed, so there's nothing left to decide, just a
         // single acknowledgement before the (placeholder) battle screen opens.
-        public void ShowResolved(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action onContinue)
+        public void ShowResolved(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer, Action<bool> onContinue)
         {
             Populate(hex, participants, observer);
             if (fightButtonLabel != null)
                 fightButtonLabel.text = "Continue";
 
-            if (fightButton != null)
-            {
-                fightButton.gameObject.SetActive(true);
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(fightButton);
-                fightButton.onClick.AddListener(() => { Hide(); onContinue?.Invoke(); });
-            }
+            BindFightOptions(onContinue);
             if (delayButton != null)
                 delayButton.gameObject.SetActive(false);
+        }
+
+        // Both buttons enter the same encounter callback; only the control mode differs.
+        private void BindFightOptions(Action<bool> onFight)
+        {
+            BindFightOption(fightButton, onFight, fastResolve: false);
+            BindFightOption(fastResolveButton, onFight, fastResolve: true);
+        }
+
+        private void BindFightOption(Button button, Action<bool> onFight, bool fastResolve)
+        {
+            if (button == null)
+                return;
+            button.gameObject.SetActive(true);
+            UIButtonEventUtility.ResetRuntimeListeners(button);
+            button.onClick.AddListener(() => { Hide(); onFight?.Invoke(fastResolve); });
         }
 
         private void Populate(HexCoord hex, List<ArmyData> participants, PlayerSetupData observer)
