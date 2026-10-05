@@ -30,7 +30,7 @@ namespace Game.Audio
         private static void Bootstrap()
         {
             if (Instance != null) return;
-            var existing = Object.FindFirstObjectByType<GameAudioManager>();
+            var existing = Object.FindAnyObjectByType<GameAudioManager>();
             if (existing != null)
             {
                 existing.Initialize();

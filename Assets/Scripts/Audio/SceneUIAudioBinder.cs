@@ -122,7 +122,7 @@ namespace Game.Audio
         }
         private void RefreshListener()
         {
-            var listeners = Object.FindObjectsByType<AudioListener>(FindObjectsInactive.Exclude, FindObjectsSortMode.None);
+            var listeners = Object.FindObjectsByType<AudioListener>(FindObjectsInactive.Exclude);
             foreach (var listener in listeners)
                 if (!listenerStates.ContainsKey(listener)) listenerStates.Add(listener, listener.enabled);
             var active = SceneManager.GetActiveScene();
