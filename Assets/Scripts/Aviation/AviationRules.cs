@@ -82,6 +82,8 @@ namespace Game.Aviation
             if (army == null || army.IsAirfield || army.IsGarrison || army.IsPrison)
                 return;
             bool air = IsAirArmy(army);
+            if (air)
+                army.AirWingLanded = false;
             if (army.IsAirArmy == air)
                 return;
             army.IsAirArmy = air;

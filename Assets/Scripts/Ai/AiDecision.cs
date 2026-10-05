@@ -117,6 +117,9 @@ namespace Game.Ai
 
         // Transit is deliberately the safe default: a caller must opt into deliberate combat or
         // an undefended-structure takeover. Air movement ignores this ground-only authorization.
+        // Every AI air step is transit unless its mission explicitly authorizes an endpoint strike.
+        public Game.Aviation.AirStrikePolicy AirStrikePolicy = Game.Aviation.AirStrikePolicy.Transit;
+
         public AiGroundMoveAuthority GroundMoveAuthority = AiGroundMoveAuthority.Transit;
         public bool AllowsGroundCombat => GroundMoveAuthority == AiGroundMoveAuthority.Combat
             || GroundMoveAuthority == AiGroundMoveAuthority.CombatAndCapture;
@@ -131,3 +134,4 @@ namespace Game.Ai
         };
     }
 }
+

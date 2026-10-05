@@ -267,6 +267,7 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(target.Kind))
             {
                 AppendAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds, airPool);
+                AppendStoredAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds);
                 return list;
             }
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
@@ -410,6 +411,59 @@ namespace Game.Ai.V2
                 list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
                     1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
                     requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
+            }
+        }
+
+        // Pre-funding witness uses the SAME mission-specific candidate builders as final assignment.
+        // No formation, resource claim or economics happens here.
+        internal static ScoutExecutionCandidate? PlanAirCandidate(WorldSnapshot snap, AiTurnContext ctx,
+            ScoutMissionTarget target, int? preferredActor, ISet<int> excluded)
+        {
+            if (ctx == null || ReferenceEquals(ctx.Map, null) || !ReconScoutKinds.IsAirSweep(target.Kind)) return null;
+            PlayerSetupData player = snap?.Observer;
+            PlayerRoot root = player != null ? PlayerRootRegistry.FindFor(player) : null;
+            if (root == null) return null;
+            var detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
+            var candidates = new List<ScoutExecutionCandidate>();
+            AppendAirCandidates(candidates, snap, ctx, player, root, target, excluded,
+                detail.AirborneWings.Concat(detail.SpareCandidatesInOrder).ToList());
+            AppendStoredAirCandidates(candidates, snap, ctx, player, root, target, excluded);
+            return candidates.OrderBy(c => preferredActor == c.ActorKey ? 0 : 1)
+                .ThenBy(c => c.RequiredAp + c.RequiredEnergy * AiConfigV2.actionPriceResourceAp)
+                .ThenBy(c => c.EtaTurns).ThenBy(c => c.ActorKey)
+                .ThenBy(c => c.AircraftRuntimeIds?.FirstOrDefault() ?? 0)
+                .Cast<ScoutExecutionCandidate?>().FirstOrDefault();
+        }
+
+        private static void AppendStoredAirCandidates(List<ScoutExecutionCandidate> list, WorldSnapshot snap,
+            AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, ScoutMissionTarget target,
+            ISet<int> excluded)
+        {
+            if (snap?.Self?.Armies == null || ctx?.Map == null || root == null || target.NeedsStealth)
+                return;
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
+            foreach (ArmySnapshot source in snap.Self.Armies.Where(a => a != null && a.IsAirfield
+                && (excluded == null || !excluded.Contains(a.ArmyId))).OrderBy(a => a.ArmyId))
+            {
+                ArmyData live = AiV2Util.ResolveArmy(player, source.ArmyId);
+                if (!AviationRules.IsAirfield(live) || live.Owner != player) continue;
+                foreach (StoredAircraftLaunchCost planned in source.StoredAircraft.Where(u => u.Movement > 0)
+                    .OrderBy(u => u.Ap + u.Energy * AiConfigV2.actionPriceResourceAp).ThenBy(u => u.RuntimeId))
+                {
+                    UnitData aircraft = live.Members.FirstOrDefault(u => u.RuntimeId == planned.RuntimeId);
+                    if (!AviationRules.IsAviation(aircraft)) continue;
+                    var choice = ReconAirStepPlanner.PickFromStorage(player, ctx, live.Hex, new[] { aircraft },
+                        snap, mode, snap.TurnNumber, missionFocusHex: target.FocusHex);
+                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                        + AbilityParams.GetBestRecceRadius(aircraft);
+                    if (!choice.HasValue || !ReconAirStepPlanner.MakesGenuineProgress(live.Hex,
+                        choice.Value.Hex, target.FocusHex, vision)) continue;
+                    list.Add(new ScoutExecutionCandidate(source, target.FocusHex,
+                        Mathf.RoundToInt(choice.Value.ActivationAp), 1, 0, 0f, 0, false,
+                        choice.Value.ActivationAp, ScoutExecutorKind.AirStored,
+                        choice.Value.ActivationEnergy, choice.Value.Score,
+                        aircraftRuntimeIds: new[] { aircraft.RuntimeId }));
+                }
             }
         }
 
@@ -1151,6 +1205,18 @@ namespace Game.Ai.V2
                 if (ctx?.Map != null)
                     provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, chosenHex));
             }
+
+            if (slotsUsed < ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
+                foreach (ReconObjective objective in obsRunnable.Where(o => !consumedObjectiveKeys.Contains(o.IntentKey)))
+                {
+                    var candidates = new List<ScoutExecutionCandidate>();
+                    AppendStoredAirCandidates(candidates, snap, ctx, player, root, objective.ToTarget(), reservedActorIds);
+                    if (candidates.Count == 0) continue;
+                    spareLaunchWitnessed++;
+                    slotsUsed++;
+                    consumedObjectiveKeys.Add(objective.IntentKey);
+                    if (slotsUsed >= ReconAirCapacityPolicy.MaxAirReconActorsPerTurn) break;
+                }
 
             AiDebugLog.WriteDeduped("air-capacity", $"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
                 + $"(airborne {airborneWitnessed}/{airborneProbed} stuck {airborneStuck} + "

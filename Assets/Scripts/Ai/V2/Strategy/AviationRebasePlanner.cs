@@ -80,17 +80,8 @@ namespace Game.Ai.V2
             return result.Distinct().OrderBy(a => a.Id).ToList();
         }
 
-        // A stored aircraft cannot fly: Recon and every combat-support lane bind only FORMED
-        // wings (2026-10-02 playtest: Korrin's Wasp sat in its home airfield from T6 to T17 while
-        // every AirSweep failed NoExecutableStep). This proposes forming ONE wing from storage,
-        // for an application an existing task really has and no free formed wing already covers:
-        //   · Recon — an AirSweep the canonical service projection proves from this airfield
-        //     (BestAirfieldServiceTaskScore), capped by the one-actor AirSweep limit;
-        //   · combat support — an Attack in Assault with no wing, an ActiveDefence threat with no
-        //     air support, a weak Raid (Reinforcement) on a neutral roster of two or more — with a
-        //     proven sortie route from this airfield to that target.
-        // Either way the launch must fit the SPENDABLE bank now (the same view that protects card
-        // play). Forming is free; the shell comes from AviationWingPreparation (reuse first).
+        // Optional preparation for an existing ground-combat operation. AirSweep storage
+        // candidates are nominated by Recon Assignment and formed by its funded executor.
         internal static AviationRebasePlan BuildFormationPlan(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives,
             IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
@@ -99,38 +90,10 @@ namespace Game.Ai.V2
                 return null;
             if (commitments == null && activeIntents != null)
                 commitments = ActorCommitments.FromIntents(activeIntents, snap, objectives);
-            AviationRebasePlan plan = BuildReconFormation(snap, player, root, ctx, objectives)
-                ?? BuildCombatFormation(snap, player, root, ctx, activeIntents, commitments);
+            AviationRebasePlan plan = BuildCombatFormation(snap, player, root, ctx, activeIntents, commitments);
             if (plan != null)
                 plan.Commitments = commitments;
             return plan;
-        }
-
-        private static AviationRebasePlan BuildReconFormation(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, IReadOnlyList<ReconObjective> objectives)
-        {
-            if (objectives == null || objectives.Count == 0)
-                return null;
-            int serviceable = objectives.Count(ReconAirCapacityPolicy.IsAirServiceable);
-            if (serviceable == 0)
-                return null;
-            ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
-            int formed = detail.AirborneWings.Count + detail.SpareCandidatesInOrder.Count;
-            if (formed >= Mathf.Min(ReconAirCapacityPolicy.MaxAirReconActorsPerTurn, serviceable))
-                return null;
-
-            AviationRebasePlan best = null;
-            foreach ((ArmyData source, IReadOnlyList<UnitData> group) in AffordableStoredGroups(player, root, ctx))
-            {
-                TaskScore service = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
-                    snap, player, ctx, group, source.Hex, objectives, out int coverage, out string witness);
-                if (coverage <= 0 || service.Value <= AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-                if (best != null && service.Value <= best.Utility + AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-                best = FormPlan(source, group, service, witness);
-            }
-            return best;
         }
 
         // Targets of existing ground-combat tasks that want air support and have no wing yet.

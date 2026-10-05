@@ -143,7 +143,7 @@ namespace Game.Aviation
 
         public static bool CanStrikeAtCurrentHex(ArmyData airArmy, AirStrikePolicy policy)
         {
-            if (!AviationRules.IsValidAirArmy(airArmy))
+            if (!policy.AllowsStrike || !AviationRules.IsValidAirArmy(airArmy))
                 return false;
             if (!airArmy.Members.Any(unit => !unit.HasAirAttackedThisTurn))
                 return false;
@@ -201,6 +201,8 @@ namespace Game.Aviation
             }
             if (landing.Count > 0)
             {
+                if (airArmy.Members.Count == 0)
+                    airArmy.AirWingLanded = true;
                 AviationRules.SyncAirArmyShell(airArmy, hexSelection);
                 hexSelection?.RestackArmiesOn(airArmy.Hex, null);
                 VisionSystem.NotifyContentChanged(airArmy.Hex);

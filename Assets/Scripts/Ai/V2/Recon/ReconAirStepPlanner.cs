@@ -119,8 +119,8 @@ namespace Game.Ai.V2
                 outboundLeg, diagnostics));
         }
 
-        // Card valuation only: score the first possible step for aircraft still in storage.
-        // This does not create or provision a Recon mission actor.
+        // Shared storage projection for card valuation and funded-task actor nomination.
+        // Read-only: the executor alone materializes the admitted aircraft.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
             HexCoord airfieldHex, IReadOnlyList<UnitData> aircraft, WorldSnapshot snapshot, ReconMode mode, int turn,
             AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null,

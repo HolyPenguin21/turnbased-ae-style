@@ -8,10 +8,9 @@ using Game.Units;
 
 namespace Game.Ai.V2
 {
-    // A funded Recon mission can use a ground scout or an already-formed aviation army.
-    // Recon never creates an air army from storage; formation belongs to the independent
-    // score-driven aviation layer.
-    public enum ScoutExecutorKind { Ground, AirExisting }
+    // A funded Recon mission binds a ground scout, a live wing, or exact stored aircraft.
+    // Stored aircraft are formed only by execution of that funded Scout task.
+    public enum ScoutExecutorKind { Ground, AirExisting, AirStored }
     // ===========================================================================================
     //  SCOUT MOVER SELECTOR  (Assignment-stage low-level actor enumeration primitive)
     // ===========================================================================================
@@ -59,8 +58,9 @@ namespace Game.Ai.V2
         // AirSortieReservationAdmission -> AviationSortieReservationEvaluator) consumes — no layer
         // below Provisioning re-probes a route to re-derive it.
         public readonly float RouteScore;
+        public readonly IReadOnlyList<int> AircraftRuntimeIds;
 
-        // Executor identity. Both supported kinds carry a real ArmySnapshot.
+        // AirStored carries its real source airfield snapshot until execution forms the wing.
         public readonly ScoutExecutorKind ExecutorKind;
 
         // A garrison candidate's identity is a PAIR: the garrison it would be pulled FROM, and the
@@ -76,8 +76,10 @@ namespace Game.Ai.V2
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
             ScoutExecutorKind executorKind = ScoutExecutorKind.Ground,
             float requiredEnergy = 0f, float routeScore = 0f,
-            int sourceGarrisonArmyId = 0, int materializationArmyId = 0)
+            int sourceGarrisonArmyId = 0, int materializationArmyId = 0,
+            IReadOnlyList<int> aircraftRuntimeIds = null)
         {
+            AircraftRuntimeIds = aircraftRuntimeIds;
             Army = army;
             ExecutionHex = executionHex;
             EffActivationAp = effActivationAp;

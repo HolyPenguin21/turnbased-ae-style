@@ -50,7 +50,7 @@ namespace Game.Ai.V2
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<ReconObjective> frozenObjectives = null,
-            IDictionary<MissionIntentKey, string> deferredThisPass = null)
+            IDictionary<MissionIntentKey, string> deferredThisPass = null, AiTurnContext ctx = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || snap.MapKnowledge == null || breakdown == null)
@@ -135,8 +135,14 @@ namespace Game.Ai.V2
             // Planning publishes the actor against which the pre-funding envelope was priced.
             // This is still only a preference/compatibility witness: ReconAssignmentPlanner owns
             // the final one-actor/one-job binding and may rematch when live route/vantage facts move.
+            ISet<int> claimed = ctx != null
+                ? ActorCommitments.FromIntents(activeIntents, snap, objectives).ClaimedArmyIdSet : new HashSet<int>();
             foreach (ScoutCandidate c in picked)
-                proposals.Add(BuildProposal(snap, c));
+            {
+                var excluded = new HashSet<int>(claimed);
+                if (c.IsIncumbent && c.PreferredMover.HasValue) excluded.Remove(c.PreferredMover.Value);
+                proposals.Add(BuildProposal(snap, c, ctx, excluded));
+            }
 
             return proposals;
         }
@@ -218,14 +224,16 @@ namespace Game.Ai.V2
         private static string StealthTag(StealthRequirement req, float risk) =>
             req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";
 
-        private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c)
+        private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c, AiTurnContext ctx, ISet<int> excluded)
         {
             // The estimate must price the SAME durable mover the proposal prefers. Otherwise a
             // cheaper, unrelated scout advertises an AP envelope the incumbent cannot execute.
             // For a fresh mission Estimate selects a concrete cheapest viable ground actor before
             // funding. Carry that actor as a non-binding preference so admission can reason about
             // the exact envelope it is financing; Assignment remains authoritative.
-            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover);
+            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover,
+                ReconScoutKinds.IsAirSweep(c.Target.Kind)
+                    ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null);
 
             // Task 5 (R1) — c.PreferredMover is the durable incumbent's NOMINAL preference; when
             // that actor is structurally ineligible this turn (e.g. 0 CurrentMovement),

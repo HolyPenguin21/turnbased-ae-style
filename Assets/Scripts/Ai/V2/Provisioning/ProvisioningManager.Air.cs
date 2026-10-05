@@ -44,13 +44,18 @@ namespace Game.Ai.V2
             HexCoord focus = target.FocusHex;
             HexCoord executionHex = exec.ExecutionHex;
 
-            if (exec.ExecutorKind != ScoutExecutorKind.AirExisting || exec.Army == null)
+            bool stored = exec.ExecutorKind == ScoutExecutorKind.AirStored;
+            if ((!stored && exec.ExecutorKind != ScoutExecutorKind.AirExisting) || exec.Army == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "air missions may use only an already-formed aviation army"));
 
             ArmyData wing = AiV2Util.ResolveArmy(player, exec.Army.ArmyId);
-            if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
-                || wing.CurrentMovement <= 0)
+            if (wing == null || wing.Owner != player
+                || (stored ? !AviationRules.IsAirfield(wing)
+                    || exec.AircraftRuntimeIds == null || exec.AircraftRuntimeIds.Count == 0
+                    || exec.AircraftRuntimeIds.Any(id => !wing.Members.Any(u => u.RuntimeId == id
+                        && AviationRules.IsAviation(u) && AviationRules.EffectiveMoveCurrent(u) > 0))
+                    : !AviationRules.IsValidAirArmy(wing) || wing.CurrentMovement <= 0))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"assigned air actor #{exec.Army.ArmyId} is no longer a usable air wing"));
 
@@ -70,7 +75,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"continuing air actor #{wing.Id} is Return/Hold-bound this turn (recovery, not fresh Recon progress)"));
             }
-            else if (!ready)
+            else if (!stored && !ready)
             {
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"assigned air actor #{wing.Id} is neither a ready standalone wing nor a valid continuing Recon sortie"));
@@ -82,8 +87,10 @@ namespace Game.Ai.V2
             // bound mission target, not a generic "some useful step exists" probe). Compare against
             // the envelope Funding granted; claim for real only if it fits.
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            float realAp = exec.RequiredAp;
-            float realEnergy = exec.RequiredEnergy;
+            float realAp = stored ? exec.AircraftRuntimeIds.Sum(id =>
+                Mathf.Max(0, wing.Members.First(u => u.RuntimeId == id).ActivationApCost)) : exec.RequiredAp;
+            float realEnergy = stored ? exec.AircraftRuntimeIds.Sum(id =>
+                Mathf.Max(0, wing.Members.First(u => u.RuntimeId == id).LaunchEnergyCost)) : exec.RequiredEnergy;
             float apEnvelope = funded.Tentative.Ap;
             float energyEnvelope = funded.PhysicalDraw.Energy;
             if (realAp > apEnvelope + eps || realEnergy > energyEnvelope + eps)
@@ -138,6 +145,7 @@ namespace Game.Ai.V2
                 StealthApReserved = false,
                 RequiresStealth = false,
                 ExecutorKind = exec.ExecutorKind,
+                AircraftRuntimeIds = exec.AircraftRuntimeIds,
             });
         }
 
@@ -191,3 +199,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

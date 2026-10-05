@@ -187,10 +187,6 @@ namespace Game.Ai.V2
                     Mathf.Max(0, a.PendingActivationEnergyCost)));
             }
 
-            // Recon never materializes aircraft from storage. AirSweep may only use an already
-            // formed ready wing or continue an airborne one. Aircraft creation/formation belongs
-            // to the separate score-driven aviation systems, never to a mission request.
-
             // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route,
             // no strategic reserve — just "how many more sorties do the raw stockpile + slot cap
             // physically allow". Subtract the airborne wings' still-owed first-activation AP/Energy
@@ -203,6 +199,18 @@ namespace Game.Ai.V2
                 if (detail.SpareSorties >= spareSlots) break;
                 if (slot.Ap > apLeft || slot.Energy > energyLeft) continue;
                 apLeft -= slot.Ap; energyLeft -= slot.Energy;
+                detail.SpareSorties++;
+            }
+
+            foreach (UnitData aircraft in ArmyRegistry.AllForOwner(player).Where(AviationRules.IsAirfield)
+                .SelectMany(a => a.Members).Where(u => AviationRules.IsAviation(u)
+                    && AviationRules.EffectiveMoveCurrent(u) > 0)
+                .OrderBy(u => u.LaunchEnergyCost).ThenBy(u => u.ActivationApCost).ThenBy(u => u.RuntimeId))
+            {
+                if (detail.SpareSorties >= spareSlots) break;
+                int ap = Mathf.Max(0, aircraft.ActivationApCost), energy = Mathf.Max(0, aircraft.LaunchEnergyCost);
+                if (ap > apLeft || energy > energyLeft) continue;
+                apLeft -= ap; energyLeft -= energy;
                 detail.SpareSorties++;
             }
 

@@ -774,6 +774,9 @@ namespace Game.Ai.V2
                 yield return AiTurnController.WaitStep(ctx);
                 yield break;
             }
+            if (taskKind == AirSortieKind.Strike && task.Outbound
+                && firstMove.TargetHex.Equals(task.TargetHex))
+                firstMove.AirStrikePolicy = AirStrikePolicy.Standard;
             yield return AiTurnController.MoveArmyRoutine(player, firstMove, ctx, executionTrace);
         }
     }

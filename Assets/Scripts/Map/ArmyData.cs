@@ -148,6 +148,8 @@ namespace Game.Map
         // One-shot mission-owned endpoint policy. AviationCombatPresenter consumes and clears it;
         // ordinary movement leaves it null and therefore retains Standard strike behaviour.
         public AirStrikePolicy? PendingAirStrikePolicy;
+        // Set only by a complete physical landing; cleared whenever aircraft board this shell.
+        public bool AirWingLanded { get; internal set; }
 
         // How much AP it costs to activate this army for its first move order of the turn —
         // the sum of every member's own ActivationApCost (a bigger army costs more to get

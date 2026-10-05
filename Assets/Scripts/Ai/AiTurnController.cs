@@ -412,6 +412,12 @@ namespace Game.Ai
             // recoverable afterwards: an AI mover's event resolves synchronously with no popup,
             // and a Skip fires no registry state change on a re-visit.
             HexCoord before = army.Hex;
+            if (!isGroundMove)
+            {
+                army.LastAirStrikeHex = null;
+                army.LastAirStrikeAttacked = false;
+                army.PendingAirStrikePolicy = decision.AirStrikePolicy;
+            }
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
                     trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null,
@@ -503,6 +509,8 @@ namespace Game.Ai
             }
             finally
             {
+                if (army.Controller == null || !army.Controller.IsMoving)
+                    army.PendingAirStrikePolicy = null;
                 if (observeEncounter != null)
                     battleScreenForTrace.EncounterResolved -= observeEncounter;
             }

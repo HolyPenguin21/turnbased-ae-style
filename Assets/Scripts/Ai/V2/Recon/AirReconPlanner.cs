@@ -13,11 +13,13 @@ namespace Game.Ai.V2
         public ExecutionStopReason Reason;
     }
 
-    // Execution input for air Recon. Recon never creates/forms aviation: Assignment may bind only
-    // an already-existing wing, and this plan merely validates that concrete actor immediately
-    // before execution.
+    // Execution input for funded air Recon. Pending storage preparations retain the exact
+    // source/aircraft binding; the executor materializes them before issuing their first step.
     internal sealed class AirReconPlan
     {
+        public readonly HashSet<int> ReservedActorIds = new HashSet<int>();
+        public readonly HashSet<int> MaterializedActorIds = new HashSet<int>();
+        public readonly List<ProvisionedMission> StoredMissions = new List<ProvisionedMission>();
         public readonly List<int> ReadyActorIds = new List<int>();
         public readonly List<AirReconSkippedMission> SkippedMissions = new List<AirReconSkippedMission>();
         public readonly Dictionary<int, ProvisionedMission> ReadyMissionByActorId =
@@ -28,9 +30,11 @@ namespace Game.Ai.V2
     internal static class AirReconPlanner
     {
         internal static AirReconPlan Plan(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            WorldSnapshot snapshot, IReadOnlyList<ProvisionedMission> airProvisioned)
+            WorldSnapshot snapshot, IReadOnlyList<ProvisionedMission> airProvisioned,
+            IEnumerable<int> reservedActorIds = null)
         {
             var plan = new AirReconPlan();
+            plan.ReservedActorIds.UnionWith(reservedActorIds ?? Array.Empty<int>());
             if (player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
             {
                 plan.Summary = "not reached (missing player/root/map/snapshot)";
@@ -43,6 +47,11 @@ namespace Game.Ai.V2
                 if (pm == null || pm.Kind != MissionKind.Scout)
                     continue;
 
+                if (pm.ExecutorKind == ScoutExecutorKind.AirStored)
+                {
+                    plan.StoredMissions.Add(pm);
+                    continue;
+                }
                 if (pm.ExecutorKind != ScoutExecutorKind.AirExisting)
                 {
                     skips.Add("nonExistingAirActor");

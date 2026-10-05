@@ -96,6 +96,12 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 yield break;
             }
+            if (GroundCombatAirSupport.TargetKnownEmpty(player, ctx.TurnNumber, targetHex, policy))
+            {
+                GroundCombatAirSupport.SendHome(player, sortie, "nothing left to strike");
+                yield return FlyHome(player, root, ctx, pm, result, sortie);
+                yield break;
+            }
             sortie.TargetHex = targetHex;
             sortie.Outbound = true;
             result.ActualActorArmyId = wing.Id;
@@ -132,7 +138,7 @@ namespace Game.Ai.V2
                 {
                     wing.LastAirStrikeHex = null;
                     wing.LastAirStrikeAttacked = false;
-                    wing.PendingAirStrikePolicy = policy;
+                    move.AirStrikePolicy = policy;
                 }
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
@@ -209,3 +215,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

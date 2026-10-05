@@ -142,7 +142,7 @@ namespace Game.Ai.V2
             if (!aggressionPressureFresh)
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
-                activeIntents, reconObjectives);
+                activeIntents, reconObjectives, ctx: ctx);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
                 activeIntents, aggressionObjectives, ctx));
             // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path
@@ -255,7 +255,8 @@ namespace Game.Ai.V2
             // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
             // Round 4 — AirReconPlanner assembles execution input from this pass's air-bound
             // ProvisionedMissions; it no longer selects independently.
-            AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
+            AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned,
+                provisioned.Where(pm => pm != null).Select(pm => pm.MoverArmyId));
             var reactionAirResult = new AirReconExecutionResult();
             // Same per-mission ExecutionResult collection as the main pipeline.
             var reactionAirPerMissionResults = new List<ExecutionResult>();

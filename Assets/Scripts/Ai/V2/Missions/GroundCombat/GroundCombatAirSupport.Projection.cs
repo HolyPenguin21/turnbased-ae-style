@@ -49,6 +49,7 @@ namespace Game.Ai.V2
             if (snap == null || map == null || player == null || aircraft == null || aircraft.Count == 0
                 || aircraft.Any(u => !AviationRules.IsAviation(u))) return null;
             if (wing != null && wing.Controller == null) return null;
+            if (TargetKnownEmpty(snap, request.Target, request.Policy)) return null;
             Sortie? same = wing != null
                 ? AiAirSortiePlanner.TryPlanSortie(wing, request.Target, map, player, additionalClaims)
                 : AiAirSortiePlanner.TryPlanSortieFromStorage(start, aircraft, request.Target, map, player);
@@ -189,3 +190,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

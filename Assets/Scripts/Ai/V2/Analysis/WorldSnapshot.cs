@@ -164,6 +164,13 @@ namespace Game.Ai.V2
     //     alongside the new EffectiveArmyPower purely so a caller that wants parity with a V1
     //     read still has it. IsHiddenFromUs is only ever true inside TrueWorld (a fog-honest
     //     Known sighting can't see a hidden army at all).
+    public readonly struct StoredAircraftLaunchCost
+    {
+        public readonly int RuntimeId, Ap, Energy, Movement;
+        public StoredAircraftLaunchCost(int runtimeId, int ap, int energy, int movement)
+        { RuntimeId = runtimeId; Ap = ap; Energy = energy; Movement = movement; }
+    }
+
     public sealed class ArmySnapshot
     {
         public int ArmyId;
@@ -181,6 +188,9 @@ namespace Game.Ai.V2
         public bool IsPrison;
         public bool IsAir;
         public bool IsAirfield;
+        // Frozen through the canonical Recon actor/lifecycle policy, excluding strike and recovery wings.
+        public bool CanServeReconAir;
+        public IReadOnlyList<StoredAircraftLaunchCost> StoredAircraft = System.Array.Empty<StoredAircraftLaunchCost>();
         public int MemberCount;
         public bool HasHero;
         public int HeroCount;
@@ -1081,4 +1091,5 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
+
 

@@ -246,14 +246,8 @@ namespace Game.Ai.V2
                     player, ctx, root, demandAxes);
             }
 
-            // S4b. Air recon wing on demand (project owner, 2026-10-02): an AirSweep job can only
-            //      fly a FORMED wing, and forming one used to wait for the end-of-turn tempo arbiter
-            //      (utility capped at aviationFormWingUtilityCap, so every card play or draw won and
-            //      the next AirSweep failed NoExecutableStep). Forming is free (the sortie is paid by
-            //      Recon funding) and is proven against the spendable bank, so it is done here,
-            //      before the missions are built, when no formed wing can serve a serviceable sweep.
-            //      Existing wings are used first: BuildFormationPlan returns null while
-            //      formed wings already cover the serviceable sweeps.
+            // Combat support preparation for existing ground operations. AirSweep formation
+            // belongs to execution of its own admitted and funded Scout task.
             if (!AviationObligations.Pending(player, ctx))
             {
                 AviationRebasePlan formation = AviationRebasePlanner.BuildFormationPlan(
@@ -1433,7 +1427,7 @@ namespace Game.Ai.V2
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
             deferredThisPass = new Dictionary<MissionIntentKey, string>();
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
-                activeIntents, reconObjectives, deferredThisPass);
+                activeIntents, reconObjectives, deferredThisPass, ctx);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
                 activeIntents, aggressionObjectives, ctx, deferredThisPass));
             missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
