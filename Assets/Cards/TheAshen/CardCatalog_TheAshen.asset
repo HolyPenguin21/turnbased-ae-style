@@ -731,7 +731,7 @@ MonoBehaviour:
     authoredKey: 
     displayName: MI Iron Husk
     art: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
-    detailArt: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
+    detailArt: {fileID: 21300000, guid: ee6f6c5fedec0fc40a6f675c020d079a, type: 3}
     faction: 4
     cardType: 1
     apCost: 2
