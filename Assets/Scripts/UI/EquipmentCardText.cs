@@ -85,7 +85,10 @@ namespace Game.UI
         {
             if (equip == null)
                 return string.Empty;
-            return Join(AttachTargets(equip.equipment), AddedAbilities(equip.equipment, config));
+            string targets = AttachTargets(equip.equipment);
+            if (equip.attachmentSlot == AttachmentSlot.Mutator)
+                targets = Join("Bio required", targets);
+            return Join(targets, AddedAbilities(equip.equipment, config));
         }
 
         // The equipment's description once it is already attached to a host. Compatibility is no

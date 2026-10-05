@@ -127,6 +127,8 @@ namespace Game.Map
                 FateMax = source.FateMax,
                 Art = source.Art,
                 DetailArt = source.DetailArt,
+                Equipment = source.Equipment,
+                Mutator = source.Mutator,
                 Attack = source.Attack,
                 Defense = source.Defense,
                 Resistance = source.Resistance,

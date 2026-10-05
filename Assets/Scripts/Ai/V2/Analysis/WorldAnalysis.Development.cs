@@ -40,6 +40,13 @@ namespace Game.Ai.V2
             if (player == null || root == null)
                 return rd;
 
+            // Preserve existing Equipment readiness; a second slot is relevant only when an
+            // authored catalog actually offers a compatible Mutator (none exist at this stage).
+            var mutatorOutputs = ctx?.ResearchProductionCatalog == null ? new List<CardDefinition>()
+                : DevModes.SelectMany(mode => ResearchProductionSystem.OfferedCards(
+                    ctx.ResearchProductionCatalog, mode, player.Faction))
+                    .Where(d => d != null && d.attachmentSlot == AttachmentSlot.Mutator).ToList();
+            bool HasMutatorOutput(CardDefinition host) => mutatorOutputs.Any(d => EquipmentSystem.FitsHost(d, host, out _));
             int targets = 0;
             foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
             {
@@ -48,11 +55,11 @@ namespace Game.Ai.V2
                     // Both Units and Heroes can receive Equipment, but the gameplay attachment
                     // contract has ONE slot. Counting a filled host invents an upgrade target and
                     // keeps Development pressure high after every real recipient is equipped.
-                    if (m != null && !m.IsPrisoner && m.Equipment == null) targets++;
+                    if (m != null && !m.IsPrisoner && (m.Equipment == null || m.Mutator == null && HasMutatorOutput(m.OriginatingCard))) targets++;
             }
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
-                    if (c?.Definition != null && c.Equipment == null
+                    if (c?.Definition != null && (c.Equipment == null || c.Mutator == null && HasMutatorOutput(c.Definition))
                         && (c.Definition.cardType == CardType.Unit
                             || c.Definition.cardType == CardType.Hero)) targets++;
             rd.UpgradeTargetCount = targets;
@@ -129,7 +136,7 @@ namespace Game.Ai.V2
                     // ability projection. The readiness snapshot must not miss a qualified Hero
                     // whose Researcher/Assembler ability comes from attached Equipment.
                     IReadOnlyList<string> abilities = d.cardType == CardType.Hero
-                        ? MaterializationChainMatching.EffectiveAbilities(d, c.Equipment)
+                        ? MaterializationChainMatching.EffectiveAbilities(d, c.Equipment, c.Mutator)
                         : d.grantedAbilities;
                     if (abilities == null)
                         continue;

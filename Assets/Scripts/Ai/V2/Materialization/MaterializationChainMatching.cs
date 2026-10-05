@@ -10,12 +10,9 @@ namespace Game.Ai.V2
     // Read-only, no plan construction. Bodies verbatim from MaterializationCandidateBuilder.
     internal static class MaterializationChainMatching
     {
-        internal static IReadOnlyList<string> EffectiveAbilities(CardDefinition def, CardDefinition attachedEquipment)
-        {
-            var baseList = def?.grantedAbilities != null ? new List<string>(def.grantedAbilities) : new List<string>();
-            if (attachedEquipment?.equipment == null) return baseList;
-            return EquipmentSystem.EffectiveAbilities(baseList, attachedEquipment.equipment);
-        }
+        internal static IReadOnlyList<string> EffectiveAbilities(CardDefinition def, CardDefinition attachedEquipment,
+            CardDefinition mutator = null)
+            => def == null ? new List<string>() : EquipmentSystem.Project(def, attachedEquipment, mutator).Abilities;
 
         internal static bool MatchesCapabilityDef(CardDefinition d, CapabilityKind kind)
         {

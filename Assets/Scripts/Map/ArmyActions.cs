@@ -306,11 +306,8 @@ namespace Game.Map
                 failReason = $"Could not spawn {definition.displayName}.";
                 return false;
             }
-            if (attachedEquipment != null)
-            {
-                EquipmentSystem.Apply(attachedEquipment.equipment, spawned);
-                spawned.Equipment = attachedEquipment;
-            }
+            EquipmentSystem.ApplyAttachments(spawned,
+                sourceCard != null ? sourceCard.Equipment : attachedEquipment, sourceCard?.Mutator);
 
             root.SpendActionPoints(totalAp);
             if (!alreadyPaidResources && definition.resourceCost != null)

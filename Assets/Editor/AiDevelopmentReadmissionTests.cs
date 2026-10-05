@@ -91,6 +91,16 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void MutatorOccupancyChangesFingerprintEvenWhenCombatStatsAndHandVersionMatch()
+        {
+            var snapshot = Snapshot(Army());
+            snapshot.Self.Armies[0].NonHeroMutatorOccupied = new[] { false, false };
+            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            snapshot.Self.Armies[0].NonHeroMutatorOccupied = new[] { true, false };
+            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+        }
+
+        [Test]
         public void ResourcesOrHandChange_ChangesFingerprint()
         {
             WorldSnapshot snapshot = Snapshot(Army());

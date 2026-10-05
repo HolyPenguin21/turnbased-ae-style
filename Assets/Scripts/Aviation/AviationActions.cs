@@ -121,7 +121,7 @@ namespace Game.Aviation
                     // ordinary card and pays full apCost + ResourceCost on its next play. Do NOT
                     // thread the production flag through UnitData / OriginatingCard to "preserve"
                     // it here — that is not a bug (see CardData.ResearchProductionCreated).
-                    var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment };
+                    var returnedCard = new CardData(aircraft.OriginatingCard) { Equipment = aircraft.Equipment, Mutator = aircraft.Mutator };
                     hexSelection?.GrantCard(army.Owner, returnedCard);
                 }
             }

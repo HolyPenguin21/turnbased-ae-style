@@ -61,12 +61,12 @@ namespace Game.Ai.V2
             void AddCardPlan(CardData card, int index, CardData equipment = null, int equipmentIndex = -1)
             {
                 var def = card.Definition;
-                var abilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                var abilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment, card.Mutator);
                 var plan = MaterializationPlanFactory.MakeExistingPlan(
                     equipment == null ? MaterializationChainKind.Direct : MaterializationChainKind.AttachDeploy,
                     demand, card, index, equipment, equipmentIndex, placement,
                     equipment == null ? abilities
-                        : EquipmentSystem.EffectiveAbilities(abilities.ToList(), equipment.Definition.equipment));
+                        : EquipmentSystem.EffectiveAbilities(card, equipment.Definition));
                 plan.AttackRefitPrimaryId = primary.Id;
                 plan.AttackRefitCaptureTurn = intent.RefitCaptureTurn;
                 plan.AttackRefitRoster = RosterKey(primary);
@@ -95,12 +95,13 @@ namespace Game.Ai.V2
                     || Excluded(card)
                     || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, primary.Hex, def)) continue;
                 AddCardPlan(card, index);
-                if (card.Equipment != null) continue;
+                if (card.Equipment != null && card.Mutator != null) continue;
                 for (int j = 0; j < hand.Hand.Count; j++)
                 {
                     var equipment = hand.Hand[j];
                     var eqDef = equipment?.Definition;
                     if (j == index || eqDef?.cardType != CardType.Equipment || eqDef.equipment == null
+                        || EquipmentSystem.GetAttachment(card, eqDef) != null
                         || Excluded(equipment) || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def)) continue;
                     AddCardPlan(card, index, equipment, j);
                 }

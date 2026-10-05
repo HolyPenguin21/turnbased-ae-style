@@ -409,7 +409,7 @@ namespace Game.Ai.V2
                 else
                     continue;
                 IReadOnlyList<string> abilities =
-                    MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                    MaterializationChainMatching.EffectiveAbilities(def, card.Equipment, card.Mutator);
                 if (!StrategicEffectRegistry.HasGlobalRecurringEffect(abilities))
                     continue;
 
@@ -490,7 +490,7 @@ namespace Game.Ai.V2
                 // equipment-borne and generated ones this lookup cannot see.
                 CardData claimedCard = collectorCards
                     .Where(c => MaterializationChainMatching
-                        .EffectiveAbilities(c.Definition, c.Equipment).Contains(requiredAbility))
+                        .EffectiveAbilities(c.Definition, c.Equipment, c.Mutator).Contains(requiredAbility))
                     .OrderBy(c => c.Definition.apCost)
                     .ThenBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
                     .FirstOrDefault();

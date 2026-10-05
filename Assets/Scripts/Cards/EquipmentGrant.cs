@@ -2,6 +2,12 @@ using System.Collections.Generic;
 
 namespace Game.Cards
 {
+    public enum AttachmentSlot
+    {
+        Equipment = 0,
+        Mutator = 1,
+    }
+
     // What kind of card an Equipment card (CardType.Equipment) may be hung on. Checked against
     // the target's own identity in EquipmentSystem.CanAttach — a live UnitData's IsHero, or a
     // not-yet-spawned CardData's CardDefinition.cardType. Facility is listed for the future

@@ -146,6 +146,7 @@ namespace Game.Cards
         // costs, everything else (attack/defenseRating/moveMax/...) is ignored for Equipment,
         // same as it already is for Facility/Tactic.
         [Header("Equipment (CardType.Equipment only)")]
+        public AttachmentSlot attachmentSlot = AttachmentSlot.Equipment;
         public EquipmentGrant equipment = new EquipmentGrant();
     }
 }

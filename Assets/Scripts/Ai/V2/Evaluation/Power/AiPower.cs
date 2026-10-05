@@ -162,6 +162,12 @@ namespace Game.Ai.V2
                         : EquipmentSystem.EffectiveAbilities(new List<string>(abilities), g);
                 }
 
+            return ProjectedLine(c, stats, abilities, anyGrant);
+        }
+
+        private static ProjectedStrategicLine ProjectedLine(CardDefinition c,
+            IReadOnlyDictionary<EquipmentStat, int> stats, IReadOnlyList<string> abilities, bool anyGrant)
+        {
             int S(EquipmentStat st) => stats.TryGetValue(st, out int v) ? v : 0;
             float line = S(EquipmentStat.Attack) * AiConfigV2.powerAttackWeight
                        + S(EquipmentStat.Defense) * AiConfigV2.powerDefenseWeight
@@ -193,10 +199,16 @@ namespace Game.Ai.V2
         public static ProjectedStrategicLine ProjectMaterialization(MaterializationPlan plan)
         {
             CardDefinition baseDef = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
-            EquipmentGrant already = plan?.BaseCardInHand?.Equipment?.equipment;
-            EquipmentGrant planned = plan?.GeneratedEquipmentDef?.equipment
-                                     ?? plan?.EquipmentInHand?.Definition?.equipment;
-            return EffectiveLine(baseDef, already, planned);
+            CardDefinition planned = plan?.GeneratedEquipmentDef ?? plan?.EquipmentInHand?.Definition;
+            return EffectiveCardLine(plan?.BaseCardInHand ?? new CardData(baseDef), planned);
+        }
+
+        public static ProjectedStrategicLine EffectiveCardLine(CardData card, CardDefinition candidate = null)
+        {
+            if (card?.Definition == null) return EffectiveLine(null);
+            var state = EquipmentSystem.Project(card, candidate);
+            return ProjectedLine(card.Definition, state.Stats, state.Abilities,
+                card.Equipment?.equipment != null || card.Mutator?.equipment != null || candidate?.equipment != null);
         }
 
         public static float UnitPower(UnitData u) => ToPowerUnit(u).BasePower;
@@ -209,9 +221,9 @@ namespace Game.Ai.V2
             CardDefinition d = card?.Definition;
             if (d == null)
                 return new PowerUnit(0f, null, 1, false);
-            if (card.Equipment?.equipment == null)
+            if (card.Equipment?.equipment == null && card.Mutator?.equipment == null)
                 return ToPowerUnit(d);
-            ProjectedStrategicLine line = EffectiveLine(d, card.Equipment.equipment);
+            ProjectedStrategicLine line = EffectiveCardLine(card);
             PowerUnit plain = ToPowerUnit(d);
             return new PowerUnit(line.BasePower, plain.Tags, line.Range, plain.IsHero, line.CommandRating);
         }
@@ -231,6 +243,19 @@ namespace Game.Ai.V2
                 c.initiative,
                 c.grantedAbilities,
                 isGroundCombatant: c.cardType != CardType.Hero);
+
+        // Frozen card attachments use the same canonical projection as hand UI and deployment.
+        public static WorthIt.DefenderProfile ToDefenderProfile(CardDefinition c,
+            CardDefinition equipment, CardDefinition mutator)
+        {
+            if (equipment?.equipment == null && mutator?.equipment == null) return ToDefenderProfile(c);
+            var state = EquipmentSystem.Project(c, equipment, mutator);
+            return new WorthIt.DefenderProfile(state.Stats[EquipmentStat.Defense],
+                state.Abilities.Contains(UnitAbilities.CeramicArmor), c.unitTypeTags,
+                state.Stats[EquipmentStat.Attack], state.Stats[EquipmentStat.HitPoints],
+                state.Stats[EquipmentStat.Initiative], state.Abilities,
+                isGroundCombatant: c.cardType != CardType.Hero);
+        }
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage

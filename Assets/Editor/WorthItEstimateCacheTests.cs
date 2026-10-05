@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Game.Cards;
+using Game.Ai.V2;
 using Game.Combat;
 using NUnit.Framework;
 
@@ -86,6 +87,28 @@ namespace Game.EditorTests
         }
 
         // ---- Behaviour ----
+
+        [Test]
+        [TestCase(EquipmentStat.Defense)]
+        [TestCase(EquipmentStat.HitPoints)]
+        [TestCase(EquipmentStat.Initiative)]
+        public void MutatorProjectionWritesANewCacheEntryAndReadsItOnRepeat(EquipmentStat stat)
+        {
+            var host = AttachmentSlotTests.Host();
+            var equipment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment);
+            var mutator = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, stat);
+            var before = new[] { AiPower.ToDefenderProfile(host, equipment, null) };
+            var after = new[] { AiPower.ToDefenderProfile(host, equipment, mutator) };
+            WorthIt.BeginEstimateCacheScope();
+            WorthIt.Estimate(before, Defenders(), 0);
+            var first = WorthIt.Estimate(after, Defenders(), 0);
+            var repeated = WorthIt.Estimate(after, Defenders(), 0);
+            var stats = WorthIt.EndEstimateCacheScope();
+            Assert.That(stats.Misses, Is.EqualTo(2));
+            Assert.That(stats.Hits, Is.EqualTo(1));
+            Assert.That(repeated.WinChance, Is.EqualTo(first.WinChance));
+            Assert.That(repeated.ExpectedSurvivingHpRatioOnWin, Is.EqualTo(first.ExpectedSurvivingHpRatioOnWin));
+        }
 
         [Test]
         public void CachedResultIsIdenticalToUncached()

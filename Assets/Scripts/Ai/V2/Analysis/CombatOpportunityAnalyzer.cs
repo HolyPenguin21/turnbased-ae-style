@@ -135,38 +135,39 @@ namespace Game.Ai.V2
         private static PoolBox BuildKnownPool(WorldSnapshot snap)
         {
             var attackers = new List<WorthIt.DefenderProfile>();
-            var grants = new List<EquipmentGrant>();
+            var grants = new List<CardDefinition>();
+            var occupiedMutators = new HashSet<int>();
             int map = 0, hand = 0, deck = 0, outputs = 0;
 
             void Grant(CardDefinition d)
             {
                 if (d != null && d.cardType == CardType.Equipment && d.equipment != null)
-                    grants.Add(d.equipment);
+                    grants.Add(d);
             }
 
             foreach (ArmySnapshot a in snap.Self.Armies ?? (IReadOnlyList<ArmySnapshot>)System.Array.Empty<ArmySnapshot>())
             {
                 if (a == null || a.IsPrison || a.Members == null) continue;
-                foreach (WorthIt.DefenderProfile m in a.Members)
-                    if (m.IsGroundCombatant) { attackers.Add(m); map++; }
+                for (int memberIndex = 0; memberIndex < a.Members.Count; memberIndex++)
+                {
+                    WorthIt.DefenderProfile m = a.Members[memberIndex];
+                    if (!m.IsGroundCombatant) continue;
+                    if (a.NonHeroMutatorOccupied != null && memberIndex < a.NonHeroMutatorOccupied.Count
+                        && a.NonHeroMutatorOccupied[memberIndex]) occupiedMutators.Add(attackers.Count);
+                    attackers.Add(m); map++;
+                }
             }
             // The frozen card view (SelfSnapshot.PoolCards), coherent with the frozen Armies:
             // the live Hand/Deck lists may already miss a card whose unit Armies does not show yet.
-            IEnumerable<(CardDefinition Card, CardDefinition Equipment, bool InHand)> cards =
-                snap.Self.PoolCards
-                ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-                    .Where(c => c?.Definition != null)
-                    .Select(c => (c.Definition, c.Equipment, true))
-                    .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
-                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, false)));
-            foreach ((CardDefinition d, CardDefinition equipment, bool inHand) in cards)
+            foreach ((CardDefinition d, CardDefinition equipment, CardDefinition mutator, bool inHand) in PoolCards(snap))
             {
                 Grant(d);
                 if (equipment != null) Grant(equipment);
+                if (mutator != null) Grant(mutator);
                 if (d.cardType != CardType.Unit) continue;
-                attackers.Add(equipment?.equipment != null
-                    ? Equipped(AiPower.ToDefenderProfile(d), equipment.equipment)
-                    : AiPower.ToDefenderProfile(d));
+                var profile = AiPower.ToDefenderProfile(d, equipment, mutator);
+                if (mutator != null) occupiedMutators.Add(attackers.Count);
+                attackers.Add(profile);
                 if (inHand) hand++; else deck++;
             }
             DevelopmentReadiness dev = snap.Development;
@@ -182,8 +183,15 @@ namespace Game.Ai.V2
 
             int baseCount = attackers.Count;
             for (int i = 0; i < baseCount; i++)
-                foreach (EquipmentGrant g in grants)
-                    attackers.Add(Equipped(attackers[i], g));
+                foreach (CardDefinition attachment in grants)
+                {
+                    var host = attackers[i];
+                    if (attachment.attachmentSlot == AttachmentSlot.Mutator
+                        && (occupiedMutators.Contains(i) || !EquipmentSystem.FitsHostCore(attachment,
+                            host.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit,
+                            host.TypeTags != null ? new List<UnitTypeTag>(host.TypeTags) : null, out _))) continue;
+                    attackers.Add(Equipped(host, attachment.equipment));
+                }
 
             if (attackers.Any(a => a.Abilities != null && a.Abilities.Contains(UnitAbilities.RaiseTheRots)))
             {
@@ -371,7 +379,14 @@ namespace Game.Ai.V2
             return report;
         }
 
-        // Everything that could form the assemblable roster: bodies on the map and in hand.
+        private static IEnumerable<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>
+            PoolCards(WorldSnapshot snap) => snap.Self.PoolCards
+                ?? (snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                    .Where(c => c?.Definition != null).Select(c => (c.Definition, c.Equipment, c.Mutator, true))
+                    .Concat((snap.Self.Deck ?? (IReadOnlyList<CardDefinition>)System.Array.Empty<CardDefinition>())
+                        .Where(d => d != null).Select(d => (d, (CardDefinition)null, (CardDefinition)null, false)));
+
+        // Everything that could form the assemblable roster: bodies on the map and in the frozen hand.
         private static List<WorthIt.DefenderProfile> AssemblableBodies(WorldSnapshot snap)
         {
             var bodies = new List<WorthIt.DefenderProfile>();
@@ -380,12 +395,9 @@ namespace Game.Ai.V2
                 if (a == null || a.IsPrison) continue;
                 if (a.Members != null) bodies.AddRange(a.Members);
             }
-            foreach (CardData card in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-            {
-                CardDefinition d = card?.Definition;
-                if (d != null && d.cardType == CardType.Unit)
-                    bodies.Add(AiPower.ToDefenderProfile(d));
-            }
+            foreach (var card in PoolCards(snap))
+                if (card.InHand && card.Card.cardType == CardType.Unit)
+                    bodies.Add(AiPower.ToDefenderProfile(card.Card, card.Equipment, card.Mutator));
             return bodies;
         }
 

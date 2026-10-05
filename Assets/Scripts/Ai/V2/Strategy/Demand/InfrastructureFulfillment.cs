@@ -83,7 +83,7 @@ namespace Game.Ai.V2
                     if (card?.Definition?.cardType != CardType.Hero
                         || hand?.Hand?.Contains(card) != true
                         || !MaterializationChainMatching.EffectiveAbilities(
-                            card.Definition, card.Equipment)
+                            card.Definition, card.Equipment, card.Mutator)
                             .Contains(ResearchProductionSystem.RoleAbility(mode)))
                         return false;
                     BuildingData building = BuildingRegistry.FindAt(site);
@@ -926,7 +926,7 @@ namespace Game.Ai.V2
                 foreach ((CardData card, int ordinal) in hand.Hand.Select((card, ordinal) => (card, ordinal)))
                 {
                     IReadOnlyList<string> abilities = card?.Definition != null
-                        ? MaterializationChainMatching.EffectiveAbilities(card.Definition, card.Equipment)
+                        ? MaterializationChainMatching.EffectiveAbilities(card.Definition, card.Equipment, card.Mutator)
                         : null;
                     if (card != demand.DevOpportunity?.PreparationOperatorCard
                         || abilities == null || !abilities.Contains(role))

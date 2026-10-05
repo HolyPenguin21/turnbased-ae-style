@@ -759,9 +759,20 @@ namespace Game.Ai.V2
                 }
                 case PlayKind.Equipment:
                 {
-                    if (play.EquipHost == null)
+                    ArmyData recipientArmy = ArmyRegistry.FindArmyContaining(play.EquipHost);
+                    if (play.EquipHost == null || play.EquipHost.IsPrisoner || recipientArmy?.Owner != player)
                     {
                         failReason = "equipment host gone";
+                        ok = false;
+                        break;
+                    }
+                    // Re-read the bank immediately before the shared gameplay transaction.
+                    // A candidate's earlier affordability cannot authorize another owner's hold.
+                    if (play.Card.EffectivePlayApCost > StrategicSpendability.SpendableAp(player, root, ctx)
+                        || !StrategicSpendability.FitsSpendableResources(player, root, ctx,
+                            play.Card.EffectivePlayResourceCost))
+                    {
+                        failReason = "attachment AP/resources reserved since planning";
                         ok = false;
                         break;
                     }
@@ -832,7 +843,7 @@ namespace Game.Ai.V2
                     continue;
                 foreach (UnitData u in army.Members)
                 {
-                    if (u == null || u.IsAviation || u.Equipment != null)
+                    if (u == null || u.IsAviation || EquipmentSystem.GetAttachment(u, equipCard.Definition) != null)
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;

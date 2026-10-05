@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -22,6 +23,22 @@ namespace Game.EditorTests
 
         [TearDown]
         public void TearDown() => HumanVisualMemory.Clear();
+
+        [Test]
+        public void ObserveArmy_PreservesBothObservedAttachmentsWithoutTrackingSlotChanges()
+        {
+            var live = new ArmyData { Owner = _enemy };
+            var equipment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment);
+            var mutator = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            var unit = AttachmentSlotTests.Body(); unit.Owner = _enemy;
+            unit.Equipment = equipment; unit.Mutator = mutator;
+            live.Members.Add(unit);
+            HumanVisualMemory.ObserveArmy(_viewer, live, new HexCoord(3, 0));
+            unit.Equipment = null; unit.Mutator = null;
+            Assert.That(HumanVisualMemory.TryGetArmySighting(_viewer, live.Id, out var sighting), Is.True);
+            Assert.That(sighting.Army.Members[0].Equipment, Is.SameAs(equipment));
+            Assert.That(sighting.Army.Members[0].Mutator, Is.SameAs(mutator));
+        }
 
         [Test]
         public void ObserveArmy_CapturesPositionAndRosterWithoutTrackingLaterLiveChanges()

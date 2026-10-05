@@ -37,6 +37,7 @@ namespace Game.UI
         // card while it's still in hand (see CardData.Equipment / EquipmentArtToggle). Hidden
         // by that component itself when nothing's attached. Optional prefab ref.
         [SerializeField] private EquipmentArtToggle equipmentArtToggle;
+        [SerializeField] private EquipmentArtToggle mutatorArtToggle;
 
         [SerializeField] private GameObject statsRow;
         [SerializeField] private TMP_Text attackStatText;
@@ -110,6 +111,8 @@ namespace Game.UI
 
         public void Setup(CardHandUI hand, CardData data, float restingScale, float hoverScale, float hoverLift, float animDuration, float dragHoverShrink)
         {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             _hand = hand;
             Data = data;
             _restingScale = restingScale;
@@ -152,7 +155,10 @@ namespace Game.UI
         // unit once it finally spawns.
         public void RefreshEquipmentToggle()
         {
+            equipmentArtToggle?.SetPeer(mutatorArtToggle);
+            mutatorArtToggle?.SetPeer(equipmentArtToggle);
             equipmentArtToggle?.Configure(Data?.Equipment, _hand?.GameConfig, Data?.Definition?.cardType);
+            mutatorArtToggle?.Configure(Data?.Mutator, _hand?.GameConfig, Data?.Definition?.cardType);
             RefreshStatsRow(Data?.Definition);
             RefreshAbilityText();
         }
@@ -177,9 +183,7 @@ namespace Game.UI
                 typeText.text = EquipmentCardText.CardFace(definition, _hand?.GameConfig);
                 return;
             }
-            var abilities = EquipmentSystem.EffectiveAbilities(
-                definition.grantedAbilities,
-                Data?.Equipment != null ? Data.Equipment.equipment : null);
+            var abilities = EquipmentSystem.EffectiveAbilities(Data);
             typeText.text = _hand?.GameConfig?.FormatAbilities(abilities) ?? string.Empty;
         }
 
@@ -253,68 +257,18 @@ namespace Game.UI
         }
 
 
-        // Folds the stat changes of an Equipment card attached to this in-hand card (see
-        // CardData.Equipment) into the badge values just computed from the base CardDefinition,
-        // so the hand preview matches what EquipmentSystem.Apply will produce on the spawned
-        // unit: all additive changes first, then all overrides, then the same per-stat floor.
-        // The slot->EquipmentStat mapping mirrors RefreshStatsRow's own per-card-type mapping;
-        // Base cards can't take equipment (EquipmentSystem.CanAttach), so they're left alone.
+        // Uses the gameplay-owned projection, including canonical slot order and floors.
         private void ApplyAttachedEquipment(CardType cardType, ref int slot1, ref int slot2,
             ref int hp, ref int slot4, ref int slot5)
         {
-            EquipmentGrant grant = Data?.Equipment != null ? Data.Equipment.equipment : null;
-            if (grant?.statChanges == null || grant.statChanges.Count == 0)
-                return;
-
-            EquipmentStat s1, s2, s4, s5;
-            switch (cardType)
-            {
-                case CardType.Hero:
-                    s1 = EquipmentStat.CommandRating; s2 = EquipmentStat.Fate;
-                    s4 = EquipmentStat.MoveMax;       s5 = EquipmentStat.Initiative;
-                    break;
-                case CardType.Base:
-                case CardType.Facility:
-                    return;
-                default: // Unit
-                    s1 = EquipmentStat.Attack;  s2 = EquipmentStat.Defense;
-                    s4 = EquipmentStat.MoveMax; s5 = EquipmentStat.Range;
-                    break;
-            }
-
-            slot1 = FoldStat(grant, s1, slot1);
-            slot2 = FoldStat(grant, s2, slot2);
-            hp = FoldStat(grant, EquipmentStat.HitPoints, hp);
-            slot4 = FoldStat(grant, s4, slot4);
-            slot5 = FoldStat(grant, s5, slot5);
-        }
-
-        private static int FoldStat(EquipmentGrant grant, EquipmentStat stat, int current)
-        {
-            int result = current;
-            foreach (EquipmentStatChange change in grant.statChanges)
-                if (change != null && change.stat == stat && !change.isOverride)
-                    result += change.amount;
-            foreach (EquipmentStatChange change in grant.statChanges)
-                if (change != null && change.stat == stat && change.isOverride)
-                    result = change.amount;
-            return Mathf.Max(StatFloor(stat), result);
-        }
-
-        // Same per-stat lower bounds EquipmentSystem.ApplyStat enforces.
-        private static int StatFloor(EquipmentStat stat)
-        {
-            switch (stat)
-            {
-                case EquipmentStat.Defense:
-                case EquipmentStat.Range:
-                case EquipmentStat.Initiative:
-                case EquipmentStat.HitPoints:
-                case EquipmentStat.MoveMax:
-                    return 1;
-                default:
-                    return 0;
-            }
+            if (Data?.Definition == null || (cardType != CardType.Unit && cardType != CardType.Hero)) return;
+            var state = EquipmentSystem.Project(Data).Stats;
+            bool hero = cardType == CardType.Hero;
+            slot1 = state[hero ? EquipmentStat.CommandRating : EquipmentStat.Attack];
+            slot2 = state[hero ? EquipmentStat.Fate : EquipmentStat.Defense];
+            hp = state[EquipmentStat.HitPoints];
+            slot4 = state[EquipmentStat.MoveMax];
+            slot5 = state[hero ? EquipmentStat.Initiative : EquipmentStat.Range];
         }
 
         // Hides the badge entirely for a 0 cost rather than showing "0" — most cards don't
@@ -359,6 +313,7 @@ namespace Game.UI
                 return;
             _isHovered = false;
             equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             Retarget(animated: true);
             _hand.RestoreSiblingOrder();
         }

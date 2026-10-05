@@ -36,6 +36,7 @@ namespace Game.UI
         // Press-and-hold to preview the attached Equipment card's art (see UnitData.Equipment /
         // EquipmentArtToggle). Hidden by that component when nothing's attached. Optional.
         [SerializeField] private EquipmentArtToggle equipmentArtToggle;
+        [SerializeField] private EquipmentArtToggle mutatorArtToggle;
         // Same faint tint everywhere — occupied, empty, or the shared neutral row alike (see
         // the user's own spec: alpha 15/255, no special-casing) — a unit's own art/name/stats
         // are what actually distinguish an occupied cell, not the background.
@@ -99,6 +100,8 @@ namespace Game.UI
         public void Setup(BattleScreenUI screen, UnitData unit, int row, int col, bool draggable,
             bool isActingUnit = false, bool isLegalMoveTarget = false, bool isLegalAttackTarget = false)
         {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
             _screen = screen;
             Unit = unit;
             Row = row;
@@ -110,7 +113,11 @@ namespace Game.UI
                 artImage.sprite = unit != null ? unit.Art : null;
                 artImage.gameObject.SetActive(unit != null);
             }
+            equipmentArtToggle?.SetPeer(mutatorArtToggle);
+            mutatorArtToggle?.SetPeer(equipmentArtToggle);
             equipmentArtToggle?.Configure(unit?.Equipment, _screen != null ? _screen.GameConfig : null,
+                unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
+            mutatorArtToggle?.Configure(unit?.Mutator, _screen != null ? _screen.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
             if (nameText != null)
             {
@@ -218,7 +225,11 @@ namespace Game.UI
 
         // Restore the portrait if the pointer leaves the cell mid press-and-hold of the
         // equipment-art toggle (per the spec — reverts on leaving the card, not only on release).
-        public void OnPointerExit(PointerEventData eventData) => equipmentArtToggle?.Revert();
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            equipmentArtToggle?.Revert();
+            mutatorArtToggle?.Revert();
+        }
 
         // Shared by the drag-ghost (OnBeginDrag, follows the pointer) and the move-animation
         // ghost (AnimateMoveTo, slides to a fixed destination) — same floating, half-transparent,

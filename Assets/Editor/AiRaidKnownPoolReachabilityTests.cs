@@ -58,6 +58,72 @@ namespace Game.EditorTests
         };
 
         [Test]
+        [TestCase(false, false, true)]
+        [TestCase(true, true, true)]
+        [TestCase(true, false, false)]
+        public void HypotheticalMutatorRequiresBioAndAnUnoccupiedFrozenSlot(bool bio, bool occupied, bool unreachable)
+        {
+            var mutator = AttackEquipment(16);
+            mutator.attachmentSlot = AttachmentSlot.Mutator;
+            mutator.equipment.hostKinds.Add(EquipmentHostKind.Unit);
+            var snap = Snapshot(deck: new[] { mutator });
+            snap.Self.Armies = new[] { new ArmySnapshot
+            {
+                MemberCount = 1,
+                Members = new[] { new WorthIt.DefenderProfile(2, false,
+                    new[] { bio ? UnitTypeTag.Bio : UnitTypeTag.Mechanical }, 4, 5, 1) },
+                NonHeroMutatorOccupied = new[] { occupied },
+            } };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, Wall, 0, out _),
+                Is.EqualTo(unreachable));
+        }
+
+        [Test]
+        public void HandMutatorCannotBeStackedWithAnotherKnownMutator()
+        {
+            var host = UnitCard(4); host.unitTypeTags.Add(UnitTypeTag.Bio);
+            var existing = AttackEquipment(1); existing.attachmentSlot = AttachmentSlot.Mutator;
+            var candidate = AttackEquipment(16); candidate.attachmentSlot = AttachmentSlot.Mutator;
+            candidate.equipment.hostKinds.Add(EquipmentHostKind.Unit);
+            var snap = Snapshot(deck: new[] { candidate });
+            snap.Self.Armies = new ArmySnapshot[0];
+            snap.Self.PoolCards = new[] { (host, (CardDefinition)null, existing, true),
+                (candidate, (CardDefinition)null, (CardDefinition)null, false) };
+            Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap, Wall, 0, out _), Is.True);
+        }
+
+        [Test]
+        public void ViabilityFingerprintReadsCanonicalAttachmentsFromFrozenHand()
+        {
+            var host = UnitCard(4);
+            var equipment = AttackEquipment(8); equipment.equipment.statChanges[0].isOverride = true;
+            var mutator = AttackEquipment(2); mutator.attachmentSlot = AttachmentSlot.Mutator;
+            var snap = Snapshot(); snap.Known = new KnownSnapshot();
+            snap.Self.Hand = new[] { new CardData(host) { Equipment = equipment, Mutator = mutator } };
+            snap.Self.PoolCards = new[] { (host, equipment, mutator, true) };
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Does.Contain("|bodies=[4/"),
+                "Map fighter remains the first body");
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Does.Contain(";10/"),
+                "Held fighter must use Base -> Equipment -> Mutator");
+        }
+
+        [Test]
+        public void ViabilityFingerprintDoesNotReadLaterLiveHandMutations()
+        {
+            var host = UnitCard(20);
+            var live = new List<CardData> { new CardData(host) };
+            var snap = Snapshot(); snap.Known = new KnownSnapshot();
+            snap.Self.Hand = live;
+            snap.Self.PoolCards = new[] { (host, (CardDefinition)null, (CardDefinition)null, true) };
+            string frozen = CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap);
+            live.Clear();
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Is.EqualTo(frozen));
+            snap.Self.PoolCards = new (CardDefinition, CardDefinition, CardDefinition, bool)[0];
+            Assert.That(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap), Is.Not.EqualTo(frozen),
+                "A refreshed snapshot must read the new hand");
+        }
+
+        [Test]
         public void WholePoolCannotDamageDefender_IsProvenUnreachable()
         {
             Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(
@@ -82,7 +148,7 @@ namespace Game.EditorTests
         public void FrozenPoolCards_WinOverLiveHand()
         {
             WorldSnapshot snap = Snapshot();
-            snap.Self.PoolCards = new[] { (UnitCard(20), (CardDefinition)null, true) };
+            snap.Self.PoolCards = new[] { (UnitCard(20), (CardDefinition)null, (CardDefinition)null, true) };
             Assert.That(CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(
                 snap, Wall, 0f, out _), Is.False);
         }

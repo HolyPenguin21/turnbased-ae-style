@@ -118,8 +118,8 @@ namespace Game.UI
         // live unit's card in the open Army Viewer. The equipment card stays IN the hand the
         // whole time (this is a pending selection, not a drag). A second right-click, or Esc,
         // cancels; a failed attach shows the reason and also ends the mode, card left in hand.
-        private CardData _pendingEquipment;
-        public bool IsAttachMode => _pendingEquipment != null;
+        private CardData _pendingAttachment;
+        public bool IsAttachMode => _pendingAttachment != null;
         // Dev-only mirror of _cards for GameTurnController's debugWatchAiTurns toggle (see
         // ShowAiHandDebug) — kept fully separate so swapping the display never touches the
         // human's own real hand/deck state underneath.
@@ -377,7 +377,7 @@ namespace Game.UI
             if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             TickCardAnimations();
 
-            if (_pendingEquipment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (_pendingAttachment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
             if (armyViewerModal != null && armyViewerModal.IsShowing)
                 return;
@@ -1065,7 +1065,7 @@ namespace Game.UI
         }
 
         // Same, addressed by the CardData rather than its CardUI — used by the equipment attach
-        // flow, which only holds the pending _pendingEquipment CardData.
+        // flow, which only holds the pending _pendingAttachment CardData.
         private void RemoveCardData(CardData data)
         {
             CardUI card = _cards.Find(c => c != null && c.Data == data);
@@ -1073,7 +1073,7 @@ namespace Game.UI
                 RemoveCard(card);
         }
 
-        // --- equipment attach mode (see _pendingEquipment) ---------------------------------
+        // --- equipment attach mode (see _pendingAttachment) ---------------------------------
 
         // Right-clicked a CardType.Equipment card in hand. From here the player left-clicks a
         // Unit/Hero card (in this hand or the open Army Viewer). Only during the human's own
@@ -1086,10 +1086,10 @@ namespace Game.UI
                 return;
             if (!CanDragCards())
             {
-                turnController?.ShowSpawnHint("You can only attach equipment on your own turn.");
+                turnController?.ShowSpawnHint("You can only attach cards on your own turn.");
                 return;
             }
-            _pendingEquipment = equipmentCard;
+            _pendingAttachment = equipmentCard;
             actionHint?.Show(
                 $"Attaching {equipmentCard.Definition.displayName} — left-click a unit or hero. Right-click or Esc to cancel.");
             turnController?.SetAttachModeActive(true);
@@ -1099,7 +1099,7 @@ namespace Game.UI
         // early-out, this fires every turn regardless of whether an attach was pending.
         public void CancelAttachMode()
         {
-            if (_pendingEquipment == null)
+            if (_pendingAttachment == null)
                 return;
             EndAttachMode();
         }
@@ -1108,7 +1108,7 @@ namespace Game.UI
         // caption and the end-turn gate (SetAttachModeActive) can never be left dangling.
         private void EndAttachMode()
         {
-            _pendingEquipment = null;
+            _pendingAttachment = null;
             actionHint?.Hide();
             turnController?.SetAttachModeActive(false);
         }
@@ -1119,10 +1119,10 @@ namespace Game.UI
         // popupPanel hint, same as before — after the caption is already gone.
         public void TryAttachToHandCard(CardData targetCard)
         {
-            if (_pendingEquipment == null || targetCard == null || targetCard == _pendingEquipment)
+            if (_pendingAttachment == null || targetCard == null || targetCard == _pendingAttachment)
                 return;
             PlayerRoot root = PlayerRootRegistry.FindFor(FindHumanPlayer());
-            CardData equipment = _pendingEquipment;
+            CardData equipment = _pendingAttachment;
             bool attached = EquipmentSystem.TryAttach(equipment, targetCard, root, out string reason);
             EndAttachMode();
             if (attached)
@@ -1141,14 +1141,14 @@ namespace Game.UI
         // handled at all (so the caller can suppress its normal detail-view click).
         public bool TryAttachToUnit(UnitData unit)
         {
-            if (_pendingEquipment == null)
+            if (_pendingAttachment == null)
                 return false;
             PlayerSetupData human = FindHumanPlayer();
-            CardData equipment = _pendingEquipment;
+            CardData equipment = _pendingAttachment;
             bool attached = false;
             string failHint;
             if (unit == null || unit.Owner != human)
-                failHint = "You can only attach equipment to your own units.";
+                failHint = "You can only attach cards to your own units.";
             else if (EquipmentSystem.TryAttach(equipment, unit, PlayerRootRegistry.FindFor(human), out string reason))
             {
                 attached = true;

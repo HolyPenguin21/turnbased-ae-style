@@ -47,13 +47,15 @@ namespace Game.Units
         // combat so far (see UnitAbilities.Hyperkinetic).
         public readonly HashSet<UnitTypeTag> TypeTags = new HashSet<UnitTypeTag>();
 
-        // The CardType.Equipment card hung on this unit (see EquipmentSystem) — one slot, per
-        // the project owner's own call; null when nothing's attached. Its effect (added/
-        // overwritten abilities and stats) is already baked into Abilities/TypeTags/the stat
-        // fields below by EquipmentSystem.Apply — this reference is kept only so the detail
-        // panel can name it and so a second attach can be refused. There is no un-attach (the
-        // manual: "Once placed an attachment card can never be removed").
+        // Independent permanent attachment references. Effective grants are baked into the
+        // live fields by EquipmentSystem; each occupied slot rejects a second attachment.
         public CardDefinition Equipment;
+        public CardDefinition Mutator;
+
+        // Permanent attachment snapshots; current fields may also carry temporary runtime deltas.
+        internal PredictedEquipmentState? AttachmentBase;
+        internal PredictedEquipmentState? AttachmentApplied;
+        internal AttachmentResourceState? AttachmentResources;
 
         // How many times UnitAbilities.Berserk has triggered so far THIS battle — Attack/
         // Defense above already carry the +1/-1 per stack (see BattleAttackPopupUI.
@@ -200,6 +202,7 @@ namespace Game.Units
         public void ReplenishMoveForNewTurn()
         {
             MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);
+            EquipmentSystem.ReconcileResourceRefill(this, EquipmentStat.MoveMax);
         }
 
         // Fate isn't a "gained per turn" resource like Move, and doesn't refill on the strategic
@@ -209,6 +212,7 @@ namespace Game.Units
         public void ReplenishFateForNewBattle()
         {
             Fate = FateMax;
+            EquipmentSystem.ReconcileResourceRefill(this, EquipmentStat.Fate);
         }
     }
 }
