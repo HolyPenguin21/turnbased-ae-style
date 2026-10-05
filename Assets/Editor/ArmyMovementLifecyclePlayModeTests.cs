@@ -110,6 +110,71 @@ namespace Game.EditorTests
             return army;
         }
 
+        private ArmyController LayoutMarker()
+        {
+            var go = NewObject("layout marker");
+            var renderer = go.AddComponent<SpriteRenderer>();
+            var visual = go.AddComponent<MapObjectVisual>();
+            Field(visual, "innerCircle", renderer);
+            var controller = go.AddComponent<ArmyController>();
+            controller.SetData(new ArmyData { Owner = _owner });
+            VisionSystem.CurrentViewer = _owner;
+            visual.SetVisible(true);
+            controller.SetLayoutPosition(Vector3.zero, false);
+            return controller;
+        }
+
+        [UnityTest]
+        public IEnumerator RepeatedReconciliationDoesNotRestartLayoutTransition()
+        {
+            var marker = LayoutMarker();
+            marker.SetLayoutPosition(Vector3.right, true);
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero), "no instant jump");
+            float previous = 0f;
+            for (int frame = 0; frame < 180 && marker.transform.position.x != 1f; frame++)
+            {
+                yield return null;
+                Assert.That(marker.transform.position.x, Is.GreaterThanOrEqualTo(previous));
+                Assert.That(marker.transform.position.x, Is.LessThanOrEqualTo(1f));
+                previous = marker.transform.position.x;
+                marker.SetLayoutPosition(Vector3.right, true);
+            }
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.right));
+            Assert.That(marker.IsMoving, Is.False, "layout never becomes a gameplay move");
+        }
+
+        [UnityTest]
+        public IEnumerator LayoutRetargetContinuesFromTheActualPosition()
+        {
+            var marker = LayoutMarker();
+            marker.SetLayoutPosition(Vector3.right, true);
+            yield return null;
+            Vector3 before = marker.transform.position;
+            marker.SetLayoutPosition(Vector3.left, true);
+            Assert.That(marker.transform.position, Is.EqualTo(before));
+            for (int frame = 0; frame < 180 && marker.transform.position.x != -1f; frame++)
+                yield return null;
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.left));
+        }
+
+        [UnityTest]
+        public IEnumerator ViewerSwitchAndRevealDoNotAnimateFromAnotherPerspective()
+        {
+            var marker = LayoutMarker();
+            marker.SetLayoutPosition(Vector3.right, true);
+            yield return null;
+            VisionSystem.CurrentViewer = new PlayerSetupData { IsHuman = true };
+            marker.SetLayoutPosition(Vector3.left, true);
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.left));
+            marker.Visual.SetVisible(false);
+            marker.SetLayoutPosition(Vector3.zero, false);
+            Assert.That(marker.Visual.IsVisible, Is.False);
+            yield return null;
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
+            marker.Visual.SetVisible(true);
+            Assert.That(marker.transform.position, Is.EqualTo(Vector3.zero));
+        }
+
         private AiTurnContext Context() => new AiTurnContext
             { Map = _map, HexSelection = _selection, StepDelay = 0f, TurnNumber = 1 };
 

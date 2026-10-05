@@ -16,24 +16,39 @@ namespace Game.Aviation
             var messages = new List<string>();
             if (owner == null)
                 return messages;
+            var humanLandingSlotsUsed = new Dictionary<Game.HexGrid.HexCoord, int>();
             foreach (ArmyData airArmy in ArmyRegistry.AllForOwner(owner).Where(AviationRules.IsAirArmy).ToList())
             {
-                // Ending the turn on an owned airfield is THE completed landing: the aircraft go
-                // back into the airfield container (refuelled, sortie closed, no repair) and the
-                // wing stays as an empty shell (AviationActions.LandInSlotOrder). Merely passing
-                // through an airfield mid-turn lands nothing. Aircraft that find no free slot stay
-                // airborne and take the ordinary unlanded end below.
+                var refuelledInPlace = new HashSet<UnitData>();
                 if (AviationRules.IsOwnedAirfieldAt(airArmy.Hex, owner))
                 {
-                    int landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
-                    if (airArmy.Members.Count == 0)
-                        continue;
-                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full — {airArmy.Members.Count} aircraft could not land"
+                    int landed;
+                    if (owner.IsHuman)
+                    {
+                        // Human formations keep their roster. They occupy the same finite
+                        // landing capacity as stored aircraft; refuelling does not repair HP,
+                        // restore movement or grant another attack in the outgoing turn.
+                        humanLandingSlotsUsed.TryGetValue(airArmy.Hex, out int used);
+                        int free = Mathf.Max(0, AviationRules.FreeStorageSlots(airArmy.Hex, owner, airArmy) - used);
+                        foreach (UnitData aircraft in airArmy.Members.Take(free))
+                        {
+                            AviationRules.ResetAfterLanding(aircraft);
+                            refuelledInPlace.Add(aircraft);
+                        }
+                        landed = refuelledInPlace.Count;
+                        humanLandingSlotsUsed[airArmy.Hex] = used + landed;
+                        if (landed > 0) VisionSystem.NotifyContentChanged(airArmy.Hex);
+                    }
+                    else landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
+                    int unlanded = airArmy.Members.Count - refuelledInPlace.Count;
+                    if (unlanded == 0) continue;
+                    messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: the airfield is full — {unlanded} aircraft could not land"
                         + (landed > 0 ? $" ({landed} landed)." : "."));
                 }
                 int destroyed = 0;
                 foreach (UnitData aircraft in airArmy.Members.ToList())
                 {
+                    if (refuelledInPlace.Contains(aircraft)) continue;
                     aircraft.ConsecutiveUnlandedEnds++;
                     if (aircraft.ConsecutiveUnlandedEnds <= aircraft.TurnsWithoutRefuel)
                         continue;

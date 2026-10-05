@@ -747,11 +747,11 @@ namespace Game.Map
             // Prison is only ever reachable from inside ArmyViewerModalUI's own in-modal switcher
             // (see its RefreshButtonRow) — never selectable for a move order from here, and never
             // worth a button of its own on the hex-side row at all.
-            armies = armies.FindAll(a => !a.IsPrison);
+            armies = armies.FindAll(a => !a.IsPrison && !a.IsAirfield && !a.IsGarrison);
             // Only worth showing with 2+ MOBILE armies to pick between (garrison/airfield/prison
             // don't count), and never over an open army/base modal — both re-run SelectHex on
             // close, which re-evaluates this.
-            int mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield).Count;
+            int mobileArmies = armies.Count;
             bool modalShowing = (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing);
             if (mobileArmies >= 2 && !modalShowing)

@@ -19,6 +19,8 @@ namespace Game.UI
         [SerializeField] private Button saveButton;
         [SerializeField] private Button loadButton;
         [SerializeField] private Button continueButton;
+        private Game.Turns.GameTurnController turnController;
+        private bool MenuAvailable => !BattleActive && turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
         private struct GroupState
         {
             public CanvasGroup Group;
@@ -48,6 +50,8 @@ namespace Game.UI
         private void OnEnable()
         {
             instance = this;
+            turnController = UnityEngine.Object.FindFirstObjectByType<Game.Turns.GameTurnController>();
+            if (turnController != null) turnController.TurnStateChanged += RefreshBattleAvailability;
             if (gearButton != null) gearButton.onClick.AddListener(OpenMenu);
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
@@ -59,16 +63,16 @@ namespace Game.UI
         }
         private void RefreshBattleAvailability()
         {
-            if (BattleActive && IsShowing) ContinueGame();
+            if (!MenuAvailable && IsShowing) ContinueGame();
             if (gearButton != null)
             {
                 gearButton.gameObject.SetActive(!IsShowing);
-                gearButton.interactable = !BattleActive;
+                gearButton.interactable = MenuAvailable;
             }
         }
         public void OpenMenu()
         {
-            if (BattleActive || IsShowing || blockingRoot == null || menuPanel == null) return;
+            if (!MenuAvailable || !isActiveAndEnabled || IsShowing || blockingRoot == null || menuPanel == null) return;
             instance = this; // Also supports entering Play Mode without domain/scene reload.
             previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
@@ -104,12 +108,12 @@ namespace Game.UI
             VisibilityChanged?.Invoke();
             var selectable = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
-            else if (!BattleActive) gearButton?.Select();
+            else if (MenuAvailable) gearButton?.Select();
             previousSelection = null;
         }
         private void Update()
         {
-            if (BattleActive) return;
+            if (!MenuAvailable) return;
             if (Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame || UIFocusUtility.IsTextFieldFocused()) return;
             Game.Audio.GameAudioManager.Instance?.PlayClick();
             blockedThroughFrame = Time.frameCount;
@@ -166,6 +170,7 @@ namespace Game.UI
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
             if (battleScreen != null) battleScreen.VisibilityChanged -= RefreshBattleAvailability;
+            if (turnController != null) turnController.TurnStateChanged -= RefreshBattleAvailability;
             if (instance == this) instance = null;
         }
     }

@@ -30,27 +30,6 @@ namespace Game.Core
         // shares the hex.
         public EventMarkerVisual eventMarkerPrefab;
         public Vector2 eventIconOffset = Vector2.zero;
-        // Where each sits within its hex, in hex-radius units (x = left/right, y = the world Z
-        // axis, same convention as the resource row). These three fields are only ever used
-        // when a hex has MORE than one occupant — a lone occupant (building, army, or whatever
-        // else eventually shares a hex) always just sits centred instead. See HexObjectLayout
-        // for the actual per-hex resolution logic; these are just its raw tunables.
-        // Building+army sharing a hex (exactly ONE army): building sits bottom-left so it
-        // doesn't overlap the resource row above; the army sits bottom-right, mirrored, and is
-        // allowed to overlap the building icon a little. With 2+ armies on the hex the building
-        // re-centres instead and the armies use the three slots below (see HexObjectLayout).
-        public Vector2 buildingIconOffset = new Vector2(-0.25f, -0.25f);
-        public Vector2 armyIconOffset = new Vector2(0.25f, -0.25f);
-        // Fixed slots for 2-3 armies of DIFFERENT owners sharing a hex (project owner's spec,
-        // кейс 4.1): 1st owner -> right, 2nd -> left, 3rd -> top. A building on the same hex sits
-        // at centre in this case. Several armies of the SAME owner still collapse to one marker
-        // (they never reach HexObjectLayout as separate entries). armySlotTop's y is a world-Z
-        // offset like resourceRowOffset — flip its sign if "top" ends up below the hex on screen.
-        // 4+ distinct owners on one hex isn't handled yet — everyone stacks at centre.
-        public Vector2 armySlotRight = new Vector2(0.25f, 0f);
-        public Vector2 armySlotLeft = new Vector2(-0.25f, 0f);
-        public Vector2 armySlotTop = new Vector2(0f, 0.32f);
-
         [Header("Army Viewer")]
         // Instantiated by two different controllers (ArmyButtonRowUI — both the hex-side row
         // and the one embedded in ArmyViewerModalUI — and ArmyViewerModalUI's own unit grid),

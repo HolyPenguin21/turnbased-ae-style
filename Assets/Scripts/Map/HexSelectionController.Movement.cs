@@ -589,7 +589,7 @@ namespace Game.Map
                     // MoveAlong's own comment on why onComplete runs before that flips false), so
                     // nothing else would ever re-snap it to hex centre until the hex was reselected
                     // (see the user's own report). Cheap/idempotent when nothing actually changed.
-                    movingArmy.transform.position = map.HexToWorld(actualHex) + ResolveArmyOffset(actualHex, movingArmy);
+                    movingArmy.SetLayoutPosition(map.HexToWorld(actualHex) + ResolveArmyOffset(actualHex, movingArmy), true);
 
                     // Re-checked fresh against `actualHex`, NOT the `enemyArmy` truncation found
                     // before the move even started — the army can run out of shared move points

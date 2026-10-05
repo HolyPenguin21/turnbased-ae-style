@@ -5,34 +5,9 @@ using UnityEngine;
 
 namespace Game.Map
 {
-    // Where a hex's occupants sit relative to its centre, resolved fresh from what's actually
-    // on the hex right now rather than baked into one fixed per-slot layout. Every offset is in
-    // hex-radius units (x = left/right, y = world Z), same convention GameConfig's
-    // buildingIconOffset/armyIconOffset/armySlotRight/Left/Top already use — multiply by
-    // HexMap.OuterRadius and add to HexToWorld(hex) to get a world position.
-    //
-    // IMPORTANT: `armyOwners` must already be filtered to what the CURRENT MAP VIEWER can see
-    // (see HexSelectionController.VisibleForLayout) — a fully-hidden enemy army (stealth) or one
-    // on a hex the viewer has no vision of must NOT reach here, or the viewer's own army gets
-    // pushed off-centre into a two-owners slot and silently discloses "someone is here" (project
-    // owner's own report, кейс 4). Same for `hasBuilding`: pass false when the viewer hasn't
-    // personally confirmed the building, so a lone army on that hex still sits centred rather
-    // than announcing the building via its corner offset.
-    //
-    // Rules, in priority order (armyOwners carries ONE entry per DISTINCT owner — several armies
-    // of the same owner already collapsed to a single marker upstream, see
-    // HexSelectionController.DistinctOwners):
-    //  1. Exactly one occupant total (a lone building, or a lone army) -> centred.
-    //  2. A building plus exactly one army -> building stays centred, army sits at its own
-    //     corner (armyIconOffset). A building (Citadel/Base/Facility) never gets pushed off
-    //     centre by units sharing its hex — only armies are ever offset (project owner's spec,
-    //     2026-09-16).
-    //  3. Two or three armies of DIFFERENT owners (with or without a building): fixed slots —
-    //     1st owner -> armySlotRight, 2nd -> armySlotLeft, 3rd -> armySlotTop. A building present
-    //     sits at hex centre.
-    //  4. Anything past that (4+ distinct owners on one hex) isn't designed yet — project owner:
-    //     "4е разных игрока на хексе пока не рассматриваем" — so everyone stacks at centre
-    //     (the building, if present, always stays centred too).
+    // Offsets are in hex-radius units: X is world X, Y is world Z.
+    // Callers supply only distinct owners visible to the current viewer, or a frozen
+    // remembered snapshot. This resolver never reads live occupants or visibility itself.
     public static class HexObjectLayout
     {
         public readonly struct Result
@@ -52,31 +27,56 @@ namespace Game.Map
             int armyCount = armyOwners?.Count ?? 0;
             var armyOffsets = new Vector2[armyCount];
 
-            int totalObjects = (hasBuilding ? 1 : 0) + armyCount;
-            if (totalObjects <= 1)
-                return new Result(Vector2.zero, armyOffsets); // the lone occupant (if any) sits centred
-
-            if (hasBuilding && armyCount == 1)
+            if (armyCount <= 1)
             {
-                armyOffsets[0] = config.armyIconOffset;
+                if (hasBuilding && armyCount == 1)
+                    armyOffsets[0] = new Vector2(0.25f, -0.25f);
                 return new Result(Vector2.zero, armyOffsets);
             }
 
-            // 2 or 3 armies of different owners — fixed right/left/top slots, building (if any)
-            // re-centres rather than keeping a corner.
-            if (armyCount >= 2 && armyCount <= 3)
-            {
-                armyOffsets[0] = config.armySlotRight;
-                armyOffsets[1] = config.armySlotLeft;
-                if (armyCount == 3)
-                    armyOffsets[2] = config.armySlotTop;
-                return new Result(Vector2.zero, armyOffsets);
-            }
-
-            // Fallback for not-yet-designed combinations (4+ distinct owners) — stack at centre.
-            for (int i = 0; i < armyCount; i++)
-                armyOffsets[i] = Vector2.zero;
+            // Rank visible owners by their fixed player identity, never registry insertion
+            // order. Return offsets in the caller's original order so all callers agree.
+            var order = new List<int>();
+            for (int i = 0; i < armyCount; i++) order.Add(i);
+            order.Sort((a, b) => CompareOwners(armyOwners[a], armyOwners[b]));
+            for (int rank = 0; rank < armyCount; rank++)
+                armyOffsets[order[rank]] = Slot(hasBuilding, armyCount, rank);
             return new Result(Vector2.zero, armyOffsets);
+        }
+
+        private static int CompareOwners(PlayerSetupData a, PlayerSetupData b)
+        {
+            if (ReferenceEquals(a, b)) return 0;
+            if (a == null) return -1;
+            if (b == null) return 1;
+            int neutral = a.IsNeutral.CompareTo(b.IsNeutral);
+            if (neutral != 0) return neutral;
+            int colour = a.ColorIndex.CompareTo(b.ColorIndex);
+            if (colour != 0) return colour;
+            return string.CompareOrdinal(a.Nickname, b.Nickname);
+        }
+
+        private static Vector2 Slot(bool building, int count, int rank)
+        {
+            if (building)
+            {
+                if (count == 2) return new Vector2(rank == 0 ? -0.34f : 0.34f, -0.34f);
+                if (count == 3)
+                    return rank == 1 ? new Vector2(0f, -0.54f)
+                        : new Vector2(rank == 0 ? -0.50f : 0.50f, -0.30f);
+                // For 4+ owners distribute along a lower arc, safely inside the hex.
+                float t = rank / (float)(count - 1);
+                return new Vector2(Mathf.Lerp(-0.60f, 0.60f, t),
+                    -0.28f - 0.28f * Mathf.Sin(t * Mathf.PI));
+            }
+            if (count == 2) return new Vector2(rank == 0 ? -0.28f : 0.28f, 0f);
+            if (count == 3)
+                return rank == 0 ? new Vector2(0f, 0.28f)
+                    : new Vector2(rank == 1 ? -0.30f : 0.30f, -0.22f);
+            if (count == 4)
+                return new Vector2(rank % 2 == 0 ? -0.28f : 0.28f, rank < 2 ? 0.26f : -0.26f);
+            float angle = 2f * Mathf.PI * rank / count;
+            return new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * 0.40f;
         }
     }
 }

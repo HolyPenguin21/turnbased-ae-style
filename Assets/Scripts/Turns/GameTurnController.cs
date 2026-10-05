@@ -483,6 +483,7 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
+            if (gameMenu != null) gameMenu.gameObject.SetActive(true);
             // One trigger for the whole bottom panel — the hand, the resource bar and the
             // end-turn button all live under CardHandPanel.
             if (cardHand != null)

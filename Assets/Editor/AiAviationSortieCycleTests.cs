@@ -338,6 +338,43 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void HumanEndOfTurn_RefuelsWithoutChangingWingMembership()
+        {
+            _owner.IsHuman = true;
+            var hex = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(hex, capacity: 2);
+            UnitData plane = Plane(1, 1);
+            plane.ConsecutiveUnlandedEnds = 2;
+            plane.HasEmergencyFlightPenalty = true;
+            plane.SortieLaunchPaid = true;
+            plane.HasAirAttackedThisTurn = true;
+            plane.HitPointsCurrent = 1;
+            ArmyData wing = Wing(hex, plane);
+            AviationTurnLifecycle.ResolveEndOfTurn(_owner, null);
+            Assert.That(wing.Members, Does.Contain(plane));
+            Assert.That(airfield.Members, Is.Empty);
+            Assert.That(plane.ConsecutiveUnlandedEnds, Is.Zero);
+            Assert.That(plane.HasEmergencyFlightPenalty, Is.False);
+            Assert.That(plane.SortieLaunchPaid, Is.False);
+            Assert.That(plane.HasAirAttackedThisTurn, Is.True);
+            Assert.That(plane.HitPointsCurrent, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void HumanEndOfTurn_MultipleWingsCannotRefuelBeyondCapacity()
+        {
+            _owner.IsHuman = true;
+            var hex = new HexCoord(0, 0);
+            ArmyData airfield = Airfield(hex, capacity: 1);
+            UnitData first = Plane(1, 1), second = Plane(1, 1);
+            ArmyData a = Wing(hex, first), b = Wing(hex, second);
+            AviationTurnLifecycle.ResolveEndOfTurn(_owner, null);
+            Assert.That(a.Members.Count + b.Members.Count, Is.EqualTo(2));
+            Assert.That(airfield.Members, Is.Empty);
+            Assert.That(first.ConsecutiveUnlandedEnds + second.ConsecutiveUnlandedEnds, Is.EqualTo(1));
+        }
+
+        [Test]
         public void FreeAirfieldCapacity_IsOneRule_ForStoredAndStandingWings()
         {
             HexCoord hex = new HexCoord(0, 0);

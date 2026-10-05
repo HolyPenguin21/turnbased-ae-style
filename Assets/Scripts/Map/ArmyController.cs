@@ -56,11 +56,64 @@ namespace Game.Map
         private System.Action _onComplete;
         private System.Action<HexCoord> _onCancelled;
 
+        private const float LayoutDuration = 0.18f;
+        private bool _layoutTransition;
+        private Vector3 _layoutStart, _layoutTarget;
+        private float _layoutElapsed;
+        private Game.Players.PlayerSetupData _layoutViewer;
+        private Vector3? _arrivalLayoutPosition;
+
+        // Visibility is decided by the reconciler, never by this visual transition. A new
+        // perspective/newly revealed marker snaps directly to its permitted resting pose.
+        public void SetLayoutPosition(Vector3 position, bool animate)
+        {
+            if (IsMoving)
+            {
+                _arrivalLayoutPosition = position;
+                return;
+            }
+            bool sameViewer = ReferenceEquals(_layoutViewer, VisionSystem.CurrentViewer);
+            _layoutViewer = VisionSystem.CurrentViewer;
+            if (!animate || !sameViewer || !isActiveAndEnabled || Visual == null || !Visual.IsVisible)
+            {
+                _layoutTransition = false;
+                transform.position = position;
+                return;
+            }
+            if (_layoutTransition && (_layoutTarget - position).sqrMagnitude < 0.000001f) return;
+            if ((transform.position - position).sqrMagnitude < 0.000001f)
+            {
+                _layoutTransition = false;
+                return;
+            }
+            _layoutStart = transform.position;
+            _layoutTarget = position;
+            _layoutElapsed = 0f;
+            _layoutTransition = true;
+        }
+
+        private void Update()
+        {
+            if (!_layoutTransition || IsMoving) return;
+            if (!ReferenceEquals(_layoutViewer, VisionSystem.CurrentViewer) || Visual == null || !Visual.IsVisible)
+            {
+                // Stop immediately; the next reconciliation sets the new viewer's pose.
+                _layoutTransition = false;
+                return;
+            }
+            _layoutElapsed += Time.deltaTime;
+            float t = Mathf.Clamp01(_layoutElapsed / LayoutDuration);
+            transform.position = Vector3.Lerp(_layoutStart, _layoutTarget, t * t * (3f - 2f * t));
+            if (t >= 1f) _layoutTransition = false;
+        }
+
         // Cancellation is a terminal order outcome, not arrival. Keep the entered hex even
         // when Unity stops a coroutine without running its tail (disable / Destroy).
         public void CancelMovement()
         {
             if (Data != null) Data.PendingAirStrikePolicy = null;
+            _layoutTransition = false;
+            _arrivalLayoutPosition = null;
             if (!IsMoving) return;
             HexCoord finalHex = _currentHex;
             var cancelled = _onCancelled;
@@ -102,6 +155,12 @@ namespace Game.Map
             {
                 IsMoving = false;
                 if (Data != null) Data.PendingAirStrikePolicy = null;
+                if (_arrivalLayoutPosition.HasValue)
+                {
+                    Vector3 position = _arrivalLayoutPosition.Value;
+                    _arrivalLayoutPosition = null;
+                    SetLayoutPosition(position, true);
+                }
             }
         }
 
@@ -155,7 +214,7 @@ namespace Game.Map
         {
             SetSelected(false);
             if (map != null)
-                transform.position = map.HexToWorld(Data.Hex) + iconOffset;
+                SetLayoutPosition(map.HexToWorld(Data.Hex) + iconOffset, true);
             transform.localScale = _defaultScale;
         }
 
@@ -168,6 +227,8 @@ namespace Game.Map
             if (IsMoving)
                 return;
             _currentHex = Data.Hex;
+            _layoutTransition = false;
+            _arrivalLayoutPosition = null;
             _onCancelled = onCancelled;
             IsMoving = true;
 
@@ -224,7 +285,10 @@ namespace Game.Map
             _onComplete = onComplete;
             IsMoving = true;
             _currentHex = Data.Hex;
-            ResetTransform(map, resolveOffset(Data.Hex));
+            _layoutTransition = false;
+            _arrivalLayoutPosition = null;
+            SetSelected(false);
+            transform.localScale = _defaultScale;
             _movement = StartCoroutine(MoveRoutine(map, path, resolveOffset, shouldStopEarly,
                 onStepStarted, onStepCompleted, resolveStepAsync, beforeFirstStep));
         }

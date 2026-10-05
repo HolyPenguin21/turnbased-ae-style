@@ -41,7 +41,7 @@ namespace Game.Styles
         public Color coordLabelColor = new Color(1f, 1f, 1f, 0.55f);
 
         // World-space offset from the hex centre, in hex-radius units (same convention as
-        // GameConfig.buildingIconOffset/armyIconOffset) — x = left/right, y = world Z.
+        // HexObjectLayout offsets) — x = left/right, y = world Z.
         public Vector2 coordLabelOffset = new Vector2(0f, -0.55f);
         public int coordLabelSortingOrder = 6;
     }

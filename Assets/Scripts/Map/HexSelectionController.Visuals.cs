@@ -527,6 +527,7 @@ namespace Game.Map
                     // mixed army still shows — its visible members are real.
                     && !(army.Owner != VisionSystem.CurrentViewer
                          && StealthSystem.ArmyFullyHiddenFrom(army, VisionSystem.CurrentViewer));
+                bool wasVisible = controller.Visual != null && controller.Visual.IsVisible;
                 if (controller.Visual != null)
                     controller.Visual.SetVisible(visible);
                 if (controller == exclude || controller.IsMoving)
@@ -538,7 +539,8 @@ namespace Game.Map
                 int ownerIndex = distinctOwners.IndexOf(army.Owner);
                 if (ownerIndex < 0)
                     continue;
-                controller.transform.position = map.HexToWorld(hex) + ToWorldOffset(layout.ArmyOffsets[ownerIndex]);
+                controller.SetLayoutPosition(map.HexToWorld(hex) + ToWorldOffset(layout.ArmyOffsets[ownerIndex]),
+                    wasVisible && visible);
             }
 
             // Only ever hides — never deletes. This runs for EVERY membership change on this
