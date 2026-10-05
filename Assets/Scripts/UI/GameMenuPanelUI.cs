@@ -13,6 +13,7 @@ namespace Game.UI
         [SerializeField] private GameObject blockingRoot;
         [SerializeField] private GameObject menuPanel;
         [SerializeField] private GameSettingsPanelUI optionsPanel;
+        [SerializeField] private BattleScreenUI battleScreen;
         [SerializeField] private Button gearButton;
         [SerializeField] private Button optionsButton;
         [SerializeField] private Button saveButton;
@@ -28,6 +29,7 @@ namespace Game.UI
         private static GameMenuPanelUI instance;
         private static int blockedThroughFrame = -1;
         public bool IsShowing { get; private set; }
+        private bool BattleActive => battleScreen != null && battleScreen.IsShowing;
         public event Action VisibilityChanged;
         public static bool GameplayInputBlocked => (instance != null && instance.IsShowing) || blockedThroughFrame == Time.frameCount;
         public static bool OwnsKeyboardSelection
@@ -50,12 +52,23 @@ namespace Game.UI
             if (optionsButton != null) optionsButton.onClick.AddListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.AddListener(ContinueGame);
             if (optionsPanel != null) optionsPanel.Closed += OnOptionsClosed;
+            if (battleScreen != null) battleScreen.VisibilityChanged += RefreshBattleAvailability;
             if (saveButton != null) saveButton.interactable = false;
             if (loadButton != null) loadButton.interactable = false;
+            RefreshBattleAvailability();
+        }
+        private void RefreshBattleAvailability()
+        {
+            if (BattleActive && IsShowing) ContinueGame();
+            if (gearButton != null)
+            {
+                gearButton.gameObject.SetActive(!IsShowing);
+                gearButton.interactable = !BattleActive;
+            }
         }
         public void OpenMenu()
         {
-            if (IsShowing || blockingRoot == null || menuPanel == null) return;
+            if (BattleActive || IsShowing || blockingRoot == null || menuPanel == null) return;
             instance = this; // Also supports entering Play Mode without domain/scene reload.
             previousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             IsShowing = true;
@@ -87,15 +100,16 @@ namespace Game.UI
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
             RestoreGameplayCanvases();
-            if (gearButton != null) gearButton.gameObject.SetActive(true);
+            RefreshBattleAvailability();
             VisibilityChanged?.Invoke();
             var selectable = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
-            else gearButton?.Select();
+            else if (!BattleActive) gearButton?.Select();
             previousSelection = null;
         }
         private void Update()
         {
+            if (BattleActive) return;
             if (Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame || UIFocusUtility.IsTextFieldFocused()) return;
             Game.Audio.GameAudioManager.Instance?.PlayClick();
             blockedThroughFrame = Time.frameCount;
@@ -111,15 +125,31 @@ namespace Game.UI
             {
                 if (canvas.gameObject.scene != gameObject.scene || canvas.transform.IsChildOf(transform)) continue;
                 if (canvas.transform.parent != null && canvas.transform.parent.GetComponentInParent<Canvas>(true) != null) continue;
-                var rootGroup = canvas.GetComponent<CanvasGroup>();
-                if (rootGroup == null) rootGroup = canvas.gameObject.AddComponent<CanvasGroup>();
-                foreach (var group in canvas.GetComponentsInChildren<CanvasGroup>(true))
-                {
-                    if (!seen.Add(group)) continue;
-                    groups.Add(new GroupState { Group = group, Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
-                    group.interactable = false; group.blocksRaycasts = false;
-                }
+                BlockGameplayBranch(canvas.transform, seen);
             }
+        }
+        private void BlockGameplayBranch(Transform root, HashSet<CanvasGroup> seen)
+        {
+            if (root == transform || root.IsChildOf(transform)) return;
+            if (transform.IsChildOf(root))
+            {
+                // The shared Canvas must stay enabled for the menu's own controls.
+                foreach (Transform child in root) BlockGameplayBranch(child, seen);
+                return;
+            }
+            if (root.GetComponent<CanvasGroup>() == null) root.gameObject.AddComponent<CanvasGroup>();
+            foreach (var group in root.GetComponentsInChildren<CanvasGroup>(true))
+            {
+                if (!seen.Add(group)) continue;
+                groups.Add(new GroupState { Group = group, Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
+                group.interactable = false; group.blocksRaycasts = false;
+            }
+        }
+        private void LateUpdate()
+        {
+            // Popups reorder themselves on show; keep the gear/menu above those siblings.
+            if (transform.parent != null && transform.GetSiblingIndex() != transform.parent.childCount - 1)
+                transform.SetAsLastSibling();
         }
         private void RestoreGameplayCanvases()
         {
@@ -135,6 +165,7 @@ namespace Game.UI
             if (optionsButton != null) optionsButton.onClick.RemoveListener(OpenOptions);
             if (continueButton != null) continueButton.onClick.RemoveListener(ContinueGame);
             if (optionsPanel != null) optionsPanel.Closed -= OnOptionsClosed;
+            if (battleScreen != null) battleScreen.VisibilityChanged -= RefreshBattleAvailability;
             if (instance == this) instance = null;
         }
     }

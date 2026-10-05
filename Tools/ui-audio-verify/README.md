@@ -35,7 +35,13 @@ PopupPanelUI uses HumanTurnShown instead: AI/Neutral handoffs and hints are sile
 ## Game menu
 
 `Assets/Prefabs/UI/AudioOptionsPanel.prefab` is the shared owner-adjusted panel.
-Both MainMenu and Game reference it. In Game, GameMenuPanelUI owns Options/Continue,
+Both MainMenu and Game reference it. In Game, the gear and menu live under
+`Canvas_UI/GameMenuUI`, using the main Canvas scaler and raycaster. Gameplay
+sibling branches are blocked individually so the shared Canvas and menu controls
+remain interactive. The menu root stays last among Canvas_UI children, above popups.
+During battle the gear remains visible but non-interactable, and Escape cannot
+open the menu; normal availability returns when the battle closes.
+GameMenuPanelUI owns Options/Continue,
 Escape and selection. It blocks existing gameplay canvas groups temporarily and
 restores their original flags. GameTurnController folds menu visibility into its
 InputBlocked/CardDraggingBlocked flags; direct input readers also guard against

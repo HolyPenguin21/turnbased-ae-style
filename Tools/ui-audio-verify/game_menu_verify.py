@@ -10,7 +10,7 @@ class MenuIntegration(unittest.TestCase):
    self.assertTrue(guid in (ROOT/f'Assets/Scenes/{name}.unity').read_text(),name)
  def test_scene_menu_has_disabled_placeholders(self):
   s=(ROOT/'Assets/Scenes/Game.unity').read_text()
-  for name in ['GameMenuCanvas','GameMenuPanel','SaveGameDisabled','LoadGameDisabled','ContinueGame']:
+  for name in ['GameMenuUI','GameMenuPanel','SaveGameDisabled','LoadGameDisabled','ContinueGame']:
    self.assertTrue('m_Name: '+name in s,name)
  def test_corner_button_sprite(self):
   self.assertTrue((ROOT/'Assets/Resources/UI/GameMenuGear.png').exists())
