@@ -163,7 +163,7 @@ namespace Game.EditorTests
             menu.OpenMenu(); overlay.SetActive(false);
             Assert.IsFalse(menu.IsShowing); Assert.IsFalse(group.interactable); Assert.IsTrue(group.blocksRaycasts);
         }
-        [UnityTest] public IEnumerator BattleHidesGearAndRejectsMenuUntilBattleCloses()
+        [UnityTest] public IEnumerator BattleDisablesVisibleGearAndRejectsMenuUntilBattleCloses()
         {
             var battleRoot = New("menu-battle-state"); battleRoot.SetActive(false);
             var battle = battleRoot.AddComponent<BattleScreenUI>(); Set(battle, "panelRoot", battleRoot);
@@ -176,19 +176,42 @@ namespace Game.EditorTests
             Set(menu, "gearButton", gear); Set(menu, "battleScreen", battle);
             overlay.SetActive(true);
             Assert.IsTrue(gear.gameObject.activeSelf);
+            Assert.IsTrue(gear.interactable);
             battleRoot.SetActive(true); RaiseVisibility(battle);
-            Assert.IsFalse(gear.gameObject.activeSelf);
+            Assert.IsTrue(gear.gameObject.activeSelf); Assert.IsFalse(gear.interactable);
             menu.OpenMenu(); Assert.IsFalse(menu.IsShowing);
             Assert.IsFalse(block.activeSelf);
             battleRoot.SetActive(false); RaiseVisibility(battle);
             Assert.IsTrue(gear.gameObject.activeSelf);
+            Assert.IsTrue(gear.interactable);
             menu.OpenMenu(); Assert.IsTrue(menu.IsShowing);
             // AI combat may start while the menu is already open.
             battleRoot.SetActive(true); RaiseVisibility(battle);
             Assert.IsFalse(menu.IsShowing); Assert.IsFalse(block.activeSelf);
-            Assert.IsFalse(gear.gameObject.activeSelf);
+            Assert.IsTrue(gear.gameObject.activeSelf); Assert.IsFalse(gear.interactable);
             battleRoot.SetActive(false); RaiseVisibility(battle);
             Assert.IsTrue(gear.gameObject.activeSelf);
+            Assert.IsTrue(gear.interactable);
+            yield return null;
+        }
+        [UnityTest] public IEnumerator SharedCanvasMenuRemainsInteractiveWhileGameplaySiblingsAreBlocked()
+        {
+            var canvasRoot = New("shared-canvas"); canvasRoot.AddComponent<Canvas>();
+            var gameplay = New("shared-gameplay"); gameplay.transform.SetParent(canvasRoot.transform);
+            var group = gameplay.AddComponent<CanvasGroup>();
+            var gameButton = New("shared-game-button").AddComponent<Button>(); gameButton.transform.SetParent(gameplay.transform);
+            var overlay = New("shared-menu-root"); overlay.SetActive(false); overlay.transform.SetParent(canvasRoot.transform);
+            var menu = overlay.AddComponent<GameMenuPanelUI>();
+            var block = New("shared-menu-block"); block.transform.SetParent(overlay.transform); block.SetActive(false);
+            var panel = New("shared-menu-panel"); panel.transform.SetParent(block.transform);
+            var options = New("shared-options-button").AddComponent<Button>(); options.transform.SetParent(panel.transform);
+            Set(menu, "blockingRoot", block); Set(menu, "menuPanel", panel); Set(menu, "optionsButton", options);
+            overlay.SetActive(true); menu.OpenMenu();
+            Assert.IsFalse(gameButton.IsInteractable()); Assert.IsFalse(group.blocksRaycasts);
+            Assert.IsTrue(options.IsInteractable());
+            Assert.IsNull(canvasRoot.GetComponent<CanvasGroup>());
+            menu.ContinueGame();
+            Assert.IsTrue(gameButton.IsInteractable()); Assert.IsTrue(group.blocksRaycasts);
             yield return null;
         }
         [UnityTest] public IEnumerator MenuBlocksArmyAndBattleDragsAlreadyCapturedByEventSystem()

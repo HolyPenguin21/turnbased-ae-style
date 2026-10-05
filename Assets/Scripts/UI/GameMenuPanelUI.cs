@@ -60,7 +60,11 @@ namespace Game.UI
         private void RefreshBattleAvailability()
         {
             if (BattleActive && IsShowing) ContinueGame();
-            if (gearButton != null) gearButton.gameObject.SetActive(!IsShowing && !BattleActive);
+            if (gearButton != null)
+            {
+                gearButton.gameObject.SetActive(!IsShowing);
+                gearButton.interactable = !BattleActive;
+            }
         }
         public void OpenMenu()
         {
@@ -96,7 +100,7 @@ namespace Game.UI
             if (optionsPanel != null) optionsPanel.gameObject.SetActive(false);
             if (blockingRoot != null) blockingRoot.SetActive(false);
             RestoreGameplayCanvases();
-            if (gearButton != null) gearButton.gameObject.SetActive(!BattleActive);
+            RefreshBattleAvailability();
             VisibilityChanged?.Invoke();
             var selectable = previousSelection != null ? previousSelection.GetComponent<Selectable>() : null;
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
@@ -121,15 +125,31 @@ namespace Game.UI
             {
                 if (canvas.gameObject.scene != gameObject.scene || canvas.transform.IsChildOf(transform)) continue;
                 if (canvas.transform.parent != null && canvas.transform.parent.GetComponentInParent<Canvas>(true) != null) continue;
-                var rootGroup = canvas.GetComponent<CanvasGroup>();
-                if (rootGroup == null) rootGroup = canvas.gameObject.AddComponent<CanvasGroup>();
-                foreach (var group in canvas.GetComponentsInChildren<CanvasGroup>(true))
-                {
-                    if (!seen.Add(group)) continue;
-                    groups.Add(new GroupState { Group = group, Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
-                    group.interactable = false; group.blocksRaycasts = false;
-                }
+                BlockGameplayBranch(canvas.transform, seen);
             }
+        }
+        private void BlockGameplayBranch(Transform root, HashSet<CanvasGroup> seen)
+        {
+            if (root == transform || root.IsChildOf(transform)) return;
+            if (transform.IsChildOf(root))
+            {
+                // The shared Canvas must stay enabled for the menu's own controls.
+                foreach (Transform child in root) BlockGameplayBranch(child, seen);
+                return;
+            }
+            if (root.GetComponent<CanvasGroup>() == null) root.gameObject.AddComponent<CanvasGroup>();
+            foreach (var group in root.GetComponentsInChildren<CanvasGroup>(true))
+            {
+                if (!seen.Add(group)) continue;
+                groups.Add(new GroupState { Group = group, Interactable = group.interactable, BlocksRaycasts = group.blocksRaycasts });
+                group.interactable = false; group.blocksRaycasts = false;
+            }
+        }
+        private void LateUpdate()
+        {
+            // Popups reorder themselves on show; keep the gear/menu above those siblings.
+            if (transform.parent != null && transform.GetSiblingIndex() != transform.parent.childCount - 1)
+                transform.SetAsLastSibling();
         }
         private void RestoreGameplayCanvases()
         {
