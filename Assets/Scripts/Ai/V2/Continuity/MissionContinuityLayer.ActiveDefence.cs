@@ -120,7 +120,8 @@ namespace Game.Ai.V2
             ActiveDefenceObjective objective =
                 ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
             string end = !defence.AirSupportArmyId.HasValue ? "no_wing"
-                : !wingValid ? "wing_lost"
+                : !wingValid ? (GroundCombatAirSupport.WingLanded(player, defence.AirSupportArmyId)
+                    ? "series_over" : "wing_lost")
                 : objective == null ? "threat_no_longer_listed"
                 : !flying && (defence.AirSupportSortieSeen || defence.AirSupportBoundTurn < turn)
                     ? (defence.AirSupportSortieSeen ? "series_over" : "never_took_off")
@@ -184,4 +185,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

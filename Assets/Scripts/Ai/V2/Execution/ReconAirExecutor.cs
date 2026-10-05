@@ -81,6 +81,8 @@ namespace Game.Ai.V2
                 yield break;
             }
             if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
+            if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
             int apBefore = root.ActionPoints;
             int h0 = root.GetResource(Game.Economy.ResourceType.Human);
             int e0 = root.GetResource(Game.Economy.ResourceType.Energy);
@@ -156,6 +158,8 @@ namespace Game.Ai.V2
                 }
 
                 ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, air.Hex, air.Id) : null;
+                if (perMission != null)
+                    perMission.ActorMaterialized = plan.MaterializedActorIds.Contains(id);
                 int apBeforeActor = root.ActionPoints;
                 yield return RunActor(player, root, ctx, snapshot, air, result,
                     missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
@@ -176,6 +180,52 @@ namespace Game.Ai.V2
                 ? new Game.Cards.ResourceCost { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
                 : null;
             result.StateVersionAfter = V2StateVersion.Current;
+        }
+
+        private static bool PrepareStoredMissions(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result)
+        {
+            bool changed = false;
+            foreach (ProvisionedMission pm in plan.StoredMissions.ToList())
+            {
+                ArmyData source = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
+                var group = pm.AircraftRuntimeIds == null ? new List<UnitData>()
+                    : pm.AircraftRuntimeIds.Select(id => source?.Members.FirstOrDefault(u => u.RuntimeId == id)).ToList();
+                bool valid = AviationRules.IsAirfield(source) && source.Owner == player
+                    && group.Count > 0 && group.All(u => AviationRules.IsAviation(u)
+                        && AviationRules.EffectiveMoveCurrent(u) > 0);
+                float ap = valid ? group.Sum(u => Math.Max(0, u.ActivationApCost)) : float.PositiveInfinity;
+                float energy = valid ? group.Sum(u => Math.Max(0, u.LaunchEnergyCost)) : float.PositiveInfinity;
+                var pick = valid ? ReconAirStepPlanner.PickFromStorage(player, ctx, source.Hex, group, snapshot,
+                    AirReconModePolicy.RequestedMode(player, snapshot), ctx.TurnNumber,
+                    missionFocusHex: pm.FocusHex) : null;
+                bool affordable = ap <= pm.ClaimedAp + AiConfigV2.allocatorSliceEpsilon
+                    && energy <= pm.ClaimedEnergy + AiConfigV2.allocatorSliceEpsilon
+                    && ap <= StrategicSpendability.SpendableAp(player, root, ctx)
+                    && energy <= StrategicSpendability.SpendableAmount(player, root, ctx, Game.Economy.ResourceType.Energy);
+                ActorCommitments commitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+                foreach (int actor in plan.ReservedActorIds)
+                    commitments.Claim(actor);
+                if (!valid || !affordable || !pick.HasValue
+                    || !AviationWingPreparation.TryForm(player, ctx, source, group, commitments, out ArmyData wing, out _))
+                {
+                    plan.SkippedMissions.Add(new AirReconSkippedMission
+                        { Mission = pm, Reason = ExecutionStopReason.NoSafeStep });
+                    continue;
+                }
+                pm.MoverArmyId = wing.Id;
+                pm.ExecutorKind = ScoutExecutorKind.AirExisting;
+                pm.AircraftRuntimeIds = null;
+                plan.MaterializedActorIds.Add(wing.Id);
+                plan.ReadyActorIds.Add(wing.Id);
+                plan.ReadyMissionByActorId[wing.Id] = pm;
+                result.RecordLaunch();
+                changed = true;
+                V2StateVersion.Bump();
+            }
+            plan.StoredMissions.Clear();
+            return changed;
         }
 
         // Single owner of the safety exception to normal Mission -> Allocation -> Provisioning:
@@ -216,6 +266,8 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (PrepareStoredMissions(plan, player, root, ctx, snapshot, result))
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, AiHandRegistry.Peek(player), ctx);
             AirReconSkippedMission skipped = plan.SkippedMissions.FirstOrDefault();
             if (skipped?.Mission != null)
             {
@@ -253,6 +305,7 @@ namespace Game.Ai.V2
 
                 ExecutionResult perMission = NewPerMissionResult(pm,
                     air?.Hex ?? pm.ExecutionHex, air?.Id ?? -1);
+                perMission.ActorMaterialized = plan.MaterializedActorIds.Contains(id);
                 int apBefore = root.ActionPoints;
                 yield return RunActorStep(player, root, ctx, snapshot, air, result, apBefore,
                     pm.FocusHex, perMission);
@@ -744,3 +797,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

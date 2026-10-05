@@ -440,6 +440,18 @@ namespace Game.Ai.V2
             MissionIntent intent, AttackIntent a, ISet<int> unavailableArmyIds)
         {
             int turn = snap?.TurnNumber ?? 0;
+            if (GroundCombatAirSupport.TargetKnownEmpty(snap, a.Target.Hex, Game.Aviation.AirStrikePolicy.Standard))
+            {
+                if (a.AirSupportArmyId.HasValue)
+                {
+                    var wing = AiV2Util.ResolveArmy(player, a.AirSupportArmyId.Value);
+                    var sortie = AirSortieRegistry.ForArmy(player, wing);
+                    if (sortie != null && sortie.Kind == AirSortieKind.Strike)
+                        GroundCombatAirSupport.SendHome(player, sortie, "nothing left to strike");
+                    ReleaseAttackAirSupport(a, turn);
+                }
+                return;
+            }
             if (a.AirSupportArmyId.HasValue)
             {
                 bool flying = GroundCombatAirSupport.SortieLive(player, a.AirSupportArmyId,

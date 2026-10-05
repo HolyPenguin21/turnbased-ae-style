@@ -18,8 +18,8 @@ namespace Game.Ai.V2
     //               hexes spends MOVEMENT, never AP; an already-activated army costs 0 AP to move.
     //               A stealth-Required mission adds exactly 1 AP (scoutOptionalStealthAp) — the
     //               EnterStealth before the first risky step — UNLESS the mover is already hidden.
-    //    * Energy — ground solo-Recce is 0. Actor-agnostic air fallback keeps the existing widened
-    //               envelope until the aviation prepass / Assignment resolves a concrete air actor.
+    //    * Energy — ground solo-Recce is 0. AirSweep prices a concrete live wing or stored
+    //               aircraft before funding; launch Energy is a mandatory physical minimum.
     //
     //  IMPORTANT COST SPLIT:
     //    RequiredAp / ApDesired is THIS TURN only. RecurringActivationAp is the real activation AP
@@ -111,8 +111,20 @@ namespace Game.Ai.V2
         // remains the final assignment authority and can invalidate/replace the plan if live route,
         // vantage or contention facts changed.
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target,
-            int? preferredMoverArmyId = null)
+            int? preferredMoverArmyId = null, ScoutExecutionCandidate? plannedAir = null)
         {
+            if (ReconScoutKinds.IsAirSweep(target.Kind) && plannedAir.HasValue)
+            {
+                ScoutExecutionCandidate p = plannedAir.Value;
+                return new ScoutCostEstimate
+                {
+                    MoverKnown = true, PreferredMoverArmyId = p.ActorKey,
+                    ApMinimum = p.RequiredAp, ApDesired = p.RequiredAp, ApMaximum = p.RequiredAp,
+                    ActivationApNow = p.RequiredAp,
+                    EnergyMinimum = p.RequiredEnergy, EnergyDesired = p.RequiredEnergy, EnergyMaximum = p.RequiredEnergy,
+                    EtaTurns = p.EtaTurns, EstimatedDistance = HexGridMath.Distance(p.Army.Hex, target.FocusHex),
+                };
+            }
             // AirSweep has no ground actor to plan. Price the incumbent wing itself when known: a
             // wing on a paid sortie continues for 0 AP / 0 Energy on any turn (the launch was paid
             // once), otherwise its own launch cost (ArmySnapshot.PendingActivation*).
@@ -134,6 +146,32 @@ namespace Game.Ai.V2
                         EtaTurns = 1,
                         EstimatedDistance = HexGridMath.Distance(wing.Hex, target.FocusHex),
                         RecurringActivationAp = Mathf.Max(0, wing.ActivationApCost),
+                    };
+                }
+            }
+
+            if (ReconScoutKinds.IsAirSweep(target.Kind))
+            {
+                var options = (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null && a.IsAirfield)
+                    .SelectMany(a => a.StoredAircraft.Where(u => u.Movement > 0)
+                        .Select(u => (Army: a, Ap: u.Ap, Energy: u.Energy)))
+                    .Concat((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                        .Where(a => a != null && a.IsAir && !a.IsAirfield && a.CanServeReconAir && a.MemberCount > 0 && a.CurrentMovement > 0)
+                        .Select(a => (Army: a, Ap: Mathf.Max(0, a.PendingActivationApCost),
+                            Energy: Mathf.Max(0, a.PendingActivationEnergyCost))))
+                    .OrderBy(x => preferredMoverArmyId == x.Army.ArmyId ? 0 : 1)
+                    .ThenBy(x => x.Ap + x.Energy * AiConfigV2.actionPriceResourceAp)
+                    .ThenBy(x => x.Army.ArmyId).ToList();
+                if (options.Count > 0)
+                {
+                    var p = options[0];
+                    return new ScoutCostEstimate
+                    {
+                        MoverKnown = true, PreferredMoverArmyId = p.Army.ArmyId,
+                        ApMinimum = p.Ap, ApDesired = p.Ap, ApMaximum = p.Ap, ActivationApNow = p.Ap,
+                        EnergyMinimum = p.Energy, EnergyDesired = p.Energy, EnergyMaximum = p.Energy,
+                        EtaTurns = 1, EstimatedDistance = HexGridMath.Distance(p.Army.Hex, target.FocusHex),
                     };
                 }
             }
@@ -226,7 +264,7 @@ namespace Game.Ai.V2
             est.RecurringActivationAp = notionalActivationAp;
             est.ActivationApNow = notionalActivationAp;
 
-            est.EnergyMinimum = 0f;
+            est.EnergyMinimum = airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
             est.EnergyDesired = est.EnergyMaximum =
                 airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
             float airApFloor = airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f;

@@ -49,7 +49,7 @@ namespace Game.Ai.V2
             self.HoldsStartingCitadel = canonicalCitadel.HasValue
                 && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
-            self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx))).ToList();
+            self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), ctx)).ToList();
 
             // Freeze the GENUINE route-existence fact for every structural raid
             // actor against every own base, the exact same SafeStepPathing oracle Provisioning
@@ -387,11 +387,18 @@ namespace Game.Ai.V2
             self.DeployableCombatBodies = nonHeroBodies;
         }
 
-        internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
+        internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius, AiTurnContext ctx = null)
         {
             var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
             bool allHidden = !isOwn && a.Members.Count > 0
                 && a.Members.All(m => StealthSystem.IsHiddenFrom(m, viewer));
+
+            bool reconAir = isOwn && ReconAirCapacityPolicy.IsReadyStandaloneWing(viewer, a);
+            if (!reconAir && isOwn && ctx != null && ReconAirCapacityPolicy.IsAirborneReconWing(viewer, a))
+            {
+                ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(viewer, ctx, a);
+                reconAir = projected != null && projected.Phase != ReconAirPhase.Return && projected.Phase != ReconAirPhase.Hold;
+            }
 
             return new ArmySnapshot
             {
@@ -402,6 +409,12 @@ namespace Game.Ai.V2
                 IsPrison = a.IsPrison,
                 IsAir = a.IsAirArmy,
                 IsAirfield = a.IsAirfield,
+                CanServeReconAir = reconAir,
+                StoredAircraft = isOwn && a.IsAirfield
+                    ? a.Members.Where(AviationRules.IsAviation).Select(u => new StoredAircraftLaunchCost(
+                        u.RuntimeId, Mathf.Max(0, u.ActivationApCost), Mathf.Max(0, u.LaunchEnergyCost),
+                        AviationRules.EffectiveMoveCurrent(u))).ToList()
+                    : (IReadOnlyList<StoredAircraftLaunchCost>)System.Array.Empty<StoredAircraftLaunchCost>(),
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
                 HeroCount = a.Members.Count(m => m.IsHero),

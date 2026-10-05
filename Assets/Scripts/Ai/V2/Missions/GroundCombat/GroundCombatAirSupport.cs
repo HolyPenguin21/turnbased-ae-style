@@ -80,18 +80,39 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class GroundCombatAirSupport
     {
-        internal static List<AiMapMemory.KnownAirSighting> KnownAirTargets(WorldSnapshot snap,
+        internal static bool WingLanded(PlayerSetupData player, int? armyId) =>
+            armyId.HasValue && AiV2Util.ResolveArmy(player, armyId.Value)?.AirWingLanded == true;
+
+        // Absence is evidence only after a fresh observation reconciled the aviation target pool.
+        // Fogged or stale empty collections never suppress a blind support sortie.
+        internal static bool TargetKnownEmpty(WorldSnapshot snap, HexCoord hex, AirStrikePolicy policy) =>
+            snap?.Known?.AirSightings != null
+            && ReconIntelSnapshotRegistry.TryGetLastObservedTurn(snap, hex, out int observed)
+            && observed == snap.TurnNumber
+            && KnownAirTargets(snap, hex, policy).Sum(s => s.Roster.Units.Count) <= policy.MinimumSurvivors;
+
+        private static List<AiMapMemory.KnownAirSighting> AirTargets(
+            IEnumerable<AiMapMemory.KnownAirSighting> sightings, PlayerSetupData observer,
             HexCoord hex, AirStrikePolicy policy) =>
-            (snap?.Known?.AirSightings ?? Array.Empty<AiMapMemory.KnownAirSighting>())
-                .Where(s => s.Hex.Equals(hex) && s.Owner != snap.Observer
+            (sightings ?? Array.Empty<AiMapMemory.KnownAirSighting>())
+                .Where(s => s.Hex.Equals(hex) && s.Owner != observer
                     && (!policy.ExactTargetArmyId.HasValue || s.ArmyId == policy.ExactTargetArmyId.Value))
                 .OrderBy(s => s.ArmyId).ToList();
+
+        internal static List<AiMapMemory.KnownAirSighting> KnownAirTargets(WorldSnapshot snap,
+            HexCoord hex, AirStrikePolicy policy) => AirTargets(snap?.Known?.AirSightings, snap?.Observer, hex, policy);
 
         internal static int KnownTargetCount(WorldSnapshot snap, HexCoord hex, AirStrikePolicy policy,
             IReadOnlyList<WorthIt.DefendingArmy> legacyOpposition) =>
             snap?.Known?.AirSightings != null
                 ? KnownAirTargets(snap, hex, policy).Sum(s => s.Roster.Units.Count)
                 : WorthIt.UnitsOf(legacyOpposition).Count;
+
+        internal static bool TargetKnownEmpty(PlayerSetupData player, int turn, HexCoord hex, AirStrikePolicy policy) =>
+            AiReconIntelMemory.TryGetLastObservedTurn(player, hex, out int observed)
+            && observed == turn
+            && AirTargets(AiMapMemory.AllKnownAirSightings(player), player, hex, policy)
+                .Sum(s => s.Roster.Units.Count) <= policy.MinimumSurvivors;
 
         // Apply only the struck armies to the ground package. Event guards and other targets of
         // the later ground battle retain their own roster/commander/terrain facts.
@@ -152,7 +173,7 @@ namespace Game.Ai.V2
             float currentWin, ISet<int> unavailableArmyIds, int? fixedWingArmyId = null)
         {
             var result = new List<AirSupportOption>();
-            if (snap?.Self?.Armies == null)
+            if (snap?.Self?.Armies == null || TargetKnownEmpty(snap, targetHex, policy))
                 return result;
             HexCoord? landing = LandingBase(snap, targetHex);
             if (ReferenceEquals(snap.Map, null) && !landing.HasValue)
@@ -465,6 +486,15 @@ namespace Game.Ai.V2
             ap = 0f;
             energy = 0f;
 
+            AirStrikePolicy targetPolicy = funded.Mission.Target is RaidMissionTarget raid
+                ? AirStrikePolicy.RaidSupport(raid.Target.ArmyId)
+                : funded.Mission.Target is ActiveDefenceMissionTarget defence
+                    ? AirStrikePolicy.DefenceSupport(defence.EnemyArmyId) : AirStrikePolicy.Standard;
+            if (TargetKnownEmpty(session.Snapshot, targetHex, targetPolicy))
+            {
+                failure = ProvisionFailure.TargetInvalidated("air support has no observed strike target");
+                return false;
+            }
             Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
             MultiTurnSortie? multi = sameTurn.HasValue ? null
                 : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
@@ -504,3 +534,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -106,6 +106,8 @@ namespace Game.Ai.V2
         public bool RequiresStealth;
         // Which executor this Scout mission is bound to. Ground (default) goes through
         // ReconGroundExecutor; AirExisting goes through ReconAirExecutor. Both bind a real army.
+        public IReadOnlyList<int> AircraftRuntimeIds;
         public ScoutExecutorKind ExecutorKind = ScoutExecutorKind.Ground;
     }
 }
+

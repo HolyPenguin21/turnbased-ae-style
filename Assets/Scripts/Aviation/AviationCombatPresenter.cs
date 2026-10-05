@@ -11,7 +11,7 @@ using UnityEngine;
 
 namespace Game.Aviation
 {
-    public enum AirStrikePolicyKind { Standard, RaidSupport, DefenceSupport }
+    public enum AirStrikePolicyKind { Standard, RaidSupport, DefenceSupport, Transit }
 
     // A transient policy supplied by the caller that owns the mission. Standard preserves the
     // ordinary endpoint strike exactly; RaidSupport pins one physical target and a survivor floor.
@@ -29,6 +29,8 @@ namespace Game.Aviation
             MinimumSurvivors = Mathf.Max(0, minimumSurvivors);
         }
 
+        public bool AllowsStrike => Kind != AirStrikePolicyKind.Transit;
+        public static AirStrikePolicy Transit => new AirStrikePolicy(AirStrikePolicyKind.Transit);
         public static AirStrikePolicy Standard => new AirStrikePolicy(AirStrikePolicyKind.Standard);
         public static AirStrikePolicy RaidSupport(int targetArmyId) =>
             new AirStrikePolicy(AirStrikePolicyKind.RaidSupport, targetArmyId, 1);
@@ -108,7 +110,7 @@ namespace Game.Aviation
         public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
             AirStrikePolicy policy, AirStrikeResult result = null)
         {
-            if (airArmy == null || airArmy.Members.Count == 0)
+            if (!policy.AllowsStrike || airArmy == null || airArmy.Members.Count == 0)
                 yield break;
             List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner,
                 policy.ExactTargetArmyId);
