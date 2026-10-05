@@ -173,7 +173,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 10, y: -14.5}
+  m_AnchoredPosition: {x: 10, y: -60.8}
   m_SizeDelta: {x: 45, y: 30}
   m_Pivot: {x: 0, y: 0}
 --- !u!222 &3130450703856184208
@@ -292,12 +292,12 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 8105000000000000001}
   - {fileID: 1980000000000010211}
   - {fileID: 1980000000000010102}
   - {fileID: 7201116072595874355}
   - {fileID: 1980000000000010022}
   - {fileID: 7354273437053059312}
+  - {fileID: 8105000000000000001}
   - {fileID: 1980000000000010201}
   - {fileID: 8736616349706335887}
   - {fileID: 5691726112362975562}
@@ -1490,7 +1490,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 0.5}
   m_AnchorMax: {x: 1, y: 0.5}
-  m_AnchoredPosition: {x: -10, y: -14.5}
+  m_AnchoredPosition: {x: -10, y: -60.799988}
   m_SizeDelta: {x: 30, y: 30}
   m_Pivot: {x: 1, y: 0}
 --- !u!222 &1980000000000010202
@@ -2852,7 +2852,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 41}
+  m_AnchoredPosition: {x: 0, y: 38}
   m_SizeDelta: {x: 35, y: 20}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!222 &3919020041946301167
@@ -3105,7 +3105,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &8105000000000000001
 RectTransform:
   m_ObjectHideFlags: 0
@@ -3122,7 +3122,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0.5}
   m_AnchorMax: {x: 0, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 16.0}
+  m_AnchoredPosition: {x: 0, y: 13}
   m_SizeDelta: {x: 35, y: 20}
   m_Pivot: {x: 0, y: 0.5}
 --- !u!222 &8105000000000000002
@@ -3143,10 +3143,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.25882354, g: 0.79607844, b: 0.3254902, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 0
@@ -3173,7 +3173,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 12b45c3def1443e0933500901cb55ac5, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.EquipmentArtToggle
   cardArtImage: {fileID: 1980000000000010004}
   buttonVisual: {fileID: 8105000000000000000}
