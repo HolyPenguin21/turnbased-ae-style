@@ -77,20 +77,6 @@ namespace Game.UI
                 OnBattleOutcomeAcknowledged();
         }
 
-        private string DescribeRetreatPreview(ArmyData army)
-        {
-            if (army == null)
-                return null;
-            if (!BattleEngine.TryFindRetreatDestination(map, army, army.Hex, _battleSeed, out HexCoord destination))
-                return "Retreat: enemy gets one final round; no valid destination — this army will be destroyed.";
-
-            ArmyData contact = BattleInitiator.FindEnemyAt(destination, army);
-            string risk = contact != null
-                ? $" Visible hostile contact: {contact.Name}."
-                : " No visible hostile contact.";
-            return $"Retreat: enemy gets one final round; destination {destination}.{risk}";
-        }
-
 
     }
 }

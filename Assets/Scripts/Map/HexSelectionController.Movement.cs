@@ -345,7 +345,6 @@ namespace Game.Map
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
             // side, nothing to click/attack — so it skips the grid entirely and goes straight to
             // a Capture Kill Challenge sequence instead (see BattleScreenUI.BeginCaptureKillEncounter).
-            bool targetHeroOnly = encounter.TargetHeroOnly;
 
             // A human-controlled mover gets the interactive Fight/Delay choice, same as always.
             // An AI/Neutral mover fights immediately instead of ever choosing Delay — see this
@@ -354,22 +353,12 @@ namespace Game.Map
             if (battleContactPopup != null && mover.Owner != null && mover.Owner.IsHuman)
             {
                 battleContactPopup.Show(hex, participants, encounter.PresentationObserver,
-                    onFight: () =>
-                    {
-                        if (targetHeroOnly)
-                            battleScreen?.BeginCaptureKillEncounter(mover, enemy, null);
-                        else
-                            battleScreen?.Show(hex, participants, null);
-                    },
+                    onFight: fastResolve => battleScreen?.ShowEncounter(encounter, null, fastResolve),
                     onDelay: () => DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants }));
-            }
-            else if (targetHeroOnly)
-            {
-                battleScreen?.BeginCaptureKillEncounter(mover, enemy, null);
             }
             else
             {
-                battleScreen?.Show(hex, participants, null);
+                battleScreen?.ShowEncounter(encounter, null);
             }
             return BattleStartResult.Started;
         }
@@ -715,4 +704,3 @@ namespace Game.Map
         }
     }
 }
-

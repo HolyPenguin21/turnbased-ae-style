@@ -273,7 +273,8 @@ namespace Game.UI
         public void Begin(UnitData attacker, UnitData attackerHero, UnitData defender, UnitData defenderHero,
             Sprite attackerLogo, Sprite defenderLogo, Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
-            int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0)
+            int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
+            bool automateHumanSides = false)
         {
             int defenderBonusDice = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
@@ -284,6 +285,7 @@ namespace Game.UI
             // hero's Fate back before this popup is reused for anything else (spec §15).
             CleanupResearchProduction();
 
+            _automateHumanSides = automateHumanSides;
             _kind = ChallengeKind.GroundCombat;
             _attacker = attacker;
             _defender = defender;
@@ -340,13 +342,13 @@ namespace Game.UI
             if (acceptButton != null)
                 acceptButton.interactable = false;
 
-            if (NoHumanInvolved || IsAutorollEnabled)
+            if (RunsAutomatically || IsAutorollEnabled)
                 StartCoroutine(AutoRollIfNoHuman());
         }
 
         // The Autoroll_Toggle checkbox (see Awake/OnAutorollToggleChanged) — lets a human player
         // opt into the same auto-press-Roll-Die behavior AutoRollIfNoHuman already gives an
-        // AI-vs-AI encounter (see NoHumanInvolved's own call site in Begin), so they don't have to
+        // AI-vs-AI encounter (see RunsAutomatically's own call site in Begin), so they don't have to
         // click Roll Die themselves every single Ground Combat/Capture Kill challenge.
         private bool IsAutorollEnabled => autorollToggle != null && autorollToggle.isOn;
 
@@ -355,6 +357,7 @@ namespace Game.UI
         // ShowCaptureKillResult/ShowAnnouncement) instead of Begin's Roll-Die auto-press.
         private bool IsAutoCloseResultEnabled => autoCloseResultToggle != null && autoCloseResultToggle.isOn;
 
+        private bool _automateHumanSides;
         private static bool IsHumanSide(UnitData unit) => unit != null && unit.Owner != null && unit.Owner.IsHuman;
 
         // Neither current side needs to actually look at anything here before it happens — an
@@ -363,19 +366,19 @@ namespace Game.UI
         // fields rather than taking parameters so ShowAnnouncement (no attacker/defender of its
         // own — see its own comment) can reuse the exact same check off whatever the last real
         // challenge on this popup instance set them to.
-        private bool NoHumanInvolved => !IsHumanSide(_attacker) && !IsHumanSide(_defender);
+        private bool RunsAutomatically => _automateHumanSides || (!IsHumanSide(_attacker) && !IsHumanSide(_defender));
 
-        // Nobody human needs to look at this roll before it happens (see NoHumanInvolved) — an
+        // Nobody human needs to look at this roll before it happens (see RunsAutomatically) — an
         // AI-vs-AI or AI-vs-neutral encounter would otherwise just sit on Phase.NotRolled forever,
         // since rollButton only ever gets pressed by an explicit click. Short delay purely for
         // visual pacing, same reasoning as aiAcceptDelay.
         private IEnumerator AutoRollIfNoHuman()
         {
-            // No pacing beat at all when neither side is human (see NoHumanInvolved) — only the
+            // No pacing beat at all when neither side is human (see RunsAutomatically) — only the
             // IsAutorollEnabled human-opted-in case still waits aiRollDelay, per the user's own
             // request (2026-08-24) to stop stalling a purely AI/neutral fight just to be readable
             // to a spectator; aiRollDelay itself is untouched for that still-human case.
-            if (!NoHumanInvolved && aiRollDelay > 0f)
+            if (!RunsAutomatically && aiRollDelay > 0f)
                 yield return new WaitForSeconds(aiRollDelay);
             if (_phase == Phase.NotRolled)
                 OnRollClicked();
@@ -391,10 +394,10 @@ namespace Game.UI
         // also clicks Ok around the same time.
         private IEnumerator AutoCloseResultIfNoHuman()
         {
-            // Same NoHumanInvolved carve-out as AutoRollIfNoHuman above (2026-08-24) — only the
+            // Same RunsAutomatically carve-out as AutoRollIfNoHuman above (2026-08-24) — only the
             // IsAutoCloseResultEnabled human-opted-in case still gets the readable aiResultCloseDelay
             // pause; a battle with nobody human in it at all resolves instantly instead.
-            if (!NoHumanInvolved && aiResultCloseDelay > 0f)
+            if (!RunsAutomatically && aiResultCloseDelay > 0f)
                 yield return new WaitForSeconds(aiResultCloseDelay);
             if (_phase == Phase.Resolved && !_okAlreadyHandled)
                 OnOkClicked();
@@ -421,7 +424,8 @@ namespace Game.UI
         //     have yet either; see the user's own note to add that as a future task once such
         //     hero skills exist.
         public void BeginCaptureKill(ArmyData hunterArmy, UnitData targetHero, Sprite hunterLogo, Sprite targetLogo,
-            Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null)
+            Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
+            bool automateHumanSides = false)
         {
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
@@ -434,7 +438,8 @@ namespace Game.UI
             // same battle (see the user's own correction; RunRollAndDuel below reads the same
             // FateMax for the actual roll).
             Begin(hunterFace, hunterHero, targetHero, targetHero, hunterLogo, targetLogo, null, onAiThought,
-                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0);
+                attackerPoolSize: _hunterDicePool, defenderPoolSize: targetHero?.FateMax ?? 0,
+                automateHumanSides: automateHumanSides);
             _kind = ChallengeKind.CaptureKill;
             if (titleText != null)
                 titleText.text = "CAPTURE/KILL CHALLENGE";
@@ -446,9 +451,10 @@ namespace Game.UI
         // army's Capture Kill Challenge ends in Escaped (see BattleScreenUI.Combat.cs's
         // HandleCaptureKillOutcome) — same panel the user asked for (BattleAttackPopupUI's own
         // ResultStateRoot) rather than a brand new popup for what's a one-line acknowledgement.
-        public void ShowAnnouncement(string message, Action onAcknowledged)
+        public void ShowAnnouncement(string message, Action onAcknowledged, bool automateHumanSides = false)
         {
             CleanupResearchProduction();
+            _automateHumanSides = automateHumanSides;
             _kind = ChallengeKind.Announcement;
             _onAnnouncementAcknowledged = onAcknowledged;
             // Never goes through Begin (no attacker/defender roll of its own) — the ONE other
@@ -484,7 +490,7 @@ namespace Game.UI
             if (resultSummaryText != null)
                 resultSummaryText.text = message;
 
-            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+            if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -509,6 +515,7 @@ namespace Game.UI
             CleanupResearchProduction();
 
             _kind = ChallengeKind.ResearchProduction;
+            _automateHumanSides = false;
             _rpHero = hero;
             _rpCard = card;
             _rpRequiredSuccesses = ResearchProductionSystem.RequiredSuccesses(card);
@@ -519,7 +526,7 @@ namespace Game.UI
             _onResearchProductionResolved = onResolved;
 
             // The Hero is a real UnitData and a legitimate attacker (only the DEFENDER must not
-            // be a fake unit). Setting _attacker lets NoHumanInvolved / the AI-thought hooks read
+            // be a fake unit). Setting _attacker lets RunsAutomatically / the AI-thought hooks read
             // correctly; _defender stays null (there is no defender unit).
             _attacker = hero;
             _defender = null;
@@ -730,7 +737,7 @@ namespace Game.UI
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(false);
 
-            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+            if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -851,11 +858,11 @@ namespace Game.UI
             bool defenderAnimDone = defenderRow == null;
             attackerRow?.SetDice(_attackerDice, onComplete: () => attackerAnimDone = true);
             defenderRow?.SetDice(_defenderDice, onComplete: () => defenderAnimDone = true);
-            // Nobody human is watching this roll land (see NoHumanInvolved) — don't gate the duel
+            // Nobody human is watching this roll land (see RunsAutomatically) — don't gate the duel
             // on the flip animation actually finishing, per the user's own request (2026-08-24) to
             // stop pacing an AI-vs-AI/AI-vs-neutral fight for a spectator's benefit. SetDice already
             // ran above so _attackerDice/_defenderDice are the real values either way.
-            if (!NoHumanInvolved)
+            if (!RunsAutomatically)
                 yield return new WaitUntil(() => attackerAnimDone && defenderAnimDone);
 
             FireRollThought();
@@ -875,7 +882,7 @@ namespace Game.UI
                 _onAiThought?.Invoke(_defender, damage > 0 ? AiThoughtCategory.BadRoll : AiThoughtCategory.GoodRoll, _attacker?.Name);
         }
 
-        private static bool IsAiSide(UnitData unit) => unit != null && unit.Owner != null && !unit.Owner.IsHuman;
+        private bool IsAiSide(UnitData unit) => unit?.Owner != null && (_automateHumanSides || !unit.Owner.IsHuman);
 
         // Whether a Spend button should ever be interactable for `hero` — needs both a hero AND
         // Fate to spend from a human's own hand (an AI side spends automatically instead, see
@@ -883,7 +890,7 @@ namespace Game.UI
         // with no hero (e.g. a CaptureKill hunter army with no hero of its own — see
         // BeginCaptureKill's own note) still has nothing to SPEND, but still clicked Roll Die and
         // still needs to see the result and click Accept themselves.
-        private static bool CanSpend(UnitData hero) => hero != null && hero.Owner != null && hero.Owner.IsHuman;
+        private bool CanSpend(UnitData hero) => !_automateHumanSides && IsHumanSide(hero);
 
         // Whether `hero` has any Fate left to POSSIBLY spend at all — used only to decide whether
         // the whole duel phase is worth entering in the first place (see RunDuel's own skip
@@ -914,7 +921,7 @@ namespace Game.UI
                 // the roll being skipped entirely. Same beat as RunHumanTurn/RunAiTurn's own
                 // auto-decline (aiAcceptDelay) so this case doesn't feel instant/broken — except
                 // when nobody human is in this fight at all (2026-08-24), where instant IS the goal.
-                if (!NoHumanInvolved && aiAcceptDelay > 0f)
+                if (!RunsAutomatically && aiAcceptDelay > 0f)
                     yield return new WaitForSeconds(aiAcceptDelay);
                 yield break;
             }
@@ -1044,8 +1051,8 @@ namespace Game.UI
                 if (!shouldSpend)
                 {
                     // Skipped entirely for a battle with no human in it at all (2026-08-24) — same
-                    // NoHumanInvolved carve-out as RunDuel's own no-Fate-to-spend beat above.
-                    if (!NoHumanInvolved && aiAcceptDelay > 0f)
+                    // RunsAutomatically carve-out as RunDuel's own no-Fate-to-spend beat above.
+                    if (!RunsAutomatically && aiAcceptDelay > 0f)
                         yield return new WaitForSeconds(aiAcceptDelay);
                     break;
                 }
@@ -1076,7 +1083,7 @@ namespace Game.UI
                 // comment): the AI shouldn't react to a die that isn't visibly done spinning yet.
                 // Skipped when nobody human is in this fight (2026-08-24) — same reasoning as
                 // RunRollAndDuel's own initial-roll anim gate.
-                if (!NoHumanInvolved)
+                if (!RunsAutomatically)
                     yield return new WaitUntil(() => _rerollAnimDone);
 
                 // Universal stop-on-failed-reroll (per the user's own spec): this specific reroll
@@ -1328,7 +1335,7 @@ namespace Game.UI
             if (destroyedStamp != null)
                 destroyedStamp.SetActive(outcome == CaptureKillOutcome.Killed);
 
-            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+            if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -1347,7 +1354,7 @@ namespace Game.UI
 
             RenderResultScreen(_attacker, _defender, summary, died, projectedHp);
 
-            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+            if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -1395,11 +1402,12 @@ namespace Game.UI
         // state involved); StopAllCoroutines clears any auto-close still pending from the screen
         // before it. See BattleScreenUI.Combat.cs's ShowSecondaryResultsThen.
         public void ShowSecondaryAttackResult(UnitData attacker, UnitData target, string summary, bool died,
-            Action onAcknowledged)
+            Action onAcknowledged, bool automateHumanSides = false)
         {
             StopAllCoroutines();
             CleanupResearchProduction();
 
+            _automateHumanSides = automateHumanSides;
             _kind = ChallengeKind.Announcement;
             _onAnnouncementAcknowledged = onAcknowledged;
             _okAlreadyHandled = false;
@@ -1414,7 +1422,7 @@ namespace Game.UI
 
             RenderResultScreen(attacker, target, summary, died);
 
-            if (NoHumanInvolved || IsAutoCloseResultEnabled)
+            if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
@@ -1487,6 +1495,7 @@ namespace Game.UI
 
         public void Hide()
         {
+            _automateHumanSides = false;
             if (panelRoot == null || !panelRoot.activeSelf)
                 return;
             // Any close that ISN'T the normal R/P Result -> OK (an explicit Hide() from

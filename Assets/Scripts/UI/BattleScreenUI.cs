@@ -117,6 +117,12 @@ namespace Game.UI
         [SerializeField] private float moveAnimDuration = 0.15f;
 
         private Action _onClosed;
+        // Fast Resolve delegates human decisions to the existing AI battle loop. Ownership
+        // stays intact so results, captures, rewards and strategic notifications keep their identity.
+        private bool _fastResolve;
+        private bool HasInteractiveParticipant => _localArmy != null && !_fastResolve;
+        private bool IsHumanAction(UnitData unit) => !_fastResolve && unit?.Owner != null && unit.Owner.IsHuman;
+        private bool IsAutomatedSide(ArmyData army) => army?.Owner != null && (_fastResolve || !army.Owner.IsHuman);
         // The hex this whole battle is happening on — captured once from Show's own `hex`
         // parameter (previously never stored at all, despite being passed in) rather than
         // re-derived from _attacker.Hex/_defender.Hex wherever it's needed later: a retreat
@@ -255,7 +261,9 @@ namespace Game.UI
         // BeginCaptureKillEncounter) — that one deliberately never activates panelRoot at all
         // (no grid/Arrangement chrome for a hero-only encounter, per the user's own spec), but
         // GameTurnController.InputBlocked still needs to know something modal is showing.
-        public bool IsShowing => (panelRoot != null && panelRoot.activeSelf) || (attackPopup != null && attackPopup.IsShowing);
+        public bool IsShowing => (panelRoot != null && panelRoot.activeSelf)
+            || (attackPopup != null && attackPopup.IsShowing)
+            || (outcomePopup != null && outcomePopup.IsShowing);
 
         // Lets GameTurnController react to a battle opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
@@ -306,13 +314,28 @@ namespace Game.UI
         // resets the idle nudge so it can fire again on the NEXT stretch of inactivity.
         private void ResetIdleTimer()
         {
-            _idleTimer = IsShowing && _currentActingUnit != null
-                && _currentActingUnit.Owner != null && _currentActingUnit.Owner.IsHuman ? 0f : -1f;
+            _idleTimer = IsShowing && IsHumanAction(_currentActingUnit) ? 0f : -1f;
             _idleNudgeShown = false;
         }
 
-        public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed)
+        // One entry point for direct, delayed and chained contact; both fight buttons use it.
+        public void ShowEncounter(BattleEncounterContext encounter, Action onClosed, bool fastResolve = false)
         {
+            if (encounter == null)
+            {
+                onClosed?.Invoke();
+                return;
+            }
+            if (encounter.TargetHeroOnly)
+                BeginCaptureKillEncounter(encounter.Initiator, encounter.Target, onClosed, fastResolve);
+            else
+                Show(encounter.Hex, encounter.Participants.ToList(), onClosed, fastResolve);
+        }
+
+        public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed, bool fastResolve = false)
+        {
+            _fastResolve = fastResolve;
+            _unpacedBattleFrameStart = -1f;
             _onClosed = onClosed;
             if (panelRoot != null)
                 panelRoot.SetActive(true);
@@ -400,10 +423,10 @@ namespace Game.UI
             // opposing army is passed only for its current STATS (see ArrangeArmy's own
             // comment), never its placement — both sides' arrangement happens in this same call,
             // before either one has a layout to look at.
-            if (_attacker?.Owner != null && !_attacker.Owner.IsHuman)
+            if (IsAutomatedSide(_attacker))
                 _battleEngine.ArrangeAiArmy(_attacker, _defender,
                     BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, map);
-            if (_defender?.Owner != null && !_defender.Owner.IsHuman)
+            if (IsAutomatedSide(_defender))
                 _battleEngine.ArrangeAiArmy(_defender, _attacker,
                     BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, map);
 
@@ -421,7 +444,7 @@ namespace Game.UI
                 _localBackRow = BattleGrid.DefenderBackRow;
             }
 
-            if (_localArmy != null && arrangePopup != null)
+            if (HasInteractiveParticipant && arrangePopup != null)
             {
                 // The grid itself (the local player's own cards + the opponent's still-empty
                 // cells) is visible right away, behind the intro popup — only actually
@@ -502,7 +525,7 @@ namespace Game.UI
             // has nobody to click the button anyway — canRetreat covers both. Also off once the
             // AI side has already committed to its own retreat this round — only one side
             // retreats per round in this design.
-            bool canRetreat = _localArmy != null && !_localArmy.IsGarrison && _retreatingArmy == null
+            bool canRetreat = HasInteractiveParticipant && !_localArmy.IsGarrison && _retreatingArmy == null
                 && (_localArmy.Owner == null || !_localArmy.Owner.IsEliminated);
 
             // With no local human in this fight at all (see ConsiderAiRetreat's own comment on
@@ -513,12 +536,12 @@ namespace Game.UI
             // instead of showing the popup at all (rather than showing it with both buttons
             // effectively inert) — nothing in it (roster preview, retreat warning) is actionable
             // by anyone if no one here is human.
-            if (roundStartPopup != null && _localArmy != null)
+            if (roundStartPopup != null && HasInteractiveParticipant)
                 roundStartPopup.Show(_round, _grid, _attacker, _defender,
                     ResolveCatalog(_attacker?.Owner)?.logo, ResolveCatalog(_defender?.Owner)?.logo,
-                    canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name,
-                    unchecked(_battleSeed * 31 + _round),
-                    canRetreat && _round > 1 ? DescribeRetreatPreview(_localArmy) : null);
+                    canRetreat, OnStartRoundClicked, OnRetreatClicked,
+                    _retreatingArmy != _localArmy ? _retreatingArmy?.Name : null,
+                    unchecked(_battleSeed * 31 + _round));
             else
                 OnStartRoundClicked();
         }
@@ -543,7 +566,7 @@ namespace Game.UI
         {
             if (_retreatingArmy != null || _round <= 1)
                 return;
-            if (_localArmy != null)
+            if (HasInteractiveParticipant)
             {
                 ArmyData aiArmy = _localArmy == _attacker ? _defender : (_localArmy == _defender ? _attacker : null);
                 TryAssessSideRetreat(aiArmy, aiArmy == _attacker ? _defender : _attacker);
@@ -567,7 +590,7 @@ namespace Game.UI
             // A defeated player's army never gives ground: retreating would MOVE it, and those
             // armies stay exactly where they were (attackable, never moving) - like a neutral it
             // fights to the end.
-            if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral
+            if (!IsAutomatedSide(army) || army.IsGarrison || army.Owner.IsNeutral
                 || army.Owner.IsEliminated)
                 return false;
 
@@ -610,7 +633,7 @@ namespace Game.UI
         // the retreating side from the turn order.
         private void OnRetreatClicked()
         {
-            if (_localArmy == null || _localArmy.IsGarrison)
+            if (!HasInteractiveParticipant || _localArmy.IsGarrison)
                 return;
             _retreatingArmy = _localArmy;
             if (_battleEngine != null)
@@ -678,7 +701,7 @@ namespace Game.UI
             // Pass only ever acts for the CURRENT unit — an AI-owned unit's turn isn't the
             // player's to skip by hand. There's no real AI decision-making here yet, so instead
             // its turn chooses and performs an action after a beat rather than stalling the round.
-            bool isHumanTurn = current != null && current.Owner != null && current.Owner.IsHuman;
+            bool isHumanTurn = IsHumanAction(current);
             if (passButton != null)
                 passButton.interactable = isHumanTurn;
             ResetIdleTimer();
@@ -702,7 +725,7 @@ namespace Game.UI
             // per the user's own request (2026-08-24) to stop stalling a purely AI/neutral fight
             // for spectator readability. A human-vs-AI battle keeps the beat unchanged: it's still
             // that human's own opponent "thinking" on-screen.
-            if (_localArmy != null && aiActionDelay > 0f)
+            if (HasInteractiveParticipant && aiActionDelay > 0f)
                 yield return new WaitForSeconds(aiActionDelay);
             else if (_unpacedBattleFrameStart < 0f
                 || Time.realtimeSinceStartup - _unpacedBattleFrameStart >= UnpacedBattleFrameBudgetSeconds)
@@ -800,6 +823,8 @@ namespace Game.UI
             _battleState = null;
             _currentActingUnit = null;
             _localArmy = null;
+            _fastResolve = false;
+            _unpacedBattleFrameStart = -1f;
             _arranging = false;
             _arrangeInteractive = false;
             _aiWaitStreak.Clear();
@@ -854,13 +879,7 @@ namespace Game.UI
             if (battleContactPopup != null && hunter?.Owner != null && hunter.Owner.IsHuman)
             {
                 battleContactPopup.Show(contact.hex, contact.participants, encounter.PresentationObserver,
-                    onFight: () =>
-                    {
-                        if (encounter.TargetHeroOnly)
-                            BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
-                        else
-                            Show(contact.hex, contact.participants, onClosed);
-                    },
+                    onFight: fastResolve => ShowEncounter(encounter, onClosed, fastResolve),
                     onDelay: () =>
                     {
                         DelayedBattleRegistry.Add(new PendingBattle { Hex = contact.hex, Participants = contact.participants });
@@ -871,13 +890,9 @@ namespace Game.UI
                             Hide();
                     });
             }
-            else if (encounter.TargetHeroOnly)
-            {
-                BeginCaptureKillEncounter(contact.participants[0], contact.participants[1], onClosed);
-            }
             else
             {
-                Show(contact.hex, contact.participants, onClosed);
+                ShowEncounter(encounter, onClosed);
             }
             return true;
         }

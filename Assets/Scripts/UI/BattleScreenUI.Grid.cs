@@ -35,8 +35,7 @@ namespace Game.UI
             // Legal-target hints only make sense once a real round is underway (not Arranging)
             // and only for the local human's own current unit — an AI turn has no player input to
             // hint at.
-            bool canAct = !_arranging && _currentActingUnit != null
-                && _currentActingUnit.Owner != null && _currentActingUnit.Owner.IsHuman;
+            bool canAct = !_arranging && IsHumanAction(_currentActingUnit);
 
             for (int row = 0; row < BattleGrid.Rows; row++)
                 for (int col = 0; col < BattleGrid.Columns; col++)
@@ -88,7 +87,7 @@ namespace Game.UI
                 return;
             if (AnyBattlePopupShowing)
                 return;
-            if (_currentActingUnit.Owner == null || !_currentActingUnit.Owner.IsHuman)
+            if (!IsHumanAction(_currentActingUnit))
                 return;
             if (_battleEngine == null
                 || !_grid.TryFindPosition(_currentActingUnit, out int actorRow, out int actorCol))
@@ -138,7 +137,7 @@ namespace Game.UI
             // neutral) skips the slide entirely and swaps straight to the grid update below, per
             // the user's own request (2026-08-24) to stop pacing a purely AI/neutral fight for
             // spectator readability. A human-vs-AI battle still animates the AI's own moves.
-            if (_localArmy != null && fromCell != null && toCell != null)
+            if (HasInteractiveParticipant && fromCell != null && toCell != null)
             {
                 if (layoutGroup != null)
                     layoutGroup.enabled = false;
