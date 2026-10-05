@@ -407,7 +407,7 @@ namespace Game.UI
             // EquipmentCardText; any other card lists its own abilities. No activation cost, no
             // card type line.
             string effect = card.cardType == CardType.Equipment
-                ? EquipmentCardText.CardFace(card, gameConfig)
+                ? EquipmentCardText.Description(card, gameConfig)
                 : (gameConfig != null ? gameConfig.FormatAbilitiesDetailed(card.grantedAbilities) : null);
             if (!string.IsNullOrEmpty(effect))
                 sb.AppendLine(effect);

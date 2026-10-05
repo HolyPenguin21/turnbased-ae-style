@@ -1185,6 +1185,984 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
+  - id: 24
+    authoredKey: neutral.mutator.dermal-plating
+    displayName: Dermal Plating
+    art: {fileID: 21300000, guid: f953c6494cc360548bf17f83d4282521, type: 3}
+    detailArt: {fileID: 21300000, guid: 85ff393dc8bda23408044b3155fa3c77, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 1
+        amount: 1
+        isOverride: 0
+  - id: 25
+    authoredKey: neutral.mutator.reactive-marrow
+    displayName: Reactive Marrow
+    art: {fileID: 21300000, guid: 31124208dccd2264bb76062501a13a94, type: 3}
+    detailArt: {fileID: 21300000, guid: ea1c3e835adbdc84c9f9011d57b038de, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 4
+        amount: 2
+        isOverride: 0
+  - id: 26
+    authoredKey: neutral.mutator.reinforced-skeleton
+    displayName: Reinforced Skeleton
+    art: {fileID: 21300000, guid: c77db1e872a5a834ba1c81c32ebdc0a0, type: 3}
+    detailArt: {fileID: 21300000, guid: 5f4bd69948efd134eba0619e6f5e4458, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 4
+        amount: 1
+        isOverride: 0
+      - stat: 6
+        amount: -1
+        isOverride: 0
+  - id: 27
+    authoredKey: neutral.mutator.pain-suppression
+    displayName: Pain Suppression
+    art: {fileID: 21300000, guid: 32b5338baf7b7544d879f23c045251c1, type: 3}
+    detailArt: {fileID: 21300000, guid: 4a28807faab186b40ac2a0db27880819, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 4
+        amount: 2
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 28
+    authoredKey: neutral.mutator.regenerative-culture
+    displayName: Regenerative Culture
+    art: {fileID: 21300000, guid: 990fd4b70b713994caed7ca345bce9a5, type: 3}
+    detailArt: {fileID: 21300000, guid: c94e5b9890e32484891c889be2ff2b7c, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - Regeneration
+      statChanges: []
+  - id: 29
+    authoredKey: neutral.mutator.hyper-regeneration
+    displayName: Hyper-Regeneration
+    art: {fileID: 21300000, guid: 8315826a889a3de4fa25aac293056154, type: 3}
+    detailArt: {fileID: 21300000, guid: 66b0aa8330af8b34c9a0542901a1454f, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - Regeneration
+      statChanges:
+      - stat: 4
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 30
+    authoredKey: neutral.mutator.survivor-strain
+    displayName: Survivor Strain
+    art: {fileID: 21300000, guid: bae94b9e24131ae4093ddee5f09faab9, type: 3}
+    detailArt: {fileID: 21300000, guid: 265ac408dfe8aa149b54ca389103aaa3, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - Regeneration
+      statChanges:
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 31
+    authoredKey: neutral.mutator.adrenal-surge
+    displayName: Adrenal Surge
+    art: {fileID: 21300000, guid: 91bd2c8e69de11248ac4e62acee2f0ef, type: 3}
+    detailArt: {fileID: 21300000, guid: dfe02b78c6c0df94a941c1a9a667749d, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
+      - stat: 6
+        amount: 1
+        isOverride: 0
+      - stat: 1
+        amount: -1
+        isOverride: 0
+  - id: 32
+    authoredKey: neutral.mutator.metabolic-overdrive
+    displayName: Metabolic Overdrive
+    art: {fileID: 21300000, guid: 0aeb930b26c57654d85622d4a785b756, type: 3}
+    detailArt: {fileID: 21300000, guid: 488fc5276e3f37546994483c1679b399, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
+      - stat: 1
+        amount: -1
+        isOverride: 0
+  - id: 33
+    authoredKey: neutral.mutator.predator-reflexes
+    displayName: Predator Reflexes
+    art: {fileID: 21300000, guid: 34caabfccad6aad42a6831d2ca73ea85, type: 3}
+    detailArt: {fileID: 21300000, guid: a959425143073b9479bc69a2105c2af1, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 6
+        amount: 1
+        isOverride: 0
+      - stat: 1
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 34
+    authoredKey: neutral.mutator.neural-accelerator
+    displayName: Neural Accelerator
+    art: {fileID: 21300000, guid: 9e1391bb2497a474190c44b1efcacc64, type: 3}
+    detailArt: {fileID: 21300000, guid: 588c5ee3db81ebc43b592166cf942773, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 0
+      tech: 3
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 6
+        amount: 1
+        isOverride: 0
+      - stat: 7
+        amount: -1
+        isOverride: 0
+  - id: 35
+    authoredKey: neutral.mutator.rapid-synapse
+    displayName: Rapid Synapse
+    art: {fileID: 21300000, guid: c326c35b5cca74b409afac480c9a5f1d, type: 3}
+    detailArt: {fileID: 21300000, guid: b1777bdf86e05724eb4b053e724d1e25, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - RapidReaction
+      statChanges:
+      - stat: 1
+        amount: -1
+        isOverride: 0
+  - id: 36
+    authoredKey: neutral.mutator.hunter-glands
+    displayName: Hunter Glands
+    art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
+    detailArt: {fileID: 21300000, guid: 8fcf28a828e7d7e44ba62f6fcef07197, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - r1s4
+      statChanges:
+      - stat: 1
+        amount: -1
+        isOverride: 0
+  - id: 37
+    authoredKey: neutral.mutator.enhanced-senses
+    displayName: Enhanced Senses
+    art: {fileID: 21300000, guid: 7db4feb32d3999c4c9d99a744a3e2cad, type: 3}
+    detailArt: {fileID: 21300000, guid: 01db794b2eb34a34b88460526acc9ee5, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - r1s4
+      statChanges:
+      - stat: 6
+        amount: 1
+        isOverride: 0
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 38
+    authoredKey: neutral.mutator.wanderer-strain
+    displayName: Wanderer Strain
+    art: {fileID: 21300000, guid: 136d73d6ad5883e43aa14a0a0d8f6b5c, type: 3}
+    detailArt: {fileID: 21300000, guid: e89a783c4d5e9004bb40d68282b6e4b8, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - r1s4
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
+      - stat: 1
+        amount: -1
+        isOverride: 0
+  - id: 39
+    authoredKey: neutral.mutator.chameleon-tissue
+    displayName: Chameleon Tissue
+    art: {fileID: 21300000, guid: 0417d8a0d2f001347bee3295600677ea, type: 3}
+    detailArt: {fileID: 21300000, guid: 8a8333bd81e63d240a6f9178203ca691, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - Stealth4
+      statChanges:
+      - stat: 5
+        amount: -1
+        isOverride: 0
+  - id: 40
+    authoredKey: neutral.mutator.fortunate-genome
+    displayName: Fortunate Genome
+    art: {fileID: 21300000, guid: 2767d1b4adcebc345b23f84b481cf080, type: 3}
+    detailArt: {fileID: 21300000, guid: b138243b7fe1cdf42be971d14b070d83, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 9
+        amount: 1
+        isOverride: 0
+  - id: 41
+    authoredKey: neutral.mutator.ghost-genome
+    displayName: Ghost Genome
+    art: {fileID: 21300000, guid: 7830718655edbed49bcb6b356c8fbc76, type: 3}
+    detailArt: {fileID: 21300000, guid: caf02b300c67a4b4f90ac27c67aa972d, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - Stealth4
+      statChanges: []
+  - id: 42
+    authoredKey: neutral.mutator.hunter-genome
+    displayName: Hunter Genome
+    art: {fileID: 21300000, guid: e907f43c0049e25479acb94a50c03875, type: 3}
+    detailArt: {fileID: 21300000, guid: 4c2a319f1c8f12744a6bc9a850ca551e, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 4
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - r1s4
+      statChanges: []
+  - id: 43
+    authoredKey: neutral.mutator.reflex-genome
+    displayName: Reflex Genome
+    art: {fileID: 21300000, guid: 7666ab34d640b1c4ba497ea1ef9e46f9, type: 3}
+    detailArt: {fileID: 21300000, guid: 0c7b6fccc0c139b46a0b686f7932d56a, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 0
+      tech: 3
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 1
+    equipment:
+      hostTypeTags: 00000000
+      hostKinds: 01000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities:
+      - RapidReaction
+      statChanges: []
   citadelPrefab: {fileID: 0}
   basePrefab: {fileID: 0}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
