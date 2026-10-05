@@ -77,8 +77,8 @@ namespace Game.EditorTests
             Action<PlayerSetupData, HexCoord> changed = (viewer, hex) =>
             {
                 if (viewer != _observer) return;
-                Assert.That(ArmyRegistry.AllAt(_origin), Does.Not.Contain(army));
-                Assert.That(ArmyRegistry.AllAt(_death), Does.Not.Contain(army));
+                Assert.That(ArmyRegistry.AllAt(_origin), Has.None.EqualTo(army));
+                Assert.That(ArmyRegistry.AllAt(_death), Has.None.EqualTo(army));
                 Assert.That(army.Hex, Is.EqualTo(_death));
                 if (hex.Equals(_origin)) originWrites++;
                 if (hex.Equals(_death)) deathWrites++;
@@ -134,7 +134,7 @@ namespace Game.EditorTests
             {
                 if (who != army) return;
                 events++;
-                Assert.That(ArmyRegistry.AllAt(from), Does.Not.Contain(army));
+                Assert.That(ArmyRegistry.AllAt(from), Has.None.EqualTo(army));
                 Assert.That(ArmyRegistry.AllAt(to), Does.Contain(army));
                 Assert.That(army.Hex, Is.EqualTo(to));
             };
