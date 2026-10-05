@@ -69,7 +69,7 @@ namespace Game.UI
                 roll => OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll),
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
-                defenderFormationBonus: defense.FormationBonus);
+                defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender,
@@ -152,7 +152,8 @@ namespace Game.UI
                 string outcomeLine = hit.Died ? "\nThe target was destroyed." : string.Empty;
                 string summary = $"Attacker ID: {attacker?.Name}\nTarget ID: {hit.Victim.Name}\n" +
                     $"Skill: {hit.Skill}\nHit Assessment: {hitLine}\nDamage Assessment: {hit.Damage} Damage{outcomeLine}";
-                attackPopup.ShowSecondaryAttackResult(attacker, hit.Victim, summary, hit.Died, ShowNext);
+                attackPopup.ShowSecondaryAttackResult(attacker, hit.Victim, summary, hit.Died, ShowNext,
+                    automateHumanSides: _fastResolve);
             }
             ShowNext();
         }
@@ -225,7 +226,8 @@ namespace Game.UI
         // start, this popup (attackPopup) IS the entire encounter. `hunterArmy` needing its own
         // non-hero units is the caller's responsibility to have already checked (same rule
         // CheckBattleEnd's own trigger enforces) — this doesn't re-check it.
-        public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed)
+        public void BeginCaptureKillEncounter(ArmyData hunterArmy, ArmyData targetArmy, Action onClosed,
+            bool fastResolve = false)
         {
             if (attackPopup == null || hunterArmy == null || targetArmy == null)
             {
@@ -247,6 +249,7 @@ namespace Game.UI
             // does that on its own once VisibilityChanged fires below (see GameTurnController.
             // RecomputeBlockedState's own battleScreen.IsShowing term).
             _onClosed = onClosed;
+            _fastResolve = fastResolve;
             hexSelectionController?.Deselect();
             rtsCamera?.SetPanningEnabled(false);
 
@@ -299,7 +302,7 @@ namespace Game.UI
             // "Coroutine couldn't be started because the game object ... is inactive" (see the
             // user's own report). CheckBattleEnd's own RunNextCaptureKillChallenge call runs
             // while a real battle's panelRoot IS already showing, so that one still narrates.
-            RunCaptureKillSequence(sequence, () =>
+            Action finishEncounter = () =>
             {
                 // This hero-only encounter never goes through OnBattleOutcomeAcknowledged (see
                 // this method's own comment — attackPopup IS the entire encounter), so unlike a
@@ -319,12 +322,24 @@ namespace Game.UI
                 // Same "what's left on this hex" resolution as a normal battle, but the engine
                 // has already handled Fate, roster cleanup, building transfer, vision and restack.
                 ResolveHexAfterVictory(hunterHex, finalization.Survivor);
-            }, suppressAiThoughts: true);
+            };
+            var summaries = fastResolve ? new List<string>() : null;
+            RunCaptureKillSequence(sequence, () =>
+            {
+                if (fastResolve && outcomePopup != null)
+                {
+                    outcomePopup.Show("Capture/Kill resolved.", string.Join("\n", summaries),
+                        finishEncounter, autoCloseNoHuman: _localArmy == null);
+                    VisibilityChanged?.Invoke();
+                }
+                else
+                    finishEncounter();
+            }, suppressAiThoughts: true, summaries: summaries);
             VisibilityChanged?.Invoke(); // opening edge — attackPopup is showing as of this call
         }
 
         private void RunCaptureKillSequence(BattleCaptureKillSequence sequence,
-            Action onAllResolved, bool suppressAiThoughts = false)
+            Action onAllResolved, bool suppressAiThoughts = false, List<string> summaries = null)
         {
             if (sequence == null || !sequence.TryGetCurrent(out BattleCaptureKillTarget next))
             {
@@ -338,15 +353,16 @@ namespace Game.UI
                 {
                     BattleCaptureKillStep step = sequence.ResolveCurrent(
                         roll, map, hexSelectionController);
+                    summaries?.Add($"{next.Hero.Name}: {step.Application.EffectiveOutcome}.");
                     RefreshGrid();
 
                     if (step.Retreat.ContactParticipants != null)
                         _pendingRetreatContacts.Enqueue((
                             step.Retreat.Destination, step.Retreat.ContactParticipants));
 
-                    RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts);
+                    RunCaptureKillSequence(sequence, onAllResolved, suppressAiThoughts, summaries);
                 },
-                suppressAiThoughts ? null : ShowAiThought);
+                suppressAiThoughts ? null : ShowAiThought, automateHumanSides: _fastResolve);
         }
 
         private void FinishBattleEnd(bool attackerAlive, bool defenderAlive)
@@ -468,13 +484,7 @@ namespace Game.UI
                 if (survivor.Owner != null && survivor.Owner.IsHuman && battleContactPopup != null)
                 {
                     battleContactPopup.Show(hex, participants, encounter.PresentationObserver,
-                        onFight: () =>
-                        {
-                            if (encounter.TargetHeroOnly)
-                                BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
-                            else
-                                Show(hex, participants, _onClosed);
-                        },
+                        onFight: fastResolve => ShowEncounter(encounter, _onClosed, fastResolve),
                         onDelay: () =>
                         {
                             DelayedBattleRegistry.Add(new PendingBattle { Hex = hex, Participants = participants });
@@ -482,13 +492,9 @@ namespace Game.UI
                                 Hide();
                         });
                 }
-                else if (encounter.TargetHeroOnly)
-                {
-                    BeginCaptureKillEncounter(survivor, nextEnemy, _onClosed);
-                }
                 else
                 {
-                    Show(hex, participants, _onClosed);
+                    ShowEncounter(encounter, _onClosed);
                 }
                 return;
             }

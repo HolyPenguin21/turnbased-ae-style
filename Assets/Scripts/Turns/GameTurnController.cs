@@ -598,9 +598,11 @@ namespace Game.Turns
                 // used to wait on a click nobody was ever going to make — the exact same hang,
                 // just through a rarer door.
                 bool acknowledged = false;
+                bool fastResolve = false;
                 bool anyHuman = encounter.PresentationObserver != null;
                 if (battleContactPopup != null && anyHuman)
-                    battleContactPopup.ShowResolved(battle.Hex, battle.Participants, encounter.PresentationObserver, () => acknowledged = true);
+                    battleContactPopup.ShowResolved(battle.Hex, battle.Participants, encounter.PresentationObserver,
+                        automatic => { fastResolve = automatic; acknowledged = true; });
                 else
                     acknowledged = true;
                 yield return new WaitUntil(() => acknowledged);
@@ -611,11 +613,8 @@ namespace Game.Turns
                 // units, so this goes straight to a Capture Kill Challenge sequence instead
                 // (see BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
                 // original mover/hunter — see IsStillAGenuineBattle's own comment.
-                bool targetHeroOnly = encounter.TargetHeroOnly;
-                if (battleScreen != null && targetHeroOnly)
-                    battleScreen.BeginCaptureKillEncounter(battle.Participants[0], battle.Participants[1], () => closed = true);
-                else if (battleScreen != null)
-                    battleScreen.Show(battle.Hex, battle.Participants, () => closed = true);
+                if (battleScreen != null)
+                    battleScreen.ShowEncounter(encounter, () => closed = true, fastResolve);
                 else
                     closed = true;
                 yield return new WaitUntil(() => closed);
@@ -1075,3 +1074,4 @@ namespace Game.Turns
         }
     }
 }
+

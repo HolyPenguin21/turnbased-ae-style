@@ -28976,6 +28976,7 @@ MonoBehaviour:
   defenderCommanderName: {fileID: 323690469}
   defenderArmyInfo: {fileID: 1130179530}
   fightButton: {fileID: 8880000000000000017}
+  fastResolveButton: {fileID: 1966150089}
   fightButtonLabel: {fileID: 8880000000000000021}
   delayButton: {fileID: 8880000000000000026}
   startingDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
