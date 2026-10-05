@@ -200,12 +200,14 @@ namespace Game.Ai.V2
 
             if (trace.BattleOccurred)
             {
-                result.StopReason = ExecutionStopReason.BattleStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
                 yield break;
             }
             if (trace.HexEventOccurred)
             {
-                result.StopReason = ExecutionStopReason.HexEventStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -301,8 +303,19 @@ namespace Game.Ai.V2
             result.OperationStarted |= moved;
             if (moved) result.ActualActorArmyId = pm.MoverArmyId;
 
-            if (leg.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
-            if (leg.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
+            if (leg.BattleOccurred)
+            {
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+
+            if (leg.HexEventOccurred)
+            {
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
+                yield break;
+            }
             if (army == null)
             {
                 // Support/primary lost en route — release its claim and let the Raid continue from
@@ -361,8 +374,19 @@ namespace Game.Ai.V2
                 result.FinalHex = leg.EndHex;
                 result.OperationStarted |= moved;
 
-                if (leg.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
-                if (leg.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
+                if (leg.BattleOccurred)
+                {
+                    result.NeedsReplan |= support == null;
+                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
+                    yield break;
+                }
+
+                if (leg.HexEventOccurred)
+                {
+                    result.NeedsReplan |= support == null;
+                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
+                    yield break;
+                }
                 if (support == null)
                 {
                     result.StopReason = ExecutionStopReason.MoverLost;
@@ -455,3 +479,4 @@ namespace Game.Ai.V2
             AiV2Util.ResolveArmy(player, armyId);
     }
 }
+

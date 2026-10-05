@@ -37,14 +37,22 @@ namespace Game.Map
             VisionSystem.NotifyContentChanged(army.Hex);
         }
 
-        public static void Unregister(ArmyData army)
+        public static bool IsRegistered(ArmyData army) =>
+            army != null && ByHex.TryGetValue(army.Hex, out List<ArmyData> list) && list.Contains(army);
+
+        // Remove the indexed origin before recording a moving army's actual terminal hex.
+        // Every notification sees the final, absent state; a repeated removal is a no-op.
+        public static void Unregister(ArmyData army, HexCoord? finalHex = null)
         {
-            if (army == null)
+            if (!IsRegistered(army))
                 return;
-            if (ByHex.TryGetValue(army.Hex, out List<ArmyData> list))
-                list.Remove(army);
+            HexCoord origin = army.Hex;
+            ByHex[origin].Remove(army);
+            if (finalHex.HasValue) army.Hex = finalHex.Value;
             VisionSystem.RecomputeFor(army.Owner);
-            VisionSystem.NotifyContentChanged(army.Hex);
+            VisionSystem.NotifyContentChanged(origin);
+            if (!army.Hex.Equals(origin))
+                VisionSystem.NotifyContentChanged(army.Hex);
         }
 
         // Never null — callers can foreach this directly without a null check.
@@ -112,7 +120,7 @@ namespace Game.Map
         // state any more.
         public static void MoveArmy(ArmyData army, HexCoord newHex)
         {
-            if (army == null || army.Hex.Equals(newHex))
+            if (!IsRegistered(army) || army.Hex.Equals(newHex))
                 return;
 
             HexCoord oldHex = army.Hex;
@@ -144,3 +152,4 @@ namespace Game.Map
         }
     }
 }
+

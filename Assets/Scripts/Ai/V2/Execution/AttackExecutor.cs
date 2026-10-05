@@ -406,12 +406,14 @@ namespace Game.Ai.V2
                 // this intent, which may legitimately turn into Reinforcement or Recovery.
                 if (strike.HasValue && next.Value.Equals(waypoint))
                     result.AttackOpportunisticStrike = true;
-                result.StopReason = ExecutionStopReason.BattleStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
                 yield break;
             }
             if (trace.HexEventOccurred)
             {
-                result.StopReason = ExecutionStopReason.HexEventStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -485,12 +487,14 @@ namespace Game.Ai.V2
             if (leg.BattleOccurred)
             {
                 result.CombatChanged = true;
-                result.StopReason = ExecutionStopReason.BattleStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
                 yield break;
             }
             if (leg.HexEventOccurred)
             {
-                result.StopReason = ExecutionStopReason.HexEventStarted;
+                result.NeedsReplan |= army == null;
+                result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -565,12 +569,14 @@ namespace Game.Ai.V2
                 if (leg.BattleOccurred)
                 {
                     result.CombatChanged = true;
-                    result.StopReason = ExecutionStopReason.BattleStarted;
+                    result.NeedsReplan |= support == null;
+                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;
                     yield break;
                 }
                 if (leg.HexEventOccurred)
                 {
-                    result.StopReason = ExecutionStopReason.HexEventStarted;
+                    result.NeedsReplan |= support == null;
+                    result.StopReason = support == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.HexEventStarted;
                     yield break;
                 }
                 if (support == null)
@@ -619,5 +625,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

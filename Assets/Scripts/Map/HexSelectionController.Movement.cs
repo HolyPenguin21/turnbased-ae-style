@@ -549,6 +549,9 @@ namespace Game.Map
                     // up, which is NOT necessarily `destination`. ArmyRegistry.MoveArmy is the
                     // one place Data.Hex itself actually changes, once the whole move is
                     // finished.
+                    if (movingArmy == null || army.Controller != movingArmy
+                        || army.Members.Count == 0 || !ArmyRegistry.IsRegistered(army))
+                        return;
                     HexCoord actualHex = movingArmy.CurrentHex;
                     ArmyRegistry.MoveArmy(army, actualHex);
 
@@ -698,6 +701,12 @@ namespace Game.Map
                 // Leaving originHex can just as easily change what's left behind there (e.g. a
                 // pair collapsing back down to one army, which should re-centre).
                 RestackArmiesOn(originHex, movingArmy);
+            }, onCancelled: actualHex =>
+            {
+                // A live interruption records partial movement but performs no arrival actions.
+                // Death is committed by DeleteArmyIfEmptied as an atomic removal instead.
+                if (army.Members.Count > 0 && ArmyRegistry.IsRegistered(army))
+                    ArmyRegistry.MoveArmy(army, actualHex);
             });
 
             HidePathPreview();
@@ -706,3 +715,4 @@ namespace Game.Map
         }
     }
 }
+

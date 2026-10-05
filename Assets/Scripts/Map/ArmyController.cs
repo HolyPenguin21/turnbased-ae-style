@@ -51,6 +51,59 @@ namespace Game.Map
         private Vector3 _baseScale;
         private Vector3 _defaultScale;
         private Coroutine _selectionAnimation;
+        private Coroutine _settling;
+        private Coroutine _movement;
+        private System.Action _onComplete;
+        private System.Action<HexCoord> _onCancelled;
+
+        // Cancellation is a terminal order outcome, not arrival. Keep the entered hex even
+        // when Unity stops a coroutine without running its tail (disable / Destroy).
+        public void CancelMovement()
+        {
+            if (Data != null) Data.PendingAirStrikePolicy = null;
+            if (!IsMoving) return;
+            HexCoord finalHex = _currentHex;
+            var cancelled = _onCancelled;
+            _onComplete = null;
+            _onCancelled = null;
+            IsMoving = false;
+            var settling = _settling;
+            var movement = _movement;
+            _settling = null;
+            _movement = null;
+            if (settling != null) StopCoroutine(settling);
+            if (movement != null) StopCoroutine(movement);
+            cancelled?.Invoke(finalHex);
+        }
+
+        private void OnDisable() => CancelMovement();
+
+        private void OnDestroy()
+        {
+            CancelMovement();
+            if (Data != null && object.ReferenceEquals(Data.Controller, this))
+                Data.Controller = null;
+        }
+
+        private void CompleteMovement()
+        {
+            if (!IsMoving) return;
+            var completed = _onComplete;
+            _onComplete = null;
+            _onCancelled = null;
+            _settling = null;
+            _movement = null;
+            try
+            {
+                // Existing arrival callbacks read CurrentHex while IsMoving is still true.
+                completed?.Invoke();
+            }
+            finally
+            {
+                IsMoving = false;
+                if (Data != null) Data.PendingAirStrikePolicy = null;
+            }
+        }
 
         private void Awake()
         {
@@ -110,10 +163,12 @@ namespace Game.Map
         // THEN invokes onSettled — instead of an abrupt snap. Used right before a move starts.
         // Also claims IsMoving right away (not just once the move animation itself starts) so a
         // second order can't sneak in while this one is still easing out.
-        public void SettleThen(System.Action onSettled)
+        public void SettleThen(System.Action onSettled, System.Action<HexCoord> onCancelled = null)
         {
             if (IsMoving)
                 return;
+            _currentHex = Data.Hex;
+            _onCancelled = onCancelled;
             IsMoving = true;
 
             if (_selectionAnimation == null)
@@ -121,7 +176,7 @@ namespace Game.Map
                 onSettled?.Invoke();
                 return;
             }
-            StartCoroutine(SettleRoutine(onSettled));
+            _settling = StartCoroutine(SettleRoutine(onSettled));
         }
 
         private IEnumerator SettleRoutine(System.Action onSettled)
@@ -139,7 +194,8 @@ namespace Game.Map
                 yield return null;
             }
             transform.localScale = _baseScale;
-            onSettled?.Invoke();
+            _settling = null;
+            if (IsMoving) onSettled?.Invoke();
         }
 
         // path[0] is this army's current hex (not entered — no cost, already there); each later
@@ -149,9 +205,9 @@ namespace Game.Map
         // called fresh for every hex entered
         // (including the starting one, via ResetTransform below) since a hex's correct icon
         // offset depends on what else is on it (see HexObjectLayout), not just at the final
-        // destination. IsMoving is deliberately NOT checked/set here any more — SettleThen
-        // already claims it the moment a move order is committed, so a caller going through that
-        // gate first is what makes re-entrancy safe.
+        // destination. SettleThen claims IsMoving before the easing animation, preventing
+        // another order during that phase. MoveAlong retains that claim until completion
+        // or explicit cancellation, including direct callers without an easing animation.
         public void MoveAlong(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
             System.Action onComplete = null, System.Func<HexCoord, bool> shouldStopEarly = null,
             System.Action<HexCoord, HexCoord> onStepStarted = null,
@@ -161,13 +217,15 @@ namespace Game.Map
         {
             if (map == null || path == null || path.Count < 2 || resolveOffset == null || Data == null || Data.Members.Count == 0)
             {
-                IsMoving = false; // release SettleThen's claim — there's no MoveRoutine coming to do it
+                CancelMovement();
                 return;
             }
 
+            _onComplete = onComplete;
+            IsMoving = true;
             _currentHex = Data.Hex;
             ResetTransform(map, resolveOffset(Data.Hex));
-            StartCoroutine(MoveRoutine(map, path, resolveOffset, onComplete, shouldStopEarly,
+            _movement = StartCoroutine(MoveRoutine(map, path, resolveOffset, shouldStopEarly,
                 onStepStarted, onStepCompleted, resolveStepAsync, beforeFirstStep));
         }
 
@@ -184,7 +242,7 @@ namespace Game.Map
         // resolves, rather than kicking off a second, nested move of its own. Existing ground
         // callers simply never pass one and keep today's fire-and-forget onStepCompleted timing.
         private IEnumerator MoveRoutine(HexMap map, List<HexCoord> path, System.Func<HexCoord, Vector3> resolveOffset,
-            System.Action onComplete, System.Func<HexCoord, bool> shouldStopEarly,
+            System.Func<HexCoord, bool> shouldStopEarly,
             System.Action<HexCoord, HexCoord> onStepStarted,
             System.Action<HexCoord, HexCoord> onStepCompleted,
             System.Func<HexCoord, HexCoord, StepResolutionOutcome, IEnumerator> resolveStepAsync,
@@ -192,7 +250,7 @@ namespace Game.Map
         {
             List<UnitData> members = Data.Members;
             bool started = false;
-            for (int i = 1; i < path.Count; i++)
+            for (int i = 1; IsMoving && members.Count > 0 && i < path.Count; i++)
             {
                 HexCoord next = path[i];
                 if (!map.CanEnter(next, Data) || HexGridMath.Distance(_currentHex, next) != 1)
@@ -222,10 +280,13 @@ namespace Game.Map
                 HexCoord previous = _currentHex;
                 _currentHex = next;
                 onStepStarted?.Invoke(previous, next);
+                if (!IsMoving) yield break;
 
                 Vector3 targetPosition = map.HexToWorld(next) + resolveOffset(next);
                 yield return StepTo(targetPosition);
+                if (!IsMoving) yield break;
                 onStepCompleted?.Invoke(previous, next);
+                if (!IsMoving) yield break;
 
                 if (resolveStepAsync != null)
                 {
@@ -236,6 +297,7 @@ namespace Game.Map
                             map, path, resolvedStepIndex, Data, Data.Members)
                     };
                     yield return resolveStepAsync(previous, next, outcome);
+                    if (!IsMoving) yield break;
                     // Data.Members is the SAME list `members` already points at — a reaction that
                     // destroyed every member (e.g. AA/air-strike wiping this army out) shrinks it
                     // in place, so the next loop iteration's members[0] lookup above must never
@@ -253,8 +315,7 @@ namespace Game.Map
             // Data.Hex once IsMoving is false, so IsMoving must still read true for the whole
             // duration of this call. Nothing else runs between here and onComplete returning
             // (no yield in between), so deferring the flip costs nothing.
-            onComplete?.Invoke();
-            IsMoving = false;
+            CompleteMovement();
         }
 
         // Computes the endpoint from the same path, terrain and shared movement rules the next
@@ -294,3 +355,4 @@ namespace Game.Map
         }
     }
 }
+

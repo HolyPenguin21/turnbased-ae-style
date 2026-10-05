@@ -746,7 +746,8 @@ namespace Game.Ai.V2
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
                 target.TargetHex, $"economy — {target.Kind}");
             HexCoord after = result.FinalHex;
-            bool recoveryArrived = (target.Kind == EconomyTaskKind.ReturnBuilder
+            bool recoveryArrived = result.StopReason != ExecutionStopReason.MoverLost
+                && (target.Kind == EconomyTaskKind.ReturnBuilder
                     || target.Kind == EconomyTaskKind.ReturnCollector)
                 && after.Equals(target.TargetHex);
             result.ReachedGoal = recoveryArrived;
@@ -774,7 +775,8 @@ namespace Game.Ai.V2
 
             // A battle or event can interrupt an otherwise valid transport step; it must be
             // settled by its domain owner before this delivery can be marked ready.
-            if (result.StopReason != ExecutionStopReason.BattleStarted
+            if (result.StopReason != ExecutionStopReason.MoverLost
+                && result.StopReason != ExecutionStopReason.BattleStarted
                 && result.StopReason != ExecutionStopReason.HexEventStarted
                 && ResearchProductionSystem.ActorStillQualifies(player, target.Hero,
                     target.FacilityHex, target.Mode)
@@ -827,12 +829,12 @@ namespace Game.Ai.V2
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
-            result.StopReason = pm.Kind == MissionKind.Development && trace.BattleOccurred
+            result.StopReason = army == null ? ExecutionStopReason.MoverLost
+                : pm.Kind == MissionKind.Development && trace.BattleOccurred
                 ? ExecutionStopReason.BattleStarted
                 : pm.Kind == MissionKind.Development && trace.HexEventOccurred
                     ? ExecutionStopReason.HexEventStarted
-                    : army == null ? ExecutionStopReason.MoverLost
-                        : result.StepsMoved > 0
+                    : result.StepsMoved > 0
                             ? ExecutionStopReason.StepCompleted : ExecutionStopReason.MoveRejected;
             result.NeedsReplan = army == null || result.StepsMoved == 0;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
@@ -885,4 +887,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

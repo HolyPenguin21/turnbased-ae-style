@@ -151,6 +151,7 @@ namespace Game.Ai.V2
                 result.FinalHex = final;
                 if (moved == null || !AviationRules.IsValidAirArmy(moved))
                 {
+                    AirSortieRegistry.Remove(player, sortie);
                     result.StopReason = ExecutionStopReason.MoverLost;
                     yield break;
                 }
@@ -210,9 +211,17 @@ namespace Game.Ai.V2
             ArmyData after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (after != null)
                 result.FinalHex = after.Hex;
+            else
+            {
+                result.FinalHex = wing != null ? wing.Hex : result.FinalHex;
+                AirSortieRegistry.Remove(player, sortie);
+                result.StopReason = ExecutionStopReason.MoverLost;
+                yield break;
+            }
             result.DurableRoleContinues = true;
             result.StopReason = ExecutionStopReason.StepCompleted;
         }
     }
 }
+
 

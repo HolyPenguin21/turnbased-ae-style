@@ -95,8 +95,8 @@ namespace Game.Ai.V2
                     result.ReachedGoal = true;
                     result.StopReason = ExecutionStopReason.ReachedGoal;
                 }
-                else if (returnLeg.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
                 else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
+                else if (returnLeg.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
                 else if (!returnLeg.Moved) result.StopReason = ExecutionStopReason.MoveRejected;
                 else result.StopReason = army.CurrentMovement > 0
                     ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
@@ -163,14 +163,18 @@ namespace Game.Ai.V2
             // it just moved — and the honest sighting store keeps owning what we know.
             bool destroyedInOurBattle = trace.BattleOccurred
                 && trace.WasDestroyedInOwnBattle(enemyId);
-            if (destroyedInOurBattle)
+            if (army == null)
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+            }
+            else if (destroyedInOurBattle)
             {
                 result.ReachedGoal = true;
                 result.StopReason = ExecutionStopReason.ReachedGoal;
             }
             else if (trace.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
             else if (trace.HexEventOccurred) result.StopReason = ExecutionStopReason.HexEventStarted;
-            else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
             else if (!moved) result.StopReason = ExecutionStopReason.MoveRejected;
             else result.StopReason = army.CurrentMovement > 0
                 ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
@@ -221,3 +225,4 @@ namespace Game.Ai.V2
             AiV2Util.ResolveArmy(player, armyId);
     }
 }
+

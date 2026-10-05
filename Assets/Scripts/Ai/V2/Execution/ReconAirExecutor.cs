@@ -337,7 +337,7 @@ namespace Game.Ai.V2
             if (er == null)
                 return;
             er.StateVersionAfter = V2StateVersion.Current;
-            if (player == null || pm == null || er.ReachedGoal)
+            if (player == null || pm == null || er.ReachedGoal || er.StopReason == ExecutionStopReason.MoverLost)
                 return;
             bool satisfied = ObjectiveSatisfied(player, pm);
             if (satisfied)
@@ -588,7 +588,7 @@ namespace Game.Ai.V2
                 bool moved = false;
                 control.CommandAttempted = true;
                 yield return MoveOne(player, ctx, air, d.Step,
-                    "V2 Air Recon — safe return", () => moved = true);
+                    "V2 Air Recon — safe return", () => moved = true, perMissionResult);
                 if (!moved)
                 {
                     control.StopReason = ExecutionStopReason.MoveRejected;
@@ -623,7 +623,7 @@ namespace Game.Ai.V2
             control.CommandAttempted = true;
             yield return MoveOne(player, ctx, air, d.Step,
                 $"V2 Air Recon — {assignment.Mode} {sortie.Phase} one-step live replan",
-                () => stepMoved = true);
+                () => stepMoved = true, perMissionResult);
             if (!stepMoved)
             {
                 control.StopReason = ExecutionStopReason.MoveRejected;
@@ -650,6 +650,15 @@ namespace Game.Ai.V2
             ExecutionStopReason stop)
         {
             ArmyData settled = AiV2Util.ResolveArmy(player, armyId);
+            if (settled == null)
+            {
+                ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
+                ReconAirSortieRegistry.Retire(player, armyId);
+                AirSortieRegistry.Remove(player, armyId);
+                stop = ExecutionStopReason.MoverLost;
+                control.StopReason = stop;
+                control.CanContinue = false;
+            }
             if (!control.MovedAny && settled != null
                 && AviationRules.IsOwnedAirfieldAt(settled.Hex, player))
                 ReconAirSortieRegistry.Retire(player, armyId);
@@ -702,7 +711,7 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator MoveOne(PlayerSetupData player, AiTurnContext ctx, ArmyData air,
-            HexCoord next, string reason, Action onMoved)
+            HexCoord next, string reason, Action onMoved, ExecutionResult perMissionResult = null)
         {
             HexCoord before = air.Hex;
             bool visitedBefore = VisionSystem.IsVisited(player, next);
@@ -714,6 +723,7 @@ namespace Game.Ai.V2
 
             ArmyData live = AiV2Util.ResolveArmy(player, air.Id);
             HexCoord after = live != null ? live.Hex : trace.EndHex;
+            if (perMissionResult != null) perMissionResult.FinalHex = after;
             if (!after.Equals(before))
                 onMoved?.Invoke();
 
@@ -797,4 +807,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
