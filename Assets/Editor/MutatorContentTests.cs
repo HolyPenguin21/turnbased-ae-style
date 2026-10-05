@@ -1,14 +1,13 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
 using Game.Cards;
 using Game.Players;
 using Game.UI;
 using NUnit.Framework;
 using UnityEditor;
+using static Game.EditorTests.AttachmentContentTestData;
 
 namespace Game.EditorTests
 {
@@ -16,60 +15,6 @@ namespace Game.EditorTests
     // The small YAML reader follows the same external-test precedent as AiGarrisonHeroTests.
     public sealed class MutatorContentTests
     {
-        private const string NeutralPath = "Assets/Cards/Neutral/CardCatalog_Neutral.asset";
-        private static string Root => new[] { ".", "src" }.Select(Path.GetFullPath)
-            .First(p => File.Exists(Path.Combine(p, NeutralPath)));
-        private static string Text(string path) => File.ReadAllText(Path.Combine(Root, path));
-        private static string Scalar(string block, string field) => Regex.Match(block,
-            @"(?m)^[ \t]+" + field + @":[ \t]*([^\r\n]*)$").Groups[1].Value.Trim();
-        private static int Number(string block, string field) => int.Parse(Scalar(block, field));
-        private static IEnumerable<string> Blocks(string path)
-        {
-            string cards = Regex.Match(Text(path),
-                @"(?ms)^  cards:\r?\n(.*?)(?=^  [A-Za-z]\w*:|\z)").Groups[1].Value;
-            return Regex.Split("\n" + cards, @"\r?\n  - id: ").Skip(1);
-        }
-        private static List<T> Packed<T>(string block, string field) where T : struct
-        {
-            string hex = Scalar(block, field);
-            var result = new List<T>();
-            for (int i = 0; i < hex.Length; i += 8)
-            {
-                byte[] bytes = Enumerable.Range(0, 4)
-                    .Select(n => Convert.ToByte(hex.Substring(i + n * 2, 2), 16)).ToArray();
-                result.Add((T)Enum.ToObject(typeof(T), BitConverter.ToInt32(bytes, 0)));
-            }
-            return result;
-        }
-        private static List<string> Tags(string block, string field)
-        {
-            string body = Regex.Match(block, @"(?m)^      " + field
-                + @":([^\r\n]*)(?:\r?\n      - [^\r\n]*)*").Value;
-            return Regex.Matches(body, @"(?m)^      - ([^\r\n]*)").Cast<Match>()
-                .Select(m => m.Groups[1].Value.Trim()).ToList();
-        }
-        private static CardDefinition Read(string block) => new CardDefinition
-        {
-            authoredKey = Scalar(block, "authoredKey"), displayName = Scalar(block, "displayName"),
-            cardType = (CardType)Number(block, "cardType"),
-            attachmentSlot = string.IsNullOrEmpty(Scalar(block, "attachmentSlot"))
-                ? AttachmentSlot.Equipment : (AttachmentSlot)Number(block, "attachmentSlot"),
-            faction = (Faction)Number(block, "faction"), apCost = Number(block, "apCost"),
-            activationApCost = Number(block, "activationApCost"), fate = Number(block, "fate"),
-            resourceCost = new ResourceCost { human = Number(block, "human"), energy = Number(block, "energy"),
-                materials = Number(block, "materials"), tech = Number(block, "tech") },
-            equipment = new EquipmentGrant
-            {
-                hostTypeTags = Packed<UnitTypeTag>(block, "hostTypeTags"),
-                hostKinds = Packed<EquipmentHostKind>(block, "hostKinds"),
-                clearAbilityFamilies = Packed<AbilityFamily>(block, "clearAbilityFamilies"),
-                removeAbilities = Tags(block, "removeAbilities"), addAbilities = Tags(block, "addAbilities"),
-                statChanges = Regex.Matches(block,
-                    @"- stat: (\d+)\s+amount: (-?\d+)\s+isOverride: (\d+)").Cast<Match>()
-                    .Select(m => new EquipmentStatChange { stat = (EquipmentStat)int.Parse(m.Groups[1].Value),
-                        amount = int.Parse(m.Groups[2].Value), isOverride = m.Groups[3].Value != "0" }).ToList(),
-            },
-        };
         private static CardDefinition Mutator(string slug) => Blocks(NeutralPath).Select(Read)
             .Single(c => c.authoredKey == "neutral.mutator." + slug);
         private static IEnumerable<CardDefinition> Mutators() => Blocks(NeutralPath).Select(Read)
@@ -206,7 +151,7 @@ namespace Game.EditorTests
         {
             var neural = Mutator("neural-accelerator");
             string face = EquipmentCardText.CardFace(neural, null);
-            Assert.That(face, Does.Contain("Bio required").And.Contain("Unit").And.Contain("Initiative 1").And.Contain("Activation AP -1"));
+            Assert.That(face, Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1").And.Contain("Activation AP -1"));
             Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Does.Contain("Activation AP -1"));
             Assert.That(EquipmentCardText.CardFace(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);

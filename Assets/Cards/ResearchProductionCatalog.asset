@@ -67,9 +67,75 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.bio.heavy-mg
     factionRestriction: 2
+  - cardKey: neutral.equipment.bio.plasma-gun
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.ballistic-shield
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.ceramic-vest
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.assault-rifle-kit
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.marksman-rifle
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.shotgun
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.grenade-launcher
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.shock-rifle
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.incendiary-rifle
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.rail-rifle
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.twin-smg
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.portable-mortar
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.recoil-cannon
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.aa-launcher
+    factionRestriction: 2
   - cardKey: neutral.equipment.mechanical.armor-plate
+    factionRestriction: 2
+  - cardKey: neutral.equipment.mechanical.reinforced-chassis
+    factionRestriction: 2
+  - cardKey: neutral.equipment.mechanical.servo-actuators
+    factionRestriction: 2
+  - cardKey: neutral.equipment.mechanical.ceramic-plating
+    factionRestriction: 2
+  - cardKey: neutral.equipment.mechanical.reactive-armor
+    factionRestriction: 2
+  - cardKey: neutral.equipment.mechanical.nuclear-engine
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.turbocharger
     factionRestriction: 2
   - cardKey: neutral.equipment.armored.artillery-cannon
     factionRestriction: 2
+  - cardKey: neutral.equipment.armored.at-vh-launcher
+    factionRestriction: 2
   - cardKey: neutral.equipment.armored.double-barrel
+    factionRestriction: 2
+  - cardKey: neutral.equipment.armored.plasma-cannon
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.autocannon
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.he-cannon
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.flame-projector
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.rail-cannon
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.shock-projector
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.aa-mount
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.dozer-blade
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.siege-ram
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.spiked-ram
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.mortar-rack
+    factionRestriction: 2
+  - cardKey: neutral.equipment.vehicle.assault-conversion-kit
     factionRestriction: 2

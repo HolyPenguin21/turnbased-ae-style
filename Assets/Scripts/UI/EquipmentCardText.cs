@@ -16,26 +16,28 @@ namespace Game.UI
         {
             if (grant?.hostTypeTags == null || grant.hostTypeTags.Count == 0)
                 return string.Empty;
-            return string.Join(", ", grant.hostTypeTags);
+            return string.Join(", ", grant.hostTypeTags.Select(t => t.ToString()).Distinct());
         }
 
-        // The unit types this equipment can be hung on — the class tags when the grant names
-        // specific ones ("Infantry, Vehicle"), otherwise the allowed host kind ("Any unit",
-        // "Any hero", "Any unit or hero"). Same ANY-match rule EquipmentSystem.CanAttachCore
-        // enforces. Empty only when the grant declares no host kinds at all.
+        // One compact compatibility line: authored tags followed by allowed host kinds.
+        // The tags retain EquipmentSystem's ANY-match semantics; this is presentation only.
         public static string AttachTargets(EquipmentGrant grant)
         {
             if (grant == null)
                 return string.Empty;
-            string tags = HostTags(grant);
-            if (!string.IsNullOrEmpty(tags))
-                return tags;
-            bool unit = grant.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Unit);
-            bool hero = grant.hostKinds != null && grant.hostKinds.Contains(EquipmentHostKind.Hero);
-            if (unit && hero) return "Any unit or hero";
-            if (unit) return "Any unit";
-            if (hero) return "Any hero";
-            return string.Empty;
+            return Compatibility(grant, false);
+        }
+
+        private static string Compatibility(EquipmentGrant grant, bool mutator)
+        {
+            var parts = new List<string>();
+            // Bio is mandatory for Mutator even when the authored tag list is unrestricted.
+            if (mutator) parts.Add(UnitTypeTag.Bio.ToString());
+            if (grant?.hostTypeTags != null)
+                parts.AddRange(grant.hostTypeTags.Select(t => t.ToString()));
+            if (grant?.hostKinds != null)
+                parts.AddRange(grant.hostKinds.Select(k => k.ToString()));
+            return string.Join(", ", parts.Distinct());
         }
 
         // Abilities the grant ADDS — abbreviated via GameConfig, raw PrettyName fallback when
@@ -91,13 +93,7 @@ namespace Game.UI
 
         private static string AttachmentTargets(CardDefinition equip)
         {
-            string targets = AttachTargets(equip.equipment);
-            if (equip.attachmentSlot != AttachmentSlot.Mutator)
-                return targets;
-            var kinds = equip.equipment?.hostKinds;
-            string hosts = kinds == null ? string.Empty
-                : string.Join(" or ", kinds.Select(k => k.ToString()));
-            return Join("Bio required", hosts);
+            return Compatibility(equip.equipment, equip.attachmentSlot == AttachmentSlot.Mutator);
         }
 
         // Unit badges cover Attack/Defense/HP/Move/Range. Initiative and activation AP
