@@ -677,8 +677,8 @@ namespace Game.Ai.V2
                     .OrderByDescending(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar))
                     .ThenByDescending(c => c.State.Demand.Value)
                     .ThenBy(c => (int)c.State.Demand.RequestingAxis)
-                    .ThenBy(c => c.State.Ordinal)
                     .ThenBy(c => c.Plan.StableKey, System.StringComparer.Ordinal)
+                    .ThenBy(c => c.State.Ordinal)
                     .First();
 
                 AxisDemand chosenDemand = selected.State.Demand;
@@ -738,7 +738,11 @@ namespace Game.Ai.V2
                     DevelopmentOutcomeTelemetry.RecordUpgrade(player, ctx.TurnNumber,
                         up.Executed, up.ChallengeWon, up.Attached);
                     AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
-                        + $"{chosenDemand.Explain} :: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
+                        + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
+                        + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
+                        + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
+                        + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
+                        + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
                     continue;
                 }
 

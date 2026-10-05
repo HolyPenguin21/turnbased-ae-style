@@ -22,7 +22,8 @@ namespace Game.Ai.V2
     //
     //  Each (mode, own base) site is in exactly one stage:
     //    READY    — facility built and staffed: every affordable Equipment offering, bound to its
-    //               best legal recipient. The operational card decision belongs to
+    //               best legal recipient for admission; Phase A retains live recipient alternatives.
+    //               The operational card decision belongs to
     //               StrategicCardEvaluator + the Phase-A portfolio (a built, staffed facility is sunk;
     //               no second investment-EV veto). Unit/Hero outputs of a ready facility are
     //               materialization chains (MaterializationChainEnumerator), not upgrades.
@@ -81,7 +82,7 @@ namespace Game.Ai.V2
         public int? RecipientArmyId;
         public string RecipientLabel;
 
-        // Equipment: marginal gain on the recipient (AiPower units). Deployable: projected net
+        // Equipment: signed marginal gain on the recipient (AiPower units). Deployable: projected net
         // value of the output, already discounted by the operator-generation chance.
         public float ExpectedGain;
         // Equipment only: the tactical share of ExpectedGain (Move/Range/AP/Command/roles, AiPower
@@ -142,7 +143,11 @@ namespace Game.Ai.V2
                     + $"stage={(facilityReady && actor != null ? "READY" : "PREPARE")} {reason}");
             }
 
-            result.Sort((a, b) => b.BaseValue.CompareTo(a.BaseValue));
+            result = result.OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => (int)o.Mode).ThenBy(o => o.FacilityHex.Q).ThenBy(o => o.FacilityHex.R)
+                .ThenBy(o => o.Card?.authoredKey, System.StringComparer.Ordinal)
+                .ThenBy(o => o.Generation?.CardKey, System.StringComparer.Ordinal)
+                .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).ToList();
             foreach (DevelopmentOpportunity op in result)
                 AiDebugLog.WriteDeduped(
                     $"op:{op.Mode}:{op.FacilityHex.Q},{op.FacilityHex.R}:{op.Card?.authoredKey}",
@@ -666,45 +671,39 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Live refresh before Phase A prices a READY upgrade: the operator's Fate may have
-        // changed since the opportunity was enumerated.
-        public static void Rescore(DevelopmentOpportunity op)
-        {
-            if (op?.Generation?.Hero == null)
-                return;
-            op.SuccessChance = ResearchProductionSystem.EstimateSuccessChance(
-                op.Generation.Hero, op.Card);
-            op.Generation.SuccessChance = op.SuccessChance;
-        }
-
         // The best legal recipient (hand card or deployed unit) for this Equipment output, by
         // StrategicCardEvaluator.EquipmentUpgradeValue. null when no recipient gains anything.
         private static DevelopmentOpportunity BestEquipmentOpportunity(ResearchProductionMode mode,
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag)
+            => EquipmentOpportunities(mode, facilityHex, equipment, successChance, generation,
+                snap, inv, player, root, hand, out diag)
+                .OrderByDescending(o => StrategicCardEvaluator.EquipmentUpgradeValue(o))
+                .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).FirstOrDefault();
+
+        // Keep recipient alternatives until the shared portfolio has checked competing chains.
+        // Re-enumeration also refreshes slot legality, signed deltas and matchup after each action.
+        internal static List<DevelopmentOpportunity> EquipmentOpportunities(ResearchProductionMode mode,
+            HexCoord facilityHex, CardDefinition equipment, float successChance,
+            GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag)
         {
+            var result = new List<DevelopmentOpportunity>();
             diag = "no equipment grant on the card";
             if (equipment?.equipment == null)
-                return null;
+                return result;
             CardData generatedPreview = ResearchProductionSystem.MintCard(equipment);
 
-            int handChecked = 0, mapChecked = 0, gainZero = 0, noNeed = 0;
+            int handChecked = 0, mapChecked = 0, noNeed = 0;
             string lastReject = null;
-            DevelopmentOpportunity best = null;
-            float bestSelectionValue = float.NegativeInfinity;
             void Consider(DevelopmentOpportunity cand, ArmyData army = null)
             {
-                if (cand.ExpectedGain <= 0f) { gainZero++; return; }
                 cand.MatchupFit = StrategicCardEvaluator.EquipmentMatchupFit(cand, army, snap);
                 float selection = StrategicCardEvaluator.EquipmentUpgradeValue(cand);
                 // A ground-combat upgrade that turns no known fight has no justified need.
                 if (selection <= 0f) { noNeed++; return; }
-                if (best == null || selection > bestSelectionValue)
-                {
-                    best = cand;
-                    bestSelectionValue = selection;
-                }
+                result.Add(cand);
             }
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
             DevelopmentOpportunity Make(DevRecipientKind kind, CardData card, UnitData unit,
@@ -715,7 +714,7 @@ namespace Game.Ai.V2
                 SuccessChance = successChance, Generation = generation,
                 RecipientKind = kind, RecipientCard = card, RecipientUnit = unit,
                 RecipientArmyId = armyId, RecipientLabel = label,
-                ExpectedGain = Mathf.Max(0f, delta.Total * powerUnit),
+                ExpectedGain = delta.Total * powerUnit,
                 TacticalGain = delta.Tactical * powerUnit,
             };
 
@@ -750,10 +749,14 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (best == null)
-                diag = $"hand {handChecked}, map {mapChecked}, zero-gain {gainZero}, no-need {noNeed}"
+            if (result.Count == 0)
+                diag = $"hand {handChecked}, map {mapChecked}, no-need {noNeed}"
                     + (lastReject != null ? $", last reject \"{lastReject}\"" : "");
-            return best;
+            return result;
         }
+
+        internal static string RecipientKey(DevelopmentOpportunity op) => op?.RecipientUnit != null
+            ? $"unit:{op.RecipientUnit.RuntimeId}"
+            : $"hand:{GenerationSource.StableCardKey(op?.RecipientCard)}";
     }
 }

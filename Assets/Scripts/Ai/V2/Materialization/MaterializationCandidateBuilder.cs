@@ -236,13 +236,23 @@ namespace Game.Ai.V2
             GenerationStep g = op?.Generation;
             if (g == null || reservation == null || !reservation.CanGenerateMore
                 || reservation.TriedGeneratorCards.Contains(g.CardKey)
-                || (excludeGenKeys != null && excludeGenKeys.Contains(g.CardKey))
-                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard))
-                || reservation.ClaimsDevelopmentOperatorCard(op.RecipientCard))
+                || (excludeGenKeys != null && excludeGenKeys.Contains(g.CardKey)))
                 return new List<MaterializationPlan>();
 
-            MaterializationPlan p = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
-            return p != null ? new List<MaterializationPlan> { p } : new List<MaterializationPlan>();
+            // Resolve the exact source anew: prior card plays may change operator eligibility,
+            // affordability or Fate. The demand identifies an output, not a frozen recipient.
+            GenerationStep live = GenerationSource.Enumerate(player, root, ctx, hand,
+                reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
+                .FirstOrDefault(x => x.CardKey == g.CardKey);
+            if (live == null) return new List<MaterializationPlan>();
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+            return DevelopmentOpportunityEvaluator.EquipmentOpportunities(live.Mode, live.FacilityHex,
+                    live.CardDef, live.SuccessChance, live, snap, inv, player, root, hand, out _)
+                .Where(x => x.RecipientCard == null ||
+                    ((excludeCards == null || !excludeCards.Contains(x.RecipientCard))
+                     && !reservation.ClaimsDevelopmentOperatorCard(x.RecipientCard)))
+                .Select(x => MaterializationPlanFactory.MakeDevelopmentUpgradePlan(x, live, demand.RequestingAxis))
+                .Where(x => x != null).ToList();
         }
 
         internal static MaterializationDeliveryAvailability OperationalDeliveryAvailabilityForDemand(
@@ -275,24 +285,25 @@ namespace Game.Ai.V2
 
             if (demand.Capability == CapabilityKind.CardUpgrade)
             {
-                DevelopmentOpportunityEvaluator.Rescore(demand.DevOpportunity);
-                if (demand.DevOpportunity == null)
-                    return new List<DemandCandidate>();
-                MaterializationPlan upgrade = candidates[0].plan;
                 // Investment EV explains whether constructing a facility/operator was justified;
                 // it is NOT a second operational veto once a legal, affordable chain exists.
                 // StrategicCardEvaluator alone prices the current card, and Phase A's existing
                 // portfolio solver decides whether that card should actually be played.
-                upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
-                    demand.DevOpportunity, upgrade, snap, player, root, ctx);
-                if (float.IsNaN(upgrade.Score) || float.IsNegativeInfinity(upgrade.Score))
-                    return new List<DemandCandidate>();
                 float devUrgency = DemandUrgencyPolicy.Bonus(demand);
-                float decision = upgrade.Score + devUrgency * GenerationChanceForDecision(upgrade);
-                return new List<DemandCandidate>
+                var upgrades = new List<DemandCandidate>();
+                foreach (var candidate in candidates)
                 {
-                    new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision),
-                };
+                    MaterializationPlan upgrade = candidate.plan;
+                    upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
+                        upgrade.DevelopmentUpgrade, upgrade, snap, player, root, ctx);
+                    if (float.IsNaN(upgrade.Score) || float.IsInfinity(upgrade.Score)) continue;
+                    float decision = upgrade.Score + devUrgency * GenerationChanceForDecision(upgrade);
+                    upgrades.Add(new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision));
+                }
+                // Do not deduplicate these by generator CardKey or cut to K: a lower-ranked
+                // recipient may be the only alternative disjoint from another demand.
+                return upgrades.OrderByDescending(x => x.DecisionScore)
+                    .ThenBy(x => x.Plan.StableKey, System.StringComparer.Ordinal).ToList();
             }
 
             int referenceMoveMax = 0;
@@ -385,6 +396,8 @@ namespace Game.Ai.V2
         // a different generation source does not.
         private static string ConsumptionSignature(MaterializationPlan p)
         {
+            if (p?.Kind == MaterializationChainKind.GenerateAttachUpgrade)
+                return p.StableKey;
             string k = p?.StableKey ?? "";
             int lastBar = k.LastIndexOf('|');
             return lastBar >= 0 ? k.Substring(0, lastBar) : k;

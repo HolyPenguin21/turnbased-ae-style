@@ -199,10 +199,10 @@ namespace Game.Ai.V2
                 _consumed.PopExternal(token);
         }
 
-        // Bounded max-total injective assignment over the active demands (<= maxDemandFulfillment
-        // ActionsPerTurn, each with <= phaseATopK options): choose one Worthwhile chain per demand
+        // Max-total injective assignment over the active demands: choose one Worthwhile chain per demand
         // (or none) so no hand card / generation source is used twice, maximising the total
-        // DecisionScore. Branching factor (K+1)^demandCount — trivial at K=3, count<=3.
+        // DecisionScore. Development retains recipient alternatives; an optimistic suffix bound
+        // limits search without deleting fallback recipients before conflict checking.
         //
         // The chosen portfolio must be JOINTLY feasible, not just
         // card-disjoint: the ONE per-turn generation attempt and the shared AP / H-E-M-T pools are
@@ -219,7 +219,30 @@ namespace Game.Ai.V2
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
             float bestSum = float.NegativeInfinity;
+            string bestKey = null;
             var acc = new Dictionary<DemandState, DemandCandidate>();
+            string AssignmentKey() => string.Join(";", acc.Select(x =>
+                $"{(int)x.Key.Demand.RequestingAxis}:{(int)x.Key.Demand.Capability}:{x.Value.Plan.StableKey}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+
+            // Recipient alternatives must not be pruned before checking conflicts. Bound the
+            // expanded search by the remaining generation budget, while ignoring other constraints
+            // for this optimistic bound; actual admission still belongs to JointFeasibility.
+            int generationLimit = Mathf.Max(0, genAttemptsRemaining);
+            var upper = new float[demands.Count + 1, generationLimit + 1];
+            for (int i = demands.Count - 1; i >= 0; i--)
+            {
+                float direct = 0f, generated = 0f;
+                foreach (var c in options[demands[i]].Where(c => c.Plan != null && c.Worthwhile))
+                {
+                    float value = WeightedDecisionScore(demands[i], c, radar);
+                    if (c.Plan.Generation == null) direct = Mathf.Max(direct, value);
+                    else generated = Mathf.Max(generated, value);
+                }
+                for (int g = 0; g <= generationLimit; g++)
+                    upper[i, g] = Mathf.Max(direct + upper[i + 1, g],
+                        g > 0 ? generated + upper[i + 1, g - 1] : 0f);
+            }
 
             // ARCH-02 §15/§57 — the shared JointFeasibility owns the physical
             // hand-card / generation-source / AP / H-E-M-T bookkeeping AND the recipient/hero/hand-
@@ -228,22 +251,27 @@ namespace Game.Ai.V2
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
                 options.Values.SelectMany(v => v).Select(c => c.Plan), enforceApPool: true);
 
-            void Rec(int i, float sum)
+            void Rec(int i, float sum, int generationsLeft)
             {
+                float bound = sum + upper[i, generationsLeft];
+                if (bound + Mathf.Max(0.0001f, Mathf.Abs(bound) * 0.00001f) < bestSum) return;
                 if (i == demands.Count)
                 {
-                    if (sum > bestSum || (sum == bestSum && acc.Count > best.Count))
+                    string key = AssignmentKey();
+                    if (sum > bestSum || (sum == bestSum && (acc.Count > best.Count
+                        || (acc.Count == best.Count && System.StringComparer.Ordinal.Compare(key, bestKey) < 0))))
                     {
                         bestSum = sum;
+                        bestKey = key;
                         best = new Dictionary<DemandState, DemandCandidate>(acc);
                     }
                     return;
                 }
                 DemandState d = demands[i];
-                Rec(i + 1, sum); // skip this demand
-                foreach (DemandCandidate c in options[d])
+                foreach (DemandCandidate c in options[d].OrderByDescending(c => c.DecisionScore)
+                    .ThenBy(c => c.Plan?.StableKey, System.StringComparer.Ordinal))
                 {
-                    if (!c.Worthwhile)
+                    if (c.Plan == null || !c.Worthwhile)
                         continue;
                     if (!jf.CardsDisjoint(c.Plan))
                         continue;
@@ -252,13 +280,15 @@ namespace Game.Ai.V2
                     JointFeasibility.Token token = jf.Push(c.Plan, c.FollowupAp);
 
                     acc[d] = c;
-                    Rec(i + 1, sum + WeightedDecisionScore(d, c, radar));
+                    Rec(i + 1, sum + WeightedDecisionScore(d, c, radar),
+                        generationsLeft - (c.Plan.Generation != null ? 1 : 0));
                     acc.Remove(d);
 
                     jf.Pop(token);
                 }
+                Rec(i + 1, sum, generationsLeft); // skip this demand
             }
-            Rec(0, 0f);
+            Rec(0, 0f, generationLimit);
             return best;
         }
 
@@ -297,16 +327,34 @@ namespace Game.Ai.V2
 
             float best = 0f;
 
-            void Rec(int i, float apSum)
+            int generationLimit = Mathf.Max(0, genAttemptsRemaining);
+            var upper = new float[demands.Count + 1, generationLimit + 1];
+            for (int i = demands.Count - 1; i >= 0; i--)
             {
+                float direct = 0f, generated = 0f;
+                foreach (var c in options[demands[i]])
+                {
+                    if (c.plan == null) continue;
+                    float value = Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp);
+                    if (c.plan.Generation == null) direct = Mathf.Max(direct, value);
+                    else generated = Mathf.Max(generated, value);
+                }
+                for (int g = 0; g <= generationLimit; g++)
+                    upper[i, g] = Mathf.Max(direct + upper[i + 1, g],
+                        g > 0 ? generated + upper[i + 1, g - 1] : 0f);
+            }
+
+            void Rec(int i, float apSum, int generationsLeft)
+            {
+                float bound = apSum + upper[i, generationsLeft];
+                if (bound + Mathf.Max(0.0001f, Mathf.Abs(bound) * 0.00001f) < best) return;
                 if (i == demands.Count)
                 {
                     if (apSum > best) best = apSum;
                     return;
                 }
                 DemandState d = demands[i];
-                Rec(i + 1, apSum); // this demand spends no card AP
-                foreach ((MaterializationPlan plan, float followupAp) c in options[d])
+                foreach (var c in options[d].OrderByDescending(c => c.plan?.ApCost + c.followupAp))
                 {
                     if (c.plan == null)
                         continue;
@@ -315,11 +363,13 @@ namespace Game.Ai.V2
                     if (!jf.Fits(c.plan, c.followupAp))
                         continue;
                     JointFeasibility.Token token = jf.Push(c.plan, c.followupAp);
-                    Rec(i + 1, apSum + Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp));
+                    Rec(i + 1, apSum + Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp),
+                        generationsLeft - (c.plan.Generation != null ? 1 : 0));
                     jf.Pop(token);
                 }
+                Rec(i + 1, apSum, generationsLeft); // this demand spends no card AP
             }
-            Rec(0, 0f);
+            Rec(0, 0f, generationLimit);
             return best;
         }
 

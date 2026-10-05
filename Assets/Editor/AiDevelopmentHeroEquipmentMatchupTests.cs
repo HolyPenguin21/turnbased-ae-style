@@ -14,6 +14,42 @@ namespace Game.EditorTests
     public sealed class AiDevelopmentHeroEquipmentMatchupTests
     {
         [Test]
+        public void StealthOnlyHeroMutatorAddsTheExistingStrategicTraitValue()
+        {
+            var host = new CardData(AttachmentSlotTests.Host(hero: true));
+            var genome = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            genome.equipment.statChanges.Clear();
+            genome.equipment.addAbilities.Add("Stealth4");
+            var delta = StrategicCardEvaluator.EquipmentDeltaParts(genome, host);
+            Assert.That(delta.Combat, Is.Zero);
+            Assert.That(delta.Tactical, Is.EqualTo(AiConfigV2.stratTraitMatchBonus * 0.5f).Within(0.0001f));
+            Assert.That(host.Mutator, Is.Null);
+            var deploy = new MaterializationPlan { BaseCardInHand = host, GeneratedEquipmentDef = genome };
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(deploy), Is.Zero,
+                "A deploy chain prices final Stealth in SynergyValue, so its attachment delta must not price it again");
+            host.Definition.grantedAbilities.Add("Stealth4");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(genome, host).Total, Is.Zero,
+                "Receiving an already-present trait is not a marginal upgrade");
+        }
+
+        [Test]
+        public void LosingStealthIsASignedTacticalLossForHeroesAndBodies()
+        {
+            var strip = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
+            strip.equipment.statChanges.Clear();
+            strip.equipment.clearAbilityFamilies.Add(AbilityFamily.Stealth);
+            foreach (bool hero in new[] { false, true })
+            {
+                var definition = AttachmentSlotTests.Host(hero: hero);
+                definition.grantedAbilities.Add("Stealth4");
+                var delta = StrategicCardEvaluator.EquipmentDeltaParts(strip, new CardData(definition));
+                Assert.That(delta.Combat, Is.Zero,
+                    "Stealth loss must not also be counted as a lost combat ability");
+                Assert.That(delta.Tactical, Is.LessThan(0f));
+            }
+        }
+
+        [Test]
         public void HeroRecipientDoesNotGetInventedCombatMatchupFromAttackEquipment()
         {
             var heroCard = new CardData(new CardDefinition
