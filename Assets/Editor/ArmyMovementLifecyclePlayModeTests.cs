@@ -148,7 +148,7 @@ namespace Game.EditorTests
             Assert.That(arrivals, Is.Zero);
             ArmyRegistry.MoveArmy(army, _last); // simulate a late completion callback
             Assert.That(AiV2Util.ResolveArmy(_owner, army.Id), Is.Null);
-            Assert.That(ArmyRegistry.AllAt(_origin), Does.Not.Contain(army));
+            Assert.That(ArmyRegistry.AllAt(_origin), Has.None.EqualTo(army));
             Assert.That(ArmyRegistry.AllAt(deathHex), Has.None.EqualTo(army));
             yield return null;
             Assert.That(controller == null, Is.True, "Unity destroyed-object semantics must be exercised");
@@ -418,7 +418,7 @@ namespace Game.EditorTests
             Assert.That(result.StopReason, Is.EqualTo(ExecutionStopReason.MoverLost));
             Assert.That(result.FinalHex, Is.EqualTo(_first));
             Assert.That(control.CanContinue, Is.False);
-            Assert.That(AirSortieRegistry.For(_owner), Does.Not.Contain(lostSortie));
+            Assert.That(AirSortieRegistry.For(_owner), Has.None.EqualTo(lostSortie));
             Assert.That(AirSortieRegistry.For(_owner), Does.Contain(otherSortie));
             yield return null;
         }
