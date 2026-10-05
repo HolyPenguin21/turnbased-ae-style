@@ -126,7 +126,20 @@ namespace Game.Ai.V2
         // The mission allocator does not read this: it is the owner that funds these operations.
         private static float OutstandingOperationContinuationAp(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx)
+            => OutstandingOperationContinuationAp(player, root, ctx, null, out _);
+
+        // Credit belongs only to an actor actually included in the bank's affordable prefix.
+        internal static float OperationContinuationCredit(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, int armyId)
         {
+            OutstandingOperationContinuationAp(player, root, ctx, armyId, out float credit);
+            return credit;
+        }
+
+        private static float OutstandingOperationContinuationAp(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, int? creditedArmyId, out float credit)
+        {
+            credit = 0f;
             if (player == null || root == null || ctx == null
                 || OperationContinuationWindow.IsSettled(player, ctx.TurnNumber))
                 return 0f;
@@ -164,6 +177,8 @@ namespace Game.Ai.V2
                 if (protectedAp + activation > available)
                     break;
                 protectedAp += activation;
+                if (id == creditedArmyId)
+                    credit = activation;
             }
             if (firstPreparationStep)
                 protectedAp += Mathf.Min(AiConfigV2.attackPreparationFirstStepApHold,

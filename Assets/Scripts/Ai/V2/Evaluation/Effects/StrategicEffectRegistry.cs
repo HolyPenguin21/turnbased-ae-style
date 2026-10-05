@@ -571,12 +571,13 @@ namespace Game.Ai.V2
             CardDefinition primary = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
             const int primaryBodySlots = 1;
 
-            switch (plan.Deploy.Kind)
+            switch (plan.AttackRefitPrimaryId.HasValue ? DeploymentKind.ExistingArmy : plan.Deploy.Kind)
             {
                 case DeploymentKind.ExistingArmy:
                 case DeploymentKind.Garrison:
                 {
-                    int wantId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
+                    int wantId = plan.AttackRefitPrimaryId
+                        ?? (plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1);
                     ArmySnapshot a = null;
                     if (snap?.Self?.Armies != null)
                         foreach (ArmySnapshot s in snap.Self.Armies)
@@ -594,7 +595,9 @@ namespace Game.Ai.V2
                     // Mirror the ArmyData domain rule: a hero rewrites capacity to its
                     // CommandRating ONLY as the FIRST hero — a second hero is appended after the
                     // existing commander and does NOT raise capacity (no auto TryReorderCommander).
-                    int cap = ArmyData.ComputeProjectedCapacity(nominalCapacity, destHasHero, primary);
+                    int cap = plan.AttackRefitPromotesCommander
+                        ? AiPower.ProjectMaterialization(plan).CommandRating
+                        : ArmyData.ComputeProjectedCapacity(nominalCapacity, destHasHero, primary);
                     freeSlots = System.Math.Max(0, cap - occupiedSlots - primaryBodySlots);
                     return;
                 }

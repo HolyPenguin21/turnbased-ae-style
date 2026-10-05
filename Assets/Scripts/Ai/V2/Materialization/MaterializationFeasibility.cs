@@ -51,7 +51,9 @@ namespace Game.Ai.V2
                 if (!PreflightIfExisting(player, root, hand, ctx, p))
                     continue;
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
-                AddIfFeasibleA(sink, p, demand, baseDef, stealthSurcharge, reservedFollowupAp,
+                AddIfFeasibleA(sink, p, demand, baseDef, stealthSurcharge,
+                    reservedFollowupAp - (demand.AttackLocalRefit && p.AttackRefitPrimaryId.HasValue
+                        ? apBudget.ActorFollowup(p.AttackRefitPrimaryId.Value) : 0f),
                     axisBudget, eps, root, hand, player, ctx, snapshot);
             }
             return sink;
@@ -146,10 +148,17 @@ namespace Game.Ai.V2
             if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
                 return;
 
+            if (demand.AttackLocalRefit
+                && (!AttackBaseRefitPolicy.Validate(p, snapshot, player, out var refitHandoff, out _)
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(p, player, ctx, refitHandoff, root)
+                    || !AttackBaseRefitPolicy.OnwardFunded(p, player, root, ctx, p.ApCost,
+                        AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
+                            p.AttackRefitPrimaryId.Value), refitHandoff)))) return;
             float activationAp = p != null && !upgrade
                 ? CapabilityQualityEvaluator.ProjectedActivationApCost(p)
                 : (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp);
-            float followupAp = noFollowup ? 0f
+            float followupAp = demand.AttackLocalRefit ? p.AttackRefitFollowupAp
+                : noFollowup ? 0f
                 : activationAp + stealthSurcharge + demand.MinimumFollowupAp;
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;

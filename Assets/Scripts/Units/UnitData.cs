@@ -17,7 +17,11 @@ namespace Game.Units
         // two copies of the same card may share both over a turn, and a transfer can reorder them.
         // AI V2 freezes this value into a Refit proposal and re-resolves the exact unit immediately
         // before execution. It is intentionally runtime-only; UnitData itself is runtime state.
-        public readonly int RuntimeId = Interlocked.Increment(ref _nextRuntimeId);
+        public readonly int RuntimeId;
+        public UnitData() : this(true) { }
+        private UnitData(bool live) => RuntimeId = live ? Interlocked.Increment(ref _nextRuntimeId) : -1;
+        // Read-only AI projection, never published to the game registries.
+        internal static UnitData CreateProjection() => new UnitData(false);
 
         public string Name;
         public PlayerSetupData Owner;

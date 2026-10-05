@@ -1587,6 +1587,12 @@ namespace Game.Ai.V2
             {
                 AttackIntent ai = intent.Attack;
                 ai.OperationStarted |= o.OperationStarted;
+                if (o.AttackIntermediateCaptured && o.AttackTarget.IsIntermediateAssault)
+                {
+                    ai.RefitBaseHex = o.AttackTarget.IntermediateTarget.Hex;
+                    ai.RefitCaptureTurn = turn;
+                    ai.RefitBattleStopTurn = o.AttackCaptureHadBattle ? turn : -1;
+                }
                 if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
                 {
                     ai.AssaultStarted = true;

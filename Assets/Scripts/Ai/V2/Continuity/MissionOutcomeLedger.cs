@@ -77,6 +77,8 @@ namespace Game.Ai.V2
         public AttackMissionTarget AttackTarget;
         // ATK §17 — this Attack actually spent its one opportunistic side strike this step.
         public bool AttackOpportunisticStrike;
+        public bool AttackIntermediateCaptured;
+        public bool AttackCaptureHadBattle;
         public bool HasActiveDefencePayload;
         public ActiveDefenceMissionTarget ActiveDefenceTarget;
         public bool HasEconomyPayload;
@@ -365,6 +367,8 @@ namespace Game.Ai.V2
                         o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
                             || e.StopReason == ExecutionStopReason.BattleStarted;
                         o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
+                        o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
+                        o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
                     }
                     if (o.MissionKind == MissionKind.Economy)
                         o.EconomyBuildCompleted = e.InfrastructureChanged;

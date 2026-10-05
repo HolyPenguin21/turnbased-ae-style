@@ -116,6 +116,20 @@ namespace Game.Ai.V2
                 return res;
             }
 
+            if (plan.AttackRefitPrimaryId.HasValue
+                && (snap == null || snap.TurnNumber != ctx.TurnNumber
+                    || !AttackBaseRefitPolicy.Validate(plan, snap, player, out var refitHandoff, out _)
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, ctx, refitHandoff, root)
+                    || !AttackBaseRefitPolicy.OnwardFunded(plan, player, root, ctx, plan.ApCost,
+                        AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
+                            plan.AttackRefitPrimaryId.Value), refitHandoff))
+                    || StrategicSpendability.SpendableAp(player, root, ctx, authority)
+                        < plan.ApCost + plan.AttackRefitFollowupAp))
+            {
+                res.PlacementStale = true;
+                res.FailReason = "Attack refit changed or no funded onward activation";
+                return res;
+            }
             int apStart = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
@@ -207,12 +221,24 @@ namespace Game.Ai.V2
             }
 
             CardPlayResult play = CardPlayExecutor.Play(player, root, hand, ctx, deployPlan);
+            res.CardDeployed = play.Deployed;
             res.ApSpent = apStart - root.ActionPoints;
             if (play.StateChanged)
                 res.StateChanged = true;
             // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
             // twice for the same chain; generation/attachment-only failures still bump above.
             StampResources(childAlreadyStamped: play.StateChanged);
+            if (play.Deployed && plan.AttackRefitPrimaryId.HasValue)
+            {
+                bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority);
+                res.ApSpent = apStart - root.ActionPoints;
+                res.Deployed = handed;
+                res.PlacementStale = !handed;
+                res.FailReason = handed ? null : "refit handoff rejected; deployed card remains at base";
+                StampResources(childAlreadyStamped: true);
+                res.ArmyCreated = play.ArmyCreated;
+                return res;
+            }
             res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)

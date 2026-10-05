@@ -95,6 +95,16 @@ namespace Game.Ai.V2
             };
             if (player == null || root == null || hand == null || apBudget == null || ctx == null)
                 return result;
+            // Local refits promise one real next activation. Reentry after movement, a phase
+            // change or base loss must not keep an obsolete actor promise alongside the live bank.
+            foreach (int id in apBudget.ActorFollowupIds.ToArray())
+            {
+                var primary = AiV2Util.ResolveArmy(player, id);
+                var attack = primary == null ? null
+                    : AttackBaseRefitPolicy.Resolve(player, id, primary.Hex, ctx.TurnNumber);
+                apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
+                    : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
+            }
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
@@ -642,7 +652,8 @@ namespace Game.Ai.V2
 
                         // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
                         // resource stock is a starvation signal for that resource (own state only).
-                        if (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon)
+                        if (!d.AttackLocalRefit
+                            && (d.RequestingAxis == DesireAxis.Aggression || d.RequestingAxis == DesireAxis.Recon))
                             foreach (ResourceType rt in ResourceBundle.All)
                                 if (root.GetResource(rt) <= 0f)
                                     ResourceStarvationRegistry.RecordBlock(player, rt);
@@ -767,6 +778,7 @@ namespace Game.Ai.V2
 
                 if (!play.Deployed)
                 {
+                    if (play.CardDeployed) result.CardsPlayed++;
                     AiDebugLog.Write($"[AI][V2]   strat.A — {chosenDemand}: {plan.Kind} {AiCardLog.Plan(plan)} "
                         + $"chain did not deploy ({play.FailReason}); gen={(play.Generated ? 1 : 0)} "
                         + $"att={(play.Attached ? 1 : 0)}");
@@ -794,7 +806,15 @@ namespace Game.Ai.V2
 
                 if (operationallyDelivered)
                 {
-                    apBudget.ReserveFollowup(selected.FollowupAp);
+                    if (chosenDemand.AttackLocalRefit)
+                    {
+                        var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
+                        var attack = AttackBaseRefitPolicy.Resolve(player, primary.Id, primary.Hex, ctx.TurnNumber);
+                        apBudget.ReserveActorFollowup(primary.Id,
+                            AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
+                    }
+                    else
+                        apBudget.ReserveFollowup(selected.FollowupAp);
                     selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                     result.CapabilityDeliveries++;
                 }
@@ -820,7 +840,7 @@ namespace Game.Ai.V2
             // A residual Phase A has structurally no way to deliver keeps no claim on hand cards
             // (AxisDemand.StructurallyUndeliverable): judged on the end-of-pass world, one read
             // per residual, AP/resource shortfalls excluded (that is timing, the claim stays).
-            foreach (DemandState state in states.Where(s => s.Remaining > 0f))
+            foreach (DemandState state in states.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
             {
                 if (!state.Demand.StructurallyUndeliverable)
                 {
@@ -836,9 +856,9 @@ namespace Game.Ai.V2
             // deliverable candidate — AC7) are still real unmet strategic need; carry them into the
             // same residual pool the reaction pass / Phase B read, so a later chance this turn is not
             // treated as if the need never existed.
-            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f))
+            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
-            foreach (DemandState cold in coldStates.Where(s => s.Remaining > 0f))
+            foreach (DemandState cold in coldStates.Where(s => s.Remaining > 0f && !s.Demand.AttackLocalRefit))
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
 
             if (result.CardsPlayed > 0)
@@ -908,6 +928,7 @@ namespace Game.Ai.V2
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 AttackFistArmyId = d.AttackFistArmyId,
                 AttackFistIsPreparationHost = d.AttackFistIsPreparationHost,
+                AttackLocalRefit = d.AttackLocalRefit,
                 AttackCoverageGap = d.AttackCoverageGap,
                 AttackCoverageTargetHex = d.AttackCoverageTargetHex,
                 DeliveryShape = d.DeliveryShape,

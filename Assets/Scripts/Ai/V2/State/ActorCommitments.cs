@@ -196,6 +196,7 @@ namespace Game.Ai.V2
                     {
                         c.Claim(actorId, preparing
                             ? ArmyMutationContract.PreparationHost()
+                            : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
                             : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"));
                         if (preparing)
                             c._preparationHostIds.Add(actorId);

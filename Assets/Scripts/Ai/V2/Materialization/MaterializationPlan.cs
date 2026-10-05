@@ -111,6 +111,12 @@ namespace Game.Ai.V2
         //  placement failure (result.PlacementStale) — it does NOT substitute a different
         //  placement. The caller refreshes the world and replans (ARCH-02 §35).
         public PlacementOption Deploy;
+        // Optional terminal same-hex handoff, owned by the existing Attack operation.
+        public int? AttackRefitPrimaryId;
+        public int AttackRefitCaptureTurn;
+        public bool AttackRefitPromotesCommander;
+        public string AttackRefitRoster;
+        public float AttackRefitFollowupAp;
 
         // --- whole-chain accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
         //  One cost description per plan, consumed identically by Phase A, Phase B, the reaction
@@ -140,6 +146,7 @@ namespace Game.Ai.V2
     {
         public bool StateChanged;
         public bool Deployed;
+        public bool CardDeployed;                 // physical play can succeed before a refit handoff fails
         public bool Generated;
         public bool GenerationAttempted;
         public bool Attached;
@@ -159,7 +166,7 @@ namespace Game.Ai.V2
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
             succeeded: Deployed, stateChanged: StateChanged, apSpent: ApSpent,
-            resourcesSpent: ResourcesSpent, played: Deployed, generated: Generated, attached: Attached,
+            resourcesSpent: ResourcesSpent, played: Deployed || CardDeployed, generated: Generated, attached: Attached,
             moved: false, created: ArmyCreated, needsReplan: PlacementStale,
             stateVersionAfter: StateVersionAfter, failReason: Deployed ? null : FailReason);
     }
