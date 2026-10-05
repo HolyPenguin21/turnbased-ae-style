@@ -149,7 +149,7 @@ namespace Game.EditorTests
             ArmyRegistry.MoveArmy(army, _last); // simulate a late completion callback
             Assert.That(AiV2Util.ResolveArmy(_owner, army.Id), Is.Null);
             Assert.That(ArmyRegistry.AllAt(_origin), Does.Not.Contain(army));
-            Assert.That(ArmyRegistry.AllAt(deathHex), Does.Not.Contain(army));
+            Assert.That(ArmyRegistry.AllAt(deathHex), Has.None.EqualTo(army));
             yield return null;
             Assert.That(controller == null, Is.True, "Unity destroyed-object semantics must be exercised");
         }
