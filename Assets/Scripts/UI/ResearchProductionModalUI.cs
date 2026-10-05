@@ -185,6 +185,7 @@ namespace Game.UI
         // Research/Production Challenge is running (_busy).
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             if (_busy || !IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
             Hide();

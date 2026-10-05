@@ -340,6 +340,7 @@ namespace Game.UI
         // on the same keypress.
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
 
@@ -635,6 +636,12 @@ namespace Game.UI
         // ArmyUnitCardUI.OnEndDrag snaps the dragged one back to where it was picked up.
         public bool TryDropUnit(ArmyUnitCardUI card, Vector2 screenPosition)
         {
+            // A pointer captured before opening the game menu still receives EndDrag.
+            if (UIFocusUtility.IsGameplayInputBlocked)
+            {
+                CancelReorderPreview();
+                return false;
+            }
             if (_currentArmy == null || card == null || card.Unit == null)
             {
                 CancelReorderPreview();

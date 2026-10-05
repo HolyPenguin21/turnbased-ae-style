@@ -137,6 +137,7 @@ namespace Game.Cameras
 
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) { _isDragging = false; return; }
             if (_panRoutine != null)
                 return;
 

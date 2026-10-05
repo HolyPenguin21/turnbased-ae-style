@@ -87,9 +87,9 @@ namespace Game.EditorTests
             yield return new WaitForSecondsRealtime(0.06f);
             Assert.AreEqual(clip, Music.clip); Assert.Greater(Music.timeSamples, position);
         }
-        [UnityTest] public IEnumerator AllFourPopupTypesOnlySoundOnOpeningEdge()
+        [UnityTest] public IEnumerator OtherThreePopupTypesOnlySoundOnOpeningEdge()
         {
-            foreach (Type type in new[] { typeof(PopupPanelUI), typeof(EventChoicePopupUI), typeof(AaChoicePopupUI), typeof(BattleContactPopupUI) })
+            foreach (Type type in new[] { typeof(EventChoicePopupUI), typeof(AaChoicePopupUI), typeof(BattleContactPopupUI) })
             {
                 var root = New(type.Name); root.SetActive(false);
                 var controller = root.AddComponent(type); Set(controller, "panelRoot", root);
@@ -101,6 +101,103 @@ namespace Game.EditorTests
                 yield return null; root.SetActive(true); RaiseVisibility(controller); Assert.IsTrue(UI.isPlaying);
                 root.SetActive(false); RaiseVisibility(controller); yield return null;
             }
+        }
+        [UnityTest] public IEnumerator PopupPanelOnlySoundsForHumanTurnIncludingAlreadyVisiblePanel()
+        {
+            var root = New("handoff-popup"); root.SetActive(false);
+            var popup = root.AddComponent<PopupPanelUI>(); Set(popup, "panelRoot", root);
+            SceneUIAudioBinder.BindCreatedRoot(popup); SceneUIAudioBinder.BindCreatedRoot(popup);
+            UI.Stop(); popup.ShowForOther(new Game.Players.PlayerSetupData { IsHuman = false });
+            Assert.IsFalse(UI.isPlaying); yield return null;
+            popup.ShowForOther(null); Assert.IsFalse(UI.isPlaying); yield return null;
+            popup.ShowHint("Hint"); Assert.IsFalse(UI.isPlaying); yield return null;
+            popup.ShowForHuman(new Game.Players.PlayerSetupData { IsHuman = true }, null);
+            Assert.IsTrue(UI.isPlaying); yield return null;
+            UI.Stop(); popup.Hide(); Assert.IsFalse(UI.isPlaying); yield return null;
+            popup.ShowHint("Another hint"); Assert.IsFalse(UI.isPlaying);
+        }
+        [UnityTest] public IEnumerator GameMenuBlocksAndRestoresUIAndExistingPopupState()
+        {
+            var es = EventSystem.current != null ? EventSystem.current : New("menu-events").AddComponent<EventSystem>();
+            var gameplay = New("gameplay-canvas"); gameplay.AddComponent<Canvas>();
+            var group = gameplay.AddComponent<CanvasGroup>(); group.interactable = false; group.blocksRaycasts = true;
+            var overlay = New("test-menu-canvas"); overlay.SetActive(false); overlay.AddComponent<Canvas>();
+            var menu = overlay.AddComponent<GameMenuPanelUI>();
+            var block = New("menu-block"); block.transform.SetParent(overlay.transform); block.SetActive(false);
+            var panel = New("menu-panel"); panel.transform.SetParent(block.transform);
+            var optionsRoot = New("menu-options"); optionsRoot.transform.SetParent(block.transform); optionsRoot.SetActive(false);
+            var options = optionsRoot.AddComponent<GameSettingsPanelUI>();
+            var slider = New("options-slider").AddComponent<Slider>(); slider.transform.SetParent(optionsRoot.transform);
+            Set(options, "masterVolumeSlider", slider);
+            var gear = New("gear").AddComponent<Button>(); gear.transform.SetParent(overlay.transform);
+            var opt = New("options-button").AddComponent<Button>(); opt.transform.SetParent(panel.transform);
+            var save = New("save-button").AddComponent<Button>(); save.transform.SetParent(panel.transform);
+            var load = New("load-button").AddComponent<Button>(); load.transform.SetParent(panel.transform);
+            var resume = New("resume-button").AddComponent<Button>(); resume.transform.SetParent(panel.transform);
+            Set(menu, "blockingRoot", block); Set(menu, "menuPanel", panel); Set(menu, "optionsPanel", options);
+            Set(menu, "gearButton", gear); Set(menu, "optionsButton", opt); Set(menu, "saveButton", save);
+            Set(menu, "loadButton", load); Set(menu, "continueButton", resume);
+            var turnRoot = New("test-turn"); turnRoot.SetActive(false);
+            var turn = turnRoot.AddComponent<Game.Turns.GameTurnController>(); Set(turn, "gameMenu", menu);
+            var popupRoot = New("existing-popup"); var popup = popupRoot.AddComponent<PopupPanelUI>();
+            Set(popup, "panelRoot", popupRoot); Set(turn, "popupPanel", popup);
+            overlay.SetActive(true); turnRoot.SetActive(true);
+            Assert.IsFalse(save.interactable); Assert.IsFalse(load.interactable);
+            gear.Select();
+            Assert.IsTrue(UIFocusUtility.IsGameplayShortcutBlocked); // Submit belongs to gear, never End Turn/Confirm.
+            Assert.IsFalse(UIFocusUtility.IsGameplayInputBlocked);
+            gear.onClick.Invoke();
+            Assert.IsTrue(menu.IsShowing); Assert.IsTrue(turn.InputBlocked); Assert.IsTrue(turn.CardDraggingBlocked);
+            Assert.IsFalse(group.interactable); Assert.IsFalse(group.blocksRaycasts);
+            Assert.IsTrue(UIFocusUtility.IsGameplayInputBlocked); Assert.AreEqual(opt.gameObject, es.currentSelectedGameObject);
+            opt.onClick.Invoke(); Assert.IsTrue(optionsRoot.activeSelf); Assert.IsFalse(panel.activeSelf);
+            Assert.AreEqual(slider.gameObject, es.currentSelectedGameObject);
+            options.Close(); Assert.IsTrue(panel.activeSelf); Assert.IsTrue(menu.IsShowing);
+            Assert.AreEqual(opt.gameObject, es.currentSelectedGameObject);
+            resume.onClick.Invoke(); Assert.IsFalse(menu.IsShowing);
+            Assert.IsFalse(group.interactable); Assert.IsTrue(group.blocksRaycasts);
+            Assert.IsTrue(turn.InputBlocked); // The previous popup still owns its independent block.
+            Assert.IsTrue(UIFocusUtility.IsGameplayInputBlocked); // Consume the closing frame.
+            popup.Hide(); Assert.IsFalse(turn.InputBlocked); Assert.IsFalse(turn.CardDraggingBlocked);
+            yield return null; Assert.IsFalse(UIFocusUtility.IsGameplayInputBlocked);
+            menu.OpenMenu(); overlay.SetActive(false);
+            Assert.IsFalse(menu.IsShowing); Assert.IsFalse(group.interactable); Assert.IsTrue(group.blocksRaycasts);
+        }
+        [UnityTest] public IEnumerator MenuBlocksArmyAndBattleDragsAlreadyCapturedByEventSystem()
+        {
+            var es = EventSystem.current != null ? EventSystem.current : New("drag-events").AddComponent<EventSystem>();
+            var gameplay = New("drag-gameplay"); gameplay.AddComponent<Canvas>();
+            var armyRoot = New("army-drag"); armyRoot.transform.SetParent(gameplay.transform);
+            var army = armyRoot.AddComponent<ArmyUnitCardUI>();
+            army.Setup(null, new Game.Units.UnitData());
+            var battleRoot = New("battle-drag"); battleRoot.transform.SetParent(gameplay.transform);
+            var image = battleRoot.AddComponent<Image>();
+            var battle = battleRoot.AddComponent<BattleGridCellUI>(); Set(battle, "artImage", image);
+            battle.Setup(null, new Game.Units.UnitData(), 0, 0, true);
+            var pointer = new PointerEventData(es) { position = Vector2.zero, delta = new Vector2(40f, 20f) };
+            army.OnBeginDrag(pointer); battle.OnBeginDrag(pointer);
+            Assert.IsTrue(army.IsDragging); Assert.IsTrue(battle.IsDragging);
+            var armyRect = (RectTransform)armyRoot.transform;
+            var armyPosition = armyRect.anchoredPosition;
+            var ghost = Get<RectTransform>(battle, "_ghost"); var ghostPosition = ghost.anchoredPosition;
+            var overlay = New("drag-menu"); var menu = overlay.AddComponent<GameMenuPanelUI>();
+            var block = New("drag-menu-block"); block.transform.SetParent(overlay.transform);
+            var panel = New("drag-menu-panel"); panel.transform.SetParent(block.transform);
+            Set(menu, "blockingRoot", block); Set(menu, "menuPanel", panel);
+            menu.OpenMenu();
+            // CanvasGroup changes do not revoke an EventSystem pointer's captured drag target.
+            army.OnDrag(pointer); battle.OnDrag(pointer);
+            Assert.AreEqual(armyPosition, armyRect.anchoredPosition);
+            Assert.AreEqual(ghostPosition, ghost.anchoredPosition);
+            army.OnEndDrag(pointer); battle.OnEndDrag(pointer);
+            Assert.IsFalse(army.IsDragging); Assert.IsFalse(battle.IsDragging);
+            Assert.IsNull(Get<RectTransform>(battle, "_ghost"));
+            army.OnBeginDrag(pointer); battle.OnBeginDrag(pointer);
+            Assert.IsFalse(army.IsDragging); Assert.IsFalse(battle.IsDragging);
+            menu.ContinueGame(); yield return null;
+            army.OnBeginDrag(pointer); battle.OnBeginDrag(pointer);
+            Assert.IsTrue(army.IsDragging); Assert.IsTrue(battle.IsDragging);
+            army.OnEndDrag(pointer); battle.OnEndDrag(pointer);
         }
         [UnityTest] public IEnumerator SceneUnloadReloadKeepsOneManagerAndBindings()
         {

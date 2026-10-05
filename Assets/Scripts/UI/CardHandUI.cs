@@ -343,7 +343,16 @@ namespace Game.UI
             _debugHand = null;
         }
 
-        private void OnCardDraggingBlockedChanged(bool _) => RefreshDrawButtonInteractable();
+        private void OnCardDraggingBlockedChanged(bool blocked)
+        {
+            if (blocked && UIFocusUtility.IsGameplayInputBlocked)
+            {
+                foreach (var card in _cards) if (card != null) card.CancelDrag();
+                _dragHexKnown = false;
+                Relayout(animated: false);
+            }
+            RefreshDrawButtonInteractable();
+        }
 
         // Advances every card's position/scale tween (see CardUI.TickAnimation) from ONE place
         // instead of a MonoBehaviour.Update on each card. Each call is a single early-out branch
@@ -365,6 +374,7 @@ namespace Game.UI
         // Unity's Input System has no key-pressed event, so this is a genuine per-frame poll.
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             TickCardAnimations();
 
             if (_pendingEquipment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)

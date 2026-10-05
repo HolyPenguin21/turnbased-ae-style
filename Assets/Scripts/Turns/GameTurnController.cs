@@ -99,6 +99,7 @@ namespace Game.Turns
         // (HexSelectionController.IsInputAllowed) and card dragging (CardHandUI.CanDragCards)
         // stop, the same way a turn handoff does, until dismissed.
         [SerializeField] private PopupPanelUI popupPanel;
+        [SerializeField] private GameMenuPanelUI gameMenu;
 
         // While the Army Viewer is open, map clicks need to stay locked out (folded into
         // InputBlocked below, same as popupPanel) — but card dragging must NOT be, since
@@ -162,7 +163,8 @@ namespace Game.Turns
         // of them raises VisibilityChanged, never on a timer/every frame.
         private void RecomputeBlockedState()
         {
-            bool newInputBlocked = (popupPanel != null && popupPanel.IsShowing)
+            bool newInputBlocked = (gameMenu != null && gameMenu.IsShowing)
+                || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
                 || (researchProductionModal != null && researchProductionModal.IsShowing)
@@ -172,7 +174,8 @@ namespace Game.Turns
                 || (eventRewardPopup != null && eventRewardPopup.IsShowing)
                 || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
                 || (aaChoicePopup != null && aaChoicePopup.IsShowing);
-            bool newCardDraggingBlocked = (popupPanel != null && popupPanel.IsShowing)
+            bool newCardDraggingBlocked = (gameMenu != null && gameMenu.IsShowing)
+                || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
                 // which take Unit/Hero and Facility drops respectively), so the hand must be
@@ -262,6 +265,7 @@ namespace Game.Turns
             StealthSystem.DebugLog = debugWatchAiTurns;
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
+            if (gameMenu != null) gameMenu.VisibilityChanged += RecomputeBlockedState;
             if (popupPanel != null) popupPanel.VisibilityChanged += RecomputeBlockedState;
             if (popupPanel != null) popupPanel.Hidden += ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
@@ -279,6 +283,7 @@ namespace Game.Turns
         private void OnDisable()
         {
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
+            if (gameMenu != null) gameMenu.VisibilityChanged -= RecomputeBlockedState;
             if (popupPanel != null) popupPanel.VisibilityChanged -= RecomputeBlockedState;
             if (popupPanel != null) popupPanel.Hidden -= ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
@@ -456,6 +461,7 @@ namespace Game.Turns
         // does.
         private void Update()
         {
+            if (UIFocusUtility.IsGameplayShortcutBlocked) return;
             if (endTurnButton == null || !endTurnButton.gameObject.activeInHierarchy || !endTurnButton.interactable)
                 return;
             if (Keyboard.current == null)

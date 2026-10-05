@@ -115,6 +115,7 @@ namespace Game.UI
 
         private void Update()
         {
+            if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             if (!IsShowing || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
             Hide();

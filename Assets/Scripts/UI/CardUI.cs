@@ -369,6 +369,7 @@ namespace Game.UI
         // that isn't part of a drag; deploying a card is still the drag gesture, untouched.
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (IsDragging || _hand == null || Data?.Definition == null)
                 return;
 
@@ -399,7 +400,7 @@ namespace Game.UI
 
         public void OnBeginDrag(PointerEventData eventData)
         {
-            _dragAllowed = _hand != null && _hand.CanDragCards();
+            _dragAllowed = !UIFocusUtility.IsGameplayInputBlocked && _hand != null && _hand.CanDragCards();
             if (!_dragAllowed)
                 return;
 
@@ -423,6 +424,7 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) { CancelDrag(); return; }
             if (!_dragAllowed)
                 return;
 
@@ -453,6 +455,7 @@ namespace Game.UI
 
         public void OnEndDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) { CancelDrag(); return; }
             if (!_dragAllowed)
                 return;
 
@@ -464,6 +467,16 @@ namespace Game.UI
             // was dragged clear of the hand, attempts to play it onto the map hex under
             // eventData.position — see CardHandUI.FinishDrop/TryPlayCard).
             _hand.FinishDrop(this, eventData.position);
+        }
+
+        public void CancelDrag()
+        {
+            if (!IsDragging) return;
+            _dragAllowed = false;
+            IsDragging = false;
+            _dragHoverValid = false;
+            if (_canvas != null) _canvas.overrideSorting = false;
+            SnapToHome();
         }
 
         // Called once by CardHandUI right after a drag ends. SetHome keeps updating

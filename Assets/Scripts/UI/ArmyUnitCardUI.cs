@@ -409,6 +409,7 @@ namespace Game.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             // Preview mode: a left click just reports the card back to the owning modal; no
             // detail view, no equipment-attach routing.
             if (_previewMode)
@@ -539,6 +540,7 @@ namespace Game.UI
         // OnPointerClick's detail view stays available regardless.
         public void OnBeginDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             if (_previewMode || Unit == null || (_modal != null && _modal.IsReadOnly))
                 return;
             IsDragging = true;
@@ -557,6 +559,7 @@ namespace Game.UI
 
         public void OnDrag(PointerEventData eventData)
         {
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
             // IsDragging (not just Unit == null) — OnBeginDrag refuses to even start a drag on
             // a read-only modal (see its own comment), but EventSystem still calls this every
             // frame regardless of whether OnBeginDrag actually did anything; without this check
