@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Collections.Generic;
+using System.Linq;
 using Game.Map;
 using UnityEngine;
 
@@ -24,6 +26,7 @@ namespace Game.Ai.V2
     {
         private readonly PlayerRoot _root;
         private float _followupReserved;
+        private readonly Dictionary<int, float> _actorFollowup = new Dictionary<int, float>();
 
         private PhaseAApBudget(PlayerRoot root) => _root = root;
 
@@ -31,7 +34,7 @@ namespace Game.Ai.V2
 
         // The player's live AP.
         public float Balance() => _root != null ? Mathf.Max(0f, _root.ActionPoints) : 0f;
-        public float ReservedFollowup() => Mathf.Max(0f, _followupReserved);
+        public float ReservedFollowup() => Mathf.Max(0f, _followupReserved + _actorFollowup.Values.Sum());
 
         // Live AP left after follow-up AP already promised to delivered capabilities. Not clamped:
         // a negative room must still reject a zero-cost admission check (cost > room).
@@ -41,6 +44,15 @@ namespace Game.Ai.V2
         {
             if (ap > 0f)
                 _followupReserved += ap;
+        }
+
+        // Several local refits serve one next activation, so replace its promise, never sum it.
+        internal float ActorFollowup(int id) => _actorFollowup.TryGetValue(id, out float ap) ? ap : 0f;
+        internal IEnumerable<int> ActorFollowupIds => _actorFollowup.Keys;
+        internal void ReserveActorFollowup(int id, float ap)
+        {
+            if (ap > 0f) _actorFollowup[id] = ap;
+            else _actorFollowup.Remove(id);
         }
 
         // Admission budget for a discrete Phase A chain: the whole live AP.

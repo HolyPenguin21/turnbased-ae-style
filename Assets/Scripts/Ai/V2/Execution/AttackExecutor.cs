@@ -38,6 +38,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+                i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == army.Id);
+            if (intent?.Attack?.RefitBattleStopTurn == ctx.TurnNumber)
+            {
+                result.StopReason = ExecutionStopReason.OutOfMovement;
+                yield break;
+            }
             AttackMissionTarget target = pm.AttackTarget;
             switch (target.Phase)
             {
@@ -388,6 +395,8 @@ namespace Game.Ai.V2
             if (intermediateCaptured)
             {
                 result.InfrastructureChanged = true;
+                result.AttackIntermediateCaptured = true;
+                result.AttackCaptureHadBattle = trace.BattleOccurred;
                 result.AttackOpportunisticStrike = true;
                 AiDebugLog.Write($"[AI][V2][Attack][Intermediate] decision=CAPTURED "
                     + $"base={target.IntermediateTarget.DiagnosticLabel} main={target.Target.DiagnosticLabel} "

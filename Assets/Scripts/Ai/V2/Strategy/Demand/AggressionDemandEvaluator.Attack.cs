@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -87,9 +88,22 @@ namespace Game.Ai.V2
                 // and worse defender news never waits for one.
                 if (ai.AssaultStarted)
                 {
+                    if (AttackBaseRefitPolicy.WindowOpen(snap, ai)
+                        && snap.Self.Hand?.Any(c => c?.Definition != null && !c.Definition.isAviation
+                            && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero)) == true)
+                    {
+                        TaskScore score = AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default;
+                        demands.Add(new AxisDemand { RequestingAxis = DesireAxis.Aggression,
+                            Capability = CapabilityKind.FieldCombatPower, DeliveryShape = CapabilityDeliveryShape.Any,
+                            AttackLocalRefit = true, AttackFistArmyId = ai.PrimaryArmyId,
+                            ConsumerMissionKind = MissionKind.Attack, ConsumerIntentKey = i.IntentKey,
+                            TargetHex = ai.RefitBaseHex, DesiredAmount = Mathf.Max(1f, snap.Self.AttackPeak),
+                            RequiredCapabilityPower = 0f, WorldTaskScore = score, Value = score.Value,
+                            Explain = $"Attack local refit #{ai.PrimaryArmyId} at {ai.RefitBaseHex}: available hand only" });
+                    }
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP intent={i.IntentKey} "
                         + $"target={ai.Target.DiagnosticLabel} primary={ai.PrimaryArmyId} "
-                        + $"phase={ai.Phase} reason=committed_assault_uses_existing_support_only");
+                        + $"phase={ai.Phase} reason=committed_assault_no_remote_reinforcement_request");
                     continue;
                 }
 

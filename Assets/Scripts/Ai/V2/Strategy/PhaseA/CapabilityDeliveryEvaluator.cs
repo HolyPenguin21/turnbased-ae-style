@@ -204,6 +204,15 @@ namespace Game.Ai.V2
             }
             else if (demand?.AttackFistArmyId.HasValue == true)
             {
+                if (demand.AttackLocalRefit)
+                {
+                    int primaryId = demand.AttackFistArmyId.Value;
+                    var host = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == primaryId);
+                    delivered = host != null && plan?.AttackRefitPrimaryId == primaryId
+                        ? Mathf.Max(1f, host.EffectiveArmyPower - (beforeSnap?.Self?.Armies?
+                            .FirstOrDefault(a => a.ArmyId == primaryId)?.EffectiveArmyPower ?? 0f)) : 0f;
+                    return delivered > 0f; // The durable Attack already owns its primary.
+                }
                 // This demand names one free strike army. A rise in global field inventory from
                 // an unrelated new container cannot close it; measure the exact recipient instead.
                 int id = demand.AttackFistArmyId.Value;

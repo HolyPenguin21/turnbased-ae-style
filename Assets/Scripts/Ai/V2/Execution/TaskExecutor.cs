@@ -58,6 +58,8 @@ namespace Game.Ai.V2
         // fact, like the handoff above: only Continuity may turn it into the durable intent's
         // turn-local marker, and nothing here re-derives it from the intent's mutated state.
         public bool AttackOpportunisticStrike;
+        public bool AttackIntermediateCaptured;
+        public bool AttackCaptureHadBattle;
         public bool AirSupportStrikeSucceeded;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;

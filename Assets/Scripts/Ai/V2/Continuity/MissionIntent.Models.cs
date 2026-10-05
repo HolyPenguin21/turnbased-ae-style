@@ -368,6 +368,10 @@ namespace Game.Ai.V2
         // Gather support movement starts the intent, but the force threshold remains live
         // until the primary actually starts the assault march.
         public bool AssaultStarted;
+        // Successful intermediate capture: two local hand-card service windows, no waiting phase.
+        public HexCoord? RefitBaseHex;
+        public int RefitCaptureTurn = -1;
+        public int RefitBattleStopTurn = -1;
         // T01 — opened by the mobilization trigger (AttackForceReadiness.MobilizationOpen):
         // a Gather around a host that may still be weak, hero-only or an empty shell on the own
         // starting Citadel. ActorCommitments keeps the host claimed while it is such a container;

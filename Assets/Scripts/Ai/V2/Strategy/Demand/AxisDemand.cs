@@ -131,6 +131,7 @@ namespace Game.Ai.V2
         // (ActorCommitments.IsPreparationHost): it may still be weak, hero-only or an empty shell,
         // so delivery checks the exact claimed container instead of a structural combat actor.
         public bool AttackFistIsPreparationHost;
+        public bool AttackLocalRefit;
         // The preparation host already clears the power bar but cannot damage every known
         // defender of AttackCoverageTargetHex (GroundCombatFeasibility.Clears' coverage): delivery
         // accepts only a card that lets the host damage more of them.
@@ -167,8 +168,8 @@ namespace Game.Ai.V2
         public MissionKind? ConsumerMissionKind;
         public CapabilityConsumerPurpose ConsumerPurpose;
 
-        internal bool UsesAttackContinuationAp => ConsumerMissionKind == MissionKind.Attack
-            || ConsumerPurpose == CapabilityConsumerPurpose.HeldBaseGarrison;
+        internal bool UsesAttackContinuationAp => !AttackLocalRefit && (ConsumerMissionKind == MissionKind.Attack
+            || ConsumerPurpose == CapabilityConsumerPurpose.HeldBaseGarrison);
 
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")

@@ -123,18 +123,23 @@ namespace Game.EditorTests
             Assert.That(intent.Attack.PrimaryArmyId, Is.EqualTo(7));
         }
 
-        [Test]
-        public void LocalCapture_PreservesMainOperationAndClearsPin()
+        [TestCase(false)] [TestCase(true)]
+        public void LocalCapture_PreservesMainOperationAndClearsPin(bool battle)
         {
             var intent = Intent(); intent.Attack.IntermediateTarget = Local;
             MissionIntentRegistry.GetOrCreate(Us).Put(intent);
             var outcome = Outcome(); outcome.OperationStarted = true; outcome.MadeProgress = true;
             outcome.AttackOpportunisticStrike = true;
+            outcome.AttackIntermediateCaptured = true;
+            outcome.AttackCaptureHadBattle = battle;
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
             Assert.That(MissionIntentRegistry.GetOrCreate(Us).All.Single().Status, Is.EqualTo(IntentStatus.Active));
             Assert.That(intent.Attack.Target, Is.EqualTo(Main));
             Assert.That(intent.Attack.IntermediateTarget.HasValue, Is.False);
             Assert.That(intent.Attack.LastOpportunisticStrikeTurn, Is.EqualTo(6));
+            Assert.That(intent.Attack.RefitBaseHex, Is.EqualTo(Base));
+            Assert.That(intent.Attack.RefitCaptureTurn, Is.EqualTo(6));
+            Assert.That(intent.Attack.RefitBattleStopTurn, Is.EqualTo(battle ? 6 : -1));
         }
 
         [Test]

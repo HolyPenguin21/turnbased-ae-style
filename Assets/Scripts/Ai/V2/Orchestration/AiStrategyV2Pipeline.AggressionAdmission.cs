@@ -98,7 +98,8 @@ namespace Game.Ai.V2
                 + $"|gen={generation}"
                 + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
-                + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}";
+                + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}"
+                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.TurnNumber)}";
         }
     }
 }

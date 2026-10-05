@@ -79,6 +79,10 @@ namespace Game.Ai.V2
         {
             if (p == null || demand == null)
                 return DeliveryAssessment.No(DeliveryFailureReason.MissingPlanOrDemand);
+            if (demand.AttackLocalRefit)
+                return p.AttackRefitPrimaryId == demand.AttackFistArmyId
+                    && AttackBaseRefitPolicy.Validate(p, snapshot, player, out _, out _)
+                    ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
             switch (demand.Capability)
             {
                 case CapabilityKind.ScoutCapability:
