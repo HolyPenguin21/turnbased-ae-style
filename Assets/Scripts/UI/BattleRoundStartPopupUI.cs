@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using Game.Combat;
 using Game.Map;
-using Game.Styles;
 using Game.Units;
 using TMPro;
 using UnityEngine;
@@ -22,6 +21,7 @@ namespace Game.UI
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text roundTitleText;
+        [SerializeField] private TMP_Text retreatMessageText;
         // Resolved per-owner by the caller (BattleScreenUI.ResolveCatalog) and passed in as two
         // separate sprites (see Show) — a Neutral-owned side shows CardCatalog_Neutral's own
         // logo instead of whichever faction the other side happens to be.
@@ -38,9 +38,6 @@ namespace Game.UI
 
         private Action _onStartRound;
         private Action _onRetreat;
-        // Captured on first use so the retreat-warning colour (see Show) can be reverted back to
-        // whatever the title's normal colour actually is, without hardcoding a second guess at it.
-        private Color? _defaultTitleColor;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
@@ -54,11 +51,8 @@ namespace Game.UI
 
         // canRetreat is false whenever there's no local human side to retreat, or that side's
         // army is a garrison (garrisons can never retreat, per the manual) — combined with the
-        // round > 1 gate below regardless. retreatingArmyName (optional): folded straight into
-        // the title instead of relying on AiЕhoughts_Text alone — that panel is easy to miss
-        // (buried behind this very popup, or timed out before the player gets back to it, per
-        // the user's own report), whereas this popup is something the player has to look at and
-        // dismiss before the grace round plays out, guaranteeing they see it in time to matter.
+        // round > 1 gate below regardless. Retreat notices and destination previews use their
+        // own text field so the round title and notice can be styled independently in Unity.
         public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender,
             Sprite attackerFactionLogo, Sprite defenderFactionLogo,
             bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null,
@@ -72,20 +66,14 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             if (roundTitleText != null)
+                roundTitleText.text = $"Round {round}";
+            if (retreatMessageText != null)
             {
-                if (_defaultTitleColor == null)
-                    _defaultTitleColor = roundTitleText.color;
-
-                bool retreating = !string.IsNullOrEmpty(retreatingArmyName);
-                string title = retreating
-                    ? $"Round {round} — {retreatingArmyName} is retreating this round!"
-                    : $"Round {round}";
-                if (!retreating && !string.IsNullOrEmpty(retreatPreview))
-                    title += $"\n{retreatPreview}";
-                roundTitleText.text = title;
-                // A plain colour change alone was still easy to miss folded into the title (see
-                // the user's own report) — worth calling out visually, not just via wording.
-                roundTitleText.color = retreating ? TechnicalColors.RetreatWarning : _defaultTitleColor.Value;
+                string message = !string.IsNullOrEmpty(retreatingArmyName)
+                    ? $"{retreatingArmyName} is retreating this round!"
+                    : retreatPreview ?? string.Empty;
+                retreatMessageText.text = message;
+                retreatMessageText.gameObject.SetActive(!string.IsNullOrEmpty(message));
             }
             if (retreatButton != null)
                 retreatButton.interactable = canRetreat && round > 1;
@@ -143,6 +131,11 @@ namespace Game.UI
 
         public void Hide()
         {
+            if (retreatMessageText != null)
+            {
+                retreatMessageText.text = string.Empty;
+                retreatMessageText.gameObject.SetActive(false);
+            }
             if (panelRoot != null)
                 panelRoot.SetActive(false);
         }
