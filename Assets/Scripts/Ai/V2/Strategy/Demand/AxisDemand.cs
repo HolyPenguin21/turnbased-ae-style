@@ -107,6 +107,9 @@ namespace Game.Ai.V2
         // Only non-null for the ONE selected challenger; never substitute site-only BuildValue.
         public float? EconomySwitchIncumbentValue;
         public int? EconomyPreferredBuilderArmyId;
+        // Preparation only: the exact own-base recipient whose ground body shortage prevents
+        // this build. It is not a delivered builder or a durable movement commitment.
+        public int? EconomyEscortArmyId;
         // Set only on an Economy "new hero" alternative (DemandLayer.PairedNewHeroAlternative and
         // the ready-loss fallback): what delivering this same build with the best READY hero costs,
         // in TaskScore units (delivery + mover opportunity). A new-hero chain is admitted only when
@@ -203,4 +206,5 @@ namespace Game.Ai.V2
             Normalized(demand) * AiConfigV2.stratHoldUrgencyMax;
     }
 }
+
 

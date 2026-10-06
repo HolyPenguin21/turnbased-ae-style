@@ -393,7 +393,9 @@ namespace Game.Ai.V2
         internal static string EconomyHeroPrerequisiteOwner(AxisDemand demand)
         {
             if (demand == null || demand.RequestingAxis != DesireAxis.Economy
-                || demand.Capability != CapabilityKind.Hero || !demand.TargetHex.HasValue
+                || (demand.Capability != CapabilityKind.Hero
+                    && !(demand.Capability == CapabilityKind.FieldCombatPower && demand.EconomyEscortArmyId.HasValue))
+                || !demand.TargetHex.HasValue
                 || demand.EconomyBuildResourceCost == null)
                 return null;
             return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
@@ -1090,3 +1092,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
