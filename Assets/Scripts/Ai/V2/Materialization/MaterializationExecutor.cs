@@ -200,6 +200,7 @@ namespace Game.Ai.V2
                 // deploy: EquipmentSystem.TryAttach does not touch the hand; the equipment card
                 // leaves it HERE, exactly once, only on a successful attach.
                 hand.RemoveCard(equipmentCard);
+                DevelopmentOutcomeTelemetry.RecordAttachment(player, ctx.TurnNumber, equipmentCard);
                 res.Attached = true;
                 res.StateChanged = true;
             }

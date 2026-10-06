@@ -778,7 +778,7 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
             if (plan == null) return 0f;
-            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost))
+            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost + plan.DeferredAttachmentAp))
                    + StrategicResourceCostValue(plan.ResCost, snap, spendableResource, player)
                    + ChainStepPenalty(plan.Kind);
         }

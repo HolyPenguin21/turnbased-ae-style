@@ -12,11 +12,11 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  StrategicManager Phase A calls this for a CardUpgrade demand — it runs the
     //  DevelopmentOpportunity the demand carries VERBATIM (it does not re-pick a card):
-    //      live recipient gates -> MaterializationExecutor.TryGenerate -> attach.
+    //      live future-recipient gates -> MaterializationExecutor.TryGenerate -> hand.
     //
     //  Starting the Research/Production Challenge costs card.apCost plus its ResourceCost and is
-    //  never refunded on loss. A win then pays the minted equipment's activation AP to attach it.
-    //  The caller debits the actual combined AP delta to the Development axis.
+    //  never refunded on loss. A win leaves the minted equipment in hand for a separately funded attachment.
+    //  The caller debits the actual creation AP delta to the Development axis.
     //
     //  Enemy-on-hex is enforced here (via ResearchProductionSystem.IsEligible) as the ONLY place
     //  it gates — a contested facility skips execution this turn but the opportunity stays scored.
@@ -25,9 +25,8 @@ namespace Game.Ai.V2
     {
         public bool Executed;        // the Challenge was rolled (AP/resources spent)
         public bool ChallengeWon;
-        public bool Attached;        // a won Challenge's card reached its recipient
         public bool StateChanged;
-        public float ApSpent;        // actual Challenge + successful attach AP
+        public float ApSpent;        // actual Challenge AP
         public string Detail = "";
 
         public static DevUpgradeResult Skip(string why) => new DevUpgradeResult { Detail = why };
@@ -47,21 +46,19 @@ namespace Game.Ai.V2
                 || root == null || hand == null || ctx == null)
                 return DevUpgradeResult.Skip("missing opportunity / plan / args");
 
-            // Validate the recipient with a created-card preview: generation already pays the
-            // ResourceCost, therefore attachment must test activation AP and zero resources.
-            CardData preview = ResearchProductionSystem.MintCard(op.Card);
+            // Validate a useful future recipient without demanding its attachment AP today.
             switch (op.RecipientKind)
             {
                 case DevRecipientKind.HandCard:
                     if (op.RecipientCard == null || hand.Hand == null || !hand.Hand.Contains(op.RecipientCard)
-                        || !EquipmentSystem.CanAttach(preview, op.RecipientCard, root, out _))
+                        || !EquipmentSystem.CanAttachPreview(op.Card, op.RecipientCard, out _))
                         return DevUpgradeResult.Skip("recipient_gone");
                     break;
                 case DevRecipientKind.GarrisonUnit:
                 case DevRecipientKind.FieldUnit:
                     if (op.RecipientUnit == null || op.RecipientUnit.IsPrisoner
                         || !UnitOnMap(player, op.RecipientUnit)
-                        || !EquipmentSystem.CanAttach(preview, op.RecipientUnit, root, out _))
+                        || !EquipmentSystem.CanAttachPreview(op.Card, op.RecipientUnit, out _))
                         return DevUpgradeResult.Skip("recipient_gone");
                     break;
                 default:
@@ -70,22 +67,23 @@ namespace Game.Ai.V2
 
             int challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
             int attachAp = Mathf.Max(0, op.Card.activationApCost);
-            int completeAp = challengeAp + attachAp;
+            // ApCost is THIS stage. The full prospective score still prices the deferred attach.
             if (apBudget != null)
             {
                 float axisRoom = apBudget.UnreservedBalance();
-                if (completeAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
+                if (challengeAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return DevUpgradeResult.Skip(
-                        $"axis_budget {axisRoom:0.##} < challenge+attach {completeAp}");
+                        $"axis_budget {axisRoom:0.##} < creation {challengeAp}");
             }
-            if (!root.CanSpendActionPoints(completeAp))
-                return DevUpgradeResult.Skip("no_ap_for_challenge_and_attach");
+            if (!root.CanSpendActionPoints(challengeAp))
+                return DevUpgradeResult.Skip("no_ap_for_creation");
 
-            // This branch does not call MaterializationExecutor.Execute: it calls TryGenerate
-            // directly after recipient admission. Protect its FULL canonical plan just as the
-            // regular GenerateDeploy path does, before the irreversible Challenge payment.
+            // Protect the canonical creation-stage plan before irreversible Challenge payment.
             // PlanFactory owns ApCost/ResCost; no parallel resource calculator or new ledger.
             if (plan == null || plan.Kind != MaterializationChainKind.GenerateAttachUpgrade
+                || plan.ApCost != challengeAp || plan.DeferredAttachmentAp != attachAp
+                || DevelopmentOpportunityEvaluator.PendingEquipmentCovers(op, hand, snap,
+                    CapabilityInventory.Build(snap, player, null))
                 || !StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player))
                 return DevUpgradeResult.Skip("upgrade_chain_no_longer_spendable");
 
@@ -109,34 +107,16 @@ namespace Game.Ai.V2
                 };
             }
 
-            CardData minted = generated.Minted;
-            bool attached;
-            string attachDetail;
-            if (op.RecipientKind == DevRecipientKind.HandCard)
-                attached = EquipmentSystem.TryAttach(minted, op.RecipientCard, root, out attachDetail);
-            else
-                attached = EquipmentSystem.TryAttach(minted, op.RecipientUnit, root, out attachDetail);
-
-            // Mint always enters the hand at the canonical generation boundary. It leaves only
-            // after a successful attachment; a stale recipient/affordability failure preserves it
-            // for later Phase-B use instead of destroying a won card.
-            if (attached)
-                hand.RemoveCard(minted);
-            if (generated.StateChanged || attached)
-                V2StateVersion.Bump();
-
+            // Minting already added the paid card to the normal hand. Hand attachment is a
+            // separate stage owned by NonCombatCardPlayer; it reselects a useful legal recipient
+            // from the settled world, this turn if affordable or on a later turn.
+            if (generated.StateChanged) V2StateVersion.Bump();
             return new DevUpgradeResult
             {
-                Executed = true,
-                ChallengeWon = true,
-                Attached = attached,
-                StateChanged = generated.StateChanged || attached,
+                Executed = true, ChallengeWon = true, StateChanged = generated.StateChanged,
                 ApSpent = apBefore - root.ActionPoints,
-                Detail = attached
-                    ? $"Challenge won, attached '{minted.Definition?.displayName}' -> {op.RecipientLabel}"
-                        + (wasHiddenHero ? " [hero revealed]" : "")
-                    : $"Challenge won, attach failed ({attachDetail}) — card retained in hand"
-                        + (wasHiddenHero ? " [hero revealed]" : ""),
+                Detail = $"Challenge won, '{generated.Minted?.Definition?.displayName}' retained in hand; attachment pending"
+                    + (wasHiddenHero ? " [hero revealed]" : ""),
             };
         }
 

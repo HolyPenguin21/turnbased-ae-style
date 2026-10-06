@@ -20,7 +20,7 @@ namespace Game.Ai.V2
     //                           attachment of the OTHER (existing) component -> deploy
     //
     //  StrategicManager scores the projected END RESULT of the whole chain against a Demand
-    //  (Phase A) or FutureUtility (Phase B), reserves the whole chain's cost, then executes it
+    //  (Phase A) or FutureUtility (Phase B), reserves the current stage's cost, then executes it
     //  through the canonical gameplay APIs via MaterializationExecutor.
     // ===========================================================================================
     public enum MaterializationChainKind
@@ -98,8 +98,8 @@ namespace Game.Ai.V2
         public CardDefinition GeneratedEquipmentDef;
 
         // GenerateAttachUpgrade stays in the same plan/portfolio contract but strengthens an
-        // existing host instead of deploying a body. The exact DevelopmentOpportunity is frozen
-        // by Objectives; execution consumes it verbatim.
+        // existing host instead of deploying a body. The exact DevelopmentOpportunity supplies
+        // the creation stage's intended recipient; hand attachment re-evaluates it after minting.
         public DevelopmentOpportunity DevelopmentUpgrade;
         public CardData UpgradeTargetCard;
         public UnitData UpgradeTargetUnit;
@@ -118,12 +118,15 @@ namespace Game.Ai.V2
         public string AttackRefitRoster;
         public float AttackRefitFollowupAp;
 
-        // --- whole-chain accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
+        // --- current-stage accounting (ARCH-02 §13 — the canonical StrategicActionCost) -------------
         //  One cost description per plan, consumed identically by Phase A, Phase B, the reaction
         //  closure and the portfolio solver. AP = ApCost; Human/Energy/Materials/Tech = ResCost;
         //  GenerationAttempts = (Generation != null ? 1 : 0); HandSlotPeak = HandSlotsNeededAtPeak.
         //  No layer recomputes a "slightly different" cost of its own.
-        public float ApCost;                      // Challenge + CreateArmy + attach + deploy AP
+        public float ApCost;                      // current stage: Challenge / CreateArmy / attach / deploy AP
+        // GenerateAttachUpgrade's remaining attachment stage: priced in prospective utility,
+        // never funded from today's bank. The won card itself persists in the normal hand.
+        public float DeferredAttachmentAp;
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // generated output is cap-exempt; currently 0
 
