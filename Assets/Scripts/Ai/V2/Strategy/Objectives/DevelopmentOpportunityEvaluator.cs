@@ -305,12 +305,9 @@ namespace Game.Ai.V2
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
             UnitData remote = null;
-            int? remoteArmyId = null;
+            ArmyData remoteArmy = null;
             int remoteTravel = int.MaxValue;
             float remoteCost = float.PositiveInfinity;
-            // Raw facts of the chosen operator walk, priced once by the world-task score.
-            float remoteActionAp = 0f, remoteActivationNow = 0f;
-            int remoteEtaTurns = 0;
             if (actor == null && ctx.Map != null)
             {
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -343,20 +340,15 @@ namespace Game.Ai.V2
                     // The walk's real AP (container, activation now, re-activation on every
                     // further turn of the march) at the one price; the live AP envelope is
                     // recalculated in Provisioning, not here.
-                    int walkTurns = Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, candidate.MoveMax)));
-                    float cost = ActionPrice.ToCardScore(
-                        (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f)
-                        + (army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost)
-                        + ActionPrice.RecurringAp(candidate.ActivationApCost, walkTurns));
+                    var delivery = OperatorDeliveryFacts(army, candidate, route);
+                    float cost = ActionPrice.ToCardScore(delivery.ActionAp + delivery.ActivationNow
+                        + ActionPrice.RecurringAp(delivery.RecurringActivationAp, delivery.EtaTurns));
                     if (cost >= remoteCost)
                         continue;
                     remote = candidate;
-                    remoteArmyId = army.Id;
+                    remoteArmy = army;
                     remoteTravel = route;
                     remoteCost = cost;
-                    remoteActionAp = army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f;
-                    remoteActivationNow = army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost;
-                    remoteEtaTurns = Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, candidate.MoveMax)));
                 }
                 if (operatorCard != null && remote != null)
                 {
@@ -364,7 +356,11 @@ namespace Game.Ai.V2
                         + StrategicCardEvaluator.StrategicResourceCostValue(
                             operatorCard.EffectivePlayResourceCost, snap);
                     if (handCost <= remoteCost)
+                    {
                         remote = null;
+                        remoteArmy = null;
+                        remoteTravel = 0;
+                    }
                     else
                         operatorCard = null;
                 }
@@ -472,8 +468,11 @@ namespace Game.Ai.V2
                 > StrategicSpendability.SpendableAmount(player, root, ctx, t)).ToList();
             List<ResourceType> stageClosed = DevelopmentInvestmentGate.ClosedResources(
                 player, snap.TurnNumber, stageCost);
-            float operatorDisplaced = remoteArmyId.HasValue
-                ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmyId.Value) : 0f;
+            // Derive all walk facts from the selected witness AFTER hand-vs-map selection.
+            // Discarded map candidates must contribute neither delivery nor displacement.
+            var chosenDelivery = OperatorDeliveryFacts(remoteArmy, remote, remoteTravel);
+            float operatorDisplaced = remoteArmy != null
+                ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmy.Id) : 0f;
             ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
             // The facility and its operator are a one-time investment the site then reuses for
             // every later Challenge; one output carries only its share of that investment.
@@ -511,8 +510,8 @@ namespace Game.Ai.V2
                     ? outputChance * StrategicCardEvaluator.EquipmentUpgradeValue(op)
                     : outputChance * forceNeed.Total * ForceBodies(card);
                 op.WorldTaskScore = BuildDevelopmentScore(amplificationBodies,
-                    remoteActionAp, remoteActivationNow,
-                    remote != null ? remote.ActivationApCost : 0f, remoteEtaTurns, operatorDisplaced);
+                    chosenDelivery.ActionAp, chosenDelivery.ActivationNow,
+                    chosenDelivery.RecurringActivationAp, chosenDelivery.EtaTurns, operatorDisplaced);
                 if (op.BaseValue > bestValue)
                 {
                     bestValue = op.BaseValue;
@@ -539,8 +538,8 @@ namespace Game.Ai.V2
                 op.PreparationOperatorCard = operatorCard;
                 op.PreparationOperatorGeneration = generatedOperator;
                 op.PreparationExistingHero = remote;
-                op.PreparationSourceArmyId = remoteArmyId;
-                op.PreparationTravelCost = remoteTravel;
+                op.PreparationSourceArmyId = remoteArmy?.Id;
+                op.PreparationTravelCost = remote != null ? remoteTravel : 0;
                 op.Explain = $"{mode} @({hex.Q},{hex.R}) for {card.displayName} -> "
                     + $"{op.RecipientLabel}; task={op.BaseValue:0.##} "
                     + $"amplify={op.WorldTaskScore.ForceAmplification:0.##} "
@@ -596,6 +595,19 @@ namespace Game.Ai.V2
             materials = costs.Sum(c => c?.Get(ResourceType.Materials) ?? 0),
             tech = costs.Sum(c => c?.Get(ResourceType.Tech) ?? 0),
         };
+
+        // A field operator moves with its whole army; a garrison hero is extracted alone.
+        // Null is the selected hand/local/generated operator, with no delivery investment.
+        internal static (float ActionAp, float ActivationNow, float RecurringActivationAp, int EtaTurns)
+            OperatorDeliveryFacts(ArmyData army, UnitData hero, int route)
+        {
+            if (army == null || hero == null) return default;
+            int activation = army.IsGarrison ? hero.ActivationApCost : army.ActivationApCost;
+            int movement = army.IsGarrison ? hero.MoveMax : army.MaxMovement;
+            return (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f,
+                army.HasActivatedThisTurn ? 0f : activation, activation,
+                Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, movement))));
+        }
 
         private static string ResourceList(IEnumerable<ResourceType> types) =>
             string.Concat(ResourceBundle.All.Where(types.Contains)
@@ -735,7 +747,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag)
         {
             List<DevelopmentOpportunity> recipients = EquipmentOpportunities(mode, facilityHex,
-                equipment, successChance, generation, snap, inv, player, root, hand, out diag);
+                equipment, successChance, generation, snap, inv, player, root, hand, out diag, futureAttachment: true);
             DevelopmentOpportunity best = recipients
                 .OrderByDescending(o => StrategicCardEvaluator.EquipmentUpgradeValue(o))
                 .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).FirstOrDefault();
@@ -751,7 +763,7 @@ namespace Game.Ai.V2
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag,
-            CardData attachmentCard = null)
+            CardData attachmentCard = null, bool futureAttachment = false)
         {
             var result = new List<DevelopmentOpportunity>();
             diag = "no equipment grant on the card";
@@ -792,7 +804,10 @@ namespace Game.Ai.V2
                     if (c?.Definition == null) continue;
                     if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
                     handChecked++;
-                    if (!EquipmentSystem.CanAttach(generatedPreview, c, root, out string why))
+                    bool legal = futureAttachment
+                        ? EquipmentSystem.CanAttachPreview(equipment, c, out string why)
+                        : EquipmentSystem.CanAttach(generatedPreview, c, root, out why);
+                    if (!legal)
                     { lastReject = why; continue; }
                     StrategicCardEvaluator.EquipmentDelta gain =
                         StrategicCardEvaluator.EquipmentDeltaParts(equipment, c, snap, inv);
@@ -807,7 +822,10 @@ namespace Game.Ai.V2
                 {
                     if (u == null || u.IsPrisoner) continue;
                     mapChecked++;
-                    if (!EquipmentSystem.CanAttach(generatedPreview, u, root, out string whyU))
+                    bool legal = futureAttachment
+                        ? EquipmentSystem.CanAttachPreview(equipment, u, out string whyU)
+                        : EquipmentSystem.CanAttach(generatedPreview, u, root, out whyU);
+                    if (!legal)
                     { lastReject = whyU; continue; }
                     StrategicCardEvaluator.EquipmentDelta gain =
                         StrategicCardEvaluator.EquipmentDeltaParts(equipment, u, snap, inv);
