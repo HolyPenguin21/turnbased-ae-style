@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Economy;
 using Game.Players;
 using UnityEngine;
@@ -42,6 +43,10 @@ namespace Game.Ai.V2
     {
         private sealed class State
         {
+            // Forecasts are facts, separate from pressure and CurrentBlocks: they neither reserve
+            // resources nor raise the card-preservation price. Each owner replaces its whole set.
+            public readonly Dictionary<string, OperationalForecast> Forecasts =
+                new Dictionary<string, OperationalForecast>();
             public readonly Dictionary<ResourceType, float> Pressure = new Dictionary<ResourceType, float>();
             public readonly Dictionary<ResourceType, ResourceBlockEvidence> CurrentBlocks =
                 new Dictionary<ResourceType, ResourceBlockEvidence>();
@@ -55,10 +60,66 @@ namespace Game.Ai.V2
             public int LastDecayTurn = int.MinValue;
         }
 
+        private sealed class OperationalForecast
+        {
+            public int Turn;
+            public Dictionary<string, ResourceBundle> Needs;
+        }
+
         private static readonly Dictionary<PlayerSetupData, State> ByPlayer =
             new Dictionary<PlayerSetupData, State>();
 
         public static void Clear() => ByPlayer.Clear();
+
+        internal static void ReplaceOperationalForecast(PlayerSetupData player, int turn,
+            string producer, IReadOnlyDictionary<string, ResourceBundle> needs)
+        {
+            if (player == null || string.IsNullOrEmpty(producer)) return;
+            State s = Get(player);
+            if (needs == null || needs.Count == 0)
+            {
+                s.Forecasts.Remove(producer);
+                return;
+            }
+            var copy = new Dictionary<string, ResourceBundle>();
+            foreach (var pair in needs)
+            {
+                var cost = new ResourceBundle();
+                foreach (ResourceType t in ResourceBundle.All)
+                    cost.Add(t, Mathf.Max(0f, pair.Value.Get(t)));
+                if (cost.Sum > AiConfigV2.allocatorSliceEpsilon) copy[pair.Key] = cost;
+            }
+            s.Forecasts[producer] = new OperationalForecast { Turn = turn, Needs = copy };
+        }
+
+        // The next settled scan (or the next turn's first scan) reads the feedback. One-turn
+        // grace bridges the turn-start ordering; absent owners cannot keep a need alive forever.
+        // Alternatives naming the same wing/action are MAXed, never added; distinct actors add.
+        internal static ResourceBundle ForecastOperationalNeed(PlayerSetupData player, int turn)
+        {
+            var total = new ResourceBundle();
+            if (player == null || !ByPlayer.TryGetValue(player, out State s)) return total;
+            var groups = new Dictionary<string, ResourceBundle>();
+            foreach (string key in s.Forecasts.Keys.ToList())
+            {
+                OperationalForecast f = s.Forecasts[key];
+                if (f.Turn < turn - 1 || f.Turn > turn)
+                {
+                    s.Forecasts.Remove(key);
+                    continue;
+                }
+                foreach (var pair in f.Needs)
+                {
+                    groups.TryGetValue(pair.Key, out ResourceBundle current);
+                    foreach (ResourceType t in ResourceBundle.All)
+                        current.Add(t, Mathf.Max(0f, pair.Value.Get(t) - current.Get(t)));
+                    groups[pair.Key] = current;
+                }
+            }
+            foreach (ResourceBundle cost in groups.Values)
+                foreach (ResourceType t in ResourceBundle.All) total.Add(t, cost.Get(t));
+            return total;
+        }
 
         public static void BeginVerifiedPass(PlayerSetupData player)
         {
