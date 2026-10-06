@@ -1211,7 +1211,10 @@ namespace Game.Ai.V2
             CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
             if (host == null || eq?.equipment == null)
                 return 0f;
-            EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv);
+            // A deployment's SynergyValue already prices its final Stealth trait. Bound
+            // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
+            EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
+                includeStealthTrait: false);
             float fit = HandCardMatchupFit(eq.equipment, host, p?.BaseCardInHand?.Equipment?.equipment, snap, p?.BaseCardInHand, eq);
             return EquipmentUpgradeValue(delta, fit, host.cardType == CardType.Unit);
         }
@@ -1434,49 +1437,17 @@ namespace Game.Ai.V2
             => EquipmentDeltaParts(equipDef, hostCard, host, snap, inv).Total;
 
         private static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData hostCard,
-            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
+            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait = true)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
                 return default;
-            var before = DefinitionStats(host);
-            IReadOnlyList<string> abilities = host.grantedAbilities != null
-                ? new List<string>(host.grantedAbilities)
-                : (IReadOnlyList<string>)System.Array.Empty<string>();
-            EquipmentGrant existing = hostCard?.Equipment?.equipment;
-            if (existing != null)
-            {
-                PredictedEquipmentState current = EquipmentSystem.Predict(existing, before, abilities);
-                if (current.Stats != null)
-                    foreach (KeyValuePair<EquipmentStat, int> kv in current.Stats)
-                        before[kv.Key] = kv.Value;
-                abilities = current.Abilities;
-            }
-            if (hostCard?.Mutator != null || equipDef.attachmentSlot == AttachmentSlot.Mutator)
-            {
-                var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
-                before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
-                abilities = current.Abilities;
-                return ScoreEquipmentDelta(grant, before, abilities, host.cardType == CardType.Hero, snap, inv,
-                    EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef));
-            }
-            return ScoreEquipmentDelta(grant, before, abilities, host.cardType == CardType.Hero, snap, inv);
+            var current = EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator);
+            var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+            return ScoreEquipmentDelta(grant, before, current.Abilities,
+                host.cardType == CardType.Hero, snap, inv,
+                EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait);
         }
-
-        private static Dictionary<EquipmentStat, int> DefinitionStats(CardDefinition host) =>
-            new Dictionary<EquipmentStat, int>
-            {
-                [EquipmentStat.Attack] = host.attack,
-                [EquipmentStat.Defense] = host.defenseRating,
-                [EquipmentStat.Resistance] = host.resistanceRating,
-                [EquipmentStat.Range] = host.range,
-                [EquipmentStat.HitPoints] = host.hitPoints,
-                [EquipmentStat.MoveMax] = host.moveMax,
-                [EquipmentStat.Initiative] = host.initiative,
-                [EquipmentStat.ActivationApCost] = host.activationApCost,
-                [EquipmentStat.CommandRating] = host.commandRating,
-                [EquipmentStat.Fate] = host.fate,
-            };
 
         // P1(review-r2) — standalone Equipment scored by the REAL predicted before/after delta on a
         // concrete live host, not by the host's raw power. NonCombatCardPlayer picks the (equipment,
@@ -1525,7 +1496,7 @@ namespace Game.Ai.V2
         // Command, strategic roles - roles already gate themselves on a present threat).
         private static EquipmentDelta ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
             IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv,
-            PredictedEquipmentState? projected = null)
+            PredictedEquipmentState? projected = null, bool includeStealthTrait = true)
         {
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
@@ -1553,10 +1524,19 @@ namespace Game.Ai.V2
             tactical += (After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
             tactical += EquipmentRoleDelta(hostAbilities, predicted.Abilities,
                 before[EquipmentStat.MoveMax], After(EquipmentStat.MoveMax), snap, inv);
+            // The same strategic trait value used by ScoreSurplusRole/SynergyValue. Stealth
+            // enables an option for heroes too; it is not another damage-dealing combat body.
+            bool hadStealth = AbilityParams.AbilitiesHaveAnyStealth(hostAbilities);
+            bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(predicted.Abilities);
+            if (includeStealthTrait)
+                tactical += ((hasStealth ? 1 : 0) - (hadStealth ? 1 : 0))
+                    * AiConfigV2.stratTraitMatchBonus * 0.5f;
             int addedAbilities = predicted.Abilities?.Count(a =>
-                hostAbilities == null || !hostAbilities.Contains(a)) ?? 0;
+                !AbilityParams.TryGetStealthLevel(a, out _)
+                && (hostAbilities == null || !hostAbilities.Contains(a))) ?? 0;
             int lostAbilities = hostAbilities?.Count(a =>
-                predicted.Abilities == null || !predicted.Abilities.Contains(a)) ?? 0;
+                !AbilityParams.TryGetStealthLevel(a, out _)
+                && (predicted.Abilities == null || !predicted.Abilities.Contains(a))) ?? 0;
             float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate)
                 + (isHero ? 0f : (addedAbilities - lostAbilities) * 0.15f);
 
