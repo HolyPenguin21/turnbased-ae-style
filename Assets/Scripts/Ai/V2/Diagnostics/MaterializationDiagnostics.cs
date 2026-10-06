@@ -184,6 +184,24 @@ namespace Game.Ai.V2
             else
                 postGate = "-";
 
+            // Keep the evidence-producing probe above in both modes: it feeds Economy.
+            // Compact reports the failed gate without repeating the hand and per-card details.
+            if (!AiDebugLog.Verbose)
+            {
+                string gate = postGate != "-" ? postGate
+                    : matching == 0 ? "no-capability-card"
+                    : traitMatching == 0 ? "required-trait"
+                    : placements == 0 ? "no-placement"
+                    : preflight == 0 ? "play-preflight"
+                    : "no-useful-chain";
+                string deficits = verifiedResourceBlocks.Count == 0 ? "-"
+                    : string.Join(",", verifiedResourceBlocks.OrderBy(kv => kv.Key)
+                        .Select(kv => $"{kv.Key}:{Stock(root, kv.Key)}/{kv.Value}"));
+                return $"diag gate={gate} match/trait/place/preflight/delivery="
+                    + $"{matching}/{traitMatching}/{placements}/{preflight}/{opDeliver} "
+                    + $"resourceDeficits=[{deficits}] directNeedMin={directNeed} ap={ap}";
+            }
+
             return $"diag hand={hand.Hand.Count} {AiCardLog.Hand(hand)} freeSlot={(hand.HasFreeSlot ? 1 : 0)} "
                 + $"match={matching} trait={traitMatching} placements={placements} preflight={preflight} "
                 + $"opDeliver={opDeliver} resReject={resReject} "
