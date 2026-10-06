@@ -568,6 +568,7 @@ namespace Game.Ai.V2
                 if ((pinnedArmyId.HasValue && army.ArmyId != pinnedArmyId.Value)
                     || snap.Self.BaseHexes?.Contains(army.Hex) != true
                     || army.EconomyRosterProtected || army.FreeBattleSlots <= 0
+                    || (candidate.route.RequiresGarrisonExtraction && candidate.route.ExtractedHeroCapacity < 2)
                     || (army.IsGarrison && army.HasActivatedThisTurn)
                     || ActiveAssignment(intents, army.ArmyId) != null)
                     continue;
@@ -581,8 +582,8 @@ namespace Game.Ai.V2
             return null;
         }
 
-        // Partial preparation is useful only if it improves the actual route's weakest combat
-        // gate or coverage; Demand will reassess the whole roster before any march is admitted.
+        // A body must complete the route's escort gate. Delivery then rechecks the real roster
+        // before granting the existing Economy ownership; speculative partial force has no owner.
         internal static bool EconomyEscortImprovesRoute(ArmySnapshot army,
             EconomyBuilderRouteSnapshot route, WorthIt.DefenderProfile body, int bodyMove)
         {
@@ -590,6 +591,8 @@ namespace Game.Ai.V2
                 || bodyMove < route.MaximumStepCost) return false;
             var current = (army.Members ?? System.Array.Empty<WorthIt.DefenderProfile>())
                 .Where((u, i) => AiArmyRoles.IsGroundBattleBody(u)
+                    && (army.NonHeroMoveMax == null || i >= army.NonHeroMoveMax.Count
+                        || army.NonHeroMoveMax[i] >= route.MaximumStepCost)
                     && (!army.IsGarrison || army.NonHeroSpareable == null
                         || (i < army.NonHeroSpareable.Count && army.NonHeroSpareable[i])))
                 .ToList();
@@ -597,13 +600,23 @@ namespace Game.Ai.V2
                 .Where(t => t.Owner?.IsNeutral != true).ToList();
             if (threats.Count == 0) return army.IsGarrison || current.Count == 0;
             if (threats.Any(t => t.Defenders == null || t.Defenders.Count == 0)) return false;
-            var projected = current.Concat(new[] { body }).ToList();
+            // Founding extraction carries ONE spareable body with the hero (AssessEconomyArmy),
+            // not the garrison's combined defence. Compare the best existing single-body escort
+            // to the proposed body; a weaker extra defender cannot improve that delivery.
+            IEnumerable<IReadOnlyList<WorthIt.DefenderProfile>> beforeRosters = army.IsGarrison
+                ? current.Select(u => (IReadOnlyList<WorthIt.DefenderProfile>)new[] { u })
+                    .DefaultIfEmpty(System.Array.Empty<WorthIt.DefenderProfile>())
+                : new[] { (IReadOnlyList<WorthIt.DefenderProfile>)current };
+            var projected = army.IsGarrison ? new List<WorthIt.DefenderProfile> { body }
+                : current.Concat(new[] { body }).ToList();
             var commander = army.IsGarrison ? route.ExtractedHeroCommander : army.Commander;
-            float before = threats.Min(t => WorthIt.WinChance(current, t.Defenders, 0f, commander, t.Commander));
+            if (!EconomyRosterSafe(projected, commander, threats, 1)) return false;
+            float before = beforeRosters.Max(roster => threats.Min(t =>
+                WorthIt.WinChance(roster, t.Defenders, 0f, commander, t.Commander)));
             float after = threats.Min(t => WorthIt.WinChance(projected, t.Defenders, 0f, commander, t.Commander));
             return after > before + AiConfigV2.allocatorSliceEpsilon
                 || threats.Count(t => WorthIt.CanDamageAll(projected, t.Defenders))
-                    > threats.Count(t => WorthIt.CanDamageAll(current, t.Defenders));
+                    > beforeRosters.Max(roster => threats.Count(t => WorthIt.CanDamageAll(roster, t.Defenders)));
         }
 
         internal static AxisDemand EconomyHeroPrerequisite(AxisDemand source) => new AxisDemand

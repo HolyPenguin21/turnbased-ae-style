@@ -49,7 +49,7 @@ namespace Game.Ai.V2
             List<CardData> handList = hand.Hand.ToList();
             List<GenerationStep> genSteps = reservation != null && reservation.CanGenerateMore
                 ? GenerationSource.Enumerate(player, root, ctx, hand,
-                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
+                    reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards, authority: demand.SpendAuthority)
                 : new List<GenerationStep>();
 
             var candidates = new List<MaterializationPlan>();
