@@ -134,7 +134,18 @@ namespace Game.Ai.V2
         {
             IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
             delivered = 0f;
-            if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
+            if (demand?.EconomyEscortArmyId.HasValue == true)
+            {
+                int id = demand.EconomyEscortArmyId.Value;
+                ArmySnapshot previous = beforeSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
+                ArmySnapshot current = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
+                // One real added body closes this preparation step, not the build. Re-admission
+                // reassesses the complete roster; unrelated field power can never close it.
+                delivered = previous != null && current != null && plan?.Deploy.Army?.Id == id
+                    && current.Members.Count(AiArmyRoles.IsGroundBattleBody)
+                        > previous.Members.Count(AiArmyRoles.IsGroundBattleBody) ? 1f : 0f;
+            }
+            else if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
             {
                 // Both phases must establish the same durable owner before reducing a residual.
                 // Revalidate after the real deployment: a successful card play can still fail to

@@ -936,6 +936,7 @@ namespace Game.Ai.V2
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
+                EconomyEscortArmyId = d.EconomyEscortArmyId,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 AttackFistArmyId = d.AttackFistArmyId,
@@ -1051,3 +1052,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

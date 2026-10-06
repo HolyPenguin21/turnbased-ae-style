@@ -322,13 +322,13 @@ namespace Game.Ai.V2
                 .Where(d =>
                 {
                     if ((d.TargetHex.HasValue && selectedHexes.Contains(d.TargetHex.Value))
-                        || (d.EconomyPreferredBuilderArmyId.HasValue
-                            && selectedBuilders.Contains(d.EconomyPreferredBuilderArmyId.Value))
+                        || ((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).HasValue
+                            && selectedBuilders.Contains((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).Value))
                         || (d.EconomyBuildCard != null && selectedCards.Contains(d.EconomyBuildCard)))
                         return false;
                     if (d.TargetHex.HasValue) selectedHexes.Add(d.TargetHex.Value);
-                    if (d.EconomyPreferredBuilderArmyId.HasValue)
-                        selectedBuilders.Add(d.EconomyPreferredBuilderArmyId.Value);
+                    if ((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).HasValue)
+                        selectedBuilders.Add((d.EconomyPreferredBuilderArmyId ?? d.EconomyEscortArmyId).Value);
                     if (d.EconomyBuildCard != null) selectedCards.Add(d.EconomyBuildCard);
                     return true;
                 }).ToList();
@@ -347,6 +347,13 @@ namespace Game.Ai.V2
                 AxisDemand emitted = demand.EconomyPreferredBuilderArmyId.HasValue
                     ? demand
                     : EconomyHeroPrerequisite(demand);
+                if (demand.EconomyEscortArmyId.HasValue)
+                {
+                    emitted.Capability = CapabilityKind.FieldCombatPower;
+                    emitted.EconomyEscortArmyId = demand.EconomyEscortArmyId;
+                    emitted.MinimumFollowupAp = 0f;
+                    emitted.Explain = demand.Explain + $"; prerequisite=builder_escort actor=#{demand.EconomyEscortArmyId}";
+                }
                 AiDebugLog.WriteDeduped($"{emitted.Capability}|{emitted.TargetHex}",
                     $"[AI][V2][Economy][Demand] selected={emitted.Capability} "
                     + $"resource={emitted.EconomyResourceType?.ToString() ?? "none"} "
@@ -546,6 +553,57 @@ namespace Game.Ai.V2
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) value={demand.Value:0.##}");
                 yield return demand;
             }
+        }
+
+        // Reuse the same ownership/route/composition gates as a real builder. An unavailable
+        // hero, protected army, spent garrison or unsafe terrain is not a body shortage.
+        internal static ArmySnapshot EconomyEscortRecipient(WorldSnapshot snap, HexCoord target,
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes, IReadOnlyList<MissionIntent> intents,
+            ActorCommitments commitments, float buildAp, int? pinnedArmyId = null)
+        {
+            foreach (var candidate in EconomyBuilderCandidates(snap, target, routes, intents, commitments)
+                .OrderBy(x => x.route.ActivationApCost).ThenBy(x => x.army.ArmyId))
+            {
+                ArmySnapshot army = candidate.army;
+                if ((pinnedArmyId.HasValue && army.ArmyId != pinnedArmyId.Value)
+                    || snap.Self.BaseHexes?.Contains(army.Hex) != true
+                    || army.EconomyRosterProtected || army.FreeBattleSlots <= 0
+                    || (army.IsGarrison && army.HasActivatedThisTurn)
+                    || ActiveAssignment(intents, army.ArmyId) != null)
+                    continue;
+                EconomyBuilderChoice choice = AssessEconomyArmy(snap, target, candidate.route,
+                    army, buildAp, includeReturn: false, requiresFoundingGarrison: true);
+                if (choice.Suitability == EconomyArmySuitability.Ineligible
+                    && (choice.IneligibleReason == "insufficient_safe_escort"
+                        || choice.IneligibleReason == "extracted_hero_needs_sparable_garrison_body"))
+                    return army;
+            }
+            return null;
+        }
+
+        // Partial preparation is useful only if it improves the actual route's weakest combat
+        // gate or coverage; Demand will reassess the whole roster before any march is admitted.
+        internal static bool EconomyEscortImprovesRoute(ArmySnapshot army,
+            EconomyBuilderRouteSnapshot route, WorthIt.DefenderProfile body, int bodyMove)
+        {
+            if (army == null || !AiArmyRoles.IsGroundBattleBody(body)
+                || bodyMove < route.MaximumStepCost) return false;
+            var current = (army.Members ?? System.Array.Empty<WorthIt.DefenderProfile>())
+                .Where((u, i) => AiArmyRoles.IsGroundBattleBody(u)
+                    && (!army.IsGarrison || army.NonHeroSpareable == null
+                        || (i < army.NonHeroSpareable.Count && army.NonHeroSpareable[i])))
+                .ToList();
+            var threats = (route.RouteThreats ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(t => t.Owner?.IsNeutral != true).ToList();
+            if (threats.Count == 0) return army.IsGarrison || current.Count == 0;
+            if (threats.Any(t => t.Defenders == null || t.Defenders.Count == 0)) return false;
+            var projected = current.Concat(new[] { body }).ToList();
+            var commander = army.IsGarrison ? route.ExtractedHeroCommander : army.Commander;
+            float before = threats.Min(t => WorthIt.WinChance(current, t.Defenders, 0f, commander, t.Commander));
+            float after = threats.Min(t => WorthIt.WinChance(projected, t.Defenders, 0f, commander, t.Commander));
+            return after > before + AiConfigV2.allocatorSliceEpsilon
+                || threats.Count(t => WorthIt.CanDamageAll(projected, t.Defenders))
+                    > threats.Count(t => WorthIt.CanDamageAll(current, t.Defenders));
         }
 
         internal static AxisDemand EconomyHeroPrerequisite(AxisDemand source) => new AxisDemand
@@ -1404,6 +1462,9 @@ namespace Game.Ai.V2
                         EconomyPaybackTurns = paybackTurns,
                         EconomyPreferredBuilderArmyId = readyLossToNewHero
                             ? null : builder?.Army.ArmyId,
+                        EconomyEscortArmyId = builder == null
+                            ? EconomyEscortRecipient(s, site.Hex, site.BuilderRoutes,
+                                activeIntents, commitments, card.EffectivePlayApCost)?.ArmyId : null,
                         EconomyReadyDeliveryCost = readyLossToNewHero
                             ? ReadyDeliveryCost(extraAp, heroCost) : (float?)null,
                         EconomyBuilderRoutes = site.BuilderRoutes,
@@ -1471,15 +1532,9 @@ namespace Game.Ai.V2
                     + "reason=no_economy_purpose_yet";
         }
 
-        // One demand per DISTINCT (card, builder) pair — each is a genuinely independent Base
-        // project (separate card, separate actor, no shared resource yet). Collapsing all of them
-        // down to one global "best" (the old behaviour) meant the AI could only ever entertain a
-        // single Base candidate per turn even holding two Base cards with two free builders; the
-        // hex/actor/card dedup in EconomyDemands' caller still resolves the case where two
-        // candidates would in fact compete for the same hex, mover or card. Only the ONE group
-        // matching the live incumbent's exact (card, actor) goes through the hysteresis owner below —
-        // every other group is a brand-new project with no incumbent to protect, so its own top-ranked
-        // site is offered directly.
+        // Rank sites per delivery identity, applying hysteresis only to the incumbent's exact
+        // card/actor. Then choose one deliverable alternative per physical card. Separate cards
+        // remain independent projects; the caller still arbitrates shared hexes and actors.
         internal static List<AxisDemand> SelectBaseDemandsForCurrentCommitment(
             IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
         {
@@ -1489,7 +1544,8 @@ namespace Game.Ai.V2
 
             MissionIntent incumbent = activeIntents?.FirstOrDefault(IsRetargetableBaseCommitment);
 
-            foreach (var group in ranked.GroupBy(d => (d.EconomyBuildCard, d.EconomyPreferredBuilderArmyId)))
+            foreach (var group in ranked.GroupBy(d => (d.EconomyBuildCard, d.EconomyPreferredBuilderArmyId,
+                d.EconomyEscortArmyId)))
             {
                 bool isIncumbentGroup = incumbent != null
                     && group.Key.EconomyBuildCard == incumbent.Economy.BuildCard
@@ -1500,7 +1556,15 @@ namespace Game.Ai.V2
                 if (chosen != null)
                     result.Add(chosen);
             }
-            return result;
+            // Only alternatives for the SAME physical card use preparation readiness as a tie
+            // breaker before optimistic site value. Other projects/axes still compete on Value.
+            return result.GroupBy(d => d.EconomyBuildCard).Select(group => group
+                .OrderByDescending(d => IsActiveBaseCommitment(activeIntents, d.TargetHex, d.EconomyBuildCard))
+                .ThenByDescending(d => incumbent != null && d.EconomyBuildCard == incumbent.Economy.BuildCard
+                    && d.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId)
+                .ThenByDescending(d => d.EconomyPreferredBuilderArmyId.HasValue ? 2
+                    : d.EconomyEscortArmyId.HasValue ? 1 : 0)
+                .ThenByDescending(d => d.Value).First()).ToList();
         }
 
         // One Base selection decision owner for a SINGLE (card, builder) group — the incumbent's
@@ -1637,3 +1701,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

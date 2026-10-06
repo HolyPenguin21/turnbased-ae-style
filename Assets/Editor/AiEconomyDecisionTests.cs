@@ -3782,6 +3782,112 @@ namespace Game.EditorTests
             Initiative = 2,
         };
 
+        [Test]
+        public void FoundBasePreparation_UsesExistingSoloHeroAndStopsAfterRosterBecomesReady()
+        {
+            var target = new HexCoord(1, 0);
+            var solo = EconomyBuilder(41, 1, 0f);
+            solo.Capacity = 3; solo.OccupiedBattleSlots = 1;
+            var snap = SnapshotWithDeficits(0.5f, 0.2f, true);
+            snap.Self.Armies = new[] { solo };
+            var routes = new[] { BuilderRoute(solo, 1, 1, 1) };
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+                30f, 4f, false), Is.Null);
+            Assert.That(DemandLayer.EconomyEscortRecipient(snap, target, routes, null, null, 4f), Is.SameAs(solo));
+            var claims = new ActorCommitments(); claims.Claim(solo.ArmyId);
+            Assert.That(DemandLayer.EconomyEscortRecipient(snap, target, routes, null, claims, 4f), Is.Null);
+
+            var ready = EconomyBuilder(41, 2, 8f);
+            ready.Capacity = 3; ready.OccupiedBattleSlots = 2;
+            var fresh = SnapshotWithDeficits(0.5f, 0.2f, true);
+            fresh.Self.Armies = new[] { ready };
+            Assert.That(DemandLayer.EconomyEscortRecipient(fresh, target,
+                new[] { BuilderRoute(ready, 1, 1, 2) }, null, null, 4f), Is.Null);
+            Assert.That(DemandLayer.SelectEconomyBuilder(fresh, target,
+                new[] { BuilderRoute(ready, 1, 1, 2) }, null, null, 30f, 4f, false), Is.Not.Null);
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+                30f, 4f, false), Is.Null, "a later snapshot cannot mutate the cached solo decision");
+        }
+
+        [Test]
+        public void FoundBasePreparation_DoesNotRecruitAProtectedFistOrPrepareAwayFromHome()
+        {
+            var target = new HexCoord(2, 0);
+            var solo = EconomyBuilder(41, 1, 0f);
+            solo.Capacity = 3; solo.OccupiedBattleSlots = 1;
+            solo.Hex = new HexCoord(1, 0);
+            var snap = SnapshotWithDeficits(0.5f, 0.2f, true); snap.Self.Armies = new[] { solo };
+            Assert.That(DemandLayer.EconomyEscortRecipient(snap, target,
+                new[] { BuilderRoute(solo, 1, 1, 1) }, null, null, 4f), Is.Null);
+            solo.Hex = new HexCoord(0, 0); solo.EconomyRosterProtected = true;
+            Assert.That(DemandLayer.EconomyEscortRecipient(snap, target,
+                new[] { BuilderRoute(solo, 2, 2, 1) }, null, null, 4f), Is.Null);
+        }
+
+        [Test]
+        public void FoundBaseAlternatives_ReadyDeliveryBeatsAnOptimisticNewHeroForTheSameCard()
+        {
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            var other = new CardData(new CardDefinition { cardType = CardType.Base });
+            var optimistic = new AxisDemand { EconomyBuildCard = card, Value = 50f };
+            var preparation = new AxisDemand { EconomyBuildCard = card, Value = 30f, EconomyEscortArmyId = 42 };
+            var ready = new AxisDemand { EconomyBuildCard = card, Value = 5f, EconomyPreferredBuilderArmyId = 41 };
+            var independent = new AxisDemand { EconomyBuildCard = other, Value = 4f, EconomyPreferredBuilderArmyId = 43 };
+            var selected = DemandLayer.SelectBaseDemandsForCurrentCommitment(
+                new[] { optimistic, preparation, ready, independent }, null);
+            Assert.That(selected, Is.EquivalentTo(new[] { ready, independent }));
+            selected = DemandLayer.SelectBaseDemandsForCurrentCommitment(new[] { optimistic, preparation }, null);
+            Assert.That(selected.Single(), Is.SameAs(preparation));
+        }
+
+        [Test]
+        public void FoundBasePreparation_RejectsSlowBodiesAndUsesOnlyItsOwnBuildReservation()
+        {
+            var solo = EconomyBuilder(41, 1, 0f);
+            var route = BuilderRoute(solo, 2, 2, 1); route.MaximumStepCost = 2;
+            var body = new Game.Combat.WorthIt.DefenderProfile(4f, false, attack: 4f, hitPoints: 5f);
+            Assert.That(DemandLayer.EconomyEscortImprovesRoute(solo, route, body, 1), Is.False);
+            Assert.That(DemandLayer.EconomyEscortImprovesRoute(solo, route, body, 2), Is.True);
+            var target = new HexCoord(2, 0);
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.FieldCombatPower, EconomyEscortArmyId = 41,
+                EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }),
+                TargetHex = target, EconomyBuildResourceCost = new ResourceCost { human = 3 } };
+            Assert.That(demand.SpendAuthority.Owner, Is.EqualTo(InfrastructureFulfillment.EconomyBuildOwner(
+                EconomyTaskKind.FoundBase, null, target)));
+            Assert.That(demand.SpendAuthority.EconomyCompletesNow, Is.False,
+                "preparation may use its own hold, never other projects' deferred resources");
+        }
+
+        [Test]
+        public void FoundBasePreparation_DeliveryCountsOnlyThePinnedRecipientAndDoesNotClaimABuild()
+        {
+            var player = new PlayerSetupData();
+            var army = new ArmyData { Owner = player };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.FieldCombatPower, EconomyEscortArmyId = army.Id,
+                TargetHex = new HexCoord(2, 0) };
+            var plan = new MaterializationPlan { Deploy = new PlacementOption(
+                army.Hex, DeploymentKind.ExistingArmy, army) };
+            var before = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
+                EconomyBuilder(army.Id, 1, 0f), EconomyBuilder(army.Id + 1, 1, 0f) } } };
+            var unrelated = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
+                EconomyBuilder(army.Id, 1, 0f), EconomyBuilder(army.Id + 1, 2, 8f) } } };
+            var ctx = new Game.Ai.AiTurnContext { TurnNumber = 1 };
+            Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx,
+                unrelated, plan, demand, null, null, new HashSet<int> { army.Id, army.Id + 1 },
+                out float absent, before), Is.False);
+            Assert.That(absent, Is.Zero);
+            var after = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
+                EconomyBuilder(army.Id, 2, 8f), EconomyBuilder(army.Id + 1, 1, 0f) } } };
+            Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx,
+                after, plan, demand, null, null, new HashSet<int> { army.Id, army.Id + 1 },
+                out float delivered, before), Is.True);
+            Assert.That(delivered, Is.EqualTo(1f));
+            Assert.That(MissionIntentRegistry.GetOrCreate(player).All.Any(), Is.False,
+                "one escort body is preparation, never a delivered building or a movement commitment");
+        }
+
         private static ArmySnapshot EconomyBuilder(int id, int size, float power)
         {
             int bodyCount = UnityEngine.Mathf.Max(0, size - 1);
@@ -3917,3 +4023,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+
