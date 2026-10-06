@@ -493,13 +493,12 @@ namespace Game.Ai.V2
                         bool unchanged = !StrategicAdmissionNeeded(
                             lastStrategicAdmissionFingerprint, axis, fingerprint);
                         if (unchanged)
-                            AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission skipped "
+                            // Diagnostics only: admission still compares the full fingerprint.
+                            // All axes can have large keys; print a digest and suppress repeats.
+                            AiDebugLog.WriteDeduped($"admission-unchanged|{axis}",
+                                $"[AI][V2][Loop] strategic re-admission skipped "
                                 + $"axis={axis} reason=settled_state_unchanged fingerprint="
-                                // Aggression's key lists every army/intent/threat and is checked
-                                // after almost every step: log its digest, not the whole key.
-                                + (axis == DesireAxis.Aggression
-                                    ? $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}"
-                                    : fingerprint));
+                                + $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}");
                         return unchanged;
                     });
                     if (dirtyAxes.Count == 0)
