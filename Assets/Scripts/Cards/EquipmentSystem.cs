@@ -170,7 +170,10 @@ namespace Game.Cards
         public static PredictedEquipmentState PredictAttachment(CardDefinition candidate, UnitData unit)
         {
             if (!unit.AttachmentBase.HasValue || !unit.AttachmentApplied.HasValue)
-                return Predict(candidate?.equipment, ReadStats(unit), unit.Abilities);
+                // Predict is a sparse grant delta; attachment consumers require the whole host.
+                // Start from live stats and use the same full composition as hand projections.
+                return PredictSlots(new PredictedEquipmentState(ReadStats(unit),
+                    new List<string>(unit.Abilities)), null, null, candidate);
             PredictedEquipmentState next = PredictSlots(unit.AttachmentBase.Value, unit.Equipment, unit.Mutator, candidate);
             return MergeRuntimeState(unit, next);
         }
