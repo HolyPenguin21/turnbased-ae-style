@@ -1473,8 +1473,10 @@ namespace Game.Ai.V2
             var next = EquipmentSystem.PredictAttachment(equipDef, host);
             var stats = next.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
             // Compare current Fate with current Fate after attachment, preserving spent Fate.
-            stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
-                EquipmentStat.Fate, stats[EquipmentStat.Fate]);
+            // The first-attachment prediction lists only the stats the card changes.
+            if (stats.TryGetValue(EquipmentStat.Fate, out int projectedFate))
+                stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
+                    EquipmentStat.Fate, projectedFate);
             var projected = new PredictedEquipmentState(stats, next.Abilities);
             return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected,
                 true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),

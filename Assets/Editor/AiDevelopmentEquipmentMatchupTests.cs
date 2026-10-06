@@ -430,6 +430,15 @@ namespace Game.EditorTests
             };
 
         [Test]
+        public void EquipmentWithoutFateChangeIsScoredWithoutProjectedFateKey()
+        {
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 3, defenseRating = 3, hitPoints = 5 });
+            Assert.DoesNotThrow(() =>
+                StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 2), host));
+        }
+
+        [Test]
         public void AbsolutePenetrationBeatsSmallPercentageGainOnWeakScout()
         {
             var scout = new CardData(new CardDefinition { cardType = CardType.Unit,
