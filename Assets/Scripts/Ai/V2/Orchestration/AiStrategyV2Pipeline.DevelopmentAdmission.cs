@@ -25,7 +25,7 @@ namespace Game.Ai.V2
     //   * every own army's composition (any unit may be the best Equipment recipient) and, for
     //     Research/Production operator armies, their position (remote-hero delivery cost);
     //   * actor occupancy (which heroes are free to travel to a facility);
-    //   * the composition of every known threat EquipmentMatchupFit evaluates against;
+    //   * the composition of every known threat EquipmentDeltaParts evaluates against;
     //   * ForceNeedModel.JustifiedForceNeed (asset threats, edge, idle-stock surplus) — the need
     //     every minted-output score and the deck-operator facility stage are weighted by.
     public static partial class Pipeline
@@ -206,9 +206,9 @@ namespace Game.Ai.V2
                     return rows;
                 })
                 .Distinct().OrderBy(x => x, System.StringComparer.Ordinal));
-            // EquipmentMatchupFit's threat set: enemy army compositions (composition only crosses
+            // EquipmentOpposition's composition fallback: enemy army compositions (composition only crosses
             // the TrueWorld boundary), remembered neutral defenders and known event guards.
-            // Positions are not read by the matchup, so they are not part of the key.
+            // Hidden positions stay excluded; honest target positions are in knownTargets below.
             IEnumerable<string> threatRows = (snapshot?.TrueWorld?.EnemyArmies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a?.Members != null && a.Members.Count > 0)
