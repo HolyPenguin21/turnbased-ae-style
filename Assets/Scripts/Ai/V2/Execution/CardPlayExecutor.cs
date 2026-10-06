@@ -97,7 +97,8 @@ namespace Game.Ai.V2
         // Forecast mode skips only today's AP/resource availability; ownership, placement,
         // capacity and execution dependencies still apply. Play always uses the default mode.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, CardPlayPlan plan, out string reason, bool resourceForecast = false)
+            AiTurnContext ctx, CardPlayPlan plan, out string reason, bool resourceForecast = false,
+            BuildingData projectedBuilding = null)
         {
             reason = null;
             if (player == null || root == null || hand == null || ctx == null || plan.Card == null)
@@ -121,7 +122,12 @@ namespace Game.Ai.V2
             // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
             // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
             // charges its 2 AP, including when requiredBuildingAbility is empty.
-            if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def))
+            if (projectedBuilding != null && (!resourceForecast || plan.Kind != DeploymentKind.Garrison
+                || !projectedBuilding.Hex.Equals(plan.DeploymentHex)))
+            { reason = "projected building only allowed for garrison forecast"; return false; }
+            if (!(projectedBuilding == null
+                ? ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def)
+                : ArmyActions.HasRequiredGroundDeploymentBuilding(player, projectedBuilding, def)))
             { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;
@@ -186,7 +192,7 @@ namespace Game.Ai.V2
         }
 
         public static CardPlayResult Play(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, CardPlayPlan plan)
+            AiTurnContext ctx, CardPlayPlan plan, bool consumeCard = true)
         {
             var result = new CardPlayResult { ArmyShell = plan.TargetArmy };
             if (!Preflight(player, root, hand, ctx, plan, out string reason))
@@ -231,10 +237,11 @@ namespace Game.Ai.V2
                 return result;
             }
 
-            hand.RemoveCard(plan.Card);   // exactly once, only on success — the canonical V2 boundary
+            // Composite founding consumes both cards after the enclosing domain commit.
+            if (consumeCard) hand.RemoveCard(plan.Card);
             result.Deployed = true;
             // A successful deploy ALWAYS changed the world: a new unit exists, the target army
-            // grew, the hand shrank, capability supply moved — even for a 0-AP / 0-resource card.
+            // grew, capability supply moved; the hand is consumed here or by the enclosing commit — even for a 0-AP / 0-resource card.
             result.StateChanged = true;
             Stamp(result, resStart, root);
             return result;

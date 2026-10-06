@@ -265,10 +265,95 @@ namespace Game.EditorTests
             var a = Builder(); a.IsGarrison = true;
             var route = Route(a, 9); route.RequiresGarrisonExtraction = true;
             route.ExtractionContainerAvailable = true; route.ExtractionApCost = 2;
-            var choice = Assess(Snapshot(a), a, route);
+            var choice = DemandLayer.AssessEconomyArmy(Snapshot(a), Site, route, a, 2f, includeReturn: true);
             Assert.That(choice.PreparationApCost, Is.EqualTo(2));
             Assert.That(choice.Route.ActivationApCost, Is.EqualTo(1));
             Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(7));
+        }
+
+        [Test]
+        public void FoundingNeedsBody_ExtractionCanUseSafeSoloHero()
+        {
+            var hero = Builder(); var route = Route(hero);
+            route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            WorldSnapshot snap = Snapshot(hero);
+            Assert.That(Assess(snap, hero, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, hero, 2, true).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+            // Mission leg pricing excludes the return independently of the building kind.
+            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, hero, 2, false,
+                requiresFoundingGarrison: false).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+        }
+
+        [Test]
+        public void AssessmentCache_FoundingRequirementIsIndependentOfReturnPricing()
+        {
+            var solo = Builder(); var route = Route(solo);
+            route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            var snap = Snapshot(solo);
+            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+                requiresFoundingGarrison: false).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+                requiresFoundingGarrison: true).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+                requiresFoundingGarrison: false).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+        }
+
+        [Test]
+        public void OnSiteFounding_StillRespectsProtectedAttackOwnership()
+        {
+            var builder = Builder(1); builder.Hex = Site;
+            var route = Route(builder, 0); route.IsOnTarget = true;
+            route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            var snap = Snapshot(builder);
+            Assert.That(Assess(snap, builder, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready), "composition alone is valid");
+            var attack = new MissionIntent {
+                Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                Funding = CommitmentTier.Hard, PreferredMoverArmyId = builder.ArmyId,
+            };
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, Site, new[] { route },
+                new[] { attack }, new ActorCommitments(), 50f, 2f, false), Is.Null,
+                "on-site completion must not take a protected Attack mover");
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, Site, new[] { route },
+                Array.Empty<MissionIntent>(), new ActorCommitments(), 50f, 2f, false), Is.Not.Null);
+        }
+
+        [Test]
+        public void LostEscort_NewSnapshotRevokesFoundingReadiness()
+        {
+            var escorted = Builder(1); var route = Route(escorted);
+            route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            WorldSnapshot before = Snapshot(escorted);
+            Assert.That(Assess(before, escorted, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+            var solo = Builder(); WorldSnapshot after = Snapshot(solo);
+            Assert.That(Assess(after, solo, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(Assess(before, escorted, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready), "old facts retain their own decision");
+        }
+
+        [Test]
+        public void ExtractedFoundingHero_PreparesAConcreteSparableBody()
+        {
+            var garrison = Builder(1); garrison.IsGarrison = true;
+            garrison.NonHeroSpareable = new[] { true };
+            var route = Route(garrison); route.RequiresGarrisonExtraction = true;
+            route.ExtractionContainerAvailable = true; route.ExtractedHeroCapacity = 4;
+            route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            var ready = Assess(Snapshot(garrison), garrison, route);
+            Assert.That(ready.Suitability, Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+            Assert.That(ready.AddedIndices, Is.EqualTo(new[] { 0 }));
+            Assert.That(ready.ProjectedActivationApCost, Is.EqualTo(route.ActivationApCost + 1));
+            garrison.NonHeroSpareable = new[] { false };
+            Assert.That(Assess(Snapshot(garrison), garrison, route).Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible), "original garrison keeps its floor");
         }
         private static MissionIntent ReturnIntent(ArmySnapshot a, EconomyTaskKind kind)
         {

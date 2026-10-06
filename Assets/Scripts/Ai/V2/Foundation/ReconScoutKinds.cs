@@ -8,6 +8,7 @@
         public const ScoutTargetKind Refresh = ScoutTargetKind.Refresh;
 
         public static bool IsRefresh(ScoutTargetKind kind) => kind == ScoutTargetKind.Refresh;
+        public static bool IsCapture(ScoutTargetKind kind) => kind == ScoutTargetKind.CaptureStructure;
         public static bool IsExplore(ScoutTargetKind kind) => kind == ScoutTargetKind.Explore;
         // Aviation-only observation pass (support, never a ground visit). See ScoutTargetKind.
         public static bool IsAirSweep(ScoutTargetKind kind) => kind == ScoutTargetKind.AirSweep;
@@ -19,7 +20,7 @@
             requirement == StealthRequirement.Required || detectionRisk > 0f;
 
         public static bool IsGround(ScoutTargetKind kind) =>
-            kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh;
+            kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh || IsCapture(kind);
 
         public static string Name(ScoutTargetKind kind)
         {
@@ -28,6 +29,7 @@
                 case ScoutTargetKind.Refresh: return "Refresh";
                 case ScoutTargetKind.Explore: return "Explore";
                 case ScoutTargetKind.AirSweep: return "AirSweep";
+                case ScoutTargetKind.CaptureStructure: return "CaptureStructure";
                 default: return $"Unknown({(int)kind})";
             }
         }

@@ -65,7 +65,7 @@ namespace Game.Ai.V2
     // strategic sweep anchor (enemy army concentration, else enemy citadel): the wing flies toward
     // it as deep as its refuel endurance allows and returns — never a ground job, never "met" by
     // simply seeing the anchor. The numeric identities remain Explore=0, Refresh=2, AirSweep=3.
-    public enum ScoutTargetKind { Explore = 0, Refresh = 2, AirSweep = 3 }
+    public enum ScoutTargetKind { Explore = 0, Refresh = 2, AirSweep = 3, CaptureStructure = 4 }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a

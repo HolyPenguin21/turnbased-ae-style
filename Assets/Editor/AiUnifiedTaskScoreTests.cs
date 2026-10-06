@@ -14,6 +14,35 @@ namespace Game.EditorTests
 {
     public class AiUnifiedTaskScoreTests
     {
+        [Test]
+        public void AirSweep_UnknownCorridorPaysInfoGainButNotRefresh()
+        {
+            var snap = new WorldSnapshot {
+                Self = new SelfSnapshot { Citadel = new HexCoord(0, 0) },
+                Known = new KnownSnapshot(),
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] {
+                    new ArmySnapshot { Hex = new HexCoord(6, 0), EffectiveArmyPower = 20f },
+                } },
+            };
+            ReconObjective sweep = ReconObjectiveEvaluator.AirSweepOf(snap);
+            Assert.That(sweep, Is.Not.Null);
+            Assert.That(sweep.TaskScore.InfoGain, Is.GreaterThan(0f));
+            Assert.That(sweep.TaskScore.Staleness, Is.Zero);
+        }
+
+        [Test]
+        public void BaseCrowding_IsIntrinsicFiniteCostAndCanBeOutweighed()
+        {
+            float crowd = TaskScoreEvaluator.BaseCrowdingCost(1);
+            var adjacent = new TaskScore(economicHexBenefit: 15f, cardPrice: 2f,
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(1), baseCrowdingCost: crowd);
+            Assert.That(adjacent.Value, Is.GreaterThan(0), "a sufficiently good adjacent site still wins admission");
+            Assert.That(crowd, Is.GreaterThan(adjacent.OwnTerritoryProximity));
+            Assert.That(TaskScoreEvaluator.GroupOf(TaskSlot.BaseCrowdingCost), Is.EqualTo(TaskSlotGroup.Intrinsic));
+            Assert.That(TaskScoreEvaluator.WithExecution(adjacent, new TaskScore(cardPrice: 3f)).BaseCrowdingCost,
+                Is.EqualTo(crowd), "actor repricing cannot erase the placement fact");
+            Assert.That(TaskScoreEvaluator.BaseCrowdingCost(3), Is.Zero);
+        }
         // The slot table is the only list of slots: every enum slot must round-trip through the
         // slot-wise constructor and fold with exactly its table sign. A slot added to the enum
         // but missed in the indexer / FromSlots fails here instead of vanishing from scores.

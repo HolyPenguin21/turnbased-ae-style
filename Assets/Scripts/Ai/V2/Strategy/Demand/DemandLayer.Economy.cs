@@ -91,6 +91,7 @@ namespace Game.Ai.V2
                 frontProgress: TaskScoreEvaluator.FrontProgress(site.ForwardProgressValue),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                baseCrowdingCost: TaskScoreEvaluator.BaseCrowdingCost(homeDistance),
                 terrainDefense: TaskScoreEvaluator.TerrainDefense(site.DefenseBonusValue),
                 cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(cardAp) + resourceApEquivalent),
                 delivery: TaskScoreEvaluator.Price(extraActivationAp),
@@ -143,8 +144,7 @@ namespace Game.Ai.V2
                 if (ctx?.GameConfig != null && def == null)
                     continue;
 
-                float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
-                float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
+                float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs);
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
@@ -495,8 +495,7 @@ namespace Game.Ai.V2
                     .ThenBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
                     .FirstOrDefault();
 
-                float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
-                float priority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
+                float priority = TaskScoreEvaluator.ResourcePriority(rs);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                 // Chain-independent ETA baseline (diagnostics only — the walk is priced by the
                 // mobile-collection task once a real collector exists).
@@ -625,6 +624,7 @@ namespace Game.Ai.V2
             public int ProjectedMaxMovement;
             public float PreparationApCost;
             public ArmySnapshot PreparationGarrison;
+            public bool FoundsBase;
             public IReadOnlyList<int> RetainedIndices = System.Array.Empty<int>();
             public IReadOnlyList<int> AddedIndices = System.Array.Empty<int>();
 
@@ -663,10 +663,10 @@ namespace Game.Ai.V2
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             float buildValue, float buildApCost, bool includeReturn,
-            int? pinnedBuilderArmyId = null)
+            int? pinnedBuilderArmyId = null, bool? requiresFoundingGarrison = null)
         {
             return RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
-                buildValue, buildApCost, includeReturn)
+                buildValue, buildApCost, includeReturn, requiresFoundingGarrison)
                 .FirstOrDefault(x => !pinnedBuilderArmyId.HasValue
                     || x.Army?.ArmyId == pinnedBuilderArmyId.Value);
         }
@@ -674,14 +674,14 @@ namespace Game.Ai.V2
         internal static IReadOnlyList<EconomyBuilderChoice> RankEconomyBuilders(WorldSnapshot snap,
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            float buildValue, float buildApCost, bool includeReturn)
+            float buildValue, float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null)
         {
             // Assess the EXACT candidate first: loan admission and final TaskScore must
             // price the same projected roster, outbound trip and return activations.
             // The old raw-hex penalty introduced a second incompatible delivery scorer.
             return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments)
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
-                    buildApCost, includeReturn))
+                    buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
                 .Where(x => x.Route.IsOnTarget
                     || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
@@ -714,40 +714,33 @@ namespace Game.Ai.V2
         }
 
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
-            Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool), EconomyBuilderChoice>>
+            Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool, bool), EconomyBuilderChoice>>
             EconomyAssessmentCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
-                Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool), EconomyBuilderChoice>>();
+                Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool, bool), EconomyBuilderChoice>>();
 
         internal static EconomyBuilderChoice AssessEconomyArmy(WorldSnapshot snap,
             HexCoord target, EconomyBuilderRouteSnapshot route, ArmySnapshot army,
-            float buildApCost, bool includeReturn)
+            float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null)
         {
+            bool founding = requiresFoundingGarrison ?? !includeReturn;
             if (snap == null)
                 return Compute();
             var cache = EconomyAssessmentCache.GetOrCreateValue(snap);
-            var key = (target, route, army, buildApCost, includeReturn);
+            var key = (target, route, army, buildApCost, includeReturn, founding);
             if (!cache.TryGetValue(key, out EconomyBuilderChoice assessed))
                 cache[key] = assessed = Compute();
             // The cached decision belongs to this snapshot. A consumer may reprice its local
             // copy, but must never overwrite the result observed by the next reader.
             return assessed.DetachedDecision();
 
-            // Project owner, 2026-10-02: a hero that goes to FOUND a Base takes a ground body with
-            // it, which BuildingPlayExecutor.LeaveGarrisonBody then leaves as the new base's garrison
-            // (an empty fresh Base was retaken the same or the next turn). Every call site already
-            // tells a Base founding from an extraction build by includeReturn (false = Base: no
-            // return trip, true = extraction), and includeReturn is part of the assessment cache
-            // key, so the rule needs no new plumbing. The body requirement is a PREFERENCE: when no
-            // roster can carry one (no body aboard and none the base garrison can lend) the builder
-            // is assessed exactly as before, never made ineligible by it.
+            // Founding must deliver a ground body, not merely prefer one. Extraction retains
+            // its existing escort policy. A defender already on the site is a frozen witness;
+            // final Materialization/Execution revalidates the physical transfer before spending.
             EconomyBuilderChoice Compute()
             {
-                bool foundsBase = !includeReturn;
-                if (!foundsBase)
-                    return ComputeCore(false);
-                EconomyBuilderChoice withBody = ComputeCore(true);
-                return withBody.Suitability != EconomyArmySuitability.Ineligible
-                    ? withBody : ComputeCore(false);
+                bool defendedSite = snap?.Self?.Armies?.Any(a => a != null && a.IsGarrison
+                    && a.Hex.Equals(target) && a.Members?.Any(AiArmyRoles.IsGroundBattleBody) == true) == true;
+                return ComputeCore(founding && !defendedSite);
             }
 
             EconomyBuilderChoice ComputeCore(bool enforceGarrisonBody)
@@ -756,6 +749,7 @@ namespace Game.Ai.V2
                 {
                     Route = route,
                     Army = army,
+                    FoundsBase = founding,
                     TotalAssignmentApCost = EstimateEconomyAssignmentAp(
                         route, buildApCost, includeReturn),
                     Suitability = EconomyArmySuitability.Ineligible,
@@ -784,6 +778,46 @@ namespace Game.Ai.V2
                         projectedRoute, buildApCost, includeReturn);
                     choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
                     choice.ProjectedMaxMovement = route.MaxMovement;
+                    if (enforceGarrisonBody)
+                    {
+                        // Extracting the hero alone cannot satisfy founding. Pin a concrete body
+                        // that the original garrison can spare, then use the existing composition
+                        // preparation to put it into the resolved field container before departure.
+                        List<AiMapMemory.KnownEnemySighting> extractionThreats = (route.RouteThreats
+                            ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                            .Where(t => t.Owner?.IsNeutral != true).ToList();
+                        int escort = Enumerable.Range(0, army.Members?.Count ?? 0)
+                            .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])
+                                && GarrisonMaySpare(army, new List<int> { i })
+                                && route.ExtractedHeroCapacity >= 2
+                                && (i >= army.NonHeroMoveMax.Count || army.NonHeroMoveMax[i] >= route.MaximumStepCost)
+                                && EconomyRosterSafe(new[] { army.Members[i] }, route.ExtractedHeroCommander,
+                                    extractionThreats, 1))
+                            .OrderBy(i => i < army.NonHeroActivationApCosts.Count ? army.NonHeroActivationApCosts[i] : 0)
+                            .ThenBy(i => i).DefaultIfEmpty(-1).First();
+                        if (escort < 0)
+                        {
+                            choice.Suitability = EconomyArmySuitability.Ineligible;
+                            choice.IneligibleReason = "extracted_hero_needs_sparable_garrison_body";
+                            return choice;
+                        }
+                        choice.PreparationGarrison = army;
+                        choice.AddedIndices = new List<int> { escort };
+                        choice.MinimumEscortCount = 1;
+                        int bodyAp = escort < army.NonHeroActivationApCosts.Count ? army.NonHeroActivationApCosts[escort] : 0;
+                        int bodyMove = escort < army.NonHeroMoveMax.Count ? army.NonHeroMoveMax[escort] : route.MaxMovement;
+                        projectedRoute.ActivationApCost += bodyAp;
+                        projectedRoute.MaxMovement = Mathf.Max(1, Mathf.Min(route.MaxMovement, bodyMove));
+                        projectedRoute.CurrentMovement = Mathf.Min(route.CurrentMovement,
+                            escort < army.NonHeroCurrentMovement.Count ? army.NonHeroCurrentMovement[escort] : bodyMove);
+                        projectedRoute.ArmySize = 2;
+                        choice.Route = projectedRoute;
+                        choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
+                        choice.ProjectedMaxMovement = projectedRoute.MaxMovement;
+                        if (route.ExtractionContainerActivated) choice.PreparationApCost += bodyAp;
+                        choice.TotalAssignmentApCost = choice.PreparationApCost + EstimateEconomyAssignmentAp(
+                            projectedRoute, buildApCost, includeReturn);
+                    }
                     AiDebugLog.WriteDeduped($"{target}|{army.ArmyId}",
                         $"[ECO][Builder] site=({target.Q},{target.R}) "
                         + $"actor=#{army.ArmyId} source=Garrison route=VALID "
@@ -803,14 +837,15 @@ namespace Game.Ai.V2
                     && !army.EconomyRosterProtected;
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
-                bool garrisonBodyPreferenceOnly = enforceGarrisonBody && safeRear;
+                bool protectGarrisonFloor = enforceGarrisonBody;
                 if (enforceGarrisonBody)
                     minimumEscort = Mathf.Max(minimumEscort, 1);
                 choice.MinimumEscortCount = minimumEscort;
 
                 List<int> currentIndices = Enumerable.Range(0, army.Members?.Count ?? 0)
-                    .Where(i => i >= (army.NonHeroIsAviation?.Count ?? 0)
-                        || !army.NonHeroIsAviation[i]).ToList();
+                    .Where(i => AiArmyRoles.IsGroundBattleBody(army.Members[i])
+                        && (i >= (army.NonHeroIsAviation?.Count ?? 0)
+                            || !army.NonHeroIsAviation[i])).ToList();
                 List<WorthIt.DefenderProfile> current = currentIndices
                     .Select(i => army.Members[i]).ToList();
                 if (EconomyRosterSafe(current, army.Commander, threats, minimumEscort))
@@ -873,8 +908,9 @@ namespace Game.Ai.V2
                 List<WorthIt.DefenderProfile> reserve =
                     garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
                 List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
-                    .Where(i => i >= (garrison.NonHeroIsAviation?.Count ?? 0)
-                        || !garrison.NonHeroIsAviation[i]).ToList();
+                    .Where(i => AiArmyRoles.IsGroundBattleBody(reserve[i])
+                        && (i >= (garrison.NonHeroIsAviation?.Count ?? 0)
+                            || !garrison.NonHeroIsAviation[i])).ToList();
                 for (int add = 1; add <= reserve.Count; add++)
                 {
                     List<int> best = null;
@@ -882,11 +918,9 @@ namespace Game.Ai.V2
                     int bestMove = int.MinValue;
                     foreach (List<int> subset in Combinations(reserveIndices, add))
                     {
-                        // The garrison-body PREFERENCE (a Base founding in a safe rear) never takes a
-                        // body the garrison's protected defence floor keeps (AiArmyRoles.
-                        // CanSpareGarrisonMembers — the rule every other lane's donor path obeys); a
-                        // threat-driven escort keeps its existing contract.
-                        if (garrisonBodyPreferenceOnly && !GarrisonMaySpare(garrison, subset))
+                        // Founding must not strip the original garrison's protected defence,
+                        // whether the body is needed for the route or to hold the future base.
+                        if (protectGarrisonFloor && !GarrisonMaySpare(garrison, subset))
                             continue;
                         var projected = new List<WorthIt.DefenderProfile>(current);
                         projected.AddRange(subset.Select(i => reserve[i]));
@@ -1269,8 +1303,7 @@ namespace Game.Ai.V2
                         float usefulTypeGain = standing.UsefulMarginalIncomeGain(typeGain);
                         if (usefulTypeGain <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
-                        float priority = TaskScoreEvaluator.ResourcePriority(standing,
-                            ResourceStarvationRegistry.Pressure(player, type));
+                        float priority = TaskScoreEvaluator.ResourcePriority(standing);
                         marginalByResource.Add((usefulTypeGain, priority));
                         usefulGainTotal += usefulTypeGain;
                     }

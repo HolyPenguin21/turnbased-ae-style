@@ -179,7 +179,7 @@ namespace Game.EditorTests
             garrison.IsGarrison = true;
             garrison.IsStructuralRaidActor = false;
             garrison.MemberCount = 0;
-            WorldSnapshot snap = Snap(Actor(7, Home), garrison);
+            WorldSnapshot snap = Snap(garrison);
             AggressionDemandEvaluation result = AggressionDemandEvaluator.Build(snap,
                 Array.Empty<RaidObjective>(), Array.Empty<MissionIntent>(), new ActorCommitments(), _us);
             AxisDemand demand = result.Demands.Single(d => d.DeliveryShape == CapabilityDeliveryShape.Garrison);

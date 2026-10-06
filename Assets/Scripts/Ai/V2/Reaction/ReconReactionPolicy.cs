@@ -244,22 +244,11 @@ namespace Game.Ai.V2
         {
             HexCoord? best = null;
             bool bestIsStronghold = false;
-            foreach (HexCoord h in HexGridMath.Neighbors(army.Hex)
+            foreach (HexCoord h in HexGridMath.Neighbors(army.Hex).Concat(new[] { army.Hex })
                 .OrderBy(x => x.Q).ThenBy(x => x.R))
             {
-                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h) || !map.TryGetTerrainAt(h, out var terrain))
-                    continue;
+                if (!CanCaptureStructureAt(player, map, army, h)) continue;
                 AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, h);
-                if (!building.HasValue || building.Value.Owner == null
-                    || building.Value.Owner == player || building.Value.Owner.IsNeutral)
-                    continue;
-                if (!AiMapMemory.KnownUndefendedForeignStructureAt(player, h))
-                    continue;
-                int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
-                if (cost > army.CurrentMovement)
-                    continue;
-                if (PostCombatPositionUnsafe(player, map, army, h, -1))
-                    continue;
                 bool stronghold = building.Value.IsBase || building.Value.IsStartingCitadel;
                 if (best.HasValue && (bestIsStronghold || !stronghold))
                     continue;
@@ -271,6 +260,23 @@ namespace Game.Ai.V2
             return new ReconReactionDecision(ReconReactionAction.SabotageStructure, best, null, 1f,
                 bestIsStronghold ? "adjacent undefended enemy Base: take it over"
                     : "adjacent undefended enemy Facility: destroy it");
+        }
+
+        internal static bool CanCaptureStructureAt(PlayerSetupData player, HexMap map,
+            ArmyData army, HexCoord hex)
+        {
+            if (player == null || map == null || army == null || !AiArmyRoles.IsSoloRecce(army)
+                || HexGridMath.Distance(army.Hex, hex) > 1 || !VisionSystem.IsVisible(player, hex)
+                || !map.CanEnter(hex, army) || !map.TryGetTerrainAt(hex, out var terrain)) return false;
+            // Visible arrivals have already run the canonical contact rule. Only a hidden
+            // resident needs a separate reveal action on its current hex.
+            if (army.Hex.Equals(hex) && !StealthSystem.IsArmyFullyHidden(army)) return false;
+            AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, hex);
+            return building.HasValue && building.Value.Owner != null
+                && building.Value.Owner != player && !building.Value.Owner.IsNeutral
+                && AiMapMemory.KnownUndefendedForeignStructureAt(player, hex)
+                && (army.Hex.Equals(hex) || Math.Max(1, terrain?.moveCost ?? 1) <= army.CurrentMovement)
+                && !PostCombatPositionUnsafe(player, map, army, hex, -1);
         }
 
         // §17 acceptable post-combat position — would any OTHER known non-neutral enemy within

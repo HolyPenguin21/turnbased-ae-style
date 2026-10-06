@@ -311,7 +311,8 @@ namespace Game.Ai.V2
             {
                 army = AiV2Util.ResolveArmy(player, moverArmyId);
                 if (army == null || army.Owner != player || army.Members.Count == 0
-                    || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
+                    || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
+                        && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
             }
@@ -328,7 +329,12 @@ namespace Game.Ai.V2
             bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             bool arrivesHidden = ScoutMoverSelector.ArrivesHiddenLive(alreadyHidden, reserveStealth);
 
-            if (refresh)
+            if (ReconScoutKinds.IsCapture(target.Kind))
+            {
+                if (!ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, focus))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("local capture no longer safe/empty"));
+            }
+            else if (refresh)
             {
                 // A Refresh target was selected because frozen IntelAge was stale. Previously
                 // Visited ground remains valid; only a NEW current observation completes it.
@@ -374,13 +380,13 @@ namespace Game.Ai.V2
                 ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex,
                     plannedExtractUnit.MoveMax) != null
                 : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex) != null;
-            if (!hasSafeApproach)
+            if (!hasSafeApproach && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(focus)))
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({fromHex.Q},{fromHex.R}) toward ({executionHex.Q},{executionHex.R})"));
 
             int activationAp = exec.RequiresGarrisonExtraction
                 ? plannedExtractUnit.ActivationApCost
-                : (army.HasActivatedThisTurn ? 0 : army.ActivationApCost);
+                : ScoutCostModel.PendingActivationApFor(army, target.Kind, focus);
             int stealthAp = reserveStealth ? StealthTransitionApCost : 0;
             float realNeed = activationAp + stealthAp;
 
@@ -438,7 +444,8 @@ namespace Game.Ai.V2
             // rolls back through FailAfterRecce instead of leaving a phantom army downstream stages
             // were never told to expect.
             if (army == null || army.Owner != player || army.Members.Count == 0
-                || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
+                || !AiArmyRoles.IsSoloRecce(army) || (army.CurrentMovement <= 0
+                        && !(ReconScoutKinds.IsCapture(target.Kind) && army.Hex.Equals(target.FocusHex))))
                 return FailAfterRecce(ProvisionFailure.MoverContended(
                     $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
 

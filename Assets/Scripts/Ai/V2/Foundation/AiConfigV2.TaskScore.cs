@@ -67,6 +67,9 @@
         public const float taskScoreCorridorAlignmentMax = 8f;
         public const float taskScoreTerrainDefenseMax = 4f;
         // Signed span, not a positive maximum: +3 at home, 0 at the midpoint, -3 far away.
+        // FoundBase only: distance 1 costs 8, distance 2 costs 4, distance >=3 costs 0.
+        // Larger than the +3 proximity benefit, finite and outweighed by real site value.
+        public const float taskScoreBaseCrowdingPerHex = 4f;
         public const float taskScoreProximityMax = 6f;
         public const float taskScoreProximityFullFalloffDistance = 9f;    // shape: hexes to the far end
 

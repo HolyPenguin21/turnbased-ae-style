@@ -126,6 +126,13 @@ namespace Game.Ai.V2
         {
             if (mover == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
+            if (ReconScoutKinds.IsCapture(target.Kind))
+            {
+                ArmyData actor = AiV2Util.ResolveArmy(player, mover.ArmyId);
+                return ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, actor, target.FocusHex)
+                    ? ReconAssignmentCandidateResult.Ok
+                    : ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
+            }
             if (ctx?.Map == null)
                 return ReconAssignmentCandidateResult.Ok;
 
@@ -268,6 +275,18 @@ namespace Game.Ai.V2
             {
                 AppendAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds, airPool);
                 AppendStoredAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds);
+                return list;
+            }
+            if (ReconScoutKinds.IsCapture(target.Kind))
+            {
+                foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, excludeArmyIds))
+                {
+                    if (!CanExecute(ctx, player, snap, mover, target)) continue;
+                    ScoutPairCost pc = ScoutCostModel.CapturePairCost(snap, mover, target.FocusHex);
+                    if (pc.Distance > mover.CurrentMovement) continue;
+                    list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
+                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
+                }
                 return list;
             }
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
@@ -543,7 +562,10 @@ namespace Game.Ai.V2
                     ArmySnapshot claimed = snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == claimedId);
                     if (claimedId < 0 || claimed?.IsAir == true)
                         claimedAirActors++;
-                    else if (claimed?.IsSoloRecce == true)
+                    else if (claimed?.IsSoloRecce == true
+                        && !(alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>()).Any(pm =>
+                            pm != null && pm.MoverArmyId == claimedId
+                            && pm.Mission.Target is ScoutMissionTarget t && ReconScoutKinds.IsCapture(t.Kind)))
                         claimedGroundActors++;
                 }
             }
@@ -607,7 +629,8 @@ namespace Game.Ai.V2
                 ReconConcurrencyPolicy.GroundActorsPerTurn(snap) - usedGround.Count);
             List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())
                 .Where(pm => pm != null && pm.Kind == MissionKind.Scout
-                    && pm.ExecutorKind == ScoutExecutorKind.Ground)
+                    && pm.ExecutorKind == ScoutExecutorKind.Ground
+                    && pm.Mission.Target is ScoutMissionTarget t && !ReconScoutKinds.IsCapture(t.Kind))
                 .Select(pm => pm.FocusHex).ToList();
             ReconAssignmentResult solved = AssignFromCandidates(
                 open, cands, airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci);
@@ -620,6 +643,7 @@ namespace Game.Ai.V2
                 if (!solved.Assigned.TryGetValue(key, out ScoutExecutionCandidate chosen))
                     continue;
                 if (chosen.ExecutorKind == ScoutExecutorKind.Ground
+                    && !ReconScoutKinds.IsCapture(((ScoutMissionTarget)fe.Mission.Target).Kind)
                     && !usedGround.Contains(chosen.ActorKey))
                 {
                     if (newGroundBudget <= 0)
@@ -767,15 +791,16 @@ namespace Game.Ai.V2
                     continue;
 
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
+                bool localCapture = ReconScoutKinds.IsCapture(((ScoutMissionTarget)open[i].Mission.Target).Kind);
                 if (isAir && usedAirActors + 1 > airActorCap)
                     continue;
-                if (!isAir && usedGroundActors + 1 > groundActorCap)
+                if (!isAir && !localCapture && usedGroundActors + 1 > groundActorCap)
                     continue;
                 // Recon S3 — the separation keeps a NEW lane out of an area already being scouted.
                 // Two durable roles that ended up close (re-focus, a lane started in an earlier
                 // pass) are both already committed: blocking one of them every pass left it
                 // MoverContended forever — suspended, never aged, its scout idle.
-                if (!isAir && !open[i].Mission.FromDurableIntent)
+                if (!isAir && !localCapture && !open[i].Mission.FromDurableIntent)
                 {
                     bool tooCloseToChosenGround = false;
                     ScoutMissionTarget target = (ScoutMissionTarget)open[i].Mission.Target;
@@ -790,6 +815,7 @@ namespace Game.Ai.V2
                         if (other.ExecutorKind != ScoutExecutorKind.Ground)
                             continue;
                         ScoutMissionTarget otherTarget = (ScoutMissionTarget)open[j].Mission.Target;
+                        if (ReconScoutKinds.IsCapture(otherTarget.Kind)) continue;
                         if (HexGridMath.Distance(target.FocusHex, otherTarget.FocusHex)
                             < AiConfigV2.scoutTargetMinSeparation)
                         {
@@ -806,7 +832,7 @@ namespace Game.Ai.V2
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
                     airActorCap, groundActorCap, fixedGroundFoci,
-                    usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
+                    usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir || localCapture ? 0 : 1));
                 usedArmyIds.Remove(aid);
                 if (hasGarrisonSource)
                     usedArmyIds.Remove(sourceId);

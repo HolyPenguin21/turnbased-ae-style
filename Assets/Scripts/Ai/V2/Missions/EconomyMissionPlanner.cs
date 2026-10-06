@@ -306,7 +306,8 @@ namespace Game.Ai.V2
                 DemandLayer.SelectEconomyBuilder(
                 snapshot, t.TargetHex, currentRoutes, activeIntents, commitments,
                 t.BuildValue, t.BuildApCost, includeReturn: false,
-                pinnedBuilderArmyId: preferredId);
+                pinnedBuilderArmyId: preferredId,
+                requiresFoundingGarrison: t.Kind == EconomyTaskKind.FoundBase);
             EconomyBuilderRouteSnapshot? routeWitness = currentBuilder?.Route;
             ArmySnapshot actor = currentBuilder?.Army;
 

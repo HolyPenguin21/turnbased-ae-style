@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // Refresh — stale previously-observed information;
     // AirSweep — aviation-only observation pass toward the strategic sweep anchor.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3 }
+    public enum ReconObjectiveKind { Explore = 0, Refresh = 1, AirSweep = 3, CaptureStructure = 4 }
 
     public sealed class ReconObjective
     {
@@ -54,7 +54,8 @@ namespace Game.Ai.V2
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
-            Kind = Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
+            Kind = Kind == ReconObjectiveKind.CaptureStructure ? ScoutTargetKind.CaptureStructure
+                : Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
                 : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
             Stealth = Stealth,
             DetectionRisk = DetectionRisk,
@@ -146,7 +147,30 @@ namespace Game.Ai.V2
                     ReconAcceptanceAudit.RecordDirectionInfluence(auditPlayer, snap.TurnNumber,
                         topRefresh.FocusHex, topRefresh.DirectionPressure, topRefresh.BaseValue);
             }
+            foreach (HexCoord hex in (snap.Self?.ReconCaptureOpportunities
+                ?? System.Array.Empty<(int ArmyId, HexCoord Hex)>()).Select(x => x.Hex).Distinct())
+            {
+                ReconObjective capture = CaptureAt(snap, hex);
+                if (capture != null) list.Add(capture);
+            }
             return list;
+        }
+
+        internal static ReconObjective CaptureAt(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Self?.ReconCaptureOpportunities?.Any(x => x.Hex.Equals(hex)) != true) return null;
+            AiMapMemory.KnownBuilding building = snap.Known.Buildings.First(b => b.Hex.Equals(hex));
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.CaptureStructure, FocusHex = hex };
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, target);
+            if (!cost.MoverKnown) return null;
+            float relevance = building.IsStartingCitadel ? 1f : building.IsBase ? 0.85f : 0.5f;
+            TaskScore score = new TaskScore(
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(relevance),
+                cardPrice: TaskScoreEvaluator.Price(cost.ActivationApNow),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
+                    TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex)));
+            return new ReconObjective { Kind = ReconObjectiveKind.CaptureStructure, FocusHex = hex,
+                TaskScore = score, BaseValue = score.Value, StrategicRelevance = relevance };
         }
 
         // Task 5 (Problem B) — preferredMoverArmyId lets a caller re-materialising a durable
@@ -214,7 +238,7 @@ namespace Game.Ai.V2
                 if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, cur, out int age))
                 {
                     neverObserved++;
-                    staleWeighted += w;
+                    // Never observed belongs to InfoGain; there is no old intel to refresh.
                     continue;
                 }
                 staleWeighted += w * ReconIntelSnapshotRegistry.Staleness(age);
@@ -256,6 +280,7 @@ namespace Game.Ai.V2
                 return null;
             switch (si.Kind)
             {
+                case ScoutTargetKind.CaptureStructure: return CaptureAt(snap, si.FocusHex);
                 case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
                 case ScoutTargetKind.AirSweep: return AirSweepOf(snap, preferredMoverArmyId);

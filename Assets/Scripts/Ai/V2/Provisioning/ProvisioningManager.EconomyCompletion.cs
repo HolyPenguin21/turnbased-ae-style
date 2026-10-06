@@ -158,9 +158,9 @@ namespace Game.Ai.V2
             reinforcement = new List<UnitData>();
             if (builder == null || choice?.Army == null) return false;
             // Hero extraction has its own pinned container plan and is re-admitted after mutation.
-            if (choice.Route.RequiresGarrisonExtraction) return true;
+            if (choice.Route.RequiresGarrisonExtraction && choice.PreparationGarrison == null) return true;
             List<UnitData> bodies = builder.Members.Where(u => u.IsGroundCombatant).ToList();
-            if (!RosterMatches(choice.Army, bodies)) return false;
+            if (!choice.Route.RequiresGarrisonExtraction && !RosterMatches(choice.Army, bodies)) return false;
             if (choice.PreparationGarrison == null) return true;
             garrison = AiV2Util.ResolveArmy(player, choice.PreparationGarrison.ArmyId);
             if (garrison == null || !garrison.IsGarrison || garrison.Owner != player
@@ -169,10 +169,13 @@ namespace Game.Ai.V2
             List<UnitData> reserve = garrison.Members.Where(u => u.IsGroundCombatant).ToList();
             if (!RosterMatches(choice.PreparationGarrison, reserve)) return false;
             var retained = new HashSet<int>(choice.RetainedIndices);
-            unload = bodies.Where((u, index) => AiArmyRoles.IsGroundBattleBody(u)
-                && !retained.Contains(index)).ToList();
+            unload = choice.Route.RequiresGarrisonExtraction ? new List<UnitData>()
+                : bodies.Where((u, index) => AiArmyRoles.IsGroundBattleBody(u)
+                    && !retained.Contains(index)).ToList();
             if (choice.AddedIndices.Any(i => i < 0 || i >= reserve.Count)) return false;
             reinforcement = choice.AddedIndices.Select(i => reserve[i]).ToList();
+            if (choice.FoundsBase && reinforcement.Count > 0
+                && !AiArmyRoles.CanSpareGarrisonMembers(player, garrison, reinforcement)) return false;
             if ((unload.Count > 0 || reinforcement.Count > 0) && choice.Army.EconomyRosterProtected)
                 return false;
             return (unload.Count == 0 || ArmyActions.CanTransferMembers(unload, builder, garrison, out _))

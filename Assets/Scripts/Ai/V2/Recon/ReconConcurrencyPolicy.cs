@@ -34,8 +34,9 @@ namespace Game.Ai.V2
             // Concurrency here is GROUND Recon lanes. The aviation-only AirSweep is never a ground
             // lane, so its value must not open (or keep) a scout lane — every caller (Demand
             // capacity, Continuity trim, Phase-B scout saturation) gets the same answer.
-            if (runnable != null && runnable.Any(o => o != null && o.Kind == ReconObjectiveKind.AirSweep))
-                runnable = runnable.Where(o => o != null && o.Kind != ReconObjectiveKind.AirSweep).ToList();
+            if (runnable != null)
+                runnable = runnable.Where(o => o != null && o.Kind != ReconObjectiveKind.AirSweep
+                    && o.Kind != ReconObjectiveKind.CaptureStructure).ToList();
             int hardCap = HardCap;
             if (hardCap == 0 || runnable == null || runnable.Count == 0
                 || !HasMaterialValue(runnable[0]))
@@ -112,4 +113,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

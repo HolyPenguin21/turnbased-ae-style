@@ -40,6 +40,7 @@ namespace Game.Ai.V2
         BaseThreatRisk,
         DetectionRisk,
         IntelAgePenalty,
+        BaseCrowdingCost,
     }
 
     /// <summary>
@@ -63,6 +64,7 @@ namespace Game.Ai.V2
     /// </summary>
     public readonly struct TaskScore
     {
+        public readonly float BaseCrowdingCost;
         public readonly float EconomicHexBenefit;
         public readonly float Payback;
         public readonly float Airfield;
@@ -136,8 +138,10 @@ namespace Game.Ai.V2
             float detectionRisk = 0f,
             float economicExpansionValue = 0f,
             float forceAmplification = 0f,
-            float intelAgePenalty = 0f)
+            float intelAgePenalty = 0f,
+            float baseCrowdingCost = 0f)
         {
+            BaseCrowdingCost = baseCrowdingCost;
             EconomicHexBenefit = economicHexBenefit;
             Payback = payback;
             Airfield = airfield;
@@ -185,6 +189,7 @@ namespace Game.Ai.V2
                     case TaskSlot.ThreatDirection: return ThreatDirection;
                     case TaskSlot.FrontProgress: return FrontProgress;
                     case TaskSlot.CorridorAlignment: return CorridorAlignment;
+                    case TaskSlot.BaseCrowdingCost: return BaseCrowdingCost;
                     case TaskSlot.OwnTerritoryProximity: return OwnTerritoryProximity;
                     case TaskSlot.TerrainDefense: return TerrainDefense;
                     case TaskSlot.RaidReward: return RaidReward;
@@ -237,7 +242,8 @@ namespace Game.Ai.V2
                 detectionRisk: value(TaskSlot.DetectionRisk),
                 economicExpansionValue: value(TaskSlot.EconomicExpansionValue),
                 forceAmplification: value(TaskSlot.ForceAmplification),
-                intelAgePenalty: value(TaskSlot.IntelAgePenalty));
+                intelAgePenalty: value(TaskSlot.IntelAgePenalty),
+                baseCrowdingCost: value(TaskSlot.BaseCrowdingCost));
     }
 
     /// <summary>
@@ -253,6 +259,7 @@ namespace Game.Ai.V2
         {
             switch (slot)
             {
+                case TaskSlot.BaseCrowdingCost:
                 case TaskSlot.CardPrice:
                 case TaskSlot.Delivery:
                     return TaskSlotCategory.Cost;
@@ -432,6 +439,11 @@ namespace Game.Ai.V2
                 best = Mathf.Min(best, HexGridMath.Distance(snap.Self.Citadel, target));
             return best == int.MaxValue ? Mathf.Max(0, fallbackDistance) : best;
         }
+
+        internal static float BaseCrowdingCost(float nearestHomeDistance) =>
+            nearestHomeDistance >= AiConfigV2.economyBaseMinSpacing ? 0f
+                : AiConfigV2.taskScoreBaseCrowdingPerHex
+                    * Mathf.Max(0f, AiConfigV2.economyBaseMinSpacing - nearestHomeDistance);
 
         internal static float OwnTerritoryProximity(float nearestHomeDistance)
         {

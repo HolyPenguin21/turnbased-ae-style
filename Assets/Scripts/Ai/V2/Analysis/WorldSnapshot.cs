@@ -490,6 +490,10 @@ namespace Game.Ai.V2
         public bool HoldsStartingCitadel;
         public IReadOnlyList<HexCoord> BaseHexes;
         public IReadOnlyList<ArmySnapshot> Armies;
+        // Current observation plus an affordable safe local step, frozen at Analysis.
+        public IReadOnlyList<(int ArmyId, HexCoord Hex)> ReconCaptureOpportunities =
+            System.Array.Empty<(int, HexCoord)>();
+
 
         public float FieldPower;
         public float GarrisonPower;
@@ -772,6 +776,9 @@ namespace Game.Ai.V2
         public bool RequiresGarrisonExtraction;
         public float ExtractionApCost;
         public bool ExtractionContainerAvailable;
+        public WorthIt.SideCommander ExtractedHeroCommander;
+        public int ExtractedHeroCapacity;
+        public bool ExtractionContainerActivated;
         public int MaximumStepCost;
         // Exact fog-honest route selected by SafeStepPathing. Demand consumes the associated
         // route threats instead of reconstructing a wider geometric corridor from endpoints.
@@ -1102,4 +1109,3 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
-

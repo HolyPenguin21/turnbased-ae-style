@@ -75,6 +75,8 @@ namespace Game.Ai.V2
                 // offer it a fresh assault against the same target this pass.
                 if (incumbent != null && incumbent.Attack.Phase != AttackMissionPhase.Assault)
                     continue;
+                if (incumbent == null && !AttackForceReadiness.MobilizationOpen(snap.Self))
+                    continue;
                 if (incumbent == null && liveOperation != null)
                 {
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,

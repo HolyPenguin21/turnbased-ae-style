@@ -123,7 +123,8 @@ namespace Game.Ai.V2
             picked.AddRange(ordinaryIncumbents);
 
             IEnumerable<ScoutCandidate> ordinary = fresh
-                .Where(f => !incumbentKeys.Contains(CandidateKey(f)))
+                .Where(f => !ReconScoutKinds.IsCapture(f.Target.Kind)
+                    && !incumbentKeys.Contains(CandidateKey(f)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
                 .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x));
@@ -141,13 +142,20 @@ namespace Game.Ai.V2
             // the final one-actor/one-job binding and may rematch when live route/vantage facts move.
             ISet<int> claimed = ctx != null
                 ? ActorCommitments.FromIntents(activeIntents, snap, objectives).ClaimedArmyIdSet : new HashSet<int>();
+            foreach (ScoutCandidate capture in fresh.Where(x => ReconScoutKinds.IsCapture(x.Target.Kind))
+                .OrderByDescending(x => x.BaseValue))
+                if (!picked.Any(x => CandidateKey(x).Equals(CandidateKey(capture)))) picked.Add(capture);
             var witnessedAir = new List<MissionProposal>();
+            bool captureProposed = false;
             foreach (ScoutCandidate c in picked)
             {
+                if (ReconScoutKinds.IsCapture(c.Target.Kind) && captureProposed) continue;
                 var excluded = new HashSet<int>(claimed);
                 if (c.IsIncumbent && c.PreferredMover.HasValue) excluded.Remove(c.PreferredMover.Value);
                 MissionProposal proposal = BuildProposal(snap, c, ctx, excluded, out bool airWitness);
+                if (proposal == null) continue;
                 proposals.Add(proposal);
+                captureProposed |= ReconScoutKinds.IsCapture(c.Target.Kind);
                 if (airWitness) witnessedAir.Add(proposal);
             }
 
@@ -211,6 +219,8 @@ namespace Game.Ai.V2
                     + $"{StealthTag(o.Stealth, o.DetectionRisk)} task {F(o.BaseValue)} "
                     + $"refreshP {F(rawSubDesire)} LAS {F(admission)}";
             }
+            else if (o.Kind == ReconObjectiveKind.CaptureStructure)
+                explain = $"CaptureStructure @{o.FocusHex.Q},{o.FocusHex.R} task {F(o.BaseValue)} LAS {F(admission)}";
             else if (airSweep)
             {
                 explain = $"AirSweep @{o.FocusHex.Q},{o.FocusHex.R} "
@@ -244,7 +254,21 @@ namespace Game.Ai.V2
             ScoutExecutionCandidate? air = ReconScoutKinds.IsAirSweep(c.Target.Kind)
                 ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null;
             airWitness = air.HasValue;
-            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover, air);
+            int? preferred = c.PreferredMover;
+            if (ReconScoutKinds.IsCapture(c.Target.Kind))
+            {
+                ArmySnapshot actor = ScoutMoverSelector.Eligible(snap, c.Target, excluded)
+                    .OrderBy(a => ScoutCostModel.CapturePairCost(snap, a, c.Target.FocusHex).RequiredAp)
+                    .ThenBy(a => a.ArmyId).FirstOrDefault();
+                if (actor == null) return null;
+                preferred = actor.ArmyId;
+                var cost = ScoutCostModel.CapturePairCost(snap, actor, c.Target.FocusHex);
+                TaskScore priced = TaskScoreEvaluator.WithExecution(c.Score,
+                    new TaskScore(cardPrice: TaskScoreEvaluator.Price(cost.RequiredAp)));
+                c = new ScoutCandidate(c.Target, priced, priced.Value, c.Explain,
+                    c.IsIncumbent, c.Tier, preferred, c.FreshNeighbors);
+            }
+            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, preferred, air);
 
             // Task 5 (R1) — c.PreferredMover is the durable incumbent's NOMINAL preference; when
             // that actor is structurally ineligible this turn (e.g. 0 CurrentMovement),

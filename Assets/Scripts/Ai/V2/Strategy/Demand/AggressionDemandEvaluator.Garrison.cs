@@ -15,7 +15,7 @@ namespace Game.Ai.V2
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
                     AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
 
-        // Strike force step 7 — a base our field army holds (the fist that just took it) whose
+        // Every own base, including a newly founded or vacated one, whose
         // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
         // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
         // then weakest, body (ArmyReorganizationCandidates, garrison fill).
@@ -28,14 +28,13 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot garrison = armies.FirstOrDefault(a => a != null && a.IsGarrison
                     && a.Hex.Equals(baseHex));
-                if (garrison == null
-                    || !armies.Any(a => a != null && a.IsStructuralRaidActor && a.Hex.Equals(baseHex)))
+                if (garrison == null)
                     continue;
                 // The one garrison defence floor (AiArmyRoles.GarrisonDefenceFloor) on the snapshot's
                 // ground force: at least one body and the Citadel / Base share of power.
                 float floor = AiArmyRoles.GarrisonDefenceFloor(snap.Self.AvailablePower,
                     baseHex.Equals(snap.Self.Citadel));
-                int bodies = garrison.Members?.Count ?? 0;
+                int bodies = garrison.Members?.Count(AiArmyRoles.IsGroundBattleBody) ?? 0;
                 float desired = bodies == 0
                     ? Mathf.Max(floor, AiConfigV2.combatPowerPerBodyEstimate)
                     : floor - garrison.EffectiveArmyPower;
@@ -59,7 +58,7 @@ namespace Game.Ai.V2
                     TargetHex = baseHex,
                     WorldTaskScore = score,
                     Value = score.Value,
-                    Explain = $"garrison the held base ({baseHex.Q},{baseHex.R}) from hand: "
+                    Explain = $"garrison the own base ({baseHex.Q},{baseHex.R}) from hand: "
                         + $"{missing} power short of its floor {floor:0.#}; task={score.Value:0.##}",
                 });
             }

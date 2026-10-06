@@ -3,13 +3,45 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
 {
     public class AiReconTrimEligibilityTests
     {
+        [TestCase(ScoutTargetKind.CaptureStructure, true, 0)]
+        [TestCase(ScoutTargetKind.CaptureStructure, false, 4)]
+        [TestCase(ScoutTargetKind.Explore, true, 4)]
+        [TestCase(ScoutTargetKind.Refresh, true, 4)]
+        public void CaptureResident_RevalidationUsesRevealCost_NotMovementActivation(
+            ScoutTargetKind kind, bool resident, int expected)
+        {
+            HexCoord focus = new HexCoord(4, 3);
+            var mover = new ArmyData { Hex = resident ? focus : new HexCoord(3, 3) };
+            mover.Members.Add(new UnitData { ActivationApCost = 4 });
+            Assert.That(ScoutCostModel.PendingActivationApFor(mover, kind, focus), Is.EqualTo(expected));
+            mover.MarkActivated();
+            Assert.That(ScoutCostModel.PendingActivationApFor(mover, kind, focus), Is.Zero);
+        }
+
+        [Test]
+        public void TrimmedScout_CanTakeLocalEmptyStructureWithoutReopeningTraversalLane()
+        {
+            var player = new PlayerSetupData(); HexCoord focus = new HexCoord(4, 3);
+            var snap = Snapshot(player, 11, focus);
+            snap.Self.ReconCaptureOpportunities = new[] { (20, focus) };
+            MissionIntentRegistry.GetOrCreate(player).MarkReconActorTrimmed(11, 20);
+            var capture = new ScoutMissionTarget { Kind = ScoutTargetKind.CaptureStructure, FocusHex = focus };
+            Assert.That(ScoutMoverSelector.Eligible(snap, capture, null).Select(a => a.ArmyId), Is.EqualTo(new[] { 20 }));
+            Assert.That(ScoutMoverSelector.Eligible(snap, capture, new HashSet<int> { 20 }), Is.Empty,
+                "a tactical exception never steals an actor another operation holds");
+            Assert.That(ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(capture.Kind, false, true, true), Is.False);
+            var objective = new ReconObjective { Kind = ReconObjectiveKind.CaptureStructure, BaseValue = 100f };
+            Assert.That(ReconConcurrencyPolicy.DesiredTotal(snap, new[] { objective }), Is.Zero);
+        }
         [TearDown]
         public void ClearMissionState() => MissionIntentRegistry.Clear();
 
