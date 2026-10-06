@@ -213,15 +213,19 @@ namespace Game.Ai.V2
                         yield return aviation;
                     continue;
                 }
+                if (def.cardType == CardType.Equipment && def.equipment != null)
+                {
+                    // Keep every recipient alternative without first scoring the same set to
+                    // select one. Generated attachments belong to materialization below.
+                    foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
+                        card.EffectivePlayApCost, CombinedCost(card.EffectivePlayResourceCost, null),
+                        witnessedUsefulApDemand))
+                        yield return attachment;
+                    continue;
+                }
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
                     ownBaseHexes, blocked, witnessedUsefulApDemand);
-                if (p?.Kind == PlayKind.Equipment)
-                {
-                    foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
-                        p.ApCost, p.ResCost, witnessedUsefulApDemand))
-                        yield return attachment;
-                }
-                else if (p != null)
+                if (p != null)
                     yield return p;
             }
 
@@ -348,14 +352,6 @@ namespace Game.Ai.V2
                 // offered by generation. Newly useful sites re-enter the existing Economy loop.
                 blocked.Add($"{def.displayName}:base(requires_economy_expansion_demand)");
                 return null;
-            }
-
-            if (def.cardType == CardType.Equipment && def.equipment != null)
-            {
-                return BuildEquipmentPlays(card, snap, player, root, hand, ctx,
-                    totalAp, totalRes, witnessedUsefulApDemand)
-                    .OrderByDescending(p => p.Score).ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
-                    .FirstOrDefault();
             }
 
             blocked.Add($"{def.displayName}:{def.cardType}(noNonCombatPlayPath)");
