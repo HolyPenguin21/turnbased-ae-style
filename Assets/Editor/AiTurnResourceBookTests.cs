@@ -187,6 +187,26 @@ namespace Game.EditorTests
             Assert.That(session.ClaimedArmyIds, Does.Contain(17));
         }
 
+        [TestCase(StrategicReservedResource.ActionPoints)]
+        [TestCase(StrategicReservedResource.Human)]
+        [TestCase(StrategicReservedResource.Energy)]
+        [TestCase(StrategicReservedResource.Materials)]
+        [TestCase(StrategicReservedResource.Tech)]
+        public void CompositeCompletion_MustFitBaseAndGuardAfterOtherHolds(StrategicReservedResource resource)
+        {
+            var claims = new[] {
+                Claim("base", ResourceClaimKind.EconomyCompletion, resource, 2f),
+                Claim("other", ResourceClaimKind.EconomyCompletion, resource, 3f),
+                Claim("reaction", ResourceClaimKind.Reaction, resource, 1f),
+            };
+            var authority = new SpendAuthority("base", economyCompletesNow: true);
+            const float baseCost = 5f, guardCost = 2f;
+            Assert.That(baseCost, Is.LessThanOrEqualTo(TurnResourceBook.Free(10f, claims, resource, authority)));
+            Assert.That(baseCost + guardCost, Is.GreaterThan(TurnResourceBook.Free(10f, claims, resource, authority)),
+                "an affordable base alone does not admit the composite transaction");
+            Assert.That(baseCost + guardCost, Is.EqualTo(TurnResourceBook.Free(11f, claims, resource, authority)));
+        }
+
         [Test]
         public void NoAuthority_SeesEveryClaim()
         {

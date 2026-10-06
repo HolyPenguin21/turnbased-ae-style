@@ -259,11 +259,9 @@ namespace Game.Ai.V2
                         // closer to the enemy citadel than our anchor" rule used to also veto
                         // candidates here, before those same two score terms ever got to weigh a
                         // resource-rich hex that happened to sit slightly off the direct line.
-                        // MeetsBaseSpacing (own-base clearance, a real structural constraint) is
-                        // the only hard gate that stays; IsForwardBaseCandidate itself is kept for
-                        // its own unit coverage (AiEconomyDecisionTests) but no longer called here.
+                        // Own-network distance is priced by FoundBase TaskScore, never a veto.
+                        // Building occupancy and the enemy perimeter remain physical gates.
                         if (!knownMapHexes.Contains(hex)
-                            || !MeetsBaseSpacing(snap.Self.BaseHexes, hex)
                             || !hasDirection)
                             continue;
                         bool hasBuilding = occupied.TryGetValue(hex,
@@ -493,15 +491,10 @@ namespace Game.Ai.V2
         {
             if (ownBases == null || ownBases.Count == 0)
                 return false;
-            return MeetsBaseSpacing(ownBases, candidate)
+            return !ownBases.Contains(candidate)
                 && HexGridMath.Distance(candidate, targetCitadel)
                     < HexGridMath.Distance(anchor, targetCitadel);
         }
-
-        internal static bool MeetsBaseSpacing(IReadOnlyList<HexCoord> ownBases,
-            HexCoord candidate) => ownBases != null && ownBases.Count > 0
-            && ownBases.Min(h => HexGridMath.Distance(h, candidate))
-                >= AiConfigV2.economyBaseMinSpacing;
 
         internal static IReadOnlyDictionary<HexCoord, int> EconomyHomeRoutes(
             PlayerSetupData player, AiTurnContext ctx, HexCoord from, int maxMovement,
@@ -574,6 +567,9 @@ namespace Game.Ai.V2
                             HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                             IsOnTarget = true, RequiresGarrisonExtraction = true,
                             ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
+                            ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
+                            ExtractedHeroCapacity = sparableHero.CommandRating,
+                            ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
                             PathHexes = new[] { target },
                             RouteThreats = KnownThreatsAffectingEconomyRoute(snap, new[] { target }),
                         });
@@ -616,6 +612,9 @@ namespace Game.Ai.V2
                             IsOnTarget = false,
                             RequiresGarrisonExtraction = true,
                             ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
+                            ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
+                            ExtractedHeroCapacity = sparableHero.CommandRating,
+                            ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
                             MaximumStepCost = EconomyMaximumStepCost(ctx, garrisonRoute.Hexes),
                             PathHexes = garrisonRoute.Hexes.ToList(),
                             RouteThreats = KnownThreatsAffectingEconomyRoute(

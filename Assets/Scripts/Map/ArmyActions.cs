@@ -153,13 +153,16 @@ namespace Game.Map
         public static bool HasRequiredGroundDeploymentBuilding(PlayerSetupData owner, HexCoord hex,
             CardDefinition definition)
         {
-            if (owner == null || definition == null
-                || string.IsNullOrEmpty(definition.requiredBuildingAbility))
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == owner
-                && building.HasAbility(definition.requiredBuildingAbility);
+            return HasRequiredGroundDeploymentBuilding(owner, BuildingRegistry.FindAt(hex), definition);
         }
+
+        // A projected infrastructure transaction uses the same deployment law as the live one.
+        internal static bool HasRequiredGroundDeploymentBuilding(PlayerSetupData owner,
+            BuildingData building, CardDefinition definition) =>
+            owner != null && definition != null
+            && !string.IsNullOrEmpty(definition.requiredBuildingAbility)
+            && building != null && building.Owner == owner
+            && building.HasAbility(definition.requiredBuildingAbility);
 
         // Existing-army deployment compatibility surface. All legality/payment/spawn logic lives
         // in DeployUnitFromCardCore below; UI and aviation keep their current call shape.

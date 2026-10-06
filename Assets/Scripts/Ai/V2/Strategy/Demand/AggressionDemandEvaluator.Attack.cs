@@ -363,6 +363,13 @@ namespace Game.Ai.V2
                     + "reason=unbound_attack_owned_by_live_operation");
                 return;
             }
+            // Target knowledge may accumulate while closed; no operation-specific shortage
+            // exists until mobilization authorizes selecting an objective. Bound work is above.
+            if (!AttackForceReadiness.MobilizationOpen(snap.Self))
+            {
+                diag.Add("[AI][V2][Demand][Aggression] decision=HOLD reason=mobilization_closed");
+                return;
+            }
             AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap)
                 .FirstOrDefault(o => !(activeIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i != null
                         && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack

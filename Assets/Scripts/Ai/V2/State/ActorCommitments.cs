@@ -342,6 +342,7 @@ namespace Game.Ai.V2
             if (a.IsAir)
                 return intent.Scout != null
                     && intent.Scout.Kind != ScoutTargetKind.Explore
+                    && !ReconScoutKinds.IsCapture(intent.Scout.Kind)
                     && requirement != StealthRequirement.Required;
 
             if (!a.IsSoloRecce)

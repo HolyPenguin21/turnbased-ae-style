@@ -891,6 +891,7 @@ namespace Game.Ai.V2
             // independent aviation capacity policy and must survive this contraction pass.
             // AirSweep is an aviation operation even when its wing has landed back into storage.
             var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
+                && !ReconScoutKinds.IsCapture(i.Scout.Kind)
                 && !ReconScoutKinds.IsAirSweep(i.Scout.Kind)
                 && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
                 .ToList();
@@ -898,7 +899,7 @@ namespace Game.Ai.V2
                 return;
 
             var runnable = reconObjectives
-                .Where(o => o != null && o.BaseValue > 0f)
+                .Where(o => o != null && o.Kind != ReconObjectiveKind.CaptureStructure && o.BaseValue > 0f)
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();
@@ -980,6 +981,7 @@ namespace Game.Ai.V2
                 if (d < spacedDist && Spaced(h)) { spacedDist = d; spacedPick = h; }
             }
 
+            if (ReconScoutKinds.IsCapture(s.Kind)) return false;
             if (ReconScoutKinds.IsRefresh(s.Kind))
             {
                 foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))

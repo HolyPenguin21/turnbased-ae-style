@@ -75,8 +75,10 @@ namespace Game.Ai.V2
 
             // The mover's real next-action cost: once per turn for ground, once per sortie for an
             // air wing (0 on every later step and turn of a paid sortie).
-            if (root != null && mover.PendingActivationApCost > 0
-                && root.ActionPoints < mover.PendingActivationApCost)
+            int activationAp = pm.Kind == MissionKind.Scout
+                ? ScoutCostModel.PendingActivationApFor(mover, pm.ScoutKind, pm.FocusHex)
+                : mover.PendingActivationApCost;
+            if (root != null && activationAp > 0 && root.ActionPoints < activationAp)
                 return MissionValidity.StaleUnaffordable;
 
             // Return is a noncapturing obligation, not a substitute Assault/LocalCapture.
@@ -209,6 +211,9 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
                 return MissionValidity.Valid;
 
+            if (ReconScoutKinds.IsCapture(pm.ScoutKind))
+                return ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, mover, pm.FocusHex)
+                    ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;
             if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {
                 if (!pm.ExecutionHex.Equals(pm.FocusHex))
@@ -247,4 +252,3 @@ namespace Game.Ai.V2
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;
     }
 }
-

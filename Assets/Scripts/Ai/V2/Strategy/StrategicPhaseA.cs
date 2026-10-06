@@ -403,7 +403,7 @@ namespace Game.Ai.V2
                     V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
                     InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
                         snap, player, root, hand, ctx, istate.Demand, apBudget,
-                        result.Reservation);
+                        result.Reservation, activeIntents, commitments);
                     V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
                     if (infra.StateChanged)
                         result.StateChanged = true;
@@ -412,6 +412,13 @@ namespace Game.Ai.V2
                     if (!infra.GenerationAttempted)
                         AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
                             infra.StateChanged, infraBefore, infraAfter);
+                    // A compensated failure can still publish newer knowledge/version stamps.
+                    // Refresh reads without inventing a resource debit or a completed project.
+                    if (!infra.Built && !infra.GenerationAttempted && infra.StateVersionAfter >= 0)
+                    {
+                        snap = WorldAnalysis.RefreshStrategicKnowledge(snap, player, root, hand, ctx);
+                        result.StateChanged = true;
+                    }
                     if (infra.GenerationAttempted)
                     {
                         result.GeneratedCardAttempts++;
@@ -442,7 +449,7 @@ namespace Game.Ai.V2
                         if (infra.Built)
                         {
                             istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
-                            result.CardsPlayed++;
+                            result.CardsPlayed += 1 + infra.AdditionalCardsConsumed;
                             result.InfrastructureBuilt++;
                             if (istate.Demand.Capability == CapabilityKind.DevelopmentInfrastructure)
                                 DevelopmentOutcomeTelemetry.RecordFacilityBuilt(player, ctx.TurnNumber);

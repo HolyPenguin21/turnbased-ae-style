@@ -21,6 +21,19 @@ namespace Game.EditorTests
             => ArmyData.ComputeProjectedCapacity(
                 nominal, hasHero, addedHeroes, firstRating);
 
+        [Test]
+        public void CompensatedJoin_RestoresOnlyItsOwnActivationCoverage()
+        {
+            var army = ArmyData.CreateVisualSnapshot();
+            var original = new UnitData(); var joined = new UnitData();
+            army.Members.Add(original); army.MarkActivated();
+            army.MarkUnitActivationPaid(joined);
+            Assert.That(army.RequiresActivationCharge(joined), Is.False);
+            army.MarkUnitActivationPaid(joined, paid: false);
+            Assert.That(army.RequiresActivationCharge(joined), Is.True);
+            Assert.That(army.HasActivationCoverageFor(original), Is.True);
+        }
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]

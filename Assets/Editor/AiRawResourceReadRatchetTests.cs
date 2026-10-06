@@ -38,6 +38,9 @@ namespace Game.EditorTests
             ["Evaluation/Cards/StrategicCardEvaluator.cs"] = 1,
             ["Evaluation/Effects/StrategicEffectRegistry.cs"] = 2,
             ["Execution/CardPlayExecutor.cs"] = 3,
+            // Physical aggregate preflight in the canonical executor. Strategic admission
+            // checks the same base + immediate defender against owner-aware spendability first.
+            ["Execution/BuildingPlayExecutor.cs"] = 2,
             ["Execution/ReconAirExecutor.cs"] = 34,
             ["Execution/ReconGroundExecutor.cs"] = 2,
             // +1 (T01): the preparation step measures its physical AP delta like every lane.

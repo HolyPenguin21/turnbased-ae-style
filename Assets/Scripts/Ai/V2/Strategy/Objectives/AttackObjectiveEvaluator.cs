@@ -551,7 +551,8 @@ namespace Game.Ai.V2
                 yield break;
             IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
                 ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
-            if (!buildings.Any(b => IsHostileStrategicStructure(b, player))
+            if (AttackForceReadiness.MobilizationOpen(snap.Self)
+                && !buildings.Any(b => IsHostileStrategicStructure(b, player))
                 && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
                 yield return citadel;
             foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)

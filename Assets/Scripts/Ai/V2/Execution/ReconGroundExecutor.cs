@@ -138,8 +138,7 @@ namespace Game.Ai.V2
             result.StartHex = army.Hex;
             result.FinalHex = army.Hex;
 
-            if (!ReconScoutKinds.IsExplore(pm.ScoutKind)
-                && !ReconScoutKinds.IsRefresh(pm.ScoutKind))
+            if (!ReconScoutKinds.IsGround(pm.ScoutKind))
             {
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 result.ApSpent = 0f;
@@ -178,8 +177,9 @@ namespace Game.Ai.V2
                     : pm.FocusHex,
             };
 
-            ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
-                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
+            if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+                ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
+                    prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             // Required stealth is preparatory state in the same admitted task transaction. The
             // operation is idempotent when the actor is already hidden and can never be charged
@@ -227,11 +227,35 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
-            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
+            if (ReconScoutKinds.IsCapture(pm.ScoutKind) && result.ReachedGoal)
+            { control.StopReason = ExecutionStopReason.ReachedGoal; yield break; }
+            // Hidden arrival does nothing until the resident voluntarily reveals. Zero MP/AP
+            // is sufficient for this contact; gameplay owns capture, not a second AI rule.
+            if (ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, army.Hex))
+            {
+                control.CommandAttempted = true;
+                result.StealthChanged |= ExitArmyStealth(army);
+                VisionSystem.RecomputeFor(player);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                V2StateVersion.Bump();
+                RefreshObjectiveSatisfied(player, pm, result);
+                control.StopReason = result.ReachedGoal ? ExecutionStopReason.ReachedGoal
+                    : ExecutionStopReason.StepCompleted;
+                yield break;
+            }
+            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(
+                ReconScoutKinds.IsCapture(pm.ScoutKind) ? null : player, army.Id,
                 army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
                 player, ctx.Map, army, assignment);
+            if (ReconScoutKinds.IsCapture(pm.ScoutKind))
+            {
+                if (!ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, pm.FocusHex))
+                { control.StopReason = ExecutionStopReason.TargetInvalidated; yield break; }
+                reaction = new ReconReactionDecision(ReconReactionAction.SabotageStructure,
+                    pm.FocusHex, null, 1f, "funded local structure capture");
+            }
             if (reaction.Action == ReconReactionAction.StopAndReplan)
             {
                 control.StopReason = ExecutionStopReason.TargetInvalidated;
@@ -313,12 +337,7 @@ namespace Game.Ai.V2
 
             if (sabotage)
             {
-                // A fully hidden mover takes no action on arrival, so the takeover needs a visible
-                // scout. Leaving stealth is free; re-check the one arrival rule on the settled
-                // post-decloak state before committing the step.
-                result.StealthChanged |= ExitArmyStealth(army);
-                VisionSystem.RecomputeFor(player);
-                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                // Keep stealth during approach and reveal on the settled destination.
                 if (!reaction.TargetHex.HasValue || !next.Value.Equals(reaction.TargetHex.Value)
                     || !AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value))
                 {
@@ -363,10 +382,12 @@ namespace Game.Ai.V2
             if (moved)
             {
                 result.StepsMoved++;
-                ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
+                if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+                    ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
                 // The turn-wide distinct-scout budget counts scouts that really walked.
-                MissionIntentRegistry.GetOrCreate(player)
-                    .MarkReconGroundActorUsed(ctx.TurnNumber, pm.MoverArmyId);
+                if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
+                    MissionIntentRegistry.GetOrCreate(player)
+                        .MarkReconGroundActorUsed(ctx.TurnNumber, pm.MoverArmyId);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                 ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,
                     beforeHex, endHex);
@@ -385,6 +406,15 @@ namespace Game.Ai.V2
                     });
             }
             result.FinalHex = endHex;
+            if (sabotage && army != null && moved && !trace.BattleOccurred && !trace.HexEventOccurred
+                && reaction.TargetHex.HasValue && reaction.TargetHex.Value.Equals(endHex)
+                && ReconReactionPolicy.CanCaptureStructureAt(player, ctx.Map, army, endHex))
+            {
+                result.StealthChanged |= ExitArmyStealth(army);
+                VisionSystem.RecomputeFor(player);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                V2StateVersion.Bump();
+            }
 
             if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)
                 ReconAcceptanceAudit.RecordWeakRecceAttack(player, ctx.TurnNumber, pm.MoverArmyId,
@@ -431,8 +461,9 @@ namespace Game.Ai.V2
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
-            control.CanContinue = army.CurrentMovement > 0;
-            control.StopReason = control.CanContinue
+            control.CanContinue = !ReconScoutKinds.IsCapture(pm.ScoutKind) && army.CurrentMovement > 0;
+            control.StopReason = ReconScoutKinds.IsCapture(pm.ScoutKind) && result.ReachedGoal
+                ? ExecutionStopReason.ReachedGoal : control.CanContinue
                 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.OutOfMovement;
         }

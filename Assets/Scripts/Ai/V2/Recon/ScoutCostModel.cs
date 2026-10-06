@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Map;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -59,6 +60,18 @@ namespace Game.Ai.V2
 
     public static class ScoutCostModel
     {
+        // A resident capture is a reveal/contact action, not a movement activation. The live
+        // admission and last revalidation must ask the same cost owner as snapshot planning.
+        internal static int PendingActivationApFor(ArmyData mover, ScoutTargetKind kind, HexCoord focus) =>
+            ReconScoutKinds.IsCapture(kind) && mover.Hex.Equals(focus)
+                ? 0 : mover.PendingActivationApCost;
+
+        internal static ScoutPairCost CapturePairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord hex)
+        {
+            ScoutPairCost cost = PairCost(snap, mover, hex, false);
+            if (mover.Hex.Equals(hex)) { cost.RequiredAp = 0; cost.EffActivationAp = 0; }
+            return cost;
+        }
         public static ScoutPairCost PairCost(WorldSnapshot snap, ArmySnapshot mover, HexCoord executionHex, bool stealthRequired)
         {
             int fleetBudget = snap?.Self?.Armies != null
@@ -220,7 +233,9 @@ namespace Game.Ai.V2
                     executionHex = vantage.Value.ExecutionHex;
                 }
 
-                ScoutPairCost pair = PairCost(snap, mover, executionHex, stealthRequired);
+                ScoutPairCost pair = ReconScoutKinds.IsCapture(target.Kind)
+                    ? CapturePairCost(snap, mover, executionHex)
+                    : PairCost(snap, mover, executionHex, stealthRequired);
                 if (pair.Distance == int.MaxValue) continue;
                 candidates.Add(new PlannedGroundCost(mover, pair));
             }

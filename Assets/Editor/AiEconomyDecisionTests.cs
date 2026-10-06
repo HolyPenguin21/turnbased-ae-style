@@ -1329,7 +1329,8 @@ namespace Game.EditorTests
                 anchor, target, new HexCoord(7, 0)), Is.True,
                 "Distance 4 from the front Base must not be cut off by the minimum-spacing rule.");
             Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
-                anchor, target, new HexCoord(4, 0)), Is.False);
+                anchor, target, new HexCoord(4, 0)), Is.True,
+                "a neighboring forward site is scored with crowding, not rejected");
             Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
                 anchor, target, new HexCoord(3, 3)), Is.False);
         }
@@ -1357,12 +1358,13 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void BaseExpansionSpacing_AppliesToActiveCommitmentToo()
+        public void BaseExpansionSpacing_IsAFiniteScorePrice()
         {
             IReadOnlyList<HexCoord> bases = new[] { new HexCoord(0, 0), new HexCoord(5, 0) };
 
-            Assert.That(WorldAnalysis.MeetsBaseSpacing(bases, new HexCoord(6, 0)), Is.False);
-            Assert.That(WorldAnalysis.MeetsBaseSpacing(bases, new HexCoord(8, 0)), Is.True);
+            Assert.That(TaskScoreEvaluator.BaseCrowdingCost(1), Is.EqualTo(8f));
+            Assert.That(TaskScoreEvaluator.BaseCrowdingCost(2), Is.EqualTo(4f));
+            Assert.That(TaskScoreEvaluator.BaseCrowdingCost(3), Is.Zero);
         }
 
         [Test]
@@ -2546,7 +2548,7 @@ namespace Game.EditorTests
 
         // 2026-10-02 (project owner) — a hero that founds a Base takes a ground body to leave as the
         // new garrison. includeReturn:false is the Base signal on every call site. The body is a
-        // preference: with nothing to lend, a safe solo builder stays eligible exactly as before.
+        // requirement: with nothing to lend, a solo builder must postpone founding.
         [Test]
         public void FoundBaseBuilder_TakesAGarrisonBodyWhenTheBaseCanLendOne()
         {
@@ -2557,8 +2559,7 @@ namespace Game.EditorTests
             DemandLayer.EconomyBuilderChoice alone = DemandLayer.SelectEconomyBuilder(
                 snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: false);
-            Assert.That(alone, Is.Not.Null, "no body to lend: the solo builder is still eligible");
-            Assert.That(alone.MinimumEscortCount, Is.Zero);
+            Assert.That(alone, Is.Null, "no body or immediate defender: founding waits for preparation");
 
             var garrison = new ArmySnapshot
             {

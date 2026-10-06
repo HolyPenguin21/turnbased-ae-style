@@ -1051,6 +1051,9 @@ namespace Game.EditorTests
                 BaseHexes = new List<HexCoord>(ownBases),
                 Citadel = OurBase,
                 Armies = new List<ArmySnapshot>(armies),
+                // Existing lane cases concern assembly/marching after mobilization. Closed-gate
+                // behavior has an explicit case; an omitted field is not an open-gate witness.
+                DeployedPower = 75f, AvailablePower = 100f,
                 TotalMilitaryPotential = armies.Select(a => a.EffectiveArmyPower)
                     .DefaultIfEmpty(0f).Max(),
             },
@@ -1176,7 +1179,21 @@ namespace Game.EditorTests
             Assert.That(AttackForceReadiness.MobilizationRawOpen(held), Is.False);
             Assert.That(AttackForceReadiness.MobilizationOpen(held), Is.True);
         }
+
+        [Test]
+        public void ClosedMobilization_DoesNotDemandReinforcementForANewTarget()
+        {
+            WorldSnapshot snap = DefendedSite(new[] { Army(49, OurBase, Weak()) }, new[] { OurBase });
+            snap.Self.DeployedPower = 10f;
+            snap.Self.AvailablePower = 100f;
+            var diagnostics = new List<string>();
+            var demands = new List<AxisDemand>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, Array.Empty<MissionIntent>(),
+                ActorCommitments.FromIntents(Array.Empty<MissionIntent>(), snap, null),
+                new CapabilityInventory(), diagnostics, demands);
+            Assert.That(demands, Is.Empty);
+            Assert.That(diagnostics.Any(x => x.Contains("mobilization_closed")), Is.True);
+        }
     }
 }
 #endif
-

@@ -50,6 +50,11 @@ namespace Game.Ai.V2
                 && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
             self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), ctx)).ToList();
+            // Includes own remaining MP: rebuild with Self even when enemy knowledge is unchanged.
+            self.ReconCaptureOpportunities = ownArmies.Where(AiArmyRoles.IsSoloRecce)
+                .SelectMany(a => HexGridMath.Neighbors(a.Hex).Concat(new[] { a.Hex })
+                    .Where(h => ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, a, h))
+                    .Select(h => (a.Id, h))).ToList();
 
             // Freeze the GENUINE route-existence fact for every structural raid
             // actor against every own base, the exact same SafeStepPathing oracle Provisioning

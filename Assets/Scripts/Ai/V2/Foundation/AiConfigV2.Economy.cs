@@ -22,6 +22,7 @@ namespace Game.Ai.V2
         // Structural/legal Base and Extraction rules, not legacy score contributions.
         public const float economyExtractionMaxPaybackTurns = 8f;
         public const int economyBaseFoundScanRadius = 3;
+        // Enemy-Citadel perimeter; also the zero-cost distance for soft own-home crowding.
         public const int economyBaseMinSpacing = 3;
         public const float economyBaseMaxDefenseModifier = 2f;
         // Base expansion value, cluster count and switch hysteresis: AiConfigV2.TaskScore.cs.

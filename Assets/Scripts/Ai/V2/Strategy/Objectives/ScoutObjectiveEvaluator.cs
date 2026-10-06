@@ -39,6 +39,10 @@ namespace Game.Ai.V2
         {
             switch (kind)
             {
+                case ScoutTargetKind.CaptureStructure:
+                    if (!VisionSystem.IsVisible(player, focus)) return false;
+                    BuildingData building = BuildingRegistry.FindAt(focus);
+                    return building == null || building.Owner == player;
                 case ScoutTargetKind.Explore: return IsExploreSatisfiedLive(player, focus);
                 case ScoutTargetKind.Refresh: return IsRefreshSatisfiedLive(player, focus);
                 default: return false;
@@ -62,6 +66,9 @@ namespace Game.Ai.V2
         {
             if (snap == null || intent == null)
                 return false;
+
+            if (ReconScoutKinds.IsCapture(intent.Kind))
+                return snap.Self?.ReconCaptureOpportunities?.Any(x => x.Hex.Equals(intent.FocusHex)) == true;
 
             // AirSweep stays a live operation while an anchor exists (the enemy is somewhere);
             // it is never "met" by observation — each sortie ends by its own refuel endurance.

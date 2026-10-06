@@ -42,6 +42,7 @@ namespace Game.Ai.V2
         // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
         // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
         public bool CardPlayed;
+        public int AdditionalCardsConsumed;
         // An operator may be manufactured by a DIFFERENT already staffed facility.
         // This is a single Challenge step, not a completed operator deployment.
         public bool GenerationAttempted;
@@ -118,7 +119,8 @@ namespace Game.Ai.V2
 
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            PhaseAApBudget apBudget, MaterializationReservation reservation = null)
+            PhaseAApBudget apBudget, MaterializationReservation reservation = null,
+            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");
@@ -127,7 +129,8 @@ namespace Game.Ai.V2
                 demand.Capability == CapabilityKind.EconomicInfrastructure
                     ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.EconomicExpansionBase
-                        ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand)
+                        ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
+                            reservation, activeIntents, commitments)
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
                         ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
@@ -224,6 +227,7 @@ namespace Game.Ai.V2
             }
             return new InfraFulfillResult { Built = true, ApSpent = r.ApSpent, StateChanged = r.StateChanged,
                 ResourcesSpent = r.ResourcesSpent, CardPlayed = r.CardConsumed,
+                AdditionalCardsConsumed = r.AdditionalCardsConsumed,
                 BuilderArmyId = cand.BuilderArmyId,
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
@@ -620,7 +624,8 @@ namespace Game.Ai.V2
 
         private static InfraCandidate BuildEconomyBaseCandidate(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            AxisDemand demand)
+            AxisDemand demand, PhaseAApBudget apBudget, MaterializationReservation reservation,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
             if (!demand.TargetHex.HasValue || demand.EconomyBuildCard == null
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player)
@@ -629,15 +634,50 @@ namespace Game.Ai.V2
                 return null;
             CardData card = demand.EconomyBuildCard;
             HexCoord hex = demand.TargetHex.Value;
-            int? builderId = EconomyBuilderAtTarget(snap, demand, hex);
+            int? builderId = null;
+            CardData defender = null;
+            // Completion must be assessed from the current snapshot, not the outbound witness.
+            // A guaranteed held-card continuation replaces only the body requirement; known
+            // route/site threats still go through the same Economy assessment.
+            foreach (EconomyBuilderRouteSnapshot route in WorldAnalysis.EconomyBuilderRoutes(snap, player, ctx, hex)
+                .Where(r => r.IsOnTarget && !r.RequiresGarrisonExtraction)
+                .OrderBy(r => r.ArmyId == demand.EconomyPreferredBuilderArmyId ? 0 : 1)
+                .ThenBy(r => r.ArmyId))
+            {
+                if (!BuildingPlayExecutor.PlanBaseGarrison(player, root, hand, ctx, card, hex,
+                    route.ArmyId, out CardData continuation, out _, admitDefender: candidate =>
+                    {
+                        float ap = card.EffectivePlayApCost + CardCostRules.PlayAp(candidate);
+                        SpendAuthority authority = SpendAuthorityFor(demand);
+                        return reservation?.ClaimsDevelopmentOperatorCard(candidate) != true
+                            && reservation?.ClaimsEconomyBuildCard(candidate) != true
+                            && (apBudget == null || ap <= apBudget.UnreservedBalance() + AiConfigV2.allocatorSliceEpsilon)
+                            && ap <= StrategicSpendability.SpendableAp(player, root, ctx, authority) + AiConfigV2.allocatorSliceEpsilon
+                            && StrategicSpendability.FitsSpendableResources(player, root, ctx,
+                                BuildingPlayExecutor.BaseAndGarrisonCost(card, candidate), authority);
+                    })) continue;
+                // Composition readiness alone does not grant ownership of an Attack/Defence
+                // mover standing here. Reuse the same candidate/claim gate as outbound planning.
+                var choice = DemandLayer.SelectEconomyBuilder(snap, hex, new[] { route },
+                    activeIntents, commitments, demand.EconomySiteValue > 0f
+                        ? demand.EconomySiteValue : demand.Value,
+                    card.EffectivePlayApCost, includeReturn: false, pinnedBuilderArmyId: route.ArmyId,
+                    requiresFoundingGarrison: continuation == null);
+                if (choice == null || choice.Suitability != DemandLayer.EconomyArmySuitability.Ready)
+                    continue;
+                builderId = route.ArmyId;
+                defender = continuation;
+                break;
+            }
+            if (!builderId.HasValue) return null;
             return new InfraCandidate
             {
-                ApCost = card.EffectivePlayApCost,
+                ApCost = card.EffectivePlayApCost + (defender == null ? 0 : CardCostRules.PlayAp(defender)),
                 BuilderArmyId = builderId,
-                ResCost = card.EffectivePlayResourceCost,
+                ResCost = BuildingPlayExecutor.BaseAndGarrisonCost(card, defender),
                 TargetHex = hex,
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
-                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex, builderId),
+                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex, builderId, defender),
             };
         }
 
@@ -1050,4 +1090,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

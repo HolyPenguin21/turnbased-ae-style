@@ -61,7 +61,8 @@ namespace Game.Ai.V2
             // materialisation target, or create a scout. Air capacity is still witnessed below.
             var uncovered = objectives
                 .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey)
-                    && o.Kind != ReconObjectiveKind.AirSweep)
+                    && o.Kind != ReconObjectiveKind.AirSweep
+                    && o.Kind != ReconObjectiveKind.CaptureStructure)
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();

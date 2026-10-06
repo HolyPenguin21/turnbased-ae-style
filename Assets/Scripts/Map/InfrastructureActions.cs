@@ -76,7 +76,8 @@ namespace Game.Map
         }
 
         public static InfrastructureBuildOutcome TryFoundBase(HexSelectionController hexSelection,
-            CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost)
+            CardDefinition definition, HexCoord hex, PlayerSetupData owner, int apCost, ResourceCost resourceCost,
+            Func<BuildingData, bool> completeBeforeCommit = null)
         {
             if (hexSelection == null || hexSelection.Map == null || !hexSelection.Map.CanEnter(hex))
                 return InfrastructureBuildOutcome.Fail("terrain cannot host infrastructure");
@@ -90,6 +91,13 @@ namespace Game.Map
             bool ownerGarrisonExistedBefore = ArmyRegistry.AllAt(hex).Any(a => a != null && a.IsGarrison && a.Owner == owner);
             bool ownerAirfieldExistedBefore = AviationRules.FindAirfieldAt(hex, owner) != null;
 
+            int[] resourcesBefore = completeBeforeCommit == null ? null : SnapshotResources(root);
+            var rostersBefore = completeBeforeCommit == null ? null : ArmyRegistry.AllAt(hex)
+                .Where(a => a != null && a.Owner == owner)
+                .ToDictionary(a => a, a => a.Members.ToArray());
+            UnitData[] unitsBefore = rostersBefore?.Values.SelectMany(u => u).Distinct().ToArray();
+            var coverageBefore = rostersBefore?.Keys.ToDictionary(a => a,
+                a => unitsBefore.Where(a.HasActivationCoverageFor).ToHashSet());
             int apBefore = root.ActionPoints;
             root.SpendActionPoints(apCost);
             resourceCost?.PayFrom(root);
@@ -117,8 +125,6 @@ namespace Game.Map
                     : "SpawnBuilding refused (missing scene config); rolled back");
             }
 
-            if (oldVisual != null)
-                UnityEngine.Object.Destroy(oldVisual.gameObject);
             if (carriedOver != null)
             {
                 int slot = 0;
@@ -136,6 +142,38 @@ namespace Game.Map
                 if (slot > 0)
                     VisionSystem.NotifyContentChanged(hex);
             }
+            // Optional deterministic completion participates in the existing transaction. The
+            // enclosing transaction compensates a partial canonical transfer/deploy as well as
+            // its own payment. A failed completion must not publish an empty Base
+            // that the mission ledger could mistake for a completed Economy project next pass.
+            bool completionAccepted = true;
+            try { completionAccepted = completeBeforeCommit == null || completeBeforeCommit(building); }
+            catch (Exception e)
+            {
+                completionAccepted = false;
+                Debug.LogError($"[Infra] Founding completion threw ({e.Message}); rolling back");
+            }
+            if (!completionAccepted)
+            {
+                // Transfers may have published a member before a vision/UI callback threw.
+                // Restore every original recipient/source; discard only this transaction's additions.
+                foreach (ArmyData army in ArmyRegistry.AllAt(hex).Where(a => a != null && a.Owner == owner).ToArray())
+                {
+                    foreach (UnitData unit in unitsBefore)
+                        army.MarkUnitActivationPaid(unit,
+                            coverageBefore.TryGetValue(army, out var covered) && covered.Contains(unit));
+                    army.Members.Clear();
+                    if (rostersBefore.TryGetValue(army, out UnitData[] members))
+                        army.Members.AddRange(members);
+                }
+                root.ActionPoints = apBefore;
+                RestoreResources(root, resourcesBefore);
+                RollbackPartialSpawn(hexSelection, hex, owner, existing,
+                    ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
+                return InfrastructureBuildOutcome.Fail("founding completion refused; rolled back");
+            }
+            if (oldVisual != null)
+                UnityEngine.Object.Destroy(oldVisual.gameObject);
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 

@@ -126,7 +126,12 @@ namespace Game.Map
         // MarkActivated would have covered anyway): once set, this unit can leave and return to
         // THIS SAME army as many times as the player likes for the rest of the turn without ever
         // being charged again.
-        public void MarkUnitActivationPaid(UnitData unit) => _activationCoveredUnits.Add(unit);
+        public void MarkUnitActivationPaid(UnitData unit, bool paid = true)
+        {
+            // An enclosing transaction may compensate a join without leaving false coverage.
+            if (paid) _activationCoveredUnits.Add(unit);
+            else _activationCoveredUnits.Remove(unit);
+        }
 
         // Start of a fresh turn (see GameTurnController.ReplenishMoveForOwner) — both the flag
         // and the per-unit coverage ledger reset together; nothing paid last turn carries over.
