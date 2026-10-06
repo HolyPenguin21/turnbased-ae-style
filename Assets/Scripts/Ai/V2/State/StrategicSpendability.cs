@@ -18,6 +18,15 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, int> SettledTurn =
             new Dictionary<PlayerSetupData, int>();
 
+        internal static void EndTurn(PlayerSetupData player, int turn)
+        {
+            if (player == null) return;
+            if (SettledTurn.TryGetValue(player, out int settled) && settled == turn)
+                SettledTurn.Remove(player);
+            if (MobilizationOpenTurn.TryGetValue(player, out int mobilized) && mobilized == turn)
+                MobilizationOpenTurn.Remove(player);
+        }
+
         internal static void Settle(PlayerSetupData player, int turn)
         {
             if (player != null)

@@ -292,7 +292,7 @@ namespace Game.Ai.V2
         // The host's roster really changed: publish it so the SAME turn's bounded cycle re-reads
         // this Attack against the new host (as the reinforcement handoff does).
         private static void MarkChanged(PlayerSetupData player, AiTurnContext ctx, int hostId) =>
-            StrategicInterruptRegistry.Mark(player, ctx?.TurnNumber ?? 0,
+            WorldDeltaLifecycle.Publish(player, ctx?.TurnNumber ?? 0,
                 StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                 actorIds: new[] { hostId });
 
@@ -621,8 +621,8 @@ namespace Game.Ai.V2
                 result.CombatChanged = true;
                 // The primary's readiness genuinely changed: bump and publish so the SAME turn's
                 // bounded cycle re-checks this Attack instead of waiting a turn.
-                V2StateVersion.Bump();
-                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                WorldDeltaLifecycle.CommitMutation();
+                WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                     actorIds: new[] { primary.Id, support.Id });
             }

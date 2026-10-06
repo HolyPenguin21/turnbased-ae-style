@@ -729,12 +729,12 @@ namespace Game.Ai.V2
                 // T13). AirSweep is exempt: its wing legitimately leaves the army list while stored.
                 // Recon audit B11 — an actor that still exists but can no longer serve the role at all
                 // (no longer a solo Recce, a prison, empty) is the same case: the structural test is
-                // ActorCommitments.HasCapableActor, whose answer also decides the actor claim.
+                // MissionActorPolicy.HasCapableActor, whose answer also decides the actor claim.
                 // Stealth is deliberately not part of it (a scout that cannot hide THIS turn keeps
                 // its role; the claim itself applies the objective's stealth requirement).
                 if (intent.PreferredMoverArmyId.HasValue && !ReconScoutKinds.IsAirSweep(s.Kind)
                     && snap?.Self?.Armies != null
-                    && !ActorCommitments.HasCapableActor(intent, snap, StealthRequirement.None))
+                    && !MissionActorPolicy.HasCapableActor(intent, snap, StealthRequirement.None))
                 {
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
                         + $"#{intent.PreferredMoverArmyId.Value} no longer exists or can no longer "
@@ -1209,10 +1209,10 @@ namespace Game.Ai.V2
                 && TryGetEconomyTarget(o, out EconomyMissionTarget progressed))
             {
                 if (progressed.Kind == EconomyTaskKind.FoundBase)
-                    state.RecordBaseExpansionDeliveryProgress(
+                    state.Economy.RecordBaseExpansionDeliveryProgress(
                         turn, progressed.BuildCard, progressed.TargetHex);
                 else if (progressed.Kind == EconomyTaskKind.BuildExtraction)
-                    state.RecordExtractionDeliveryProgress(
+                    state.Economy.RecordExtractionDeliveryProgress(
                         turn, progressed.ResourceType, progressed.TargetHex);
             }
 
@@ -1440,10 +1440,10 @@ namespace Game.Ai.V2
                 if (intent == null && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget))
                 {
                     if (freshTarget.Kind == EconomyTaskKind.FoundBase)
-                        state.RecordBaseExpansionDeliveryFailure(
+                        state.Economy.RecordBaseExpansionDeliveryFailure(
                             turn, freshTarget.BuildCard, freshTarget.TargetHex);
                     else if (freshTarget.Kind == EconomyTaskKind.BuildExtraction)
-                        state.RecordExtractionDeliveryFailure(
+                        state.Economy.RecordExtractionDeliveryFailure(
                             turn, freshTarget.ResourceType, freshTarget.TargetHex);
                 }
 
@@ -1742,7 +1742,7 @@ namespace Game.Ai.V2
                 // no separate reset is needed.
                 if (!o.MadeProgress && intent.Kind == MissionKind.Economy
                     && intent.Economy?.Kind == EconomyTaskKind.FoundBase
-                    && state.RecordBaseExpansionDeliveryFailure(
+                    && state.Economy.RecordBaseExpansionDeliveryFailure(
                         turn, intent.Economy.BuildCard, intent.Economy.TargetHex))
                 {
                     RetireEconomyIntent(state, intent, o, turn);
@@ -1765,7 +1765,7 @@ namespace Game.Ai.V2
                 // path (reap/structural-failure/Base) — no new registry or manager.
                 if (!o.MadeProgress && intent.Kind == MissionKind.Economy
                     && intent.Economy?.Kind == EconomyTaskKind.BuildExtraction
-                    && state.RecordExtractionDeliveryFailure(
+                    && state.Economy.RecordExtractionDeliveryFailure(
                         turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
                 {
                     RetireEconomyIntent(state, intent, o, turn);

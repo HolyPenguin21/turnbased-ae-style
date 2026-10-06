@@ -166,7 +166,7 @@ namespace Game.Ai.V2
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
             result.ApSpent = 0f;
-            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                 StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
             CompleteResult(result, root);
             results.Add(result);
@@ -876,7 +876,7 @@ namespace Game.Ai.V2
             if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
                 || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
                 || result.EconomyPrepared)
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
             result.StateVersionAfter = V2StateVersion.Current;
         }
 

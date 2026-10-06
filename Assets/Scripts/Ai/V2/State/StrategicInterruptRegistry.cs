@@ -132,7 +132,15 @@ namespace Game.Ai.V2
 
         // The caller invokes Mark only for an observed, non-empty factual delta. A compound reason
         // is one observation and therefore advances Version once, not once per flag.
+        // Compatibility adapter; publication policy belongs to WorldDeltaLifecycle.
         internal static void Mark(PlayerSetupData player, int turn,
+            StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
+            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
+            AiHandData hand = null) =>
+            WorldDeltaLifecycle.Publish(player, turn, reasons, actorIds, contactIds, hexes, hand);
+
+        // Storage-only merge; never advances the global world revision.
+        internal static void Record(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
             IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
             AiHandData hand = null)

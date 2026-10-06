@@ -67,6 +67,12 @@ namespace Game.Ai.V2
             s.DeferredMissions.Clear();
         }
 
+        internal static void EndTurn(PlayerSetupData player, int turn)
+        {
+            if (player != null && ByPlayer.TryGetValue(player, out Scope scope) && scope.Turn == turn)
+                ByPlayer.Remove(player);
+        }
+
         // A bounded reaction round does NOT, by itself, change capability state — so it does NOT
         // clear exhaustion (spec §7). Recovery is proven per-pool by RevalidateAndClearIfRecovered.
         // A turn boundary (BeginTurn) still resets, and the same is true if the turn number moved

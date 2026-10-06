@@ -84,7 +84,7 @@ namespace Game.Ai.V2
             // after a successful swap, not carrying reinforcement — its loss there is handled
             // separately, below, without reverting the phase.
             if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.Reinforcement
-                && !ActorCommitments.GroundContainerStillValid(ri.SupportArmyId.Value, snap))
+                && !MissionActorPolicy.GroundContainerStillValid(ri.SupportArmyId.Value, snap))
             {
                 int lostSupportId = ri.SupportArmyId.Value;
                 ri.ReinforcementRequestedTurn = -1;
@@ -98,7 +98,7 @@ namespace Game.Ai.V2
             // arrival so Phase cannot remain SupportReturn with no support actor.
             else if (ri.SupportArmyId.HasValue && ri.PrimaryArmyId.HasValue
                 && ri.Phase == RaidMissionPhase.SupportReturn
-                && !ActorCommitments.GroundContainerStillValid(ri.SupportArmyId.Value, snap))
+                && !MissionActorPolicy.GroundContainerStillValid(ri.SupportArmyId.Value, snap))
             {
                 int lostSupportId = ri.SupportArmyId.Value;
                 CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
@@ -112,7 +112,7 @@ namespace Game.Ai.V2
             // a completed objective may need to send a battle-depleted survivor home.
             // null means unbound; ArmyId 0 is a valid bound army.
             bool primaryContainerAlive = ri.PrimaryArmyId.HasValue
-                && ActorCommitments.GroundContainerStillValid(ri.PrimaryArmyId.Value, snap);
+                && MissionActorPolicy.GroundContainerStillValid(ri.PrimaryArmyId.Value, snap);
             if (ri.OperationStarted && !primaryContainerAlive)
             {
                 AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "

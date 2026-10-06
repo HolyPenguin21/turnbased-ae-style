@@ -425,7 +425,7 @@ namespace Game.Ai.V2
                                 && istate.Demand.TargetHex.HasValue
                                 && istate.Demand.DevelopmentOperatorMode.HasValue)
                                 MissionIntentRegistry.GetOrCreate(player)
-                                    .RememberGeneratedDevelopmentOperator(
+                                    .Development.RememberGeneratedDevelopmentOperator(
                                         infra.GeneratedOperatorCard, istate.Demand.TargetHex.Value,
                                         istate.Demand.DevelopmentOperatorMode.Value, ctx.TurnNumber);
                         }
@@ -580,7 +580,7 @@ namespace Game.Ai.V2
                         if (availability.ConfirmedBlocked)
                         {
                             bool suppressed = MissionIntentRegistry.GetOrCreate(player)
-                                .RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
+                                .Economy.RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
                                     state.Demand.EconomyBuildCard, state.Demand.TargetHex);
                             AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block — "
                                 + $"target=({state.Demand.TargetHex.Value.Q},"

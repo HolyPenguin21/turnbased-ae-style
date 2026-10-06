@@ -212,7 +212,7 @@ namespace Game.Ai.V2
                         exec.StateChanged = msChanged;
                         exec.Progressed = msProgressed;
                         if (msChanged)
-                            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                                 StrategicInvalidationReason.Infrastructure
                                 | StrategicInvalidationReason.Capability);
                         if (!exec.Succeeded) exec.FailReason = "capacity upgrade refused";
@@ -260,7 +260,7 @@ namespace Game.Ai.V2
                     bool executorSelfVersions = best.Kind == TempoKind.PlayMat
                         || best.Kind == TempoKind.PlayNonCombat;
                     if (!executorSelfVersions)
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.CommitMutation();
                     result.StateChanged |= exec.StateChanged;
                 }
                 if (!exec.Progressed)

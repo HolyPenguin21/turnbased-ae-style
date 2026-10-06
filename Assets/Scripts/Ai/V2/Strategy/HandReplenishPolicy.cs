@@ -67,7 +67,7 @@ namespace Game.Ai.V2
                     break;
                 // Same bookkeeping as a Phase B draw: one budget debit and one version bump.
                 budget.RecordAction(draw: true, generationAttempt: false);
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
                 drawn++;
             }
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: hand replenish — hand {handBefore}->{hand.Hand.Count}"

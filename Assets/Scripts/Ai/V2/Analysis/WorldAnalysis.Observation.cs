@@ -35,7 +35,7 @@ namespace Game.Ai.V2
 
             HashSet<int> contacts = ChangedContactIds(before.Snapshot, after.Snapshot);
             if (contacts.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.Contact,
                     contactIds: contacts);
@@ -46,7 +46,7 @@ namespace Game.Ai.V2
                 if (after.Snapshot?.MapKnowledge?.Frontier != null)
                     foreach (FrontierHexSnapshot frontier in after.Snapshot.MapKnowledge.Frontier)
                         reconHexes.Add(frontier.Hex);
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ReconKnowledge, hexes: reconHexes);
             }
 
@@ -57,7 +57,7 @@ namespace Game.Ai.V2
                 && execution.StopReason == ExecutionStopReason.HexEventStarted)
                 eventHexes.Add(execution.FinalHex);
             if (eventHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.EventState,
                     hexes: eventHexes);
@@ -65,7 +65,7 @@ namespace Game.Ai.V2
             HashSet<HexCoord> resourceHexes =
                 NewActionableResourceSites(before.Snapshot, after.Snapshot);
             if (resourceHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.ResourceSite,
                     hexes: resourceHexes);
@@ -78,19 +78,19 @@ namespace Game.Ai.V2
                 ChangedEconomicOpportunitySites(before.Snapshot, after.Snapshot);
             changedSites.ExceptWith(resourceHexes);
             if (changedSites.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ResourceSite,
                     hexes: changedSites);
 
             HashSet<int> actorIds = ChangedActorIds(before.Snapshot, after.Snapshot);
             if (actorIds.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Actor,
                     actorIds: actorIds);
 
             // Donor-only preparation changes intent state but not the army snapshot.
             if (execution != null && execution.EconomyPrepared)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Actor,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value }
@@ -99,28 +99,28 @@ namespace Game.Ai.V2
             HashSet<int> capabilityActorIds =
                 ChangedCapabilityActorIds(before.Snapshot, after.Snapshot);
             if (capabilityActorIds.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Capability,
                     actorIds: capabilityActorIds);
 
             if (ThreatChanged(before.Snapshot, after.Snapshot))
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Threat);
 
             if (InfrastructureChanged(before.Snapshot, after.Snapshot))
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Infrastructure
                     | StrategicInvalidationReason.Capability);
 
             if (ResourceStockChanged(before.Resources, after.Resources))
-                StrategicInterruptRegistry.Mark(
+                WorldDeltaLifecycle.Publish(
                     player, turn, StrategicInvalidationReason.Resources);
 
             // A builder settling onto its BuildExtraction/FoundBase hex changes nothing else this
             // step (no InfrastructureChanged, no Actor delta) — without an explicit fact here the
             // typed loop sees "no invalidation" and stops before Phase A gets to build on it.
             if (execution != null && execution.EconomyDeliveryReady)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.ResourceSite | StrategicInvalidationReason.Actor,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value }
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
                     hexes: new[] { execution.FinalHex });
 
             if (execution != null && execution.DevelopmentDeliveryReady)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value } : null,
@@ -136,7 +136,7 @@ namespace Game.Ai.V2
 
             if (before.Hand != after.Hand
                 || before.HandVersion != after.HandVersion)
-                StrategicInterruptRegistry.Mark(player, turn,
+                WorldDeltaLifecycle.Publish(player, turn,
                     StrategicInvalidationReason.Hand
                     | StrategicInvalidationReason.Capability,
                     hand: after.Hand);

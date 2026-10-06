@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                 });
             if (!outcome.Ok)
                 return new BuildingPlayResult { FailReason = outcome.FailReason,
-                    StateVersionAfter = V2StateVersion.Bump() };
+                    StateVersionAfter = WorldDeltaLifecycle.CommitMutation() };
 
             // Gameplay is committed. A hand observer throwing after RemoveCard's mutation
             // must not leave the other paid card playable or report a failed founding.
@@ -120,7 +120,7 @@ namespace Game.Ai.V2
                 Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
                 StateChanged = true, ApSpent = totalAp,
                 ResourcesSpent = totalCost,
-                StateVersionAfter = V2StateVersion.Bump(),
+                StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }
 
@@ -251,7 +251,7 @@ namespace Game.Ai.V2
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
                 ResourcesSpent = card.EffectivePlayResourceCost,
-                StateVersionAfter = V2StateVersion.Bump(),
+                StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }
 
@@ -274,7 +274,7 @@ namespace Game.Ai.V2
                 // The site charges the facility definition's resourceCost (same figure
                 // InfrastructureFulfillment admits the build against). No hand card is consumed.
                 ResourcesSpent = outcome.Ok ? facilityDef.resourceCost : null,
-                StateVersionAfter = outcome.Ok ? V2StateVersion.Bump() : -1,
+                StateVersionAfter = outcome.Ok ? WorldDeltaLifecycle.CommitMutation() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };
         }

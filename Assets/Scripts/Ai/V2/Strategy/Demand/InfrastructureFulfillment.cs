@@ -79,7 +79,7 @@ namespace Game.Ai.V2
         {
             if (player == null || reservation == null) return;
             IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
-                .ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
+                .Development.ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
                 {
                     if (card?.Definition?.cardType != CardType.Hero
                         || hand?.Hand?.Contains(card) != true
@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                     materials = beforeM - root.GetResource(ResourceType.Materials),
                     tech = beforeT - root.GetResource(ResourceType.Tech),
                 };
-                int version = generated.StateChanged ? V2StateVersion.Bump() : V2StateVersion.Current;
+                int version = generated.StateChanged ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
                 return new InfraFulfillResult
                 {
                     Built = false, GenerationAttempted = generated.Attempted,
@@ -924,7 +924,7 @@ namespace Game.Ai.V2
             int apBefore = root.ActionPoints;
             if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
                 return BuildingPlayResult.Fail("capacity upgrade refused");
-            int upgradeVersion = V2StateVersion.Bump();
+            int upgradeVersion = WorldDeltaLifecycle.CommitMutation();
             BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
                 player, root, hand, ctx, card, hex);
             // The upgrade is a real mutation even if the placement then fails.

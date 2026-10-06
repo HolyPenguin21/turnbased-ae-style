@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -237,7 +237,7 @@ namespace Game.Ai.V2
                 result.StealthChanged |= ExitArmyStealth(army);
                 VisionSystem.RecomputeFor(player);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
                 RefreshObjectiveSatisfied(player, pm, result);
                 control.StopReason = result.ReachedGoal ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.StepCompleted;
@@ -413,7 +413,7 @@ namespace Game.Ai.V2
                 result.StealthChanged |= ExitArmyStealth(army);
                 VisionSystem.RecomputeFor(player);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
             }
 
             if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)

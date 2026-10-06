@@ -176,7 +176,7 @@ namespace Game.Ai.V2
                 result.AirSupportStrikeSucceeded |= attacked;
             }
             if (attacked)
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
 
             // Over the target: keep striking on later turns, or end the series and go home.
             bool targetsRemain = AviationCombatPresenter.FindAirStrikeTargetsAt(wing.Hex, player,

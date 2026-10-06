@@ -441,7 +441,7 @@ namespace Game.Ai.V2
                             result.CombatChanged = true;
                             result.AirSupportStrikeSucceeded = true;
                         }
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.CommitMutation();
                         AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
                             + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
                             + $"policy={task.StrikePolicy.Kind} "

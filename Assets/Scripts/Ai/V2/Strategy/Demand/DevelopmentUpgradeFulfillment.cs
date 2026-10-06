@@ -96,7 +96,7 @@ namespace Game.Ai.V2
                 return DevUpgradeResult.Skip(generated.FailReason ?? "generation_preflight_failed");
             if (!generated.Success)
             {
-                if (generated.StateChanged) V2StateVersion.Bump();
+                if (generated.StateChanged) WorldDeltaLifecycle.CommitMutation();
                 return new DevUpgradeResult
                 {
                     Executed = true,
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
             // Minting already added the paid card to the normal hand. Hand attachment is a
             // separate stage owned by NonCombatCardPlayer; it reselects a useful legal recipient
             // from the settled world, this turn if affordable or on a later turn.
-            if (generated.StateChanged) V2StateVersion.Bump();
+            if (generated.StateChanged) WorldDeltaLifecycle.CommitMutation();
             return new DevUpgradeResult
             {
                 Executed = true, ChallengeWon = true, StateChanged = generated.StateChanged,

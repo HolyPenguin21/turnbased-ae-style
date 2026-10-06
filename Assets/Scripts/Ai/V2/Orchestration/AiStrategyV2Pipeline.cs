@@ -102,12 +102,8 @@ namespace Game.Ai.V2
             V2TraceScope trace = AiV2Trace.BeginMain(player, ctx.TurnNumber);
             V2ResourceStamp stateStart = AiV2Trace.Stamp(root);
 
-            // Turn-scoped activity record (main vs reaction vs total). Reset here so a stale
-            // Reaction bucket from last turn can never leak into this turn's Total.
-            V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
-            CapabilityPoolExhaustionRegistry.BeginTurn(player, ctx.TurnNumber);
-            // Fresh explicit strategic resource reservations for this turn.
-            StrategicResourceReservationLedger.BeginTurn(player, ctx.TurnNumber);
+            // Coroutine disposal/exception also closes all session-owned turn state.
+            using var turnSession = AiTurnSession.Begin(player, root, hand, ctx);
 
             // Initiative AP telemetry — captured now (turn start) and written back at turn end.
             // Belongs EXCLUSIVELY to Game.Ai.V2.Initiative analysis; nothing else in this pipeline
@@ -261,7 +257,7 @@ namespace Game.Ai.V2
                     {
                         // AviationRebase does not version itself (see StrategicPhaseB): one canonical
                         // bump per mutating action, before any snapshot/cache read of the new state.
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.CommitMutation();
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
@@ -729,7 +725,7 @@ namespace Game.Ai.V2
                         yield return AviationRebasePlanner.ExecuteContinuation(
                             player, root, ctx, rebaseWing, v => rebaseMoved = v);
                         if (rebaseMoved)
-                            V2StateVersion.Bump();
+                            WorldDeltaLifecycle.CommitMutation();
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         WorldAnalysis.StepObservationStamp afterRebase =
@@ -1281,7 +1277,7 @@ namespace Game.Ai.V2
                     yield return AviationRebasePlanner.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
                     if (recallChanged)
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.CommitMutation();
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     WorldAnalysis.StepObservationStamp afterRecall =
@@ -1393,9 +1389,7 @@ namespace Game.Ai.V2
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
-            StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
-                StrategicReservationExpiry.EndOfTurn);
-            StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
+            turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
@@ -1412,6 +1406,7 @@ namespace Game.Ai.V2
             ApTurnPressure.Record(player, ctx.TurnNumber, apMeasure);
             ApBudgetTelemetry.End(player, ctx,
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
+            turnSession.Dispose();
             yield return null;
         }
 

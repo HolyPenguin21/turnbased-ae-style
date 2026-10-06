@@ -74,7 +74,7 @@ namespace Game.Ai.V2
             if (a.Phase == AttackMissionPhase.RecoveryReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
+                    || !MissionActorPolicy.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — recovering "
                         + $"primary #{a.PrimaryArmyId} is no longer a ground container");
@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                 // stopped being an own ground field container ends the preparation (its claims are
                 // released with the intent; a replacement is a fresh decision).
                 if (!a.PrimaryArmyId.HasValue
-                    || !ActorCommitments.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
+                    || !MissionActorPolicy.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} retired — "
                         + $"preparation host #{a.PrimaryArmyId} is no longer an own ground field "
@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                     // (lone hero, lone recce) withdraws like any other non-viable operation (§47);
                     // only a primary with no container left, or no own base to reach, retires here.
                     HexCoord? withdrawTo = a.OperationStarted && a.PrimaryArmyId.HasValue
-                        && ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
+                        && MissionActorPolicy.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
                             ? AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
                     if (!withdrawTo.HasValue)
                     {
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
                     || a.Phase == AttackMissionPhase.SupportReturn)
-                && !ActorCommitments.GroundContainerStillValid(a.SupportArmyId.Value, snap))
+                && !MissionActorPolicy.GroundContainerStillValid(a.SupportArmyId.Value, snap))
             {
                 int lostSupportId = a.SupportArmyId.Value;
                 a.SupportArmyId = null;
@@ -415,7 +415,7 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null
                     && x.ArmyId == r.ArmyId);
-                if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
+                if (s == null || !MissionActorPolicy.GroundContainerStillValid(r.ArmyId, snap))
                     return true;
                 r.BaseHex = AiReturnBasePolicy.KeepOrReselectHome(snap, player, r.ArmyId, r.BaseHex, out _);
                 bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
@@ -563,7 +563,7 @@ namespace Game.Ai.V2
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                 // A support stays while its bodies improve the host OR its hero would take command
                 // (the plan may keep it for that alone).
-                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
                         allowCommandHandover: true, allowCompleteTransfer: true);
             }).ToList();
@@ -654,7 +654,7 @@ namespace Game.Ai.V2
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == id);
-                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || host.MemberCount == 0
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
                         allowCommandHandover: true, allowCompleteTransfer: true);
