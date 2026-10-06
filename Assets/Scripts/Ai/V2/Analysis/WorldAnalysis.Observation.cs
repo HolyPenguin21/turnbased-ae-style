@@ -474,10 +474,20 @@ namespace Game.Ai.V2
                 return rows;
             foreach (EconomyExtractionOpportunity x in eco.ExtractionOpportunities
                          ?? System.Array.Empty<EconomyExtractionOpportunity>())
-                rows[$"ext|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x);
+                rows[$"ext|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x)
+                    + "|useful=" + UsefulIncomeSignature(x);
             foreach (EconomyExtractionOpportunity x in eco.CollectorSites
                          ?? System.Array.Empty<EconomyExtractionOpportunity>())
-                rows[$"col|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x);
+                rows[$"col|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x)
+                    + "|useful=" + UsefulIncomeSignature(x);
+
+            string UsefulIncomeSignature(EconomyExtractionOpportunity x) =>
+                (eco.PerType ?? System.Array.Empty<EconomyResourceStanding>())
+                    .Where(r => r.Type == x.ResourceType)
+                    .Select(r => r.UsefulMarginalIncomeGain(x.MarginalIncomeGain)
+                            .ToString("R", CultureInfo.InvariantCulture)
+                        + ":forecast=" + r.ForecastOperationalNeed.ToString("R", CultureInfo.InvariantCulture))
+                    .DefaultIfEmpty("0:forecast=0").First();
             foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
                          ?? System.Array.Empty<MobileCollectionOpportunity>())
                 rows[$"mob|{x.TargetHex.Q},{x.TargetHex.R}|{(int)x.ResourceType}|{x.CollectorArmyId}"] =
@@ -575,6 +585,9 @@ namespace Game.Ai.V2
                 + $"| targetIncome H/E/M/T={F(eco.IncomeTarget.Human)}/{F(eco.IncomeTarget.Energy)}/"
                 + $"{F(eco.IncomeTarget.Materials)}/{F(eco.IncomeTarget.Tech)} total={F(eco.IncomeTarget.Sum)} "
                 + $"actualIncome={F(self.PerTurnIncome.Sum)}");
+            AiDebugLog.Write($"[AI][V2]   economy.forecast H/E/M/T="
+                + $"{F(eco.ForecastOperationalNeed.Human)}/{F(eco.ForecastOperationalNeed.Energy)}/"
+                + $"{F(eco.ForecastOperationalNeed.Materials)}/{F(eco.ForecastOperationalNeed.Tech)}");
             AiDebugLog.Write($"[AI][V2]   threat: contacts {th.Contacts.Count} "
                 + $"assets {th.Assets.Count} listedThreats {th.Threats.Count} siege={(th.UnderSiege ? 1 : 0)} "
                 + $"citadel={th.CitadelThreatSeverity.ToString("0.00", CultureInfo.InvariantCulture)} "
