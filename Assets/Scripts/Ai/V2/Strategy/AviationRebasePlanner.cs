@@ -394,17 +394,24 @@ namespace Game.Ai.V2
                 + $"witness={plan.DestinationWitness ?? "none"}");
         }
 
-        // `allowRecoveryStrike` — false when the wing comes straight from a task's strike series:
-        // that series already struck under the task's own policy (e.g. RaidSupport's survivor
-        // floor) and a Standard strike on the way out must not override it.
+        // The caller may suppress a strike for this invocation. Former support wings retain
+        // their exact targeting policy in the sortie, rather than a permanent strike ban.
         internal static IEnumerator ExecuteContinuation(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ArmyData wing, System.Action<bool> setChanged,
-            bool allowRecoveryStrike = true)
+            bool allowRecoveryStrike = true, ExecutionResult result = null)
         {
             if (player == null || root == null || ctx?.Map == null || wing == null)
                 yield break;
             AirSortie task = AirSortieRegistry.ForArmy(player, wing);
             if (task == null || task.Kind != AirSortieKind.Rebase)
+                yield break;
+
+            // Paid airborne members owe nothing. If a member still owes its launch share,
+            // both the optional strike and the return must respect other owners' bank holds.
+            if (wing.PendingActivationApCost > StrategicSpendability.SpendableAp(player, root, ctx)
+                    + AiConfigV2.allocatorSliceEpsilon
+                || wing.PendingActivationEnergyCost > StrategicSpendability.SpendableAmount(
+                    player, root, ctx, ResourceType.Energy) + AiConfigV2.allocatorSliceEpsilon)
                 yield break;
 
             bool changed = false;
@@ -413,23 +420,31 @@ namespace Game.Ai.V2
             // An airborne recovery/rebase wing does not become pacifist just because its original
             // mission released it. If it starts this continuation on an enemy-occupied hex and a
             // landing is still recoverable inside live endurance, take the free stationary strike
-            // first; movement remains untouched and the return continues below.
-            if (allowRecoveryStrike && !task.NoRecoveryStrike
+            // under the sortie's own target policy; movement remains untouched and return continues.
+            if (allowRecoveryStrike
                 && !AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
                 && AviationActions.CanActivateForStationaryStrike(wing)
-                && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player))
+                && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player, task.StrikePolicy))
             {
                 AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
                 if (presenter != null)
                 {
                     var strike = new AviationCombatPresenter.AirStrikeResult();
-                    yield return AviationActions.ResolveStationaryStrike(presenter, wing, strike);
+                    yield return AviationActions.ResolveStationaryStrike(presenter, wing, task.StrikePolicy, strike);
                     if (strike.Attacked)
                     {
                         changed = true;
+                        wing.LastAirStrikeHex = wing.Hex;
+                        wing.LastAirStrikeAttacked = true;
+                        if (result != null)
+                        {
+                            result.CombatChanged = true;
+                            result.AirSupportStrikeSucceeded = true;
+                        }
                         V2StateVersion.Bump();
                         AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
                             + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
+                            + $"policy={task.StrikePolicy.Kind} "
                             + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(wing)}");
                     }
                 }
@@ -449,6 +464,8 @@ namespace Game.Ai.V2
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;
+                if (result != null)
+                    result.StepsMoved++;
                 if (wing.Hex.Equals(task.LandingHex))
                 {
                     AirSortieRegistry.Remove(player, task);

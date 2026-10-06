@@ -439,7 +439,8 @@ namespace Game.Ai.V2
             sortie.Kind = AirSortieKind.Rebase;
             sortie.Outbound = false;
             sortie.TargetHex = sortie.LandingHex;
-            sortie.NoRecoveryStrike = true;
+            // Keep StrikePolicy: recovery may strike before leaving, but must never replace
+            // an exact Raid/Defence target or its survivor floor with Standard targeting.
             AiDebugLog.Write($"[AI][V2][AirSupport] wing #{sortie.Army?.Id} {why} — flies home to "
                 + $"({sortie.LandingHex.Q},{sortie.LandingHex.R})");
         }

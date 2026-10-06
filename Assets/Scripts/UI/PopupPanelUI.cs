@@ -21,6 +21,8 @@ namespace Game.UI
         [SerializeField] private Button confirmButton;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
+        private bool _isOtherTurn;
+        public bool IsOtherTurnShowing => IsShowing && _isOtherTurn;
 
         // Lets GameTurnController react to this popup opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
@@ -39,6 +41,7 @@ namespace Game.UI
         // AI/Neutral turn — informational only, no Confirm button.
         public void ShowForOther(PlayerSetupData player)
         {
+            _isOtherTurn = true;
             SetButton(false, null);
             Display($"Current turn: {NameOf(player)}");
         }
@@ -47,6 +50,7 @@ namespace Game.UI
         // (see GameTurnController.OnTurnConfirmed), not done automatically here.
         public void ShowForHuman(PlayerSetupData player, Action onConfirm)
         {
+            _isOtherTurn = false;
             SetButton(true, () => onConfirm?.Invoke());
             Display($"Your turn, {NameOf(player)}");
             if (player != null && player.IsHuman) HumanTurnShown?.Invoke();
@@ -55,12 +59,14 @@ namespace Game.UI
         // A one-off blocking hint — dismissing it just closes it, no external callback.
         public void ShowHint(string message)
         {
+            _isOtherTurn = false;
             SetButton(true, Hide);
             Display(message);
         }
 
         public void Hide()
         {
+            _isOtherTurn = false;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
             VisibilityChanged?.Invoke();

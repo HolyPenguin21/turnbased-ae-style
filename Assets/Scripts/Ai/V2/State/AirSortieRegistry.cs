@@ -32,9 +32,9 @@ namespace Game.Ai.V2
         // AiAirSortiePlanner.CanEndTurnHereAndRecover) to strike again on its next turn. The
         // support leg is not proposed again for that turn; null otherwise.
         public int? HeldTurn;
-        // A former support series flying home: it struck under its task's own policy, so the
-        // generic recovery leg never adds a Standard strike on the way out.
-        public bool NoRecoveryStrike;
+        // Recovery keeps the target identity and survivor floor of the original series.
+        // Returning ends the loiter, not the aircraft's right to a free strike on a new turn.
+        public AirStrikePolicy StrikePolicy = AirStrikePolicy.Standard;
     }
 
     public static class AirSortieRegistry
