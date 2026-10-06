@@ -39,6 +39,21 @@ namespace Game.UI
 
         private readonly List<ResourceActionButtonUI> _buttons = new List<ResourceActionButtonUI>();
 
+        public int VisibleButtonCount => _buttons.Count;
+
+        public void LayoutDrawer(float x, float y, float width, float height, float spacing)
+        {
+            if (!(buttonContainer is RectTransform container)) return;
+            int rows = (_buttons.Count + 1) / 2;
+            HexInfoPanelUI.Place(container, x, y, width,
+                rows == 0 ? 0f : rows * height + (rows - 1) * spacing);
+            float cellWidth = _buttons.Count == 1 ? width : (width - spacing) * 0.5f;
+            for (int i = 0; i < _buttons.Count; i++)
+                if (_buttons[i] != null)
+                    HexInfoPanelUI.Place((RectTransform)_buttons[i].transform,
+                        (i % 2) * (cellWidth + spacing), (i / 2) * (height + spacing), cellWidth, height);
+        }
+
         public void Show(IReadOnlyList<HexActionDescriptor> actions)
         {
             ClearButtons();
@@ -58,6 +73,13 @@ namespace Game.UI
 
         public void Hide() => ClearButtons();
 
-        private void ClearButtons() => UIListUtility.DestroyAndClear(_buttons);
+        private void ClearButtons()
+        {
+            // Destroy is deferred until frame end. Disable old entries immediately so
+            // rapidly changing the selected hex cannot leave stale clickable overlays.
+            foreach (ResourceActionButtonUI item in _buttons)
+                if (item != null) item.gameObject.SetActive(false);
+            UIListUtility.DestroyAndClear(_buttons);
+        }
     }
 }

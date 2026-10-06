@@ -70,8 +70,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 8ca012419a08dab42af86630e63442dd, type: 3}
-  m_Type: 0
+  m_Sprite: {fileID: 21300000, guid: af6989cd955a5e57b1493f151ac6e271, type: 3}
+  m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 4
@@ -79,7 +79,7 @@ MonoBehaviour:
   m_FillClockwise: 1
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
-  m_PixelsPerUnitMultiplier: 1
+  m_PixelsPerUnitMultiplier: 5
 --- !u!114 &1960000000000010005
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -265,10 +265,10 @@ MonoBehaviour:
     serializedVersion: 2
     rgba: 4294967295
   m_fontSize: 14
-  m_fontSizeBase: 12
+  m_fontSizeBase: 14
   m_fontWeight: 400
   m_enableAutoSizing: 1
-  m_fontSizeMin: 6
+  m_fontSizeMin: 10
   m_fontSizeMax: 14
   m_fontStyle: 1
   m_HorizontalAlignment: 2
@@ -1546,3 +1546,4 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+
