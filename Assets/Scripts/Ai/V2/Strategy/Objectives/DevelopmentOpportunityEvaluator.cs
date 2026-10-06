@@ -96,6 +96,9 @@ namespace Game.Ai.V2
         public float BaseValue => WorldTaskScore.Value;
         public string Explain = "";
 
+        // Forecast-only cost beyond cards already counted in hand/deck. Never a spend authority.
+        internal ResourceCost ForecastExtraCost;
+        internal int ForecastUses = 1;
         public bool IsPreparation => Generation == null;
     }
 
@@ -112,9 +115,17 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents)
         {
             var result = new List<DevelopmentOpportunity>();
+            var forecasts = new List<DevelopmentOpportunity>();
+            if (player != null && snap != null)
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, snap.TurnNumber,
+                    "development", null);
             if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
                 || root == null || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return result;
+            // Exact staffed sources, including those rejected only by today's resources/window.
+            // Executable enumeration elsewhere keeps its original gates.
+            List<GenerationStep> forecastSources = GenerationSource.Enumerate(player, root, ctx,
+                hand, null, null, resourceForecast: true);
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             // One settled evaluation has one immutable set of available operator sources.
@@ -133,12 +144,28 @@ namespace Game.Ai.V2
                     ResearchProductionSystem.FacilityAbility(mode));
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
                 string reason = facilityReady && actor != null
-                    ? AddReady(result, mode, hex, snap, inv, player, root, hand)
-                    : AddPreparation(result, mode, hex, facilityReady, actor, snap, inv, occupied,
+                    ? AddReady(result, forecasts, forecastSources, mode, hex, snap, inv, occupied, player, root, hand, ctx)
+                    : AddPreparation(result, forecasts, mode, hex, facilityReady, actor, snap, inv, occupied,
                         player, root, hand, ctx, activeIntents, ref generatedOperatorSources);
                 AiDebugLog.WriteDeduped($"site:{mode}:{hex.Q},{hex.R}",
                     $"[AI][V2][Dev] site {mode} @({hex.Q},{hex.R}) "
                     + $"stage={(facilityReady && actor != null ? "READY" : "PREPARE")} {reason}");
+            }
+
+            // One best useful action, not the sum of a catalog or mutually exclusive recipients.
+            DevelopmentOpportunity forecast = forecasts.OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.Card?.authoredKey, System.StringComparer.Ordinal).FirstOrDefault();
+            if (forecast != null)
+            {
+                int uses = Mathf.Max(1, Mathf.Min(AiConfigV2.devFacilityExpectedUses,
+                    forecast.ProducesEquipment ? forecast.ForecastUses
+                        : AiConfigV2.devFacilityExpectedUses));
+                var cost = new ResourceBundle();
+                foreach (ResourceType t in ResourceBundle.All)
+                    cost.Add(t, Mathf.Max(0, forecast.Card.resourceCost?.Get(t) ?? 0) * uses
+                        + Mathf.Max(0, forecast.ForecastExtraCost?.Get(t) ?? 0));
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, snap.TurnNumber,
+                    "development", new Dictionary<string, ResourceBundle> { ["development"] = cost });
             }
 
             result = result.OrderByDescending(o => o.BaseValue)
@@ -156,50 +183,73 @@ namespace Game.Ai.V2
 
         // READY — one opportunity per affordable Equipment offering at this staffed facility.
         private static string AddReady(List<DevelopmentOpportunity> result,
+            List<DevelopmentOpportunity> forecasts, IReadOnlyList<GenerationStep> sources,
             ResearchProductionMode mode, HexCoord hex, WorldSnapshot snap, CapabilityInventory inv,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand)
+            ActorCommitments occupied, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx)
         {
             int admitted = 0, offered = 0;
             string last = "no_affordable_offering";
-            foreach (DevelopmentOffering off in snap.Development.Offerings)
+            foreach (GenerationStep source in sources)
             {
-                if (off.Mode != mode || !off.FacilityHex.Equals(hex) || off.Card == null)
+                if (source.Mode != mode || !source.FacilityHex.Equals(hex) || source.CardDef == null)
                     continue;
                 offered++;
-                List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
-                    player, snap.TurnNumber, off.Card.resourceCost);
-                if (closed.Count > 0)
+                CardDefinition card = source.CardDef;
+                if (!source.ProducesEquipment)
                 {
-                    last = $"'{off.Card.displayName}':window_closed({ResourceList(closed)})";
+                    // The same canonical investment scorer proves force/placement need. Only
+                    // Materialization may actually choose and execute a deployable output.
+                    DevelopmentOpportunity future = PrepareDeployable(card, mode, hex, source.Hero,
+                        1f, 0f, snap, inv, occupied, player, root, hand, ctx);
+                    if (future != null)
+                    {
+                        future.WorldTaskScore = BuildDevelopmentScore(future.SuccessChance
+                            * ForceNeedModel.JustifiedForceNeed(snap).Total * ForceBodies(card));
+                        if (future.Ev > AiConfigV2.devEvMargin
+                            && future.BaseValue > AiConfigV2.allocatorSliceEpsilon) forecasts.Add(future);
+                    }
+                    last = $"'{card.displayName}':output_is_materialization_chain";
                     continue;
                 }
-                if (!off.ProducesEquipment)
-                {
-                    // Unit/Hero/Aviation mints are materialization / non-combat chains.
-                    last = $"'{off.Card.displayName}':output_is_materialization_chain";
-                    continue;
-                }
-                DevelopmentOpportunity best = BestEquipmentOpportunity(off.Mode, off.FacilityHex,
-                    off.Card, off.SuccessChance, off.Generation, snap, inv, player, root, hand,
-                    out string recipient);
+                DevelopmentOpportunity best = BestEquipmentOpportunity(mode, hex, card,
+                    source.SuccessChance, source, snap, inv, player, root, hand, out string recipient);
                 if (best == null)
                 {
-                    last = $"'{off.Card.displayName}':no_recipient({recipient})";
+                    last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
-                int completeAp = ResearchProductionSystem.AttemptApCost(best.Card)
-                                 + Mathf.Max(0, best.Card.activationApCost);
-                if (!root.CanSpendActionPoints(completeAp))
-                {
-                    last = $"'{off.Card.displayName}':needs_{completeAp}_ap";
-                    continue;
-                }
-                // Sunk facility: no investment. The world-task score only orders ready
-                // opportunities; the card decision (and its AP/resource price) is
-                // StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade's inside the card portfolio.
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
-                best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
+                MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
+                    best, source, DesireAxis.Development);
+                float ev = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(best, plan,
+                    snap, player, root, ctx);
+                if (ev > AiConfigV2.devEvMargin
+                    && best.BaseValue > AiConfigV2.allocatorSliceEpsilon) forecasts.Add(best);
+
+                List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
+                    player, snap.TurnNumber, card.resourceCost);
+                if (closed.Count > 0)
+                {
+                    last = $"'{card.displayName}':window_closed({ResourceList(closed)})";
+                    continue;
+                }
+                if (!ResearchProductionSystem.CanAffordCard(root, card)
+                    || !GenerationSource.FitsReservedAffordability(root, player, ctx, card))
+                {
+                    last = $"'{card.displayName}':resources_unavailable";
+                    continue;
+                }
+                int completeAp = ResearchProductionSystem.AttemptApCost(card)
+                    + Mathf.Max(0, card.activationApCost);
+                if (!root.CanSpendActionPoints(completeAp))
+                {
+                    last = $"'{card.displayName}':needs_{completeAp}_ap";
+                    continue;
+                }
+                // Preserve sunk-facility admission: Phase A owns the final card EV comparison.
+                best.Explain = $"{best.Mode} '{card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} tactical={best.TacticalGain:0.0} "
                     + best.Explain;
                 result.Add(best);
@@ -212,6 +262,7 @@ namespace Game.Ai.V2
         // PREPARE — the facility card and/or the operator are still missing. Every catalog output
         // is projected through its canonical scorer; the investment EV admits it.
         private static string AddPreparation(List<DevelopmentOpportunity> result,
+            List<DevelopmentOpportunity> forecasts,
             ResearchProductionMode mode, HexCoord hex, bool facilityReady, UnitData actor,
             WorldSnapshot snap, CapabilityInventory inv, ActorCommitments occupied,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
@@ -248,7 +299,8 @@ namespace Game.Ai.V2
                     && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)
                         .Contains(ResearchProductionSystem.RoleAbility(mode))
                     && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
-                        CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _))
+                        CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _,
+                        resourceForecast: true))
                 .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
@@ -327,7 +379,7 @@ namespace Game.Ai.V2
             {
                 if (generatedOperatorSources == null)
                     generatedOperatorSources = GenerationSource.Enumerate(player, root, ctx, hand,
-                        claimedUseKeys: null, triedCardKeys: null);
+                        claimedUseKeys: null, triedCardKeys: null, resourceForecast: true);
                 generatedOperator = generatedOperatorSources
                     .Where(g => IsGeneratedOperatorCandidate(g, mode)
                         && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
@@ -418,12 +470,8 @@ namespace Game.Ai.V2
                 : actor == null && remote == null ? operatorResourceCost : null;
             List<ResourceType> stageShort = ResourceBundle.All.Where(t => (stageCost?.Get(t) ?? 0)
                 > StrategicSpendability.SpendableAmount(player, root, ctx, t)).ToList();
-            if (stageShort.Count > 0)
-                return $"reason=stage_unaffordable({ResourceList(stageShort)})";
             List<ResourceType> stageClosed = DevelopmentInvestmentGate.ClosedResources(
                 player, snap.TurnNumber, stageCost);
-            if (stageClosed.Count > 0)
-                return $"reason=window_closed({ResourceList(stageClosed)})";
             float operatorDisplaced = remoteArmyId.HasValue
                 ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmyId.Value) : 0f;
             ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
@@ -449,12 +497,6 @@ namespace Game.Ai.V2
                     > StrategicSpendability.SpendableAmount(player, root, ctx, t)
                         + AiConfigV2.devChainFundingHorizonTurns
                             * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t))).ToList();
-                if (shortfall.Count > 0)
-                {
-                    unaffordable.UnionWith(shortfall);
-                    continue;
-                }
-
                 DevelopmentOpportunity op = card.isAviation
                         || card.cardType == CardType.Unit || card.cardType == CardType.Hero
                     ? PrepareDeployable(card, mode, hex, projectedActor, operatorChance,
@@ -481,6 +523,16 @@ namespace Game.Ai.V2
                 if (op.Ev <= AiConfigV2.devEvMargin
                     || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
+                // Resource/window rejection comes AFTER useful-output proof. Hand/deck already
+                // include facility/operator cards; only capacity and a minted operator are extra.
+                op.ForecastExtraCost = SumCost(capacityTier?.cost,
+                    generatedOperator?.GenerationResourceCost);
+                forecasts.Add(op);
+                if (stageShort.Count > 0 || stageClosed.Count > 0 || shortfall.Count > 0)
+                {
+                    unaffordable.UnionWith(shortfall);
+                    continue;
+                }
                 op.StageResourceCost = stageCost;
                 op.PreparationCapacityTier = capacityTier;
                 op.PreparationFacilityCard = facility;
@@ -503,7 +555,11 @@ namespace Game.Ai.V2
                 + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : deckOperator != null ? " hero-deck" : " hero-generate") : "")}]";
             return $"{need} outputs={outputs} admitted={admitted}"
                 + (admitted == 0
-                    ? (bestRejected != null
+                    ? (stageShort.Count > 0
+                        ? $" reason=stage_unaffordable({ResourceList(stageShort)})"
+                        : stageClosed.Count > 0
+                            ? $" reason=window_closed({ResourceList(stageClosed)})"
+                            : bestRejected != null
                         ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##} ev={bestEv:0.##} prepShare={preparationShare:0.##})"
                         : unaffordable.Count > 0
                             ? $" reason=chain_unaffordable({ResourceList(unaffordable)})"
@@ -677,10 +733,17 @@ namespace Game.Ai.V2
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag)
-            => EquipmentOpportunities(mode, facilityHex, equipment, successChance, generation,
-                snap, inv, player, root, hand, out diag)
+        {
+            List<DevelopmentOpportunity> recipients = EquipmentOpportunities(mode, facilityHex,
+                equipment, successChance, generation, snap, inv, player, root, hand, out diag);
+            DevelopmentOpportunity best = recipients
                 .OrderByDescending(o => StrategicCardEvaluator.EquipmentUpgradeValue(o))
                 .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).FirstOrDefault();
+            // The repeated-cost witness counts distinct legal, useful recipient slots, rather
+            // than the coarse radar target count or every card in the catalog.
+            if (best != null) best.ForecastUses = recipients.Count;
+            return best;
+        }
 
         // Keep recipient alternatives until the shared portfolio has checked competing chains.
         // Re-enumeration also refreshes slot legality, signed deltas and matchup after each action.
