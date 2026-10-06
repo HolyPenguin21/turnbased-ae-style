@@ -16,7 +16,11 @@ namespace Game.Ai.V2
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || breakdown == null)
+            {
+                ResourceStarvationRegistry.ReplaceOperationalForecast(snap?.Observer,
+                    snap?.TurnNumber ?? 0, "combat-air", ReconAirEnergyPolicy.TaskResourceForecast(snap, proposals));
                 return proposals;
+            }
 
             IReadOnlyList<RaidObjective> objectives = frozenObjectives
                 ?? RaidObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport);
@@ -34,6 +38,8 @@ namespace Game.Ai.V2
             // ATK §40 — Attack is a peer lane of the same Aggression planner, appended through the
             // same one entry point; it is never orchestrated separately (§81).
             AppendAttack(snap, activeIntents, committed, proposals, ctx, deferredThisPass);
+            ResourceStarvationRegistry.ReplaceOperationalForecast(snap?.Observer,
+                    snap?.TurnNumber ?? 0, "combat-air", ReconAirEnergyPolicy.TaskResourceForecast(snap, proposals));
             return proposals;
         }
 

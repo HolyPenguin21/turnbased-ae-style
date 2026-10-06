@@ -94,8 +94,10 @@ namespace Game.Ai.V2
         }
 
         // Full preflight of the atomic fresh-army/existing-army card deployment. No spend, no mutation.
+        // Forecast mode skips only today's AP/resource availability; ownership, placement,
+        // capacity and execution dependencies still apply. Play always uses the default mode.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, CardPlayPlan plan, out string reason)
+            AiTurnContext ctx, CardPlayPlan plan, out string reason, bool resourceForecast = false)
         {
             reason = null;
             if (player == null || root == null || hand == null || ctx == null || plan.Card == null)
@@ -123,9 +125,9 @@ namespace Game.Ai.V2
             { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;
-            if (!root.CanSpendActionPoints(totalAp))
+            if (!resourceForecast && !root.CanSpendActionPoints(totalAp))
             { reason = $"need {totalAp} AP for the full sequence"; return false; }
-            if (!CardCostRules.CanAffordPlay(root, plan.Card))
+            if (!resourceForecast && !CardCostRules.CanAffordPlay(root, plan.Card))
             { reason = "resource cost unaffordable"; return false; }
 
             switch (plan.Kind)

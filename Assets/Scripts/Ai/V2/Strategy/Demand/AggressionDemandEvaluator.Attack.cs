@@ -354,16 +354,13 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             List<string> diag, List<AxisDemand> demands)
         {
-            // T01 — one fist at a time: a live preparation owns the shortage (its own pinned
-            // demand above); a second free-fist request would dilute the force.
-            MissionIntent preparing = (activeIntents ?? System.Array.Empty<MissionIntent>())
-                .FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
-                    && i.Kind == MissionKind.Attack && i.Attack != null && i.Attack.Preparation
-                    && i.Attack.Phase == AttackMissionPhase.Gather);
-            if (preparing != null)
+            // The planner owns the one-operation policy. Bound shortages/refit above remain
+            // legal, but a spent mover or a different objective never authorizes a second fist.
+            MissionIntent live = AggressionMissionLayer.LiveAttackOperation(activeIntents);
+            if (live != null)
             {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP intent={preparing.IntentKey} "
-                    + "reason=unbound_attack_owned_by_live_preparation");
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP intent={live.IntentKey} "
+                    + "reason=unbound_attack_owned_by_live_operation");
                 return;
             }
             AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap)

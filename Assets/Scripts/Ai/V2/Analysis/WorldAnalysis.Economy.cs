@@ -44,6 +44,9 @@ namespace Game.Ai.V2
 
             var reservedNeed = new ResourceBundle();
             var spendableStock = new ResourceBundle();
+            ResourceBundle forecastNeed = ResourceStarvationRegistry.ForecastOperationalNeed(
+                player, ctx.TurnNumber);
+            eco.ForecastOperationalNeed = forecastNeed;
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float own = snap.Self.PerTurnIncome.Get(t);
@@ -61,7 +64,7 @@ namespace Game.Ai.V2
                 spendableStock.Add(t, spendable);
                 perType.Add(EconomyStanding.CalculateResource(t, own, median,
                     handNeed.Get(t), deckNeed.Get(t), reserved, spendable,
-                    ResourceStarvationRegistry.Pressure(player, t)));
+                    ResourceStarvationRegistry.Pressure(player, t), forecastNeed.Get(t)));
             }
             eco.PerType = perType;
             eco.ReservedOperationalNeed = reservedNeed;

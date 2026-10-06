@@ -28,6 +28,35 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class ReconAirEnergyPolicy
     {
+        // Called by the two mission owners after structural proposal construction, BEFORE
+        // allocation. Costs come from the exact eligible existing wing, not a notional aircraft.
+        // Paid continuations have zero Energy and never invent another activation charge.
+        internal static Dictionary<string, ResourceBundle> TaskResourceForecast(WorldSnapshot snap,
+            IReadOnlyList<MissionProposal> proposals)
+        {
+            var needs = new Dictionary<string, ResourceBundle>();
+            if (snap == null) return needs;
+            foreach (MissionProposal p in proposals ?? System.Array.Empty<MissionProposal>())
+            {
+                if (p == null || p.Requirements == null || !p.PreferredMoverArmyId.HasValue || (p.BaseValue <= 0f && !p.FromDurableIntent)
+                    || p.Requirements.EnergyDesired <= 0f) continue;
+                ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == p.PreferredMoverArmyId.Value && a.IsAir && !a.IsAirfield);
+                if (wing == null) continue;
+                // ETA is arrival, not the full flight cycle. A multi-turn wing may spend its
+                // whole endurance on ONE paid sortie; forecast relaunches only after that span.
+                int cycleTurns = Mathf.Max(1, p.Requirements.EtaTurns,
+                    wing.SafeUnlandedEndsRemaining + 1);
+                int launches = Mathf.Max(1, Mathf.CeilToInt(AiConfigV2.economyRunwayHorizonTurns
+                    / cycleTurns));
+                string key = "air:" + wing.ArmyId;
+                needs.TryGetValue(key, out ResourceBundle cost);
+                cost.Energy = Mathf.Max(cost.Energy, p.Requirements.EnergyDesired * launches);
+                needs[key] = cost;
+            }
+            return needs;
+        }
+
         private static readonly ResourceType[] NonEnergyTypes =
         {
             ResourceType.Human, ResourceType.Materials, ResourceType.Tech,
