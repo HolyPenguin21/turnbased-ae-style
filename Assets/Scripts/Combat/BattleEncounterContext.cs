@@ -20,8 +20,8 @@ namespace Game.Combat
         // only stops reference reassignment, not mutating the List it points at).
         private readonly List<ArmyData> _participants;
         public IReadOnlyList<ArmyData> Participants => _participants;
-        // participants[0]/[1] by this project's own long-standing convention (see
-        // BattleScreenUI.Show's own comment) — named here too so callers stop re-deriving them.
+        // Canonical participants[0]/[1]: tactical attacker/defender, or hunter/hero target.
+        // For a hero-only arrival the hunter is the resident army, not the strategic mover.
         public readonly ArmyData Initiator;
         public readonly ArmyData Target;
         // Whether Target has no combat-capable (non-hero) unit left — the same split every
