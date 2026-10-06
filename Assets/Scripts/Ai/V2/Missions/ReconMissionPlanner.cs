@@ -54,7 +54,11 @@ namespace Game.Ai.V2
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || snap.MapKnowledge == null || breakdown == null)
+            {
+                ResourceStarvationRegistry.ReplaceOperationalForecast(snap?.Observer,
+                    snap?.TurnNumber ?? 0, "recon-air", ReconAirEnergyPolicy.TaskResourceForecast(snap, proposals));
                 return proposals;
+            }
 
             IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
 
@@ -137,13 +141,18 @@ namespace Game.Ai.V2
             // the final one-actor/one-job binding and may rematch when live route/vantage facts move.
             ISet<int> claimed = ctx != null
                 ? ActorCommitments.FromIntents(activeIntents, snap, objectives).ClaimedArmyIdSet : new HashSet<int>();
+            var witnessedAir = new List<MissionProposal>();
             foreach (ScoutCandidate c in picked)
             {
                 var excluded = new HashSet<int>(claimed);
                 if (c.IsIncumbent && c.PreferredMover.HasValue) excluded.Remove(c.PreferredMover.Value);
-                proposals.Add(BuildProposal(snap, c, ctx, excluded));
+                MissionProposal proposal = BuildProposal(snap, c, ctx, excluded, out bool airWitness);
+                proposals.Add(proposal);
+                if (airWitness) witnessedAir.Add(proposal);
             }
 
+            ResourceStarvationRegistry.ReplaceOperationalForecast(snap?.Observer,
+                    snap?.TurnNumber ?? 0, "recon-air", ReconAirEnergyPolicy.TaskResourceForecast(snap, witnessedAir));
             return proposals;
         }
 
@@ -224,16 +233,18 @@ namespace Game.Ai.V2
         private static string StealthTag(StealthRequirement req, float risk) =>
             req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";
 
-        private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c, AiTurnContext ctx, ISet<int> excluded)
+        private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c,
+            AiTurnContext ctx, ISet<int> excluded, out bool airWitness)
         {
             // The estimate must price the SAME durable mover the proposal prefers. Otherwise a
             // cheaper, unrelated scout advertises an AP envelope the incumbent cannot execute.
             // For a fresh mission Estimate selects a concrete cheapest viable ground actor before
             // funding. Carry that actor as a non-binding preference so admission can reason about
             // the exact envelope it is financing; Assignment remains authoritative.
-            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover,
-                ReconScoutKinds.IsAirSweep(c.Target.Kind)
-                    ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null);
+            ScoutExecutionCandidate? air = ReconScoutKinds.IsAirSweep(c.Target.Kind)
+                ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null;
+            airWitness = air.HasValue;
+            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover, air);
 
             // Task 5 (R1) — c.PreferredMover is the durable incumbent's NOMINAL preference; when
             // that actor is structurally ineligible this turn (e.g. 0 CurrentMovement),
