@@ -147,6 +147,10 @@ namespace Game.Ai.V2
         //   GlobalYieldPerTurn   how much of it per turn, per source (canonical gameplay number)
         public readonly GlobalResourceKind GlobalResource;
         public readonly float GlobalYieldPerTurn;
+        public readonly bool PrimaryExchange;
+        public readonly bool RequiresHit;
+        public readonly int SecondaryTargets;
+        public readonly int SecondaryPriority;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
             EffectField field, bool coverage,
@@ -155,7 +159,9 @@ namespace Game.Ai.V2
             EffectTiming timing = EffectTiming.Persistent, int durationRounds = 0,
             int capacityRequirement = 1, EffectStacking stacking = EffectStacking.Stack,
             string stackingKey = null,
-            GlobalResourceKind globalResource = GlobalResourceKind.None, float globalYieldPerTurn = 0f)
+            GlobalResourceKind globalResource = GlobalResourceKind.None, float globalYieldPerTurn = 0f,
+            bool primaryExchange = false, bool requiresHit = false,
+            int secondaryTargets = 0, int secondaryPriority = 0)
         {
             Role = role;
             BaseFit = baseFit;
@@ -175,6 +181,10 @@ namespace Game.Ai.V2
             StackingKey = string.IsNullOrEmpty(stackingKey) ? null : stackingKey;
             GlobalResource = globalResource;
             GlobalYieldPerTurn = Mathf.Max(0f, globalYieldPerTurn);
+            PrimaryExchange = primaryExchange;
+            RequiresHit = requiresHit;
+            SecondaryTargets = System.Math.Max(0, secondaryTargets);
+            SecondaryPriority = secondaryPriority;
         }
     }
 
@@ -659,12 +669,13 @@ namespace Game.Ai.V2
                 [UnitAbilities.AntiAir] = new[]
                 {
                     new StrategicEffect(IntendedRole.AntiAir, AiConfigV2.threatResponseValueWeight,
-                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true),
+                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true, primaryExchange: true),
                 },
                 [UnitAbilities.Hyperkinetic] = new[]
                 {
                     new StrategicEffect(IntendedRole.AntiArmor, AiConfigV2.threatResponseValueWeight,
-                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true),
+                        StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true,
+                        primaryExchange: true),
                 },
                 [UnitAbilities.ApBonus] = new[]
                 {
@@ -707,7 +718,7 @@ namespace Game.Ai.V2
                 {
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectCriticalDamageFit,
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "CriticalDamage"),
+                        stacking: EffectStacking.Stack, stackingKey: "CriticalDamage", primaryExchange: true),
                 },
                 // ---- New skills (2026-09), each ONE row on the existing machinery — the AoE /
                 // regen / summon contexts below were already scored by ContextualValue, just never
@@ -718,7 +729,7 @@ namespace Game.Ai.V2
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectSplashFit,
                         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
                         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.9f,
-                        stacking: EffectStacking.Unique, stackingKey: "Splash"),
+                        stacking: EffectStacking.Unique, stackingKey: "Splash", requiresHit: true, secondaryTargets: 2),
                 },
                 [UnitAbilities.Scorcher] = new[]
                 {
@@ -726,7 +737,7 @@ namespace Game.Ai.V2
                         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
                         eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Bio),
                         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.6f,
-                        stacking: EffectStacking.Unique, stackingKey: "Scorcher"),
+                        stacking: EffectStacking.Unique, stackingKey: "Scorcher", requiresHit: true, secondaryTargets: 1, secondaryPriority: 1),
                 },
                 [UnitAbilities.Regeneration] = new[]
                 {
@@ -881,7 +892,21 @@ namespace Game.Ai.V2
                     e.Stacking, GlobalRecurringValue(e, ctx, ref effectDetail), g.Count()));
             }
 
-            List<StrategicEffect> forRole = all
+            // Equipment's marginal non-global effects are priced by the shared upgrade
+            // projection. Retain the unmodified body's registry contribution, and keep final
+            // PlayerGlobal effects above: each mechanic has exactly one owner in this chain.
+            List<StrategicEffect> bodyEffects = all;
+            if (ctx.Plan?.UsesEquipment == true)
+            {
+                CardDefinition body = ctx.Plan.BaseCardInHand?.Definition ?? ctx.Plan.GeneratedBaseDef;
+                if (body != null)
+                {
+                    var before = EquipmentSystem.Project(body, ctx.Plan.BaseCardInHand?.Equipment,
+                        ctx.Plan.BaseCardInHand?.Mutator);
+                    bodyEffects = Resolve(before.Abilities, effectiveMoveMax);
+                }
+            }
+            List<StrategicEffect> forRole = bodyEffects
                 .Where(e => e.Role == role && e.Scope != EffectScope.PlayerGlobal).ToList();
 
             // An effect with NO StackingKey stands alone — evaluated individually with its OWN
@@ -1093,6 +1118,139 @@ namespace Game.Ai.V2
             f *= Mathf.Pow(AiConfigV2.effectRecurringSourceDiminish, Mathf.Max(0, ape.RecurringApSources));
             return Mathf.Clamp01(f);
         }
+
+        // Marginal attachment consumers subtract this value before/after. Existing descriptor
+        // semantics remain the source of effect knowledge; primary damage is already projected
+        // by the canonical exchange and must never be added again as a role bonus.
+        internal static float AttachmentValue(IReadOnlyDictionary<EquipmentStat, int> stats,
+            IReadOnlyList<string> abilities, IReadOnlyList<UnitTypeTag> tags,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmyData army, bool hero, WorldSnapshot snap,
+            bool includeGlobal = true, MaterializationPlan deployment = null,
+            IReadOnlyList<WorthIt.DefenderProfile> referenceTargets = null, int hpSpent = 0)
+        {
+            var ctx = new EffectEvaluationContext(snap, deployment);
+            float total = 0;
+            var targets = opposition.SelectMany(a => a.Units).Where(p => !p.IsHero)
+                .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
+            if (targets.Count == 0 && referenceTargets != null) targets.AddRange(referenceTargets.Take(16));
+            var effects = Resolve(abilities?.Distinct(), 0).Where(e => !e.PrimaryExchange
+                && !(e.Context == StrategicEffectContext.Flat && e.Role == IntendedRole.Support)
+                && (!hero || e.Scope == EffectScope.PlayerGlobal)
+                && (includeGlobal || e.Scope != EffectScope.PlayerGlobal)).ToList();
+            foreach (var group in effects.Select((e, index) => (e, index)).GroupBy(x => x.e.StackingKey ?? "effect:" + x.index))
+            {
+                StrategicEffect e = group.First().e;
+                float value;
+                if (e.Context == StrategicEffectContext.GlobalRecurringResource)
+                {
+                    string detail = null;
+                    value = GlobalRecurringValue(e, ctx, ref detail);
+                }
+                else if (e.Context == StrategicEffectContext.TargetDensity)
+                {
+                    // Use WorthIt's aggregate-roster adjacency approximation, not map positions.
+                    // Exact neighbours and friendly fire remain with tactical targeting/gameplay.
+                    // A primary must land meaningful damage and secondary slots must remain.
+                    value = 0;
+                    int battles = 0;
+                    foreach (var battle in opposition.OrderBy(a => string.Join(";", a.Units.Select(AttachmentProfileKey)
+                        .OrderBy(k => k, System.StringComparer.Ordinal)), System.StringComparer.Ordinal).Take(16))
+                    {
+                        var bodies = battle.Units.Where(p => !p.IsHero && p.IsGroundCombatant
+                            && !p.TypeTags.Contains(UnitTypeTag.Aircraft))
+                            .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
+                        if (bodies.Count == 0) continue;
+                        float battleValue = 0;
+                        foreach (var target in bodies)
+                        {
+                            BattleSimulationKernel.ExpectedExchangeDamage(stats[EquipmentStat.Attack],
+                                Mathf.RoundToInt(target.Defense), abilities, target.TypeTags, target.Abilities,
+                                Mathf.CeilToInt(target.HitPoints), out float hit);
+                            if (target.TypeTags.Contains(UnitTypeTag.Aircraft) && !abilities.Contains(UnitAbilities.AntiAir))
+                                hit = 0;
+                            if (e.SecondaryTargets > 0)
+                            {
+                                int available = bodies.Count - 1;
+                                int prior = effects.Where(x => x.SecondaryTargets > 0
+                                    && x.SecondaryPriority < e.SecondaryPriority).Sum(x => x.SecondaryTargets);
+                                if (available <= prior || hit <= 0) continue;
+                                float secondaryDamage = 0;
+                                bool skippedPrimary = false;
+                                foreach (var secondary in bodies)
+                                {
+                                    if (!skippedPrimary && secondary.Equals(target))
+                                    { skippedPrimary = true; continue; }
+                                    if (e.EligiblePredicate != null && !e.EligiblePredicate(secondary)) continue;
+                                    secondaryDamage += BattleSimulationKernel.ExpectedExchangeDamage(
+                                        stats[EquipmentStat.Attack], Mathf.RoundToInt(target.Defense),
+                                        abilities, target.TypeTags, target.Abilities,
+                                        Mathf.CeilToInt(secondary.HitPoints), out _, true, secondary.Abilities)
+                                        / Mathf.Max(2f, secondary.HitPoints);
+                                }
+                                battleValue += e.BaseFit * e.Probability * secondaryDamage
+                                    * Mathf.Min(e.SecondaryTargets, available - prior) / available;
+                            }
+                            else
+                            {
+                                int eligible = bodies.Count(t => e.EligiblePredicate == null || e.EligiblePredicate(t));
+                                if (e.EligiblePredicate == null || e.EligiblePredicate(target)) eligible--;
+                                battleValue += e.BaseFit * e.Magnitude * e.Probability
+                                    * Mathf.Clamp01(eligible / Mathf.Max(1f, AiConfigV2.effectAoeBodiesNorm))
+                                    * (e.RequiresHit ? hit : 1f);
+                            }
+                        }
+                        value += battleValue / bodies.Count;
+                        battles++;
+                    }
+                    value /= Mathf.Max(1, battles);
+                }
+                else if (e.Context == StrategicEffectContext.ExpectedSustain)
+                {
+                    // Gameplay heals ONE HP at end of turn, only while alive and damaged.
+                    // P(lethal) = E[min(D,hp)] - E[min(D,hp-1)]; no second battle model.
+                    int currentHp = Mathf.Max(0, stats[EquipmentStat.HitPoints] - hpSpent);
+                    bool wounded = currentHp < stats[EquipmentStat.HitPoints];
+                    value = 0;
+                    if (currentHp > 0)
+                    {
+                        float recovery = targets.Count == 0 ? (wounded ? 1f : 0f) : 0f;
+                        foreach (var target in targets)
+                        {
+                            float full = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(target.Attack),
+                                stats[EquipmentStat.Defense], target.Abilities, tags, abilities, currentHp, out float hit);
+                            float below = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(target.Attack),
+                                stats[EquipmentStat.Defense], target.Abilities, tags, abilities, currentHp - 1, out _);
+                            float lethal = Mathf.Clamp01(full - below);
+                            recovery += Mathf.Max(0, (wounded ? 1f : hit) - lethal);
+                        }
+                        value = e.BaseFit * e.Magnitude * e.Probability
+                            * (targets.Count > 0 ? recovery / targets.Count : recovery);
+                    }
+                }
+                else if (e.Context == StrategicEffectContext.FreeBattleSlots)
+                    value = e.BaseFit * e.Magnitude * e.Probability * Mathf.Clamp01(
+                        (deployment != null ? ctx.FreeBattleSlots
+                            : army == null ? 0 : Mathf.Max(0, army.Capacity - army.Members.Count))
+                        / (float)e.CapacityRequirement);
+                else if (e.Context == StrategicEffectContext.EligibleAllies)
+                    value = e.BaseFit * e.Magnitude * e.Probability * Mathf.Clamp01(
+                        (deployment != null ? ctx.CountEligibleAllies(e.EligiblePredicate)
+                            : army?.Members?.Count(u => u != null
+                                && (e.EligiblePredicate == null || e.EligiblePredicate(WorthIt.FromLiveUnit(u)))) ?? 0)
+                        / Mathf.Max(1f, AiConfigV2.effectAuraAllyNorm));
+                else
+                    value = ContextualValue(e, ctx);
+                total += EffectEvaluationContext.StackedTotal(e.Stacking, value, group.Count());
+            }
+            return total;
+        }
+
+        private static string AttachmentProfileKey(WorthIt.DefenderProfile p) =>
+            p.Defense.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ":"
+            + p.Attack.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ":"
+            + p.HitPoints.ToString("R", System.Globalization.CultureInfo.InvariantCulture) + ":"
+            + string.Join(",", p.TypeTags.OrderBy(t => t)) + ":"
+            + string.Join(",", p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal));
 
         public static float ContextualValue(in StrategicEffect e, in EffectEvaluationContext ctx)
         {

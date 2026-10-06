@@ -93,7 +93,7 @@ namespace Game.Ai.V2
         public float DevBestSuccessChance;  // raw p of the best affordable offering
         public int   DevUpgradeTargets;
         public bool  DevPathViable;         // a facility exists / can be built — else latent appetite is 0
-        public float DevJustifiedNeed;      // [0..1] ForceNeedModel.JustifiedForceNeed — what Production amplifies
+        public float DevJustifiedNeed;      // [0..1] Development need, including useful reserve investment
         public string DevNeedDetail = "";
     }
 
@@ -316,6 +316,8 @@ namespace Game.Ai.V2
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
             ForceNeed need = ForceNeedModel.JustifiedForceNeed(snap);
 
+            float developmentNeed = ForceNeedModel.DevelopmentNeed(snap);
+
             float readyFeasibility = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(rd.BestSuccessChance);
             float latentFeasibility = rd.DevPathViable ? AiConfigV2.devLatentPotential : 0f;
             float feasibility = Mathf.Max(readyFeasibility, latentFeasibility);
@@ -326,10 +328,10 @@ namespace Game.Ai.V2
             b.DevOfferingQuality = feasibility;
             b.DevUpgradeTargets = rd.UpgradeTargetCount;
             b.DevPathViable = rd.DevPathViable;
-            b.DevJustifiedNeed = need.Total;
-            b.DevNeedDetail = need.ToString();
+            b.DevJustifiedNeed = developmentNeed;
+            b.DevNeedDetail = $"force={need}; development={developmentNeed:0.###}";
 
-            return Mathf.Min(need.Total, Mathf.Clamp01(surplus * need.Total * feasibility));
+            return Mathf.Min(developmentNeed, Mathf.Clamp01(surplus * developmentNeed * feasibility));
         }
 
         // Spec §4 — RefreshPressure is a composite: a baseline, whole-map strategic IntelAge,

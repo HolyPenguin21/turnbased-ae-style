@@ -222,8 +222,31 @@ namespace Game.Ai.V2
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
                     .Select(g => "g" + DefenderFingerprint(g.Defenders) + CommanderFingerprint(g.Commander)));
             string threats = string.Join(";", threatRows.OrderBy(x => x, System.StringComparer.Ordinal));
+            string purposes = string.Join(";", (MissionIntentRegistry.Peek(snapshot?.Observer)?.All
+                    ?? System.Array.Empty<MissionIntent>()).Where(i => i != null)
+                .OrderBy(i => i.IntentKey).Select(i =>
+                    $"{i.IntentKey}:{i.Status}:actor={i.PreferredMoverArmyId}:life={i.IsLifecycleLeg}:"
+                    + $"attack={i.Attack?.Phase}:{i.Attack?.Preparation}:{i.Attack?.Target}:"
+                    + string.Join(",", (i.Attack?.TargetRoster ?? new List<StrikeRosterSlot>())
+                        .Select(r => r.Key).OrderBy(x => x, System.StringComparer.Ordinal))
+                    + ":gather=" + string.Join(",", (i.Attack?.GatherSupportArmyIds ?? new List<int>()).OrderBy(x => x))
+                    + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
+            string benchmarks = string.Join(";", (snapshot?.Self?.Deck
+                    ?? System.Array.Empty<Game.Cards.CardDefinition>()).Where(d => d != null)
+                .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
+                        .OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}"))
+                    + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>()))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Select(x => $"{x.ArmyId}:{x.Hex}:" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
+                .Concat((snapshot?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                    .Select(g => $"guard:{g.Hex}:" + DefenderFingerprint(g.Defenders)))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
-                + $"|threats={threats}"
+                + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
+                + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
                 + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"

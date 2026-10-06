@@ -65,6 +65,10 @@ namespace Game.Ai.V2
 
         public static string GenKey(MaterializationPlan p) => p?.Generation?.CardKey;
 
+        internal static string UpgradeConflictKey(CardData card, Game.Units.UnitData unit) =>
+            unit != null ? "equipment:unit:" + unit.RuntimeId
+                : card != null ? "equipment:hand:" + GenerationSource.StableCardKey(card) : null;
+
         public int ResourceUsed(ResourceType t)
         {
             switch (t)
@@ -83,13 +87,16 @@ namespace Game.Ai.V2
             foreach (CardData c in PlanCards(p))
                 if (c != null && _cards.Contains(c))
                     return false;
+            string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
+            if (hostKey != null && _externalConflictKeys.Contains(hostKey)) return false;
             string gk = GenKey(p);
             return string.IsNullOrEmpty(gk) || !_genKeys.Contains(gk);
         }
 
         public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
-            string conflictKey)
+            string conflictKey, CardData recipientCard = null)
         {
+            if (recipientCard != null && _cards.Contains(recipientCard)) return false;
             if (physicalCard != null && _cards.Contains(physicalCard))
                 return false;
             if (!string.IsNullOrEmpty(generationCardKey) && _genKeys.Contains(generationCardKey))
@@ -100,6 +107,7 @@ namespace Game.Ai.V2
         public readonly struct ExternalToken
         {
             public readonly CardData PhysicalCard;
+            public readonly CardData RecipientCard;
             public readonly string GenerationCardKey;
             public readonly string ConflictKey;
             public readonly bool CountedGeneration;
@@ -107,8 +115,9 @@ namespace Game.Ai.V2
             public readonly ResourceCost Resources;
 
             public ExternalToken(CardData physicalCard, string generationCardKey, string conflictKey,
-                bool countedGeneration, float apAdded, ResourceCost resources)
+                bool countedGeneration, float apAdded, ResourceCost resources, CardData recipientCard = null)
             {
+                RecipientCard = recipientCard;
                 PhysicalCard = physicalCard;
                 GenerationCardKey = generationCardKey;
                 ConflictKey = conflictKey;
@@ -119,8 +128,9 @@ namespace Game.Ai.V2
         }
 
         public ExternalToken PushExternal(CardData physicalCard, string generationCardKey,
-            string conflictKey, bool generation, float ap, ResourceCost resources)
+            string conflictKey, bool generation, float ap, ResourceCost resources, CardData recipientCard = null)
         {
+            if (recipientCard != null) _cards.Add(recipientCard);
             if (physicalCard != null) _cards.Add(physicalCard);
             if (!string.IsNullOrEmpty(generationCardKey)) _genKeys.Add(generationCardKey);
             if (!string.IsNullOrEmpty(conflictKey)) _externalConflictKeys.Add(conflictKey);
@@ -135,11 +145,12 @@ namespace Game.Ai.V2
                 TechUsed += resources.tech;
             }
             return new ExternalToken(physicalCard, generationCardKey, conflictKey,
-                generation, apAdded, resources);
+                generation, apAdded, resources, recipientCard);
         }
 
         public void PopExternal(in ExternalToken token)
         {
+            if (token.RecipientCard != null) _cards.Remove(token.RecipientCard);
             if (token.PhysicalCard != null) _cards.Remove(token.PhysicalCard);
             if (!string.IsNullOrEmpty(token.GenerationCardKey)) _genKeys.Remove(token.GenerationCardKey);
             if (!string.IsNullOrEmpty(token.ConflictKey)) _externalConflictKeys.Remove(token.ConflictKey);
@@ -161,6 +172,8 @@ namespace Game.Ai.V2
             foreach (CardData c in PlanCards(p))
                 if (c != null) _cards.Add(c);
             string gk = GenKey(p);
+            string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
+            if (hostKey != null) _externalConflictKeys.Add(hostKey);
             bool addedGen = !string.IsNullOrEmpty(gk) && _genKeys.Add(gk);
             bool countedGen = p?.Generation != null;
             if (countedGen) GenerationAttempts++;
@@ -182,6 +195,8 @@ namespace Game.Ai.V2
             MaterializationPlan p = token.Plan;
             foreach (CardData c in PlanCards(p))
                 if (c != null) _cards.Remove(c);
+            string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
+            if (hostKey != null) _externalConflictKeys.Remove(hostKey);
             if (token.AddedGenKey)
             {
                 string gk = GenKey(p);
