@@ -38,6 +38,45 @@ namespace Game.Combat
     // Geometry/target selection live outside this class; one armed exchange must be identical.
     public static class BattleSimulationKernel
     {
+        // Exact expectation of ONE exchange, without Fate or geometry. Production uses this
+        // bounded projection; full battle decisions still use WorthIt. The difference of the
+        // two fair dice pools is Binomial(attack + defense, .5) - defense.
+        public static float ExpectedExchangeDamage(int attack, int defense,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTags,
+            IEnumerable<string> defenderAbilities, int hpCap, out float hitChance,
+            bool secondary = false, IEnumerable<string> secondaryAbilities = null)
+        {
+            attack = Mathf.Max(0, attack);
+            defense = Mathf.Max(0, defense);
+            int n = attack + defense;
+            int center = n / 2;
+            double mass = 0, damage = 0, hits = 0;
+            void Accumulate(int successes, double weight)
+            {
+                int d = ChallengeResult.ApplyAbilityModifiers(Mathf.Max(0, successes - defense),
+                    attackerAbilities, defenderTags, defenderAbilities, AbilityMagnitudes.Default);
+                mass += weight;
+                if (d > 0) hits += weight;
+                if (secondary) d = SecondaryDamage(d, secondaryAbilities, AbilityMagnitudes.Default);
+                damage += weight * Mathf.Min(d, Mathf.Max(0, hpCap));
+            }
+            Accumulate(center, 1);
+            double w = 1;
+            for (int k = center; k > 0; k--)
+            {
+                w *= (double)k / (n - k + 1);
+                Accumulate(k - 1, w);
+            }
+            w = 1;
+            for (int k = center; k < n; k++)
+            {
+                w *= (double)(n - k) / (k + 1);
+                Accumulate(k + 1, w);
+            }
+            hitChance = (float)(hits / mass);
+            return (float)(damage / mass);
+        }
+
         public static BattleSimExchangeOutcome ResolveExchange(int attackPool, int defensePool,
             IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
             IEnumerable<string> defenderAbilities, ref int attackerFate, ref int defenderFate,

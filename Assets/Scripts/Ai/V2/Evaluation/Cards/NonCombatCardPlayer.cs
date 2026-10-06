@@ -36,6 +36,7 @@ namespace Game.Ai.V2
             public PlayKind Kind;
             public HexCoord TargetHex;
             public UnitData EquipHost;   // Equipment only
+            public CardData EquipHostCard;
             public float Score;
             public float ApCost;
             public ResourceCost ResCost;
@@ -201,6 +202,7 @@ namespace Game.Ai.V2
                 }
                 // A non-aviation Unit / Hero / solo-Recce card is the materialization chain's job.
                 if (!def.isAviation
+                    && def.cardType != CardType.Equipment
                     && (def.cardType == CardType.Unit || def.cardType == CardType.Hero
                         || AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities)))
                     continue;
@@ -213,7 +215,13 @@ namespace Game.Ai.V2
                 }
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
                     ownBaseHexes, blocked, witnessedUsefulApDemand);
-                if (p != null)
+                if (p?.Kind == PlayKind.Equipment)
+                {
+                    foreach (var attachment in BuildEquipmentPlays(card, snap, player, root, hand, ctx,
+                        p.ApCost, p.ResCost, witnessedUsefulApDemand))
+                        yield return attachment;
+                }
+                else if (p != null)
                     yield return p;
             }
 
@@ -344,25 +352,10 @@ namespace Game.Ai.V2
 
             if (def.cardType == CardType.Equipment && def.equipment != null)
             {
-                (UnitData unit, HexCoord hex, float upgrade, string stableKey)? host =
-                    BestEquipmentHost(player, root, card, snap);
-                if (host == null)
-                {
-                    blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
-                    return null;
-                }
-                // Host is chosen by StrategicCardEvaluator.EquipmentUpgradeValue, not by raw host
-                // power, and that same value is the RoleFit.
-                return new NonCombatPlay
-                {
-                    Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
-                    TargetHex = host.Value.hex, Generation = generation,
-                    ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, host.Value.upgrade,
-                        totalAp, totalRes, generation, witnessedUsefulApDemand),
-                    StableKey = $"{sourceKey}:equipment:{host.Value.stableKey}",
-                    Explain = $"{def.displayName} -> {host.Value.unit.Name} (Δ{host.Value.upgrade:0.00})",
-                };
+                return BuildEquipmentPlays(card, snap, player, root, hand, ctx,
+                    totalAp, totalRes, witnessedUsefulApDemand)
+                    .OrderByDescending(p => p.Score).ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
+                    .FirstOrDefault();
             }
 
             blocked.Add($"{def.displayName}:{def.cardType}(noNonCombatPlayPath)");
@@ -760,7 +753,9 @@ namespace Game.Ai.V2
                 case PlayKind.Equipment:
                 {
                     ArmyData recipientArmy = ArmyRegistry.FindArmyContaining(play.EquipHost);
-                    if (play.EquipHost == null || play.EquipHost.IsPrisoner || recipientArmy?.Owner != player)
+                    if (play.EquipHostCard != null
+                        ? !hand.Hand.Contains(play.EquipHostCard)
+                        : play.EquipHost == null || play.EquipHost.IsPrisoner || recipientArmy?.Owner != player)
                     {
                         failReason = "equipment host gone";
                         ok = false;
@@ -776,7 +771,9 @@ namespace Game.Ai.V2
                         ok = false;
                         break;
                     }
-                    ok = EquipmentSystem.TryAttach(play.Card, play.EquipHost, root, out failReason);
+                    ok = play.EquipHostCard != null
+                        ? EquipmentSystem.TryAttach(play.Card, play.EquipHostCard, root, out failReason)
+                        : EquipmentSystem.TryAttach(play.Card, play.EquipHost, root, out failReason);
                     if (ok)
                         hand.RemoveCard(play.Card);
                     break;
@@ -829,34 +826,37 @@ namespace Game.Ai.V2
             return set.OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
         }
 
-        // The legal host that maximises StrategicCardEvaluator.EquipmentUpgradeValue (the ONE
-        // equipment value: predicted delta x known-threat matchup x persistence), name only as
-        // the final deterministic tie-break.
-        private static (UnitData unit, HexCoord hex, float upgrade, string stableKey)? BestEquipmentHost(
-            PlayerSetupData player, PlayerRoot root, CardData equipCard, WorldSnapshot snap)
+        private static IEnumerable<NonCombatPlay> BuildEquipmentPlays(CardData card,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            float ap, ResourceCost resources, float? workload)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            (UnitData unit, HexCoord hex, float upgrade, string stableKey)? best = null;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                ResearchProductionMode.Production, default, card.Definition, 1f, null,
+                snap, inv, player, root, hand, out _, card))
             {
-                if (army?.Members == null)
-                    continue;
-                foreach (UnitData u in army.Members)
+                // The candidate is the actual card in hand; a reservation on its recipient is
+                // respected through the same bank/physical portfolio, and installation is rechecked.
+                if (op.RecipientCard != null
+                    ? !EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _)
+                    : !EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _)) continue;
+                float value = StrategicCardEvaluator.EquipmentUpgradeValue(op);
+                yield return new NonCombatPlay
                 {
-                    if (u == null || u.IsAviation || EquipmentSystem.GetAttachment(u, equipCard.Definition) != null)
-                        continue;
-                    if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
-                        continue;
-                    float delta = StrategicCardEvaluator.EquipmentUpgradeValue(
-                        equipCard.Definition, u, army, snap, inv);
-                    string stableKey = $"{army.Id}:{army.Members.IndexOf(u)}";
-                    if (best == null || delta > best.Value.upgrade + 0.0001f
-                        || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f
-                            && string.CompareOrdinal(stableKey, best.Value.stableKey) < 0))
-                        best = (u, army.Hex, delta, stableKey);
-                }
+                    Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
+                    EquipHostCard = op.RecipientCard,
+                    TargetHex = op.RecipientUnit != null
+                        ? ArmyRegistry.FindArmyContaining(op.RecipientUnit)?.Hex ?? default : default,
+                    ApCost = ap, ResCost = resources,
+                    Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, value,
+                        ap, resources, null, workload),
+                    StableKey = "hand:" + GenerationSource.StableCardKey(card)
+                        + ":equipment:" + DevelopmentOpportunityEvaluator.RecipientKey(op),
+                    Explain = card.Definition.displayName + " -> " + op.RecipientLabel
+                        + " purpose=" + StrategicCardEvaluator.EquipmentPurposeLabel(snap, op.RecipientCard, op.RecipientUnit)
+                        + $" delta={op.ExpectedGain:0.###} tactical={op.TacticalGain:0.###} " + op.Explain,
+                };
             }
-            return best;
         }
 
         private static ResourceCost CombinedCost(ResourceCost a, ResourceCost b)

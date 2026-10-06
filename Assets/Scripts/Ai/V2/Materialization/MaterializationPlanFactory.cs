@@ -97,7 +97,8 @@ namespace Game.Ai.V2
                 },
                 HandSlotsNeededAtPeak = 0,
                 StableKey = $"{(int)MaterializationChainKind.GenerateAttachUpgrade}|"
-                    + $"{(int)CapabilityKind.CardUpgrade}|{g.CardKey}|{op.RecipientKind}|{op.RecipientLabel}",
+                    + $"{(int)CapabilityKind.CardUpgrade}|{g.CardKey}|{op.RecipientKind}|"
+                    + DevelopmentOpportunityEvaluator.RecipientKey(op),
             };
             return p;
         }

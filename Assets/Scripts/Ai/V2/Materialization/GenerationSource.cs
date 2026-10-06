@@ -1,7 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Threading;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -34,18 +32,8 @@ namespace Game.Ai.V2
         private static readonly ResearchProductionMode[] Modes =
             { ResearchProductionMode.Research, ResearchProductionMode.Production };
 
-        // Generator retry identity belongs here, not to the hero's current army or hex. An army
-        // transfer/reorder can happen between bounded mid-turn passes, but it cannot reset the
-        // gameplay attempt identity (hero, mode, authored card). Weak keys avoid retaining dead
-        // units across battles; the monotonic id keeps distinct identical-name heroes distinct.
-        private sealed class HeroIdentity
-        {
-            public readonly long Id;
-            public HeroIdentity(long id) { Id = id; }
-        }
-        private static readonly ConditionalWeakTable<UnitData, HeroIdentity> HeroIdentities =
-            new ConditionalWeakTable<UnitData, HeroIdentity>();
-        private static long _nextHeroIdentity;
+        internal static string StableCardKey(CardData card) => card == null ? "?"
+            : "card" + card.RuntimeId.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         // Every (hero-on-Facility, offered card) combination usable RIGHT NOW, in deterministic
         // order. `triedCardKeys` is the actual retry guard: gameplay defines the spent attempt as
@@ -80,7 +68,7 @@ namespace Game.Ai.V2
                         continue;
 
                     List<UnitData> actors = ResearchProductionSystem.FindActors(player, b.Hex, mode);
-                    foreach (UnitData hero in actors)
+                    foreach (UnitData hero in actors.OrderBy(h => h.RuntimeId))
                     {
                         // FacilityHex on GenerationStep records location; it must NOT enter the
                         // retry/portfolio key and enable a second identical Challenge after a move.
@@ -126,8 +114,7 @@ namespace Game.Ai.V2
         {
             if (hero == null)
                 return "?";
-            return HeroIdentities.GetValue(hero,
-                _ => new HeroIdentity(Interlocked.Increment(ref _nextHeroIdentity))).Id.ToString();
+            return hero.RuntimeId.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         internal static string StableGeneratorUseKey(ResearchProductionMode mode, UnitData hero) =>

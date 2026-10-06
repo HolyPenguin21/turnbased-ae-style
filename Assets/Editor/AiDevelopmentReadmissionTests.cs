@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.HexGrid;
@@ -9,6 +10,60 @@ namespace Game.EditorTests
 {
     public class AiDevelopmentReadmissionTests
     {
+        [Test]
+        public void DisplacedMissionValueInvalidatesPreparationWithoutChangingActorClaim()
+        {
+            var intent = new MissionIntent
+                { Kind = MissionKind.Scout, Status = IntentStatus.Active, PreferredMoverArmyId = 9,
+                  LastIntrinsicValue = 1f };
+            var intents = new[] { intent };
+            var snapshot = Snapshot(Army());
+            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, intents);
+            intent.LastIntrinsicValue = 8f;
+            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, intents), Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void AttachmentOccupancyInvalidatesEvenWithoutHandMutation()
+        {
+            var definition = AttachmentSlotTests.Host(hero: true);
+            var card = new CardData(definition);
+            var hand = new AiHandData(null, default, 0); hand.AddCard(card);
+            string before = Pipeline.DevelopmentRecipientFacts(null, hand);
+            card.Equipment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 0);
+            string equipment = Pipeline.DevelopmentRecipientFacts(null, hand);
+            Assert.That(equipment, Is.Not.EqualTo(before));
+            card.Mutator = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Attack, 0);
+            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.Not.EqualTo(equipment));
+        }
+
+        [Test]
+        public void CommanderFateInvalidatesAnOtherwiseIdenticalThreatRoster()
+        {
+            var snapshot = Snapshot(Army());
+            var enemy = new ArmySnapshot
+            {
+                Members = new[] { new Game.Combat.WorthIt.DefenderProfile(2, false, attack: 3, hitPoints: 8) },
+                Commander = new Game.Combat.WorthIt.SideCommander(2, 1),
+            };
+            snapshot.TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } };
+            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            enemy.Commander = new Game.Combat.WorthIt.SideCommander(2, 4);
+            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void PreparationApChangeInvalidatesEvenWhenOfferingThresholdIsUnchanged()
+        {
+            var snapshot = Snapshot(Army());
+            snapshot.Development.Offerings = new[] { new DevelopmentOffering
+            {
+                Card = new CardDefinition { cardType = CardType.Equipment, apCost = 1, activationApCost = 1 },
+            } };
+            Assert.That(Pipeline.DevelopmentApAffordability(snapshot, null, 3),
+                Is.Not.EqualTo(Pipeline.DevelopmentApAffordability(snapshot, null, 4)));
+        }
+
         private static WorldSnapshot Snapshot(ArmySnapshot army,
             bool staffed = false, int upgradeTargets = 1)
         {

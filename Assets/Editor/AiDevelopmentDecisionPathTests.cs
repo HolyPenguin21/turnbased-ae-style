@@ -2,11 +2,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
+using Game.Players;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Game.EditorTests
 {
@@ -14,6 +18,194 @@ namespace Game.EditorTests
     // exercise live GenerationSource affordability, Challenge, or Unity movement.
     public sealed class AiDevelopmentDecisionPathTests
     {
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void EnumeratedRecipientsKeepTheFourthFallbackForTheSharedPortfolio(AttachmentSlot slot)
+        {
+            var ownerObject = new GameObject("development-recipient-test");
+            try
+            {
+                var root = ownerObject.AddComponent<PlayerRoot>();
+                root.ActionPoints = 100;
+                var player = new PlayerSetupData();
+                var hand = new AiHandData(null, default, 0);
+                var hosts = Enumerable.Range(0, 4)
+                    .Select(_ => new CardData(AttachmentSlotTests.Host(hero: true))).ToArray();
+                foreach (var host in hosts) hand.AddCard(host);
+                var attachment = AttachmentSlotTests.Attachment(slot, EquipmentStat.Fate, 1);
+                attachment.apCost = 1; attachment.activationApCost = 1;
+                var generation = new GenerationStep
+                {
+                    CardDef = attachment, ProducesEquipment = true, CardKey = "primary", SuccessChance = 1f,
+                };
+                var opportunities = DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                    ResearchProductionMode.Production, default, attachment, 1f, generation,
+                    null, new CapabilityInventory(), player, root, hand, out _);
+                Assert.That(opportunities, Has.Count.EqualTo(4));
+                var demand = new DemandState { Ordinal = 0, Demand = new AxisDemand
+                    { RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.CardUpgrade } };
+                var options = new Dictionary<DemandState, List<DemandCandidate>>
+                {
+                    [demand] = opportunities.Select(op =>
+                    {
+                        var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
+                            op, generation, DesireAxis.Development);
+                        float value = StrategicCardEvaluator.EquipmentUpgradeValue(op);
+                        return new DemandCandidate(plan, 0, value, 0, value);
+                    }).ToList(),
+                };
+                // Three valuable deployment chains occupy the first three physical hosts. The
+                // fourth is below the normal Top-K=3 boundary but must remain selectable.
+                for (int i = 0; i < 3; i++)
+                {
+                    var state = new DemandState { Ordinal = i + 1, Demand = new AxisDemand
+                        { RequestingAxis = DesireAxis.Aggression, Capability = CapabilityKind.Hero } };
+                    var plan = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct,
+                        state.Demand, hosts[i], i, null, -1,
+                        new PlacementOption(new HexCoord(i, 0), DeploymentKind.NewArmy, null),
+                        EquipmentSystem.EffectiveAbilities(hosts[i]));
+                    options[state] = new List<DemandCandidate> { new DemandCandidate(plan, 0, 100, 0, 100) };
+                }
+                var chosen = MaterializationPortfolioSolver.BestInjectiveAssignment(
+                    options, root, player, null, hand, 1);
+                Assert.That(chosen, Has.Count.EqualTo(4));
+                Assert.That(chosen[demand].Plan.UpgradeTargetCard, Is.SameAs(hosts[3]));
+                Assert.That(root.ActionPoints, Is.EqualTo(100), "Planning must not debit the live bank");
+                Assert.That(hosts.All(h => h.Equipment == null && h.Mutator == null), Is.True);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(ownerObject); }
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void RecipientEnumerationRefreshesGainAndSlotLegalityAfterAnAttachment(AttachmentSlot slot)
+        {
+            var ownerObject = new GameObject("development-refresh-test");
+            try
+            {
+                var root = ownerObject.AddComponent<PlayerRoot>(); root.ActionPoints = 20;
+                var player = new PlayerSetupData();
+                var hand = new AiHandData(null, default, 0);
+                var host = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(host);
+                var output = AttachmentSlotTests.Attachment(slot, EquipmentStat.Fate,
+                    slot == AttachmentSlot.Mutator ? 8 : 2, replace: slot == AttachmentSlot.Mutator);
+                output.activationApCost = 1;
+                List<DevelopmentOpportunity> Enumerate() => DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                    ResearchProductionMode.Production, default, output, 1f, null,
+                    null, new CapabilityInventory(), player, root, hand, out _);
+                var before = Enumerate().Single();
+                var otherSlot = slot == AttachmentSlot.Equipment ? AttachmentSlot.Mutator : AttachmentSlot.Equipment;
+                var other = ResearchProductionSystem.MintCard(
+                    AttachmentSlotTests.Attachment(otherSlot, EquipmentStat.Fate,
+                        otherSlot == AttachmentSlot.Mutator ? 8 : 2, replace: otherSlot == AttachmentSlot.Mutator));
+                Assert.That(EquipmentSystem.TryAttach(other, host, root, out _), Is.True);
+                var after = Enumerate();
+                if (slot == AttachmentSlot.Equipment)
+                    Assert.That(after, Is.Empty, "A later-slot override erased the entire gain");
+                else
+                    Assert.That(after.Single().ExpectedGain, Is.LessThan(before.ExpectedGain),
+                        "The other slot changed the baseline: the old marginal gain must not survive");
+                Assert.That(EquipmentSystem.TryAttach(ResearchProductionSystem.MintCard(output), host, root, out _), Is.True);
+                Assert.That(Enumerate(), Is.Empty, "A newly occupied destination slot must be excluded");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(ownerObject); }
+        }
+
+        [Test]
+        public void SignedLossCannotBeErasedByLegacyMatchupWitness()
+        {
+            var host = new CardData(new CardDefinition { cardType = CardType.Unit });
+            var delta = new StrategicCardEvaluator.EquipmentDelta(0.6f, -0.7f);
+            var op = new DevelopmentOpportunity
+            {
+                RecipientCard = host, MatchupFit = 1f,
+                ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
+                TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
+            };
+            Assert.That(op.ExpectedGain, Is.LessThan(0f));
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op),
+                Is.EqualTo(StrategicCardEvaluator.EquipmentUpgradeValue(delta, 1f, true)).Within(0.0001f));
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op), Is.LessThan(0f),
+                "A matchup witness cannot turn a harmful signed delta into a useful investment");
+        }
+
+        [Test]
+        public void PortfolioUsesARecipientFallbackInsteadOfDiscardingAnUpgrade()
+        {
+            var attachment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 1);
+            attachment.apCost = 1; attachment.activationApCost = 1;
+            var definition = AttachmentSlotTests.Host(hero: true);
+            var first = new CardData(definition); var second = new CardData(definition);
+            MaterializationPlan Plan(string source, CardData recipient) =>
+                MaterializationPlanFactory.MakeDevelopmentUpgradePlan(new DevelopmentOpportunity
+                {
+                    Card = attachment, RecipientCard = recipient,
+                }, new GenerationStep { CardDef = attachment, ProducesEquipment = true, CardKey = source },
+                    DesireAxis.Development);
+            var a = new DemandState { Ordinal = 0, Demand = new AxisDemand
+                { RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.CardUpgrade } };
+            var b = new DemandState { Ordinal = 1, Demand = new AxisDemand
+                { RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.CardUpgrade } };
+            var preferred = Plan("a", first); var fallback = Plan("a", second); var only = Plan("b", first);
+            var options = new Dictionary<DemandState, List<DemandCandidate>>
+            {
+                [a] = new List<DemandCandidate>
+                {
+                    new DemandCandidate(preferred, 0, 10, 0, 10),
+                    new DemandCandidate(fallback, 0, 9, 0, 9),
+                },
+                [b] = new List<DemandCandidate> { new DemandCandidate(only, 0, 10, 0, 10) },
+            };
+            var chosen = MaterializationPortfolioSolver.BestInjectiveAssignment(options,
+                null, null, null, null, 2);
+            Assert.That(chosen, Has.Count.EqualTo(2));
+            Assert.That(chosen[a].Plan, Is.SameAs(fallback));
+            Assert.That(chosen[b].Plan, Is.SameAs(only));
+            Assert.That(MaterializationPortfolioSolver.EstimateLegalApWorkload(options.ToDictionary(x => x.Key,
+                x => x.Value.Select(c => (c.Plan, c.FollowupAp)).ToList()), null, null, null, null, 2),
+                Is.EqualTo(fallback.ApCost + only.ApCost));
+            a.Ordinal = 1; b.Ordinal = 0; options[a].Reverse();
+            var reordered = MaterializationPortfolioSolver.BestInjectiveAssignment(options,
+                null, null, null, null, 2);
+            Assert.That(reordered[a].Plan, Is.SameAs(fallback));
+            Assert.That(reordered[b].Plan, Is.SameAs(only));
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void ExistingRapidReactionDoesNotInventActivationSavings(AttachmentSlot slot)
+        {
+            var definition = AttachmentSlotTests.Host(hero: true);
+            definition.grantedAbilities.Add(UnitAbilities.RapidReaction);
+            var host = new CardData(definition);
+            var attachment = AttachmentSlotTests.Attachment(slot, EquipmentStat.Attack, 20);
+            var delta = StrategicCardEvaluator.EquipmentDeltaParts(attachment, host);
+            Assert.That(EquipmentSystem.Project(host).Stats[EquipmentStat.ActivationApCost], Is.Zero);
+            Assert.That(delta.Total, Is.Zero.Within(0.0001f),
+                "Hero Attack has no combat value, and an already-free activation cannot become cheaper");
+            Assert.That(host.Equipment, Is.Null);
+            Assert.That(host.Mutator, Is.Null);
+        }
+
+        [Test]
+        public void SameNamedPhysicalRecipientsHaveDistinctStablePlanKeys()
+        {
+            var host = AttachmentSlotTests.Host(hero: true);
+            var attachment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 1);
+            var g = new GenerationStep { CardDef = attachment, ProducesEquipment = true, CardKey = "source" };
+            DevelopmentOpportunity Op(CardData card) => new DevelopmentOpportunity
+            {
+                Card = attachment, Generation = g, RecipientCard = card, RecipientLabel = "hand:copy",
+            };
+            var first = Op(new CardData(host));
+            var second = Op(new CardData(host));
+            string firstKey = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(first, g, DesireAxis.Development).StableKey;
+            string secondKey = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(second, g, DesireAxis.Development).StableKey;
+            Assert.That(firstKey, Is.Not.EqualTo(secondKey));
+            Assert.That(MaterializationPlanFactory.MakeDevelopmentUpgradePlan(first, g, DesireAxis.Development).StableKey,
+                Is.EqualTo(firstKey));
+        }
+
         private static WorldSnapshot Snapshot(float tech, float energy,
             CardDefinition equipment, CardData recipient)
         {
@@ -162,6 +354,107 @@ namespace Game.EditorTests
                 "The canonical scorer must price scarcity of Energy actually consumed by the chain");
             // This constructed snapshot tests valuation, not whether the live game may pay the
             // scarce chain. GenerationSource and StrategicSpendability own that separate gate.
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StandaloneHandAttachmentKeepsAllRecipientsAndRefreshesSecondSlot(bool recceEquipment)
+        {
+            var obj = new GameObject("standalone-hand-upgrade-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 30;
+                var player = new PlayerSetupData(); var ctx = new AiTurnContext();
+                var hand = new AiHandData(null, default, 0);
+                var hosts = new[] { new CardData(AttachmentSlotTests.Host(hero: true)),
+                    new CardData(AttachmentSlotTests.Host(hero: true)) };
+                foreach (var host in hosts) hand.AddCard(host);
+                var equipment = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 2));
+                if (recceEquipment)
+                {
+                    equipment.Definition.grantedAbilities = new List<string> { "r2s5" };
+                    equipment.Definition.equipment.addAbilities = new List<string> { "r2s5" };
+                }
+                var mutator = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Fate, 8, replace: true));
+                hand.AddCard(equipment); hand.AddCard(mutator);
+                var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Hand = hand.Hand } };
+                var before = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Where(p => p.Kind == NonCombatCardPlayer.PlayKind.Equipment).ToList();
+                Assert.That(before.Count(p => p.Card == equipment), Is.EqualTo(2));
+                Assert.That(before.Count(p => p.Card == mutator), Is.EqualTo(2));
+                float previous = StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total;
+                var chosen = before.Single(p => p.Card == equipment && p.EquipHostCard == hosts[0]);
+                var result = NonCombatCardPlayer.Execute(chosen, snap, player, root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+                Assert.That(hosts[0].Equipment, Is.SameAs(equipment.Definition));
+                Assert.That(hand.Hand.Contains(equipment), Is.False);
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total,
+                    Is.LessThan(previous));
+                var after = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>()).ToList();
+                Assert.That(after.Count(p => p.Card == mutator), Is.EqualTo(2));
+                Assert.That(hosts[0].Mutator, Is.Null);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StandaloneAttachmentUsesActualInstanceCostDuringEnumerationAndExecution(bool produced)
+        {
+            var obj = new GameObject("standalone-attachment-cost-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 1;
+                var player = new PlayerSetupData(); var ctx = new AiTurnContext();
+                var hand = new AiHandData(null, default, 0);
+                var host = new CardData(AttachmentSlotTests.Host(hero: true));
+                var def = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 2);
+                // The ordinary card is cheaper than its activation preview. The produced
+                // card has already paid its unaffordable creation resources and plays at 1 AP.
+                def.apCost = produced ? 7 : 1;
+                def.activationApCost = produced ? 1 : 7;
+                if (produced) def.resourceCost = new ResourceCost { energy = 99999 };
+                var gear = produced ? ResearchProductionSystem.MintCard(def) : new CardData(def);
+                hand.AddCard(host); hand.AddCard(gear);
+                var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Hand = hand.Hand } };
+                var play = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Single(p => p.Card == gear);
+                Assert.That(play.ApCost, Is.EqualTo(1));
+                Assert.That(play.ResCost, Is.Null);
+                var result = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+                Assert.That(result.ApSpent, Is.EqualTo(1));
+                Assert.That(root.ActionPoints, Is.Zero);
+                Assert.That(host.Equipment, Is.SameAs(def));
+                Assert.That(hand.Hand.Contains(gear), Is.False);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [Test]
+        public void SharedConsumptionLocksUpgradeHostAcrossLanesAndRestoresOnPop()
+        {
+            var state = new MaterializationConsumptionState();
+            var host = new CardData(AttachmentSlotTests.Host());
+            var first = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 1));
+            var second = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Attack, 1));
+            string key = MaterializationConsumptionState.UpgradeConflictKey(host, null);
+            var token = state.PushExternal(first, null, key, false, 1, null, host);
+            Assert.That(state.CardsDisjoint(new MaterializationPlan { BaseCardInHand = host }), Is.False);
+            Assert.That(state.ExternalDisjoint(second, null, key, host), Is.False);
+            Assert.That(state.ApUsed, Is.EqualTo(1));
+            state.PopExternal(token);
+            Assert.That(state.CardsDisjoint(new MaterializationPlan { BaseCardInHand = host }), Is.True);
+            Assert.That(state.ExternalDisjoint(second, null, key, host), Is.True);
+            Assert.That(state.ApUsed, Is.Zero);
+            var unit = new Game.Units.UnitData();
+            var plan = new MaterializationPlan { UpgradeTargetUnit = unit };
+            var pushed = state.Push(plan);
+            Assert.That(state.ExternalDisjoint(second, null,
+                MaterializationConsumptionState.UpgradeConflictKey(null, unit)), Is.False);
+            state.Pop(pushed);
+            Assert.That(state.ExternalDisjoint(second, null,
+                MaterializationConsumptionState.UpgradeConflictKey(null, unit)), Is.True);
         }
     }
 }

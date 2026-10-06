@@ -1,3 +1,5 @@
+using System.Threading;
+
 namespace Game.Cards
 {
     // One card instance currently in a player's hand — just which definition it is. Same
@@ -5,6 +7,10 @@ namespace Game.Cards
     // PlayerSetupData vs PlayerRoot): CardUI is the visual, this is what it represents.
     public class CardData
     {
+        // Runtime identity, like UnitData.RuntimeId: preserved when hand order changes.
+        private static int _nextRuntimeId;
+        public readonly int RuntimeId = Interlocked.Increment(ref _nextRuntimeId);
+
         public CardDefinition Definition;
 
         // Independent permanent attachments carried onto UnitData at deployment. Both kinds

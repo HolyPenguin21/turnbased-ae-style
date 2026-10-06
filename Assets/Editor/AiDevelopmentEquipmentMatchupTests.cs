@@ -5,6 +5,8 @@ using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
+using Game.Players;
+using System.Collections.Generic;
 using Game.Units;
 using NUnit.Framework;
 
@@ -403,6 +405,239 @@ namespace Game.EditorTests
             Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "With no composition available the original intrinsic equipment score must stand");
+        }
+
+        private static CardDefinition PolicyGear(EquipmentStat stat, int amount, bool flat = false)
+        {
+            var grant = new EquipmentGrant();
+            grant.statChanges.Add(new EquipmentStatChange { stat = stat, amount = amount, isOverride = flat });
+            return new CardDefinition { cardType = CardType.Equipment, equipment = grant };
+        }
+
+        private static CardDefinition PolicySkill(string ability)
+        {
+            var grant = new EquipmentGrant(); grant.addAbilities.Add(ability);
+            return new CardDefinition { cardType = CardType.Equipment, equipment = grant };
+        }
+
+        private static WorldSnapshot PolicyWorld(params WorthIt.DefenderProfile[] opposition) =>
+            new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Deck = new[] { new CardDefinition
+                    { cardType = CardType.Unit, attack = 6, defenseRating = 6, hitPoints = 6 } } },
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = opposition.Length == 0
+                    ? System.Array.Empty<ArmySnapshot>() : new[] { new ArmySnapshot { Members = opposition } } },
+            };
+
+        [Test]
+        public void AbsolutePenetrationBeatsSmallPercentageGainOnWeakScout()
+        {
+            var scout = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 1, defenseRating = 1, hitPoints = 4 });
+            var snap = PolicyWorld(new WorthIt.DefenderProfile(6, false, attack: 5, hitPoints: 6));
+            float small = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), scout, snap).Total;
+            float flat = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), scout, snap).Total;
+            Assert.That(flat, Is.GreaterThan(small * 4f));
+        }
+
+        [Test]
+        public void AlreadyArmouredBodyPrefersPenetrationOverSurplusArmour()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 2, defenseRating = 12, hitPoints = 6 });
+            var snap = PolicyWorld(new WorthIt.DefenderProfile(5, false, attack: 5, hitPoints: 6));
+            float armour = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Defense, 3), body, snap).Total;
+            float weapon = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 6), body, snap).Total;
+            Assert.That(weapon, Is.GreaterThan(armour * 4f));
+        }
+
+        [Test]
+        public void StrongAttackRealisesSplashButSeparateSingleBodyArmiesDoNot()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 12, defenseRating = 4, hitPoints = 6 });
+            var enemy = new WorthIt.DefenderProfile(3, false, attack: 4, hitPoints: 8);
+            var snap = PolicyWorld(enemy, enemy, enemy);
+            float splash = StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total;
+            float attack = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), body, snap).Total;
+            Assert.That(splash, Is.GreaterThan(attack));
+            snap.TrueWorld.EnemyArmies = new[] { new ArmySnapshot { Members = new[] { enemy } },
+                new ArmySnapshot { Members = new[] { enemy } }, new ArmySnapshot { Members = new[] { enemy } } };
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total, Is.Zero);
+        }
+
+        [Test]
+        public void PyrokineticNeedsBioAndDuplicateSkillHasNoMarginalValue()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 8, defenseRating = 4, hitPoints = 6 });
+            var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
+            var bio = PolicyWorld(new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Bio }, 4, 8));
+            var machine = PolicyWorld(new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Mechanical }, 4, 8));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, bio).Total, Is.GreaterThan(0));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, machine).Total, Is.Zero);
+            body.Definition.grantedAbilities.Add(UnitAbilities.Pyrokinetic);
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, bio).Total, Is.Zero);
+        }
+
+        [Test]
+        public void UsefulReserveUpgradeDoesNotNeedKnownEnemyButStockDoesNotValueEmptyGear()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 2, defenseRating = 4, hitPoints = 6 });
+            var snap = PolicyWorld();
+            var gain = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), body, snap);
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(gain, 0, true), Is.GreaterThan(0));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(new CardDefinition
+                { cardType = CardType.Equipment, equipment = new EquipmentGrant() }, body, snap).Total, Is.Zero);
+            snap.Development = new DevelopmentReadiness { UpgradeTargetCount = 1, SurplusFraction = 1 };
+            Assert.That(ForceNeedModel.DevelopmentNeed(snap), Is.GreaterThan(0));
+            Assert.That(ForceNeedModel.JustifiedForceNeed(snap).Witnessed, Is.False);
+        }
+
+        [Test]
+        public void HeroPrefersFateMoveAndRecceToOrdinaryAttackOrCommand()
+        {
+            var hero = new CardData(new CardDefinition { cardType = CardType.Hero, fate = 2, moveMax = 2 });
+            var snap = PolicyWorld();
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 10), hero, snap).Total, Is.Zero);
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.CommandRating, 5), hero, snap).Total, Is.Zero);
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Fate, 1), hero, snap).Total, Is.GreaterThan(0));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.MoveMax, 1), hero, snap).Total, Is.GreaterThan(0));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill("r1s2"), hero, snap).Total, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void ExchangeExpectationMatchesExhaustiveDiceIncludingSecondaryArmour()
+        {
+            for (int a = 0; a <= 5; a++) for (int d = 0; d <= 5; d++)
+            {
+                var attackAbilities = new[] { UnitAbilities.CriticalDamage, UnitAbilities.Pyrokinetic };
+                var tags = new[] { UnitTypeTag.Bio };
+                var armour = new[] { UnitAbilities.CeramicArmor };
+                double sum = 0, side = 0, hits = 0;
+                int possibilities = 1 << (a + d);
+                for (int mask = 0; mask < possibilities; mask++)
+                {
+                    int raw = 0;
+                    for (int i = 0; i < a; i++) if ((mask & (1 << i)) != 0) raw++;
+                    for (int i = 0; i < d; i++) if ((mask & (1 << (a + i))) != 0) raw--;
+                    int damage = ChallengeResult.ApplyAbilityModifiers(System.Math.Max(0, raw), attackAbilities, tags, armour, AbilityMagnitudes.Default);
+                    sum += System.Math.Min(damage, 6); if (damage > 0) hits++;
+                    side += System.Math.Min(BattleSimulationKernel.SecondaryDamage(damage, armour, AbilityMagnitudes.Default), 6);
+                }
+                float expectation = BattleSimulationKernel.ExpectedExchangeDamage(a, d, attackAbilities, tags, armour, 6, out float chance);
+                Assert.That(expectation, Is.EqualTo(sum / possibilities).Within(0.00001));
+                Assert.That(chance, Is.EqualTo(hits / possibilities).Within(0.00001));
+                float secondary = BattleSimulationKernel.ExpectedExchangeDamage(a, d, attackAbilities, tags, armour, 6, out _, true, armour);
+                Assert.That(secondary, Is.EqualTo(side / possibilities).Within(0.00001));
+            }
+        }
+
+        [Test]
+        public void PreparationUsesItsKnownTargetAndChangingItInvalidatesAdmission()
+        {
+            var player = new PlayerSetupData();
+            var body = new CardData(new CardDefinition { authoredKey = "scout", cardType = CardType.Unit,
+                attack = 8, defenseRating = 4, hitPoints = 6 });
+            var firstHex = new HexCoord(0, 0); var secondHex = new HexCoord(2, 0);
+            var bio = new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Bio }, 4, 8);
+            var mechanical = new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Mechanical }, 4, 8);
+            var intent = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                Objective = new AttackIntent { Preparation = true,
+                    Target = AttackTargetRef.For(firstHex, new PlayerSetupData(), AttackTargetKind.Base),
+                    TargetRoster = new List<StrikeRosterSlot> { new StrikeRosterSlot("scout", false, 1, ForceSource.Hand) } } };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            try
+            {
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                var snap = PolicyWorld(); snap.Observer = player;
+                snap.Known = new KnownSnapshot { EventGuards = new[] {
+                    new KnownEventGuardSnapshot(firstHex, new AiMapMemory.GuardStrength(4, 4, new[] { bio }), "bio", 1),
+                    new KnownEventGuardSnapshot(secondHex, new AiMapMemory.GuardStrength(4, 4, new[] { mechanical }), "mechanical", 1) } };
+                var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
+                string before = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                Assert.That(StrategicCardEvaluator.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.GreaterThan(0));
+                intent.Attack.Target = AttackTargetRef.For(secondHex, new PlayerSetupData(), AttackTargetKind.Base);
+                Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(before));
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
+                intent.Attack.Target = AttackTargetRef.None;
+                float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
+                snap.Observer = null;
+                Assert.That(noTarget, Is.EqualTo(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total),
+                    "An absent target is not a real objective at hex 0,0");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void DeckBenchmarkAndScoutRequirementAreExactAdmissionInputs()
+        {
+            var player = new PlayerSetupData(); var snap = PolicyWorld(); snap.Observer = player;
+            var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                PreferredMoverArmyId = 1, Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore } };
+            try
+            {
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                string original = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                snap.Self.Deck[0].defenseRating++;
+                string deckChanged = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                Assert.That(deckChanged, Is.Not.EqualTo(original));
+                intent.Scout.RequiresStealth = true;
+                Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(deckChanged));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void SecondaryEffectsCoordinateBothSlotsAndRespectRemainingTargets()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 12, defenseRating = 4, hitPoints = 6 });
+            body.Equipment = PolicySkill(UnitAbilities.Splash);
+            var scorcher = PolicySkill(UnitAbilities.Scorcher); scorcher.attachmentSlot = AttachmentSlot.Mutator;
+            var bio = new WorthIt.DefenderProfile(3, false, new[] { UnitTypeTag.Bio }, 4, 8);
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio)).Total, Is.Zero,
+                "Splash already occupies both available secondary targets");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio, bio)).Total,
+                Is.GreaterThan(0), "The remaining target makes Scorcher useful");
+        }
+
+        [Test]
+        public void UsefulFateCannotCompensateForDisablingAssignedChallengeOperator()
+        {
+            var player = new PlayerSetupData();
+            var definition = new CardDefinition { cardType = CardType.Hero, fate = 2, moveMax = 2 };
+            definition.grantedAbilities.Add(UnitAbilities.Researcher);
+            var hero = new UnitData { IsHero = true, Fate = 2, FateMax = 2, MoveMax = 2, OriginatingCard = definition };
+            hero.Abilities.Add(UnitAbilities.Researcher);
+            var intent = new MissionIntent { Kind = MissionKind.Development, Status = IntentStatus.Active,
+                Objective = new DevelopmentIntent { Hero = hero } };
+            try
+            {
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                var snap = PolicyWorld(); snap.Observer = player;
+                var gear = PolicyGear(EquipmentStat.Fate, 5);
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(gear, hero, snap).Total, Is.GreaterThan(0));
+                gear.equipment.removeAbilities.Add(UnitAbilities.Researcher);
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(gear, hero, snap).Total, Is.LessThan(0));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void EndOfTurnRegenerationNeedsDamageAndSurvival()
+        {
+            var body = new CardData(new CardDefinition { cardType = CardType.Unit,
+                attack = 5, defenseRating = 3, hitPoints = 6 });
+            var regen = PolicySkill(UnitAbilities.Regeneration);
+            float safe = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
+                PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 6, hitPoints: 6))).Total;
+            float lethal = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
+                PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 40, hitPoints: 6))).Total;
+            Assert.That(safe, Is.GreaterThan(0));
+            Assert.That(lethal, Is.LessThan(safe * 0.05f), "End-of-turn healing cannot save a dead carrier");
         }
     }
 }

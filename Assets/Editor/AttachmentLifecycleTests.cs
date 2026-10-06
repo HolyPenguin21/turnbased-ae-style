@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Reflection;
+using System.Linq;
 using TMPro;
 using Game.Ai;
 using Game.Ai.V2;
@@ -48,6 +49,84 @@ namespace Game.EditorTests
             StrategicResourceReservationLedger.ClearAll();
             AiHandRegistry.Clear(); VisionSystem.Configure(null);
             Object.DestroyImmediate(_scene); Object.DestroyImmediate(_root.gameObject);
+        }
+
+        [Test]
+        public void DevelopmentPortfolioProtectsAnotherOwnersHoldAcrossRecipientAlternatives()
+        {
+            StrategicResourceReservationLedger.Upsert(_owner, 1, new StrategicResourceReservation
+            {
+                Owner = "other-build", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                Resource = StrategicReservedResource.Tech, Amount = 9,
+                ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+            });
+            var options = new System.Collections.Generic.Dictionary<DemandState,
+                System.Collections.Generic.List<DemandCandidate>>();
+            for (int i = 0; i < 2; i++)
+            {
+                var state = new DemandState { Ordinal = i, Demand = new AxisDemand
+                    { RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.CardUpgrade } };
+                var plan = new MaterializationPlan
+                {
+                    Kind = MaterializationChainKind.GenerateAttachUpgrade,
+                    UpgradeTargetCard = new CardData(AttachmentSlotTests.Host(hero: true)),
+                    Generation = new GenerationStep { CardKey = "source" + i },
+                    ResCost = new ResourceCost { tech = 1 }, StableKey = "plan" + i,
+                };
+                options[state] = new System.Collections.Generic.List<DemandCandidate>
+                    { new DemandCandidate(plan, 0, 10, 0, 10) };
+            }
+            var chosen = MaterializationPortfolioSolver.BestInjectiveAssignment(options,
+                _root, _owner, new AiTurnContext { TurnNumber = 1 }, null, 2);
+            Assert.That(chosen, Has.Count.EqualTo(1),
+                "Distinct recipients and sources still share the same spendable Tech pool");
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(10),
+                "Portfolio valuation must not withdraw actual bank funds");
+        }
+
+        [Test]
+        public void DevelopmentRetainsRecipientAlternativesAndRefreshesBothSlots()
+        {
+            var definition = AttachmentSlotTests.Host(hero: true);
+            var first = new CardData(definition);
+            var second = new CardData(definition);
+            var hand = new AiHandData(null, default, 0); hand.AddCard(first); hand.AddCard(second);
+            var attachment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 1);
+            var generation = new GenerationStep
+                { CardDef = attachment, ProducesEquipment = true, CardKey = "source", SuccessChance = 1f };
+            System.Collections.Generic.List<DevelopmentOpportunity> Options() =>
+                DevelopmentOpportunityEvaluator.EquipmentOpportunities(ResearchProductionMode.Production,
+                    default, attachment, 1f, generation, null, null, _owner, _root, hand, out _);
+            Assert.That(Options().Select(x => x.RecipientCard), Is.EquivalentTo(new[] { first, second }),
+                "The shared portfolio must receive alternatives, even when their names and definitions match");
+
+            Assert.That(EquipmentSystem.TryAttach(ResearchProductionSystem.MintCard(attachment),
+                first, _root, out _), Is.True);
+            Assert.That(Options().Select(x => x.RecipientCard), Is.EquivalentTo(new[] { second }),
+                "An occupied Equipment slot must disappear from the next live candidate set");
+            attachment = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Fate, 1);
+            generation.CardDef = attachment;
+            Assert.That(Options().Select(x => x.RecipientCard), Is.EquivalentTo(new[] { first, second }),
+                "Equipment occupancy must not hide the free Mutator slot");
+        }
+
+        [Test]
+        public void DevelopmentRecomputesMarginalValueAfterAnAttachmentInTheOtherSlot()
+        {
+            var card = new CardData(AttachmentSlotTests.Host(hero: true));
+            var hand = new AiHandData(null, default, 0); hand.AddCard(card);
+            var overrideFate = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator,
+                EquipmentStat.Fate, 5, replace: true);
+            var generation = new GenerationStep
+                { CardDef = overrideFate, ProducesEquipment = true, CardKey = "source" };
+            System.Collections.Generic.List<DevelopmentOpportunity> Options() =>
+                DevelopmentOpportunityEvaluator.EquipmentOpportunities(ResearchProductionMode.Research,
+                    default, overrideFate, 1f, generation, null, null, _owner, _root, hand, out _);
+            Assert.That(Options(), Has.Count.EqualTo(1));
+            var gain = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 10);
+            Assert.That(EquipmentSystem.TryAttach(ResearchProductionSystem.MintCard(gain), card, _root, out _), Is.True);
+            Assert.That(Options(), Is.Empty,
+                "The same override now loses Fate against the canonical two-slot baseline");
         }
 
         [TestCase(AttachmentSlot.Equipment, StrategicReservedResource.Tech, false)]

@@ -30,7 +30,7 @@ namespace Game.Ai.V2
     //     every minted-output score and the deck-operator facility stage are weighted by.
     public static partial class Pipeline
     {
-        // AP enters as the set of affordability thresholds Development can cross, not a raw number:
+        // AP retains both the exact pool and the known offering affordability thresholds:
         //   * per offering: ResearchProductionSystem.AttemptApCost(card) + card.activationApCost
         //     (the READY Challenge+attach gate), and
         //   * per Unit card in hand: CardData.EffectivePlayApCost.
@@ -44,6 +44,7 @@ namespace Game.Ai.V2
             + $"|res={resources}"
             + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
             + $"|hand={handVersion}"
+            + $"|recipients={DevelopmentRecipientFacts(player, hand)}"
             // The need's exact inputs, not its value: computing the value runs the Monte Carlo
             // behind every known fight, which this "did anything change" key must not pay for.
             + $"|need={(snapshot != null ? ForceNeedModel.ChangeKey(snapshot) : "none")}"
@@ -73,7 +74,7 @@ namespace Game.Ai.V2
             }));
         }
 
-        // The complete, ordered set of AP thresholds Development can cross (see above).
+        // The known offering thresholds plus the exact AP pool needed by preparation.
         internal static string DevelopmentApAffordability(WorldSnapshot snapshot, AiHandData hand,
             int actionPoints)
         {
@@ -88,8 +89,44 @@ namespace Game.Ai.V2
                     thresholds.Add(c.EffectivePlayApCost);
             if (thresholds.Count == 0)
                 return $"raw:{actionPoints}";   // nothing enumerable — never guess, keep the raw fact
-            return string.Join("", thresholds.Distinct().OrderBy(x => x)
+            // Facility capacity, hero delivery and operator preparation have additional AP
+            // thresholds. Retain the exact pool until every complete prerequisite is enumerated.
+            return $"raw:{actionPoints}:" + string.Join("", thresholds.Distinct().OrderBy(x => x)
                 .Select(x => actionPoints >= x ? "1" : "0"));
+        }
+
+        // Enumerate reads these live own recipients too. Occupancy alone can change legality
+        // without changing power; equal aggregate stats do not identify the physical recipient.
+        internal static string DevelopmentRecipientFacts(PlayerSetupData player, AiHandData hand)
+        {
+            var rows = new List<string>();
+            foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            {
+                if (c?.Definition == null) continue;
+                PredictedEquipmentState p = EquipmentSystem.Project(c);
+                rows.Add($"h:{GenerationSource.StableCardKey(c)}:{c.Definition.authoredKey}:"
+                    + $"{c.EffectivePlayApCost}:{c.Equipment?.authoredKey}:{c.Mutator?.authoredKey}:"
+                    + $"{(c.Equipment != null ? 1 : 0)}:{(c.Mutator != null ? 1 : 0)}:"
+                    + string.Join(",", p.Stats.OrderBy(x => (int)x.Key).Select(x => $"{(int)x.Key}={x.Value}"))
+                    + ":" + string.Join(",", p.Abilities.OrderBy(x => x, System.StringComparer.Ordinal)));
+            }
+            if (player != null)
+                foreach (var a in ArmyRegistry.AllForOwner(player))
+                {
+                    if (a == null) continue;
+                    foreach (var u in a.Members)
+                    {
+                        if (u == null) continue;
+                        rows.Add($"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
+                            + $"{u.Equipment != null}:{u.Mutator != null}:{u.Attack}:{u.Defense}:"
+                            + $"{u.Resistance}:{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
+                            + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
+                            + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
+                            + string.Join(",", u.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))
+                            + ":" + string.Join(",", u.TypeTags.OrderBy(x => (int)x)));
+                    }
+                }
+            return string.Join(";", rows.OrderBy(x => x, System.StringComparer.Ordinal));
         }
 
         internal static string DevelopmentAdmissionFacts(WorldSnapshot snapshot,
@@ -129,6 +166,7 @@ namespace Game.Ai.V2
                     return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                         + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}:"
                         + $"roster={DefenderFingerprint(a.MembersWithHeroes)}"
+                        + $":commander={CommanderFingerprint(a.Commander)}"
                         + $":mutators={string.Join(",", (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>()).Select(x => x ? "1" : "0"))}"
                         + operatorState;
                 }));
@@ -149,7 +187,7 @@ namespace Game.Ai.V2
                 .SelectMany(i =>
                 {
                     var rows = new List<string>();
-                    string k = $"{i.Kind}:{i.Status}";
+                    string k = $"{i.Kind}:{i.Status}:{i.DisplacementValue.ToString("R", CultureInfo.InvariantCulture)}";
                     if (i.PreferredMoverArmyId.HasValue)
                         rows.Add($"{k}:{i.PreferredMoverArmyId.Value}");
                     if (i.Raid?.AirSupportArmyId != null)
@@ -174,18 +212,41 @@ namespace Game.Ai.V2
             IEnumerable<string> threatRows = (snapshot?.TrueWorld?.EnemyArmies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a?.Members != null && a.Members.Count > 0)
-                .Select(a => "e" + DefenderFingerprint(a.Members))
+                .Select(a => "e" + DefenderFingerprint(a.Members) + CommanderFingerprint(a.Commander))
                 .Concat((snapshot?.Known?.NeutralSightings
                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .Where(x => x.Defenders != null && x.Defenders.Count > 0)
-                    .Select(x => "n" + DefenderFingerprint(x.Defenders)))
+                    .Select(x => "n" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander)))
                 .Concat((snapshot?.Known?.EventGuards
                         ?? System.Array.Empty<KnownEventGuardSnapshot>())
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
-                    .Select(g => "g" + DefenderFingerprint(g.Defenders)));
+                    .Select(g => "g" + DefenderFingerprint(g.Defenders) + CommanderFingerprint(g.Commander)));
             string threats = string.Join(";", threatRows.OrderBy(x => x, System.StringComparer.Ordinal));
+            string purposes = string.Join(";", (MissionIntentRegistry.Peek(snapshot?.Observer)?.All
+                    ?? System.Array.Empty<MissionIntent>()).Where(i => i != null)
+                .OrderBy(i => i.IntentKey).Select(i =>
+                    $"{i.IntentKey}:{i.Status}:actor={i.PreferredMoverArmyId}:life={i.IsLifecycleLeg}:"
+                    + $"attack={i.Attack?.Phase}:{i.Attack?.Preparation}:{i.Attack?.Target}:"
+                    + string.Join(",", (i.Attack?.TargetRoster ?? new List<StrikeRosterSlot>())
+                        .Select(r => r.Key).OrderBy(x => x, System.StringComparer.Ordinal))
+                    + ":gather=" + string.Join(",", (i.Attack?.GatherSupportArmyIds ?? new List<int>()).OrderBy(x => x))
+                    + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
+            string benchmarks = string.Join(";", (snapshot?.Self?.Deck
+                    ?? System.Array.Empty<Game.Cards.CardDefinition>()).Where(d => d != null)
+                .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
+                        .OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}"))
+                    + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>()))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Select(x => $"{x.ArmyId}:{x.Hex}:" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
+                .Concat((snapshot?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                    .Select(g => $"guard:{g.Hex}:" + DefenderFingerprint(g.Defenders)))
+                .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
-                + $"|threats={threats}"
+                + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
+                + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
                 + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"
@@ -224,5 +285,8 @@ namespace Game.Ai.V2
             rows.Sort(System.StringComparer.Ordinal);
             return $"{defenders.Count}:" + string.Join("|", rows);
         }
+
+        private static string CommanderFingerprint(Game.Combat.WorthIt.SideCommander commander)
+            => $"/cmd:{commander.Present}:{commander.Initiative}:{commander.Fate}";
     }
 }
