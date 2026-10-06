@@ -1177,7 +1177,7 @@ namespace Game.Ai.V2
         // Operational delta is a signed before/after projection against a mission's known
         // target or composition/deck reference. Useful in-advance upgrades keep their value.
         // Costs and challenge probability have separate owners; neither is added here.
-        internal static float EquipmentUpgradeValue(EquipmentDelta delta, float matchupFit, bool combatRecipient)
+        internal static float EquipmentUpgradeValue(EquipmentDelta delta)
         {
             // Contextual projection already prices penetration and effects. No percentage
             // amplifier and no contact gate: useful reserve upgrades are legal investments.
@@ -1194,7 +1194,7 @@ namespace Game.Ai.V2
             float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
             float tactical = op.TacticalGain / powerUnit;
             var delta = new EquipmentDelta(op.ExpectedGain / powerUnit - tactical, tactical);
-            return EquipmentUpgradeValue(delta, op.MatchupFit, IsCombatRecipient(op.RecipientCard, op.RecipientUnit));
+            return EquipmentUpgradeValue(delta);
         }
 
         // A materialization chain carrying equipment onto the body it deploys.
@@ -1209,7 +1209,7 @@ namespace Game.Ai.V2
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
                 includeStealthTrait: false, deployment: p);
-            return EquipmentUpgradeValue(delta, 0f, host.cardType == CardType.Unit);
+            return EquipmentUpgradeValue(delta);
         }
 
         // A deployed unit inside `army` (hand Equipment played onto the map).
@@ -1219,167 +1219,7 @@ namespace Game.Ai.V2
             if (equipDef?.equipment == null || host == null)
                 return 0f;
             EquipmentDelta delta = EquipmentDeltaParts(equipDef, host, snap, inv);
-            return EquipmentUpgradeValue(delta, 0f, IsCombatRecipient(null, host));
-        }
-
-        private static bool IsCombatRecipient(CardData card, UnitData unit) =>
-            unit != null ? !unit.IsHero && unit.IsGroundCombatant
-                : card?.Definition != null && card.Definition.cardType == CardType.Unit;
-
-        // [0..1] share of known threats against which the upgrade improves the recipient's outcome.
-        internal static float EquipmentMatchupFit(DevelopmentOpportunity cand, ArmyData army,
-            WorldSnapshot snap)
-        {
-            EquipmentGrant grant = cand?.Card?.equipment;
-            if (grant == null)
-                return 0f;
-            if (cand.RecipientUnit != null && army?.Members != null)
-                return UnitMatchupFit(grant, cand.RecipientUnit, army.Members, snap, cand.Card);
-            if (cand.RecipientKind == DevRecipientKind.HandCard)
-                return HandCardMatchupFit(grant, cand.RecipientCard?.Definition,
-                    cand.RecipientCard?.Equipment?.equipment, snap, cand.RecipientCard, cand.Card);
-            return 0f;
-        }
-
-        private static float UnitMatchupFit(EquipmentGrant grant, UnitData recipient,
-            IReadOnlyCollection<UnitData> members, WorldSnapshot snap, CardDefinition candidate = null)
-        {
-            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
-            int comparable = 0;
-            int improved = 0;
-            foreach (WorthIt.DefendingArmy threat in threats)
-            {
-                if (threat.Units == null || threat.Units.Count == 0)
-                    continue;
-                comparable++;
-                if (ImprovesGroundCombatOutcome(recipient, members, grant, threat, candidate: candidate))
-                    improved++;
-            }
-            return comparable > 0 ? (float)improved / comparable : 0f;
-        }
-
-        // Only a Unit card is a new WorthIt combat body; a hand Hero is not (fit 0 by design).
-        private static float HandCardMatchupFit(EquipmentGrant grant, CardDefinition host,
-            EquipmentGrant existing, WorldSnapshot snap, CardData hostCard = null, CardDefinition candidate = null)
-        {
-            if (grant == null || host == null || host.cardType != CardType.Unit)
-                return 0f;
-            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
-            if (threats.Count == 0)
-                return 0f;
-            AiPower.ProjectedStrategicLine before = hostCard != null
-                ? AiPower.EffectiveCardLine(hostCard) : AiPower.EffectiveLine(host, existing);
-            AiPower.ProjectedStrategicLine after = hostCard != null && candidate != null
-                ? AiPower.EffectiveCardLine(hostCard, candidate) : AiPower.EffectiveLine(host, existing, grant);
-            WorthIt.DefenderProfile Profile(AiPower.ProjectedStrategicLine line) =>
-                new WorthIt.DefenderProfile(line.Defense,
-                    line.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
-                    host.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
-                    line.EffectiveAbilities);
-            var beforeRoster = new[] { Profile(before) };
-            var afterRoster = new[] { Profile(after) };
-
-            int comparable = 0;
-            int improved = 0;
-            foreach (WorthIt.DefendingArmy threat in threats)
-            {
-                IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
-                if (defenders == null || defenders.Count == 0)
-                    continue;
-                comparable++;
-                bool coversBefore = WorthIt.CanDamageAll(beforeRoster, defenders);
-                bool coversAfter = WorthIt.CanDamageAll(afterRoster, defenders);
-                if (!coversAfter)
-                    continue;
-                if (!coversBefore)
-                {
-                    improved++;
-                    continue;
-                }
-
-                // If this card already has enough penetration, defensive HP/Defense/Initiative
-                // changes can still be the real reason the attachment matters. Reuse the SAME
-                // full-roster WorthIt read as deployed recipients; never fall back to a private
-                // Attack+Defense heuristic.
-                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f,
-                    default, threat.Commander);
-                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f,
-                    default, threat.Commander);
-                if (next.WinChance > previous.WinChance
-                    || (next.WinChance == previous.WinChance
-                        && (next.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
-                            || next.CriticalAfterBattleChance < previous.CriticalAfterBattleChance)))
-                    improved++;
-            }
-            return comparable > 0 ? (float)improved / comparable : 0f;
-        }
-
-        // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
-        // projection. Compare the SAME army's roster before/after replacing only its recipient,
-        // without mutating gameplay UnitData or pretending the grant created a new combat body.
-        internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
-            IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
-            WorthIt.DefendingArmy threat, float hexBonus = 0f, CardDefinition candidate = null)
-        {
-            IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
-            if (recipient == null || recipient.IsHero || grant == null || members == null
-                || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
-                return false;
-
-            var before = new List<WorthIt.DefenderProfile>();
-            var after = new List<WorthIt.DefenderProfile>();
-            var stats = new Dictionary<EquipmentStat, int>
-            {
-                [EquipmentStat.Attack] = recipient.Attack,
-                [EquipmentStat.Defense] = recipient.Defense,
-                [EquipmentStat.HitPoints] = recipient.HitPointsMax,
-                [EquipmentStat.Initiative] = recipient.Initiative,
-            };
-            PredictedEquipmentState predicted = candidate != null && (recipient.Mutator != null
-                || candidate.attachmentSlot == AttachmentSlot.Mutator)
-                ? EquipmentSystem.PredictAttachment(candidate, recipient)
-                : EquipmentSystem.Predict(grant, stats, recipient.Abilities);
-            int attack = predicted.Stats.TryGetValue(EquipmentStat.Attack, out int atk)
-                ? atk : recipient.Attack;
-            int defense = predicted.Stats.TryGetValue(EquipmentStat.Defense, out int def)
-                ? def : recipient.Defense;
-            int maxHp = predicted.Stats.TryGetValue(EquipmentStat.HitPoints, out int hp)
-                ? hp : recipient.HitPointsMax;
-            int currentHp = candidate != null && (recipient.Mutator != null || candidate.attachmentSlot == AttachmentSlot.Mutator)
-                ? EquipmentSystem.CurrentAfterAttachment(recipient, EquipmentStat.HitPoints, maxHp)
-                : Mathf.Clamp(recipient.HitPointsCurrent + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
-            int initiative = predicted.Stats.TryGetValue(EquipmentStat.Initiative, out int init)
-                ? init : recipient.Initiative;
-            var projected = new WorthIt.DefenderProfile(defense,
-                predicted.Abilities.Contains(UnitAbilities.CeramicArmor), recipient.TypeTags.ToList(),
-                attack, currentHp, initiative, predicted.Abilities, maxHp);
-
-            foreach (UnitData unit in members)
-            {
-                // A non-combatant recipient's projected profile is built by hand above and would
-                // otherwise default to a combatant — skip it on the domain rule, not a hero check.
-                if (unit == null || !unit.IsGroundCombatant)
-                    continue;
-                before.Add(WorthIt.FromLiveUnit(unit));
-                after.Add(object.ReferenceEquals(unit, recipient) ? projected : WorthIt.FromLiveUnit(unit));
-            }
-            bool coversBefore = WorthIt.CanDamageAll(before, defenders, hexBonus);
-            bool coversAfter = WorthIt.CanDamageAll(after, defenders, hexBonus);
-            if (!coversAfter)
-                return false;
-            if (!coversBefore)
-                return true;
-
-            // Equipment never changes who leads: the same commanders on both sides of the compare.
-            WorthIt.SideCommander ownCommander = WorthIt.SideCommander.Of(members);
-            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus,
-                ownCommander, threat.Commander);
-            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus,
-                ownCommander, threat.Commander);
-            return improvedEstimate.WinChance > previous.WinChance
-                || (improvedEstimate.WinChance == previous.WinChance
-                    && (improvedEstimate.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
-                        || improvedEstimate.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
+            return EquipmentUpgradeValue(delta);
         }
 
         private static List<WorthIt.DefendingArmy> EquipmentValuationThreats(WorldSnapshot snap)
@@ -1473,7 +1313,7 @@ namespace Game.Ai.V2
             var next = EquipmentSystem.PredictAttachment(equipDef, host);
             var stats = next.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
             // Compare current Fate with current Fate after attachment, preserving spent Fate.
-            // The first-attachment prediction lists only the stats the card changes.
+            // PredictAttachment returns the full projected maximum-stat state.
             if (stats.TryGetValue(EquipmentStat.Fate, out int projectedFate))
                 stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
                     EquipmentStat.Fate, projectedFate);
