@@ -714,21 +714,23 @@ namespace Game.Map
                 bool hasGarrison = false;
                 foreach (ArmyData army in ArmyRegistry.AllAt(coord))
                     if (army.IsGarrison) { hasGarrison = true; break; }
-                if (buildingHere != null || hasGarrison)
+                bool hasResources = false;
+                int unextractedResources = 0;
+                foreach (ResourceType type in AllResourceTypes)
                 {
-                    int unextractedResources = 0;
-                    foreach (ResourceType type in AllResourceTypes)
-                    {
-                        int yield = effectiveYields.Get(type);
-                        if (yield <= 0) continue;
-                        if (buildingHere != null &&
-                            (buildingHere.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type))
-                            || buildingHere.CollectedAmount(type) >= yield)) continue;
-                        unextractedResources++;
-                    }
+                    int yield = effectiveYields.Get(type);
+                    if (yield <= 0) continue;
+                    hasResources = true;
+                    if (buildingHere != null &&
+                        (buildingHere.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type))
+                        || buildingHere.CollectedAmount(type) >= yield)) continue;
+                    unextractedResources++;
+                }
+                if (buildingHere != null || hasGarrison || hasResources)
+                {
                     infoPanel.ShowHex(unextractedResources);
                 }
-                else infoPanel.Hide();
+                else infoPanel.HideAnimated();
             }
 
             // 2+ armies (or a garrison sharing the hex with a named army) on this hex — one

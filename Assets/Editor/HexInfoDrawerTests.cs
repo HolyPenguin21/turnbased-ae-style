@@ -117,6 +117,44 @@ public class HexInfoDrawerTests
         Assert.AreEqual(Vector2.zero, rect.sizeDelta);
     }
 
+    [Test]
+    public void AnimatedHideKeepsRootActiveUntilItReachesBelowScreen()
+    {
+        panel.ShowHex(3);
+        panel.RefreshDrawer(false);
+        panel.SetBaseButtonVisible(true, () => { });
+        panel.HideAnimated();
+        Assert.IsTrue(root.activeSelf);
+        Assert.AreEqual(-31f, rect.anchoredPosition.y, .01f);
+        Assert.IsFalse(buttons[0].interactable);
+        panel.RefreshDrawer(false);
+        Assert.IsFalse(root.activeSelf);
+        Assert.Less(rect.anchoredPosition.y, -107f);
+    }
+
+    [Test]
+    public void ResourceSelectionDuringClosingCancelsHideWithoutJumping()
+    {
+        panel.ShowHex(2);
+        panel.RefreshDrawer(false);
+        panel.HideAnimated();
+        rect.anchoredPosition = new Vector2(13f, -150f);
+        panel.ShowHex(4);
+        Assert.AreEqual(-150f, rect.anchoredPosition.y, .01f);
+        panel.RefreshDrawer(false);
+        Assert.IsTrue(root.activeSelf);
+        Assert.AreEqual(0f, rect.anchoredPosition.y, .01f);
+    }
+
+    [Test]
+    public void EmptySelectionWhileAlreadyHiddenDoesNotActivateRoot()
+    {
+        panel.Hide();
+        panel.HideAnimated();
+        panel.RefreshDrawer(false);
+        Assert.IsFalse(root.activeSelf);
+    }
+
     private void Set(string name, object value) => typeof(HexInfoPanelUI)
         .GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(panel, value);
 

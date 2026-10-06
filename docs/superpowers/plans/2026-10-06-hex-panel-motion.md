@@ -8,7 +8,7 @@
 
 **Tech Stack:** Unity 6000.5.4f1, C#, uGUI, NUnit EditMode.
 
-**Spec:** Owner's corrections in this conversation: initially disabled; show for building/garrison; offsets 0/31/56/81/107 for 4/3/2/1/0 unextracted resource types; screen-height proportions; quick smooth vertical movement; fixed square buttons.
+**Spec:** Owner's corrections in this conversation: initially disabled; show for resources/building/garrison; offsets 0/31/56/81/107 for 4/3/2/1/0 unextracted resource types; screen-height proportions; quick smooth vertical movement; fixed square buttons.
 
 ## Global constraints
 - Preserve scene, prefab, GUIDs, horizontal position, anchors, size and square-button layout.
@@ -18,7 +18,7 @@
 
 ## Review focus
 - Fast selection changes retarget current motion without restarting from below screen.
-- Empty hexes stay hidden even if resource build actions exist.
+- Resource-only hexes open the panel; empty hexes close it smoothly and disable at the end.
 - Missing hero affects action eligibility, not unextracted resource count.
 - Resize uses current canvas height rather than fixed pixels.
 - Disabled actions clear stale callbacks.
@@ -31,6 +31,13 @@
 
 ### Task 2: Selection and resources
 **Files:** Assets/Scripts/Map/HexSelectionController.cs; Assets/Scripts/UI/ResourceActionRowUI.cs.
-- [x] Count types with positive remaining yield and no collector; show only when building or garrison exists.
+- [x] Count types with positive remaining yield and no collector; show when resources, building or garrison exist.
 - [x] Stack resource action buttons vertically within the existing authored container; preserve container transform.
-- [ ] Review changes against source and owner scene; commit atomically on current master with expected-SHA protection.
+- [x] Review changes against source and owner scene; commit atomically on current master with expected-SHA protection.
+
+### Follow-up: resource-only selection and closing
+- [x] Include positive effective resource yields in panel visibility independently of build eligibility.
+- [x] Add HideAnimated for empty selections; keep immediate Hide for startup, deselect and battles.
+- [x] Allow a new selection to cancel closing from the current position.
+- [x] Add EditMode cases for deferred deactivation, reversing closure and already-hidden empty selections.
+- [x] Check source diffs and whitespace. Unity compilation, full EditMode tests and live animation remain unexecuted because Unity is unavailable.

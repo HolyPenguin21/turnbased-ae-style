@@ -24,6 +24,7 @@ namespace Game.UI
         private int _resourceCount;
         private float _verticalVelocity;
         private bool _showRequested;
+        private bool _closing;
 
         public bool UsesDrawerLayout => drawerLayout;
 
@@ -39,11 +40,11 @@ namespace Game.UI
 
         public void RefreshDrawer(bool animate = true)
         {
-            if (!drawerLayout || drawerRect == null || !_showRequested) return;
+            if (!drawerLayout || drawerRect == null || (!_showRequested && !_closing)) return;
             int index = Mathf.Clamp(_resourceCount, 0, 4);
             float offset = resourceScreenOffsets != null && resourceScreenOffsets.Length == 5
                 ? resourceScreenOffsets[index] : DefaultScreenOffset(index);
-            float target = -offset * ScreenHeightInParentUnits();
+            float target = _closing ? HiddenPositionY() : -offset * ScreenHeightInParentUnits();
             Vector2 position = drawerRect.anchoredPosition;
             position.y = animate && Application.isPlaying
                 ? Mathf.SmoothDamp(position.y, target, ref _verticalVelocity,
@@ -55,6 +56,7 @@ namespace Game.UI
                 _verticalVelocity = 0f;
             }
             drawerRect.anchoredPosition = position;
+            if (_closing && position.y == target) Hide();
         }
 
         private static float DefaultScreenOffset(int count)
@@ -93,9 +95,10 @@ namespace Game.UI
 
         public void ShowHex(int unextractedResourceCount = 0)
         {
-            bool opening = !_showRequested || (panelRoot != null && !panelRoot.activeSelf);
+            bool opening = (!_showRequested && !_closing) || (panelRoot != null && !panelRoot.activeSelf);
             _resourceCount = Mathf.Clamp(unextractedResourceCount, 0, 4);
             _showRequested = true;
+            _closing = false;
             if (panelRoot != null) panelRoot.SetActive(true);
             if (drawerLayout && drawerRect != null && opening)
             {
@@ -109,6 +112,7 @@ namespace Game.UI
         public void Hide()
         {
             _showRequested = false;
+            _closing = false;
             _verticalVelocity = 0f;
             if (resourceActions != null) resourceActions.Hide();
             SetButton(garrisonButton, false, null);
@@ -116,6 +120,23 @@ namespace Game.UI
             SetButton(researchButton, false, null);
             SetButton(productionButton, false, null);
             if (panelRoot != null) panelRoot.SetActive(false);
+        }
+
+        // Used for an empty hex selection. Deselect/battle/startup keep immediate Hide.
+        public void HideAnimated()
+        {
+            if (!drawerLayout || drawerRect == null || panelRoot == null || !panelRoot.activeSelf)
+            {
+                Hide();
+                return;
+            }
+            _showRequested = false;
+            _closing = true;
+            if (resourceActions != null) resourceActions.Hide();
+            SetButton(garrisonButton, false, null);
+            SetButton(baseButton, false, null);
+            SetButton(researchButton, false, null);
+            SetButton(productionButton, false, null);
         }
 
         // Preserve the existing selection API. Drawer sections are always present;
