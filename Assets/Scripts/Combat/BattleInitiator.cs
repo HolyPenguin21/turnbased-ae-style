@@ -7,15 +7,8 @@ using Game.Units;
 
 namespace Game.Combat
 {
-    // "Initiating Battle" (see the manual) — for now, just the simplest of its seven listed
-    // triggers: a non-stealthed combat capable army moves into a hex containing another
-    // non-stealthed combat capable army. Stealth doesn't exist yet in this project, so every
-    // army counts as non-stealthed — this reduces to "any enemy combat-capable army on the
-    // hex". Siege and delay-attack aren't handled yet either — see
-    // HexSelectionController.TryIssueMoveOrder for where this gets called. The empty-garrison
-    // rule IS now partially covered — see FindEnemyAt's own comment — every army on the hex is
-    // a real defense candidate, not just the garrison, since a full "stack" mechanic (merging
-    // every defender into one combined battle) isn't built yet.
+    // Strategic ground-contact eligibility and opponent selection. Tactical battle and
+    // hero-only Capture/Kill share this entry; stealth and aviation filter both paths.
     public static class BattleInitiator
     {
         // "Not Combat Capable": a hero-only army (or an empty one) can't fight a Ground Combat
@@ -66,10 +59,9 @@ namespace Game.Combat
             => army != null && !AviationRules.IsAirArmy(army) && !AviationRules.IsAirfield(army)
                && Game.Map.StealthSystem.HasTargetableCombatMember(army, observer);
 
-        // Whether `mover` has any member that may actually START a fight — a non-hero unit
-        // that is NOT itself hidden (a hidden unit never initiates auto-contact, §5; an army
-        // every combat member of which is hidden just walks through, §10.11). Mixed armies
-        // still initiate through their visible non-hero members.
+        // A visible combatant starts ground contact. A visible hero-only army also triggers
+        // contact, but is the hunted side of a Capture/Kill encounter, not a tactical attacker.
+        // Mixed armies still need a visible combatant; a hidden force stays passive.
         public static bool CanInitiateContact(ArmyData mover)
         {
             if (mover == null || AviationRules.IsAirArmy(mover) || AviationRules.IsAirfield(mover))
@@ -77,7 +69,7 @@ namespace Game.Combat
             foreach (UnitData member in mover.Members)
                 if (member.IsGroundCombatant && !member.IsHidden)
                     return true;
-            return false;
+            return !IsCombatCapable(mover) && mover.Members.Any(member => member.IsHero && !member.IsHidden);
         }
 
         // Contact selection has two forms because many callers only ask the occupancy question
@@ -94,15 +86,21 @@ namespace Game.Combat
         {
             ArmyData best = null;
             WorthIt.BattleEstimate bestEstimate = default;
+            bool heroOnlyMover = mover != null && !IsCombatCapable(mover);
 
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
                 if (army.Owner == observer || !IsEngageable(army, observer))
                     continue;
+                // Heroes cannot hunt each other. A moving solo hero needs a real, visible
+                // ground force on the other side; its empty tactical roster has no battle odds
+                // with which to rank hunters, so use the occupancy query's stable ordering.
+                if (heroOnlyMover && !IsCombatCapable(army, observer))
+                    continue;
 
                 // An occupancy-only caller never consumes combat ranking. Keep its result stable
                 // without paying for a Monte Carlo estimate or reviving Attack+Defense.
-                if (mover == null)
+                if (mover == null || heroOnlyMover)
                 {
                     if (best == null || army.Id < best.Id)
                         best = army;
