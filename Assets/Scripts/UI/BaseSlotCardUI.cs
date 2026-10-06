@@ -40,7 +40,7 @@ namespace Game.UI
         // Sits in the gap between the name (top) and the hover Improve/Repair buttons (bottom) —
         // shown there while hovering Improve on cell 0, one coloured circle badge per non-zero
         // cost component, same "icon + number" convention as ResourceBarUI/BuyDiceRowUI. Order:
-        // AP, Human, Energy, Materials, Tech. The name stays visible throughout.
+        // AP, Human, Energy, Materials, Tech. Title and skills give way to hover actions.
         [SerializeField] private GameObject costPreviewRoot;
         [SerializeField] private Image[] costBadgeIcons;
         [SerializeField] private TMP_Text[] costBadgeAmounts;
@@ -65,16 +65,23 @@ namespace Game.UI
         private bool _isBaseCell;
         private string _defaultNameText;
         private bool _canImprove;
+        private CardActionHoverText _actionHoverText;
 
         private void Awake()
         {
             // A cost preview is now meaningful only for the Base/Citadel cell. Facility Improve
             // is intentionally not exposed until its gameplay contract is implemented.
+            _actionHoverText = new CardActionHoverText(
+                titleRoot != null ? titleRoot : nameText?.gameObject, skillsText);
             AddHoverTrigger(improveButton, ShowUpgradeCostPreview, HideUpgradeCostPreview);
         }
 
+        private void OnDisable() => OnPointerExit(null);
+
         public void Setup(BaseViewerModalUI modal, int cellIndex, BuildingData building)
         {
+            _actionHoverText?.Restore();
+            HideUpgradeCostPreview();
             _modal = modal;
             _building = building;
             _facility = null;
@@ -188,6 +195,9 @@ namespace Game.UI
                     && _building.StructurePointsCurrent < _building.StructurePointsMax);
             if (improveButton != null)
                 improveButton.gameObject.SetActive(_canImprove);
+            bool hasAction = (repairButton != null && repairButton.gameObject.activeSelf)
+                || (improveButton != null && improveButton.gameObject.activeSelf);
+            _actionHoverText?.SetHidden(hasAction);
         }
 
         public void OnPointerExit(PointerEventData eventData)
@@ -197,6 +207,7 @@ namespace Game.UI
             if (improveButton != null)
                 improveButton.gameObject.SetActive(false);
             HideUpgradeCostPreview();
+            _actionHoverText?.Restore();
         }
 
         // Base/Citadel upgrade cost only. Facility Improve is deliberately disabled.
