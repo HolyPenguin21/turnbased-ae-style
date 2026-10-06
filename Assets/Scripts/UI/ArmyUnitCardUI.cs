@@ -104,6 +104,7 @@ namespace Game.UI
         private Vector2 _homeSlot;
         private Canvas _canvas;
         private Coroutine _slotAnim;
+        private CardActionHoverText _actionHoverText;
 
         // How far above every other card in the grid this one renders while being dragged — the
         // prefab's own nested Canvas (see CardUI.DragSortingOrder, same technique) breaks out of
@@ -116,12 +117,18 @@ namespace Game.UI
             if (rectTransform == null)
                 rectTransform = (RectTransform)transform;
             _canvas = GetComponentInParent<Canvas>();
+            _actionHoverText = new CardActionHoverText(
+                titleRoot != null ? titleRoot : nameText?.gameObject, moveText, skillsText);
         }
+
+        private void OnDisable() => OnPointerExit(null);
 
         public void Setup(ArmyViewerModalUI modal, UnitData unit)
         {
+            _actionHoverText?.Restore();
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
+            _previewMode = false;
             _modal = modal;
             Unit = unit;
 
@@ -203,6 +210,7 @@ namespace Game.UI
         // is inert while _previewMode is set.
         public void SetupPreview(CardDefinition card, GameConfig config, Action<CardDefinition> onClick)
         {
+            _actionHoverText?.Restore();
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
             _previewMode = true;
@@ -456,6 +464,9 @@ namespace Game.UI
             repairButton?.gameObject.SetActive(repair);
 
             RefreshStealthButton(out bool stealthHasCost);
+            bool hasAction = (repairButton != null && repairButton.gameObject.activeSelf)
+                || (stealthButton != null && stealthButton.gameObject.activeSelf);
+            _actionHoverText?.SetHidden(hasAction);
 
             // The cost strip is shared: Repair owns it when shown; otherwise the "Hide"
             // action shows its own 1-AP cost through the exact same badge mechanism (never
@@ -476,6 +487,7 @@ namespace Game.UI
             stealthButton?.gameObject.SetActive(false);
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
+            _actionHoverText?.Restore();
             HideCostPreview();
         }
 
