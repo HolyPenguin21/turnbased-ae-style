@@ -395,10 +395,11 @@ namespace Game.Ai.V2
         // after the strike, some owned airfield is still reachable before the live endurance
         // deadline. Recon, recovery and rebase continuations all use this instead of owning
         // separate "second strike" rules.
-        public static bool CanStrikeAndRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner)
+        public static bool CanStrikeAndRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner,
+            AirStrikePolicy? policy = null)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null
-                || !AviationActions.CanStrikeAtCurrentHex(airArmy))
+                || !AviationActions.CanStrikeAtCurrentHex(airArmy, policy ?? AirStrikePolicy.Standard))
                 return false;
             return CanRecover(airArmy, map, owner);
         }

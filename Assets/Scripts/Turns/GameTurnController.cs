@@ -144,6 +144,8 @@ namespace Game.Turns
         // so nothing reading InputBlocked/CardDraggingBlocked needed to change.
         private bool _inputBlocked;
         private bool _cardDraggingBlocked;
+        private bool _otherTurnPopupSuspended;
+        private PlayerSetupData _suspendedOtherTurnPlayer;
         public bool InputBlocked => _inputBlocked;
 
         // Renaming an army additionally blocks card dragging (see ArmyViewerModalUI.
@@ -163,17 +165,42 @@ namespace Game.Turns
         // of them raises VisibilityChanged, never on a timer/every frame.
         private void RecomputeBlockedState()
         {
+            bool combatShowing = (battleContactPopup != null && battleContactPopup.IsShowing)
+                || (battleScreen != null && battleScreen.IsShowing)
+                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
+                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
+
+            // A strategic turn notification cannot cover the human's tactical controls.
+            // Suspend only ShowForOther, never a hint or a human turn confirmation. Set the
+            // suspension before Hide: its visibility event re-enters this method synchronously.
+            if (_otherTurnPopupSuspended && (_gameOver || CurrentPlayer != _suspendedOtherTurnPlayer))
+            {
+                _otherTurnPopupSuspended = false;
+                _suspendedOtherTurnPlayer = null;
+            }
+            if (combatShowing && popupPanel != null && popupPanel.IsOtherTurnShowing)
+            {
+                _otherTurnPopupSuspended = true;
+                _suspendedOtherTurnPlayer = CurrentPlayer;
+                popupPanel.Hide();
+            }
+            else if (!combatShowing && _otherTurnPopupSuspended
+                && popupPanel != null && !popupPanel.IsShowing)
+            {
+                _otherTurnPopupSuspended = false;
+                _suspendedOtherTurnPlayer = null;
+                if (!_gameOver && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
+                    popupPanel.ShowForOther(CurrentPlayer);
+            }
+
             bool newInputBlocked = (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
                 || (researchProductionModal != null && researchProductionModal.IsShowing)
-                || (battleContactPopup != null && battleContactPopup.IsShowing)
-                || (battleScreen != null && battleScreen.IsShowing)
+                || combatShowing
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing)
-                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
-                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
             bool newCardDraggingBlocked = (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
@@ -182,12 +209,9 @@ namespace Game.Turns
                 // fully locked out — no draw, no drag, no play — while it's open, same as the
                 // battle/event modals.
                 || (researchProductionModal != null && researchProductionModal.IsShowing)
-                || (battleContactPopup != null && battleContactPopup.IsShowing)
-                || (battleScreen != null && battleScreen.IsShowing)
+                || combatShowing
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing)
-                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
-                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
+                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
 
             if (newInputBlocked != _inputBlocked)
             {
@@ -1069,7 +1093,8 @@ namespace Game.Turns
 
         private void ShowNextAviationMessage()
         {
-            if (popupPanel == null || popupPanel.IsShowing || _aviationMessageQueue.Count == 0)
+            if (popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
+                || _aviationMessageQueue.Count == 0)
                 return;
             popupPanel.ShowHint(_aviationMessageQueue.Dequeue());
         }

@@ -50,7 +50,7 @@ namespace Game.Ai.V2
         //  draw of a multi-chain portfolio. BestInjectiveAssignment, EstimateLegalApWorkload and
         //  CountJointlyLegalFillersForRecipient all push/pop against ONE instance of this, so they
         //  can never disagree about what a set of chains physically consumes. The AP pool is the live
-        //  AP (each chain's guard applies holds); the resource pool nets the owner-aware claims
+        //  AP minus the claims each candidate may not draw on; the resource pool nets the owner-aware claims
         //  (StrategicSpendability.SpendableAmount), exactly as the former inline `Fits` did.
         private sealed class JointFeasibility
         {
@@ -66,6 +66,9 @@ namespace Game.Ai.V2
             private readonly PlayerSetupData _player;
             private readonly AiTurnContext _ctx;
             private readonly float _apPool;
+            private readonly List<ResourceClaim> _apClaims;
+            private readonly Dictionary<string, float> _apDrawsByOwner =
+                new Dictionary<string, float>();
             private readonly int _genAttemptsRemaining;
             // AI-MGR — AP is the variable whose marginal utility the workload measurement measures, so
             // it must NOT double as a ceiling on the measured demand: an 8-AP player with 12 AP of
@@ -99,6 +102,9 @@ namespace Game.Ai.V2
 
                 _apPool = root != null
                     ? root.ActionPoints : float.MaxValue;
+                // One synchronous search: no gameplay or ledger writes occur between push/pop.
+                _apClaims = TurnResourceBook.Claims(player, root, ctx,
+                    StrategicReservedResource.ActionPoints);
                 foreach (ResourceType t in ResourceBundle.All)
                     _resPool[t] = root != null
                         ? Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, t)))
@@ -115,8 +121,14 @@ namespace Game.Ai.V2
             public bool Fits(MaterializationPlan plan, float followupAp, SpendAuthority authority = default)
             {
                 float ap = (plan?.ApCost ?? 0f) + followupAp;
-                if (_enforceApPool && _consumed.ApUsed + ap > _apPool + AiConfigV2.allocatorSliceEpsilon)
-                    return false;
+                if (_enforceApPool)
+                {
+                    float held = TurnResourceBook.Outstanding(_apClaims,
+                        StrategicReservedResource.ActionPoints, authority, _apDrawsByOwner);
+                    if (_consumed.ApUsed + ap > Mathf.Max(0f, _apPool - held)
+                        + AiConfigV2.allocatorSliceEpsilon)
+                        return false;
+                }
                 if (plan?.Generation != null && _consumed.GenerationAttempts + 1 > _genAttemptsRemaining)
                     return false;
                 ResourceCost rc = plan?.ResCost;
@@ -150,25 +162,43 @@ namespace Game.Ai.V2
             {
                 public readonly MaterializationConsumptionState.Token Consumed;
                 public readonly ProjectedPhysicalState.Token Physical;
+                public readonly string ApOwner;
+                public readonly float PriorOwnerAp;
 
-                public Token(MaterializationConsumptionState.Token consumed, ProjectedPhysicalState.Token physical)
+                public Token(MaterializationConsumptionState.Token consumed, ProjectedPhysicalState.Token physical,
+                    string apOwner, float priorOwnerAp)
                 {
                     Consumed = consumed;
                     Physical = physical;
+                    ApOwner = apOwner;
+                    PriorOwnerAp = priorOwnerAp;
                 }
             }
 
-            public Token Push(MaterializationPlan plan, float followupAp)
+            public Token Push(MaterializationPlan plan, float followupAp, SpendAuthority authority = default)
             {
                 MaterializationConsumptionState.Token c = _consumed.Push(plan, followupAp);
                 ProjectedPhysicalState.Token p = _physical.Add(plan);
-                return new Token(c, p);
+                float prior = 0f;
+                if (authority.Owner != null)
+                {
+                    _apDrawsByOwner.TryGetValue(authority.Owner, out prior);
+                    _apDrawsByOwner[authority.Owner] = prior + c.ApAdded;
+                }
+                return new Token(c, p, authority.Owner, prior);
             }
 
             public void Pop(in Token t)
             {
                 _physical.Remove(t.Physical);
                 _consumed.Pop(t.Consumed);
+                if (t.ApOwner != null)
+                {
+                    if (t.PriorOwnerAp > 0f)
+                        _apDrawsByOwner[t.ApOwner] = t.PriorOwnerAp;
+                    else
+                        _apDrawsByOwner.Remove(t.ApOwner);
+                }
             }
 
             public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
@@ -177,9 +207,14 @@ namespace Game.Ai.V2
 
             public bool FitsExternal(float ap, ResourceCost resources, bool generation)
             {
-                if (_enforceApPool
-                    && _consumed.ApUsed + Mathf.Max(0f, ap) > _apPool + AiConfigV2.allocatorSliceEpsilon)
-                    return false;
+                if (_enforceApPool)
+                {
+                    float held = TurnResourceBook.Outstanding(_apClaims,
+                        StrategicReservedResource.ActionPoints, default, _apDrawsByOwner);
+                    if (_consumed.ApUsed + Mathf.Max(0f, ap) > Mathf.Max(0f, _apPool - held)
+                        + AiConfigV2.allocatorSliceEpsilon)
+                        return false;
+                }
                 if (generation && _consumed.GenerationAttempts + 1 > _genAttemptsRemaining)
                     return false;
                 if (resources != null)
@@ -249,7 +284,8 @@ namespace Game.Ai.V2
                         continue;
                     if (!jf.Fits(c.Plan, c.FollowupAp, d.Demand != null ? d.Demand.SpendAuthority : default))
                         continue;
-                    JointFeasibility.Token token = jf.Push(c.Plan, c.FollowupAp);
+                    JointFeasibility.Token token = jf.Push(c.Plan, c.FollowupAp,
+                        d.Demand != null ? d.Demand.SpendAuthority : default);
 
                     acc[d] = c;
                     Rec(i + 1, sum + WeightedDecisionScore(d, c, radar));

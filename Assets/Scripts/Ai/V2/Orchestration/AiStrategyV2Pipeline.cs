@@ -1276,12 +1276,21 @@ namespace Game.Ai.V2
                 // instead of taking fuel damage. Free: the sortie launch was already paid.
                 foreach (ArmyData unsafeWing in GroundCombatAirSupport.RecallUnsafeStrikes(player, ctx.Map))
                 {
-                    bool recalledMoved = false;
+                    WorldAnalysis.StepObservationStamp beforeRecall =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    bool recallChanged = false;
                     yield return AviationRebasePlanner.ExecuteContinuation(
-                        player, root, ctx, unsafeWing, v => recalledMoved = v,
-                        allowRecoveryStrike: false);
-                    if (recalledMoved)
+                        player, root, ctx, unsafeWing, v => recallChanged = v);
+                    if (recallChanged)
                         V2StateVersion.Bump();
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    WorldAnalysis.StepObservationStamp afterRecall =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                        beforeRecall, afterRecall, null);
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"air-support recall #{unsafeWing.Id}");
                 }
 
                 // Cold Phase A and the following typed admissions may have created or
