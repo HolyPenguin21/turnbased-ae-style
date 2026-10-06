@@ -187,8 +187,7 @@ namespace Game.UI
 
         // Shown for whoever's currently up in the turn order by default, or any unit clicked
         // directly in the grid (see BattleGridCellUI.OnPointerClick) — same "click to inspect"
-        // pattern as ArmyViewerModalUI.ShowUnitDetail, just this screen's own copy since the
-        // framing here is pure combat stats, not army/capacity.
+        // uses the same detail formatter as the army viewer with this battle's defense bonus.
         public void ShowUnitDetail(UnitData unit)
         {
             if (detailArt != null)
@@ -207,42 +206,7 @@ namespace Game.UI
             // Defense includes the same terrain/Base-building bonus BeginAttack actually rolls
             // with (only ever nonzero for the battle's original _defender — see
             // GetDisplayedDefenseBonus's own comment), so this always matches the real dice pool.
-            Color bonusColor = gameConfig != null ? gameConfig.statBonusColor : StatSuffixFormatter.DefaultBonusColor;
-            Color penaltyColor = gameConfig != null ? gameConfig.statPenaltyColor : StatSuffixFormatter.DefaultPenaltyColor;
-
-            int defenseBonus = GetDisplayedDefenseBonus(unit);
-            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
-
-            string hpLine = StatSuffixFormatter.WithPenaltySuffix(
-                $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit), penaltyColor);
-            string moveLine = StatSuffixFormatter.WithPenaltySuffix(
-                $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit), penaltyColor);
-
-            // Type tags right after the name, and no Resistance line — same convention as
-            // ArmyViewerModalUI.ShowUnitDetail, per the user's own request.
-            string text = $"{unit.Name}\n";
-            if (unit.TypeTags.Count > 0)
-                text += $"{string.Join(", ", unit.TypeTags)}\n";
-            // Attack / Defense / Range are omitted for a hero card — a hero fights through
-            // Command Rating / Fate / Initiative, not a per-unit combat stat block, so those
-            // three numbers are meaningless noise on a hero (per the user's own request).
-            if (!unit.IsHero)
-                text +=
-                    $"Attack {unit.Attack}\n" +
-                    $"{defenseLine}\n" +
-                    $"Range {unit.Range}\n";
-            text +=
-                $"{hpLine}\n" +
-                $"{moveLine}\n" +
-                $"Initiative {unit.Initiative}";
-            if (unit.IsAviation)
-                text += $"\nFuel {AviationRules.RemainingFuel(unit)}/{unit.TurnsWithoutRefuel}";
-            if (unit.IsHero)
-                text += $"\nCommand Rating: {unit.CommandRating}\nFate: {unit.Fate}";
-            string abilities = gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null;
-            if (!string.IsNullOrEmpty(abilities))
-                text += $"\n{abilities}";
-            detailText.text = text;
+            detailText.text = UnitDetailFormatter.Format(unit, gameConfig, GetDisplayedDefenseBonus(unit));
         }
     }
 }
