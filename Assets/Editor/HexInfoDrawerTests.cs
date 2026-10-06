@@ -7,47 +7,53 @@ using UnityEngine.UI;
 
 public class HexInfoDrawerTests
 {
+    private GameObject canvas;
     private GameObject root;
     private HexInfoPanelUI panel;
+    private RectTransform rect;
     private Button[] buttons;
 
     [SetUp]
     public void SetUp()
     {
+        canvas = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas));
+        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1024f, 768f);
         root = new GameObject("Drawer", typeof(RectTransform));
+        root.transform.SetParent(canvas.transform, false);
+        rect = (RectTransform)root.transform;
+        rect.anchorMin = new Vector2(.85f, .23739585f);
+        rect.anchorMax = new Vector2(1f, .5453959f);
+        rect.pivot = new Vector2(.5f, 0f);
+        rect.sizeDelta = Vector2.zero;
+        rect.anchoredPosition = new Vector2(13f, -107f);
         panel = root.AddComponent<HexInfoPanelUI>();
         Set("panelRoot", root);
         Set("drawerLayout", true);
-        Set("drawerRect", root.GetComponent<RectTransform>());
-        var nav = new GameObject("Navigation", typeof(RectTransform));
-        nav.transform.SetParent(root.transform);
-        Set("navigationRect", nav.GetComponent<RectTransform>());
+        Set("drawerRect", rect);
         buttons = new Button[4];
         string[] fields = { "baseButton", "garrisonButton", "researchButton", "productionButton" };
         for (int i = 0; i < 4; i++)
         {
             var go = new GameObject(fields[i], typeof(RectTransform), typeof(Image), typeof(Button));
-            go.transform.SetParent(nav.transform);
+            go.transform.SetParent(root.transform, false);
+            ((RectTransform)go.transform).anchoredPosition = new Vector2(i * 10f, 20f);
             buttons[i] = go.GetComponent<Button>();
             Set(fields[i], buttons[i]);
         }
     }
 
-    [TearDown] public void TearDown() => Object.DestroyImmediate(root);
+    [TearDown] public void TearDown() => Object.DestroyImmediate(canvas);
 
     [Test]
-    public void HiddenSectionsCompactAndCallbacksRemainIndependent()
+    public void DisabledSectionsStayInPlaceAndClearOldCallback()
     {
         int clicks = 0;
-        panel.SetBaseButtonVisible(false, null);
         panel.SetGarrisonButtonVisible(true, () => clicks++);
-        panel.SetResearchButtonVisible(false, null);
-        panel.SetProductionButtonVisible(true, () => clicks += 10);
-        panel.RefreshDrawer(false);
-        Assert.AreEqual(((RectTransform)buttons[1].transform).anchoredPosition.y,
-            ((RectTransform)buttons[3].transform).anchoredPosition.y);
-        Assert.Less(((RectTransform)buttons[1].transform).anchoredPosition.x,
-            ((RectTransform)buttons[3].transform).anchoredPosition.x);
+        buttons[1].onClick.Invoke();
+        panel.SetGarrisonButtonVisible(false, null);
+        Assert.IsTrue(buttons[1].gameObject.activeSelf);
+        Assert.IsFalse(buttons[1].interactable);
+        Assert.AreEqual(new Vector2(10f, 20f), ((RectTransform)buttons[1].transform).anchoredPosition);
         buttons[1].onClick.Invoke();
         Assert.AreEqual(1, clicks);
         panel.SetGarrisonButtonVisible(true, () => clicks += 2);
@@ -55,28 +61,60 @@ public class HexInfoDrawerTests
         Assert.AreEqual(3, clicks);
     }
 
-    [Test]
-    public void EmptyHexHidesDrawerAndNextSelectionCanReopenIt()
+    [TestCase(0, -107f)]
+    [TestCase(1, -81f)]
+    [TestCase(2, -56f)]
+    [TestCase(3, -31f)]
+    [TestCase(4, 0f)]
+    public void ResourceCountChangesOnlyVerticalPosition(int count, float expected)
     {
-        panel.Hide();
-        panel.ShowHex();
+        Vector2 size = rect.sizeDelta;
+        Vector2 min = rect.anchorMin;
+        Vector2 max = rect.anchorMax;
+        panel.ShowHex(count);
         panel.RefreshDrawer(false);
-        Assert.IsFalse(root.activeSelf);
-        panel.ShowHex();
-        panel.SetResearchButtonVisible(true, null);
-        panel.RefreshDrawer(false);
-        Assert.IsTrue(root.activeSelf);
+        Assert.AreEqual(expected, rect.anchoredPosition.y, .01f);
+        Assert.AreEqual(13f, rect.anchoredPosition.x);
+        Assert.AreEqual(size, rect.sizeDelta);
+        Assert.AreEqual(min, rect.anchorMin);
+        Assert.AreEqual(max, rect.anchorMax);
     }
 
     [Test]
-    public void SecondSectionRowIncreasesHeightAndCollapsesWhenRemoved()
+    public void OffsetsFollowCanvasHeight()
     {
+        panel.ShowHex(1);
         panel.RefreshDrawer(false);
-        float four = ((RectTransform)root.transform).rect.height;
-        panel.SetResearchButtonVisible(false, null);
-        panel.SetProductionButtonVisible(false, null);
+        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1024f, 1536f);
         panel.RefreshDrawer(false);
-        Assert.Less(((RectTransform)root.transform).rect.height, four);
+        Assert.AreEqual(-162f, rect.anchoredPosition.y, .01f);
+    }
+
+    [Test]
+    public void RapidSelectionRetargetsWithoutResettingPosition()
+    {
+        panel.ShowHex(1);
+        panel.RefreshDrawer(false);
+        panel.ShowHex(4);
+        Assert.AreEqual(-81f, rect.anchoredPosition.y, .01f);
+        panel.ShowHex(2);
+        panel.RefreshDrawer(false);
+        Assert.AreEqual(-56f, rect.anchoredPosition.y, .01f);
+    }
+
+    [Test]
+    public void HideAndReopenStartsBelowScreenWithoutChangingSize()
+    {
+        panel.Hide();
+        Assert.IsFalse(root.activeSelf);
+        panel.ShowHex(0);
+        Assert.IsTrue(root.activeSelf);
+        Vector3[] corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        Assert.Less(corners[1].y, ((RectTransform)canvas.transform).rect.yMin);
+        panel.RefreshDrawer(false);
+        Assert.AreEqual(-107f, rect.anchoredPosition.y, .01f);
+        Assert.AreEqual(Vector2.zero, rect.sizeDelta);
     }
 
     private void Set(string name, object value) => typeof(HexInfoPanelUI)
@@ -86,33 +124,35 @@ public class HexInfoDrawerTests
     [TestCase(2)]
     [TestCase(3)]
     [TestCase(4)]
-    public void ExtractorsFitTwoColumnsAndOneUsesFullWidth(int count)
+    public void ExtractorsStackVerticallyWithoutMovingContainer(int count)
     {
         var go = new GameObject("Extractors", typeof(RectTransform));
-        go.transform.SetParent(root.transform);
+        go.transform.SetParent(root.transform, false);
+        var container = (RectTransform)go.transform;
+        container.sizeDelta = new Vector2(120f, 100f);
+        container.anchoredPosition = new Vector2(0f, 7.7f);
         var row = go.AddComponent<ResourceActionRowUI>();
         typeof(ResourceActionRowUI).GetField("buttonContainer", BindingFlags.Instance | BindingFlags.NonPublic)
-            .SetValue(row, go.transform);
-        Set("resourceActions", row);
+            .SetValue(row, container);
         var list = (System.Collections.IList)typeof(ResourceActionRowUI)
             .GetField("_buttons", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(row);
         for (int i = 0; i < count; i++)
         {
             var item = new GameObject("Extractor", typeof(RectTransform));
-            item.transform.SetParent(go.transform);
+            item.transform.SetParent(go.transform, false);
             list.Add(item.AddComponent<ResourceActionButtonUI>());
         }
-        panel.RefreshDrawer(false);
-        Assert.AreEqual(count, row.VisibleButtonCount);
-        var container = (RectTransform)go.transform;
+        typeof(ResourceActionRowUI).GetMethod("LayoutButtons", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(row, null);
+        Assert.AreEqual(new Vector2(120f, 100f), container.sizeDelta);
+        Assert.AreEqual(new Vector2(0f, 7.7f), container.anchoredPosition);
         for (int i = 0; i < count; i++)
         {
             var item = (RectTransform)go.transform.GetChild(i);
-            Assert.LessOrEqual(item.anchoredPosition.x + item.rect.width, container.rect.width + 0.01f);
-            Assert.LessOrEqual(-item.anchoredPosition.y + item.rect.height, container.rect.height + 0.01f);
+            Assert.AreEqual(new Vector2(0f, -i * 25f), item.anchoredPosition);
+            Assert.AreEqual(120f, item.rect.width, .01f);
+            Assert.AreEqual(25f, item.rect.height, .01f);
         }
-        if (count == 1)
-            Assert.AreEqual(container.rect.width, ((RectTransform)go.transform.GetChild(0)).rect.width);
     }
 }
 #endif

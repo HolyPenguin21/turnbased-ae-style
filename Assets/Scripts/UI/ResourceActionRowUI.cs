@@ -41,17 +41,22 @@ namespace Game.UI
 
         public int VisibleButtonCount => _buttons.Count;
 
-        public void LayoutDrawer(float x, float y, float width, float height, float spacing)
+        private void LayoutButtons()
         {
             if (!(buttonContainer is RectTransform container)) return;
-            int rows = (_buttons.Count + 1) / 2;
-            HexInfoPanelUI.Place(container, x, y, width,
-                rows == 0 ? 0f : rows * height + (rows - 1) * spacing);
-            float cellWidth = _buttons.Count == 1 ? width : (width - spacing) * 0.5f;
+            // The authored container reserves four vertical slots. Keep its transform
+            // untouched and place available actions from the top down.
+            float height = container.rect.height / 4f;
             for (int i = 0; i < _buttons.Count; i++)
                 if (_buttons[i] != null)
-                    HexInfoPanelUI.Place((RectTransform)_buttons[i].transform,
-                        (i % 2) * (cellWidth + spacing), (i / 2) * (height + spacing), cellWidth, height);
+                {
+                    RectTransform item = (RectTransform)_buttons[i].transform;
+                    item.anchorMin = new Vector2(0f, 1f);
+                    item.anchorMax = new Vector2(1f, 1f);
+                    item.pivot = new Vector2(0.5f, 1f);
+                    item.anchoredPosition = new Vector2(0f, -i * height);
+                    item.sizeDelta = new Vector2(0f, height);
+                }
         }
 
         public void Show(IReadOnlyList<HexActionDescriptor> actions)
@@ -69,6 +74,8 @@ namespace Game.UI
                 button.Setup(action);
                 _buttons.Add(button);
             }
+            HexInfoPanelUI panel = GetComponentInParent<HexInfoPanelUI>(true);
+            if (panel != null && panel.UsesDrawerLayout) LayoutButtons();
         }
 
         public void Hide() => ClearButtons();

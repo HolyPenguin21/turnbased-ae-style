@@ -4,9 +4,6 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Contextual actions for the selected hex. Scene/prefab starts inactive; ShowHex
-    // activates it before eligibility updates. Drawer layout is opt-in to preserve other
-    // scenes/prefabs using the original navigation layout and the same public methods.
     public class HexInfoPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -18,163 +15,123 @@ namespace Game.UI
         [Header("Context drawer (Canvas_UI)")]
         [SerializeField] private bool drawerLayout;
         [SerializeField] private RectTransform drawerRect;
-        [SerializeField] private RectTransform navigationRect;
         [SerializeField] private ResourceActionRowUI resourceActions;
-        [SerializeField, Min(160f)] private float drawerWidth = 320f;
-        [SerializeField, Min(0f)] private float padding = 24f;
-        [SerializeField, Min(0f)] private float spacing = 8f;
-        [SerializeField, Min(16f)] private float extractorHeight = 44f;
-        [SerializeField, Min(0f)] private float resizeSpeed = 1000f;
+        [Tooltip("Downward offsets as fractions of screen height, for 0 through 4 unextracted resources.")]
+        [SerializeField] private float[] resourceScreenOffsets =
+            { 107f / 768f, 81f / 768f, 56f / 768f, 31f / 768f, 0f };
+        [SerializeField, Min(0.01f)] private float motionSmoothTime = 0.06f;
 
-        private readonly Button[] _navigation = new Button[4];
+        private int _resourceCount;
+        private float _verticalVelocity;
+        private bool _showRequested;
 
-        private void LateUpdate()
+        public bool UsesDrawerLayout => drawerLayout;
+
+        private void Awake()
         {
-            RefreshDrawer(true);
+            if (drawerRect == null) drawerRect = transform as RectTransform;
+            // ShowHex can activate an initially inactive root, invoking Awake synchronously.
+            // In that case the selection request wins over the initial hidden state.
+            if (Application.isPlaying && !_showRequested) Hide();
         }
 
-        // Called after selection has updated every action. Bottom pivot stays fixed while
-        // the shell expands upward; unavailable actions occupy no cell.
+        private void LateUpdate() => RefreshDrawer(true);
+
         public void RefreshDrawer(bool animate = true)
         {
-            if (!drawerLayout || drawerRect == null || navigationRect == null)
-                return;
-            _navigation[0] = baseButton;
-            _navigation[1] = garrisonButton;
-            _navigation[2] = researchButton;
-            _navigation[3] = productionButton;
-            int count = 0;
-            foreach (Button item in _navigation)
-                if (item != null && item.gameObject.activeSelf) count++;
-            int extractionCount = resourceActions != null ? resourceActions.VisibleButtonCount : 0;
-            if (count == 0 && extractionCount == 0)
+            if (!drawerLayout || drawerRect == null || !_showRequested) return;
+            int index = Mathf.Clamp(_resourceCount, 0, 4);
+            float offset = resourceScreenOffsets != null && resourceScreenOffsets.Length == 5
+                ? resourceScreenOffsets[index] : DefaultScreenOffset(index);
+            float target = -offset * ScreenHeightInParentUnits();
+            Vector2 position = drawerRect.anchoredPosition;
+            position.y = animate && Application.isPlaying
+                ? Mathf.SmoothDamp(position.y, target, ref _verticalVelocity,
+                    Mathf.Max(0.01f, motionSmoothTime), Mathf.Infinity, Time.unscaledDeltaTime)
+                : target;
+            if (Mathf.Abs(position.y - target) < 0.05f)
             {
-                if (panelRoot != null) panelRoot.SetActive(false);
-                return;
+                position.y = target;
+                _verticalVelocity = 0f;
             }
-
-            float width = Mathf.Max(160f, drawerWidth);
-            float inset = Mathf.Clamp(padding, 0f, width * 0.2f);
-            float gap = Mathf.Clamp(spacing, 0f, width * 0.1f);
-            float innerWidth = width - inset * 2f;
-            float cell = (innerWidth - gap) * 0.5f;
-            int rows = (count + 1) / 2;
-            float navHeight = rows == 0 ? 0f : rows * cell + (rows - 1) * gap;
-            int extractionRows = (extractionCount + 1) / 2;
-            float actionHeight = extractionRows == 0 ? 0f : extractionRows * extractorHeight + (extractionRows - 1) * gap;
-            float separation = count > 0 && extractionCount > 0 ? gap * 2f : 0f;
-            float height = inset * 2f + navHeight + separation + actionHeight;
-            float current = drawerRect.rect.height;
-            float next = animate && Application.isPlaying && resizeSpeed > 0f
-                ? Mathf.MoveTowards(current, height, resizeSpeed * Time.unscaledDeltaTime) : height;
-            drawerRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
-            drawerRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, next);
-
-            Place(navigationRect, inset, inset, innerWidth, navHeight);
-            int index = 0;
-            foreach (Button item in _navigation)
-            {
-                if (item == null || !item.gameObject.activeSelf) continue;
-                Place((RectTransform)item.transform, (index % 2) * (cell + gap),
-                    (index / 2) * (cell + gap), cell, cell);
-                index++;
-            }
-            if (resourceActions != null)
-                resourceActions.LayoutDrawer(inset, inset + navHeight + separation,
-                    innerWidth, extractorHeight, gap);
+            drawerRect.anchoredPosition = position;
         }
 
-        internal static void Place(RectTransform rect, float x, float y, float width, float height)
+        private static float DefaultScreenOffset(int count)
         {
-            rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(0f, 1f);
-            rect.anchoredPosition = new Vector2(x, -y);
-            rect.sizeDelta = new Vector2(width, height);
+            switch (count)
+            {
+                case 1: return 81f / 768f;
+                case 2: return 56f / 768f;
+                case 3: return 31f / 768f;
+                case 4: return 0f;
+                default: return 107f / 768f;
+            }
         }
 
-        public void ShowHex()
+        private float ScreenHeightInParentUnits()
         {
-            bool opening = panelRoot != null && !panelRoot.activeSelf;
-            if (panelRoot != null)
-                panelRoot.SetActive(true);
-            if (opening && drawerLayout && drawerRect != null)
-                drawerRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, padding * 2f);
+            Canvas canvas = drawerRect.GetComponentInParent<Canvas>();
+            if (canvas != null && canvas.rootCanvas.transform is RectTransform canvasRect)
+            {
+                Vector3 height = canvasRect.TransformVector(Vector3.up * canvasRect.rect.height);
+                return drawerRect.parent != null
+                    ? Mathf.Abs(drawerRect.parent.InverseTransformVector(height).y) : height.magnitude;
+            }
+            return drawerRect.parent is RectTransform parent ? parent.rect.height : 768f;
+        }
+
+        private float HiddenPositionY()
+        {
+            if (!(drawerRect.parent is RectTransform parent))
+                return -ScreenHeightInParentUnits() - drawerRect.rect.height;
+            float anchorY = Mathf.Lerp(drawerRect.anchorMin.y, drawerRect.anchorMax.y, drawerRect.pivot.y);
+            float anchorPosition = parent.rect.yMin + parent.rect.height * anchorY;
+            return parent.rect.yMin - anchorPosition
+                - drawerRect.rect.height * (1f - drawerRect.pivot.y) - 1f;
+        }
+
+        public void ShowHex(int unextractedResourceCount = 0)
+        {
+            bool opening = !_showRequested || (panelRoot != null && !panelRoot.activeSelf);
+            _resourceCount = Mathf.Clamp(unextractedResourceCount, 0, 4);
+            _showRequested = true;
+            if (panelRoot != null) panelRoot.SetActive(true);
+            if (drawerLayout && drawerRect != null && opening)
+            {
+                Vector2 position = drawerRect.anchoredPosition;
+                position.y = HiddenPositionY();
+                drawerRect.anchoredPosition = position;
+                _verticalVelocity = 0f;
+            }
         }
 
         public void Hide()
         {
-            if (resourceActions != null)
-                resourceActions.Hide();
-            if (panelRoot != null)
-                panelRoot.SetActive(false);
-            if (garrisonButton != null)
-                garrisonButton.gameObject.SetActive(false);
-            if (baseButton != null)
-                baseButton.gameObject.SetActive(false);
-            if (researchButton != null)
-                researchButton.gameObject.SetActive(false);
-            if (productionButton != null)
-                productionButton.gameObject.SetActive(false);
+            _showRequested = false;
+            _verticalVelocity = 0f;
+            if (resourceActions != null) resourceActions.Hide();
+            SetButton(garrisonButton, false, null);
+            SetButton(baseButton, false, null);
+            SetButton(researchButton, false, null);
+            SetButton(productionButton, false, null);
+            if (panelRoot != null) panelRoot.SetActive(false);
         }
 
-        // Independent of ShowHex — a direct way to reach the garrison's modal regardless of
-        // how many armies currently share the hex (see HexSelectionController.SelectHex),
-        // since a lone unit sitting alone in the garrison would otherwise have no way to be
-        // sorted into a movable army at all.
-        public void SetGarrisonButtonVisible(bool visible, Action onClick)
+        // Preserve the existing selection API. Drawer sections are always present;
+        // other scenes can keep the original hide/show behavior.
+        private void SetButton(Button button, bool available, Action onClick)
         {
-            if (garrisonButton == null)
-                return;
-            garrisonButton.gameObject.SetActive(visible);
-            if (visible)
-            {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(garrisonButton);
-                garrisonButton.onClick.AddListener(() => onClick?.Invoke());
-            }
+            if (button == null) return;
+            UIButtonEventUtility.ResetRuntimeListeners(button);
+            button.gameObject.SetActive(drawerLayout || available);
+            button.interactable = available;
+            if (available) button.onClick.AddListener(() => onClick?.Invoke());
         }
 
-        // Same idea as SetGarrisonButtonVisible, for BaseViewerModalUI — visible whenever this
-        // hex's building has IsBase set and is owned by the current player (see
-        // HexSelectionController.SelectHex).
-        public void SetBaseButtonVisible(bool visible, Action onClick)
-        {
-            if (baseButton == null)
-                return;
-            baseButton.gameObject.SetActive(visible);
-            if (visible)
-            {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(baseButton);
-                baseButton.onClick.AddListener(() => onClick?.Invoke());
-            }
-        }
-
-        // Same idea as SetGarrisonButtonVisible/SetBaseButtonVisible — Research now lives in
-        // this fixed nav row instead of the variable-length ResourceActionRowUI (see
-        // HexSelectionController.SelectHex), so it stays put next to Garrison/Base/Production
-        // rather than shifting around with however many extraction-Facility buttons show.
-        public void SetResearchButtonVisible(bool visible, Action onClick)
-        {
-            if (researchButton == null)
-                return;
-            researchButton.gameObject.SetActive(visible);
-            if (visible)
-            {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(researchButton);
-                researchButton.onClick.AddListener(() => onClick?.Invoke());
-            }
-        }
-
-        // Same idea, for Production.
-        public void SetProductionButtonVisible(bool visible, Action onClick)
-        {
-            if (productionButton == null)
-                return;
-            productionButton.gameObject.SetActive(visible);
-            if (visible)
-            {
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(productionButton);
-                productionButton.onClick.AddListener(() => onClick?.Invoke());
-            }
-        }
+        public void SetGarrisonButtonVisible(bool visible, Action onClick) => SetButton(garrisonButton, visible, onClick);
+        public void SetBaseButtonVisible(bool visible, Action onClick) => SetButton(baseButton, visible, onClick);
+        public void SetResearchButtonVisible(bool visible, Action onClick) => SetButton(researchButton, visible, onClick);
+        public void SetProductionButtonVisible(bool visible, Action onClick) => SetButton(productionButton, visible, onClick);
     }
 }

@@ -677,8 +677,6 @@ namespace Game.Map
             ResourceYields effectiveYields = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(coord));
             if (infoPanel != null)
             {
-                infoPanel.ShowHex();
-
                 bool isOwn = owner != null && owner == turnController?.CurrentPlayer;
 
                 // Independent of how many armies share this hex (that's the button-row/
@@ -710,6 +708,28 @@ namespace Game.Map
             }
 
             RefreshResourceActionRow(coord, buildingHere, effectiveYields);
+
+            if (infoPanel != null)
+            {
+                bool hasGarrison = false;
+                foreach (ArmyData army in ArmyRegistry.AllAt(coord))
+                    if (army.IsGarrison) { hasGarrison = true; break; }
+                if (buildingHere != null || hasGarrison)
+                {
+                    int unextractedResources = 0;
+                    foreach (ResourceType type in AllResourceTypes)
+                    {
+                        int yield = effectiveYields.Get(type);
+                        if (yield <= 0) continue;
+                        if (buildingHere != null &&
+                            (buildingHere.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type))
+                            || buildingHere.CollectedAmount(type) >= yield)) continue;
+                        unextractedResources++;
+                    }
+                    infoPanel.ShowHex(unextractedResources);
+                }
+                else infoPanel.Hide();
+            }
 
             // 2+ armies (or a garrison sharing the hex with a named army) on this hex — one
             // button per army. A lone garrison shows neither: it can't move and isn't "an army"
