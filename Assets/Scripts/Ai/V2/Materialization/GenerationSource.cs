@@ -44,9 +44,11 @@ namespace Game.Ai.V2
         // competes with the main deck, and a resource the card does not consume never blocks it.
         // `analysisView` is used only by Analysis to DESCRIBE readiness in its snapshot: it keeps
         // temporarily contested facilities and ignores the investment window.
+        // `resourceForecast` describes a REAL legal source before budget/window rejection;
+        // only the opportunity owner uses it, and no returned preview authorizes execution.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys,
-            bool analysisView = false)
+            bool analysisView = false, bool resourceForecast = false)
         {
             var result = new List<GenerationStep>();
             if (player == null || root == null || ctx?.ResearchProductionCatalog == null || hand == null)
@@ -82,12 +84,14 @@ namespace Game.Ai.V2
                             string cardKey = useKey + "|" + card.authoredKey;
                             if (triedCardKeys != null && triedCardKeys.Contains(cardKey))
                                 continue;
-                            if (!ResearchProductionSystem.CanAffordCard(root, card))
+                            // Forecast callers retain all structural source rules but describe
+                            // the cost BEFORE today's budget/window rejects it. Never executable.
+                            if (!resourceForecast && !ResearchProductionSystem.CanAffordCard(root, card))
                                 continue;
-                            if (!analysisView && !DevelopmentInvestmentGate.IsOpenFor(
+                            if (!analysisView && !resourceForecast && !DevelopmentInvestmentGate.IsOpenFor(
                                     player, ctx.TurnNumber, card.resourceCost))
                                 continue;
-                            if (!FitsReservedAffordability(root, player, ctx, card))
+                            if (!resourceForecast && !FitsReservedAffordability(root, player, ctx, card))
                                 continue;
 
                             result.Add(new GenerationStep
