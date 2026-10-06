@@ -870,6 +870,9 @@ namespace Game.Ai.V2
         public ResourceBundle HandResourceNeed;
         public ResourceBundle RemainingDeckResourceNeed;
         public ResourceBundle ReservedOperationalNeed;
+        // Bounded future costs witnessed by the existing Development/air task owners.
+        // No hand/deck costs and no ledger holds: those have their own inputs below.
+        public ResourceBundle ForecastOperationalNeed;
         public ResourceBundle SpendableStockpile;
 
         // Sustainable per-turn income target by resource. Unlike DeckResourceNeed this is NOT
@@ -914,13 +917,16 @@ namespace Game.Ai.V2
         // makes the frozen snapshot directly testable and prevents demand/desire from re-scoring it.
         public static EconomyResourceStanding CalculateResource(ResourceType type, float ownIncome,
             float opponentMedianIncome, float handNeed, float remainingDeckNeed,
-            float reservedOperationalNeed, float spendableStockpile, float starvationPressure)
+            float reservedOperationalNeed, float spendableStockpile, float starvationPressure,
+            float forecastOperationalNeed = 0f)
         {
+            forecastOperationalNeed = Mathf.Max(0f, forecastOperationalNeed);
             float cardCadence = Mathf.Max(
                 remainingDeckNeed / Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns),
                 handNeed / Mathf.Max(1f, AiConfigV2.economyHandPaydownHorizonTurns),
-                reservedOperationalNeed / Mathf.Max(1f, AiConfigV2.economyOperationalPaydownHorizonTurns));
-            // `target`/`cardCadence` stay exactly as before — IncomeTarget (stored below) still
+                reservedOperationalNeed / Mathf.Max(1f, AiConfigV2.economyOperationalPaydownHorizonTurns),
+                forecastOperationalNeed / Mathf.Max(1f, AiConfigV2.economyRunwayHorizonTurns));
+            // IncomeTarget remains a per-turn RATE, now including witnessed future workload; it still
             // feeds HoldEvaluator's overstock-runway math as a per-turn RATE
             // (runwayTarget = IncomeTarget × tempoHoldOverstockRunwayHorizon) and StrategicPhaseB/
             // DesireEvaluators read it the same way; repurposing it here would silently change
@@ -929,19 +935,19 @@ namespace Game.Ai.V2
             // incomeGap is a turns-to-afford bottleneck (see
             // docs/ai-economy-mover-materialization-decision-tree.md): solve directly for
             // how many turns until spendableStockpile + ownIncome×turns covers the FULL,
-            // undiscounted hand+deck need ("play everything, in a vacuum"). The resource with the
+            // undiscounted hand+deck plus witnessed future costs. The resource with the
             // largest turnsToAfford is the true bottleneck — a high-income resource with an even
             // larger total need can still be worse off than a low-income one with modest need,
             // which a rate-vs-target comparison cannot express.
-            float totalCardNeed = handNeed + remainingDeckNeed;
-            float turnsToAfford = totalCardNeed <= spendableStockpile ? 0f
-                : (totalCardNeed - spendableStockpile) / Mathf.Max(ownIncome, 0.0001f);
+            float totalNeed = handNeed + remainingDeckNeed + forecastOperationalNeed;
+            float turnsToAfford = totalNeed <= spendableStockpile ? 0f
+                : (totalNeed - spendableStockpile) / Mathf.Max(ownIncome, 0.0001f);
             float incomeGap = Mathf.Clamp01(turnsToAfford / AiConfigV2.economyBottleneckReferenceTurns);
             float relativeGap = Mathf.Clamp01((opponentMedianIncome - ownIncome)
                 / Mathf.Max(opponentMedianIncome, 1f));
             float wanted = handNeed
                 + remainingDeckNeed * AiConfigV2.economyDeckNeedDiscount
-                + reservedOperationalNeed;
+                + reservedOperationalNeed + forecastOperationalNeed;
             float runway = Mathf.Clamp01((spendableStockpile
                     + ownIncome * AiConfigV2.economyRunwayHorizonTurns)
                 / Mathf.Max(wanted, 1f));
@@ -963,6 +969,7 @@ namespace Game.Ai.V2
                 HandResourceNeed = handNeed,
                 RemainingDeckResourceNeed = remainingDeckNeed,
                 ReservedOperationalNeed = reservedOperationalNeed,
+                ForecastOperationalNeed = forecastOperationalNeed,
                 SpendableStockpile = spendableStockpile,
                 IncomeTarget = target,
                 IncomeGap = incomeGap,
@@ -985,6 +992,7 @@ namespace Game.Ai.V2
         public float HandResourceNeed;
         public float RemainingDeckResourceNeed;
         public float ReservedOperationalNeed;
+        public float ForecastOperationalNeed;
         public float SpendableStockpile;
         public float IncomeTarget;
         public float IncomeGap;
@@ -996,7 +1004,7 @@ namespace Game.Ai.V2
         public float Ratio;               // OwnIncome / max(1, FieldMedianIncome)
 
         // This snapshot fact limits a site's physical income to the income actually
-        // useful for the known hand/remaining deck within the existing runway horizon.
+        // useful for the known hand/deck and witnessed future tasks within the runway horizon.
         // SpendableStockpile already excludes reservations, so reserved demand must
         // NOT be added again: that would count the same protected resources twice.
         public float UsefulMarginalIncomeGain(float marginalGain) =>
@@ -1015,7 +1023,8 @@ namespace Game.Ai.V2
                 return 0f;
             float horizon = Mathf.Max(1f, AiConfigV2.economyRunwayHorizonTurns);
             float plannedNeed = Mathf.Max(0f, HandResourceNeed)
-                + Mathf.Max(0f, RemainingDeckResourceNeed);
+                + Mathf.Max(0f, RemainingDeckResourceNeed)
+                + Mathf.Max(0f, ForecastOperationalNeed);
             float covered = Mathf.Max(0f, SpendableStockpile)
                 + Mathf.Max(0f, ownIncome) * horizon;
             return Mathf.Min(physicalGain, Mathf.Max(0f, plannedNeed - covered) / horizon);
