@@ -88,8 +88,6 @@ namespace Game.Ai.V2
         // Equipment only: the tactical share of ExpectedGain (Move/Range/AP/Command/roles, AiPower
         // units) — the part StrategicCardEvaluator.EquipmentUpgradeValue never matchup-gates.
         public float TacticalGain;
-        // Equipment: [0..1] share of known threats against which the upgrade improves the outcome.
-        public float MatchupFit;
         // PREPARE only: card-currency investment EV (output card score - Challenge -
         // prerequisites). Card-level decisions only; never a world-task value.
         public float Ev;
@@ -705,7 +703,6 @@ namespace Game.Ai.V2
             void Consider(DevelopmentOpportunity cand, ArmyData army = null)
             {
                 // Delta already includes mission-scoped penetration and effect usefulness.
-                cand.MatchupFit = 0f;
                 cand.Explain = "purpose=" + StrategicCardEvaluator.EquipmentPurposeLabel(snap, cand.RecipientCard, cand.RecipientUnit)
                     + " slot=" + equipment.attachmentSlot + " " + cand.Explain;
                 float selection = StrategicCardEvaluator.EquipmentUpgradeValue(cand);
