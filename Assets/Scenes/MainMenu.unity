@@ -3398,7 +3398,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: ca042cbd5d70ec447b5ea05c20a59bd3, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 74bfa362df5a7a14d9b4dbb1128501b6, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -4139,23 +4139,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1909526331}
   m_CullTransparentMesh: 1
---- !u!1001 &1950000999
-PrefabInstance:
-  m_ObjectHideFlags: 0
-  serializedVersion: 2
-  m_Modification:
-    serializedVersion: 3
-    m_TransformParent: {fileID: 532284554}
-    m_Modifications:
-    - target: {fileID: 1950000004, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
-      propertyPath: menuController
-      value:
-      objectReference: {fileID: 1007785363}
-    m_RemovedComponents: []
-    m_RemovedGameObjects: []
-    m_AddedGameObjects: []
-    m_AddedComponents: []
-  m_SourcePrefab: {fileID: 100100000, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
 --- !u!1 &1950000000 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1950000000, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
@@ -4166,17 +4149,6 @@ RectTransform:
   m_CorrespondingSourceObject: {fileID: 1950000001, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
   m_PrefabInstance: {fileID: 1950000999}
   m_PrefabAsset: {fileID: 0}
---- !u!114 &1950000004 stripped
-MonoBehaviour:
-  m_CorrespondingSourceObject: {fileID: 1950000004, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
-  m_PrefabInstance: {fileID: 1950000999}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1950000000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e0afd5b2b6af4902bc1e4ce86f586917, type: 3}
-  m_Name:
-  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.GameSettingsPanelUI
 --- !u!1 &1950000085
 GameObject:
   m_ObjectHideFlags: 0
@@ -4447,6 +4419,23 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+--- !u!1001 &1950000999
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 532284554}
+    m_Modifications:
+    - target: {fileID: 1950000004, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
+      propertyPath: menuController
+      value: 
+      objectReference: {fileID: 1007785363}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: c57408e190d6427ba15bf2c1537800e4, type: 3}
 --- !u!1 &1995731423
 GameObject:
   m_ObjectHideFlags: 0
