@@ -26,17 +26,24 @@ namespace Game.Ai.V2
             return t;
         }
 
-        // One upgrade-demand execution (Challenge on an existing host).
+        // One creation-stage execution; attachment may happen on a later turn.
         internal static void RecordUpgrade(PlayerSetupData player, int turn,
-            bool executed, bool challengeWon, bool attached)
+            bool executed, bool challengeWon)
         {
             Tally t = Get(player);
             if (!executed) t.Skipped++;
             else
             {
                 if (challengeWon) t.ChallengesWon++; else t.ChallengesLost++;
-                if (attached) t.Attached++;
             }
+            Log(player, turn, t);
+        }
+
+        internal static void RecordAttachment(PlayerSetupData player, int turn, Game.Cards.CardData card)
+        {
+            if (card == null || !card.ResearchProductionCreated) return;
+            Tally t = Get(player);
+            t.Attached++;
             Log(player, turn, t);
         }
 

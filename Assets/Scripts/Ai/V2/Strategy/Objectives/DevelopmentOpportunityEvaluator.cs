@@ -241,11 +241,10 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':resources_unavailable";
                     continue;
                 }
-                int completeAp = ResearchProductionSystem.AttemptApCost(card)
-                    + Mathf.Max(0, card.activationApCost);
-                if (!root.CanSpendActionPoints(completeAp))
+                int creationAp = ResearchProductionSystem.AttemptApCost(card);
+                if (!root.CanSpendActionPoints(creationAp))
                 {
-                    last = $"'{card.displayName}':needs_{completeAp}_ap";
+                    last = $"'{card.displayName}':needs_{creationAp}_creation_ap";
                     continue;
                 }
                 // Preserve sunk-facility admission: Phase A owns the final card EV comparison.
@@ -783,6 +782,10 @@ namespace Game.Ai.V2
                 float selection = StrategicCardEvaluator.EquipmentUpgradeValue(cand);
                 // Utility is required even for in-advance investment; surplus alone cannot admit it.
                 if (selection <= 0f) { noNeed++; lastReject = cand.Explain; return; }
+                // A real card in hand is the pending stage. Reuse it before manufacturing more
+                // for its useful recipient slot; ordinary hand attachment enumeration stays live.
+                if (futureAttachment && PendingEquipmentCovers(cand, hand, snap, inv))
+                { lastReject = "use_pending_equipment_first"; return; }
                 result.Add(cand);
             }
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
@@ -839,6 +842,32 @@ namespace Game.Ai.V2
                 diag = $"hand {handChecked}, map {mapChecked}, no-need {noNeed}"
                     + (lastReject != null ? $", last reject \"{lastReject}\"" : "");
             return result;
+        }
+
+        internal static bool PendingEquipmentCovers(DevelopmentOpportunity op, AiHandData hand,
+            WorldSnapshot snap, CapabilityInventory inv)
+        {
+            foreach (CardData pending in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            {
+                CardDefinition def = pending?.Definition;
+                if (def?.cardType != CardType.Equipment || def.attachmentSlot != op.Card.attachmentSlot)
+                    continue;
+                bool legal = op.RecipientCard != null
+                    ? EquipmentSystem.CanAttachPreview(def, op.RecipientCard, out _)
+                    : EquipmentSystem.CanAttachPreview(def, op.RecipientUnit, out _);
+                if (!legal) continue;
+                var delta = op.RecipientCard != null
+                    ? StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientCard, snap, inv)
+                    : StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientUnit, snap, inv);
+                var pendingUse = new DevelopmentOpportunity
+                {
+                    Card = def, RecipientCard = op.RecipientCard, RecipientUnit = op.RecipientUnit,
+                    ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
+                    TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
+                };
+                if (StrategicCardEvaluator.EquipmentUpgradeValue(pendingUse) > 0f) return true;
+            }
+            return false;
         }
 
         internal static string RecipientKey(DevelopmentOpportunity op) => op?.RecipientUnit != null

@@ -202,8 +202,15 @@ namespace Game.EditorTests
 
             MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
             Assert.That(plan, Is.Not.Null);
-            Assert.That(plan.ApCost,
-                Is.EqualTo(ResearchProductionSystem.AttemptApCost(equipment) + 2));
+            Assert.That(plan.ApCost, Is.EqualTo(ResearchProductionSystem.AttemptApCost(equipment)));
+            Assert.That(plan.DeferredAttachmentAp, Is.EqualTo(2));
+            float stagedScore = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
+                opportunity, plan, null, null, null, null);
+            plan.ApCost += plan.DeferredAttachmentAp;
+            plan.DeferredAttachmentAp = 0;
+            Assert.That(StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
+                opportunity, plan, null, null, null, null), Is.EqualTo(stagedScore).Within(0.0001f),
+                "Splitting funding across turns must not discount the full prospective cost");
             Assert.That(plan.ResCost, Is.Not.Null);
             Assert.That(plan.ResCost.energy, Is.EqualTo(4));
             Assert.That(plan.ResCost.materials, Is.EqualTo(3));

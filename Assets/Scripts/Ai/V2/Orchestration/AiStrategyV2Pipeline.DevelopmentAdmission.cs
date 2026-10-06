@@ -31,9 +31,9 @@ namespace Game.Ai.V2
     public static partial class Pipeline
     {
         // AP retains both the exact pool and the known offering affordability thresholds:
-        //   * per offering: ResearchProductionSystem.AttemptApCost(card) + card.activationApCost
-        //     (the READY Challenge+attach gate), and
-        //   * per Unit card in hand: CardData.EffectivePlayApCost.
+        //   * per offering: ResearchProductionSystem.AttemptApCost(card)
+        //     (the READY creation gate), and
+        //   * per Unit/Equipment card in hand: CardData.EffectivePlayApCost.
         internal static string DevelopmentAdmissionFingerprint(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
             string resources, int handVersion, AiHandData hand = null, PlayerSetupData player = null,
@@ -89,10 +89,9 @@ namespace Game.Ai.V2
             foreach (DevelopmentOffering off in snapshot?.Development?.Offerings
                          ?? (IReadOnlyList<DevelopmentOffering>)System.Array.Empty<DevelopmentOffering>())
                 if (off.Card != null)
-                    thresholds.Add(ResearchProductionSystem.AttemptApCost(off.Card)
-                        + UnityEngine.Mathf.Max(0, off.Card.activationApCost));
+                    thresholds.Add(ResearchProductionSystem.AttemptApCost(off.Card));
             foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-                if (c?.Definition != null && c.Definition.cardType == CardType.Unit)
+                if (c?.Definition != null && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Equipment))
                     thresholds.Add(c.EffectivePlayApCost);
             if (thresholds.Count == 0)
                 return pool;   // nothing enumerable — never guess, keep both pool facts

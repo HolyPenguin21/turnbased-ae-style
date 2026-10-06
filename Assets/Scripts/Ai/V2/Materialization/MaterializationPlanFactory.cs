@@ -89,8 +89,8 @@ namespace Game.Ai.V2
                 DevelopmentUpgrade = op,
                 UpgradeTargetCard = op.RecipientCard,
                 UpgradeTargetUnit = op.RecipientUnit,
-                ApCost = ResearchProductionSystem.AttemptApCost(g.CardDef)
-                    + System.Math.Max(0, g.CardDef.activationApCost),
+                ApCost = ResearchProductionSystem.AttemptApCost(g.CardDef),
+                DeferredAttachmentAp = System.Math.Max(0, g.CardDef.activationApCost),
                 ResCost = rc == null ? null : new ResourceCost
                 {
                     human = rc.human, energy = rc.energy, materials = rc.materials, tech = rc.tech,
