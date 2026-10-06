@@ -742,6 +742,7 @@ namespace Game.Ai.V2
                         + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
                         + $"p={F(plan.DevelopmentUpgrade?.SuccessChance ?? 0f)} "
                         + $"gain={F(plan.DevelopmentUpgrade?.ExpectedGain ?? 0f)} "
+                        + $"policy={plan.DevelopmentUpgrade?.Explain} "
                         + $":: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
                     continue;
                 }

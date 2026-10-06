@@ -202,7 +202,8 @@ namespace Game.Ai.V2
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
-                    + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} fit={best.MatchupFit:0.00}";
+                    + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} tactical={best.TacticalGain:0.0} "
+                    + best.Explain;
                 result.Add(best);
                 admitted++;
             }
@@ -495,6 +496,7 @@ namespace Game.Ai.V2
                     + $"amplify={op.WorldTaskScore.ForceAmplification:0.##} "
                     + $"price={op.WorldTaskScore.CardPrice:0.##} delivery={op.WorldTaskScore.Delivery:0.##} "
                     + $"moverOpp={op.WorldTaskScore.MoverOpportunityCost:0.##} {forceNeed}; "
+                    + op.Explain + "; "
                     + $"card EV={op.Ev:0.##}";
                 result.Add(op);
                 admitted++;
@@ -687,22 +689,28 @@ namespace Game.Ai.V2
         internal static List<DevelopmentOpportunity> EquipmentOpportunities(ResearchProductionMode mode,
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag)
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, out string diag,
+            CardData attachmentCard = null)
         {
             var result = new List<DevelopmentOpportunity>();
             diag = "no equipment grant on the card";
             if (equipment?.equipment == null)
                 return result;
-            CardData generatedPreview = ResearchProductionSystem.MintCard(equipment);
+            // Standalone hand cards retain their actual paid/unpaid cost. Only a future
+            // generated output uses the minted activation-cost preview.
+            CardData generatedPreview = attachmentCard ?? ResearchProductionSystem.MintCard(equipment);
 
             int handChecked = 0, mapChecked = 0, noNeed = 0;
             string lastReject = null;
             void Consider(DevelopmentOpportunity cand, ArmyData army = null)
             {
-                cand.MatchupFit = StrategicCardEvaluator.EquipmentMatchupFit(cand, army, snap);
+                // Delta already includes mission-scoped penetration and effect usefulness.
+                cand.MatchupFit = 0f;
+                cand.Explain = "purpose=" + StrategicCardEvaluator.EquipmentPurposeLabel(snap, cand.RecipientCard, cand.RecipientUnit)
+                    + " slot=" + equipment.attachmentSlot + " " + cand.Explain;
                 float selection = StrategicCardEvaluator.EquipmentUpgradeValue(cand);
-                // A ground-combat upgrade that turns no known fight has no justified need.
-                if (selection <= 0f) { noNeed++; return; }
+                // Utility is required even for in-advance investment; surplus alone cannot admit it.
+                if (selection <= 0f) { noNeed++; lastReject = cand.Explain; return; }
                 result.Add(cand);
             }
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
@@ -715,7 +723,7 @@ namespace Game.Ai.V2
                 RecipientKind = kind, RecipientCard = card, RecipientUnit = unit,
                 RecipientArmyId = armyId, RecipientLabel = label,
                 ExpectedGain = delta.Total * powerUnit,
-                TacticalGain = delta.Tactical * powerUnit,
+                TacticalGain = delta.Tactical * powerUnit, Explain = delta.Detail,
             };
 
             if (hand?.Hand != null)

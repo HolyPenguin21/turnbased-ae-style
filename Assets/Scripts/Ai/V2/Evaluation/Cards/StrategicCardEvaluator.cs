@@ -374,7 +374,7 @@ namespace Game.Ai.V2
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.SynergyValue = SynergyValue(plan, snap, inv) + ec.Synergy + ec.GlobalSynergy;
+            bd.SynergyValue = SynergyValue(plan, snap, inv, role != IntendedRole.EquipmentUpgrade) + ec.Synergy + ec.GlobalSynergy;
             // Zeroed for a hero card (both phases now) — a hero's own body already prices into
             // HeroLeadershipFit's combatPart; ForceGrowthValue's SurplusCombatReadinessUtility-based
             // marginal power would double-count the same Attack/Defense/HP line a second time.
@@ -968,12 +968,12 @@ namespace Game.Ai.V2
         }
 
         private static float SynergyValue(MaterializationPlan plan, WorldSnapshot snap,
-            CapabilityInventory inv)
+            CapabilityInventory inv, bool includeEquipment = true)
         {
             if (plan == null)
                 return 0f;
             float v = 0f;
-            if (plan.UsesEquipment)
+            if (includeEquipment && plan.UsesEquipment)
                 v += EquipmentUpgradeValue(plan, snap, inv);
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0)
                 v += AiConfigV2.stratTraitMatchBonus * 0.5f;
@@ -1174,20 +1174,14 @@ namespace Game.Ai.V2
         //  GenerateAttachDeploy Synergy + EquipmentUpgrade RoleFit), a READY generated upgrade
         //  (ScoreGeneratedEquipmentUpgrade) and Development PREPARE (which prices its output through
         //  ScoreGeneratedEquipmentUpgrade). Costs stay with ResourceCost; this is value only.
-        //    statDelta  — EquipmentUpgradeUtilityFor: signed predicted stat/ability delta, body units.
-        //    matchupFit — EquipmentMatchupFit: share of known threats the upgrade turns.
-        //  A ground-combat recipient is the one whose need the WorthIt matchup can witness:
-        //  Production amplifies a justified need, so an upgrade that turns no known fight is worth
-        //  nothing there. Heroes / non-ground bodies have no WorthIt witness (fit is 0 by design);
-        //  their Fate / Command / tactical delta keeps its value without the matchup amplifier.
-        //  Only the COMBAT part (what WorthIt witnesses) is matchup-amplified and matchup-gated;
-        //  the TACTICAL part (Move/Range/AP/Command/roles) has no WorthIt witness and keeps its
-        //  value. A loss (negative combat part) is never amplified or erased.
+        // Operational delta is a signed before/after projection against a mission's known
+        // target or composition/deck reference. Useful in-advance upgrades keep their value.
+        // Costs and challenge probability have separate owners; neither is added here.
         internal static float EquipmentUpgradeValue(EquipmentDelta delta, float matchupFit, bool combatRecipient)
         {
-            float fit = Mathf.Clamp01(matchupFit);
-            float combat = delta.Combat <= 0f || !combatRecipient ? delta.Combat
-                : fit > 0f ? delta.Combat * (1f + fit) : 0f;
+            // Contextual projection already prices penetration and effects. No percentage
+            // amplifier and no contact gate: useful reserve upgrades are legal investments.
+            float combat = delta.Combat;
             return (combat + delta.Tactical) * AiConfigV2.equipmentUpgradePersistence;
         }
 
@@ -1214,9 +1208,8 @@ namespace Game.Ai.V2
             // A deployment's SynergyValue already prices its final Stealth trait. Bound
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
-                includeStealthTrait: false);
-            float fit = HandCardMatchupFit(eq.equipment, host, p?.BaseCardInHand?.Equipment?.equipment, snap, p?.BaseCardInHand, eq);
-            return EquipmentUpgradeValue(delta, fit, host.cardType == CardType.Unit);
+                includeStealthTrait: false, deployment: p);
+            return EquipmentUpgradeValue(delta, 0f, host.cardType == CardType.Unit);
         }
 
         // A deployed unit inside `army` (hand Equipment played onto the map).
@@ -1226,9 +1219,7 @@ namespace Game.Ai.V2
             if (equipDef?.equipment == null || host == null)
                 return 0f;
             EquipmentDelta delta = EquipmentDeltaParts(equipDef, host, snap, inv);
-            float fit = army?.Members != null
-                ? UnitMatchupFit(equipDef.equipment, host, army.Members, snap, equipDef) : 0f;
-            return EquipmentUpgradeValue(delta, fit, IsCombatRecipient(null, host));
+            return EquipmentUpgradeValue(delta, 0f, IsCombatRecipient(null, host));
         }
 
         private static bool IsCombatRecipient(CardData card, UnitData unit) =>
@@ -1437,7 +1428,8 @@ namespace Game.Ai.V2
             => EquipmentDeltaParts(equipDef, hostCard, host, snap, inv).Total;
 
         private static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData hostCard,
-            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait = true)
+            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait = true,
+            MaterializationPlan deployment = null)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
@@ -1446,7 +1438,8 @@ namespace Game.Ai.V2
             var before = current.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
             return ScoreEquipmentDelta(grant, before, current.Abilities,
                 host.cardType == CardType.Hero, snap, inv,
-                EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait);
+                EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
+                host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment);
         }
 
         // P1(review-r2) — standalone Equipment scored by the REAL predicted before/after delta on a
@@ -1477,18 +1470,16 @@ namespace Game.Ai.V2
             };
             IReadOnlyList<string> ab = host.Abilities != null
                 ? new List<string>(host.Abilities) : (IReadOnlyList<string>)System.Array.Empty<string>();
-            PredictedEquipmentState? projected = null;
-            if (host.Mutator != null || equipDef.attachmentSlot == AttachmentSlot.Mutator)
-            {
-                var next = EquipmentSystem.PredictAttachment(equipDef, host);
-                var stats = next.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
-                // The existing evaluator scores current Fate, rather than FateMax. Preserve
-                // that input contract instead of counting already spent Fate as an upgrade.
-                if (stats.TryGetValue(EquipmentStat.Fate, out int maxFate))
-                    stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host, EquipmentStat.Fate, maxFate);
-                projected = new PredictedEquipmentState(stats, next.Abilities);
-            }
-            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected);
+            var next = EquipmentSystem.PredictAttachment(equipDef, host);
+            var stats = next.Stats.ToDictionary(kv => kv.Key, kv => kv.Value);
+            // Compare current Fate with current Fate after attachment, preserving spent Fate.
+            stats[EquipmentStat.Fate] = EquipmentSystem.CurrentAfterAttachment(host,
+                EquipmentStat.Fate, stats[EquipmentStat.Fate]);
+            var projected = new PredictedEquipmentState(stats, next.Abilities);
+            return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected,
+                true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
+                ArmyRegistry.FindArmyContaining(host), null,
+                Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent));
         }
 
         // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative/Resistance, hero Fate,
@@ -1496,17 +1487,30 @@ namespace Game.Ai.V2
         // Command, strategic roles - roles already gate themselves on a present threat).
         private static EquipmentDelta ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
             IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv,
-            PredictedEquipmentState? projected = null, bool includeStealthTrait = true)
+            PredictedEquipmentState? projected = null, bool includeStealthTrait = true,
+            IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
+            MaterializationPlan deployment = null, int hpSpent = 0)
         {
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
                 predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value) ? value : before[stat];
 
+            // A combat gain cannot compensate for disabling the assignment's capabilities.
+            if ((purpose?.Kind == MissionKind.Economy || purpose?.Kind == MissionKind.Development)
+                && (After(EquipmentStat.MoveMax) < before[EquipmentStat.MoveMax]
+                    || After(EquipmentStat.ActivationApCost) > before[EquipmentStat.ActivationApCost]
+                    || hostAbilities?.Any(a => !predicted.Abilities.Contains(a)) == true)
+                || purpose?.Kind == MissionKind.Scout
+                && (AbilityParams.GetBestRecceRadius(predicted.Abilities) < AbilityParams.GetBestRecceRadius(hostAbilities)
+                    || AbilityParams.GetBestRecceSpotStrength(predicted.Abilities) < AbilityParams.GetBestRecceSpotStrength(hostAbilities)
+                    || purpose.Scout?.RequiresStealth == true && !AbilityParams.AbilitiesHaveAnyStealth(predicted.Abilities)))
+                return new EquipmentDelta(-1.5f, 0f, "reject=assignment-capability-loss");
+
             // Signed deltas are essential: an override that gains Attack but destroys Defense,
             // movement or Fate is not a free upgrade.
             // A hero is the army's container, not a fighter (AiPower.ToPowerUnit): its Attack /
             // Defense / HP / Initiative / Resistance, Range and damage abilities are worth nothing
-            // here — only battle Fate, and below its Command / movement / activation / roles.
+            // here — only battle Fate, movement, activation and useful capabilities.
             // Not a ban: such gear is still attachable, it just never looks like an upgrade.
             float combatDelta = isHero
                 ? (After(EquipmentStat.Fate) - before[EquipmentStat.Fate]) * AiConfigV2.powerHeroFateWeight
@@ -1521,9 +1525,10 @@ namespace Game.Ai.V2
             if (!isHero)
                 tactical += (After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
             tactical += (before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
-            tactical += (After(EquipmentStat.CommandRating) - before[EquipmentStat.CommandRating]) * 0.15f;
+            // Command is not a new hero-upgrade policy. Preserve only genuinely lost strategic
+            // capabilities; additions are priced by their actual mechanic below.
             tactical += EquipmentRoleDelta(hostAbilities, predicted.Abilities,
-                before[EquipmentStat.MoveMax], After(EquipmentStat.MoveMax), snap, inv);
+                    before[EquipmentStat.MoveMax], After(EquipmentStat.MoveMax), snap, inv, snap == null);
             // The same strategic trait value used by ScoreSurplusRole/SynergyValue. Stealth
             // enables an option for heroes too; it is not another damage-dealing combat body.
             bool hadStealth = AbilityParams.AbilitiesHaveAnyStealth(hostAbilities);
@@ -1531,33 +1536,201 @@ namespace Game.Ai.V2
             if (includeStealthTrait)
                 tactical += ((hasStealth ? 1 : 0) - (hadStealth ? 1 : 0))
                     * AiConfigV2.stratTraitMatchBonus * 0.5f;
-            int addedAbilities = predicted.Abilities?.Count(a =>
-                !AbilityParams.TryGetStealthLevel(a, out _)
-                && (hostAbilities == null || !hostAbilities.Contains(a))) ?? 0;
-            int lostAbilities = hostAbilities?.Count(a =>
-                !AbilityParams.TryGetStealthLevel(a, out _)
-                && (predicted.Abilities == null || !predicted.Abilities.Contains(a))) ?? 0;
-            float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate)
-                + (isHero ? 0f : (addedAbilities - lostAbilities) * 0.15f);
+            float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
+            // The snapshot-free overload is also used by Self's existing equipment-reserve
+            // power estimate. Preserve that estimate; operational decisions always supply a
+            // snapshot and replace it with the contextual projection below.
+            if (snap == null && !isHero)
+            {
+                int added = predicted.Abilities.Count(a => !AbilityParams.TryGetStealthLevel(a, out _)
+                    && !hostAbilities.Contains(a));
+                int lost = hostAbilities.Count(a => !AbilityParams.TryGetStealthLevel(a, out _)
+                    && !predicted.Abilities.Contains(a));
+                combat += (added - lost) * 0.15f;
+            }
+            if (snap != null)
+            {
+                var opposition = EquipmentOpposition(snap, purpose);
+                var targets = EquipmentTargets(snap, opposition);
+                if (!isHero)
+                    combat = EquipmentCombatValue(predicted.Stats, predicted.Abilities, hostTags, targets)
+                        - EquipmentCombatValue(before, hostAbilities, hostTags, targets)
+                        + (After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * 0.03f
+                        + (After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance])
+                            * AiConfigV2.powerResistanceWeight / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
+                // Deployment's Scout readiness and final Stealth/global effects are owned by
+                // its whole-card scorer. Existing-recipient upgrades own their marginal change.
+                if (includeStealthTrait)
+                {
+                    tactical += (AbilityParams.GetBestRecceRadius(predicted.Abilities)
+                        - AbilityParams.GetBestRecceRadius(hostAbilities)) * 0.12f;
+                    tactical += (AbilityParams.GetBestRecceSpotStrength(predicted.Abilities)
+                        - AbilityParams.GetBestRecceSpotStrength(hostAbilities)) * 0.08f;
+                    tactical -= ((hasStealth ? 1 : 0) - (hadStealth ? 1 : 0))
+                        * AiConfigV2.stratTraitMatchBonus * 0.5f;
+                    tactical += (EquipmentStealth(predicted.Abilities) - EquipmentStealth(hostAbilities)) * 0.15f;
+                }
+                tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, predicted.Abilities,
+                    hostTags, opposition, army, isHero, snap, includeStealthTrait, deployment, targets, hpSpent)
+                    - StrategicEffectRegistry.AttachmentValue(before, hostAbilities,
+                        hostTags, opposition, army, isHero, snap, includeStealthTrait, deployment, targets, hpSpent);
+            }
 
             // The whole delta keeps its [-1.5, 1.5] bound; both parts shrink proportionally.
             float raw = combat + tactical;
             float bounded = Mathf.Clamp(raw, -1.5f, 1.5f);
             float scale = Mathf.Abs(raw) > 1e-6f ? bounded / raw : 1f;
-            return new EquipmentDelta(combat * scale, tactical * scale);
+            string detail = snap == null ? null
+                : "stats=" + string.Join(",", before.OrderBy(k => k.Key)
+                    .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
+                    + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(a => a, System.StringComparer.Ordinal))
+                    + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(a => a, System.StringComparer.Ordinal))
+                    + $" combat={combat * scale:0.###} tactical={tactical * scale:0.###}";
+            return new EquipmentDelta(combat * scale, tactical * scale, detail);
+        }
+
+        private static int EquipmentStealth(IEnumerable<string> abilities) =>
+            (abilities ?? System.Array.Empty<string>()).Select(a =>
+                AbilityParams.TryGetStealthLevel(a, out int level) ? level : 0).DefaultIfEmpty(0).Max();
+
+        // Read existing assignments only. An upgrade does not create a role or move an actor.
+        internal static MissionIntent EquipmentPurpose(WorldSnapshot snap, CardData card, UnitData unit)
+        {
+            ArmyData army = unit != null ? ArmyRegistry.FindArmyContaining(unit) : null;
+            string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
+            var intents = MissionIntentRegistry.Peek(snap?.Observer)?.All;
+            return intents?.Where(i => i != null && i.Status == IntentStatus.Active && !i.IsLifecycleLeg
+                && (unit != null && object.ReferenceEquals(i.Development?.Hero, unit)
+                    || i.PreferredMoverArmyId == army?.Id && army != null
+                    || army != null && GroundCombatLegs.HeldGroundSupportArmyIds(i).Contains(army.Id)
+                    || i.Attack?.Preparation == true && key != null
+                        && i.Attack.TargetRoster?.Any(r => r.Key == key) == true))
+                .OrderBy(i => unit != null && object.ReferenceEquals(i.Development?.Hero, unit) ? 0
+                    : i.Kind == MissionKind.Attack ? 1 : i.Kind == MissionKind.Scout ? 2 : 3)
+                .ThenBy(i => i.IntentKey).FirstOrDefault();
+        }
+
+        internal static string EquipmentPurposeLabel(WorldSnapshot snap, CardData card, UnitData unit)
+        {
+            MissionIntent intent = EquipmentPurpose(snap, card, unit);
+            if (intent != null && intent.Kind != MissionKind.Economy)
+                return intent.Kind.ToString();
+            string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
+            return AttackForceReadiness.MobilizationOpen(snap?.Self)
+                && snap.Self.StrikeRoster.Any(r => r.Key == key) ? "AttackPreparation" : "in-advance";
+        }
+
+        private static List<WorthIt.DefendingArmy> EquipmentOpposition(WorldSnapshot snap, MissionIntent purpose)
+        {
+            var scoped = new List<WorthIt.DefendingArmy>();
+            // A target's location comes only from Known, never hidden TrueWorld coordinates.
+            HexCoord? at = purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.Hex
+                : purpose?.Raid?.Target.HasValue == true ? purpose.Raid.TargetHex : null;
+            int? enemyId = purpose?.ActiveDefence?.EnemyArmyId
+                ?? (purpose?.Raid?.Target.HasValue == true && purpose.Raid.Target.Kind == RaidTargetKind.NeutralArmy
+                    ? (int?)purpose.Raid.TargetArmyId : null);
+            foreach (var sighting in (snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>()))
+                if ((at.HasValue && sighting.Hex.Equals(at.Value)
+                    || enemyId.HasValue && sighting.ArmyId == enemyId.Value) && sighting.Defenders?.Count > 0)
+                    scoped.Add(new WorthIt.DefendingArmy(sighting.Defenders, sighting.Commander));
+            if (at.HasValue)
+                foreach (var guard in snap?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                    if (guard.Hex.Equals(at.Value) && guard.Defenders?.Count > 0)
+                        scoped.Add(new WorthIt.DefendingArmy(guard.Defenders, guard.Commander));
+            return scoped.Count > 0 ? scoped : EquipmentValuationThreats(snap);
+        }
+
+        private static List<WorthIt.DefenderProfile> EquipmentTargets(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition)
+        {
+            var scoped = opposition.SelectMany(a => a.Units).Where(p => !p.IsHero && p.HitPoints > 0).ToList();
+            if (scoped.Count == 0)
+            {
+                // The owner's available composition gives absolute stat reference points. These
+                // are stat-only benchmarks, not invented enemy Bio/Armored/Air targets.
+                var deck = (snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>())
+                    .Concat(snap?.Self?.Hand?.Where(c => c?.Definition != null).Select(c => c.Definition)
+                        ?? System.Array.Empty<CardDefinition>())
+                    .Where(d => d != null && d.cardType == CardType.Unit
+                        && !(d.unitTypeTags?.Contains(UnitTypeTag.Aircraft) ?? false))
+                    .Select(d => AiPower.EffectiveLine(d, null)).ToList();
+                var reference = deck.Select(d => new WorthIt.DefenderProfile(d.Defense, false, null,
+                        d.Attack, d.HitPoints))
+                    .Concat((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                        .Where(a => a?.Members != null).SelectMany(a => a.Members)
+                        .Where(p => !p.IsHero && p.IsGroundCombatant
+                            && !p.TypeTags.Contains(UnitTypeTag.Aircraft))).ToList();
+                if (reference.Count > 0)
+                {
+                    scoped.Add(new WorthIt.DefenderProfile(reference.Average(d => d.Defense), false, null,
+                        reference.Average(d => d.Attack), reference.Average(d => d.HitPoints)));
+                    scoped.Add(new WorthIt.DefenderProfile(reference.Max(d => d.Defense), false, null,
+                        reference.Max(d => d.Attack), reference.Max(d => d.HitPoints)));
+                }
+            }
+            return scoped.Where(p => !p.IsHero && p.HitPoints > 0).ToList();
+        }
+
+        private static float EquipmentCombatValue(IReadOnlyDictionary<EquipmentStat, int> stats,
+            IReadOnlyList<string> abilities, IReadOnlyList<UnitTypeTag> tags,
+            IReadOnlyList<WorthIt.DefenderProfile> targets)
+        {
+            if (targets.Count == 0) return 0f;
+            // Deterministic stratified sample bounds the work per pair independently of army
+            // count. No positions, battle simulation, random sampling or persistent cache.
+            var ordered = targets.OrderBy(p => p.Defense).ThenBy(p => p.Attack)
+                .ThenBy(p => p.HitPoints)
+                .ThenBy(p => string.Join(",", p.TypeTags.OrderBy(t => t)))
+                .ThenBy(p => string.Join(",", p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))).ToList();
+            float total = 0;
+            int count = System.Math.Min(16, ordered.Count);
+            for (int i = 0; i < count; i++)
+            {
+                var enemy = ordered[(int)((long)i * ordered.Count / count)];
+                int hp = Mathf.Max(1, stats[EquipmentStat.HitPoints]);
+                float incoming = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(enemy.Attack),
+                    stats[EquipmentStat.Defense], enemy.Abilities, tags, abilities, hp, out float incomingHit);
+                bool airTarget = enemy.TypeTags.Contains(UnitTypeTag.Aircraft);
+                int attackPool = stats[EquipmentStat.Attack]
+                    * (airTarget && abilities.Contains(UnitAbilities.AntiAir) ? 2 : 1);
+                float outgoing = BattleSimulationKernel.ExpectedExchangeDamage(attackPool,
+                    Mathf.RoundToInt(enemy.Defense), abilities, enemy.TypeTags, enemy.Abilities,
+                    Mathf.CeilToInt(enemy.HitPoints), out float hit);
+                if (airTarget && !abilities.Contains(UnitAbilities.AntiAir))
+                    outgoing = hit = 0;
+                total += 0.8f * outgoing / Mathf.Max(2f, enemy.HitPoints)
+                    + 0.65f * hp / (hp + incoming * 2f);
+                if (abilities.Contains(UnitAbilities.ShockAttack)) total += hit * 0.12f;
+                if (abilities.Contains(UnitAbilities.Berserk))
+                {
+                    float next = BattleSimulationKernel.ExpectedExchangeDamage(
+                        stats[EquipmentStat.Attack] + AbilityMagnitudes.Default.BerserkAttackGain,
+                        Mathf.RoundToInt(enemy.Defense), abilities, enemy.TypeTags, enemy.Abilities,
+                        Mathf.CeilToInt(enemy.HitPoints), out _);
+                    float exposed = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(enemy.Attack),
+                        Mathf.Max(1, stats[EquipmentStat.Defense] - AbilityMagnitudes.Default.BerserkDefenseLoss),
+                        enemy.Abilities, tags, abilities, hp, out _);
+                    total += incomingHit * ((next - outgoing) / Mathf.Max(2f, enemy.HitPoints)
+                        - (exposed - incoming) / Mathf.Max(2, hp)) * 0.4f;
+                }
+            }
+            return total / count;
         }
 
         internal readonly struct EquipmentDelta
         {
             public readonly float Combat;
             public readonly float Tactical;
-            public EquipmentDelta(float combat, float tactical) { Combat = combat; Tactical = tactical; }
+            public readonly string Detail;
+            public EquipmentDelta(float combat, float tactical, string detail = null)
+            { Combat = combat; Tactical = tactical; Detail = detail; }
             public float Total => Combat + Tactical;
         }
 
         private static float EquipmentRoleDelta(IReadOnlyList<string> beforeAbilities,
             IReadOnlyList<string> afterAbilities, int beforeMove, int afterMove,
-            WorldSnapshot snap, CapabilityInventory inv)
+            WorldSnapshot snap, CapabilityInventory inv, bool additions = true)
         {
             var before = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(beforeAbilities, beforeMove));
             var after = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(afterAbilities, afterMove));
@@ -1595,7 +1768,7 @@ namespace Game.Ai.V2
                 }
             }
             foreach (IntendedRole role in after)
-                if (!before.Contains(role))
+                if (additions && !before.Contains(role))
                     delta += AiConfigV2.stratTraitMatchBonus;
             return delta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
         }

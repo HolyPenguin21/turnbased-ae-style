@@ -172,8 +172,8 @@ namespace Game.Ai.V2
             }
 
             public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
-                string conflictKey) =>
-                _consumed.ExternalDisjoint(physicalCard, generationCardKey, conflictKey);
+                string conflictKey, CardData recipientCard = null) =>
+                _consumed.ExternalDisjoint(physicalCard, generationCardKey, conflictKey, recipientCard);
 
             public bool FitsExternal(float ap, ResourceCost resources, bool generation)
             {
@@ -191,9 +191,9 @@ namespace Game.Ai.V2
 
             public MaterializationConsumptionState.ExternalToken PushExternal(
                 CardData physicalCard, string generationCardKey, string conflictKey,
-                bool generation, float ap, ResourceCost resources) =>
+                bool generation, float ap, ResourceCost resources, CardData recipientCard = null) =>
                 _consumed.PushExternal(physicalCard, generationCardKey, conflictKey,
-                    generation, ap, resources);
+                    generation, ap, resources, recipientCard);
 
             public void PopExternal(in MaterializationConsumptionState.ExternalToken token) =>
                 _consumed.PopExternal(token);
@@ -470,7 +470,7 @@ namespace Game.Ai.V2
             string ConflictKey(NonCombatCardPlayer.NonCombatPlay p)
             {
                 if (p.Kind == NonCombatCardPlayer.PlayKind.Equipment)
-                    return $"equipment:{GenerationSource.StableHeroKey(p.EquipHost)}";
+                    return MaterializationConsumptionState.UpgradeConflictKey(p.EquipHostCard, p.EquipHost);
                 return $"{p.Kind}:{p.TargetHex.Q},{p.TargetHex.R}";
             }
 
@@ -478,7 +478,7 @@ namespace Game.Ai.V2
             {
                 CardData physical = p.Generation == null ? p.Card : null;
                 string genKey = p.Generation?.CardKey;
-                return jf.ExternalDisjoint(physical, genKey, ConflictKey(p))
+                return jf.ExternalDisjoint(physical, genKey, ConflictKey(p), p.EquipHostCard)
                     && jf.FitsExternal(p.ApCost, p.ResCost, p.Generation != null);
             }
 
@@ -502,7 +502,7 @@ namespace Game.Ai.V2
                     CardData physical = item.nc.Generation == null ? item.nc.Card : null;
                     MaterializationConsumptionState.ExternalToken token = jf.PushExternal(
                         physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
-                        item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost);
+                        item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost, item.nc.EquipHostCard);
                     Rec(i + 1, apSum + item.ap);
                     jf.PopExternal(token);
                 }
@@ -527,7 +527,7 @@ namespace Game.Ai.V2
                     {
                         CardData physical = item.nc.Generation == null ? item.nc.Card : null;
                         jf.PushExternal(physical, item.nc.Generation?.CardKey, ConflictKey(item.nc),
-                            item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost);
+                            item.nc.Generation != null, item.nc.ApCost, item.nc.ResCost, item.nc.EquipHostCard);
                         greedy += item.ap;
                     }
                 }

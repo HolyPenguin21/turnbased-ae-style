@@ -253,5 +253,17 @@ namespace Game.Ai.V2
             return AiConfigV2.forceNeedSurplusWeight * Curves.Ramp(mean,
                 AiConfigV2.forceNeedSurplusRampLo, AiConfigV2.forceNeedSurplusRampHi);
         }
+
+        // Development alone may invest in useful upgrades without a contact. This does not
+        // create military demand for Aggression or turn stock into value for an unsuitable card.
+        internal static float DevelopmentNeed(WorldSnapshot snap)
+        {
+            float military = JustifiedForceNeed(snap).Total;
+            DevelopmentReadiness rd = snap?.Development;
+            float reserve = rd?.UpgradeTargetCount > 0
+                ? AiConfigV2.forceNeedSurplusWeight * Curves.Ramp(rd.SurplusFraction,
+                    AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi) : 0f;
+            return Mathf.Max(military, reserve);
+        }
     }
 }

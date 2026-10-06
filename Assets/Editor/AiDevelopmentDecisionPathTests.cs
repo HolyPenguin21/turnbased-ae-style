@@ -112,7 +112,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void SignedUpgradeDeltaSurvivesMatchupAmplification()
+        public void SignedLossCannotBeErasedByLegacyMatchupWitness()
         {
             var host = new CardData(new CardDefinition { cardType = CardType.Unit });
             var delta = new StrategicCardEvaluator.EquipmentDelta(0.6f, -0.7f);
@@ -125,7 +125,8 @@ namespace Game.EditorTests
             Assert.That(op.ExpectedGain, Is.LessThan(0f));
             Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op),
                 Is.EqualTo(StrategicCardEvaluator.EquipmentUpgradeValue(delta, 1f, true)).Within(0.0001f));
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op), Is.GreaterThan(0f));
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op), Is.LessThan(0f),
+                "A matchup witness cannot turn a harmful signed delta into a useful investment");
         }
 
         [Test]
@@ -353,6 +354,107 @@ namespace Game.EditorTests
                 "The canonical scorer must price scarcity of Energy actually consumed by the chain");
             // This constructed snapshot tests valuation, not whether the live game may pay the
             // scarce chain. GenerationSource and StrategicSpendability own that separate gate.
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StandaloneHandAttachmentKeepsAllRecipientsAndRefreshesSecondSlot(bool recceEquipment)
+        {
+            var obj = new GameObject("standalone-hand-upgrade-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 30;
+                var player = new PlayerSetupData(); var ctx = new AiTurnContext();
+                var hand = new AiHandData(null, default, 0);
+                var hosts = new[] { new CardData(AttachmentSlotTests.Host(hero: true)),
+                    new CardData(AttachmentSlotTests.Host(hero: true)) };
+                foreach (var host in hosts) hand.AddCard(host);
+                var equipment = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 2));
+                if (recceEquipment)
+                {
+                    equipment.Definition.grantedAbilities = new List<string> { "r2s5" };
+                    equipment.Definition.equipment.addAbilities = new List<string> { "r2s5" };
+                }
+                var mutator = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Fate, 8, replace: true));
+                hand.AddCard(equipment); hand.AddCard(mutator);
+                var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Hand = hand.Hand } };
+                var before = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Where(p => p.Kind == NonCombatCardPlayer.PlayKind.Equipment).ToList();
+                Assert.That(before.Count(p => p.Card == equipment), Is.EqualTo(2));
+                Assert.That(before.Count(p => p.Card == mutator), Is.EqualTo(2));
+                float previous = StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total;
+                var chosen = before.Single(p => p.Card == equipment && p.EquipHostCard == hosts[0]);
+                var result = NonCombatCardPlayer.Execute(chosen, snap, player, root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+                Assert.That(hosts[0].Equipment, Is.SameAs(equipment.Definition));
+                Assert.That(hand.Hand.Contains(equipment), Is.False);
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total,
+                    Is.LessThan(previous));
+                var after = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>()).ToList();
+                Assert.That(after.Count(p => p.Card == mutator), Is.EqualTo(2));
+                Assert.That(hosts[0].Mutator, Is.Null);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void StandaloneAttachmentUsesActualInstanceCostDuringEnumerationAndExecution(bool produced)
+        {
+            var obj = new GameObject("standalone-attachment-cost-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 1;
+                var player = new PlayerSetupData(); var ctx = new AiTurnContext();
+                var hand = new AiHandData(null, default, 0);
+                var host = new CardData(AttachmentSlotTests.Host(hero: true));
+                var def = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 2);
+                // The ordinary card is cheaper than its activation preview. The produced
+                // card has already paid its unaffordable creation resources and plays at 1 AP.
+                def.apCost = produced ? 7 : 1;
+                def.activationApCost = produced ? 1 : 7;
+                if (produced) def.resourceCost = new ResourceCost { energy = 99999 };
+                var gear = produced ? ResearchProductionSystem.MintCard(def) : new CardData(def);
+                hand.AddCard(host); hand.AddCard(gear);
+                var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Hand = hand.Hand } };
+                var play = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Single(p => p.Card == gear);
+                Assert.That(play.ApCost, Is.EqualTo(1));
+                Assert.That(play.ResCost, Is.Null);
+                var result = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+                Assert.That(result.ApSpent, Is.EqualTo(1));
+                Assert.That(root.ActionPoints, Is.Zero);
+                Assert.That(host.Equipment, Is.SameAs(def));
+                Assert.That(hand.Hand.Contains(gear), Is.False);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [Test]
+        public void SharedConsumptionLocksUpgradeHostAcrossLanesAndRestoresOnPop()
+        {
+            var state = new MaterializationConsumptionState();
+            var host = new CardData(AttachmentSlotTests.Host());
+            var first = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 1));
+            var second = new CardData(AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Attack, 1));
+            string key = MaterializationConsumptionState.UpgradeConflictKey(host, null);
+            var token = state.PushExternal(first, null, key, false, 1, null, host);
+            Assert.That(state.CardsDisjoint(new MaterializationPlan { BaseCardInHand = host }), Is.False);
+            Assert.That(state.ExternalDisjoint(second, null, key, host), Is.False);
+            Assert.That(state.ApUsed, Is.EqualTo(1));
+            state.PopExternal(token);
+            Assert.That(state.CardsDisjoint(new MaterializationPlan { BaseCardInHand = host }), Is.True);
+            Assert.That(state.ExternalDisjoint(second, null, key, host), Is.True);
+            Assert.That(state.ApUsed, Is.Zero);
+            var unit = new Game.Units.UnitData();
+            var plan = new MaterializationPlan { UpgradeTargetUnit = unit };
+            var pushed = state.Push(plan);
+            Assert.That(state.ExternalDisjoint(second, null,
+                MaterializationConsumptionState.UpgradeConflictKey(null, unit)), Is.False);
+            state.Pop(pushed);
+            Assert.That(state.ExternalDisjoint(second, null,
+                MaterializationConsumptionState.UpgradeConflictKey(null, unit)), Is.True);
         }
     }
 }
