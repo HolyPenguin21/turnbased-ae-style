@@ -90,6 +90,32 @@ namespace Game.EditorTests
                 "Attack can add the sole field body to its primary army");
         }
 
+        [TestCase(AttackMissionPhase.Gather)]
+        [TestCase(AttackMissionPhase.Assault)]
+        [TestCase(AttackMissionPhase.Reinforcement)]
+        public void LiveAttack_BlocksSecondFistEvenAfterPrimarySpentMovement(AttackMissionPhase phase)
+        {
+            var primary = new ArmyData { Owner = Us, Hex = EnRoute };
+            primary.Members.Add(new UnitData { Owner = Us });
+            ArmyRegistry.Register(primary);
+            ArmySnapshot spent = Army(primary.Id, EnRoute, Strong()); spent.CurrentMovement = 0;
+            ArmySnapshot free = Army(49, OurBase, Weak());
+            free.HasHero = true;
+            WorldSnapshot snap = DefendedSite(new[] { spent, free }, new[] { OurBase });
+            MissionIntent intent = AttackIntent(phase, primary.Id);
+            intent.Attack.Target = AttackTargetRef.For(new HexCoord(9, 0), Blue, AttackTargetKind.Base);
+            intent.IntentKey = MissionIntentKey.For(intent);
+            var diag = new List<string>();
+            var demands = new List<AxisDemand>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, new[] { intent },
+                ActorCommitments.FromIntents(new[] { intent }, snap, null),
+                new CapabilityInventory(), diag, demands);
+            Assert.That(demands, Is.Empty,
+                "a different target and a free weak fist do not authorize a second operation");
+            Assert.That(diag.Any(x => x.Contains("unbound_attack_owned_by_live_operation")), Is.True);
+            Assert.That(intent.Status, Is.EqualTo(IntentStatus.Active));
+        }
+
         // ---- §22 the model keeps ONE primary field ---------------------------------------
 
         [Test]
