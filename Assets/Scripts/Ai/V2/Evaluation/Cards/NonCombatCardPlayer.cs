@@ -731,7 +731,6 @@ namespace Game.Ai.V2
                     if (ok)
                     {
                         hand.RemoveCard(play.Card);
-                        DevelopmentOutcomeTelemetry.RecordAttachment(player, ctx.TurnNumber, play.Card);
                     }
                     break;
                 }

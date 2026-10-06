@@ -18,6 +18,25 @@ namespace Game.EditorTests
     // exercise live GenerationSource affordability, Challenge, or Unity movement.
     public sealed class AiDevelopmentDecisionPathTests
     {
+        [TestCase(CardType.Unit, true, 0)]
+        [TestCase(CardType.Hero, true, 0)]
+        [TestCase(CardType.Equipment, false, 0)]
+        [TestCase(CardType.Equipment, true, 1)]
+        public void DevelopmentAttachmentTallyCountsOnlyProducedEquipment(
+            CardType type, bool produced, int expected)
+        {
+            DevelopmentOutcomeTelemetry.ClearAll();
+            try
+            {
+                var player = new PlayerSetupData();
+                var card = new CardData(new CardDefinition { cardType = type })
+                    { ResearchProductionCreated = produced };
+                DevelopmentOutcomeTelemetry.RecordAttachment(player, 6, card);
+                Assert.That(DevelopmentOutcomeTelemetry.Get(player).Attached, Is.EqualTo(expected));
+            }
+            finally { DevelopmentOutcomeTelemetry.ClearAll(); }
+        }
+
         [Test]
         public void EquipmentCreationStageNeedsOnlyChallengeApToday()
         {
