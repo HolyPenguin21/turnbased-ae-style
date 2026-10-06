@@ -16,6 +16,87 @@ namespace Game.EditorTests
     public class AiEconomyDecisionTests
     {
         [Test]
+        public void EmptyDeck_WitnessedFutureCostsMakeEnergyIncomeUseful()
+        {
+            // Tessek T24: hand E=1, deck=0, stock E=1, income E=1. Three useful
+            // Challenges costing 2 E each are a bounded workload, not the whole catalog.
+            var before = EconomyStanding.CalculateResource(ResourceType.Energy,
+                1f, 0f, 1f, 0f, 0f, 1f, 0f);
+            var after = EconomyStanding.CalculateResource(ResourceType.Energy,
+                1f, 0f, 1f, 0f, 0f, 1f, 0f, forecastOperationalNeed: 6f);
+            Assert.That(before.UsefulMarginalIncomeGain(2f), Is.Zero);
+            Assert.That(after.UsefulMarginalIncomeGain(2f), Is.EqualTo(1f).Within(0.001f));
+            Assert.That(after.IncomeGap, Is.GreaterThan(before.IncomeGap));
+            Assert.That(after.IncomeTarget, Is.GreaterThan(before.IncomeTarget));
+            Assert.That(after.UsefulRetainedIncomeGain(1f), Is.GreaterThan(0f),
+                "retention and new-source admission must read the same operational need");
+            after.SpendableStockpile = 10f;
+            Assert.That(after.UsefulMarginalIncomeGain(2f), Is.Zero,
+                "a forecast is not an unconditional entitlement to more infrastructure");
+        }
+
+        [Test]
+        public void OperationalForecast_AlternativesReplaceExpireAndDoNotReserveStock()
+        {
+            var player = new PlayerSetupData();
+            ResourceStarvationRegistry.Clear();
+            try
+            {
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "recon-air",
+                    new Dictionary<string, ResourceBundle> { ["air:52"] = new ResourceBundle { Energy = 6f } });
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "combat-air",
+                    new Dictionary<string, ResourceBundle> { ["air:52"] = new ResourceBundle { Energy = 3f } });
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 24).Energy, Is.EqualTo(6f),
+                    "one wing cannot fly two alternative jobs at once");
+                Assert.That(StrategicResourceReservationLedger.Active(player, 24,
+                    StrategicReservedResource.Energy), Is.Zero);
+                Assert.That(ResourceStarvationRegistry.Pressure(player, ResourceType.Energy), Is.Zero,
+                    "anticipated costs must not fabricate starvation hits or card preservation");
+                ResourceStarvationRegistry.DecayOncePerTurn(player, 25);
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 25).Energy, Is.EqualTo(6f));
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 25, "recon-air", null);
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 25, "combat-air", null);
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 25).Sum, Is.Zero);
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 25, "development",
+                    new Dictionary<string, ResourceBundle> { ["development"] = new ResourceBundle { Energy = 6f } });
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 27).Sum, Is.Zero,
+                    "a vanished owner must not keep income demand alive indefinitely");
+            }
+            finally { ResourceStarvationRegistry.Clear(); }
+        }
+
+        [Test]
+        public void AirForecast_UsesExistingWingAndNeverChargesPaidContinuation()
+        {
+            var player = new PlayerSetupData();
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 24,
+                Self = new SelfSnapshot { Armies = new[] { new ArmySnapshot { ArmyId = 52, IsAir = true } } } };
+            var p = new MissionProposal { PreferredMoverArmyId = 52, BaseValue = 10f,
+                Requirements = new MissionRequirements { EnergyDesired = 2f, EtaTurns = 1 } };
+            ResourceStarvationRegistry.Clear();
+            try
+            {
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "recon-air",
+                    ReconAirEnergyPolicy.TaskResourceForecast(snap, new[] { p }));
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 24).Energy, Is.EqualTo(6f));
+                snap.Self.Armies[0].SafeUnlandedEndsRemaining = 2;
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "recon-air",
+                    ReconAirEnergyPolicy.TaskResourceForecast(snap, new[] { p }));
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 24).Energy, Is.EqualTo(2f),
+                    "three-turn endurance is one launch, not three activation payments");
+                p.Requirements.EnergyDesired = 0f;
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "recon-air",
+                    ReconAirEnergyPolicy.TaskResourceForecast(snap, new[] { p }));
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 24).Sum, Is.Zero);
+                p.Requirements.EnergyDesired = 2f; p.PreferredMoverArmyId = 999;
+                ResourceStarvationRegistry.ReplaceOperationalForecast(player, 24, "recon-air",
+                    ReconAirEnergyPolicy.TaskResourceForecast(snap, new[] { p }));
+                Assert.That(ResourceStarvationRegistry.ForecastOperationalNeed(player, 24).Sum, Is.Zero);
+            }
+            finally { ResourceStarvationRegistry.Clear(); }
+        }
+
+        [Test]
         public void ResourceDeficit_HandNeedOutweighsEquivalentDeckNeed()
         {
             EconomyResourceStanding hand = EconomyStanding.CalculateResource(
