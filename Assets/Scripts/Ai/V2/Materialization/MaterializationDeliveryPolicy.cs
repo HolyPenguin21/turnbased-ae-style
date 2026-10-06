@@ -79,6 +79,35 @@ namespace Game.Ai.V2
         {
             if (p == null || demand == null)
                 return DeliveryAssessment.No(DeliveryFailureReason.MissingPlanOrDemand);
+            if (demand.EconomyEscortArmyId.HasValue)
+            {
+                if (demand.RequestingAxis != DesireAxis.Economy
+                    || demand.Capability != CapabilityKind.FieldCombatPower
+                    || !demand.TargetHex.HasValue || snapshot?.Self == null || player == null
+                    || p.Deploy.Army == null || p.Deploy.Army.Id != demand.EconomyEscortArmyId.Value
+                    || (p.Deploy.Kind != DeploymentKind.ExistingArmy && p.Deploy.Kind != DeploymentKind.Garrison))
+                    return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement);
+                var site = (snapshot.Economy?.BaseOpportunities
+                    ?? System.Array.Empty<EconomyBaseOpportunity>()).FirstOrDefault(x => x.Hex.Equals(demand.TargetHex.Value));
+                var intents = MissionIntentRegistry.GetOrCreate(player).All
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+                var commitments = ActorCommitments.FromIntents(intents, snapshot, null);
+                var recipient = DemandLayer.EconomyEscortRecipient(snapshot, demand.TargetHex.Value,
+                    site.BuilderRoutes, intents, commitments, demand.EconomyBuildApCost,
+                    demand.EconomyEscortArmyId);
+                CardDefinition card = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                if (recipient == null || card == null || card.cardType != CardType.Unit || card.isAviation
+                    || snapshot.Self.Hand?.Contains(demand.EconomyBuildCard) != true)
+                    return DeliveryAssessment.No(DeliveryFailureReason.RecipientMissing);
+                var line = AiPower.ProjectMaterialization(p);
+                var body = new WorthIt.DefenderProfile(line.Defense,
+                    line.EffectiveAbilities?.Contains(UnitAbilities.CeramicArmor) == true,
+                    card.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
+                    line.EffectiveAbilities, isGroundCombatant: true);
+                var route = site.BuilderRoutes.First(x => x.ArmyId == recipient.ArmyId);
+                return DemandLayer.EconomyEscortImprovesRoute(recipient, route, body, line.MoveMax)
+                    ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
+            }
             if (demand.AttackLocalRefit)
                 return p.AttackRefitPrimaryId == demand.AttackFistArmyId
                     && AttackBaseRefitPolicy.Validate(p, snapshot, player, out _, out _)
@@ -353,6 +382,9 @@ namespace Game.Ai.V2
         {
             if (army == null || demand == null)
                 return false;
+            if (demand.EconomyEscortArmyId.HasValue)
+                return army.ArmyId == demand.EconomyEscortArmyId.Value
+                    && !army.IsPrison && !army.IsAir;
             if (demand.Capability == CapabilityKind.CollectorCapability)
             {
                 // Collection ability is resource-specific. Reuse Analysis's frozen, effective
@@ -475,3 +507,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

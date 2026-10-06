@@ -34,7 +34,7 @@ namespace Game.Ai.V2
     {
         public static List<PlacementOption> BuildOptions(WorldSnapshot snap, PlayerSetupData player,
             CardDefinition def, ActorCommitments commitments, bool soloOnly,
-            bool phaseBSurplus = false, int? preparationShellId = null)
+            bool phaseBSurplus = false, int? preparationShellId = null, int? economyEscortArmyId = null)
         {
             var opts = new List<PlacementOption>();
             if (def == null || snap?.Self?.BaseHexes == null || player == null)
@@ -101,6 +101,7 @@ namespace Game.Ai.V2
                         && a.Members.Any(m => !m.IsHero && AiArmyRoles.IsGroundBattleBody(m))
                         && !AiArmyRoles.IsSoloRecce(a);
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
+                        || (isUnit && economyEscortArmyId == a.Id && AiArmyRoles.IsHeroLed(a))
                         || heroCanLeadFullFormation
                         || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a))
                         || heroLedWithRecceBody;

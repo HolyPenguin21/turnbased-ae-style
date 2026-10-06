@@ -53,7 +53,7 @@ namespace Game.Ai.V2
         }
 
         internal static GenerationOutcome TryGenerate(GenerationStep g, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, SpendAuthority authority = default)
         {
             if (g == null || g.CardDef == null || player == null || root == null || hand == null
                 || ctx?.ResearchProductionCatalog == null)
@@ -61,7 +61,7 @@ namespace Game.Ai.V2
                     "no generation step/catalog/args");
             // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
             // a protected resource may reject this plan, but must never reveal/pay first.
-            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef))
+            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef, authority))
                 return new GenerationOutcome(false, false, null, false,
                     "generation resources reserved since planning");
 
@@ -151,7 +151,7 @@ namespace Game.Ai.V2
             CardData generated = null;
             if (plan.Generation != null)
             {
-                GenerationOutcome go = TryGenerate(plan.Generation, player, root, hand, ctx);
+                GenerationOutcome go = TryGenerate(plan.Generation, player, root, hand, ctx, authority);
                 res.GenerationAttempted = go.Attempted;
                 if (go.Attempted)
                     res.AttemptedGenerationUseKey = plan.Generation.UseKey;
