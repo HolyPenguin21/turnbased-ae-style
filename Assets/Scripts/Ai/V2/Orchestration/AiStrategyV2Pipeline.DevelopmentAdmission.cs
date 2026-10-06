@@ -40,7 +40,8 @@ namespace Game.Ai.V2
             PlayerRoot root = null, AiTurnContext ctx = null) =>
             $"axis={DesireAxis.Development}"
             + $"|window={(snapshot != null ? DevelopmentInvestmentGate.OpenMask(player, snapshot.TurnNumber) : "----")}"
-            + $"|apfit={DevelopmentApAffordability(snapshot, hand, actionPoints)}"
+            + "|apfit=" + DevelopmentApAffordability(snapshot, hand, actionPoints,
+                root != null && ctx != null ? StrategicSpendability.SpendableAp(player, root, ctx) : (float?)null)
             + $"|res={resources}"
             + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
             + $"|hand={handVersion}"
@@ -76,8 +77,14 @@ namespace Game.Ai.V2
 
         // The known offering thresholds plus the exact AP pool needed by preparation.
         internal static string DevelopmentApAffordability(WorldSnapshot snapshot, AiHandData hand,
-            int actionPoints)
+            int actionPoints, float? spendableAp = null)
         {
+            // Physical AP can stay unchanged when another owner's hold is released/placed.
+            // Phase A revalidates against the bank, so its admission key must see that too.
+            string pool = $"raw:{actionPoints}"
+                + (spendableAp.HasValue
+                    ? ":free:" + spendableAp.Value.ToString("R", CultureInfo.InvariantCulture)
+                    : string.Empty);
             var thresholds = new List<int>();
             foreach (DevelopmentOffering off in snapshot?.Development?.Offerings
                          ?? (IReadOnlyList<DevelopmentOffering>)System.Array.Empty<DevelopmentOffering>())
@@ -88,10 +95,10 @@ namespace Game.Ai.V2
                 if (c?.Definition != null && c.Definition.cardType == CardType.Unit)
                     thresholds.Add(c.EffectivePlayApCost);
             if (thresholds.Count == 0)
-                return $"raw:{actionPoints}";   // nothing enumerable — never guess, keep the raw fact
+                return pool;   // nothing enumerable — never guess, keep both pool facts
             // Facility capacity, hero delivery and operator preparation have additional AP
             // thresholds. Retain the exact pool until every complete prerequisite is enumerated.
-            return $"raw:{actionPoints}:" + string.Join("", thresholds.Distinct().OrderBy(x => x)
+            return pool + ":" + string.Join("", thresholds.Distinct().OrderBy(x => x)
                 .Select(x => actionPoints >= x ? "1" : "0"));
         }
 

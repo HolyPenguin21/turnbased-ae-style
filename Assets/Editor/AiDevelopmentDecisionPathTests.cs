@@ -18,6 +18,92 @@ namespace Game.EditorTests
     // exercise live GenerationSource affordability, Challenge, or Unity movement.
     public sealed class AiDevelopmentDecisionPathTests
     {
+        [Test]
+        public void FieldOperatorDeliveryPricesTheWholeArmyAndItsSlowestMember()
+        {
+            var hero = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: true));
+            hero.ActivationApCost = 1; hero.MoveMax = 6;
+            var army = new ArmyData();
+            army.Members.Add(hero);
+            for (int i = 0; i < 2; i++)
+            {
+                var body = AttachmentSlotTests.Body();
+                body.ActivationApCost = 2; body.MoveMax = 2;
+                army.Members.Add(body);
+            }
+            var delivery = DevelopmentOpportunityEvaluator.OperatorDeliveryFacts(army, hero, 6);
+            Assert.That(delivery.ActionAp, Is.Zero);
+            Assert.That(delivery.ActivationNow, Is.EqualTo(5));
+            Assert.That(delivery.RecurringActivationAp, Is.EqualTo(5));
+            Assert.That(delivery.EtaTurns, Is.EqualTo(3));
+            army.MarkActivated();
+            delivery = DevelopmentOpportunityEvaluator.OperatorDeliveryFacts(army, hero, 6);
+            Assert.That(delivery.ActivationNow, Is.Zero);
+            Assert.That(delivery.RecurringActivationAp, Is.EqualTo(5));
+        }
+
+        [Test]
+        public void DiscardedRemoteOperatorContributesNoDeliveryFacts()
+        {
+            var army = new ArmyData();
+            army.Members.Add(AttachmentSlotTests.Body());
+            var delivery = DevelopmentOpportunityEvaluator.OperatorDeliveryFacts(army, null, 6);
+            Assert.That(delivery, Is.EqualTo(default((float, float, float, int))));
+        }
+
+        [Test]
+        public void GarrisonDeliveryPricesTheExtractedHeroRatherThanTheGarrisonRoster()
+        {
+            var hero = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: true));
+            hero.ActivationApCost = 1; hero.MoveMax = 6;
+            var army = new ArmyData { IsGarrison = true };
+            army.Members.Add(hero);
+            army.Members.Add(AttachmentSlotTests.Body());
+            var delivery = DevelopmentOpportunityEvaluator.OperatorDeliveryFacts(army, hero, 6);
+            Assert.That(delivery.ActionAp, Is.EqualTo(ArmyActions.CreateArmyApCost));
+            Assert.That(delivery.ActivationNow, Is.EqualTo(1));
+            Assert.That(delivery.RecurringActivationAp, Is.EqualTo(1));
+            Assert.That(delivery.EtaTurns, Is.EqualTo(1));
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void FutureAttachmentRetainsOccupiedSlotAndHostRestrictions(AttachmentSlot slot)
+        {
+            var output = AttachmentSlotTests.Attachment(slot);
+            var host = new CardData(AttachmentSlotTests.Host());
+            Assert.That(EquipmentSystem.CanAttachPreview(output, host, out _), Is.True);
+            if (slot == AttachmentSlot.Mutator) host.Mutator = output;
+            else host.Equipment = output;
+            Assert.That(EquipmentSystem.CanAttachPreview(output, host, out _), Is.False);
+            var unit = AttachmentSlotTests.Body(AttachmentSlotTests.Host(bio: false));
+            output.equipment.hostTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio };
+            Assert.That(EquipmentSystem.CanAttachPreview(output, unit, out _), Is.False);
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void FutureEquipmentPreparationDoesNotRequireTodaysAttachmentBudget(AttachmentSlot slot)
+        {
+            var hand = new AiHandData(null, default, 0);
+            var host = new CardData(AttachmentSlotTests.Host(hero: true));
+            hand.AddCard(host);
+            var output = AttachmentSlotTests.Attachment(slot, EquipmentStat.Fate, 4);
+            output.activationApCost = 1;
+            var prepare = typeof(DevelopmentOpportunityEvaluator).GetMethod("PrepareEquipment",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var opportunity = (DevelopmentOpportunity)prepare.Invoke(null, new object[]
+            {
+                output, ResearchProductionMode.Production, default(HexCoord),
+                AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: true)), 1f, 0f,
+                null, new CapabilityInventory(), new PlayerSetupData(), null, hand, null,
+            });
+            Assert.That(opportunity, Is.Not.Null, "Future usefulness must survive an unavailable current AP bank");
+            Assert.That(opportunity.RecipientCard, Is.SameAs(host));
+            Assert.That(EquipmentSystem.CanAttach(ResearchProductionSystem.MintCard(output), host,
+                null, out _), Is.False, "Live attachment still requires today's budget");
+        }
+
         [TestCase(AttachmentSlot.Equipment)]
         [TestCase(AttachmentSlot.Mutator)]
         public void EnumeratedRecipientsKeepTheFourthFallbackForTheSharedPortfolio(AttachmentSlot slot)

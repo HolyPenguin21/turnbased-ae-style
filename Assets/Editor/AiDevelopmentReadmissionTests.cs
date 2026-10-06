@@ -11,6 +11,31 @@ namespace Game.EditorTests
     public class AiDevelopmentReadmissionTests
     {
         [Test]
+        public void ApReservationReleaseInvalidatesAdmissionWithoutChangingPhysicalAp()
+        {
+            var snapshot = Snapshot(Army());
+            var player = new Game.Players.PlayerSetupData();
+            const int turn = 17, physicalAp = 5;
+            try
+            {
+                StrategicResourceReservationLedger.Upsert(player, turn, new StrategicResourceReservation
+                {
+                    Owner = "reaction", Reason = StrategicReservationReason.StrategicReactionPass,
+                    Resource = StrategicReservedResource.ActionPoints, Amount = 3,
+                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                });
+                string Key() => Pipeline.DevelopmentApAffordability(snapshot, null, physicalAp,
+                    TurnResourceBook.Free(physicalAp, TurnResourceBook.LedgerClaims(player, turn),
+                        StrategicReservedResource.ActionPoints, default));
+                string held = Key();
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, "reaction");
+                Assert.That(Key(), Is.Not.EqualTo(held),
+                    "A released AP hold must not be suppressed as an unchanged settled state");
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
+        [Test]
         public void DisplacedMissionValueInvalidatesPreparationWithoutChangingActorClaim()
         {
             var intent = new MissionIntent

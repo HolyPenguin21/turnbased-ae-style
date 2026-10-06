@@ -273,7 +273,7 @@ namespace Game.Cards
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, target, owner, out reason);
 
         private static bool CanAttach(CardDefinition equipment, int apCost, ResourceCost resourceCost,
-            UnitData target, PlayerRoot owner, out string reason)
+            UnitData target, PlayerRoot owner, out string reason, bool checkBudget = true)
         {
             if (target == null)
             {
@@ -281,7 +281,7 @@ namespace Game.Cards
                 return false;
             }
             EquipmentHostKind kind = target.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit;
-            return CanAttachCore(equipment, apCost, resourceCost, kind, target.TypeTags, GetAttachment(target, equipment) != null, owner, out reason);
+            return CanAttachCore(equipment, apCost, resourceCost, kind, target.TypeTags, GetAttachment(target, equipment) != null, owner, out reason, checkBudget);
         }
 
         // Same checks against a card still in hand — host kind/tags come from the card's own
@@ -295,14 +295,22 @@ namespace Game.Cards
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, targetCard, owner, out reason);
 
         private static bool CanAttach(CardDefinition equipment, int apCost, ResourceCost resourceCost,
-            CardData targetCard, PlayerRoot owner, out string reason)
+            CardData targetCard, PlayerRoot owner, out string reason, bool checkBudget = true)
         {
             if (!TryGetHostProfile(targetCard?.Definition, out EquipmentHostKind kind,
                     out ICollection<UnitTypeTag> hostTags, out reason))
                 return false;
             return CanAttachCore(equipment, apCost, resourceCost, kind, hostTags,
-                GetAttachment(targetCard, equipment) != null, owner, out reason);
+                GetAttachment(targetCard, equipment) != null, owner, out reason, checkBudget);
         }
+
+        // Future attachment: retain host/tag and occupied-slot checks, defer only payment.
+        // Execution always uses CanAttach/TryAttach with the live budget.
+        internal static bool CanAttachPreview(CardDefinition equipment, UnitData target, out string reason)
+            => CanAttach(equipment, 0, null, target, null, out reason, checkBudget: false);
+
+        internal static bool CanAttachPreview(CardDefinition equipment, CardData target, out string reason)
+            => CanAttach(equipment, 0, null, target, null, out reason, checkBudget: false);
 
         // Pure definition-level compatibility for planners and previews. Slot occupancy, AP and
         // resources are deliberately excluded; the live CanAttach overloads layer those checks on
@@ -381,7 +389,7 @@ namespace Game.Cards
         }
 
         private static bool CanAttachCore(CardDefinition equipment, int apCost, ResourceCost resourceCost,
-            EquipmentHostKind kind, ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason)
+            EquipmentHostKind kind, ICollection<UnitTypeTag> hostTags, bool slotTaken, PlayerRoot owner, out string reason, bool checkBudget = true)
         {
             if (!FitsHostCore(equipment, kind, hostTags, out reason))
                 return false;
@@ -391,6 +399,8 @@ namespace Game.Cards
                 reason = $"This already has {equipment.attachmentSlot.ToString().ToLowerInvariant()} attached.";
                 return false;
             }
+
+            if (!checkBudget) return true;
 
             if (owner == null || !owner.CanSpendActionPoints(apCost))
             {
