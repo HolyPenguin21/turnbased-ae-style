@@ -96,6 +96,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 yield break;
             }
+            sortie.StrikePolicy = policy;
             if (GroundCombatAirSupport.TargetKnownEmpty(player, ctx.TurnNumber, targetHex, policy))
             {
                 GroundCombatAirSupport.SendHome(player, sortie, "nothing left to strike");
@@ -206,8 +207,8 @@ namespace Game.Ai.V2
         {
             ArmyData wing = sortie.Army;
             if (wing != null)
-                yield return AviationRebasePlanner.ExecuteContinuation(player, root, ctx, wing, _ => { },
-                    allowRecoveryStrike: false);
+                yield return AviationRebasePlanner.ExecuteContinuation(
+                    player, root, ctx, wing, _ => { }, result: result);
             ArmyData after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (after != null)
                 result.FinalHex = after.Hex;
