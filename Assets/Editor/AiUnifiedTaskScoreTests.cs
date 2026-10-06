@@ -36,9 +36,9 @@ namespace Game.EditorTests
                          "Attack enemy Base", "ActiveDefence intercept", "Recon Explore",
                          "Recon Refresh", "Mobile collection", "Development operator walk" })
                 Assert.That(json, Does.Contain("\"name\":\"" + name + "\""), name);
-            // Raid near: reward 8 + win 0.8 x 12 + proximity at 3 hexes 1.5 - activation 3 - one turn 3.
+            // Raid near: reward 8 + win 0.8 x 12 + signed proximity at 3 hexes 1 - activation 3 - one turn 3.
             Assert.That(json, Does.Contain("\"name\":\"Raid near\",\"family\":\"Military\""));
-            Assert.That(json, Does.Contain("\"value\":13.1,\"benefit\":19.1,\"cost\":6"));
+            Assert.That(json, Does.Contain("\"value\":12.6,\"benefit\":18.6,\"cost\":6"));
             Assert.That(json.Split('{').Length, Is.EqualTo(json.Split('}').Length),
                 "balanced JSON objects");
         }
@@ -449,9 +449,9 @@ namespace Game.EditorTests
                 Is.EqualTo(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                     estimate.RecurringActivationAp, estimate.EtaTurns))));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
-            // info=10, neutral home proximity at 6 hexes=0, activation=1,
+            // info=10, signed home proximity at 6 hexes=-1, activation=1,
             // one extra turn of delivery=1.
-            Assert.That(objective.BaseValue, Is.EqualTo(8f).Within(0.0001f));
+            Assert.That(objective.BaseValue, Is.EqualTo(7f).Within(0.0001f));
         }
 
         [Test]
@@ -574,13 +574,19 @@ namespace Game.EditorTests
             {
                 ArmyId = 9, Hex = new HexCoord(0, 0), HasHero = true,
                 IsMobileEconomyBuilder = true, MemberCount = 1,
+                Members = System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
                 MaxMovement = 3, CurrentMovement = 1, ActivationApCost = 5,
             };
             var cheaper = new ArmySnapshot
             {
                 ArmyId = 10, Hex = hex, HasHero = true,
                 IsMobileEconomyBuilder = true, MemberCount = 1,
+                Members = System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
                 MaxMovement = 3, CurrentMovement = 3, ActivationApCost = 1,
+            };
+            var pinnedRoute = new EconomyBuilderRouteSnapshot {
+                ArmyId = 9, TravelCost = 6, ReturnTravelCost = 6,
+                CurrentMovement = 1, MaxMovement = 3, ActivationApCost = 5, ArmySize = 1,
             };
             var snapshot = new WorldSnapshot
             {
@@ -588,6 +594,15 @@ namespace Game.EditorTests
                 {
                     Armies = new List<ArmySnapshot> { pinned, cheaper },
                 },
+                Economy = new EconomyStanding { ExtractionOpportunities = new[] {
+                    new EconomyExtractionOpportunity {
+                        Hex = hex, ResourceType = ResourceType.Materials,
+                        BuilderRoutes = new[] { pinnedRoute, new EconomyBuilderRouteSnapshot {
+                            ArmyId = 10, IsOnTarget = true, TravelCost = 0,
+                            CurrentMovement = 3, MaxMovement = 3, ActivationApCost = 1, ArmySize = 1,
+                        } },
+                    },
+                } },
             };
             var intent = new MissionIntent
             {
@@ -621,6 +636,12 @@ namespace Game.EditorTests
 
             wrongBuilder.EconomyPreferredBuilderArmyId = 9;
             wrongBuilder.Value = 6f;
+            wrongBuilder.WorldTaskScore = new TaskScore(economicHexBenefit: 6f);
+            // Requirements read current fog-honest route witnesses, not the old scalar travel hint.
+            pinnedRoute.TravelCost = 7;
+            snapshot.Economy.ExtractionOpportunities = new[] { new EconomyExtractionOpportunity {
+                Hex = hex, ResourceType = ResourceType.Materials, BuilderRoutes = new[] { pinnedRoute },
+            } };
             wrongBuilder.EconomyTravelCost = 7f;
             MissionProposal correctRefresh = EconomyMissionPlanner.Propose(snapshot, null,
                 new[] { intent }, new[] { wrongBuilder }).Single();
@@ -783,4 +804,3 @@ namespace Game.EditorTests
     }
 }
 #endif
-

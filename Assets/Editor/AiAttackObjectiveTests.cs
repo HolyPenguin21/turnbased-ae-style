@@ -47,8 +47,10 @@ namespace Game.EditorTests
                 AiPower.ComposeStack(pool, 5));
             Assert.That(peak, Is.LessThan(impossible),
                 "the strong two-slot hero cannot command the five-slot roster");
-            Assert.That(AiPower.TotalMilitaryPotential(pool.Skip(1).ToList()), Is.LessThan(peak),
-                "losing a hero changes the current peak");
+            Assert.That(AiPower.TotalMilitaryPotential(pool.Skip(1).ToList()), Is.EqualTo(peak),
+                "losing the unused two-slot hero cannot reduce the five-slot commander's peak");
+            Assert.That(AiPower.TotalMilitaryPotential(pool.Where((_, index) => index != 1).ToList()), Is.LessThan(peak),
+                "losing the commander of the best roster must reduce the current peak");
         }
 
         [Test]
@@ -367,10 +369,12 @@ namespace Game.EditorTests
         public void IntrinsicScore_MilitaryRealizationRaisesAttackThroughCanonicalSlot()
         {
             WorldSnapshot low = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
-            low.Self.BestStackPotential = 10f;
+            low.Self.FistPower = 10f;
+            low.Self.FieldPotential = 100f;
             low.Self.TotalMilitaryPotential = 100f;
             WorldSnapshot high = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
-            high.Self.BestStackPotential = 90f;
+            high.Self.FistPower = 90f;
+            high.Self.FieldPotential = 100f;
             high.Self.TotalMilitaryPotential = 100f;
 
             AttackObjective lowAttack = AttackObjectiveEvaluator.Enumerate(low)[0];
@@ -688,4 +692,3 @@ namespace Game.EditorTests
     }
 }
 #endif
-

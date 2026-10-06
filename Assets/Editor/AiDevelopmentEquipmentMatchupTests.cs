@@ -47,8 +47,7 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
 
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.EqualTo(1f),
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
                 "A weapon that makes an otherwise impenetrable enemy damageable must improve fit");
 
             var mobility = new EquipmentGrant();
@@ -60,8 +59,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
                 "Movement alone cannot masquerade as an improvement in the battle roster");
             Assert.That(host.Equipment, Is.Null,
                 "Valuation must not attach the preview to the actual card");
@@ -108,9 +106,8 @@ namespace Game.EditorTests
                 new[] { new WorthIt.DefenderProfile(1, false, attack: 20, hitPoints: 8, initiative: 2) },
                 snap.TrueWorld.EnemyArmies[0].Members), Is.True,
                 "The host must already have penetration so this regression exercises defensive value");
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.EqualTo(1f),
-                "A large defensive improvement must be visible through canonical WorthIt outcomes");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
+                "A large defensive improvement must be visible through the active contextual combat delta");
             Assert.That(host.Equipment, Is.Null,
                 "Projected defensive valuation must not mutate the hand card");
         }
@@ -153,8 +150,7 @@ namespace Game.EditorTests
                     },
                 },
             };
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, army, snap), Is.EqualTo(1f),
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.GreaterThan(0f),
                 "An existing field unit should benefit when its real army gains a new counter");
 
             var mobility = new EquipmentGrant();
@@ -166,8 +162,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, army, snap), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.Zero,
                 "Movement must not be mistaken for a combat improvement in a deployed roster");
             Assert.That(unit.Attack, Is.EqualTo(1));
             Assert.That(unit.Equipment, Is.Null);
@@ -248,18 +243,17 @@ namespace Game.EditorTests
                 },
             };
 
-            float known = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
-            Assert.That(known, Is.EqualTo(1f),
+            float known = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            Assert.That(known, Is.GreaterThan(0f),
                 "A legitimately sighted neutral may contribute its current composition to Production valuation");
 
             neutral.Hex = new HexCoord(-20, 19);
-            float movedBehindFog = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float movedBehindFog = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(movedBehindFog, Is.EqualTo(known).Within(0.0001f),
                 "The neutral's hidden live Hex must not enter Production valuation once identity is known");
 
             snap.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
                 "An unknown neutral must not become a Production threat merely because TrueWorld can see it");
         }
 
@@ -297,20 +291,18 @@ namespace Game.EditorTests
                 },
             };
 
-            float visible = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
-            Assert.That(visible, Is.EqualTo(1f),
+            float visible = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            Assert.That(visible, Is.GreaterThan(0f),
                 "An honestly observed event guard is a legitimate neutral composition witness");
             snap.Known.EventGuards = new[]
             {
                 new KnownEventGuardSnapshot(new HexCoord(-15, 12), guard, "event guard", 1),
             };
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.EqualTo(visible).Within(0.0001f),
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(visible).Within(0.0001f),
                 "Location must not leak from an event witness into production valuation");
 
             snap.Known.EventGuards = System.Array.Empty<KnownEventGuardSnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
                 "An undiscovered event must not be fabricated as a Production target");
         }
 
@@ -320,6 +312,7 @@ namespace Game.EditorTests
             var host = new CardData(new CardDefinition
             {
                 cardType = CardType.Unit, attack = 1, defenseRating = 2, hitPoints = 8,
+                grantedAbilities = new List<string> { UnitAbilities.AntiAir },
             });
             var weapon = new EquipmentGrant();
             weapon.statChanges.Add(new EquipmentStatChange
@@ -339,7 +332,7 @@ namespace Game.EditorTests
                 Members = new[]
                 {
                     new WorthIt.DefenderProfile(defense: 14, hasCeramicArmor: false,
-                        attack: 5, hitPoints: 8),
+                        typeTags: new[] { UnitTypeTag.Aircraft }, attack: 5, hitPoints: 8),
                 },
             };
             var snap = new WorldSnapshot
@@ -347,21 +340,18 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { airArmy } },
             };
 
-            float withAir = StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap);
-            Assert.That(withAir, Is.EqualTo(1f),
-                "Enemy aviation composition must reach the same canonical WorthIt valuation as ground composition");
+            float withAir = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            Assert.That(withAir, Is.GreaterThan(0f),
+                "Enemy aviation composition must reach the same contextual combat valuation as ground composition");
 
             airArmy.ArmyId = 999;
             airArmy.Hex = new HexCoord(-30, 22);
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.EqualTo(withAir).Within(0.0001f),
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(withAir).Within(0.0001f),
                 "Aviation composition may affect valuation, but its hidden identity/position must not");
 
             snap.TrueWorld.EnemyArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.Zero,
-                "Without the aviation composition witness the matchup bonus must disappear");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
+                "Without the aviation composition witness the contextual combat delta must disappear");
         }
 
         [Test]
@@ -394,16 +384,15 @@ namespace Game.EditorTests
             {
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
-            float before = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float before = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             enemy.ArmyId = 900;
             enemy.Hex = new HexCoord(-10, 11);
-            float after = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float after = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(after, Is.EqualTo(before).Within(0.0001f),
                 "Only composition is permitted to reach equipment valuation, not a hidden target");
 
             snap.TrueWorld = null;
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snap), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
                 "With no composition available the original intrinsic equipment score must stand");
         }
 
@@ -436,6 +425,39 @@ namespace Game.EditorTests
                 attack = 3, defenseRating = 3, hitPoints = 5 });
             Assert.DoesNotThrow(() =>
                 StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 2), host));
+        }
+
+        [TestCase(AttachmentSlot.Equipment, false)]
+        [TestCase(AttachmentSlot.Mutator, false)]
+        [TestCase(AttachmentSlot.Equipment, true)]
+        [TestCase(AttachmentSlot.Mutator, true)]
+        public void FirstLiveAttachmentHasFullStatsAndIsScoredAgainstOpposition(AttachmentSlot slot, bool hero)
+        {
+            var unit = AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: hero));
+            unit.HitPointsCurrent = 4; unit.MoveCurrent = 1; unit.Fate = 1;
+            var attachment = AttachmentSlotTests.Attachment(slot,
+                hero ? EquipmentStat.Fate : EquipmentStat.Attack, 2);
+            var predicted = EquipmentSystem.PredictAttachment(attachment, unit);
+            Assert.That(predicted.Stats.Keys, Is.EquivalentTo(
+                EquipmentSystem.DefinitionStats(unit.OriginatingCard).Keys));
+            Assert.That(predicted.Stats[EquipmentStat.HitPoints], Is.EqualTo(unit.HitPointsMax));
+            Assert.That(predicted.Stats[EquipmentStat.Defense], Is.EqualTo(unit.Defense));
+            var snap = PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 3, hitPoints: 5));
+            var delta = StrategicCardEvaluator.EquipmentDeltaParts(attachment, unit, snap);
+            Assert.That(delta.Combat, Is.GreaterThan(0f));
+            Assert.That(unit.Equipment, Is.Null);
+            Assert.That(unit.Mutator, Is.Null);
+            Assert.That(unit.HitPointsCurrent, Is.EqualTo(4));
+            Assert.That(unit.MoveCurrent, Is.EqualTo(1));
+            Assert.That(unit.Fate, Is.EqualTo(1));
+            EquipmentSystem.ApplyAttachments(unit,
+                slot == AttachmentSlot.Equipment ? attachment : null,
+                slot == AttachmentSlot.Mutator ? attachment : null);
+            Assert.That(unit.Attack, Is.EqualTo(predicted.Stats[EquipmentStat.Attack]));
+            Assert.That(unit.FateMax, Is.EqualTo(predicted.Stats[EquipmentStat.Fate]));
+            Assert.That(unit.Fate, Is.EqualTo(hero ? 3 : 1));
+            Assert.That(unit.HitPointsCurrent, Is.EqualTo(4));
+            Assert.That(unit.MoveCurrent, Is.EqualTo(1));
         }
 
         [Test]
@@ -496,7 +518,7 @@ namespace Game.EditorTests
                 attack = 2, defenseRating = 4, hitPoints = 6 });
             var snap = PolicyWorld();
             var gain = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), body, snap);
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(gain, 0, true), Is.GreaterThan(0));
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(gain), Is.GreaterThan(0));
             Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(new CardDefinition
                 { cardType = CardType.Equipment, equipment = new EquipmentGrant() }, body, snap).Total, Is.Zero);
             snap.Development = new DevelopmentReadiness { UpgradeTargetCount = 1, SurplusFraction = 1 };

@@ -161,7 +161,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ResearchHasOnlyTwentySharedMutatorsAndProductionKeepsItsSevenEquipment()
+        public void ResearchHasOnlyTwentySharedMutatorsAndProductionContainsPhysicalEquipment()
         {
             string text = Text("Assets/Cards/ResearchProductionCatalog.asset");
             string research = text.Split(new[] { "  researchCards:" }, StringSplitOptions.None)[1]
@@ -170,7 +170,11 @@ namespace Game.EditorTests
             Assert.That(keys, Is.EquivalentTo(Mutators().Select(c => c.authoredKey)));
             Assert.That(Regex.Matches(research, @"factionRestriction: 2").Count, Is.EqualTo(20));
             string production = text.Split(new[] { "  productionCards:" }, StringSplitOptions.None)[1];
-            Assert.That(Regex.Matches(production, @"cardKey: neutral.equipment\.").Count, Is.EqualTo(7));
+            string[] productionKeys = Regex.Matches(production, @"cardKey: (\S+)")
+                .Cast<Match>().Select(m => m.Groups[1].Value).ToArray();
+            Assert.That(productionKeys, Is.Not.Empty);
+            Assert.That(productionKeys.All(k => k.StartsWith("neutral.equipment.", StringComparison.Ordinal)), Is.True);
+            Assert.That(productionKeys.Intersect(keys), Is.Empty);
             Assert.That(production, Does.Not.Contain("mutator"));
         }
 

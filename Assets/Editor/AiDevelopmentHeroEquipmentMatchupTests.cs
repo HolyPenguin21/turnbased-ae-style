@@ -86,8 +86,7 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, null, snapshot), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.Zero,
                 "Hand Heroes cannot be treated as new WorthIt combat bodies");
 
             var hero = new UnitData
@@ -100,8 +99,7 @@ namespace Game.EditorTests
             opportunity.RecipientKind = DevRecipientKind.FieldUnit;
             opportunity.RecipientCard = null;
             opportunity.RecipientUnit = hero;
-            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
-                opportunity, army, snapshot), Is.Zero,
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snapshot).Combat, Is.Zero,
                 "A deployed Hero is excluded from the same canonical combat roster");
             Assert.That(hero.Attack, Is.EqualTo(1), "Valuation must not modify a live Hero");
             Assert.That(hero.Equipment, Is.Null);

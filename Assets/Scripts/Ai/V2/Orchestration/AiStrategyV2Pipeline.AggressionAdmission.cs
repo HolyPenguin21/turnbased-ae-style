@@ -43,7 +43,11 @@ namespace Game.Ai.V2
                 .OrderBy(a => a.ArmyId)
                 .Select(a => $"{a.ArmyId}:{a.MemberCount}:{a.EffectiveArmyPower.ToString("0.##", inv)}"
                     + $":{(a.IsStructuralRaidActor ? "S" : "")}{(a.IsGarrison ? "G" : "")}"
-                    + $":mp={a.CurrentMovement}/{a.MaxMovement}:act={(a.HasActivatedThisTurn ? 1 : 0)}"
+                    // A pure solo scout cannot serve a ground combat leg. Its own waypoint AP/MP
+                    // is not an Aggression input; force and asset-threat facts remain in the key.
+                    + (!a.IsSoloRecce || a.IsStructuralRaidActor || a.IsGarrison || a.HasHero
+                        ? $":mp={a.CurrentMovement}/{a.MaxMovement}:act={(a.HasActivatedThisTurn ? 1 : 0)}"
+                        : "")
                     // A hero's hex decides the preparation host's capacity hero and a lone-hero
                     // host (2026-09-30), so a hero-carrying army is positioned too.
                     + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero ? $":{a.Hex.Q},{a.Hex.R}" : "")));
@@ -103,4 +107,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

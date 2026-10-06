@@ -194,6 +194,10 @@ namespace Game.EditorTests
             donor.MemberCount = 2;
             WorldSnapshot snap = Snapshot(new[] { primary, donor }, 0);
             snap.Self.BaseHexes = new[] { near, useful };
+            snap.Known = new KnownSnapshot { NeutralSightings = new[] {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(target, null, "observed guard", 1,
+                    defender.Defense, defender.Attack, new[] { defender }, armyId: 99),
+            } };
             var raid = Raid(primary.ArmyId, target);
 
             int Route(HexCoord from, HexCoord to, int maxMovement)

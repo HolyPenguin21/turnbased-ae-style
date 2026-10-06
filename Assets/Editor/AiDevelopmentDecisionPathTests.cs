@@ -118,13 +118,13 @@ namespace Game.EditorTests
             var delta = new StrategicCardEvaluator.EquipmentDelta(0.6f, -0.7f);
             var op = new DevelopmentOpportunity
             {
-                RecipientCard = host, MatchupFit = 1f,
+                RecipientCard = host,
                 ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
                 TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
             };
             Assert.That(op.ExpectedGain, Is.LessThan(0f));
             Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op),
-                Is.EqualTo(StrategicCardEvaluator.EquipmentUpgradeValue(delta, 1f, true)).Within(0.0001f));
+                Is.EqualTo(StrategicCardEvaluator.EquipmentUpgradeValue(delta)).Within(0.0001f));
             Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(op), Is.LessThan(0f),
                 "A matchup witness cannot turn a harmful signed delta into a useful investment");
         }

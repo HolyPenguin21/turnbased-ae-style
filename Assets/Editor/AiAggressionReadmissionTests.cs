@@ -57,6 +57,19 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ScoutWithCapacityHeroMovementStillReadmitsAggression()
+        {
+            var player = new PlayerSetupData();
+            ArmySnapshot scout = Scout();
+            scout.HasHero = true;
+            WorldSnapshot snap = Snapshot(Field(), scout);
+            string before = Key(snap, player);
+            scout.CurrentMovement = 0;
+            Assert.That(Key(snap, player), Is.Not.EqualTo(before),
+                "A hero can serve Attack preparation even when its carrier has a scout role");
+        }
+
+        [Test]
         public void FieldArmyMoveDamageOrSpentMovement_ReadmitsAggression()
         {
             var player = new PlayerSetupData();

@@ -20,7 +20,7 @@ namespace Game.EditorTests
     public class AiRawResourceReadRatchetTests
     {
         private static readonly Regex RawRead =
-            new Regex(@"\.ActionPoints\b|\.GetResource\(|\.Stockpile\b|\bCanAfford\(");
+            new Regex(@"(?<!StrategicReservedResource)\.ActionPoints\b|\.GetResource\(|\.Stockpile\b|\bCanAfford\(");
 
         private static readonly Dictionary<string, int> Allowed = new Dictionary<string, int>
         {
@@ -46,7 +46,8 @@ namespace Game.EditorTests
             ["Execution/TaskExecutor.cs"] = 10,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
             ["Initiative/PreTurnCapacityAnalysis.cs"] = 1,
-            ["Materialization/MaterializationExecutor.cs"] = 25,
+            // Physical before/after accounting, including AP spent by the local-refit handoff.
+            ["Materialization/MaterializationExecutor.cs"] = 26,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
             ["Orchestration/AiStrategyV2Pipeline.cs"] = 6,
             // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
@@ -77,6 +78,14 @@ namespace Game.EditorTests
             ["Strategy/StrategicPhaseA.cs"] = 4,
             ["Strategy/StrategicPhaseB.cs"] = 16,
         };
+
+        [Test]
+        public void ResourceEnumMembersAreNotPhysicalPoolReads()
+        {
+            Assert.That(RawRead.Matches("StrategicReservedResource.ActionPoints").Count, Is.Zero);
+            Assert.That(RawRead.Matches("root.ActionPoints").Count, Is.EqualTo(1));
+            Assert.That(RawRead.Matches("root.GetResource(type)").Count, Is.EqualTo(1));
+        }
 
         [Test]
         public void RawResourceReads_DoNotGrowOutsideTheirApprovedCount()

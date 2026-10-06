@@ -2835,7 +2835,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyHeroMaterialization_NewArmyIsOperationalDeliveryOnlyForEconomy()
+        public void EconomyHeroMaterialization_RequiresWorldWitnessBeforeOperationalDelivery()
         {
             var plan = new MaterializationPlan
             {
@@ -2854,7 +2854,9 @@ namespace Game.EditorTests
             };
 
             Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, economy),
-                Is.True);
+                Is.False, "A placement alone does not witness a safe, worthwhile builder delivery");
+            Assert.That(MaterializationDeliveryPolicy.AssessDemandOperationally(plan, economy).FailureReason,
+                Is.EqualTo(MaterializationDeliveryPolicy.DeliveryFailureReason.MissingWorldContext));
             Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, aggression),
                 Is.False);
         }
@@ -3379,18 +3381,33 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyMission_StrategicSiteValueOrdersAheadOfRoutineRefresh()
+        public void EconomyMission_CompetesByDeliveredValueRatherThanRawSiteMerit()
         {
             var player = new Game.Players.PlayerSetupData();
             AiAllocatorStateRegistry.Clear();
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
             snapshot.Self.ActionPoints = 1;
+            snapshot.Self.Armies = new[] { new ArmySnapshot {
+                ArmyId = 9, Owner = player, HasHero = true, IsMobileEconomyBuilder = true,
+                Hex = new HexCoord(0, 0), MemberCount = 1,
+                Members = System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
+                CurrentMovement = 1, MaxMovement = 3, ActivationApCost = 1,
+            } };
+            snapshot.Economy.ExtractionOpportunities = new[] { new EconomyExtractionOpportunity {
+                Hex = new HexCoord(2, 0), ResourceType = ResourceType.Energy,
+                BuilderRoutes = new[] { new EconomyBuilderRouteSnapshot {
+                    ArmyId = 9, TravelCost = 2, ReturnTravelCost = 2,
+                    CurrentMovement = 1, MaxMovement = 3, ActivationApCost = 1, ArmySize = 1,
+                } },
+            } };
             AxisDemand demand = new AxisDemand
             {
                 RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.EconomicInfrastructure,
                 TargetHex = new HexCoord(2, 0),
                 EconomyResourceType = ResourceType.Energy,
+                EconomyPreferredBuilderArmyId = 9,
+                EconomyBuildApCost = 1f,
                 EconomySiteValue = 52f,
                 EconomyTravelCost = 3f,
                 Value = 24f,
@@ -3401,14 +3418,16 @@ namespace Game.EditorTests
             MissionProposal refresh = AllocatorMission(
                 MissionKind.Scout, 45f, DesireAxis.Recon, armyId: 7);
 
-            Assert.That(economy.BaseValue, Is.EqualTo(52f),
-                "Cross-lane value must represent strategic return; delivery cost is enforced by requirements.");
+            Assert.That(economy.Requirements.ApMinimum, Is.EqualTo(1f),
+                "Both proposals compete for the same one-AP pool with a witnessed builder route");
+            Assert.That(economy.BaseValue, Is.EqualTo(24f),
+                "Global admission uses delivered task value; raw site merit is an operational fact.");
             economy.EffectiveValue = economy.BaseValue;
             TentativeAllocation allocation = ResourceAllocator.BeginTurn(
                 snapshot, Radar.Even(), new List<MissionProposal> { refresh, economy },
                 new List<Commitment>(), player).Pack();
 
-            Assert.That(allocation.Funded.Select(x => x.Mission), Is.EqualTo(new[] { economy }));
+            Assert.That(allocation.Funded.Select(x => x.Mission), Is.EqualTo(new[] { refresh }));
         }
 
         private static MissionProposal AllocatorMission(

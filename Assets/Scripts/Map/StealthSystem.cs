@@ -139,6 +139,16 @@ namespace Game.Map
                 return;
             unit.IsHidden = false;
             _detected.Remove(unit);
+            // Arrival intentionally does nothing for a fully hidden army. Revealing a resident
+            // must resolve the same undefended-building contact even without another move.
+            // Moving armies resolve their actual terminal hex in the movement transaction;
+            // ArmyData.Hex still names their origin until that transaction completes.
+            ArmyData army = ArmyRegistry.FindArmyContaining(unit);
+            if (army != null && army.Owner != null
+                && !Game.Aviation.AviationRules.IsAirArmy(army)
+                && !Game.Aviation.AviationRules.IsAirfield(army)
+                && (army.Controller == null || !army.Controller.IsMoving))
+                BuildingRegistry.CaptureOrDestroyIfUndefended(army.Hex, army.Owner, null, army);
             Notify(unit, null);
         }
 

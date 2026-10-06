@@ -315,40 +315,29 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EquipmentMatchupRequiresActualWorthItImprovement()
+        public void LiveEquipmentCombatDeltaSeparatesMobilityFromPenetration()
         {
-            var primary = new UnitData
-            {
+            var primary = new UnitData {
                 Attack = 1, Defense = 2, Initiative = 2,
                 HitPointsCurrent = 8, HitPointsMax = 8,
             };
-            var guards = new[]
-            {
-                new WorthIt.DefenderProfile(defense: 4, hasCeramicArmor: false,
-                    attack: 6, hitPoints: 8, initiative: 2),
+            var snap = new WorldSnapshot {
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] {
+                    new ArmySnapshot { Members = new[] {
+                        new WorthIt.DefenderProfile(4, false, attack: 6, hitPoints: 8, initiative: 2),
+                    } },
+                } },
             };
-            var moveOnly = new EquipmentGrant();
-            moveOnly.statChanges.Add(new EquipmentStatChange
-            {
-                stat = EquipmentStat.MoveMax, amount = 3,
-            });
-            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, moveOnly, new WorthIt.DefendingArmy(guards, default)), Is.False,
-                "Mobility alone cannot claim a WorthIt combat improvement against known guards");
-            var weapon = new EquipmentGrant();
-            weapon.statChanges.Add(new EquipmentStatChange
-            {
-                stat = EquipmentStat.Attack, amount = 20,
-            });
-            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, weapon, new WorthIt.DefendingArmy(guards, default)), Is.True,
-                "A proven improvement in the recipient army's combat outcome counts");
-            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, weapon,
-                new WorthIt.DefendingArmy(Array.Empty<WorthIt.DefenderProfile>(), default)), Is.False,
-                "An unobserved enemy cannot justify speculative equipment");
-            Assert.That(primary.Attack, Is.EqualTo(1),
-                "Projection must never mutate the living army before generation/attachment");
+            var mobility = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.MoveMax, 3);
+            var weapon = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 20);
+            var moveDelta = StrategicCardEvaluator.EquipmentDeltaParts(mobility, primary, snap);
+            Assert.That(moveDelta.Combat, Is.Zero);
+            Assert.That(moveDelta.Tactical, Is.GreaterThan(0f));
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(weapon, primary, snap).Combat, Is.GreaterThan(0f));
+            snap.TrueWorld.EnemyArmies = Array.Empty<ArmySnapshot>();
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(weapon, primary, snap).Combat, Is.Zero,
+                "No defender or deck benchmark means no witnessed combat delta");
+            Assert.That(primary.Attack, Is.EqualTo(1));
             Assert.That(primary.Equipment, Is.Null);
         }
 
