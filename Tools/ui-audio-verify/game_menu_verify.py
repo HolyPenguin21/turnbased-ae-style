@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import unittest
 ROOT=Path(__file__).resolve().parents[2]
 class MenuIntegration(unittest.TestCase):
@@ -13,5 +14,13 @@ class MenuIntegration(unittest.TestCase):
   for name in ['GameMenuUI','GameMenuPanel','SaveGameDisabled','LoadGameDisabled','ContinueGame']:
    self.assertTrue('m_Name: '+name in s,name)
  def test_corner_button_sprite(self):
-  self.assertTrue((ROOT/'Assets/Resources/UI/GameMenuGear.png').exists())
+  sprite=ROOT/'Assets/Textures/UI/Buttons/Button_Settings.png'
+  self.assertTrue(sprite.exists())
+  guid=re.search(r'^guid: (\w+)$',Path(str(sprite)+'.meta').read_text(),re.M).group(1)
+  scene=(ROOT/'Assets/Scenes/Game.unity').read_text()
+  blocks=re.split(r'^--- ',scene,flags=re.M)
+  gear=next(b for b in blocks if '  m_Name: GameMenuGear\n' in b)
+  gear_id=re.search(r'^!u!1 &(\d+)',gear).group(1)
+  image=next(b for b in blocks if f'  m_GameObject: {{fileID: {gear_id}}}\n' in b and '  m_Sprite:' in b)
+  self.assertIn(f'm_Sprite: {{fileID: 21300000, guid: {guid}, type: 3}}',image)
 if __name__=='__main__':unittest.main()
