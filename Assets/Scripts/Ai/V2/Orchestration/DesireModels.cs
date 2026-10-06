@@ -85,7 +85,7 @@ namespace Game.Ai.V2
                         | StrategicInvalidationReason.ResourceSite;
                 case DesireAxis.Development:
                     // Contact/Threat: an upgrade's value is its matchup against the KNOWN threats
-                    // (StrategicCardEvaluator.EquipmentMatchupFit), so a new or changed
+                    // (StrategicCardEvaluator.EquipmentDeltaParts), so a new or changed
                     // sighting can change which recipient/output wins. The admission fingerprint
                     // still suppresses the pass when the threat compositions did not change.
                     return StrategicInvalidationReason.Contact
