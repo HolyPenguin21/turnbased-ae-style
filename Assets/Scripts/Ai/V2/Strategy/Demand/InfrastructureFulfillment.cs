@@ -307,6 +307,11 @@ namespace Game.Ai.V2
         internal static bool ShouldReserveDeferredEconomyResources(
             WorldSnapshot snap, AxisDemand demand)
         {
+            // The accepted build's prerequisite (Hero or its pinned escort) keeps the same
+            // persistent-resource hold before a ready builder/route exists. A speculative
+            // new-Hero alternative alongside a ready builder is not a second obligation.
+            if (EconomyHeroPrerequisiteOwner(demand) != null && !demand.IsEconomyNewHeroAlternative)
+                return true;
             if (demand?.EconomyBuilderRoutes == null || snap?.Self?.Armies == null)
                 return false;
             foreach (EconomyBuilderRouteSnapshot route in demand.EconomyBuilderRoutes)
@@ -369,9 +374,8 @@ namespace Game.Ai.V2
             }, followupAp);
         }
 
-        // A bare EconomyHeroPrerequisite demand (Capability.Hero, no builder identified yet) can
-        // never satisfy ShouldReserveDeferredEconomyResources above — there is no army/route to
-        // witness. That left the accepted build's H/E/M/T free for however many turns Economy
+        // A bare Hero or pinned escort prerequisite has no ready builder/route to witness.
+        // Its accepted build's H/E/M/T must stay protected for however many turns Economy
         // spent waiting for a deliverable Hero, during which Phase B could spend the exact
         // resources the build still needs. The Hero-prerequisite payload (EconomyBuildResourceCost)
         // already carries the target build's real cost (see DemandLayer.EconomyHeroPrerequisite);
@@ -388,7 +392,7 @@ namespace Game.Ai.V2
             ReserveDeferredEconomyResourcesCore(player, turn, owner, heroPrerequisiteDemand);
         }
 
-        // The build an Economy Hero-prerequisite demand serves, as its reservation owner key; null
+        // The build an Economy Hero/escort prerequisite serves, as its reservation owner key; null
         // for any other demand. See AxisDemand.EconomyHeroBuildOwner.
         internal static string EconomyHeroPrerequisiteOwner(AxisDemand demand)
         {

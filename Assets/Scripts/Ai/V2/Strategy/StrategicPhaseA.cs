@@ -293,16 +293,11 @@ namespace Game.Ai.V2
             // Establish the existing single Economy hold BEFORE infrastructure can spend it.
             var economyBuildObligations = anyProtectedActiveEconomyBuild
                 ? new List<AxisDemand>()
-                : states.Select(s => s.Demand)
+                : allStates.Where(s => !coldStates.Contains(s)
+                        && (!s.Demand.IsPersistenceDeferred
+                            || InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(s.Demand) != null))
+                    .Select(s => s.Demand)
                     .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
-                    .Concat(allStates
-                        .Where(s => s.Demand != null && !coldStates.Contains(s)
-                            && s.Demand.RequestingAxis == DesireAxis.Economy
-                            && s.Demand.Capability == CapabilityKind.Hero
-                            && !s.Demand.IsEconomyNewHeroAlternative
-                            && s.Demand.TargetHex.HasValue
-                            && s.Demand.EconomyBuildResourceCost != null)
-                        .Select(s => s.Demand))
                     .ToList();
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
@@ -319,10 +314,9 @@ namespace Game.Ai.V2
                 // earlier pass's demand hold; a re-admission pass that now protects a different
                 // site replaces it instead of stacking a second hold for the same build card.
                 InfrastructureFulfillment.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
-                    protectedEconomyBuild.Capability == CapabilityKind.Hero
-                        ? InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
-                        : InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
-                if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
+                    InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
+                        ?? InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
+                if (InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild) != null)
                     InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
                         player, ctx.TurnNumber, protectedEconomyBuild);
                 else
@@ -701,7 +695,6 @@ namespace Game.Ai.V2
                     int upgradeApAfter = root.ActionPoints;
                     chainAttempts++;
                     result.MaterializationAttempts++;
-                    result.EquipmentAssignmentAttempts++;
 
                     if (up.ApSpent > 0f)
                         AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
@@ -715,23 +708,14 @@ namespace Game.Ai.V2
                             StateChanged = up.StateChanged,
                             GenerationAttempted = true,
                             Generated = up.ChallengeWon,
-                            Attached = up.Attached,
                             ApSpent = up.ApSpent,
                             AttemptedGenerationUseKey = plan.Generation?.UseKey,
                         };
                         result.Reservation.RecordGenerationAttempt(plan.Generation, attempted);
                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
                         if (up.ChallengeWon) result.GeneratedCardsSucceeded++;
-                        if (up.Attached)
-                        {
-                            result.MaterializationsSucceeded++;
-                            result.EquipmentAssignmentsSucceeded++;
-                            result.CapabilityDeliveries++;
-                            result.CardsPlayed++;
-                            selected.State.Remaining = 0f;
-                        }
-                        else
-                            selected.State.Blocked = true;
+                        // Creation is complete; the capability is delivered by the hand-card lane.
+                        selected.State.Blocked = true;
                     }
                     else
                         selected.State.Blocked = true;
@@ -743,7 +727,7 @@ namespace Game.Ai.V2
                             snap, player, root, hand, ctx);
                     }
                     DevelopmentOutcomeTelemetry.RecordUpgrade(player, ctx.TurnNumber,
-                        up.Executed, up.ChallengeWon, up.Attached);
+                        up.Executed, up.ChallengeWon);
                     AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
                         + $"{plan.DevelopmentUpgrade?.Mode} '{plan.DevelopmentUpgrade?.Card?.displayName}' "
                         + $"-> {plan.DevelopmentUpgrade?.RecipientLabel} "
@@ -812,7 +796,8 @@ namespace Game.Ai.V2
                     chosenDemand, inv, afterInv, armyIdsBefore, out float delivered, beforeSnap: snapBeforeDelivery);
 
                 if (operationallyDelivered
-                    && MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
+                    && (MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
+                        || chosenDemand.EconomyEscortArmyId.HasValue)
                     && chosenDemand.EconomyPreferredBuilderArmyId.HasValue)
                     commitments?.Claim(chosenDemand.EconomyPreferredBuilderArmyId.Value);
 
@@ -1052,4 +1037,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

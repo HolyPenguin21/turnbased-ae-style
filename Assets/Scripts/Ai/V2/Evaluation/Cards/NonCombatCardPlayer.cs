@@ -729,7 +729,9 @@ namespace Game.Ai.V2
                     ok = AviationActions.TryDeployFromCard(play.Card.Definition, player, root,
                         ctx.HexSelection, play.TargetHex, out failReason, null, play.Card);
                     if (ok)
+                    {
                         hand.RemoveCard(play.Card);
+                    }
                     break;
                 }
                 case PlayKind.Base:
@@ -771,7 +773,10 @@ namespace Game.Ai.V2
                         ? EquipmentSystem.TryAttach(play.Card, play.EquipHostCard, root, out failReason)
                         : EquipmentSystem.TryAttach(play.Card, play.EquipHost, root, out failReason);
                     if (ok)
+                    {
                         hand.RemoveCard(play.Card);
+                        DevelopmentOutcomeTelemetry.RecordAttachment(player, ctx.TurnNumber, play.Card);
+                    }
                     break;
                 }
                 default:

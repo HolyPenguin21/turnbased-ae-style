@@ -144,7 +144,7 @@ namespace Game.Ai.V2
             // A global-source carrier is delivered by being in play: no post-deploy movement.
             bool noFollowup = upgrade || demand?.Capability == CapabilityKind.GlobalResourceCarrier
                 || demand?.EconomyEscortArmyId.HasValue == true;
-            // Upgrade delivery is the attachment itself and has no post-deploy follow-up. Every
+            // An upgrade creation stage has no same-turn attachment/deploy follow-up. Every
             // deploy chain keeps the canonical operational-delivery gate.
             if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
                 return;

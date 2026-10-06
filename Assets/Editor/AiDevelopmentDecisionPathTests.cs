@@ -18,6 +18,161 @@ namespace Game.EditorTests
     // exercise live GenerationSource affordability, Challenge, or Unity movement.
     public sealed class AiDevelopmentDecisionPathTests
     {
+        [TestCase(CardType.Unit, true, 0)]
+        [TestCase(CardType.Hero, true, 0)]
+        [TestCase(CardType.Equipment, false, 0)]
+        [TestCase(CardType.Equipment, true, 1)]
+        public void DevelopmentAttachmentTallyCountsOnlyProducedEquipment(
+            CardType type, bool produced, int expected)
+        {
+            DevelopmentOutcomeTelemetry.ClearAll();
+            try
+            {
+                var player = new PlayerSetupData();
+                var card = new CardData(new CardDefinition { cardType = type })
+                    { ResearchProductionCreated = produced };
+                DevelopmentOutcomeTelemetry.RecordAttachment(player, 6, card);
+                Assert.That(DevelopmentOutcomeTelemetry.Get(player).Attached, Is.EqualTo(expected));
+            }
+            finally { DevelopmentOutcomeTelemetry.ClearAll(); }
+        }
+
+        [Test]
+        public void EquipmentCreationStageNeedsOnlyChallengeApToday()
+        {
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+            output.apCost = 1; output.activationApCost = 3;
+            var generation = new GenerationStep { CardDef = output, ProducesEquipment = true, CardKey = "stage" };
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = output, Generation = generation, ProducesEquipment = true,
+                RecipientCard = new CardData(AttachmentSlotTests.Host(hero: true)),
+            };
+            var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(opportunity, generation, DesireAxis.Development);
+            Assert.That(plan.ApCost, Is.EqualTo(1), "Tomorrow's attachment AP must not block today's creation stage");
+        }
+
+        [Test]
+        public void PendingMintedEquipmentPreventsAnotherChallengeForTheSameUsefulSlot()
+        {
+            var hand = new AiHandData(null, default, 0);
+            var host = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(host);
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+            hand.AddCard(ResearchProductionSystem.MintCard(output));
+            var opportunities = DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                ResearchProductionMode.Production, default, output, 1f, null, null,
+                new CapabilityInventory(), new PlayerSetupData(), null, hand, out _, futureAttachment: true);
+            Assert.That(opportunities, Is.Empty, "Use a useful pending card before producing more for its recipient slot");
+        }
+
+        [Test]
+        public void PendingEquipmentSurvivesTurnChangeAndInvalidatesAdmissionOnHandMutation()
+        {
+            var hand = new AiHandData(null, default, 0);
+            hand.SetCurrentTurn(5);
+            var host = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(host);
+            string before = Pipeline.DevelopmentRecipientFacts(null, hand);
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+            output.activationApCost = 2; output.resourceCost = new ResourceCost { energy = 99 };
+            var pending = ResearchProductionSystem.MintCard(output); hand.AddCard(pending);
+            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.Not.EqualTo(before));
+            hand.SetCurrentTurn(6);
+            Assert.That(hand.Hand.Contains(pending), Is.True);
+            Assert.That(pending.EffectivePlayApCost, Is.EqualTo(2));
+            Assert.That(pending.EffectivePlayResourceCost, Is.Null);
+            hand.RemoveCard(pending);
+            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.EqualTo(before));
+        }
+
+        [TestCase(AttachmentSlot.Mutator, EquipmentStat.Fate)]
+        [TestCase(AttachmentSlot.Equipment, EquipmentStat.Attack)]
+        public void PendingWrongSlotOrUselessEquipmentDoesNotBlockUsefulProduction(
+            AttachmentSlot pendingSlot, EquipmentStat pendingStat)
+        {
+            var hand = new AiHandData(null, default, 0);
+            hand.AddCard(new CardData(AttachmentSlotTests.Host(hero: true)));
+            hand.AddCard(ResearchProductionSystem.MintCard(
+                AttachmentSlotTests.Attachment(pendingSlot, pendingStat, 4)));
+            var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+            var opportunities = DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                ResearchProductionMode.Production, default, output, 1f, null, null,
+                new CapabilityInventory(), new PlayerSetupData(), null, hand, out _, futureAttachment: true);
+            Assert.That(opportunities, Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void CreationFeasibilityUsesOnlyCurrentStageAndHonorsAnotherOwnersApHold()
+        {
+            var obj = new GameObject("staged-equipment-bank-test");
+            var player = new PlayerSetupData();
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 3;
+                var ctx = new AiTurnContext { TurnNumber = 5 };
+                var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+                output.apCost = 1; output.activationApCost = 5;
+                var generation = new GenerationStep { CardDef = output, ProducesEquipment = true };
+                var opportunity = new DevelopmentOpportunity { Card = output, Generation = generation };
+                var demand = new AxisDemand { Capability = CapabilityKind.CardUpgrade };
+                var plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(opportunity, generation, DesireAxis.Development);
+                void Hold(float amount) => StrategicResourceReservationLedger.Upsert(player, 5,
+                    new StrategicResourceReservation
+                    {
+                        Owner = "reaction", Reason = StrategicReservationReason.StrategicReactionPass,
+                        Resource = StrategicReservedResource.ActionPoints, Amount = amount,
+                        ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                    });
+                var feasible = new List<(MaterializationPlan plan, float followupAp, TraitPreference proj)>();
+                Hold(2);
+                MaterializationFeasibility.AddIfFeasibleA(feasible, plan, demand, output, 0,
+                    0, 1, 0.0001f, root, new AiHandData(null, default, 0), player, ctx);
+                Assert.That(feasible, Has.Count.EqualTo(1), "Future attachment must not reserve five AP today");
+                Assert.That(StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player), Is.True);
+                Hold(3); feasible.Clear();
+                MaterializationFeasibility.AddIfFeasibleA(feasible, plan, demand, output, 0,
+                    0, 1, 0.0001f, root, new AiHandData(null, default, 0), player, ctx);
+                Assert.That(feasible, Is.Empty);
+                Assert.That(StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player), Is.False);
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
+        [Test]
+        public void MintedEquipmentAttachesOnLaterTurnToReevaluatedRecipient()
+        {
+            var obj = new GameObject("staged-equipment-test");
+            try
+            {
+                DevelopmentOutcomeTelemetry.ClearAll();
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 0;
+                var player = new PlayerSetupData(); var ctx = new AiTurnContext { TurnNumber = 5 };
+                var hand = new AiHandData(null, default, 0); hand.SetCurrentTurn(5);
+                var original = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(original);
+                var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
+                output.activationApCost = 1; output.resourceCost = new ResourceCost { energy = 99999 };
+                var pending = ResearchProductionSystem.MintCard(output); hand.AddCard(pending);
+                DevelopmentOutcomeTelemetry.RecordUpgrade(player, 5, true, true);
+                var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Hand = hand.Hand } };
+                Assert.That(NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Any(p => p.Card == pending), Is.False);
+                Assert.That(DevelopmentOutcomeTelemetry.Get(player).Attached, Is.Zero);
+                hand.SetCurrentTurn(6); ctx.TurnNumber = 6; root.ActionPoints = 1;
+                hand.RemoveCard(original);
+                var replacement = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(replacement);
+                var play = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
+                    .Single(p => p.Card == pending);
+                Assert.That(play.EquipHostCard, Is.SameAs(replacement));
+                var result = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx);
+                Assert.That(result.Played, Is.True, result.FailReason);
+                Assert.That(result.ApSpent, Is.EqualTo(1));
+                Assert.That(replacement.Equipment, Is.SameAs(output));
+                Assert.That(hand.Hand.Contains(pending), Is.False);
+                Assert.That(DevelopmentOutcomeTelemetry.Get(player).ChallengesWon, Is.EqualTo(1));
+                Assert.That(DevelopmentOutcomeTelemetry.Get(player).Attached, Is.EqualTo(1));
+            }
+            finally { DevelopmentOutcomeTelemetry.ClearAll(); UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
         [Test]
         public void FieldOperatorDeliveryPricesTheWholeArmyAndItsSlowestMember()
         {

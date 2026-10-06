@@ -3866,7 +3866,9 @@ namespace Game.EditorTests
             var army = new ArmyData { Owner = player };
             var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.FieldCombatPower, EconomyEscortArmyId = army.Id,
-                TargetHex = new HexCoord(2, 0) };
+                TargetHex = new HexCoord(2, 0), EconomyBuildApCost = 4f, EconomySiteValue = 30f,
+                EconomyBuildResourceCost = new ResourceCost { human = 1 },
+                EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }) };
             var plan = new MaterializationPlan { Deploy = new PlacementOption(
                 army.Hex, DeploymentKind.ExistingArmy, army) };
             var before = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
@@ -3874,18 +3876,121 @@ namespace Game.EditorTests
             var unrelated = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
                 EconomyBuilder(army.Id, 1, 0f), EconomyBuilder(army.Id + 1, 2, 8f) } } };
             var ctx = new Game.Ai.AiTurnContext { TurnNumber = 1 };
+            var source = before.Self.Armies.First(); source.Capacity = 3; source.OccupiedBattleSlots = 1;
+            before.Self.BaseHexes = new[] { source.Hex };
+            before.Self.Hand = new[] { demand.EconomyBuildCard };
+            before.Economy = new EconomyStanding { BaseOpportunities = new[] { new EconomyBaseOpportunity {
+                Hex = demand.TargetHex.Value, BuilderRoutes = new[] { BuilderRoute(source, 2, 2, 1) } } } };
             Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx,
                 unrelated, plan, demand, null, null, new HashSet<int> { army.Id, army.Id + 1 },
                 out float absent, before), Is.False);
             Assert.That(absent, Is.Zero);
             var after = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] {
                 EconomyBuilder(army.Id, 2, 8f), EconomyBuilder(army.Id + 1, 1, 0f) } } };
+            var recipient = after.Self.Armies.First(); recipient.IsStructuralRaidActor = true;
+            after.Self.FieldStrikePotential = recipient.EffectiveArmyPower;
+            after.Self.BaseHexes = before.Self.BaseHexes; after.Self.Hand = before.Self.Hand;
+            after.Economy = new EconomyStanding { BaseOpportunities = new[] { new EconomyBaseOpportunity {
+                Hex = demand.TargetHex.Value, BuilderRoutes = new[] { BuilderRoute(recipient, 2, 2, 2) } } } };
+            Assert.That(CapabilityDeliveryEvaluator.EconomyDeliveryChoice(after, demand, army.Id,
+                null, null, out _), Is.Null, "a free existing fist must still be refused");
             Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx,
                 after, plan, demand, null, null, new HashSet<int> { army.Id, army.Id + 1 },
                 out float delivered, before), Is.True);
             Assert.That(delivered, Is.EqualTo(1f));
-            Assert.That(MissionIntentRegistry.GetOrCreate(player).All.Any(), Is.False,
-                "one escort body is preparation, never a delivered building or a movement commitment");
+            var intent = MissionIntentRegistry.GetOrCreate(player).All.Single();
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(army.Id));
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.FoundBase));
+            Assert.That(intent.Funding, Is.EqualTo(CommitmentTier.Soft),
+                "a ready builder owns future delivery; the base is not built by playing its escort");
+            Assert.That(StrategicCapabilityLeaseRegistry.IsLeased(player, ctx.TurnNumber, army.Id), Is.False,
+                "Continuity is the only owner after the handoff");
+        }
+
+        [Test]
+        public void FoundBasePreparation_PreservesOneBuildHoldAndCannotDrawOnAnotherOwner()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 17;
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.FieldCombatPower, EconomyEscortArmyId = 41,
+                EconomyBuildCard = new CardData(new CardDefinition { cardType = CardType.Base }),
+                TargetHex = new HexCoord(2, 0), EconomyBuildApCost = 8f,
+                EconomyBuildResourceCost = new ResourceCost { human = 3 } };
+            try
+            {
+                Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(null, demand), Is.True,
+                    "Phase A must select an accepted escort prerequisite before clearing deferred holds");
+                StrategicResourceReservationLedger.BeginTurn(player, turn);
+                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
+                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.Human), Is.EqualTo(3f), "repeat admission must not stack the hold");
+                Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                    StrategicReservedResource.ActionPoints), Is.Zero, "future building AP is not a deferred hold");
+                StrategicResourceReservationLedger.Upsert(player, turn, new StrategicResourceReservation {
+                    Owner = "other-build", Reason = StrategicReservationReason.EconomyDeferredBuild,
+                    Resource = StrategicReservedResource.Human, Amount = 2f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn });
+                var claims = TurnResourceBook.LedgerClaims(player, turn);
+                Assert.That(TurnResourceBook.Free(5f, claims, StrategicReservedResource.Human, default), Is.Zero);
+                Assert.That(TurnResourceBook.Free(5f, claims, StrategicReservedResource.Human,
+                    demand.SpendAuthority), Is.EqualTo(3f), "only this build's 3 Human are credited");
+            }
+            finally { StrategicResourceReservationLedger.ClearAll(); }
+        }
+
+        [Test]
+        public void FoundBasePreparation_CachedBuilderDecisionCannotBeOverwrittenByItsConsumer()
+        {
+            var target = new HexCoord(1, 0);
+            var ready = EconomyBuilder(41, 2, 8f);
+            var snap = SnapshotWithDeficits(0.5f, 0.2f, true); snap.Self.Armies = new[] { ready };
+            var route = BuilderRoute(ready, 1, 1, 2);
+            var first = DemandLayer.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
+            float original = first.TotalAssignmentApCost;
+            first.TotalAssignmentApCost = 999f;
+            first.Suitability = DemandLayer.EconomyArmySuitability.Ineligible;
+            var second = DemandLayer.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
+            Assert.That(second.TotalAssignmentApCost, Is.EqualTo(original));
+            Assert.That(second.Suitability, Is.Not.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(second, Is.Not.SameAs(first));
+        }
+
+        [TestCase(1, false)]
+        [TestCase(2, true)]
+        public void FoundBasePreparation_GarrisonHeroMustHaveRoomForItsExtractedEscort(int capacity, bool expected)
+        {
+            var solo = EconomyBuilder(41, 1, 0f); solo.IsGarrison = true;
+            solo.Capacity = 5; solo.OccupiedBattleSlots = 1;
+            var snap = SnapshotWithDeficits(0.5f, 0.2f, true); snap.Self.Armies = new[] { solo };
+            var route = BuilderRoute(solo, 1, 1, 1);
+            route.RequiresGarrisonExtraction = true; route.ExtractionContainerAvailable = true;
+            route.ExtractedHeroCapacity = capacity;
+            Assert.That(DemandLayer.EconomyEscortRecipient(snap, new HexCoord(1, 0),
+                new[] { route }, null, null, 4f) != null, Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void FoundBasePreparation_GarrisonComparesTheOneBodyThatCanActuallyLeave()
+        {
+            var army = EconomyBuilder(41, 2, 8f); army.IsGarrison = true;
+            var existing = new Game.Combat.WorthIt.DefenderProfile(6f, false, attack: 6f, hitPoints: 6f);
+            var weaker = new Game.Combat.WorthIt.DefenderProfile(1f, false, attack: 1f, hitPoints: 1f);
+            var stronger = new Game.Combat.WorthIt.DefenderProfile(30f, false, attack: 30f, hitPoints: 30f);
+            army.Members = new[] { existing }; army.NonHeroSpareable = new[] { true };
+            army.NonHeroMoveMax = new[] { 3 };
+            var route = BuilderRoute(army, 1, 1, 1); route.MaximumStepCost = 2;
+            route.RouteThreats = new[] { new Game.Ai.AiMapMemory.KnownEnemySighting(
+                new HexCoord(1, 0), new PlayerSetupData(), "enemy", 1, 12f, 12f,
+                new List<Game.Combat.WorthIt.DefenderProfile> {
+                    new Game.Combat.WorthIt.DefenderProfile(12f, false, attack: 12f, hitPoints: 12f) }) };
+            Assert.That(DemandLayer.EconomyEscortImprovesRoute(army, route, weaker, 3), Is.False,
+                "the weaker body joins defence, not a two-body extraction that does not exist");
+            Assert.That(DemandLayer.EconomyEscortImprovesRoute(army, route, stronger, 3), Is.True);
+            army.NonHeroMoveMax = new[] { 1 };
+            Assert.That(DemandLayer.EconomyEscortImprovesRoute(army, route, stronger, 3), Is.True,
+                "a body unable to traverse the route cannot count as an existing escort");
         }
 
         private static ArmySnapshot EconomyBuilder(int id, int size, float power)

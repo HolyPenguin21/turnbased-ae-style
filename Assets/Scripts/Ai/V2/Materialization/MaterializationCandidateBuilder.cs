@@ -248,7 +248,7 @@ namespace Game.Ai.V2
             if (live == null) return new List<MaterializationPlan>();
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
             return DevelopmentOpportunityEvaluator.EquipmentOpportunities(live.Mode, live.FacilityHex,
-                    live.CardDef, live.SuccessChance, live, snap, inv, player, root, hand, out _)
+                    live.CardDef, live.SuccessChance, live, snap, inv, player, root, hand, out _, futureAttachment: true)
                 .Where(x => x.RecipientCard == null ||
                     ((excludeCards == null || !excludeCards.Contains(x.RecipientCard))
                      && !reservation.ClaimsDevelopmentOperatorCard(x.RecipientCard)))
@@ -653,4 +653,3 @@ namespace Game.Ai.V2
 
     }
 }
-

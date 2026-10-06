@@ -56,7 +56,7 @@ namespace Game.Ai.V2
         internal static DemandLayer.EconomyBuilderChoice EconomyDeliveryChoice(
             WorldSnapshot after, AxisDemand demand, int builderArmyId,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            out IReadOnlyList<EconomyBuilderRouteSnapshot> builderRoutes)
+            out IReadOnlyList<EconomyBuilderRouteSnapshot> builderRoutes, WorldSnapshot preparationBefore = null)
         {
             builderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>();
             if (after?.Economy == null || demand?.TargetHex == null)
@@ -75,10 +75,39 @@ namespace Game.Ai.V2
                 .Where(x => x.ArmyId == builderArmyId).ToList();
             if (builderRoutes.Count == 0)
                 return null;
-            return DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
+            ArmySnapshot prepared = null;
+            if (preparationBefore != null)
+            {
+                if (demand.EconomyEscortArmyId != builderArmyId
+                    || preparationBefore.Self?.Hand?.Contains(demand.EconomyBuildCard) != true
+                    || after.Self?.Hand?.Contains(demand.EconomyBuildCard) != true)
+                    return null;
+                var previousRoutes = (preparationBefore.Economy?.BaseOpportunities
+                    ?? System.Array.Empty<EconomyBaseOpportunity>()).FirstOrDefault(x =>
+                    x.Hex.Equals(demand.TargetHex.Value)).BuilderRoutes;
+                ArmySnapshot source = DemandLayer.EconomyEscortRecipient(preparationBefore,
+                    demand.TargetHex.Value, previousRoutes, activeIntents, commitments,
+                    demand.EconomyBuildApCost, builderArmyId);
+                prepared = after.Self?.Armies?.FirstOrDefault(a => a.ArmyId == builderArmyId);
+                if (source == null || prepared == null || !prepared.Hex.Equals(source.Hex)
+                    || prepared.Members.Count(AiArmyRoles.IsGroundBattleBody)
+                        <= source.Members.Count(AiArmyRoles.IsGroundBattleBody))
+                    return null;
+            }
+            var choice = DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
                 builderRoutes, activeIntents, commitments,
                 demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                 demand.EconomyBuildApCost, includeReturn: !foundBase);
+            if (choice != null || prepared == null)
+                return choice;
+            // This actor was legitimately prepared FOR Economy, not taken from an existing fist.
+            // Exempt only its new fist classification; all other gates and the real grant remain.
+            if (DemandLayer.EconomyBuilderCandidateRejection(after, demand.TargetHex.Value,
+                    builderRoutes, builderArmyId, activeIntents, commitments) != "combat_fist_not_a_builder")
+                return null;
+            choice = DemandLayer.AssessEconomyArmy(after, demand.TargetHex.Value, builderRoutes[0],
+                prepared, demand.EconomyBuildApCost, includeReturn: !foundBase);
+            return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible ? choice : null;
         }
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
@@ -134,19 +163,19 @@ namespace Game.Ai.V2
         {
             IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
             delivered = 0f;
-            if (demand?.EconomyEscortArmyId.HasValue == true)
+            bool escortPreparation = demand?.EconomyEscortArmyId.HasValue == true;
+            if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand) || escortPreparation)
             {
-                int id = demand.EconomyEscortArmyId.Value;
-                ArmySnapshot previous = beforeSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
-                ArmySnapshot current = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
-                // One real added body closes this preparation step, not the build. Re-admission
-                // reassesses the complete roster; unrelated field power can never close it.
-                delivered = previous != null && current != null && plan?.Deploy.Army?.Id == id
-                    && current.Members.Count(AiArmyRoles.IsGroundBattleBody)
-                        > previous.Members.Count(AiArmyRoles.IsGroundBattleBody) ? 1f : 0f;
-            }
-            else if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
-            {
+                if (escortPreparation)
+                {
+                    int id = demand.EconomyEscortArmyId.Value;
+                    ArmySnapshot previous = beforeSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
+                    ArmySnapshot current = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id);
+                    if (previous == null || current == null || plan?.Deploy.Army?.Id != id
+                        || current.Members.Count(AiArmyRoles.IsGroundBattleBody)
+                            <= previous.Members.Count(AiArmyRoles.IsGroundBattleBody))
+                        return false;
+                }
                 // Both phases must establish the same durable owner before reducing a residual.
                 // Revalidate after the real deployment: a successful card play can still fail to
                 // deliver a builder if the route or escort changed during that operation.
@@ -163,7 +192,8 @@ namespace Game.Ai.V2
                 {
                     DemandLayer.EconomyBuilderChoice choice = EconomyDeliveryChoice(
                         afterSnap, demand, builderId, intents, commitments,
-                        out IReadOnlyList<EconomyBuilderRouteSnapshot> routes);
+                        out IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
+                        preparationBefore: escortPreparation ? beforeSnap : null);
                     if (choice == null)
                     {
                         AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} builder=#{builderId} "
@@ -175,13 +205,14 @@ namespace Game.Ai.V2
                                         commitments)));
                         continue;
                     }
-                    demand.EconomyPreferredBuilderArmyId = builderId;
-                    demand.EconomyBuilderRoutes = routes;
-                    demand.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
+                    AxisDemand ready = escortPreparation ? DemandLayer.EconomyHeroPrerequisite(demand) : demand;
+                    ready.EconomyPreferredBuilderArmyId = builderId;
+                    ready.EconomyBuilderRoutes = routes;
+                    ready.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.
                     MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
-                        player, demand, builderId, ctx.TurnNumber);
+                        player, ready, builderId, ctx.TurnNumber);
                     if (delivery == null)
                     {
                         AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} builder=#{builderId} "
@@ -192,6 +223,7 @@ namespace Game.Ai.V2
                     // writer for active builds, same owner key and rules as every later Phase A.
                     InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
                         player, ctx.TurnNumber, delivery);
+                    demand.EconomyPreferredBuilderArmyId = builderId;
                     delivered = 1f;
                     break;
                 }
@@ -269,7 +301,7 @@ namespace Game.Ai.V2
             // a second one. Collector delivery is different: its mobile collection mission will
             // be discovered by Analysis and admitted by EconomyMissionPlanner from the refreshed
             // snapshot. Until then the turn-local lease prevents Housekeeping repackaging it.
-            if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
+            if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand) && !escortPreparation)
                 StrategicCapabilityLeaseRegistry.Mark(
                     player, ctx.TurnNumber, demand.Capability, leased);
             return true;

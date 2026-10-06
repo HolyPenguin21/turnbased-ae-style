@@ -48,7 +48,7 @@ namespace Game.Ai.V2
         // only the opportunity owner uses it, and no returned preview authorizes execution.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys,
-            bool analysisView = false, bool resourceForecast = false)
+            bool analysisView = false, bool resourceForecast = false, SpendAuthority authority = default)
         {
             var result = new List<GenerationStep>();
             if (player == null || root == null || ctx?.ResearchProductionCatalog == null || hand == null)
@@ -91,7 +91,7 @@ namespace Game.Ai.V2
                             if (!analysisView && !resourceForecast && !DevelopmentInvestmentGate.IsOpenFor(
                                     player, ctx.TurnNumber, card.resourceCost))
                                 continue;
-                            if (!resourceForecast && !FitsReservedAffordability(root, player, ctx, card))
+                            if (!resourceForecast && !FitsReservedAffordability(root, player, ctx, card, authority))
                                 continue;
 
                             result.Add(new GenerationStep
@@ -129,12 +129,12 @@ namespace Game.Ai.V2
         // intersection here made the legality and reservation rules drift independently.
         // Only the actually consumed resource types are checked by the canonical helper.
         internal static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player,
-            AiTurnContext ctx, CardDefinition card)
+            AiTurnContext ctx, CardDefinition card, SpendAuthority authority = default)
         {
             if (root == null || card == null)
                 return false;
             return StrategicSpendability.FitsSpendableResources(
-                player, root, ctx, card.resourceCost);
+                player, root, ctx, card.resourceCost, authority);
         }
     }
 }
