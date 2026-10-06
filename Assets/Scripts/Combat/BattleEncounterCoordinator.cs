@@ -55,6 +55,20 @@ namespace Game.Combat
 
             ArmyData initiator = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData target = participants != null && participants.Count > 1 ? participants[1] : null;
+            // Strategic arrival and the hunter role are different for a hero-only mover.
+            // Normalize once here so direct, delayed and chained encounters all reuse the
+            // existing target-only Capture/Kill sequence with the ground army as hunter.
+            if (initiator != null && target != null && !BattleInitiator.IsCombatCapable(initiator)
+                && BattleInitiator.IsCombatCapable(target))
+            {
+                var ordered = new List<ArmyData>(participants);
+                ordered[0] = target;
+                ordered[1] = initiator;
+                participants = ordered;
+                ArmyData heroArmy = initiator;
+                initiator = target;
+                target = heroArmy;
+            }
             bool targetHeroOnly = target != null && !BattleInitiator.IsCombatCapable(target);
 
             return new BattleEncounterContext(hex, participants, initiator, target, targetHeroOnly, presentationObserver);
