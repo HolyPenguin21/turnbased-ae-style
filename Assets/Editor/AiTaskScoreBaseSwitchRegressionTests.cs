@@ -77,7 +77,9 @@ namespace Game.EditorTests
                 AxisDemand incumbentSite = BaseDemand(card, 9, 3, 20f, 40f);
                 Assert.That(DemandLayer.SelectBaseDemandForCurrentCommitment(
                     new[] { incumbentSite, rival }, new[] { incumbent }),
-                    Is.SameAs(incumbentSite));
+                    Is.SameAs(rival),
+                    "A current scan of the incumbent site supplies the previously unknown value");
+                Assert.That(rival.EconomySwitchIncumbentValue, Is.EqualTo(20f));
             }
             finally { MissionIntentRegistry.Clear(); }
         }
