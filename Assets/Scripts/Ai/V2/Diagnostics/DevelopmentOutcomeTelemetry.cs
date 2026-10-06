@@ -41,7 +41,8 @@ namespace Game.Ai.V2
 
         internal static void RecordAttachment(PlayerSetupData player, int turn, Game.Cards.CardData card)
         {
-            if (card == null || !card.ResearchProductionCreated) return;
+            if (card?.Definition?.cardType != Game.Cards.CardType.Equipment
+                || !card.ResearchProductionCreated) return;
             Tally t = Get(player);
             t.Attached++;
             Log(player, turn, t);
