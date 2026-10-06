@@ -205,11 +205,8 @@ namespace Game.Map
             return false;
         }
 
-        // Truncates `path` at the first hex (after the origin) holding a combat-capable enemy
-        // army, if any — shared by TryIssueMoveOrder (the actual order) and ShowPathArrow (its
-        // hover preview). Only checked for a combat-capable mover itself (a hero-only army isn't
-        // "combat capable" per the manual and has its own separate — not yet implemented —
-        // capture/kill handling), in which case this is a no-op and returns `path` unchanged.
+        // Truncates `path` at the first hostile contact — shared by the actual order and its
+        // preview. A visible hero-only mover stops at a ground army for Capture/Kill too.
         // Only ever looks at a hex `mover.Owner` currently has VISION of — fog means an enemy
         // sitting on a not-yet-visible hex can't be pre-emptively routed around/stopped at when
         // the path is first computed; discovering it is what ArmyController.MoveRoutine's own
@@ -218,8 +215,7 @@ namespace Game.Map
         private static HexPath TruncateAtEnemyContact(HexPath path, ArmyData mover, out ArmyData enemyArmy)
         {
             enemyArmy = null;
-            // CanInitiateContact — a fully-hidden army (every combat member in stealth) walks
-            // through without stopping, same as a hero-only army (see Game.Combat.BattleInitiator).
+            // A fully hidden army still walks through without initiating contact.
             if (!BattleInitiator.CanInitiateContact(mover))
                 return path;
             for (int i = 1; i < path.Hexes.Count; i++)
@@ -240,7 +236,7 @@ namespace Game.Map
         // the shortest route often isn't the one that actually lets the army get furthest this
         // turn, once contact truncation is accounted for). Not gated on IsCombatCapable like
         // TruncateAtEnemyContact — a hero-only mover benefits from steering clear too, even
-        // though it never triggers a stop there itself. Vision-gated same as TruncateAtEnemyContact
+        // though it cannot fight a tactical round. Vision-gated same as TruncateAtEnemyContact
         // — only a currently-visible enemy is something the player could plausibly be routing
         // around; a fog-hidden one is never avoided, only discovered on arrival.
         private static System.Func<HexCoord, bool> AvoidEnemyHex(ArmyData mover)
@@ -340,6 +336,9 @@ namespace Game.Map
             // OTHER army sharing this hex.
             Game.Combat.BattleEncounterContext encounter =
                 Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(hex, participants, mover.Owner);
+            // The arriving hero can be the hunted side. Persist the coordinator's canonical
+            // hunter/target order in the popup and Delay record as well as in ShowEncounter.
+            participants = new List<ArmyData>(encounter.Participants);
 
             // A hero-only contact (see BattleInitiator.IsEngageable vs IsCombatCapable) has
             // nothing for a normal Tactical Battle Module round to do — no acting units on that
@@ -423,20 +422,8 @@ namespace Game.Map
                 return MoveOrderResult.CannotMove;
             }
 
-            // An army sharing its hex with a combat-capable enemy army can't just walk away —
-            // the only way out is retreating from battle (see the manual's Retreat Challenge),
-            // which doesn't exist yet, so for now this hex is a dead end until real combat
-            // resolution can free it. See Game.Combat.BattleInitiator.
-            //
-            // Gated on IsCombatCapable(army) — the MOVER, not whatever enemy is sharing the hex
-            // (2026-08-24 P0 fix, project owner's own report: a hero-only army that stumbled onto
-            // an enemy via fog-of-war reveal mid-move never triggers TryBeginBattleAt's own
-            // contact branch either — see MoverCannotFight — so it just finishes its move
-            // "coexisting" with that enemy. Without this gate, the very next order for that same
-            // army hit this exact check and read as permanently LockedInCombat, with no fight to
-            // ever resolve it and no way out — a real Capture Kill Challenge/Retreat skill this
-            // army doesn't have. A hero-only army was never a real combat participant on this hex
-            // to begin with, so it stays free to just walk off).
+            // An unresolved hostile contact must finish before another map order. For a
+            // hero-only resident that resolution is Capture/Kill, for combatants it is battle.
             if (!AviationRules.IsAirArmy(army) && BattleInitiator.CanInitiateContact(army)
                 && BattleInitiator.FindEnemyAt(army.Hex, army) != null)
             {
