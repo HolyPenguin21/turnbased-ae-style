@@ -417,6 +417,8 @@ namespace Game.EditorTests
             var player = new PlayerSetupData { Nickname = "SupportReturnNoBase" };
             WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 0, hex: new HexCoord(9, 9),
                 defenders: new List<WorthIt.DefenderProfile>(), withOwnArmy: false); // no bases known
+            // The shared fixture seeds a citadel/base even when it creates no own army.
+            snap.Self.BaseHexes = System.Array.Empty<HexCoord>();
             MissionIntent intent = PutRaidIntent(player, primaryArmyId: 1,
                 target: RaidTargetRef.ForNeutralArmy(2), phase: RaidMissionPhase.Reinforcement);
 
@@ -601,4 +603,3 @@ namespace Game.EditorTests
     }
 }
 #endif
-
