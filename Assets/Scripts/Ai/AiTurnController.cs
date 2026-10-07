@@ -254,13 +254,13 @@ namespace Game.Ai
             // never reaches End cannot leak entries into a later turn.
             Game.Combat.WorthIt.BeginEstimateCacheScope();
             yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
-            // Final safety boundary: if Pause was requested during a late synchronous action
-            // that had no later operational step, stop before the turn callback advances.
-            yield return ctx.WaitAtObserverActionBoundary();
             Game.Combat.WorthIt.EstimateCacheStats battleStats = Game.Combat.WorthIt.EndEstimateCacheScope();
             AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
                 + $"entries={battleStats.Entries}");
+            // Final safety boundary: the turn-scoped simulation cache is already closed, all
+            // pipeline cleanup is complete, and only the handoff callback remains.
+            yield return ctx.WaitAtObserverActionBoundary();
             onDone?.Invoke();
             yield break;
         }
