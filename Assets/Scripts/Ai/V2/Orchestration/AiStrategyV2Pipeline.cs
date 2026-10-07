@@ -633,13 +633,17 @@ namespace Game.Ai.V2
                                 + string.Join(", ", waiting.Select(m => StableMissionKey.For(m).ToString())));
                         }
                     }
-                    if (retryNextTurnThisPass.Count > 0)
+                    if (missions.Count > 0)
                     {
                         var retained = new List<MissionProposal>(missions.Count);
                         foreach (MissionProposal mission in missions)
                         {
+                            // The set is per admission; the registry carries the same verdict to a
+                            // later admission of this turn while it still provably holds.
                             if (mission != null
-                                && retryNextTurnThisPass.Contains(StableMissionKey.For(mission)))
+                                && (retryNextTurnThisPass.Contains(StableMissionKey.For(mission))
+                                    || CapabilityPoolExhaustionRegistry.ShouldSkipRetried(
+                                        player, mission, snapshot)))
                             {
                                 if (mission.FromDurableIntent
                                     && mission.DurableFundingTier != CommitmentTier.None)
@@ -821,7 +825,11 @@ namespace Game.Ai.V2
                                 // the rejection dict only after the whole step settles was catching
                                 // just the last realloc pass's leftovers, near-always empty by then.
                                 if (failure.Disposition == ProvisionDisposition.RetryNextTurn)
+                                {
                                     retryNextTurnThisPass.Add(failedKey);
+                                    CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(
+                                        player, failedFunding.Mission);
+                                }
                                 AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
                                     + $"[{AiV2Trace.FormatCorrelation(failedFunding.Mission)}] {failedKey} — FAIL "
                                     + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
@@ -886,7 +894,11 @@ namespace Game.Ai.V2
                         cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
                             provisionResult.Failure);
                         if (provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
+                        {
                             retryNextTurnThisPass.Add(selectedKey);
+                            CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(
+                                player, selectedFunding.Mission);
+                        }
                         AiDebugLog.Write($"[AI][V2][Loop] provision [{AiV2Trace.FormatCorrelation(selectedFunding.Mission)}] "
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
