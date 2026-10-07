@@ -1486,7 +1486,8 @@ namespace Game.Ai.V2
                         break;
                     }
             AiHandData hand = AiHandRegistry.Peek(snap.Observer);
-            ctx.Carriers = family => DevelopmentDiversity.Carriers(snap.Observer, hand, new[] { family });
+            ctx.Carriers = family => EquipmentTargetMemo.Carriers(snap.Observer, family,
+                () => DevelopmentDiversity.Carriers(snap.Observer, hand, new[] { family }));
 
             HexCoord? targetHex = purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.Hex
                 : purpose?.Raid?.Target.HasValue == true ? purpose.Raid.TargetHex : null;
@@ -1575,6 +1576,9 @@ namespace Game.Ai.V2
             [System.ThreadStatic] private static EquipmentTargetMemo s_current;
             private readonly EquipmentTargetMemo _outer;
             private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefenderProfile>> _sets = new();
+            // Own units already carrying a saturating ability family: the roster does not change inside
+            // one Enumerate, so each family is counted once.
+            private readonly Dictionary<(PlayerSetupData, string), int> _carriers = new();
 
             public EquipmentTargetMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
@@ -1590,6 +1594,14 @@ namespace Game.Ai.V2
                 List<WorthIt.DefenderProfile> targets)
             {
                 if (s_current != null) s_current._sets[(snap, purpose)] = targets;
+            }
+
+            internal static int Carriers(PlayerSetupData player, string family, System.Func<int> count)
+            {
+                if (s_current == null) return count();
+                if (!s_current._carriers.TryGetValue((player, family), out int n))
+                    s_current._carriers[(player, family)] = n = count();
+                return n;
             }
         }
 
