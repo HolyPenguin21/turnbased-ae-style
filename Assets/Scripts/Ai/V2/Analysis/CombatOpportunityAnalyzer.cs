@@ -240,13 +240,36 @@ namespace Game.Ai.V2
             };
         }
 
-        // Every field of a profile that any coverage or damage check can read; two profiles with the
-        // same key are interchangeable inside the pool.
-        private static string ProfileKey(WorthIt.DefenderProfile p) =>
-            $"{p.Attack}|{p.Defense}|{p.HitPoints}|{p.Initiative}|{p.IsGroundCombatant}|{p.IsHero}|"
-            + $"{p.HasCeramicArmor}|{p.IsSummoned}|"
-            + string.Join(",", (p.Abilities ?? System.Array.Empty<string>()).OrderBy(a => a, System.StringComparer.Ordinal))
-            + "|" + string.Join(",", (p.TypeTags ?? System.Array.Empty<UnitTypeTag>()).OrderBy(t => t));
+        // What the pool's consumers read of a profile: attack, abilities and the ground flag
+        // (CanDamage / CanDamageAll), plus hero flag and type tags (which grants fit a host).
+        // Defence, hit points, initiative and the rest never reach a coverage verdict, and an
+        // equipment grant's effect on attack and abilities depends only on these fields too, so
+        // two profiles with the same key are interchangeable inside the pool.
+        private static string ProfileKey(WorthIt.DefenderProfile p)
+        {
+            var sb = new System.Text.StringBuilder(64);
+            sb.Append(p.Attack).Append('|').Append(p.IsGroundCombatant ? 'g' : '-')
+                .Append(p.IsHero ? 'h' : '-').Append('|');
+            AppendSorted(sb, p.Abilities);
+            sb.Append('|');
+            if (p.TypeTags != null)
+            {
+                var tags = new int[p.TypeTags.Count];
+                for (int i = 0; i < tags.Length; i++) tags[i] = (int)p.TypeTags[i];
+                System.Array.Sort(tags);
+                foreach (int t in tags) sb.Append(t).Append(',');
+            }
+            return sb.ToString();
+        }
+
+        private static void AppendSorted(System.Text.StringBuilder sb, IReadOnlyList<string> items)
+        {
+            if (items == null || items.Count == 0) return;
+            var sorted = new string[items.Count];
+            for (int i = 0; i < sorted.Length; i++) sorted[i] = items[i];
+            System.Array.Sort(sorted, System.StringComparer.Ordinal);
+            foreach (string item in sorted) sb.Append(item).Append(',');
+        }
 
         // `p` with one equipment grant applied on top (attack and abilities are what coverage reads).
         private static WorthIt.DefenderProfile Equipped(WorthIt.DefenderProfile p, EquipmentGrant g)
@@ -265,6 +288,64 @@ namespace Game.Ai.V2
                 abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags, S(EquipmentStat.Attack),
                 S(EquipmentStat.HitPoints), S(EquipmentStat.Initiative), abilities, p.MaxHitPoints,
                 p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned);
+        }
+
+        // Frame-spreading pre-pass for Analyze (2026-10-07: one synchronous Analyze was a 50 ms frame,
+        // all of it WorthIt Monte Carlo). Runs the SAME two estimates Analyze runs per target -
+        // WinChance of the ready army and BestAssembly - with the same arguments, so the exact
+        // per-turn estimate cache (WorthIt.EstimateCache) holds every result when Analyze runs and
+        // Analyze itself is untouched and returns exactly what it always returned. Results are
+        // discarded here; the only effect is cache entries. Yields a frame whenever
+        // `budgetSeconds` of wall clock has passed since the last one, between targets.
+        // No-op outside an estimate-cache scope (nothing would be remembered).
+        // KEEP IN STEP with Analyze: a changed argument there only costs a cache miss, never a wrong answer.
+        internal static System.Collections.IEnumerator WarmEstimates(WorldSnapshot snap, float budgetSeconds = 0.008f)
+        {
+            if (!WorthIt.EstimateCacheActive || snap?.Self == null || snap.Known == null)
+                yield break;
+
+            List<WorthIt.DefenderProfile> assemblableBodies = AssemblableBodies(snap);
+            List<HeroRoleEvaluator.HeroProfile> commanders = Commanders(snap);
+            ArmySnapshot bestReadyArmy = BestReadyArmy(snap);
+            List<WorthIt.DefenderProfile> readyRoster = bestReadyArmy?.Members?.ToList()
+                ?? new List<WorthIt.DefenderProfile>();
+            WorthIt.SideCommander readyCommander = bestReadyArmy?.Commander ?? default;
+
+            float lastYield = UnityEngine.Time.realtimeSinceStartup;
+            void Warm(IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander,
+                float hexBonus)
+            {
+                WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders,
+                    hexBonus, readyCommander, commander);
+                BestAssembly(commanders, assemblableBodies,
+                    new[] { new WorthIt.DefendingArmy(defenders, commander, hexBonus) }, hexBonus);
+            }
+            IReadOnlyList<WorthIt.DefenderProfile> None() =>
+                System.Array.Empty<WorthIt.DefenderProfile>();
+
+            var targets = new List<(IReadOnlyList<WorthIt.DefenderProfile> Defenders,
+                WorthIt.SideCommander Commander, float HexBonus)>();
+            var candidates = new List<AiMapMemory.KnownEnemySighting>();
+            if (snap.Known.EnemySightings != null) candidates.AddRange(snap.Known.EnemySightings);
+            if (snap.Known.NeutralSightings != null) candidates.AddRange(snap.Known.NeutralSightings);
+            foreach (AiMapMemory.KnownEnemySighting t in candidates)
+                targets.Add((t.Defenders ?? None(), t.Commander,
+                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, t.Hex, t.Owner)));
+            if (snap.Known.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                    targets.Add((g.Defenders ?? None(), g.Commander,
+                        AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null)));
+
+            foreach (var target in targets)
+            {
+                if (UnityEngine.Time.realtimeSinceStartup - lastYield >= budgetSeconds)
+                {
+                    yield return null;
+                    lastYield = UnityEngine.Time.realtimeSinceStartup;
+                }
+                using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
+                    Warm(target.Defenders, target.Commander, target.HexBonus);
+            }
         }
 
         public static CombatOpportunityReport Analyze(WorldSnapshot snap)
