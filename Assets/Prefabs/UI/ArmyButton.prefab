@@ -142,6 +142,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyButtonUI
   label: {fileID: 1990000000000010014}
   button: {fileID: 1990000000000010005}
+  lampOn: {fileID: 7620603312507300487}
+  lampOff: {fileID: 7858238044363050361}
+  apLabel: {fileID: 1634516345061306399}
+  movementLabel: {fileID: 3704180272637988199}
+  apIcon: {fileID: 8592669508996309638}
+  movementIcon: {fileID: 2529210155868315269}
 --- !u!1 &1990000000000010011
 GameObject:
   m_ObjectHideFlags: 0
@@ -853,3 +859,4 @@ MonoBehaviour:
   m_hasFontAssetChanged: 0
   m_baseMaterial: {fileID: 0}
   m_maskOffset: {x: 0, y: 0, z: 0, w: 0}
+
