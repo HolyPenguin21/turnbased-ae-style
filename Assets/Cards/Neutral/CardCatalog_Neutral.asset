@@ -2378,12 +2378,22 @@ MonoBehaviour:
       hostTypeTags: 03000000
       hostKinds: 00000000
       clearAbilityFamilies:
-      removeAbilities: []
+      removeAbilities:
+      - ShockAttack
+      - Hyperkinetic
+      - Pyrokinetic
+      - Scorcher
+      - Splash
+      - CriticalDamage
+      - AA
       addAbilities: []
       statChanges:
+      - stat: 0
+        amount: 4
+        isOverride: 1
       - stat: 3
-        amount: 1
-        isOverride: 0
+        amount: 3
+        isOverride: 1
   - id: 48
     authoredKey: neutral.equipment.infantry.shotgun
     displayName: Shotgun
@@ -3069,7 +3079,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 1
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 5
         amount: -1
@@ -3119,7 +3129,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 5
-        amount: 1
+        amount: 2
         isOverride: 0
       - stat: 1
         amount: -1
@@ -3732,6 +3742,100 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
+  - id: 73
+    authoredKey: neutral.equipment.infantry.optical-scope
+    displayName: Optical Scope
+    art: {fileID: 21300000, guid: bc16254d5e0a45bf95081d60dea21ab8, type: 3}
+    detailArt: {fileID: 21300000, guid: b431421353f64ed8835f9b4fdd66edc2, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 0
+      materials: 1
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 3
+        amount: 1
+        isOverride: 0
+  - id: 74
+    authoredKey: neutral.equipment.infantry.mobility-harness
+    displayName: Mobility Harness
+    art: {fileID: 21300000, guid: 0321765228ae4c95ab5f761bac9262e6, type: 3}
+    detailArt: {fileID: 21300000, guid: f62d90db95f6483d9d1d812e8ab0c49c, type: 3}
+    faction: 2
+    cardType: 5
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 1
+      tech: 1
+    requiredBuildingAbility:
+    moveMax: 0
+    activationApCost: 1
+    commandRating: 0
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 0
+    initiative: 0
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags:
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 03000000
+      hostKinds: 00000000
+      clearAbilityFamilies:
+      removeAbilities: []
+      addAbilities: []
+      statChanges:
+      - stat: 5
+        amount: 1
+        isOverride: 0
   citadelPrefab: {fileID: 0}
   basePrefab: {fileID: 0}
   armyPrefab: {fileID: 300002, guid: abd75b0383e048149b48e263d22b1c4e, type: 3}
@@ -3740,3 +3844,4 @@ MonoBehaviour:
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyNamePool:
   - Desert striders
+
