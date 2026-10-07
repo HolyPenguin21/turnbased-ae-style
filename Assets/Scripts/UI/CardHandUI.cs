@@ -374,6 +374,14 @@ namespace Game.UI
         // Unity's Input System has no key-pressed event, so this is a genuine per-frame poll.
         private void Update()
         {
+            // A burst of hand changes inside one frame (the AI plays several cards per step)
+            // rebuilds the debug hand once, not once per change.
+            if (_debugHandDirty)
+            {
+                _debugHandDirty = false;
+                if (_showingDebugHand)
+                    RenderDebugHand(_debugHand);
+            }
             if (Game.UI.UIFocusUtility.IsGameplayInputBlocked) return;
             TickCardAnimations();
 
@@ -479,10 +487,13 @@ namespace Game.UI
             RenderDebugHand(hand);
         }
 
-        private void OnDebugHandChanged() => RenderDebugHand(_debugHand);
+        private bool _debugHandDirty;
+
+        private void OnDebugHandChanged() => _debugHandDirty = true;
 
         private void RenderDebugHand(AiHandData hand)
         {
+            _debugHandDirty = false;
             // Destroy() is deferred to end-of-frame; the new player's cards are Instantiate'd into
             // the same handContainer immediately below, so without this the outgoing player's cards
             // are still live GameObjects for one frame alongside the incoming ones — visible as the
