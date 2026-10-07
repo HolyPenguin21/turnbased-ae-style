@@ -190,7 +190,10 @@ namespace Game.UI
         private void Render(bool animated)
         {
             ClearButtons();
-            if (buttonContainer != null && gameConfig != null && gameConfig.armyButtonPrefab != null)
+            ArmyButtonUI prefab = gameConfig == null ? null
+                : !_showStats && gameConfig.armyModalButtonPrefab != null
+                    ? gameConfig.armyModalButtonPrefab : gameConfig.armyButtonPrefab;
+            if (buttonContainer != null && prefab != null)
             {
                 int end = Mathf.Min(_armies.Count, _scrollOffset + maxVisible);
                 for (int i = _scrollOffset; i < end; i++)
@@ -202,7 +205,7 @@ namespace Game.UI
                         slot.layer = buttonContainer.gameObject.layer;
                         var rect = (RectTransform)slot.transform;
                         rect.SetParent(buttonContainer, false);
-                        RectTransform prefabRect = gameConfig.armyButtonPrefab.RectTransform;
+                        RectTransform prefabRect = prefab.RectTransform;
                         rect.anchorMin = prefabRect.anchorMin;
                         rect.anchorMax = prefabRect.anchorMax;
                         rect.pivot = prefabRect.pivot;
@@ -213,7 +216,7 @@ namespace Game.UI
                         _slots.Add(slot);
                         parent = rect;
                     }
-                    ArmyButtonUI button = Instantiate(gameConfig.armyButtonPrefab, parent);
+                    ArmyButtonUI button = Instantiate(prefab, parent);
                     if (animated)
                     {
                         RectTransform rect = button.RectTransform;

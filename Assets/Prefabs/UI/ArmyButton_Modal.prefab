@@ -214,7 +214,7 @@ MonoBehaviour:
   label: {fileID: 1990000000000010014}
   button: {fileID: 1990000000000010005}
   lampOn: {fileID: 7620603312507300487}
-  lampOff: {fileID: 0}
+  lampOff: {fileID: 130261350636596230}
   apLabel: {fileID: 0}
   movementLabel: {fileID: 0}
   apIcon: {fileID: 0}

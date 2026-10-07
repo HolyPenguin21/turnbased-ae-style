@@ -76,6 +76,36 @@ namespace Game.EditorTests
         }
 
         [UnityTest]
+        public IEnumerator ModalUsesItsOwnPrefabAndUpdatesLampsOnClick()
+        {
+            var modalPrefab = Object.Instantiate(_config.armyButtonPrefab, _canvas.transform);
+            modalPrefab.name = "modal-button";
+            modalPrefab.RectTransform.sizeDelta = new Vector2(123, 28.35f);
+            var prefabField = typeof(GameConfig).GetField("armyModalButtonPrefab");
+            Assert.That(prefabField, Is.Not.Null, "Modal needs a separate configured prefab");
+            prefabField.SetValue(_config, modalPrefab);
+            var a = new ArmyData { Name = "A" };
+            var b = new ArmyData { Name = "B" };
+            var armies = new[] { a, b };
+            System.Action<ArmyData> select = null;
+            select = army => _row.Show(armies, select, army);
+            _row.Show(armies, select, a);
+            ArmyButtonUI first = _row.Buttons[0];
+            ArmyButtonUI second = _row.Buttons[1];
+            Assert.That(first.name, Does.StartWith("modal-button"));
+            Assert.That(first.transform.Find("Image_LampOn").gameObject.activeSelf, Is.True);
+            Assert.That(first.transform.Find("Image_LampOff").gameObject.activeSelf, Is.False);
+            Assert.That(second.transform.Find("Image_LampOff").gameObject.activeSelf, Is.True);
+            Assert.That(first.GetComponent<Button>().interactable, Is.True);
+            second.GetComponent<Button>().onClick.Invoke();
+            Assert.That(_row.Buttons[0], Is.SameAs(first));
+            Assert.That(first.transform.Find("Image_LampOff").gameObject.activeSelf, Is.True);
+            Assert.That(second.transform.Find("Image_LampOn").gameObject.activeSelf, Is.True);
+            Assert.That(second.transform.Find("Image_LampOff").gameObject.activeSelf, Is.False);
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator OneMobileArmyShowsPanelButStorageContainersDoNot()
         {
             var selectionObject = new GameObject("selection");
