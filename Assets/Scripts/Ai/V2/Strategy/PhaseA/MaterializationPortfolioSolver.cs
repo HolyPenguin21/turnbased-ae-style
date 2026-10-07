@@ -254,11 +254,20 @@ namespace Game.Ai.V2
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
             float bestSum = float.NegativeInfinity;
-            string bestKey = null;
+            string bestKey = null;   // built lazily: only a tie on sum AND size needs the string
             var acc = new Dictionary<DemandState, DemandCandidate>();
-            string AssignmentKey() => string.Join(";", acc.Select(x =>
+            string KeyOf(Dictionary<DemandState, DemandCandidate> set) => string.Join(";", set.Select(x =>
                 $"{(int)x.Key.Demand.RequestingAxis}:{(int)x.Key.Demand.Capability}:{x.Value.Plan.StableKey}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
+
+            // Each demand's usable candidates in search order (best DecisionScore first, StableKey
+            // as the tie-break), sorted ONCE here instead of at every visit of its level.
+            var ordered = new DemandCandidate[demands.Count][];
+            for (int i = 0; i < demands.Count; i++)
+                ordered[i] = options[demands[i]]
+                    .Where(c => c.Plan != null && c.Worthwhile)
+                    .OrderByDescending(c => c.DecisionScore)
+                    .ThenBy(c => c.Plan.StableKey, System.StringComparer.Ordinal).ToArray();
 
             // Recipient alternatives must not be pruned before checking conflicts. Bound the
             // expanded search by the remaining generation budget, while ignoring other constraints
@@ -292,22 +301,27 @@ namespace Game.Ai.V2
                 if (bound + Mathf.Max(0.0001f, Mathf.Abs(bound) * 0.00001f) < bestSum) return;
                 if (i == demands.Count)
                 {
-                    string key = AssignmentKey();
-                    if (sum > bestSum || (sum == bestSum && (acc.Count > best.Count
-                        || (acc.Count == best.Count && System.StringComparer.Ordinal.Compare(key, bestKey) < 0))))
+                    bool better = sum > bestSum;
+                    if (!better && sum == bestSum)
+                    {
+                        if (acc.Count > best.Count) better = true;
+                        else if (acc.Count == best.Count)
+                        {
+                            bestKey ??= KeyOf(best);
+                            better = System.StringComparer.Ordinal.Compare(KeyOf(acc), bestKey) < 0;
+                        }
+                    }
+                    if (better)
                     {
                         bestSum = sum;
-                        bestKey = key;
+                        bestKey = null;
                         best = new Dictionary<DemandState, DemandCandidate>(acc);
                     }
                     return;
                 }
                 DemandState d = demands[i];
-                foreach (DemandCandidate c in options[d].OrderByDescending(c => c.DecisionScore)
-                    .ThenBy(c => c.Plan?.StableKey, System.StringComparer.Ordinal))
+                foreach (DemandCandidate c in ordered[i])
                 {
-                    if (c.Plan == null || !c.Worthwhile)
-                        continue;
                     if (!jf.CardsDisjoint(c.Plan))
                         continue;
                     if (!jf.Fits(c.Plan, c.FollowupAp, d.Demand != null ? d.Demand.SpendAuthority : default))
@@ -380,20 +394,27 @@ namespace Game.Ai.V2
                         g > 0 ? generated + upper[i + 1, g - 1] : 0f);
             }
 
+            // Search order per demand (largest AP first), sorted once instead of at every visit.
+            var ordered = new (MaterializationPlan plan, float followupAp)[demands.Count][];
+            for (int i = 0; i < demands.Count; i++)
+                ordered[i] = options[demands[i]].Where(c => c.plan != null)
+                    .OrderByDescending(c => c.plan.ApCost + c.followupAp).ToArray();
+
             void Rec(int i, float apSum, int generationsLeft)
             {
+                // Only the maximum is wanted and best rises strictly, so a branch whose optimistic
+                // bound merely EQUALS it cannot help. Equal-cost plans are the norm, and the former
+                // strict comparison explored every one of them.
                 float bound = apSum + upper[i, generationsLeft];
-                if (bound + Mathf.Max(0.0001f, Mathf.Abs(bound) * 0.00001f) < best) return;
+                if (bound <= best) return;
                 if (i == demands.Count)
                 {
                     if (apSum > best) best = apSum;
                     return;
                 }
                 DemandState d = demands[i];
-                foreach (var c in options[d].OrderByDescending(c => c.plan?.ApCost + c.followupAp))
+                foreach (var c in ordered[i])
                 {
-                    if (c.plan == null)
-                        continue;
                     if (!jf.CardsDisjoint(c.plan))
                         continue;
                     if (!jf.Fits(c.plan, c.followupAp))
