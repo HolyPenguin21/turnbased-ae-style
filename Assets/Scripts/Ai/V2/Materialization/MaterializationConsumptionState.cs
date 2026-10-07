@@ -84,14 +84,18 @@ namespace Game.Ai.V2
         // not already taken by an accepted chain.
         public bool CardsDisjoint(MaterializationPlan p)
         {
-            foreach (CardData c in PlanCards(p))
-                if (c != null && _cards.Contains(c))
-                    return false;
+            // The same three cards PlanCards lists, without allocating a list per check (this runs
+            // for every candidate of every node of the portfolio search).
+            if (p != null
+                && (Held(p.BaseCardInHand) || Held(p.EquipmentInHand) || Held(p.UpgradeTargetCard)))
+                return false;
             string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
             if (hostKey != null && _externalConflictKeys.Contains(hostKey)) return false;
             string gk = GenKey(p);
             return string.IsNullOrEmpty(gk) || !_genKeys.Contains(gk);
         }
+
+        private bool Held(CardData c) => c != null && _cards.Contains(c);
 
         public bool ExternalDisjoint(CardData physicalCard, string generationCardKey,
             string conflictKey, CardData recipientCard = null)
@@ -169,8 +173,12 @@ namespace Game.Ai.V2
         // running totals. Assumes CardsDisjoint(p) already held.
         public Token Push(MaterializationPlan p, float extraAp = 0f)
         {
-            foreach (CardData c in PlanCards(p))
-                if (c != null) _cards.Add(c);
+            if (p != null)
+            {
+                if (p.BaseCardInHand != null) _cards.Add(p.BaseCardInHand);
+                if (p.EquipmentInHand != null) _cards.Add(p.EquipmentInHand);
+                if (p.UpgradeTargetCard != null) _cards.Add(p.UpgradeTargetCard);
+            }
             string gk = GenKey(p);
             string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
             if (hostKey != null) _externalConflictKeys.Add(hostKey);
@@ -193,8 +201,12 @@ namespace Game.Ai.V2
         public void Pop(in Token token)
         {
             MaterializationPlan p = token.Plan;
-            foreach (CardData c in PlanCards(p))
-                if (c != null) _cards.Remove(c);
+            if (p != null)
+            {
+                if (p.BaseCardInHand != null) _cards.Remove(p.BaseCardInHand);
+                if (p.EquipmentInHand != null) _cards.Remove(p.EquipmentInHand);
+                if (p.UpgradeTargetCard != null) _cards.Remove(p.UpgradeTargetCard);
+            }
             string hostKey = UpgradeConflictKey(p?.UpgradeTargetCard, p?.UpgradeTargetUnit);
             if (hostKey != null) _externalConflictKeys.Remove(hostKey);
             if (token.AddedGenKey)

@@ -395,9 +395,11 @@ namespace Game.Ai.V2
                     // filled facility slots, army movement, resources), NOT derived from the op's own
                     // result. A failed build that changed any of these is a rollback leak.
                     V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
-                    InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
-                        snap, player, root, hand, ctx, istate.Demand, apBudget,
-                        result.Reservation, activeIntents, commitments);
+                    InfraFulfillResult infra;
+                    using (new Game.Core.ProfileScope("AI/PhaseA.InfraFulfill"))
+                        infra = InfrastructureFulfillment.TryFulfill(
+                            snap, player, root, hand, ctx, istate.Demand, apBudget,
+                            result.Reservation, activeIntents, commitments);
                     V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
                     if (infra.StateChanged)
                         result.StateChanged = true;
@@ -519,16 +521,20 @@ namespace Game.Ai.V2
                     var measOptions = new Dictionary<DemandState, List<(MaterializationPlan plan, float followupAp)>>();
                     foreach (DemandState state in active)
                     {
-                        var feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
-                            ctx, state.Demand, apBudget, commitments,
-                            apBudget.ReservedFollowup(), result.Reservation);
+                        List<(MaterializationPlan plan, float followupAp)> feas;
+                        using (new Game.Core.ProfileScope("AI/PhaseA.AllFeasiblePlans"))
+                            feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
+                                ctx, state.Demand, apBudget, commitments,
+                                apBudget.ReservedFollowup(), result.Reservation);
                         if (feas.Count > 0)
                             measOptions[state] = feas;
                     }
                     int genRemaining = Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
                         - result.Reservation.GenerationAttemptsUsed);
-                    float legalCardApWorkload = MaterializationPortfolioSolver.EstimateLegalApWorkload(
-                        measOptions, root, player, ctx, hand, genRemaining);
+                    float legalCardApWorkload;
+                    using (new Game.Core.ProfileScope("AI/PhaseA.LegalApWorkload"))
+                        legalCardApWorkload = MaterializationPortfolioSolver.EstimateLegalApWorkload(
+                            measOptions, root, player, ctx, hand, genRemaining);
                     witnessedUsefulApDemand = committedNonCardAp + legalCardApWorkload;
 
                     // Cross-demand filler universe for the hero Command 6-vs-7 valuation: every
@@ -554,8 +560,9 @@ namespace Game.Ai.V2
                         && active.Any(other => !ReferenceEquals(other, state)
                             && other.Remaining > AiConfigV2.allocatorSliceEpsilon
                             && other.Demand.Capability == CapabilityKind.Hero);
-                    List<DemandCandidate> top =
-                        MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
+                    List<DemandCandidate> top;
+                    using (new Game.Core.ProfileScope("AI/PhaseA.TopForDemand"))
+                        top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
                             apBudget, commitments, apBudget.ReservedFollowup(),
                             result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
@@ -605,8 +612,9 @@ namespace Game.Ai.V2
                     }
                 }
 
-                Dictionary<DemandState, DemandCandidate> assigned =
-                    options.Count > 0
+                Dictionary<DemandState, DemandCandidate> assigned;
+                using (new Game.Core.ProfileScope("AI/PhaseA.BestAssignment"))
+                    assigned = options.Count > 0
                         ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx, hand,
                             Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
                                         - result.Reservation.GenerationAttemptsUsed), radar)
@@ -629,16 +637,19 @@ namespace Game.Ai.V2
                                 + "not worth playing over holding the card / lost to contention; keep in hand");
                             continue;
                         }
-                        string diag = MaterializationDiagnostics.ExplainNoChain(
-                            snap, player, root, hand, ctx, d, apBudget, commitments, reserved);
+                        string diag;
+                        using (new Game.Core.ProfileScope("AI/PhaseA.ExplainNoChain"))
+                            diag = MaterializationDiagnostics.ExplainNoChain(
+                                snap, player, root, hand, ctx, d, apBudget, commitments, reserved);
                         // The preparation host's witness reads this verdict (one truth) — only a
                         // structural one: no chain shape at all, or shapes that pass the play
                         // preflight yet cannot deliver into this host. An AP/resource shortfall of
                         // this pass is timing and marks nothing.
                         // The same structural verdict releases the demand's claim on hand cards.
                         {
-                            MaterializationDeliveryAvailability availability =
-                                MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                            MaterializationDeliveryAvailability availability;
+                            using (new Game.Core.ProfileScope("AI/PhaseA.DeliveryAvailability"))
+                                availability = MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
                                     snap, player, root, hand, ctx, d, commitments, result.Reservation);
                             bool structural = availability.RawCandidates == 0 || availability.ConfirmedBlocked;
                             d.StructurallyUndeliverable = structural;
@@ -740,9 +751,11 @@ namespace Game.Ai.V2
                 }
 
                 WorldSnapshot snapBeforeDelivery = snap;
-                MaterializationResult play = MaterializationExecutor.Execute(
-                    snap, player, root, hand, ctx, plan, commitments,
-                    chosenDemand.SpendAuthority);
+                MaterializationResult play;
+                using (new Game.Core.ProfileScope("AI/PhaseA.Execute"))
+                    play = MaterializationExecutor.Execute(
+                        snap, player, root, hand, ctx, plan, commitments,
+                        chosenDemand.SpendAuthority);
                 int chainApAfter = root.ActionPoints;
                 chainAttempts++;
 
