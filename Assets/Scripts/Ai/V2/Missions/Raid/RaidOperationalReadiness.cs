@@ -44,12 +44,16 @@ namespace Game.Ai.V2
         {
             inventory = inventory ?? new CapabilityInventory();
             float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, objective.Target);
-            GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(
-                snap, objective.ToTarget(), opposition, commitments?.ClaimedArmyIdSet, hexBonus);
+            GroundCombatAssemblyPlan ready;
+            using (new Game.Core.ProfileScope("AI/Raid.ReadyPlan"))
+                ready = GroundCombatAssemblyPlanner.Plan(
+                    snap, objective.ToTarget(), opposition, commitments?.ClaimedArmyIdSet, hexBonus);
 
             // Sized against the same hex defence the readiness plan was built with.
-            float requiredPower = GroundCombatFeasibility.RequiredPower(
-                WorthIt.UnitsOf(opposition ?? System.Array.Empty<WorthIt.DefendingArmy>()), hexBonus);
+            float requiredPower;
+            using (new Game.Core.ProfileScope("AI/Raid.RequiredPower"))
+                requiredPower = GroundCombatFeasibility.RequiredPower(
+                    WorthIt.UnitsOf(opposition ?? System.Array.Empty<WorthIt.DefendingArmy>()), hexBonus);
             float numericDeficit = Mathf.Max(0f, requiredPower - inventory.RaidAvailableFieldPower);
             bool executable = ready.Feasible;
 
@@ -57,9 +61,11 @@ namespace Game.Ai.V2
             // assembly failure with sufficient numeric power is NeedsAssembly, and never inflates
             // a phantom +1 FieldCombatPower request.
             string unreachableReason = null;
-            bool unreachable = !executable
-                && CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap,
-                    opposition, hexBonus, out unreachableReason);
+            bool unreachable = false;
+            if (!executable)
+                using (new Game.Core.ProfileScope("AI/Raid.ProvenUncoverable"))
+                    unreachable = CombatOpportunityAnalyzer.ProvenUncoverableWithinKnownPool(snap,
+                        opposition, hexBonus, out unreachableReason);
             bool needsPower = !unreachable && numericDeficit > AiConfigV2.allocatorSliceEpsilon;
             bool needsHero = !executable && !unreachable && !needsPower && inventory.AvailableHeroes <= 0;
             bool needsAssembly = !executable && !unreachable && !needsPower && !needsHero;
