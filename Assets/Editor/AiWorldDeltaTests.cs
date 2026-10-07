@@ -174,6 +174,30 @@ namespace Game.EditorTests
             Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before), rollback ? "rollback" : "no-op");
         }
 
+        // One shared rule: a real change advances once; nothing changed or a child receipt already
+        // covered the mutation advances zero times. Aggregate executors all stamp through it.
+        [TestCase(true, false, 1)]
+        [TestCase(true, true, 0)]
+        [TestCase(false, false, 0)]
+        [TestCase(false, true, 0)]
+        public void StampActionAdvancesAtMostOncePerAction(bool changed, bool childCommitted, int expected)
+        {
+            int before = WorldDeltaLifecycle.Current;
+            int receipt = WorldDeltaLifecycle.StampAction(changed, childCommitted);
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + expected));
+            Assert.That(receipt, Is.EqualTo(WorldDeltaLifecycle.Current));
+        }
+
+        [Test]
+        public void SequentialActionsEachAdvanceOnceAndNeverShareAReceipt()
+        {
+            int before = WorldDeltaLifecycle.Current;
+            int first = WorldDeltaLifecycle.StampAction(true);
+            int second = WorldDeltaLifecycle.StampAction(true);
+            Assert.That(second, Is.EqualTo(first + 1));
+            Assert.That(first, Is.EqualTo(before + 1));
+        }
+
         [TestCase(true)]
         [TestCase(false)]
         public void CanonicalCommitOwnsNestedCardPlayStampsAndRollbackDropsFacts(bool committed)

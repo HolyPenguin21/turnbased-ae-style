@@ -872,8 +872,8 @@ namespace Game.Ai.V2
 
         private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
         {
-            if (result.StateChanged && WorldDeltaLifecycle.Current == versionBefore)
-                WorldDeltaLifecycle.CommitMutation();
+            WorldDeltaLifecycle.StampAction(result.StateChanged,
+                childAlreadyCommitted: WorldDeltaLifecycle.Current != versionBefore);
         }
     }
 }

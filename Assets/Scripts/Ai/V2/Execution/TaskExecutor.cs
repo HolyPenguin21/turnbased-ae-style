@@ -881,12 +881,11 @@ namespace Game.Ai.V2
             // ActorMaterialized (a garrison-extraction CreateArmy/TransferMember) is a real world
             // mutation with no movement/stealth/infrastructure/combat signal of its own, so it
             // bumps WorldDeltaLifecycle explicitly.
-            if (result.StateVersionAfter < 0
-                && (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
+            result.StateVersionAfter = WorldDeltaLifecycle.StampAction(
+                result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
                     || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
-                    || result.EconomyPrepared))
-                WorldDeltaLifecycle.CommitMutation();
-            result.StateVersionAfter = WorldDeltaLifecycle.Current;
+                    || result.EconomyPrepared,
+                childAlreadyCommitted: result.StateVersionAfter >= 0);
         }
 
         private static void CompleteResult(ExecutionResult result, PlayerRoot root)

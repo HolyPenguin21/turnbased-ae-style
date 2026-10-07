@@ -98,6 +98,15 @@ namespace Game.Ai.V2
             return Current;
         }
 
+        // The one "commit unless a child action already committed this same mutation" rule shared
+        // by aggregate executors. Returns the revision receipt for the action: one advance for a
+        // real change, none when nothing changed or a child receipt already covers it.
+        internal static int StampAction(bool changed, bool childAlreadyCommitted = false)
+        {
+            if (changed && !childAlreadyCommitted) CommitMutation();
+            return Current;
+        }
+
         internal static int CommitMutation(bool committed = true) =>
             Apply(null, -1, new WorldDelta(committed, StrategicInvalidationReason.None));
 
