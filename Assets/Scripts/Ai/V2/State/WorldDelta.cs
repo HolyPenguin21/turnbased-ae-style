@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
@@ -34,9 +35,56 @@ namespace Game.Ai.V2
     internal static class WorldDeltaLifecycle
     {
         internal static int Current { get; private set; }
+        // Only synchronous canonical transactions may use this scope. Never retain it across
+        // a coroutine yield: other game actions must keep their own revision boundary.
+        [ThreadStatic] private static MutationTransaction _transaction;
+        internal static MutationTransaction BeginTransaction() => new MutationTransaction();
+
+        internal sealed class MutationTransaction : IDisposable
+        {
+            private readonly MutationTransaction _parent;
+            private readonly List<(PlayerSetupData player, int turn, WorldDelta delta)> _facts =
+                new List<(PlayerSetupData, int, WorldDelta)>();
+            private bool _ended;
+            internal MutationTransaction() { _parent = _transaction; _transaction = this; }
+            internal void Stage(PlayerSetupData player, int turn, WorldDelta delta) =>
+                _facts.Add((player, turn, delta));
+            internal int Commit(PlayerSetupData player, int turn, WorldDelta committedDelta)
+            {
+                if (_ended || _transaction != this)
+                    throw new InvalidOperationException("World mutation transactions must close in order.");
+                _transaction = _parent; _ended = true;
+                // The canonical owner reports whether the transaction actually committed.
+                // Child stamps are discarded on rollback or no-op, not interpreted as success.
+                if (!committedDelta.HasMutation) return Current;
+                Stage(player, turn, committedDelta);
+                if (_parent != null)
+                {
+                    foreach (var fact in _facts) _parent.Stage(fact.player, fact.turn, fact.delta);
+                    return Current;
+                }
+                ++Current;
+                foreach (var fact in _facts)
+                    StrategicInterruptRegistry.Record(fact.player, fact.turn, fact.delta.DirtyFacts,
+                        fact.delta.ActorIds, fact.delta.ContactIds, fact.delta.Hexes, fact.delta.Hand);
+                return Current;
+            }
+            public void Dispose()
+            {
+                if (_ended) return;
+                if (_transaction != this)
+                    throw new InvalidOperationException("World mutation transactions must close in order.");
+                _transaction = _parent; _ended = true;
+            }
+        }
 
         internal static int Apply(PlayerSetupData player, int turn, WorldDelta delta)
         {
+            if (_transaction != null)
+            {
+                _transaction.Stage(player, turn, delta);
+                return Current;
+            }
             if (delta.HasMutation) ++Current;
             StrategicInterruptRegistry.Record(player, turn, delta.DirtyFacts,
                 delta.ActorIds, delta.ContactIds, delta.Hexes, delta.Hand);

@@ -74,7 +74,7 @@ namespace Game.Ai.V2
             if (hand != null && player != null && root != null && ctx != null
                 && apReservedForReactionBefore > 0f)
             {
-                StrategicResourceReservationLedger.ReleaseByReason(
+                MissionLeaseBook.ReleaseByReason(
                     player, ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass);
                 for (int rerun = 0; rerun < AiConfigV2.maxEndOfTurnTempoReruns; rerun++)
                 {

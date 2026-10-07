@@ -48,7 +48,8 @@ namespace Game.Ai.V2
 
     public sealed class StrategicResourceReservation
     {
-        public string Owner;
+        public ReservationOwner Identity { get; set; }
+        public string Owner { get => Identity; set => Identity = value; }
         public StrategicReservationReason Reason;
         public StrategicReservedResource Resource;
         public float Amount;
@@ -111,6 +112,8 @@ namespace Game.Ai.V2
             }
             if (existing != null)
             {
+                if (r.Identity?.Operation.HasValue == true)
+                    existing.Identity = r.Identity;
                 if (Mathf.Approximately(existing.Amount, amount) && existing.ExpirationStage == r.ExpirationStage)
                     return;
                 existing.Amount = amount;
@@ -121,7 +124,7 @@ namespace Game.Ai.V2
             // Own the value: a caller may reuse its request without changing the stored hold.
             var owned = new StrategicResourceReservation
             {
-                Owner = r.Owner, Reason = r.Reason, Resource = r.Resource,
+                Identity = r.Identity, Reason = r.Reason, Resource = r.Resource,
                 Amount = amount, ExpirationStage = r.ExpirationStage,
             };
             e.Reservations.Add(owned);
@@ -298,7 +301,7 @@ namespace Game.Ai.V2
                 return System.Array.Empty<StrategicResourceReservation>();
             return e.Reservations.Select(r => new StrategicResourceReservation
             {
-                Owner = r.Owner, Reason = r.Reason, Resource = r.Resource,
+                Identity = r.Identity, Reason = r.Reason, Resource = r.Resource,
                 Amount = r.Amount, ExpirationStage = r.ExpirationStage,
             }).ToList();
         }

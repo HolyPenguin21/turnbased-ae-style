@@ -1,6 +1,6 @@
 # AI V2 lifecycle ownership migration — execution report
 
-Status: **incomplete full task; verified WRAP/CENTRALIZE migration checkpoint**. No merge to master.
+Status: **incomplete full task; verified session/lease ownership migration checkpoint**. No merge to master.
 
 Baseline: connector-verified master `706b1bbddee9abe4c4f052caea353bc3a790a332`.
 Branch: `refactor/ai-v2-lifecycle-ownership`.
@@ -21,9 +21,9 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 | Economy suppression/progress evidence | EconomyLifecycleState | original counters/expiry unchanged |
 | generated Development operator identity/age | DevelopmentLifecycleState | original uniqueness/reconciliation/expiry unchanged |
 | Recon trim/used actors | one ReconTurnState scope, attached to session | compatibility lookup owns no second copy |
-| actor claims / mutation contracts | ActorCommitments | normalized derived view; no unified operation lease yet |
+| actor claims / mutation contracts | session MissionLeaseBook actor table | ActorCommitments is a view; detached pass views remain derived snapshots |
 | actor role validity | MissionActorPolicy | same methods; old public accessors are delegates |
-| resource ownership | StrategicResourceReservationLedger | existing string owner / bank authority retained; typed lease migration pending |
+| explicit resource ownership/lifecycle | MissionLeaseBook API over StrategicResourceReservationLedger storage | typed ReservationOwner carries existing MissionIntentKey; token bank compatibility retained |
 | world revision and fact publication | WorldDeltaLifecycle | V2StateVersion and interrupt Mark are storage-free compatibility adapters |
 | common step disposition | MissionStepResult.Disposition | old Outcome/StructuralFailure are projections |
 | domain durable lifecycle transitions | existing MissionContinuityLayer domain paths | not replaced by result policy; operation-level terminal unification pending |
@@ -34,13 +34,13 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 |---|---|
 | State/AiTurnSession.cs; Orchestration/AiStrategyV2Pipeline.cs | scattered start/end calls → one player/turn boundary; normal end explicit, disposal fallback, next-turn recovery of abandoned scope |
 | Continuity/MissionIntentState.cs; State/EconomyLifecycleState.cs; State/DevelopmentLifecycleState.cs; State/ReconTurnState.cs | mixed storage → three scoped owners plus durable intent dictionary; all production persistent-domain callers now use the specialised owner |
-| State/ActorCommitments.cs; Continuity/MissionActorPolicy.cs | normalized claims plus mission validation → generic view and one domain policy; authoritative eligibility method bodies identical |
+| State/ActorCommitments.cs; State/MissionLease.cs; Continuity/MissionActorPolicy.cs | separate claimed set/contracts → one actor claim table with operation owners; same role predicates feed it; normalized membership remains O(1) |
 | Continuity/MissionOutcomeLedger.cs; MissionStepResult.cs; MissionStepResultPolicy.cs | ledger stores facts and interprets domains → records/correlates facts, delegates normalization/live objective interpretation; one stored disposition with compatibility projections |
-| State/WorldDelta.cs; V2StateVersion.cs; StrategicInterruptRegistry.cs | independent publication API + revision API → one policy owner, old wrappers contain no revision storage; existing mutation/observation boundaries preserved |
+| State/WorldDelta.cs; V2StateVersion.cs; StrategicInterruptRegistry.cs; Execution/BuildingPlayExecutor.cs | one revision owner; synchronous FoundBase scope stages child card-play stamps, drops rollback and advances once on commit; Raid/Attack paired commit/publication use one Apply with original dirty mask |
 | Execution/*, MaterializationExecutor, ProvisioningResult, WorldAnalysis.Observation, strategic card/development/phase paths | mechanical redirect of revision/publication calls; no new dirty masks or costs |
 | CapabilityPoolExhaustionRegistry, AviationObligationStallRegistry, StrategicTempoBudget, StrategicSpendability | scoped EndTurn adapters used by session after final strategic reads |
 | ARCHITECTURE.md | documents actual migrated contracts and explicitly lists remaining work |
-| five new Editor test files (+ Unity metadata) | session/persistent/result/delta/domain fact parity tests; no product verification stubs |
+| six new Editor test files (+ Unity metadata) | session/persistent/result/delta/domain fact parity plus lease lifetime, bank stages, stale-turn write and pre-intent failure tests; no product verification stubs |
 
 Existing Unity GUIDs, scenes and prefabs are unchanged. New C# files include fresh .meta files.
 
@@ -54,11 +54,17 @@ Existing Unity GUIDs, scenes and prefabs are unchanged. New C# files include fre
 * Pipeline normal reservation expiry/assert and start registry coordination route through session.
 * V2StateVersion no longer contains a parallel revision store; all production bump sites route to WorldDeltaLifecycle.
 
-No claim is made that the full actor/resource cleanup duplication is removed. MissionLease is not implemented at this checkpoint.
+* ActorCommitments no longer owns independent claimed-id, contract and preparation-host stores. One lease table owns those facts and identifies the operation.
+* All production explicit-reservation writes, replacements, release and expiry requests use MissionLeaseBook. The ledger retains its existing bank storage/replacement rules as an adapter, with no second reservation copy.
+* Removing a durable intent releases its operation actor claims and resource rows through the lease owner. Existing in-place Recon rekeys transfer actor ownership; sub-leg Completed does not trigger retirement.
+* Terminal fresh failures now release the operation's pre-intent resource hold in the same turn; another operation's hold remains. Previously RetireEconomyIntent returned on intent=null.
+* FoundBase no longer advances revision for a rolled-back refusal or once per nested card play plus outer commit. Child stamps belong to the canonical synchronous transaction.
+
+This does not yet complete individual domain payload/terminal-result migration or all revision transaction boundaries.
 
 ## E. Behaviour parity
 
-No score, threshold, target, priority, cost, movement, combat/capture, endurance, capacity, production choice or Housekeeping policy was edited. Nine mechanically moved authoritative method bodies compare byte-for-byte equal to baseline. A golden result matrix of **5,442** provisioning/execution combinations across Recon, Economy, Raid, Attack, ActiveDefence and Development exactly matches the original master fingerprint:
+No score, threshold, target, priority, cost, movement, combat/capture, endurance, capacity, production choice or Housekeeping policy was edited. The first checkpoint compared nine mechanically moved method bodies byte-for-byte against baseline. The subsequent actor-build change adds operation keys to the same claims and stores the same preparation-host flag; role validity predicates are unchanged. A golden result matrix of **5,442** provisioning/execution combinations across Recon, Economy, Raid, Attack, ActiveDefence and Development exactly matches the original master fingerprint:
 
 `88C62EC22801E3E8127D1F2E15205FB3978A32FBA292484249A1E3EABAAECE8F`
 
@@ -66,7 +72,7 @@ This proves result-fact parity for that matrix and differential unit coverage, n
 
 ## F. Separate bank audit
 
-Physical stock reads, TurnResourceBook.Free/MayDrawOn, ledger storage/replacement/downgrade/expiry, allocator accounting, SpendAuthority and canonical spending remain unchanged. Session delegates the existing end expiry/assert and does not mint, debit or redistribute resources. Old-turn AP is not available through a new session. New tests cover player isolation, end cleanup and aborted prior-scope cleanup.
+Physical stock reads, TurnResourceBook.Free/MayDrawOn, ledger amount/replacement/downgrade/expiry rules, allocator accounting, SpendAuthority token encoding and canonical spending remain unchanged. ReservationOwner is immutable; Owner is a legacy token projection, not another writable identity store. Session delegates the existing end expiry/assert and does not mint, debit or redistribute resources. Old-turn AP is not available through a new session. New tests cover player isolation, end cleanup, aborted prior-scope cleanup, independent operations, completion/deferred upgrade/downgrade/idempotence, typed owner preservation in row copies, terminal pre-intent release and rejected stale-turn writes.
 
 Existing tests cover owner-scoped Economy completion/deferred downgrade/upgrade and same-turn spendability. The deferred H/E/M/T saving claim may exceed physical stock by existing design; completion/reaction committed claims retain existing coverage checks. No stricter bank policy was introduced.
 
@@ -74,9 +80,9 @@ Production/Development paths still use their original bank APIs. Multiple simult
 
 ## G. Separate cache audit
 
-Mutation endpoints advance the same process-monotonic stamp through one policy; observation publication does not add a second advance. Dirty masks, reason-scoped payloads, freshness equality checks, snapshot refresh placement, AiMapMemory knowledge revision and route/combat keys are unchanged. No new cache was added. WorldDelta freezes its actor/contact/hex payload.
+Mutation endpoints use one process-monotonic policy; observation publication does not advance revision. FoundBase now has a tested synchronous child/outer commit boundary and rollback/no-op drops pending stamps. This is an intentional freshness correction, not a gameplay rule change. Dirty masks, reason-scoped payloads, freshness equality checks, snapshot refresh placement, AiMapMemory knowledge revision and route/combat keys are unchanged. FoundBase still lets the existing observation pass determine dirty facts; no speculative new mask was added. No new cache was added. WorldDelta freezes its actor/contact/hex payload.
 
-The new atomic session.Apply API is tested, but existing producers still preserve separate commit and observation endpoints. Combined WorldDelta transaction migration and complete write→refresh→next-read gameplay verification remain pending. Cache fixture results are below; native combat cache tests did not pass in either managed baseline or refactor.
+The new atomic session.Apply API and nested synchronous transaction policy are tested. Raid/Attack handoff commit and publication have been combined without changing their masks. Other producers still retain separate commit/observation endpoints. Complete WorldDelta transaction migration and complete write→refresh→next-read gameplay verification remain pending. Cache fixture results are below; native combat cache tests did not pass in either managed baseline or refactor.
 
 ## H. Tests and environment limits
 
@@ -85,8 +91,10 @@ The prescribed setup.sh could not install tools in this container. Used the alre
 Raw compile baseline has three old reference/stub errors: two FindObjectsInactive overloads and one Mathf.SmoothDamp. Diagnostic copies adapt only those UI/audio calls to compile runnable managed tests; baseline and refactor use identical adapters. This is not a Unity build.
 
 Baseline: **1,509 cases; 984 passed / 525 failed**.
-Refactor: **1,550 cases; 1,025 passed / 525 failed**.
-**41 new cases pass; zero previously passing cases regress or disappear.** The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+Refactor: **1,570 cases; 1,045 passed / 525 failed**.
+**61 new cases pass; zero previously passing cases regress or disappear.** The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+
+During the continuation, one token API initially returned ReservationOwner where an existing assertion expected a string; the token compatibility API was restored while reservation writers retain typed identity. New test setup initially assigned read-only role projections; it was corrected to use the existing Objective model. Both final compile/test gates have zero new failures.
 
 The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execute UnityTest coroutines or TestCaseSource cases. Full ai-verify under Mono and the full Unity Editor suite were not run. No failure was called a passing Unity test.
 
@@ -118,12 +126,10 @@ The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execu
 
 The overall task is **not done**. Remaining requirements:
 
-1. MissionLease integrating actor/resource ownership and all operation termination paths, with operation-level disposition from the existing domain transitions. Add AiMissionLeaseLifecycleTests; do not treat legacy sub-leg Completed as parent-operation termination.
-2. Typed resource owner linked to existing MissionIntentKey; retain reaction pass ownership and exact spend-authority, replacement and downgrade semantics. No new independent identity is justified by this audit.
-3. Typed individual domain payloads and domain lifecycle result handlers; generic coordinator must not gain the current policy's domain branches.
-4. Consolidate commit/observation into actual combined WorldDelta transactions after transaction-specific parity. Do not blindly attach an extra revision bump to observation publication.
-5. Remove old production adapters only after parity. Current adapters: MissionIntentState methods (fixtures and Recon production callers), ActorCommitments.FromIntents/static validity methods, MissionTurnOutcome legacy projections, V2StateVersion readers/tests, interrupt discovery/capability wrappers.
-6. Full Unity 6000.5.4f1 EditMode suite and specified Recon/Economy base/Attack/Raid/Defence/Development E2E scenarios. Native null/combat/asset failures cannot be evaluated by this managed harness.
-7. Complete bottom-up actor/resource lease cleanup, domain terminal intent transitions and bank/cache gameplay acceptance before declaring the architectural goal achieved.
+1. Complete operation-level normalized disposition/typed individual domain payload migration. Current common lease retirement consumes the existing domain decision to remove the durable intent; it deliberately does not re-interpret a leg's Completed as whole-operation completion. MissionTurnOutcome still holds the legacy aggregate payload and Continuity still reads its compatibility projections.
+2. Audit and consolidate every remaining actual mutation boundary (including TaskExecutor/air inner stamps and aggregate stamping). FoundBase is fixed and proven at the synchronous scope boundary; the global exactly-once transaction criterion is not claimed yet.
+3. Remove remaining compatibility callers only after parity. Current adapters: MissionIntentState methods (fixtures and Recon production callers), ActorCommitments.FromIntents/static validity methods and detached pass views, MissionTurnOutcome legacy projections, V2StateVersion readers/tests, interrupt discovery/capability wrappers. The old resource ledger's production mutation callers are now only MissionLeaseBook.
+4. Full Unity 6000.5.4f1 EditMode suite and specified Recon/Economy base/Attack/Raid/Defence/Development E2E scenarios. Native null/combat/asset failures cannot be evaluated by this managed harness.
+5. Complete bottom-up domain-local support release and generated-output handling review, all transaction/cache gameplay acceptance and mission-extension proof before declaring the architectural goal achieved.
 
-No dual-written storage was introduced. Persistent state, bank ledger and revision have no mirrored copy. However, the common operation-owned lease/lifecycle contract requested in the full task is still absent, so adding a mission can still require operation-specific resource cleanup. This checkpoint deliberately does not claim the critical completion criterion.
+No dual-written storage was introduced: one persistent store per domain, one actor claim table per active session, the original resource row store and one revision policy. Detached pass views are derived from intents/snapshot and do not retire or mutate the session's operation lifecycle. The new generic lease coordinator contains no mission eligibility, scores or strategic transitions. The full task is still incomplete because aggregate payload/transition and remaining mutation adapters still require mission-specific migration work.

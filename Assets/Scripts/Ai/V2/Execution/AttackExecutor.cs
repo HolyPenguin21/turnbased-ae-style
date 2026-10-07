@@ -621,10 +621,9 @@ namespace Game.Ai.V2
                 result.CombatChanged = true;
                 // The primary's readiness genuinely changed: bump and publish so the SAME turn's
                 // bounded cycle re-checks this Attack instead of waiting a turn.
-                WorldDeltaLifecycle.CommitMutation();
-                WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
+                WorldDeltaLifecycle.Apply(player, ctx.TurnNumber, new WorldDelta(true,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
-                    actorIds: new[] { primary.Id, support.Id });
+                    actorIds: new[] { primary.Id, support.Id }));
             }
 
             result.ReachedGoal = handoffOk;

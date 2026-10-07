@@ -171,7 +171,7 @@ namespace Game.Ai.V2
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
-            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
+            ActorCommitments actorCommitments = turnSession.RefreshActors(activeIntents, snapshot, reconObjectives);
             AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
             AiFrameLog.Forces(snapshot, actorCommitments);
 
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
                 // before mission construction so stale pre-build actor claims cannot execute.
                 activeIntents = MissionContinuityLayer.ResolveActive(
                     player, snapshot, reconObjectives, aggressionObjectives);
-                actorCommitments = ActorCommitments.FromIntents(
+                actorCommitments = turnSession.RefreshActors(
                     activeIntents, snapshot, reconObjectives);
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
@@ -263,7 +263,7 @@ namespace Game.Ai.V2
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
                 }
@@ -506,7 +506,7 @@ namespace Game.Ai.V2
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = ActorCommitments.FromIntents(
+                    actorCommitments = turnSession.RefreshActors(
                         activeIntents, snapshot, reconObjectives);
                     // T03 — the baseline is the input Generate actually evaluates: taken after
                     // continuity resolved (a completed target, a handed-off donor), before any
@@ -550,7 +550,7 @@ namespace Game.Ai.V2
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                         ownershipFreshAfterPhaseA = true;
                     }
@@ -637,7 +637,7 @@ namespace Game.Ai.V2
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
                     ownershipFreshAfterPhaseA = false;
@@ -1115,7 +1115,7 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    postCommitments = ActorCommitments.FromIntents(
+                    postCommitments = turnSession.RefreshActors(
                         MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
 
                     WorldAnalysis.StepObservationStamp beforeManagement =
@@ -1215,7 +1215,7 @@ namespace Game.Ai.V2
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = ActorCommitments.FromIntents(
+                    actorCommitments = turnSession.RefreshActors(
                         activeIntents, snapshot, reconObjectives);
                     List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
@@ -1254,7 +1254,7 @@ namespace Game.Ai.V2
                                 snapshot, assessment.Breakdown.OpportunityReport);
                             activeIntents = MissionContinuityLayer.ResolveActive(
                                 player, snapshot, reconObjectives, aggressionObjectives);
-                            actorCommitments = ActorCommitments.FromIntents(
+                            actorCommitments = turnSession.RefreshActors(
                                 activeIntents, snapshot, reconObjectives);
                             demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
@@ -1291,7 +1291,7 @@ namespace Game.Ai.V2
                 // Cold Phase A and the following typed admissions may have created or
                 // re-bound actors AFTER management captured postCommitments. Housekeeping
                 // must see the latest canonical ownership, never the pre-cold snapshot.
-                postCommitments = ActorCommitments.FromIntents(
+                postCommitments = turnSession.RefreshActors(
                     MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
@@ -1313,7 +1313,7 @@ namespace Game.Ai.V2
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                postCommitments = ActorCommitments.FromIntents(
+                postCommitments = turnSession.RefreshActors(
                     MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
                 // Phase B is the single bounded end-of-turn tempo arbiter (coroutine).
                 yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,

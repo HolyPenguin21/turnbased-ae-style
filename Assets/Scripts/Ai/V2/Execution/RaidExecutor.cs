@@ -413,10 +413,9 @@ namespace Game.Ai.V2
                 result.CombatChanged = true;
                 // §10 — bump the version and publish an Actor|Capability invalidation so the next
                 // bounded cycle re-checks this Raid's readiness in the SAME turn.
-                WorldDeltaLifecycle.CommitMutation();
-                WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
+                WorldDeltaLifecycle.Apply(player, ctx.TurnNumber, new WorldDelta(true,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
-                    actorIds: new[] { primary.Id, support.Id });
+                    actorIds: new[] { primary.Id, support.Id }));
             }
 
             // A full/full swap displaced a primary member into support:

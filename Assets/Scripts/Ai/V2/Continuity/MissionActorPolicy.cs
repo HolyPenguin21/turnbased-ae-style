@@ -8,10 +8,12 @@ namespace Game.Ai.V2
     internal static class MissionActorPolicy
     {
         internal static ActorCommitments Build(IEnumerable<MissionIntent> intents,
-            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives, MissionLeaseBook leases = null)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Commitments.FromIntents");
-            var c = new ActorCommitments();
+            leases ??= new MissionLeaseBook();
+            leases.ResetActors();
+            var c = new ActorCommitments(leases);
             if (intents == null || snap?.Self?.Armies == null)
                 return c;
 
@@ -36,7 +38,7 @@ namespace Game.Ai.V2
                     && snap.Self.Armies.Any(a => a != null
                         && a.ArmyId == airWing.Value && a.IsAir
                         && !a.IsAirfield && a.MemberCount > 0))
-                    c.Claim(airWing.Value);
+                    c.Claim(i.IntentKey, airWing.Value);
                 // Raid/Attack convoys and every support an Attack Gather still expects — the one
                 // list GroundCombatLegs owns. A support that stopped being a live ground container
                 // releases just its own claim.
@@ -44,7 +46,7 @@ namespace Game.Ai.V2
                 {
                     if (!GroundContainerStillValid(supportId, snap))
                         continue;
-                    c.Claim(supportId);
+                    c.Claim(i.IntentKey, supportId);
                     if (raid != null)
                         AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
                             + $"support={supportId} phase={raid.Phase} reason=support_actor_en_route");
@@ -62,7 +64,7 @@ namespace Game.Ai.V2
                     ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
                         && a.ArmyId == actorId && !a.IsPrison && !a.IsAir
                         && (mobile || a.HasHero));
-                    if (actor != null) c.Claim(actorId);
+                    if (actor != null) c.Claim(i.IntentKey, actorId);
                     continue;
                 }
 
@@ -74,7 +76,7 @@ namespace Game.Ai.V2
                     ArmyData live = actor == null ? null : ArmyRegistry.AllForOwner(actor.Owner)
                         .FirstOrDefault(a => a != null && a.Id == actorId);
                     if (live?.Members.Contains(i.Development?.Hero) == true)
-                        c.Claim(actorId);
+                        c.Claim(i.IntentKey, actorId);
                     continue;
                 }
 
@@ -91,7 +93,7 @@ namespace Game.Ai.V2
                             && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
                         if (returningPrimary != null)
                         {
-                            c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}"));
+                            c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}"));
                             AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                                 $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                                 + $"reason={raid.Phase}_actor_still_matches_ground_container_gate");
@@ -107,7 +109,7 @@ namespace Game.Ai.V2
 
                     if (GroundCombatActorStillValid(actorId, snap, out string reason))
                     {
-                        c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid?.Phase}"));
+                        c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation($"Raid:{raid?.Phase}"));
                         AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                             $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                             + "reason=actor_still_matches_raid_provisioning_gate");
@@ -135,12 +137,11 @@ namespace Game.Ai.V2
                         : GroundCombatActorStillValid(actorId, snap, out _));
                     if (valid)
                     {
-                        c.Claim(actorId, preparing
+                        c.Claim(i.IntentKey, actorId, preparing
                             ? ArmyMutationContract.PreparationHost()
                             : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
-                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"));
-                        if (preparing)
-                            c.MarkPreparationHost(actorId);
+                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"),
+                            preparationHost: preparing);
                     }
                     continue;
                 }
@@ -156,7 +157,7 @@ namespace Game.Ai.V2
                         ? GroundContainerStillValid(actorId, snap)
                         : GroundCombatActorStillValid(actorId, snap, out _);
                     if (valid)
-                        c.Claim(actorId, ArmyMutationContract.MovingOperation(
+                        c.Claim(i.IntentKey, actorId, ArmyMutationContract.MovingOperation(
                             $"ActiveDefence:{i.ActiveDefence?.Phase}"));
                     continue;
                 }
@@ -180,7 +181,7 @@ namespace Game.Ai.V2
                 }
 
                 if (HasCapableActor(i, snap, req))
-                    c.Claim(i.PreferredMoverArmyId.Value);
+                    c.Claim(i.IntentKey, i.PreferredMoverArmyId.Value);
             }
             return c;
         }

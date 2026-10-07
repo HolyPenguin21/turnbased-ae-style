@@ -19,6 +19,7 @@ namespace Game.Ai.V2
         internal int TurnNumber { get; }
         internal int DecisionRevision => V2StateVersion.Current;
         internal MissionIntentState PersistentState { get; }
+        internal MissionLeaseBook Leases { get; }
         private readonly ReconTurnState _recon;
         private bool _ended;
 
@@ -35,11 +36,12 @@ namespace Game.Ai.V2
             Hand = hand;
             Context = context;
             TurnNumber = turn;
+            Leases = new MissionLeaseBook(player, turn);
             PersistentState = MissionIntentRegistry.GetOrCreate(player);
             _recon = ReconTurnStateStore.Begin(player, turn);
             V2TurnActivityTelemetry.Begin(player, turn);
             CapabilityPoolExhaustionRegistry.BeginTurn(player, turn);
-            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            MissionLeaseBook.BeginTurn(player, turn);
             StrategicInterruptRegistry.CaptureTurnContext(player, turn, hand);
         }
 
@@ -69,14 +71,24 @@ namespace Game.Ai.V2
             player != null && Active.TryGetValue(player, out AiTurnSession session)
                 && session.TurnNumber == turn && !session._ended ? session : null;
 
+        internal ActorCommitments RefreshActors(IEnumerable<MissionIntent> intents,
+            WorldSnapshot snapshot, IReadOnlyList<ReconObjective> objectives)
+        {
+            EnsureActive();
+            return MissionActorPolicy.Build(intents, snapshot, objectives, Leases);
+        }
+
+        internal static AiTurnSession PeekActive(PlayerSetupData player) =>
+            player != null && Active.TryGetValue(player, out var session) && !session._ended ? session : null;
+
         // Preserve the original normal-turn expiry/diagnostic ordering before the summary.
         // Dispose also runs this boundary on coroutine disposal or an exception.
         internal void CompleteReservations()
         {
             EnsureActive();
-            StrategicResourceReservationLedger.ExpireStage(Player, TurnNumber,
+            MissionLeaseBook.ExpireStage(Player, TurnNumber,
                 StrategicReservationExpiry.EndOfTurn);
-            StrategicResourceReservationLedger.AssertClearAtTurnEnd(Player, TurnNumber);
+            MissionLeaseBook.AssertClearAtTurnEnd(Player, TurnNumber);
         }
 
         internal int Apply(WorldDelta delta)
@@ -107,6 +119,7 @@ namespace Game.Ai.V2
             AviationObligationStallRegistry.EndTurn(Player, TurnNumber);
             OperationContinuationWindow.EndTurn(Player, TurnNumber);
             ReconTurnStateStore.End(Player);
+            Leases.Close();
             _ended = true;
             Active.Remove(Player);
         }

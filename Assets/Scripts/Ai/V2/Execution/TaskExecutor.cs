@@ -849,7 +849,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm)
         {
             if (pm?.Kind == MissionKind.Economy && ctx != null)
-                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     pm.ReservationOwner);
         }
 

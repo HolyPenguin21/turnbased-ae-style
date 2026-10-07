@@ -390,6 +390,10 @@ namespace Game.Ai.V2
             return System.Array.Empty<EconomyBuilderRouteSnapshot>();
         }
 
+        internal static ReservationOwner ReservationIdentity(StableMissionKey key) =>
+            ReservationOwner.ForOperation(MissionIntentKey.ForEconomy((EconomyTaskKind)key.SubKind,
+                key.TargetId, new HexCoord(key.Q, key.R)));
+
         public static string OwnerKey(StableMissionKey key) => $"Economy:{key}";
     }
 }

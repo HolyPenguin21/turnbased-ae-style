@@ -28,7 +28,24 @@ namespace Game.Ai.V2
         public int Count => _intents.Count;
         public bool TryGet(MissionIntentKey k, out MissionIntent i) => _intents.TryGetValue(k, out i);
         public void Put(MissionIntent i) => _intents[i.IntentKey] = i;
-        public void Remove(MissionIntentKey k) => _intents.Remove(k);
+        public void Remove(MissionIntentKey k)
+        {
+            var session = AiTurnSession.PeekActive(Owner);
+            // Existing continuity rekeys the object before moving its dictionary slot.
+            // That is a continuing role, not retirement of a completed waypoint.
+            if (_intents.TryGetValue(k, out var intent) && !intent.IntentKey.Equals(k))
+                session?.Leases.Rekey(k, intent.IntentKey);
+            else session?.Leases.Retire(k);
+            _intents.Remove(k);
+        }
+        internal void Remove(MissionIntentKey k, int turn)
+        {
+            // Explicit retirement also covers a terminal attempt that never became durable.
+            var session = AiTurnSession.Peek(Owner, turn);
+            if (session != null) session.Leases.Retire(k);
+            else MissionLeaseBook.ReleaseResources(Owner, turn, k);
+            _intents.Remove(k);
+        }
 
         internal EconomyLifecycleState Economy { get; } = new EconomyLifecycleState();
         internal DevelopmentLifecycleState Development { get; } = new DevelopmentLifecycleState();

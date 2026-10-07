@@ -37,22 +37,22 @@ namespace Game.Ai.V2
         internal static void RefreshReactionReservation(PlayerSetupData player, int turn,
             StrategicReactionOpportunity opportunity)
         {
-            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+            MissionLeaseBook.ReleaseReasonExceptOwner(player, turn,
                 StrategicReservationReason.StrategicReactionPass, opportunity.OwnerKey);
-            StrategicResourceReservationLedger.Upsert(player, turn,
+            MissionLeaseBook.Upsert(player, turn,
                 new StrategicResourceReservation
                 {
-                    Owner = opportunity.OwnerKey,
+                    Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
                     Reason = StrategicReservationReason.StrategicReactionPass,
                     Resource = StrategicReservedResource.ActionPoints,
                     Amount = opportunity.ReservedApBudget,
                     ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                 });
             foreach (ResourceType rt in ResourceBundle.All)
-                StrategicResourceReservationLedger.Upsert(player, turn,
+                MissionLeaseBook.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = opportunity.OwnerKey,
+                        Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
                         Reason = StrategicReservationReason.StrategicReactionPass,
                         Resource = StrategicResourceReservationLedger.Map(rt),
                         Amount = opportunity.Envelope?.Get(rt) ?? 0,
@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             {
                 // spec §7 — an existing reaction budget reservation is released the moment no
                 // feasible same-turn reaction remains (same-turn re-arbitration is Housekeeping's re-run).
-                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
                     AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no FEASIBLE reaction "

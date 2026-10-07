@@ -87,6 +87,7 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(totalAp) || !totalCost.CanAfford(root))
                 return BuildingPlayResult.Fail("base and immediate garrison are not jointly affordable");
 
+            using var mutation = WorldDeltaLifecycle.BeginTransaction();
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
                 ctx.HexSelection, card.Definition, hex, player,
                 card.EffectivePlayApCost, card.EffectivePlayResourceCost, completeBeforeCommit: _ =>
@@ -105,7 +106,7 @@ namespace Game.Ai.V2
                 });
             if (!outcome.Ok)
                 return new BuildingPlayResult { FailReason = outcome.FailReason,
-                    StateVersionAfter = WorldDeltaLifecycle.CommitMutation() };
+                    StateVersionAfter = V2StateVersion.Current };
 
             // Gameplay is committed. A hand observer throwing after RemoveCard's mutation
             // must not leave the other paid card playable or report a failed founding.
@@ -120,7 +121,8 @@ namespace Game.Ai.V2
                 Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
                 StateChanged = true, ApSpent = totalAp,
                 ResourcesSpent = totalCost,
-                StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
+                StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
+                    new WorldDelta(true, StrategicInvalidationReason.None)),
             };
         }
 

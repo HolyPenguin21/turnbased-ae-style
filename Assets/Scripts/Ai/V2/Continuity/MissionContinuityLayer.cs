@@ -237,9 +237,9 @@ namespace Game.Ai.V2
                 Capability = CapabilityKind.EconomicExpansionBase,
                 TargetHex = incumbent.Economy.TargetHex,
             });
-            StrategicResourceReservationLedger.ReleaseByOwner(player, turn, oldOwner);
+            MissionLeaseBook.ReleaseByOwner(player, turn, oldOwner);
             if (oldTargetOwner != oldOwner)
-                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, oldTargetOwner);
+                MissionLeaseBook.ReleaseByOwner(player, turn, oldTargetOwner);
             state.Remove(oldKey);
             EconomyIntent objective = incumbent.Economy;
             objective.TargetHex = target;
@@ -633,7 +633,7 @@ namespace Game.Ai.V2
                             break;
                         // A composition failure does not heal when movement resets. Release the
                         // outbound envelope and let the existing recovery lifecycle own the actor.
-                        StrategicResourceReservationLedger.ReleaseByOwner(player, snap.TurnNumber,
+                        MissionLeaseBook.ReleaseByOwner(player, snap.TurnNumber,
                             EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
                         AiDebugLog.Write($"[AI][V2][Economy] recover {intent.IntentKey} actor=#{actor.ArmyId} "
                             + $"reason={suitability.IneligibleReason}");
@@ -2002,10 +2002,11 @@ namespace Game.Ai.V2
             if (returnLoan)
                 RepayEconomyLoan(state, intent, outcome);
             if (intent == null)
+            {
+                if (outcome != null) state.Remove(outcome.IntentKey, turn);
                 return;
-            StrategicResourceReservationLedger.ReleaseByOwner(state.Owner, turn,
-                EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
-            state.Remove(intent.IntentKey);
+            }
+            state.Remove(intent.IntentKey, turn);
         }
 
         // Retirement of whatever intent an outcome names: an Economy intent through its own owner

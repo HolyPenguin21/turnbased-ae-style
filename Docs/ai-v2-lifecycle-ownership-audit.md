@@ -410,3 +410,21 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 ## Unchanged bank invariant distinction
 
 `AiReservationInvariantsTests.DeferredBuildSavingBeyondStock_IsNotACommittedViolation` proves that a deferred H/E/M/T saving claim can intentionally exceed current physical stock. Completion/reaction committed claims are checked against physical stock; spendable free is clamped. The refactor preserves this existing rule and does not impose `all reservations <= stock`, which would change gameplay. AP deferred reservation remains forbidden.
+
+## Continuation ownership audit (after 595cf945)
+
+Master was re-read through the connector and remained 706b1bbd; feature HEAD was 595cf945. The table above remains a baseline callsite/scope audit. Current additions:
+
+| Holder | Scope | Source / writer | Readers / reset |
+|---|---|---|---|
+| MissionLeaseBook session actor table | turn; reconciled at existing decision boundaries | MissionActorPolicy feeds original valid roles; same pass claims remain temporary | ActorCommitments; retirement drops only matching operation, rekey transfers, session close clears |
+| MissionLease read handle | turn-bound view, no storage | book For(existing MissionIntentKey) | domain/tests; closed book rejects old handles |
+| ReservationOwner | immutable identity projection | canonical MissionIntentKey factory or existing reaction pass token | ledger/bank diagnostics; no new operation id |
+| ledger Identity | turn resource row value | production mutation API is MissionLeaseBook; storage is original ledger | TurnResourceBook same token projection; exact original expiry/bank rules |
+| WorldDelta synchronous transaction scope | synchronous canonical transaction only | nested committed facts are staged; authoritative outer commit/rollback decides | one process revision policy; Dispose/rollback drops pending facts, no coroutine yield |
+
+The generic lease book contains no Attack/Raid/etc. role validation or lifecycle switch. All production ledger mutation callsites have moved behind it; match-start ClearAll remains a storage reset adapter. Detached FromIntents views are derived pass projections, not session lifecycle owners. Scope/claim tests cover player/turn isolation, same-turn release, old handle closure, another operation surviving release, legacy sub-leg completion and in-place Recon rekey.
+
+Separate bank pass: unchanged physical-stock/free/authority math, costs and caps; typed writes preserve the exact Economy tokens. Owner-scoped completion→deferred and deferred→completion, repeat reservation, no deferred AP, abort, independent second owner and stale-turn write are tested. Deferred saving above physical stock remains deliberately unchanged.
+
+Separate cache pass: no cache/key/dirtiness rule added. FoundBase previously allowed child CardPlay stamping before canonical commit and unconditionally stamped a rolled-back failure; synchronous staging fixes that transaction boundary. Its dirty facts still come from the original observation pass. Existing Raid/Attack handoff flags are unchanged when combining commit/publication. TaskExecutor/air aggregate-vs-inner stamping and native next-read acceptance remain open; do not claim global exactly-once or full E2E parity.

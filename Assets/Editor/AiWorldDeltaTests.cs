@@ -33,6 +33,61 @@ namespace Game.EditorTests
             Assert.That(V2StateVersion.Current, Is.EqualTo(before), rollback ? "rollback" : "no-op");
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void CanonicalCommitOwnsNestedCardPlayStampsAndRollbackDropsFacts(bool committed)
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 7);
+            int before = V2StateVersion.Current;
+            using (var transaction = WorldDeltaLifecycle.BeginTransaction())
+            {
+                // FoundBase's synchronous garrison card is a child of the shared build transaction.
+                WorldDeltaLifecycle.CommitMutation();
+                WorldDeltaLifecycle.CommitMutation();
+                WorldDeltaLifecycle.Publish(p, 7, StrategicInvalidationReason.Actor, new[] { 0 });
+                Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+                Assert.That(StrategicInterruptRegistry.Peek(p, 7).Any, Is.False);
+                transaction.Commit(p, 7, new WorldDelta(committed,
+                    StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Hand));
+            }
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + (committed ? 1 : 0)));
+            Assert.That(StrategicInterruptRegistry.Peek(p, 7).Reasons, Is.EqualTo(committed
+                ? StrategicInvalidationReason.Actor | StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Hand
+                : StrategicInvalidationReason.None));
+        }
+
+        [Test]
+        public void ExceptionDisposalDropsChildStampsAndDoesNotCaptureTheNextAction()
+        {
+            int before = V2StateVersion.Current;
+            Assert.Throws<System.InvalidOperationException>(() =>
+            {
+                using var transaction = WorldDeltaLifecycle.BeginTransaction();
+                WorldDeltaLifecycle.CommitMutation();
+                throw new System.InvalidOperationException("authoritative transaction aborted");
+            });
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            WorldDeltaLifecycle.CommitMutation();
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+        }
+
+        [Test]
+        public void NestedCommitStillBelongsToTheOutermostCanonicalTransaction()
+        {
+            int before = V2StateVersion.Current;
+            using (var outer = WorldDeltaLifecycle.BeginTransaction())
+            {
+                using (var child = WorldDeltaLifecycle.BeginTransaction())
+                {
+                    WorldDeltaLifecycle.CommitMutation();
+                    child.Commit(null, -1, new WorldDelta(true, StrategicInvalidationReason.None));
+                }
+                Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+                outer.Commit(null, -1, new WorldDelta(true, StrategicInvalidationReason.None));
+            }
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+        }
+
         [Test]
         public void ObservationNeverDoubleBumpsAndPayloadIsFrozen()
         {

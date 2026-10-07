@@ -24,49 +24,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public sealed class ActorCommitments
     {
-        private readonly HashSet<int> _claimedArmyIds = new HashSet<int>();
-
-        public IReadOnlyCollection<int> ClaimedArmyIds => _claimedArmyIds;
-
-        // Live copy for the shared eligibility primitive (ScoutMoverSelector.Eligible takes an ISet).
-        public HashSet<int> ClaimedArmyIdSet => new HashSet<int>(_claimedArmyIds);
-
-        // armyId here is always an already-resolved concrete actor id, never a "no army" signal —
-        // 0 is a legitimate ArmyData.Id (see ArmyData identity sequencing) and must be claimable
-        // exactly like any other id.
-        public bool IsArmyClaimed(int armyId) => _claimedArmyIds.Contains(armyId);
-
-        // A claim with no stated contract protects the whole container (no inbound, no outbound,
-        // no commander change) — the conservative default for every lane that has not said what
-        // its function needs.
+        private readonly MissionLeaseBook _leases;
+        public ActorCommitments() : this(new MissionLeaseBook()) { }
+        internal ActorCommitments(MissionLeaseBook leases) { _leases = leases; }
+        public IReadOnlyCollection<int> ClaimedArmyIds => _leases.ClaimedActors;
+        public HashSet<int> ClaimedArmyIdSet => new HashSet<int>(_leases.ClaimedActors);
+        public bool IsArmyClaimed(int armyId) => _leases.IsClaimed(armyId);
         public void Claim(int armyId) => Claim(armyId, ArmyMutationContract.FullyProtected);
-
-        // T05 — the claim plus the minimum its operation needs preserved, as Housekeeping reads
-        // it (ArmyReorgAnalyzer, HousekeepingExecutor). An army claimed by two operations keeps
-        // only what BOTH allow.
-        public void Claim(int armyId, ArmyMutationContract contract)
-        {
-            _claimedArmyIds.Add(armyId);
-            _contracts[armyId] = _contracts.TryGetValue(armyId, out ArmyMutationContract prior)
-                ? prior.Intersect(contract) : contract;
-        }
-
-        private readonly Dictionary<int, ArmyMutationContract> _contracts =
-            new Dictionary<int, ArmyMutationContract>();
-
-        // What an operation lets zero-AP Housekeeping do to its claimed container. Unclaimed
-        // armies have no contract (null) — they are ordinary free formations.
-        public ArmyMutationContract MutationContractOf(int armyId) =>
-            _contracts.TryGetValue(armyId, out ArmyMutationContract c) ? c : null;
-
-        // T01 — hosts of a live Attack mobilization preparation (AttackIntent.Preparation, Gather).
-        // Claimed like every other operation actor; kept separately only so the ONE pinned card
-        // delivery may still reach this exact claimed (possibly empty) container
-        // (PlacementSelector, MaterializationDeliveryPolicy). Never a second occupancy truth.
-        private readonly HashSet<int> _preparationHostIds = new HashSet<int>();
-        public bool IsPreparationHost(int armyId) => _preparationHostIds.Contains(armyId);
-
-        internal void MarkPreparationHost(int armyId) => _preparationHostIds.Add(armyId);
+        public void Claim(int armyId, ArmyMutationContract contract) => _leases.ClaimForPass(armyId, contract);
+        internal void Claim(MissionIntentKey operation, int armyId,
+            ArmyMutationContract contract = null, bool preparationHost = false) =>
+            _leases.Claim(operation, armyId, contract ?? ArmyMutationContract.FullyProtected, preparationHost);
+        public ArmyMutationContract MutationContractOf(int armyId) => _leases.ContractOf(armyId);
+        public bool IsPreparationHost(int armyId) => _leases.IsPreparationHost(armyId);
+        internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int armyId) => _leases.OwnersOf(armyId);
 
         // Compatibility entry points; all role validation lives in MissionActorPolicy.
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
