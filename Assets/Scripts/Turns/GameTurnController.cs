@@ -39,11 +39,11 @@ namespace Game.Turns
         [SerializeField] private Button endTurnButton;
         [SerializeField] private float aiStepDelay = 0.5f;
 
-        // Spectator controls for AI-only matches. The runtime button is cloned from the existing
-        // end-turn button so old scenes need no serialized migration. A pause request never freezes
-        // a coroutine mid-command: V2 reaches PauseAtAiActionBoundary only after the current atomic
-        // action has completed, then exposes a read-only inspection window until Play is pressed.
-        private Button _aiObserverPauseButton;
+        // Spectator controls for AI-only matches. The button is a normal scene element placed
+        // beside the game-menu button and wired here through the Inspector. A pause request never
+        // freezes a coroutine mid-command: V2 reaches PauseAtAiActionBoundary only after the current
+        // atomic action has completed, then exposes a read-only inspection window until Play is pressed.
+        [SerializeField] private Button aiObserverPauseButton;
         private bool _aiObserverMatch;
         private bool _aiObserverPauseRequested;
         private bool _aiObserverPauseEngaged;
@@ -1122,31 +1122,12 @@ namespace Game.Turns
 
         private void ConfigureAiObserverPauseButton()
         {
-            if (!_aiObserverMatch || endTurnButton == null)
-            {
-                if (_aiObserverPauseButton != null)
-                    Destroy(_aiObserverPauseButton.gameObject);
-                _aiObserverPauseButton = null;
+            if (aiObserverPauseButton == null)
                 return;
-            }
 
-            if (_aiObserverPauseButton == null)
-            {
-                _aiObserverPauseButton = Instantiate(endTurnButton, endTurnButton.transform.parent);
-                _aiObserverPauseButton.name = "AiObserverPauseButton";
-                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(_aiObserverPauseButton);
-                _aiObserverPauseButton.onClick.AddListener(OnAiObserverPauseClicked);
-
-                RectTransform endRect = endTurnButton.transform as RectTransform;
-                RectTransform pauseRect = _aiObserverPauseButton.transform as RectTransform;
-                if (endRect != null && pauseRect != null)
-                {
-                    float width = Mathf.Max(48f, endRect.rect.width > 0f ? endRect.rect.width : endRect.sizeDelta.x);
-                    pauseRect.anchoredPosition = endRect.anchoredPosition + Vector2.left * (width + 8f);
-                }
-            }
-
-            _aiObserverPauseButton.gameObject.SetActive(true);
+            Game.UI.UIButtonEventUtility.ResetRuntimeListeners(aiObserverPauseButton);
+            aiObserverPauseButton.onClick.AddListener(OnAiObserverPauseClicked);
+            aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
             RefreshAiObserverPauseButton();
         }
 
@@ -1189,18 +1170,18 @@ namespace Game.Turns
 
         private void RefreshAiObserverPauseButton()
         {
-            if (_aiObserverPauseButton == null)
+            if (aiObserverPauseButton == null)
                 return;
 
-            _aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
-            _aiObserverPauseButton.interactable = _aiObserverMatch && !_gameOver && !IsCombatPresentationActive;
+            aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
+            aiObserverPauseButton.interactable = _aiObserverMatch && !_gameOver && !IsCombatPresentationActive;
             string label = _aiObserverPauseRequested ? ">" : "||";
-            TMP_Text tmp = _aiObserverPauseButton.GetComponentInChildren<TMP_Text>(true);
+            TMP_Text tmp = aiObserverPauseButton.GetComponentInChildren<TMP_Text>(true);
             if (tmp != null)
                 tmp.text = label;
             else
             {
-                Text legacy = _aiObserverPauseButton.GetComponentInChildren<Text>(true);
+                Text legacy = aiObserverPauseButton.GetComponentInChildren<Text>(true);
                 if (legacy != null)
                     legacy.text = label;
             }
