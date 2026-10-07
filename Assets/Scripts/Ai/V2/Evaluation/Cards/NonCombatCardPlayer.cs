@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -873,7 +873,7 @@ namespace Game.Ai.V2
         private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
         {
             if (result.StateChanged && V2StateVersion.Current == versionBefore)
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
         }
     }
 }

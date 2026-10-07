@@ -111,6 +111,9 @@ namespace Game.Ai.V2
         public int PlannedAtStateVersion = -1;
         public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
+        // Observation boundary supplies immutable receipts; the registry remains the sole
+        // pending-fact owner. Canonical mutation freshness is StateVersionAfter above.
+        internal IReadOnlyList<WorldDelta> WorldDeltas = System.Array.Empty<WorldDelta>();
         public V2ResourceStamp ResourcesBefore;
         public V2ResourceStamp ResourcesAfter;
 
@@ -166,7 +169,7 @@ namespace Game.Ai.V2
             result.StopReason = ExecutionStopReason.TargetInvalidated;
             result.NeedsReplan = true;
             result.ApSpent = 0f;
-            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                 StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
             CompleteResult(result, root);
             results.Add(result);
@@ -831,6 +834,8 @@ namespace Game.Ai.V2
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
+            WorldDeltaLifecycle.RecordExecutionMutation(result, result.StepsMoved > 0
+                || trace.BattleOccurred || trace.EnteredStealthThisStep);
             result.StopReason = army == null ? ExecutionStopReason.MoverLost
                 : pm.Kind == MissionKind.Development && trace.BattleOccurred
                 ? ExecutionStopReason.BattleStarted
@@ -849,7 +854,7 @@ namespace Game.Ai.V2
             ProvisionedMission pm)
         {
             if (pm?.Kind == MissionKind.Economy && ctx != null)
-                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     pm.ReservationOwner);
         }
 
@@ -870,13 +875,17 @@ namespace Game.Ai.V2
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
+            // A child action's non-negative StateVersionAfter is its committed revision receipt.
+            // Air execution already provides it; aggregate completion must not stamp it twice.
+            // No extra counter or independent "changed" flag is introduced.
             // ActorMaterialized (a garrison-extraction CreateArmy/TransferMember) is a real world
             // mutation with no movement/stealth/infrastructure/combat signal of its own, so it
             // bumps V2StateVersion explicitly.
-            if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
-                || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
-                || result.EconomyPrepared)
-                V2StateVersion.Bump();
+            if (result.StateVersionAfter < 0
+                && (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
+                    || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
+                    || result.EconomyPrepared))
+                WorldDeltaLifecycle.CommitMutation();
             result.StateVersionAfter = V2StateVersion.Current;
         }
 
@@ -889,5 +898,4 @@ namespace Game.Ai.V2
         }
     }
 }
-
 

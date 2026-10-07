@@ -209,11 +209,11 @@ namespace Game.Ai.V2
                 container.MayReleaseExcessHeroes = contract.MayReleaseExcessHeroes;
                 if (contract.MayReleaseExcessHeroes)
                 {
-                    List<StrikeRosterSlot> target = PreparationTargetRoster(player, army);
+                    IReadOnlyList<string> target = contract.TargetRosterKeys(army);
                     if (target != null && target.Count > 0)
                     {
-                        container.PreparationTargetKeys = target.Select(x => x.Key).ToList();
-                        container.PreparationHandKeys = HeldFieldCardKeys(player, army.Hex, army.Id, turn);
+                        container.PreparationTargetKeys = target.ToList();
+                        container.PreparationHandKeys = contract.ReservedDeploymentKeys(army)?.ToList();
                     }
                 }
                 if (contract.KeepsMovement && army.Members.Count > 0)
@@ -242,42 +242,6 @@ namespace Game.Ai.V2
             }
 
             return container;
-        }
-
-        // The frozen target roster of the live Attack preparation this army hosts (null if none).
-        internal static List<StrikeRosterSlot> PreparationTargetRoster(PlayerSetupData player, ArmyData army)
-        {
-            if (player == null || army == null)
-                return null;
-            MissionIntent prep = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
-                i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
-                && i.Attack != null && i.Attack.Preparation && i.Attack.Phase == AttackMissionPhase.Gather
-                && i.Attack.PrimaryArmyId == army.Id);
-            return prep?.Attack?.TargetRoster;
-        }
-
-        // Card keys of the held ground Unit cards that deploy on `hex` (a held card lands in the
-        // host by Phase A only through a building there that deploys it).
-        // A card Phase A already failed to chain into this host frees no slot either.
-        internal static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex,
-            int hostArmyId, int turn) =>
-            (AiHandRegistry.Peek(player)?.Hand ?? Enumerable.Empty<CardData>())
-                .Select(c => c?.Definition)
-                .Where(d => d != null && d.cardType == CardType.Unit && !d.isAviation
-                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d)
-                    && !PreparationDeliveryMemory.NoChainRecently(player, hostArmyId, turn,
-                        StrikeRoster.CardKey(d)))
-                .Select(StrikeRoster.CardKey).ToList();
-
-        // Live twin of the planner's body release (HousekeepingExecutor preflight): is this a
-        // non-commander BODY of a preparation host that its target roster does not contain?
-        internal static bool IsPreparationNonRosterBody(PlayerSetupData player, ArmyData host, UnitData unit)
-        {
-            if (unit == null || unit.IsHero || host == null || !host.Members.Contains(unit))
-                return false;
-            List<StrikeRosterSlot> target = PreparationTargetRoster(player, host);
-            return target != null && target.Count > 0
-                && StrikeRoster.NonTargetBodies(target, host.Members).Contains(unit);
         }
 
         // Select the minimum set of on-hex heroes that keeps every currently installed
@@ -386,17 +350,8 @@ namespace Game.Ai.V2
         internal static ArmyMutationContract MutationContractFor(PlayerSetupData player, int turn,
             ArmyData army, ActorCommitments commitments)
         {
-            if (army == null || army.IsGarrison)
-                return null;
-            ArmyMutationContract claimed = commitments != null && commitments.IsArmyClaimed(army.Id)
-                ? commitments.MutationContractOf(army.Id) ?? ArmyMutationContract.FullyProtected
-                : null;
-            if (!StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id))
-                return claimed;
-            ArmyMutationContract lease = AiArmyRoles.IsSoloRecce(army) || AiArmyRoles.IsSoloCollector(army)
-                ? ArmyMutationContract.FullyProtected
-                : ArmyMutationContract.Leased;
-            return claimed == null ? lease : claimed.Intersect(lease);
+            ArmyMutationContract contract = ActorCommitments.PhysicalMutationContract(player, turn, army, commitments);
+            return contract?.ProtectsSoloRole == true ? null : contract;
         }
 
         private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, int turn, ArmyData army,
@@ -408,15 +363,14 @@ namespace Game.Ai.V2
                 return ReorgPhysicalRole.SpecialExcludedContainer;
             if (AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return ReorgPhysicalRole.Aviation;
-            if ((commitments != null && commitments.IsArmyClaimed(army.Id))
-                || StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id))
+            ArmyMutationContract protection = ActorCommitments.PhysicalMutationContract(player, turn, army, commitments);
+            if (protection != null && !protection.ProtectsSoloRole)
                 return ReorgPhysicalRole.ProtectedMissionArmy;
             // §P1 — the SoloRecce role protects a scout only while it actually has recon WORK: a
             // live ReconPatrolState (claim/lease already returned ProtectedMissionArmy above). An
             // idle scout-shaped army with no assignment is just an ordinary singleton the zero-AP
             // reorg pass may fold or reuse.
-            if (AiArmyRoles.IsSoloRecce(army)
-                && ReconPatrolStateRegistry.TryGet(player, army.Id, out _))
+            if (AiArmyRoles.IsSoloRecce(army) && protection?.ProtectsSoloRole == true)
                 return ReorgPhysicalRole.SoloRecce;
             // A solo collector belongs to itself, same call as SoloRecce above — it is never
             // folded into another army by zero-AP reorg. Unlike SoloRecce there is no separate

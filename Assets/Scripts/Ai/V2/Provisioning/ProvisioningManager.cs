@@ -25,7 +25,6 @@ namespace Game.Ai.V2
             ProvisioningSession session, TentativeAllocation allocation,
             ActorCommitments durableCommitments = null)
         {
-            session.SetDurableClaims(durableCommitments?.ClaimedArmyIds);
             PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
             PrepareGroundCombatAssignments(session, allocation, durableCommitments);
         }

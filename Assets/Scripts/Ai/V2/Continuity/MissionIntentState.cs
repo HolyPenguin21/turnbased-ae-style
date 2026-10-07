@@ -28,173 +28,47 @@ namespace Game.Ai.V2
         public int Count => _intents.Count;
         public bool TryGet(MissionIntentKey k, out MissionIntent i) => _intents.TryGetValue(k, out i);
         public void Put(MissionIntent i) => _intents[i.IntentKey] = i;
-        public void Remove(MissionIntentKey k) => _intents.Remove(k);
+        public void Remove(MissionIntentKey k)
+        {
+            var session = AiTurnSession.PeekActive(Owner);
+            // Existing continuity rekeys the object before moving its dictionary slot.
+            // That is a continuing role, not retirement of a completed waypoint.
+            if (_intents.TryGetValue(k, out var intent) && !intent.IntentKey.Equals(k))
+                session?.Leases.Rekey(k, intent.IntentKey);
+            else session?.Leases.Retire(k);
+            _intents.Remove(k);
+        }
+        internal void Remove(MissionIntentKey k, int turn)
+        {
+            // Explicit retirement also covers a terminal attempt that never became durable.
+            var session = AiTurnSession.Peek(Owner, turn);
+            if (session != null) session.Leases.Retire(k);
+            else MissionLeaseBook.ReleaseResources(Owner, turn, k);
+            _intents.Remove(k);
+        }
 
-        // Challenge mints a physical Hero before the destination factory can deploy it.
-        // This per-player intent store survives turns; AP/resource reservations do not.
-        private readonly Dictionary<CardData, (HexCoord Site, ResearchProductionMode Mode, int Turn)>
-            _generatedDevelopmentOperators =
-                new Dictionary<CardData, (HexCoord, ResearchProductionMode, int)>();
+        internal EconomyLifecycleState Economy { get; } = new EconomyLifecycleState();
+        internal DevelopmentLifecycleState Development { get; } = new DevelopmentLifecycleState();
+        private ReconTurnState Recon(int turn) => ReconTurnStateStore.For((object)Owner ?? this, turn);
 
+        // Compatibility adapters for existing fixtures/callers. No storage or policy here.
         internal void RememberGeneratedDevelopmentOperator(CardData card, HexCoord site,
-            ResearchProductionMode mode, int turn)
-        {
-            if (card == null) return;
-            // Only one card may be earmarked for each facility/role at once.
-            foreach (CardData previous in _generatedDevelopmentOperators
-                .Where(x => x.Value.Site.Equals(site) && x.Value.Mode == mode)
-                .Select(x => x.Key).ToList())
-                _generatedDevelopmentOperators.Remove(previous);
-            _generatedDevelopmentOperators[card] = (site, mode, turn);
-        }
-
-        // Infrastructure provides current structural eligibility; State owns identity,
-        // finite age and removal. An AP shortage is NOT a reason to discard a valid card.
+            ResearchProductionMode mode, int turn) =>
+            Development.RememberGeneratedDevelopmentOperator(card, site, mode, turn);
         internal IReadOnlyList<CardData> ReconcileGeneratedDevelopmentOperators(int turn,
-            Func<CardData, HexCoord, ResearchProductionMode, bool> stillNeeded)
-        {
-            foreach (var claim in _generatedDevelopmentOperators.ToList())
-                if (turn < claim.Value.Turn
-                    || turn - claim.Value.Turn > System.Math.Max(1, AiConfigV2.commitmentStallTurns)
-                    || stillNeeded == null
-                    || !stillNeeded(claim.Key, claim.Value.Site, claim.Value.Mode))
-                    _generatedDevelopmentOperators.Remove(claim.Key);
-            return _generatedDevelopmentOperators.Keys.ToList();
-        }
-
-        private int _reconTrimTurn = -1;
-        private int _reconTrimCount;
-        private readonly HashSet<int> _reconTrimmedActorIds = new HashSet<int>();
-
-        private void EnsureReconTrimTurn(int turn)
-        {
-            if (_reconTrimTurn == turn)
-                return;
-            _reconTrimTurn = turn;
-            _reconTrimCount = 0;
-            _reconTrimmedActorIds.Clear();
-        }
-
-        internal bool TryConsumeReconLaneTrim(int turn)
-        {
-            EnsureReconTrimTurn(turn);
-            if (_reconTrimCount >= AiConfigV2.maxReconLaneTrimPerTurn)
-                return false;
-            _reconTrimCount++;
-            return true;
-        }
-
-        internal void MarkReconActorTrimmed(int turn, int armyId)
-        {
-            EnsureReconTrimTurn(turn);
-            // ArmyId 0 is a legitimate actor identity. Callers reach this method only after
-            // PreferredMoverArmyId.HasValue, so absence is represented by nullable ownership,
-            // never by a numeric sentinel.
-            _reconTrimmedActorIds.Add(armyId);
-        }
-
-        internal IReadOnlyCollection<int> ReconActorsTrimmedThisTurn(int turn)
-        {
-            EnsureReconTrimTurn(turn);
-            return _reconTrimmedActorIds;
-        }
-
-        // Distinct ground scouts bound to a Recon mission this turn (ReconAssignmentPlanner).
-        // The per-pass HardCap is re-applied on every bounded replan, so without this turn-wide
-        // set a turn could walk 3-4 different scouts (2026-10-01 playtest).
-        private int _reconUsedTurn = -1;
-        private readonly HashSet<int> _reconUsedActorIds = new HashSet<int>();
-
-        internal IReadOnlyCollection<int> ReconGroundActorsUsedThisTurn(int turn)
-        {
-            if (_reconUsedTurn != turn) { _reconUsedTurn = turn; _reconUsedActorIds.Clear(); }
-            return _reconUsedActorIds;
-        }
-
-        internal void MarkReconGroundActorUsed(int turn, int armyId)
-        {
-            if (_reconUsedTurn != turn) { _reconUsedTurn = turn; _reconUsedActorIds.Clear(); }
-            _reconUsedActorIds.Add(armyId);
-        }
-
-        // Bounded delivery-failure streaks. A structurally valid site may still be operationally
-        // impossible for every builder: count only CONSECUTIVE-turn delivery-gate failures of the
-        // exact project and, once the ordinary commitment stall window is exhausted, briefly
-        // suppress that project so Demand compares other sites instead of repeating it. One
-        // counter per project — Base by (card, site), Extraction by (resource, site) — because
-        // several Economy builds can be active (and stuck) at once; a single shared slot let two
-        // stuck projects reset each other's streak forever (Economy audit B4).
-        private sealed class DeliveryFailureStreaks<TKey>
-        {
-            private readonly Dictionary<TKey, (int Turn, int Count)> _failures =
-                new Dictionary<TKey, (int, int)>();
-            private readonly Dictionary<TKey, int> _suppressedUntilTurn = new Dictionary<TKey, int>();
-            // The last turn the project made real delivery progress. A turn with progress is never
-            // a failed turn, whatever order that turn's outcomes arrive in (a first attempt blocked,
-            // a later one delivered), and it ends the running streak.
-            private readonly Dictionary<TKey, int> _progressTurn = new Dictionary<TKey, int>();
-
-            public void RecordProgress(int turn, TKey key)
-            {
-                _progressTurn[key] = turn;
-                _failures.Remove(key);
-            }
-
-            public bool IsSuppressed(int turn, TKey key) =>
-                _suppressedUntilTurn.TryGetValue(key, out int until) && turn < until;
-
-            public bool Record(int turn, TKey key)
-            {
-                if (IsSuppressed(turn, key))
-                    return true;
-                if (_progressTurn.TryGetValue(key, out int progressTurn) && progressTurn == turn)
-                    return false;
-                bool hasRecord = _failures.TryGetValue(key, out (int Turn, int Count) rec);
-                bool consecutiveTurn = hasRecord && (rec.Turn == turn || rec.Turn == turn - 1);
-                int count = consecutiveTurn ? rec.Count : 0;
-                if (!hasRecord || rec.Turn != turn)
-                    count++;
-                _failures[key] = (turn, count);
-
-                if (count < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
-                    return false;
-
-                _suppressedUntilTurn[key] = turn
-                    + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
-                _failures.Remove(key);
-                return true;
-            }
-        }
-
-        private readonly DeliveryFailureStreaks<(CardData, HexCoord)> _baseDeliveryFailures =
-            new DeliveryFailureStreaks<(CardData, HexCoord)>();
-        private readonly DeliveryFailureStreaks<(ResourceType?, HexCoord)> _extractionDeliveryFailures =
-            new DeliveryFailureStreaks<(ResourceType?, HexCoord)>();
-
-        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
-            card != null && target.HasValue
-            && _baseDeliveryFailures.IsSuppressed(turn, (card, target.Value));
-
-        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target) =>
-            card != null && target.HasValue
-            && _baseDeliveryFailures.Record(turn, (card, target.Value));
-
-        // Real delivery progress of one build project this turn — ends its failure streak. The ONE
-        // writer is MissionContinuityLayer.ReconcileOutcome.
-        internal void RecordBaseExpansionDeliveryProgress(int turn, CardData card, HexCoord? target)
-        {
-            if (card != null && target.HasValue)
-                _baseDeliveryFailures.RecordProgress(turn, (card, target.Value));
-        }
-
-        internal void RecordExtractionDeliveryProgress(int turn, ResourceType? resourceType, HexCoord target) =>
-            _extractionDeliveryFailures.RecordProgress(turn, (resourceType, target));
-
-        internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
-            _extractionDeliveryFailures.IsSuppressed(turn, (resourceType, target));
-
-        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) =>
-            _extractionDeliveryFailures.Record(turn, (resourceType, target));
+            Func<CardData, HexCoord, ResearchProductionMode, bool> stillNeeded) =>
+            Development.ReconcileGeneratedDevelopmentOperators(turn, stillNeeded);
+        internal bool TryConsumeReconLaneTrim(int turn) => Recon(turn).TryConsumeReconLaneTrim(turn);
+        internal void MarkReconActorTrimmed(int turn, int armyId) => Recon(turn).MarkReconActorTrimmed(turn, armyId);
+        internal IReadOnlyCollection<int> ReconActorsTrimmedThisTurn(int turn) => Recon(turn).ReconActorsTrimmedThisTurn(turn);
+        internal IReadOnlyCollection<int> ReconGroundActorsUsedThisTurn(int turn) => Recon(turn).ReconGroundActorsUsedThisTurn(turn);
+        internal void MarkReconGroundActorUsed(int turn, int armyId) => Recon(turn).MarkReconGroundActorUsed(turn, armyId);
+        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) => Economy.IsBaseExpansionDeliverySuppressed(turn, card, target);
+        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target) => Economy.RecordBaseExpansionDeliveryFailure(turn, card, target);
+        internal void RecordBaseExpansionDeliveryProgress(int turn, CardData card, HexCoord? target) => Economy.RecordBaseExpansionDeliveryProgress(turn, card, target);
+        internal void RecordExtractionDeliveryProgress(int turn, ResourceType? resourceType, HexCoord target) => Economy.RecordExtractionDeliveryProgress(turn, resourceType, target);
+        internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) => Economy.IsExtractionDeliverySuppressed(turn, resourceType, target);
+        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) => Economy.RecordExtractionDeliveryFailure(turn, resourceType, target);
 
     }
 
@@ -217,7 +91,12 @@ namespace Game.Ai.V2
             return s;
         }
 
-        public static void Clear() => ByPlayer.Clear();
+        public static void Clear()
+        {
+            AiTurnSession.ClearAll();
+            ByPlayer.Clear();
+            ReconTurnStateStore.ClearAll();
+        }
     }
 }
 

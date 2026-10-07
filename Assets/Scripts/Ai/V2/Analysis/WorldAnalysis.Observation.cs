@@ -33,9 +33,15 @@ namespace Game.Ai.V2
             if (player == null || before == null || after == null)
                 return;
 
+            var receipts = new List<WorldDelta>();
+            void Observe(StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
+                IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
+                AiHandData hand = null) =>
+                receipts.Add(WorldDeltaLifecycle.Publish(player, turn, reasons, actorIds, contactIds, hexes, hand));
+
             HashSet<int> contacts = ChangedContactIds(before.Snapshot, after.Snapshot);
             if (contacts.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.Contact,
                     contactIds: contacts);
@@ -46,7 +52,7 @@ namespace Game.Ai.V2
                 if (after.Snapshot?.MapKnowledge?.Frontier != null)
                     foreach (FrontierHexSnapshot frontier in after.Snapshot.MapKnowledge.Frontier)
                         reconHexes.Add(frontier.Hex);
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ReconKnowledge, hexes: reconHexes);
             }
 
@@ -57,7 +63,7 @@ namespace Game.Ai.V2
                 && execution.StopReason == ExecutionStopReason.HexEventStarted)
                 eventHexes.Add(execution.FinalHex);
             if (eventHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.EventState,
                     hexes: eventHexes);
@@ -65,7 +71,7 @@ namespace Game.Ai.V2
             HashSet<HexCoord> resourceHexes =
                 NewActionableResourceSites(before.Snapshot, after.Snapshot);
             if (resourceHexes.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ReconKnowledge
                     | StrategicInvalidationReason.ResourceSite,
                     hexes: resourceHexes);
@@ -78,19 +84,19 @@ namespace Game.Ai.V2
                 ChangedEconomicOpportunitySites(before.Snapshot, after.Snapshot);
             changedSites.ExceptWith(resourceHexes);
             if (changedSites.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ResourceSite,
                     hexes: changedSites);
 
             HashSet<int> actorIds = ChangedActorIds(before.Snapshot, after.Snapshot);
             if (actorIds.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Actor,
                     actorIds: actorIds);
 
             // Donor-only preparation changes intent state but not the army snapshot.
             if (execution != null && execution.EconomyPrepared)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Actor,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value }
@@ -99,28 +105,27 @@ namespace Game.Ai.V2
             HashSet<int> capabilityActorIds =
                 ChangedCapabilityActorIds(before.Snapshot, after.Snapshot);
             if (capabilityActorIds.Count > 0)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Capability,
                     actorIds: capabilityActorIds);
 
             if (ThreatChanged(before.Snapshot, after.Snapshot))
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Threat);
 
             if (InfrastructureChanged(before.Snapshot, after.Snapshot))
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Infrastructure
                     | StrategicInvalidationReason.Capability);
 
             if (ResourceStockChanged(before.Resources, after.Resources))
-                StrategicInterruptRegistry.Mark(
-                    player, turn, StrategicInvalidationReason.Resources);
+                Observe( StrategicInvalidationReason.Resources);
 
             // A builder settling onto its BuildExtraction/FoundBase hex changes nothing else this
             // step (no InfrastructureChanged, no Actor delta) — without an explicit fact here the
             // typed loop sees "no invalidation" and stops before Phase A gets to build on it.
             if (execution != null && execution.EconomyDeliveryReady)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.ResourceSite | StrategicInvalidationReason.Actor,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value }
@@ -128,7 +133,7 @@ namespace Game.Ai.V2
                     hexes: new[] { execution.FinalHex });
 
             if (execution != null && execution.DevelopmentDeliveryReady)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                     actorIds: execution.ActualActorArmyId.HasValue
                         ? new[] { execution.ActualActorArmyId.Value } : null,
@@ -136,10 +141,11 @@ namespace Game.Ai.V2
 
             if (before.Hand != after.Hand
                 || before.HandVersion != after.HandVersion)
-                StrategicInterruptRegistry.Mark(player, turn,
+                Observe(
                     StrategicInvalidationReason.Hand
                     | StrategicInvalidationReason.Capability,
                     hand: after.Hand);
+            if (execution != null) execution.WorldDeltas = receipts.AsReadOnly();
         }
 
         private static bool ReconKnowledgeChanged(WorldSnapshot before, WorldSnapshot after)

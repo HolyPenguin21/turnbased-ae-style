@@ -17,6 +17,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
+        internal static bool IsActiveDefenceStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
+        {
+            if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return)
+            {
+                Game.Map.ArmyData actor = Game.Map.ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                return actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
+                    && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
+            }
+            // Preserve the observation-owned fog-of-war seam; no global enemy sweep.
+            return ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(player,
+                pm.ActiveDefenceTarget.EnemyArmyId);
+        }
+
         // The ActiveDefence lane's own lifecycle answer for ResolveActive (the counterpart of
         // ResolveAttackIntent / ResolveRaidIntent). False retires the intent. A Return whose home
         // had to be re-picked is re-keyed through `rekeys` (its identity is mover + destination).
@@ -183,6 +197,34 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
                 + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
+        private static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (!(o.HasActiveDefencePayload && o.MadeProgress)) return false;
+            CreateActiveDefenceIntent(state, o, turn);
+            return true;
+        }
+
+        private static void ResolveDefenceOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+
+            if (!ResolveActiveDefenceIntent(player, snap, intent, rekeys))
+                dead.Add(intent.IntentKey);
+            else if (intent.Status == IntentStatus.Active)
+                active.Add(intent);
+            return;
+        }
+
+        private static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasActiveDefencePayload = true;
+            o.ActiveDefenceTarget = pm.ActiveDefenceTarget;
+        }
+
     }
 }
 

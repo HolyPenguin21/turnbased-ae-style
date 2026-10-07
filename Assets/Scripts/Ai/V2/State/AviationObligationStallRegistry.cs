@@ -22,6 +22,12 @@ namespace Game.Ai.V2
             public readonly HashSet<int> ActorIds = new HashSet<int>();
         }
 
+        internal static void EndTurn(PlayerSetupData player, int turn)
+        {
+            if (player != null && ByPlayer.TryGetValue(player, out Entry entry) && entry.Turn == turn)
+                ByPlayer.Remove(player);
+        }
+
         private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
             new Dictionary<PlayerSetupData, Entry>();
 

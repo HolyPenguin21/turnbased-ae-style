@@ -45,12 +45,12 @@ namespace Game.Ai.V2
             public readonly bool CompletionThisTurn;
             public readonly ResourceCost StageCost;
             public readonly float RealAp;
-            public readonly string OwnerKey;
+            public readonly ReservationOwner OwnerKey;
 
             private EconomyCompletionPlan(bool feasible, ProvisionFailure failure,
                 MissionIntent donor, ArmyData garrison, List<UnitData> unload,
                 List<UnitData> reinforcement, bool travelNeeded, bool completionThisTurn,
-                ResourceCost stageCost, float realAp, string ownerKey)
+                ResourceCost stageCost, float realAp, ReservationOwner ownerKey)
             {
                 Feasible = feasible; Failure = failure; Donor = donor; Garrison = garrison;
                 Unload = unload; Reinforcement = reinforcement; TravelNeeded = travelNeeded;
@@ -63,7 +63,7 @@ namespace Game.Ai.V2
                     false, false, null, 0f, null);
             public static EconomyCompletionPlan Yes(MissionIntent donor, ArmyData garrison,
                 List<UnitData> unload, List<UnitData> reinforcement, bool travelNeeded,
-                bool completionThisTurn, ResourceCost stageCost, float realAp, string ownerKey) =>
+                bool completionThisTurn, ResourceCost stageCost, float realAp, ReservationOwner ownerKey) =>
                 new EconomyCompletionPlan(true, default, donor, garrison, unload, reinforcement,
                     travelNeeded, completionThisTurn, stageCost, realAp, ownerKey);
         }
@@ -137,7 +137,7 @@ namespace Game.Ai.V2
             if (realAp > apPoolRemaining + eps)
                 return EconomyCompletionPlan.No(ProvisionFailure.MoverContended("economy AP no longer available"));
 
-            string owner = EconomyMissionPlanner.OwnerKey(key);
+            ReservationOwner owner = EconomyMissionPlanner.ReservationIdentity(key);
             if (!StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx, stageCost, owner))
                 return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),

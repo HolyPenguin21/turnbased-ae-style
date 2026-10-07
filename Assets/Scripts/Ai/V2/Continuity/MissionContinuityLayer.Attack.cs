@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Combat;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -19,6 +20,23 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
+        internal static bool IsAttackStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
+        {
+            AttackMissionTarget attack = pm.AttackTarget;
+            if (attack.Phase == AttackMissionPhase.RecoveryReturn
+                || attack.Phase == AttackMissionPhase.SupportReturn
+                || attack.Phase == AttackMissionPhase.GatherReturn)
+            {
+                ArmyData actor = ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                return actor != null && actor.Hex.Equals(attack.DestinationHex);
+            }
+            // Reinforcement is a rendezvous with the primary, never the site's capture.
+            return attack.Phase == AttackMissionPhase.Assault
+                && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
+                    == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
+        }
+
         // Returns false when the intent must be retired. `success` distinguishes "we took the
         // Base" (§8: the army STAYS there, mission claim released, Housekeeping stabilises) from
         // "this operation is over for another reason".
@@ -74,7 +92,7 @@ namespace Game.Ai.V2
             if (a.Phase == AttackMissionPhase.RecoveryReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
+                    || !MissionActorPolicy.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — recovering "
                         + $"primary #{a.PrimaryArmyId} is no longer a ground container");
@@ -88,7 +106,7 @@ namespace Game.Ai.V2
                 // stopped being an own ground field container ends the preparation (its claims are
                 // released with the intent; a replacement is a fresh decision).
                 if (!a.PrimaryArmyId.HasValue
-                    || !ActorCommitments.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
+                    || !MissionActorPolicy.PreparationHostStillValid(a.PrimaryArmyId.Value, snap))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} retired — "
                         + $"preparation host #{a.PrimaryArmyId} is no longer an own ground field "
@@ -105,7 +123,7 @@ namespace Game.Ai.V2
                     // (lone hero, lone recce) withdraws like any other non-viable operation (§47);
                     // only a primary with no container left, or no own base to reach, retires here.
                     HexCoord? withdrawTo = a.OperationStarted && a.PrimaryArmyId.HasValue
-                        && ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
+                        && MissionActorPolicy.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
                             ? AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
                     if (!withdrawTo.HasValue)
                     {
@@ -130,7 +148,7 @@ namespace Game.Ai.V2
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
                     || a.Phase == AttackMissionPhase.SupportReturn)
-                && !ActorCommitments.GroundContainerStillValid(a.SupportArmyId.Value, snap))
+                && !MissionActorPolicy.GroundContainerStillValid(a.SupportArmyId.Value, snap))
             {
                 int lostSupportId = a.SupportArmyId.Value;
                 a.SupportArmyId = null;
@@ -415,7 +433,7 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null
                     && x.ArmyId == r.ArmyId);
-                if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
+                if (s == null || !MissionActorPolicy.GroundContainerStillValid(r.ArmyId, snap))
                     return true;
                 r.BaseHex = AiReturnBasePolicy.KeepOrReselectHome(snap, player, r.ArmyId, r.BaseHex, out _);
                 bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
@@ -563,7 +581,7 @@ namespace Game.Ai.V2
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                 // A support stays while its bodies improve the host OR its hero would take command
                 // (the plan may keep it for that alone).
-                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
                         allowCommandHandover: true, allowCompleteTransfer: true);
             }).ToList();
@@ -654,7 +672,7 @@ namespace Game.Ai.V2
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == id);
-                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                return s == null || !MissionActorPolicy.GroundContainerStillValid(id, snap)
                     || host.MemberCount == 0
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
                         allowCommandHandover: true, allowCompleteTransfer: true);
@@ -964,6 +982,364 @@ namespace Game.Ai.V2
         internal static bool AttackIntentIsProtected(MissionIntent intent) =>
             intent?.Attack != null && intent.Attack.OperationStarted
             && intent.Status == IntentStatus.Active;
+        internal static void ClassifyAttackStep(ExecutionResult e, MissionTurnOutcome o)
+        {
+            if (GroundCombatLegs.IsSupportLeg(o)
+                && (e.StopReason == ExecutionStopReason.MoverLost
+                    || e.StopReason == ExecutionStopReason.TargetInvalidated))
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
+                return;
+            }
+            MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
+        }
+
+        private static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
+            // no step of the operation: whatever its outcome, the Attack intent's lifecycle
+            // (progress, stall, suspension, retirement) is untouched. Arrival, landing or loss is
+            // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
+            // failed leg releases just that donor or wing (an airborne wing then lands through
+            // GroundCombatAirSupport.ReleaseOrphanStrikes).
+            // The leg is read from the payload or, when Provisioning failed before one existed,
+            // from the proposal (GroundCombatLegs.AttackLegOf): it shares the operation's
+            // IntentKey, so the generic branches below would otherwise end the whole operation.
+            AttackMissionTarget? attackLeg = GroundCombatLegs.AttackLegOf(o);
+            // Failure of an optional base leg never invalidates its MAIN target. Claims/AP are
+            // reconciled normally by the allocator; Continuity drops only the local choice.
+            if (attackLeg.HasValue && attackLeg.Value.IsIntermediateAssault
+                && !o.ObjectiveSatisfied && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.Outcome == ExecutionOutcome.Blocked && !o.MadeProgress))
+            {
+                if (intent?.Attack != null)
+                {
+                    intent.Attack.IntermediateTarget = AttackTargetRef.None;
+                    intent.Attack.LastOpportunisticStrikeTurn = turn;
+                }
+                AiDebugLog.Write($"[AI][V2][Attack][Intermediate] {o.IntentKey} "
+                    + "local leg rejected; main operation preserved, no further detour this turn");
+                return true;
+            }
+            if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
+            {
+                AttackMissionTarget leg = attackLeg.Value;
+                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated;
+                if (failed && intent?.Attack != null
+                    && leg.Phase == AttackMissionPhase.GatherReturn
+                    && leg.SupportArmyId.HasValue)
+                {
+                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == leg.SupportArmyId.Value);
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
+                        + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
+                }
+                if (failed && intent?.Attack != null
+                    && leg.Phase == AttackMissionPhase.AirSupport
+                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
+                {
+                    ReleaseAttackAirSupport(intent.Attack, turn);
+                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
+                        + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
+                }
+                return true;
+            }
+
+            return false;
+        }
+        private static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
+            // target stronghold (Base/Citadel captured), so there is
+            // deliberately no re-orient here: the army stays where it
+            // is, the claim is released, and the next global replan decides what the new
+            // topology is worth. An intent that still exists is advanced so ResolveActive
+            // observes the capture through the ordinary path and logs the release once.
+            if (o.MissionKind == MissionKind.Attack)
+            {
+                if (intent != null)
+                {
+                    AdvanceIntent(intent, o, turn, state, allocState);
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                        + (o.AttackTarget.Phase == AttackMissionPhase.Assault
+                            ? "objective reached; operation ends at the captured site"
+                            : $"{o.AttackTarget.Phase} leg reached its goal"));
+                    return true;
+                }
+                if (o.HasAttackPayload && o.OperationStarted)
+                {
+                    CreateAttackIntent(state, o, turn);
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                        + "captured on its opening step; intent recorded for a clean release");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (!(o.HasAttackPayload && o.OperationStarted)) return false;
+            CreateAttackIntent(state, o, turn);
+            return true;
+        }
+
+        private static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn) =>
+            intent.Attack != null && o.HasAttackPayload
+                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase);
+
+        private static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (o.HasAttackPayload && intent.Attack != null)
+            {
+                AttackIntent ai = intent.Attack;
+                ai.OperationStarted |= o.OperationStarted;
+                if (o.AttackIntermediateCaptured && o.AttackTarget.IsIntermediateAssault)
+                {
+                    ai.RefitBaseHex = o.AttackTarget.IntermediateTarget.Hex;
+                    ai.RefitCaptureTurn = turn;
+                    ai.RefitBattleStopTurn = o.AttackCaptureHadBattle ? turn : -1;
+                }
+                if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
+                {
+                    ai.AssaultStarted = true;
+                    ai.IntermediateTarget = o.AttackOpportunisticStrike
+                        ? AttackTargetRef.None : o.AttackTarget.IntermediateTarget;
+                }
+                if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
+                {
+                    // Audit F7 — an attempted handoff (full, partial or rejected) ends that
+                    // support's gather leg. Strike force step 5: whatever container is left walks
+                    // home (GatherReturn; ResolveAttackIntent picks the base). It never becomes the
+                    // Reinforcement support.
+                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue
+                        && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
+                        && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                        ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    // 2026-10-01 (variant B) — the fetched commander: its container is recorded
+                    // once created; an attempted handoff ends its leg (a body exchanged into the
+                    // container walks home like any gather donor; an emptied shell just stays).
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.FetchCommander
+                        && o.MoverArmyId.HasValue && o.MoverArmyId.Value >= 0)
+                    {
+                        ai.CommanderArmyId = o.MoverArmyId.Value;
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
+                    if (o.AttackTarget.CommanderLeg && o.ReinforcementHandoffAttempted
+                        && o.MoverArmyId.HasValue && ai.CommanderArmyId == o.MoverArmyId.Value)
+                    {
+                        ai.CommanderArmyId = null;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    }
+                    // ATK-F05 — the one claim transition of a priced donor purchase: the frozen
+                    // supports enter the operation; the lenders retire on the next pass
+                    // ("given to an Attack gather"), their reservations with them.
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.RecruitDonors
+                        && o.AttackTarget.GatherSupportArmyIds != null)
+                    {
+                        foreach (int id in o.AttackTarget.GatherSupportArmyIds)
+                            if (id != ai.PrimaryArmyId && !ai.GatherSupportArmyIds.Contains(id))
+                                ai.GatherSupportArmyIds.Add(id);
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
+                }
+                else
+                {
+                    // The primary's own walk to the rendezvous only names the support; it never
+                    // (re)binds it — Continuity alone does, and may already have released it.
+                    if (o.AttackTarget.SupportArmyId.HasValue && !o.AttackTarget.PrimaryRendezvousLeg)
+                        ai.SupportArmyId = o.AttackTarget.SupportArmyId;
+                    if (o.AttackTarget.RecoveryBaseHex.HasValue)
+                        ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
+                    // §46/§23 — a full/full swap displaced a primary body into the support
+                    // container, so the whole support army must walk itself home. Same shared
+                    // handoff semantics and the same SupportReturn leg the Raid lane uses.
+                    // The destination itself is chosen by ResolveAttackIntent, which has the
+                    // snapshot and the player: AdvanceIntent only records the immutable fact.
+                    // 2026-10-04 — a committed Assault does not wait for that walk: the support's
+                    // container goes home as a GatherReturn leg beside the operation, and the
+                    // primary resumes its march at once.
+                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue && ai.AssaultStarted
+                        && o.AttackTarget.Phase == AttackMissionPhase.Reinforcement)
+                    {
+                        int handedOver = ai.SupportArmyId.Value;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == handedOver))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = handedOver });
+                        ai.SupportArmyId = null;
+                        ai.RendezvousHex = null;
+                        ai.Phase = AttackMissionPhase.Assault;
+                    }
+                    else if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                        ai.Phase = AttackMissionPhase.SupportReturn;
+                }
+                // §17 — the operation's turn-local side-strike marker. Continuity is the only
+                // writer; Execution merely reported that the diversion was really spent.
+                if (o.AttackOpportunisticStrike)
+                    ai.LastOpportunisticStrikeTurn = turn;
+            }
+        }
+
+        private static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var dead = pass.Dead;
+            var donatedOperations = pass.DonatedOperations;
+            // Strike force — a Raid whose primary an Attack gather bought ends here.
+            // The gather priced the abandoned Raid into its own score
+            // (GroundCombatDonorPolicy.BorrowableDonorValues) and won the allocation; the army now
+            // walks to the host and, after the handoff, home. ActiveDefence responders are never
+            // gather donors and therefore never enter this retirement path.
+            var givenToGather = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            foreach (MissionIntent lender in state.All.Where(i => i != null
+                && i.Kind == MissionKind.Raid
+                && i.PreferredMoverArmyId.HasValue
+                && givenToGather.Contains(i.PreferredMoverArmyId.Value)))
+            {
+                donatedOperations.Add(lender.IntentKey);
+                dead.Add(lender.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {lender.IntentKey} retired: "
+                    + $"its army #{lender.PreferredMoverArmyId} was given to an Attack gather "
+                    + $"(abandoned value {lender.LastIntrinsicValue:0.00})");
+            }
+        }
+
+        private static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+            var raidClaims = pass.ActorClaims;
+
+            // ATK §24/§25 — the Attack lane's own lifecycle answers live in
+            // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
+            // Audit F7 — a Gather re-plan may not recruit another intent's actor. T07 — an
+            // army walking home on a completed Raid's Return fallback is NOT another
+            // intent's actor (the fallback has no commitment protection and no claim); if
+            // the gather recruits it, its fallback is retired below in this same pass.
+            pass.AttackGatherUnavailable = pass.AttackGatherUnavailable
+                ?? new HashSet<int>(raidClaims ?? new HashSet<int>());
+            if (!ResolveAttackIntent(player, snap, intent, intent.Attack,
+                    pass.AttackGatherUnavailable, out bool captured))
+            {
+                dead.Add(intent.IntentKey);
+                if (captured)
+                    // §8/§59 — success releases the claim in place. Nothing here touches the
+                    // army's roster or its garrison: Housekeeping owns local stabilisation.
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} claim released on "
+                        + "captured base; Housekeeping owns garrison stabilisation");
+                return;
+            }
+            // A transient capability / pool suspension is re-tested every pass, exactly as
+            // Raid and ActiveDefence do. Without this an Attack suspended once was never
+            // resumed, never aged by ReconcileAfterTurn and never reaped.
+            ResumeTransientSuspension(intent);
+            if (intent.Status == IntentStatus.Active) active.Add(intent);
+            return;
+        }
+
+        private static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            // T07 — a live Attack gather re-planned above may just have recruited the actor of a
+            // completed Raid's Return fallback. Hand it over in this same pass (the rule the
+            // pre-loop "given to gather" retirement applies next pass): the fallback leg is
+            // retired, so the army never has two owners and never walks home instead.
+            var recruitedNow = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            foreach (MissionIntent fallback in state.All.Where(i => i?.Raid != null
+                && i.Raid.CompletedTargetAwaitingFreshDecision && i.Raid.PrimaryArmyId.HasValue
+                && recruitedNow.Contains(i.Raid.PrimaryArmyId.Value)
+                && !dead.Contains(i.IntentKey)).ToList())
+            {
+                dead.Add(fallback.IntentKey);
+                active.Remove(fallback);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {fallback.IntentKey} return "
+                    + $"fallback retired: its army #{fallback.Raid.PrimaryArmyId} joins a live Attack "
+                    + "gather after completing its Raid target");
+            }
+        }
+
+        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasAttackPayload = true;
+            o.AttackTarget = pm.AttackTarget;
+        }
+
+        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
+                || e.StopReason == ExecutionStopReason.BattleStarted;
+            o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
+            o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
+            o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
+
+            o.PayloadForWrite<AttackStepPayload>().AirSupportStrikeSucceeded = e.AirSupportStrikeSucceeded;
+        }
+
+        // The frozen target roster of the live Attack preparation this army hosts (null if none).
+        private static List<StrikeRosterSlot> PreparationTargetRoster(PlayerSetupData player, ArmyData army)
+        {
+            if (player == null || army == null)
+                return null;
+            MissionIntent prep = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+                i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
+                && i.Attack != null && i.Attack.Preparation && i.Attack.Phase == AttackMissionPhase.Gather
+                && i.Attack.PrimaryArmyId == army.Id);
+            return prep?.Attack?.TargetRoster;
+        }
+
+        // Card keys of the held ground Unit cards that deploy on `hex` (a held card lands in the
+        // host by Phase A only through a building there that deploys it).
+        // A card Phase A already failed to chain into this host frees no slot either.
+        private static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex,
+            int hostArmyId, int turn) =>
+            (AiHandRegistry.Peek(player)?.Hand ?? Enumerable.Empty<CardData>())
+                .Select(c => c?.Definition)
+                .Where(d => d != null && d.cardType == CardType.Unit && !d.isAviation
+                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d)
+                    && !PreparationDeliveryMemory.NoChainRecently(player, hostArmyId, turn,
+                        StrikeRoster.CardKey(d)))
+                .Select(StrikeRoster.CardKey).ToList();
+
+        // Live twin of the planner's body release (HousekeepingExecutor preflight): is this a
+        // non-commander BODY of a preparation host that its target roster does not contain?
+        private static bool IsPreparationNonRosterBody(PlayerSetupData player, ArmyData host, UnitData unit)
+        {
+            if (unit == null || unit.IsHero || host == null || !host.Members.Contains(unit))
+                return false;
+            List<StrikeRosterSlot> target = PreparationTargetRoster(player, host);
+            return target != null && target.Count > 0
+                && StrikeRoster.NonTargetBodies(target, host.Members).Contains(unit);
+        }
+
+        internal static ArmyMutationContract AttackPreparationMutationContract(int turn) =>
+            ArmyMutationContract.PreparationHost(
+                host => {
+                    var target = PreparationTargetRoster(host?.Owner, host);
+                    return target != null && target.Count > 0 ? target.Select(slot => slot.Key).ToArray() : null;
+                },
+                host => host == null ? null : HeldFieldCardKeys(host.Owner, host.Hex, host.Id, turn),
+                (host, unit) => IsPreparationNonRosterBody(host?.Owner, host, unit));
+
     }
 }
 

@@ -134,7 +134,7 @@ namespace Game.Ai.V2
             {
                 if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
                     continue;
-                if (intentState != null && intentState.IsExtractionDeliverySuppressed(
+                if (intentState != null && intentState.Economy.IsExtractionDeliverySuppressed(
                         s.TurnNumber, site.ResourceType, site.Hex))
                 {
                     rejectedSuppressed++;
@@ -1339,7 +1339,7 @@ namespace Game.Ai.V2
                 foreach (CardData card in baseCards)
                 {
                     considered++;
-                    if (intentState.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
+                    if (intentState.Economy.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
                     {
                         thresholdRejected++;
                         continue;

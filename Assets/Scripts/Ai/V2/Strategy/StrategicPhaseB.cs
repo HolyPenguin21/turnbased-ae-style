@@ -37,22 +37,22 @@ namespace Game.Ai.V2
         internal static void RefreshReactionReservation(PlayerSetupData player, int turn,
             StrategicReactionOpportunity opportunity)
         {
-            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+            MissionLeaseBook.ReleaseReasonExceptOwner(player, turn,
                 StrategicReservationReason.StrategicReactionPass, opportunity.OwnerKey);
-            StrategicResourceReservationLedger.Upsert(player, turn,
+            MissionLeaseBook.Upsert(player, turn,
                 new StrategicResourceReservation
                 {
-                    Owner = opportunity.OwnerKey,
+                    Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
                     Reason = StrategicReservationReason.StrategicReactionPass,
                     Resource = StrategicReservedResource.ActionPoints,
                     Amount = opportunity.ReservedApBudget,
                     ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                 });
             foreach (ResourceType rt in ResourceBundle.All)
-                StrategicResourceReservationLedger.Upsert(player, turn,
+                MissionLeaseBook.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = opportunity.OwnerKey,
+                        Identity = ReservationOwner.ForPass(opportunity.OwnerKey),
                         Reason = StrategicReservationReason.StrategicReactionPass,
                         Resource = StrategicResourceReservationLedger.Map(rt),
                         Amount = opportunity.Envelope?.Get(rt) ?? 0,
@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             {
                 // spec §7 — an existing reaction budget reservation is released the moment no
                 // feasible same-turn reaction remains (same-turn re-arbitration is Housekeeping's re-run).
-                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 if (StrategicInterruptRegistry.HasPendingDiscovery(player, ctx.TurnNumber))
                     AiDebugLog.Write($"[AI][V2]   strat.B — pending invalidation but no FEASIBLE reaction "
@@ -212,7 +212,7 @@ namespace Game.Ai.V2
                         exec.StateChanged = msChanged;
                         exec.Progressed = msProgressed;
                         if (msChanged)
-                            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
                                 StrategicInvalidationReason.Infrastructure
                                 | StrategicInvalidationReason.Capability);
                         if (!exec.Succeeded) exec.FailReason = "capacity upgrade refused";
@@ -256,11 +256,12 @@ namespace Game.Ai.V2
                     // already bump inside MaterializationExecutor / CardPlayExecutor (and their
                     // result's StateVersionAfter must stay == V2StateVersion.Current), so bumping
                     // again here would break that equality. Draw / MaintenanceSpend /
-                    // AviationRebase do NOT version themselves — bump for those.
+                    // do NOT version themselves — bump for those. AviationRebase records each
+                    // committed launch/flight action inside its executor.
                     bool executorSelfVersions = best.Kind == TempoKind.PlayMat
-                        || best.Kind == TempoKind.PlayNonCombat;
+                        || best.Kind == TempoKind.PlayNonCombat || best.Kind == TempoKind.AviationRebase;
                     if (!executorSelfVersions)
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.CommitMutation();
                     result.StateChanged |= exec.StateChanged;
                 }
                 if (!exec.Progressed)
@@ -323,4 +324,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

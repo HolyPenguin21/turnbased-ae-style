@@ -90,7 +90,7 @@ namespace Game.Ai.V2
             bool bumpVersion = true, bool otherMutation = false)
         {
             bool changed = transferredMemberCount > 0 || otherMutation;
-            int version = changed && bumpVersion ? V2StateVersion.Bump() : V2StateVersion.Current;
+            int version = changed && bumpVersion ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
             if (m != null) m.PlannedAtStateVersion = version;
             return new ProvisioningResult
             {
@@ -105,7 +105,7 @@ namespace Game.Ai.V2
         public static ProvisioningResult Fail(ProvisionFailure f,
             bool stateChanged = false, int transferredMemberCount = 0)
         {
-            int version = stateChanged ? V2StateVersion.Bump() : V2StateVersion.Current;
+            int version = stateChanged ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
             return new ProvisioningResult
             {
                 Success = false,

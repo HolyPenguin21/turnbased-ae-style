@@ -87,6 +87,7 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(totalAp) || !totalCost.CanAfford(root))
                 return BuildingPlayResult.Fail("base and immediate garrison are not jointly affordable");
 
+            using var mutation = WorldDeltaLifecycle.BeginTransaction();
             InfrastructureBuildOutcome outcome = InfrastructureActions.TryFoundBase(
                 ctx.HexSelection, card.Definition, hex, player,
                 card.EffectivePlayApCost, card.EffectivePlayResourceCost, completeBeforeCommit: _ =>
@@ -105,7 +106,7 @@ namespace Game.Ai.V2
                 });
             if (!outcome.Ok)
                 return new BuildingPlayResult { FailReason = outcome.FailReason,
-                    StateVersionAfter = V2StateVersion.Bump() };
+                    StateVersionAfter = V2StateVersion.Current };
 
             // Gameplay is committed. A hand observer throwing after RemoveCard's mutation
             // must not leave the other paid card playable or report a failed founding.
@@ -120,7 +121,8 @@ namespace Game.Ai.V2
                 Built = true, CardConsumed = true, AdditionalCardsConsumed = defender == null ? 0 : 1,
                 StateChanged = true, ApSpent = totalAp,
                 ResourcesSpent = totalCost,
-                StateVersionAfter = V2StateVersion.Bump(),
+                StateVersionAfter = mutation.Commit(player, ctx.TurnNumber,
+                    new WorldDelta(true, StrategicInvalidationReason.None)),
             };
         }
 
@@ -251,7 +253,7 @@ namespace Game.Ai.V2
             {
                 Built = true, CardConsumed = true, StateChanged = true, ApSpent = outcome.ApSpent,
                 ResourcesSpent = card.EffectivePlayResourceCost,
-                StateVersionAfter = V2StateVersion.Bump(),
+                StateVersionAfter = WorldDeltaLifecycle.CommitMutation(),
             };
         }
 
@@ -274,7 +276,7 @@ namespace Game.Ai.V2
                 // The site charges the facility definition's resourceCost (same figure
                 // InfrastructureFulfillment admits the build against). No hand card is consumed.
                 ResourcesSpent = outcome.Ok ? facilityDef.resourceCost : null,
-                StateVersionAfter = outcome.Ok ? V2StateVersion.Bump() : -1,
+                StateVersionAfter = outcome.Ok ? WorldDeltaLifecycle.CommitMutation() : -1,
                 FailReason = outcome.Ok ? null : outcome.FailReason,
             };
         }

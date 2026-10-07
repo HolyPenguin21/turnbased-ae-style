@@ -40,6 +40,11 @@ namespace Game.Ai.V2
 
     internal static class AviationRebasePlanner
     {
+        // Launch and guarded first flight form one transaction. Consume its factual receipt
+        // before looking for a surviving wing; later flight steps have separate receipts.
+        internal static void RecordLaunchReceipt(AiMoveExecutionTrace trace) =>
+            WorldDeltaLifecycle.RecordExecutionMutation(null, trace?.FormationCommitted == true);
+
         // The relocation pays ONE sortie launch (AP + Energy at the neutral resource price — no
         // snapshot here). A multi-turn route costs nothing more: continuing a paid sortie is free
         // on every later turn (ArmyData.PendingActivation*), so there is no recurring delivery.
@@ -361,6 +366,7 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiAirSortiePlanner.LaunchRoutine(
                 player, decision, ctx, AirSortieKind.Rebase, trace);
+            RecordLaunchReceipt(trace);
 
             ArmyData wing = ArmyRegistry.AllForOwner(player)
                 .Where(a => AviationRules.IsValidAirArmy(a) && !before.Contains(a.Id))
@@ -381,6 +387,8 @@ namespace Game.Ai.V2
                 HexCoord prior = wing.Hex;
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
+                WorldDeltaLifecycle.RecordExecutionMutation(null,
+                    !(wing?.Hex ?? trace.EndHex).Equals(prior));
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;
@@ -441,7 +449,7 @@ namespace Game.Ai.V2
                             result.CombatChanged = true;
                             result.AirSupportStrikeSucceeded = true;
                         }
-                        V2StateVersion.Bump();
+                        WorldDeltaLifecycle.RecordExecutionMutation(result, true);
                         AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
                             + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
                             + $"policy={task.StrikePolicy.Kind} "
@@ -461,6 +469,8 @@ namespace Game.Ai.V2
                 HexCoord prior = wing.Hex;
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
+                WorldDeltaLifecycle.RecordExecutionMutation(result,
+                    !(wing?.Hex ?? trace.EndHex).Equals(prior));
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;

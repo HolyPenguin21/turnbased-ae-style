@@ -142,7 +142,7 @@ namespace Game.Ai.V2
                     && pm.Mission.PreferredMoverArmyId.HasValue
                     && pm.Mission.PreferredMoverArmyId.Value != mover.Id)
                     return MissionValidity.StaleMoverLost;
-                if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, pm.EconomyTarget))
+                if (EconomyLifecycleState.ObjectiveSatisfied(player, pm.EconomyTarget))
                     return MissionValidity.StaleGoalMet;
                 if (pm.EconomyTarget.Kind == EconomyTaskKind.ReturnCollector)
                     return pm.EconomyTarget.CollectorArmyId == mover.Id

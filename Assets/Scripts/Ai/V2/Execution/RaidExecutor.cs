@@ -189,6 +189,8 @@ namespace Game.Ai.V2
             army = Resolve(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             bool moved = !endHex.Equals(before);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
             if (moved)
                 result.StepsMoved++;
             result.FinalHex = endHex;
@@ -288,7 +290,7 @@ namespace Game.Ai.V2
             var leg = new GroundLegStepResult();
             yield return GroundCombatLegStep.Transit(player, ctx, army, home,
                 $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})",
-                leg);
+                leg, result);
             if (leg.Blocked.HasValue)
             {
                 result.StopReason = leg.Blocked.Value;
@@ -360,7 +362,7 @@ namespace Game.Ai.V2
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
                     $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})",
-                    leg);
+                    leg, result);
                 if (leg.Blocked.HasValue)
                 {
                     result.StopReason = leg.Blocked.Value;
@@ -413,10 +415,9 @@ namespace Game.Ai.V2
                 result.CombatChanged = true;
                 // §10 — bump the version and publish an Actor|Capability invalidation so the next
                 // bounded cycle re-checks this Raid's readiness in the SAME turn.
-                V2StateVersion.Bump();
-                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                result.StateVersionAfter = WorldDeltaLifecycle.Apply(player, ctx.TurnNumber, new WorldDelta(true,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
-                    actorIds: new[] { primary.Id, support.Id });
+                    actorIds: new[] { primary.Id, support.Id }));
             }
 
             // A full/full swap displaced a primary member into support:

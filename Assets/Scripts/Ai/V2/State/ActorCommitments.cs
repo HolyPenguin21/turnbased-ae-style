@@ -1,6 +1,9 @@
-﻿using System.Collections.Generic;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
+using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -24,334 +27,35 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public sealed class ActorCommitments
     {
-        private readonly HashSet<int> _claimedArmyIds = new HashSet<int>();
-
-        public IReadOnlyCollection<int> ClaimedArmyIds => _claimedArmyIds;
-
-        // Live copy for the shared eligibility primitive (ScoutMoverSelector.Eligible takes an ISet).
-        public HashSet<int> ClaimedArmyIdSet => new HashSet<int>(_claimedArmyIds);
-
-        // armyId here is always an already-resolved concrete actor id, never a "no army" signal —
-        // 0 is a legitimate ArmyData.Id (see ArmyData identity sequencing) and must be claimable
-        // exactly like any other id.
-        public bool IsArmyClaimed(int armyId) => _claimedArmyIds.Contains(armyId);
-
-        // A claim with no stated contract protects the whole container (no inbound, no outbound,
-        // no commander change) — the conservative default for every lane that has not said what
-        // its function needs.
+        private readonly MissionLeaseBook _leases;
+        public ActorCommitments() : this(new MissionLeaseBook()) { }
+        internal ActorCommitments(MissionLeaseBook leases) { _leases = leases; }
+        public IReadOnlyCollection<int> ClaimedArmyIds => _leases.ClaimedActors;
+        public HashSet<int> ClaimedArmyIdSet => new HashSet<int>(_leases.ClaimedActors);
+        public bool IsArmyClaimed(int armyId) => _leases.IsClaimed(armyId);
         public void Claim(int armyId) => Claim(armyId, ArmyMutationContract.FullyProtected);
+        public void Claim(int armyId, ArmyMutationContract contract) => _leases.ClaimForPass(armyId, contract);
+        internal void Claim(MissionIntentKey operation, int armyId,
+            ArmyMutationContract contract = null, bool preparationHost = false) =>
+            _leases.Claim(operation, armyId, contract ?? ArmyMutationContract.FullyProtected, preparationHost);
+        public ArmyMutationContract MutationContractOf(int armyId) => _leases.ContractOf(armyId);
+        public bool IsPreparationHost(int armyId) => _leases.IsPreparationHost(armyId);
+        internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int armyId) => _leases.OwnersOf(armyId);
+        internal static ArmyMutationContract PhysicalMutationContract(PlayerSetupData player, int turn,
+            ArmyData army, ActorCommitments commitments) =>
+            MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
 
-        // T05 — the claim plus the minimum its operation needs preserved, as Housekeeping reads
-        // it (ArmyReorgAnalyzer, HousekeepingExecutor). An army claimed by two operations keeps
-        // only what BOTH allow.
-        public void Claim(int armyId, ArmyMutationContract contract)
-        {
-            _claimedArmyIds.Add(armyId);
-            _contracts[armyId] = _contracts.TryGetValue(armyId, out ArmyMutationContract prior)
-                ? prior.Intersect(contract) : contract;
-        }
-
-        private readonly Dictionary<int, ArmyMutationContract> _contracts =
-            new Dictionary<int, ArmyMutationContract>();
-
-        // What an operation lets zero-AP Housekeeping do to its claimed container. Unclaimed
-        // armies have no contract (null) — they are ordinary free formations.
-        public ArmyMutationContract MutationContractOf(int armyId) =>
-            _contracts.TryGetValue(armyId, out ArmyMutationContract c) ? c : null;
-
-        // T01 — hosts of a live Attack mobilization preparation (AttackIntent.Preparation, Gather).
-        // Claimed like every other operation actor; kept separately only so the ONE pinned card
-        // delivery may still reach this exact claimed (possibly empty) container
-        // (PlacementSelector, MaterializationDeliveryPolicy). Never a second occupancy truth.
-        private readonly HashSet<int> _preparationHostIds = new HashSet<int>();
-        public bool IsPreparationHost(int armyId) => _preparationHostIds.Contains(armyId);
-
+        // Compatibility entry points; all role validation lives in MissionActorPolicy.
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
-            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
-        {
-            using var __profile = new Game.Core.ProfileScope("AI/Commitments.FromIntents");
-            var c = new ActorCommitments();
-            if (intents == null || snap?.Self?.Armies == null)
-                return c;
+            WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives) =>
+            MissionActorPolicy.Build(intents, snap, reconObjectives);
+        internal static bool PreparationHostStillValid(int armyId, WorldSnapshot snap) =>
+            MissionActorPolicy.PreparationHostStillValid(armyId, snap);
+        internal static bool GroundContainerStillValid(int armyId, WorldSnapshot snap) =>
+            MissionActorPolicy.GroundContainerStillValid(armyId, snap);
+        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement) =>
+            MissionActorPolicy.HasCapableActor(intent, snap, requirement);
 
-            // The current stealth requirement of each intent's objective, from the ONE Recon
-            // objective enumeration (an exposed Explore is Stealth.Required too — never infer the
-            // requirement from ScoutTargetKind).
-            var reqByKey = new Dictionary<MissionIntentKey, StealthRequirement>();
-            if (reconObjectives != null)
-                foreach (ReconObjective o in reconObjectives)
-                    reqByKey[o.IntentKey] = o.Stealth;
-
-            foreach (MissionIntent i in intents)
-            {
-                // The SUPPORT actor of a Raid is claimed independently
-                // of the primary while it is either carrying reinforcement TO the primary
-                // (Reinforcement) or walking a displaced member back home AFTER a full/full swap
-                // (SupportReturn): Housekeeping (and every other mission lane) must never see the
-                // convoy as a free army during either leg. Losing it releases just this claim.
-                RaidIntent raid = i?.Raid;
-                int? airWing = GroundCombatLegs.HeldAirSupportArmyId(i);
-                if (airWing.HasValue
-                    && snap.Self.Armies.Any(a => a != null
-                        && a.ArmyId == airWing.Value && a.IsAir
-                        && !a.IsAirfield && a.MemberCount > 0))
-                    c.Claim(airWing.Value);
-                // Raid/Attack convoys and every support an Attack Gather still expects — the one
-                // list GroundCombatLegs owns. A support that stopped being a live ground container
-                // releases just its own claim.
-                foreach (int supportId in GroundCombatLegs.HeldGroundSupportArmyIds(i))
-                {
-                    if (!GroundContainerStillValid(supportId, snap))
-                        continue;
-                    c.Claim(supportId);
-                    if (raid != null)
-                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
-                            + $"support={supportId} phase={raid.Phase} reason=support_actor_en_route");
-                }
-
-                AttackIntent attack = i?.Attack;
-                if (i?.PreferredMoverArmyId == null)
-                    continue;
-
-                if (i.Kind == MissionKind.Economy)
-                {
-                    int actorId = i.PreferredMoverArmyId.Value;
-                    bool mobile = i.Economy?.Kind == EconomyTaskKind.MobileCollection
-                        || i.Economy?.Kind == EconomyTaskKind.ReturnCollector;
-                    ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
-                        && a.ArmyId == actorId && !a.IsPrison && !a.IsAir
-                        && (mobile || a.HasHero));
-                    if (actor != null) c.Claim(actorId);
-                    continue;
-                }
-
-                if (i.Kind == MissionKind.Development)
-                {
-                    int actorId = i.PreferredMoverArmyId.Value;
-                    ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
-                        && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.HasHero);
-                    ArmyData live = actor == null ? null : ArmyRegistry.AllForOwner(actor.Owner)
-                        .FirstOrDefault(a => a != null && a.Id == actorId);
-                    if (live?.Members.Contains(i.Development?.Hero) == true)
-                        c.Claim(actorId);
-                    continue;
-                }
-
-                if (i.Kind == MissionKind.Raid)
-                {
-                    int actorId = i.PreferredMoverArmyId.Value;
-                    if (raid != null && (raid.Phase == RaidMissionPhase.Return
-                            || raid.Phase == RaidMissionPhase.RecoveryReturn))
-                    {
-                        if (raid.Phase == RaidMissionPhase.Return
-                            && raid.CompletedTargetAwaitingFreshDecision)
-                            continue;
-                        ArmySnapshot returningPrimary = snap.Self.Armies.FirstOrDefault(a => a != null
-                            && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
-                        if (returningPrimary != null)
-                        {
-                            c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid.Phase}"));
-                            AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
-                                $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
-                                + $"reason={raid.Phase}_actor_still_matches_ground_container_gate");
-                        }
-                        else
-                        {
-                            AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
-                                $"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
-                                + "reason=return_actor_missing_or_non_ground_container");
-                        }
-                        continue;
-                    }
-
-                    if (GroundCombatActorStillValid(actorId, snap, out string reason))
-                    {
-                        c.Claim(actorId, ArmyMutationContract.MovingOperation($"Raid:{raid?.Phase}"));
-                        AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
-                            $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
-                            + "reason=actor_still_matches_raid_provisioning_gate");
-                    }
-                    else
-                    {
-                        AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
-                            $"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
-                            + $"reason={reason}");
-                    }
-                    continue;
-                }
-
-                if (i.Kind == MissionKind.Attack)
-                {
-                    int actorId = i.PreferredMoverArmyId.Value;
-                    // T01 — a preparation host keeps its role while it is still an own ground field
-                    // container, weak, hero-only or empty: Housekeeping must not fold it away and
-                    // no other lane may take it; the claim is released with the intent.
-                    bool preparing = attack != null && attack.Preparation
-                        && attack.Phase == AttackMissionPhase.Gather;
-                    bool valid = attack != null && (attack.Phase == AttackMissionPhase.RecoveryReturn
-                        ? GroundContainerStillValid(actorId, snap)
-                        : preparing ? PreparationHostStillValid(actorId, snap)
-                        : GroundCombatActorStillValid(actorId, snap, out _));
-                    if (valid)
-                    {
-                        c.Claim(actorId, preparing
-                            ? ArmyMutationContract.PreparationHost()
-                            : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
-                            : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"));
-                        if (preparing)
-                            c._preparationHostIds.Add(actorId);
-                    }
-                    continue;
-                }
-
-                if (i.Kind == MissionKind.ActiveDefence)
-                {
-                    // A Return is a real withdrawal (regroup at the Citadel / retreat home), not a
-                    // fallback: its army stays claimed until it arrives, so no Raid, Attack or
-                    // Housekeeping pass can take it mid-walk. Like Attack's RecoveryReturn it only
-                    // has to stay a live ground container.
-                    int actorId = i.PreferredMoverArmyId.Value;
-                    bool valid = i.ActiveDefence?.Phase == ActiveDefencePhase.Return
-                        ? GroundContainerStillValid(actorId, snap)
-                        : GroundCombatActorStillValid(actorId, snap, out _);
-                    if (valid)
-                        c.Claim(actorId, ArmyMutationContract.MovingOperation(
-                            $"ActiveDefence:{i.ActiveDefence?.Phase}"));
-                    continue;
-                }
-
-                StealthRequirement req;
-                if (reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r))
-                {
-                    req = r;
-                }
-                else
-                {
-                    // A still-valid incumbent Explore/Refresh whose hex has fallen out of the
-                    // frozen enumeration (Explore: wave band moved; Refresh: hex dropped past the
-                    // capped stale-hex pool in BuildRefreshObjectives) has NO entry here.
-                    // MissionLayer re-materialises the ONE incumbent objective via
-                    // ReconObjectiveEvaluator.{ExploreAt,RefreshAt}, each of which recomputes
-                    // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
-                    // path returns null and silently drops a real stealth requirement).
-                    ReconObjective o = ReconObjectiveEvaluator.ForIntent(snap, i.Scout);
-                    req = o?.Stealth ?? StealthRequirement.None;
-                }
-
-                if (HasCapableActor(i, snap, req))
-                    c.Claim(i.PreferredMoverArmyId.Value);
-            }
-            return c;
-        }
-
-        private static bool GroundCombatActorStillValid(int armyId, WorldSnapshot snap, out string reason)
-        {
-            reason = null;
-            if (snap?.Self?.Armies == null)
-            {
-                reason = "missing_snapshot";
-                return false;
-            }
-
-            ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == armyId);
-            if (actor == null || actor.Owner == null)
-            {
-                reason = "actor_not_in_own_snapshot";
-                return false;
-            }
-            if (actor.IsPrison || actor.IsAir || actor.IsSoloRecce || actor.MemberCount <= 0)
-            {
-                reason = "snapshot_actor_not_ground_combat_force";
-                return false;
-            }
-
-            // Snapshot.IsAir does not encode an airfield container, and a post-battle lone hero is
-            // a role-level invalid Raid actor that the snapshot does not encode directly. Resolve
-            // only the matching OWN live army to mirror the final provisioning structural gate.
-            ArmyData live = ArmyRegistry.AllForOwner(actor.Owner)
-                .FirstOrDefault(a => a != null && a.Id == armyId);
-            if (live == null)
-            {
-                reason = "live_actor_missing";
-                return false;
-            }
-            if (live.IsPrison || live.IsGarrison || live.IsAirfield || live.IsAirArmy)
-            {
-                reason = "live_actor_is_non_field_container";
-                return false;
-            }
-            if (AiArmyRoles.IsSoloRecce(live))
-            {
-                reason = "live_actor_is_dedicated_recce";
-                return false;
-            }
-            if (AiArmyRoles.IsSoloHeroAwaitingEscort(live))
-            {
-                reason = "live_actor_is_solo_hero_awaiting_escort";
-                return false;
-            }
-            if (live.Members.Count <= 0)
-            {
-                reason = "live_actor_empty";
-                return false;
-            }
-            return true;
-        }
-
-        // T01 — the one validity rule of a preparation host (commitments, Continuity): an own
-        // ground FIELD container — never a garrison, prison, airfield or air army — whose roster
-        // may be empty (a claimed shell) or weak. Not a combat-eligibility test.
-        internal static bool PreparationHostStillValid(int armyId, WorldSnapshot snap)
-        {
-            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                && a.ArmyId == armyId);
-            if (actor == null || actor.Owner == null || actor.IsPrison || actor.IsAir
-                || actor.IsGarrison)
-                return false;
-            ArmyData live = ArmyRegistry.AllForOwner(actor.Owner)
-                .FirstOrDefault(a => a != null && a.Id == armyId);
-            return live != null && !live.IsPrison && !live.IsGarrison && !live.IsAirfield
-                && !live.IsAirArmy;
-        }
-
-        // A support/return actor only has to be a live, non-air, non-empty ground container —
-        // during transit legs it carries bodies or itself home, not qualifying for fresh combat.
-        // One owner for Continuity (support loss) and commitments (support claims).
-        internal static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
-        {
-            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                && a.ArmyId == armyId);
-            return actor != null && !actor.IsPrison && !actor.IsAir && actor.MemberCount > 0;
-        }
-
-        // Is the intent's committed mover structurally able to continue the role? Ground uses the
-        // canonical solo-Recce shape. Air may continue observation (Refresh) outside the
-        // ground concurrency cap, but can never satisfy Explore's physical-visit or stealth lane.
-        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement)
-        {
-            if (intent?.PreferredMoverArmyId == null || snap?.Self?.Armies == null)
-                return false;
-            int id = intent.PreferredMoverArmyId.Value;
-
-            ArmySnapshot a = null;
-            foreach (ArmySnapshot s in snap.Self.Armies)
-                if (s != null && s.ArmyId == id) { a = s; break; }
-            if (a == null || a.IsPrison || a.MemberCount <= 0)
-                return false;
-
-            if (a.IsAir)
-                return intent.Scout != null
-                    && intent.Scout.Kind != ScoutTargetKind.Explore
-                    && !ReconScoutKinds.IsCapture(intent.Scout.Kind)
-                    && requirement != StealthRequirement.Required;
-
-            if (!a.IsSoloRecce)
-                return false;
-
-            if (requirement == StealthRequirement.Required && !ScoutMoverSelector.CanServeStealth(a))
-                return false;
-            return true;
-        }
     }
 
     // ===========================================================================================
@@ -383,16 +87,33 @@ namespace Game.Ai.V2
         public readonly bool MayReorderCommander;
         public readonly bool KeepsMovement;
         public readonly bool MayReleaseExcessHeroes;
+        internal readonly bool ProtectsSoloRole;
+        private readonly Func<ArmyData, IReadOnlyList<string>> _targetKeys;
+        private readonly Func<ArmyData, IReadOnlyList<string>> _deploymentKeys;
+        private readonly Func<ArmyData, UnitData, bool> _releaseBody;
 
         private ArmyMutationContract(string label, bool mayReceive, bool mayReorderCommander,
-            bool keepsMovement, bool mayReleaseExcessHeroes = false)
+            bool keepsMovement, bool mayReleaseExcessHeroes = false, bool protectsSoloRole = false,
+            Func<ArmyData, IReadOnlyList<string>> targetKeys = null,
+            Func<ArmyData, IReadOnlyList<string>> deploymentKeys = null,
+            Func<ArmyData, UnitData, bool> releaseBody = null)
         {
             Label = label;
             MayReceive = mayReceive;
             MayReorderCommander = mayReorderCommander;
             KeepsMovement = keepsMovement;
             MayReleaseExcessHeroes = mayReleaseExcessHeroes;
+            ProtectsSoloRole = protectsSoloRole;
+            _targetKeys = targetKeys; _deploymentKeys = deploymentKeys; _releaseBody = releaseBody;
         }
+
+        // Read-only domain projections. No roster or mission lifecycle state is copied here.
+        internal IReadOnlyList<string> TargetRosterKeys(ArmyData host) => _targetKeys?.Invoke(host);
+        internal IReadOnlyList<string> ReservedDeploymentKeys(ArmyData host) => _deploymentKeys?.Invoke(host);
+        internal bool MayReleaseBody(ArmyData host, UnitData unit) =>
+            MayReleaseExcessHeroes && _releaseBody?.Invoke(host, unit) == true;
+        internal static readonly ArmyMutationContract SoloRole =
+            new ArmyMutationContract("solo-role", false, false, true, protectsSoloRole: true);
 
         public static readonly ArmyMutationContract FullyProtected =
             new ArmyMutationContract("protected", false, false, true);
@@ -408,6 +129,14 @@ namespace Game.Ai.V2
             new ArmyMutationContract("Attack:PreparationHost", true, true, false,
                 mayReleaseExcessHeroes: true);
 
+        internal static ArmyMutationContract PreparationHost(
+            Func<ArmyData, IReadOnlyList<string>> targetKeys,
+            Func<ArmyData, IReadOnlyList<string>> deploymentKeys,
+            Func<ArmyData, UnitData, bool> releaseBody) =>
+            new ArmyMutationContract("Attack:PreparationHost", true, true, false,
+                mayReleaseExcessHeroes: true, targetKeys: targetKeys,
+                deploymentKeys: deploymentKeys, releaseBody: releaseBody);
+
         // Raid / Attack / ActiveDefence primaries, including their return legs.
         public static ArmyMutationContract MovingOperation(string label) =>
             new ArmyMutationContract(label, true, true, true);
@@ -417,6 +146,9 @@ namespace Game.Ai.V2
                 MayReceive && other.MayReceive,
                 MayReorderCommander && other.MayReorderCommander,
                 KeepsMovement || other.KeepsMovement,
-                MayReleaseExcessHeroes && other.MayReleaseExcessHeroes);
+                MayReleaseExcessHeroes && other.MayReleaseExcessHeroes,
+                ProtectsSoloRole || other.ProtectsSoloRole,
+                _targetKeys ?? other._targetKeys, _deploymentKeys ?? other._deploymentKeys,
+                (host, unit) => MayReleaseBody(host, unit) && other.MayReleaseBody(host, unit));
     }
 }

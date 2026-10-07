@@ -292,7 +292,7 @@ namespace Game.Ai.V2
         // The host's roster really changed: publish it so the SAME turn's bounded cycle re-reads
         // this Attack against the new host (as the reinforcement handoff does).
         private static void MarkChanged(PlayerSetupData player, AiTurnContext ctx, int hostId) =>
-            StrategicInterruptRegistry.Mark(player, ctx?.TurnNumber ?? 0,
+            WorldDeltaLifecycle.Publish(player, ctx?.TurnNumber ?? 0,
                 StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                 actorIds: new[] { hostId });
 
@@ -378,6 +378,8 @@ namespace Game.Ai.V2
             army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             bool moved = !endHex.Equals(before);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
             if (moved)
                 result.StepsMoved++;
             result.FinalHex = endHex;
@@ -475,7 +477,7 @@ namespace Game.Ai.V2
             }
             var leg = new GroundLegStepResult();
             yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg);
+                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg, result);
             if (leg.Blocked.HasValue)
             {
                 result.StopReason = leg.Blocked.Value;
@@ -561,7 +563,7 @@ namespace Game.Ai.V2
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
                     $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
-                    leg);
+                    leg, result);
                 if (leg.Blocked.HasValue)
                 {
                     result.StopReason = leg.Blocked.Value;
@@ -621,10 +623,9 @@ namespace Game.Ai.V2
                 result.CombatChanged = true;
                 // The primary's readiness genuinely changed: bump and publish so the SAME turn's
                 // bounded cycle re-checks this Attack instead of waiting a turn.
-                V2StateVersion.Bump();
-                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                result.StateVersionAfter = WorldDeltaLifecycle.Apply(player, ctx.TurnNumber, new WorldDelta(true,
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
-                    actorIds: new[] { primary.Id, support.Id });
+                    actorIds: new[] { primary.Id, support.Id }));
             }
 
             result.ReachedGoal = handoffOk;

@@ -2,6 +2,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
+using Game.Map;
+using Game.Players;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -12,6 +14,50 @@ namespace Game.EditorTests
     public class AiHousekeepingMissionContractTests
     {
         private static int _key;
+
+        [Test]
+        public void PreparationRosterContractReadsItsDomainOwnerWithoutKeepingASecondRoster()
+        {
+            var player = new PlayerSetupData();
+            var host = new ArmyData { Owner = player };
+            var attack = new AttackIntent { Preparation = true, Phase = AttackMissionPhase.Gather,
+                PrimaryArmyId = host.Id, TargetRoster = new List<StrikeRosterSlot>
+                {
+                    new StrikeRosterSlot("tank", false, 1, ForceSource.Map),
+                    new StrikeRosterSlot("tank", false, 1, ForceSource.Hand),
+                } };
+            var intent = new MissionIntent { Kind = MissionKind.Attack, Objective = attack,
+                IntentKey = new MissionIntentKey(MissionKind.Attack, 0, 17, 2, 3) };
+            var state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(intent);
+            try
+            {
+                var contract = MissionContinuityLayer.AttackPreparationMutationContract(4);
+                Assert.That(contract.TargetRosterKeys(host), Is.EqualTo(new[] { "tank", "tank" }));
+                attack.TargetRoster.Add(new StrikeRosterSlot("recce", false, 1, ForceSource.Deck));
+                Assert.That(contract.TargetRosterKeys(host), Is.EqualTo(new[] { "tank", "tank", "recce" }));
+                intent.Status = IntentStatus.Suspended;
+                Assert.That(contract.TargetRosterKeys(host), Is.Null,
+                    "the existing rule reads only active preparation hosts");
+                intent.Status = IntentStatus.Active;
+                state.Remove(intent.IntentKey);
+                Assert.That(contract.TargetRosterKeys(host), Is.Null);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void ASecondClaimCannotBeBypassedByADomainBodyReleasePermission()
+        {
+            int evaluations = 0;
+            var domain = ArmyMutationContract.PreparationHost(_ => new[] { "tank" },
+                _ => new[] { "tank" }, (_, __) => { evaluations++; return true; });
+            Assert.That(domain.MayReleaseBody(null, null), Is.True);
+            var protectedContract = domain.Intersect(ArmyMutationContract.FullyProtected);
+            Assert.That(protectedContract.MayReleaseBody(null, null), Is.False);
+            Assert.That(protectedContract.MayReceive, Is.False);
+            Assert.That(evaluations, Is.EqualTo(1));
+        }
 
         private static ReorgUnit Body(float power, int move = 3) => new ReorgUnit
         {

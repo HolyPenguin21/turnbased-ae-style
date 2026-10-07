@@ -30,7 +30,7 @@ namespace Game.Ai.V2
                 if (attack.RefitBattleStopTurn == ctx.TurnNumber && primary.Members.Any(u => u.MoveCurrent != 0))
                 {
                     foreach (var u in primary.Members) u.MoveCurrent = 0;
-                    V2StateVersion.Bump();
+                    WorldDeltaLifecycle.CommitMutation();
                 }
                 return true;
             }
@@ -53,7 +53,7 @@ namespace Game.Ai.V2
                     out _, h.Promote, h.Displaced)) return false;
             // An exchange cannot restore movement spent before the handoff.
             foreach (var u in h.Incoming) u.MoveCurrent = System.Math.Min(u.MoveCurrent, movement);
-            V2StateVersion.Bump();
+            WorldDeltaLifecycle.CommitMutation();
             AiDebugLog.Write($"[AI][V2][Attack][Refit] primary=#{primary.Id} base={primary.Hex} {h.Detail} ap={cost}");
             return true;
         }

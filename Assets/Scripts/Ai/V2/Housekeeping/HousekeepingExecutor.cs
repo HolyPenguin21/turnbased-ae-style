@@ -92,6 +92,7 @@ namespace Game.Ai.V2
                         break;
                     }
 
+                    WorldDeltaLifecycle.CommitMutation();
                     foreach (UnitData member in batchUnits)
                     {
                         movedUnits.Add(member);
@@ -126,6 +127,7 @@ namespace Game.Ai.V2
                         Fail(res, plan, $"reorder failed #{from.Id} ({unit.Name}) ({reorderFail})");
                         break;
                     }
+                    WorldDeltaLifecycle.CommitMutation();
                     res.Applied++;
                     res.StateChanged = true;
                     continue;
@@ -149,6 +151,7 @@ namespace Game.Ai.V2
                         break;
                     }
 
+                    WorldDeltaLifecycle.CommitMutation();
                     movedUnits.Add(unit);
                     movedUnits.Add(other);
                     ctx.RecordArmyVisit(unit, from, to);
@@ -170,6 +173,7 @@ namespace Game.Ai.V2
                     break;
                 }
 
+                WorldDeltaLifecycle.CommitMutation();
                 movedUnits.Add(unit);
                 ctx.RecordArmyVisit(unit, from, to);
                 res.Applied++;
@@ -212,7 +216,7 @@ namespace Game.Ai.V2
             // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
             // it for a missing position's source; ReorgViability.PreparationRosterWaste).
             bool bodyRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
-                && receiver == null && ArmyReorgAnalyzer.IsPreparationNonRosterBody(player, a, released);
+                && receiver == null && giver.MayReleaseBody(a, released);
             if (giver != null && !heroRelease && !bodyRelease)
             { why = "source is mission-claimed"; return false; }
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))

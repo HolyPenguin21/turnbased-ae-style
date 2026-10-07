@@ -102,12 +102,8 @@ namespace Game.Ai.V2
             V2TraceScope trace = AiV2Trace.BeginMain(player, ctx.TurnNumber);
             V2ResourceStamp stateStart = AiV2Trace.Stamp(root);
 
-            // Turn-scoped activity record (main vs reaction vs total). Reset here so a stale
-            // Reaction bucket from last turn can never leak into this turn's Total.
-            V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
-            CapabilityPoolExhaustionRegistry.BeginTurn(player, ctx.TurnNumber);
-            // Fresh explicit strategic resource reservations for this turn.
-            StrategicResourceReservationLedger.BeginTurn(player, ctx.TurnNumber);
+            // Coroutine disposal/exception also closes all session-owned turn state.
+            using var turnSession = AiTurnSession.Begin(player, root, hand, ctx);
 
             // Initiative AP telemetry — captured now (turn start) and written back at turn end.
             // Belongs EXCLUSIVELY to Game.Ai.V2.Initiative analysis; nothing else in this pipeline
@@ -175,7 +171,7 @@ namespace Game.Ai.V2
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
-            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
+            ActorCommitments actorCommitments = turnSession.RefreshActors(activeIntents, snapshot, reconObjectives);
             AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
             AiFrameLog.Forces(snapshot, actorCommitments);
 
@@ -234,7 +230,7 @@ namespace Game.Ai.V2
                 // before mission construction so stale pre-build actor claims cannot execute.
                 activeIntents = MissionContinuityLayer.ResolveActive(
                     player, snapshot, reconObjectives, aggressionObjectives);
-                actorCommitments = ActorCommitments.FromIntents(
+                actorCommitments = turnSession.RefreshActors(
                     activeIntents, snapshot, reconObjectives);
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
@@ -259,15 +255,13 @@ namespace Game.Ai.V2
                         changed => formedWing |= changed);
                     if (formedWing)
                     {
-                        // AviationRebase does not version itself (see StrategicPhaseB): one canonical
-                        // bump per mutating action, before any snapshot/cache read of the new state.
-                        V2StateVersion.Bump();
+                        // The launch/flight actions already published their revision receipts.
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
                 }
@@ -386,34 +380,12 @@ namespace Game.Ai.V2
                 // opportunity). Snapshot the aggregate once, derive every affected family, and
                 // only then consume the shared reasons so family order cannot erase a sibling's
                 // trigger.
-                bool EconomyBuilderReadyForCompletion()
-                {
-                    foreach (MissionIntent intent in activeIntents ?? new List<MissionIntent>())
-                    {
-                        if (intent?.Kind != MissionKind.Economy
-                            || intent.Status != IntentStatus.Active
-                            || intent.Economy == null
-                            || !intent.PreferredMoverArmyId.HasValue)
-                            continue;
-                        ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
-                            && a.ArmyId == intent.PreferredMoverArmyId.Value);
-                        if (actor == null || !actor.Hex.Equals(intent.Economy.TargetHex))
-                            continue;
-                        // A ReturnBuilder that just reached home is about to be retired by the next
-                        // MissionContinuityLayer.ResolveActive pass, freeing its builder for a new
-                        // Economy demand this same turn — that is exactly as actionable as a builder
-                        // arriving at a fresh build hex.
-                        return true;
-                    }
-                    return false;
-                }
-
                 void TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
                     out StrategicInvalidationReason strategicReasons,
                     out HashSet<DesireAxis> dirtyStrategicAxes)
                 {
                     StrategicInvalidation pending =
-                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
+                        turnSession.PendingInvalidations;
                     // The OPERATIONAL mask is built from EVERY enabled mission axis, not only
                     // Recon: destroying a neutral publishes a Contact invalidation Aggression must
                     // consume, so the bounded loop gets a same-turn chance to refresh the objective
@@ -443,15 +415,14 @@ namespace Game.Ai.V2
                         // still re-admit Economy normally.
                         if (axis == DesireAxis.Economy
                             && axisReasons == StrategicInvalidationReason.Actor
-                            && !EconomyBuilderReadyForCompletion())
+                            && !MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot))
                             continue;
                         if (axisReasons == StrategicInvalidationReason.None)
                             continue;
                         dirtyStrategicAxes.Add(axis);
                         strategicReasons |= axisReasons;
                     }
-                    StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                        operationalReasons | strategicReasons);
+                    turnSession.ConsumeInvalidations(operationalReasons | strategicReasons);
                 }
 
                 // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
@@ -510,7 +481,7 @@ namespace Game.Ai.V2
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = ActorCommitments.FromIntents(
+                    actorCommitments = turnSession.RefreshActors(
                         activeIntents, snapshot, reconObjectives);
                     // T03 — the baseline is the input Generate actually evaluates: taken after
                     // continuity resolved (a completed target, a handed-off donor), before any
@@ -554,7 +525,7 @@ namespace Game.Ai.V2
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                         ownershipFreshAfterPhaseA = true;
                     }
@@ -641,7 +612,7 @@ namespace Game.Ai.V2
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = ActorCommitments.FromIntents(
+                        actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
                     ownershipFreshAfterPhaseA = false;
@@ -702,7 +673,7 @@ namespace Game.Ai.V2
 
                     AllocationSession cycleSession = ResourceAllocator.BeginTurn(snapshot, radar,
                         missions, cycleCommitments, player);
-                    var cycleProvisioning = new ProvisioningSession(snapshot);
+                    using var cycleProvisioning = new ProvisioningSession(snapshot, turnSession);
                     allocation = cycleSession.Pack();
                     foreach (FundedEntry fe in allocation.Funded)
                         if (fe?.Mission != null)
@@ -728,8 +699,6 @@ namespace Game.Ai.V2
                         bool rebaseMoved = false;
                         yield return AviationRebasePlanner.ExecuteContinuation(
                             player, root, ctx, rebaseWing, v => rebaseMoved = v);
-                        if (rebaseMoved)
-                            V2StateVersion.Bump();
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         WorldAnalysis.StepObservationStamp afterRebase =
@@ -983,10 +952,9 @@ namespace Game.Ai.V2
                     if (selected == null)
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
-                        foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                        foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
                                      .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                            MissionContinuityLayer.ReconcileStep(
-                                player, snapshot.TurnNumber, outcome);
+                            turnSession.Settle(outcome, snapshot, reconObjectives);
                         noProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
@@ -1036,10 +1004,9 @@ namespace Game.Ai.V2
                     }
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
-                    foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                    foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
                                  .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                        MissionContinuityLayer.ReconcileStep(
-                            player, snapshot.TurnNumber, outcome);
+                        turnSession.Settle(outcome, snapshot, reconObjectives);
                     // A single atomic move may consume the last MP after Provisioning had
                     // legitimately reserved this owner's completion AP. Settle its stage now.
                     InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
@@ -1119,8 +1086,8 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    postCommitments = ActorCommitments.FromIntents(
-                        MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+                    postCommitments = turnSession.RefreshActors(
+                        turnSession.PersistentState.All, snapshot, reconObjectives);
 
                     WorldAnalysis.StepObservationStamp beforeManagement =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
@@ -1219,7 +1186,7 @@ namespace Game.Ai.V2
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = ActorCommitments.FromIntents(
+                    actorCommitments = turnSession.RefreshActors(
                         activeIntents, snapshot, reconObjectives);
                     List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
@@ -1258,7 +1225,7 @@ namespace Game.Ai.V2
                                 snapshot, assessment.Breakdown.OpportunityReport);
                             activeIntents = MissionContinuityLayer.ResolveActive(
                                 player, snapshot, reconObjectives, aggressionObjectives);
-                            actorCommitments = ActorCommitments.FromIntents(
+                            actorCommitments = turnSession.RefreshActors(
                                 activeIntents, snapshot, reconObjectives);
                             demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
@@ -1280,8 +1247,6 @@ namespace Game.Ai.V2
                     bool recallChanged = false;
                     yield return AviationRebasePlanner.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
-                    if (recallChanged)
-                        V2StateVersion.Bump();
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     WorldAnalysis.StepObservationStamp afterRecall =
@@ -1295,13 +1260,12 @@ namespace Game.Ai.V2
                 // Cold Phase A and the following typed admissions may have created or
                 // re-bound actors AFTER management captured postCommitments. Housekeeping
                 // must see the latest canonical ownership, never the pre-cold snapshot.
-                postCommitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+                postCommitments = turnSession.RefreshActors(
+                    turnSession.PersistentState.All, snapshot, reconObjectives);
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
-                MissionContinuityLayer.ReconcileAfterTurn(player,
-                    snapshot.TurnNumber, new List<MissionTurnOutcome>());
+                turnSession.SettleAfterTurn(System.Array.Empty<MissionStepResult>());
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
             }
 
@@ -1317,8 +1281,8 @@ namespace Game.Ai.V2
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                postCommitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+                postCommitments = turnSession.RefreshActors(
+                    turnSession.PersistentState.All, snapshot, reconObjectives);
                 // Phase B is the single bounded end-of-turn tempo arbiter (coroutine).
                 yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                     postCommitments, phaseA.Reservation, phaseB, reconObjectives);
@@ -1393,9 +1357,7 @@ namespace Game.Ai.V2
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
-            StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
-                StrategicReservationExpiry.EndOfTurn);
-            StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
+            turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
@@ -1412,6 +1374,7 @@ namespace Game.Ai.V2
             ApTurnPressure.Record(player, ctx.TurnNumber, apMeasure);
             ApBudgetTelemetry.End(player, ctx,
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
+            turnSession.Dispose();
             yield return null;
         }
 
@@ -1559,4 +1522,3 @@ namespace Game.Ai.V2
     // ArmyReorgAnalyzer.cs, ArmyReorganizationPlanner.cs, ReorganizationPlan.cs and
     // HousekeepingExecutor.cs. This orchestration file only calls it (stage 8 above).
 }
-

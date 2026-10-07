@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -222,7 +222,7 @@ namespace Game.Ai.V2
                 plan.ReadyMissionByActorId[wing.Id] = pm;
                 result.RecordLaunch();
                 changed = true;
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
             }
             plan.StoredMissions.Clear();
             return changed;
@@ -594,7 +594,7 @@ namespace Game.Ai.V2
                     control.StopReason = ExecutionStopReason.MoveRejected;
                     yield break;
                 }
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
                 result.RecordMove();
                 control.MovedAny = true;
                 if (perMissionResult != null) perMissionResult.StepsMoved++;
@@ -630,7 +630,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            V2StateVersion.Bump();
+            WorldDeltaLifecycle.CommitMutation();
             result.RecordMove();
             control.MovedAny = true;
             if (perMissionResult != null) perMissionResult.StepsMoved++;
@@ -698,7 +698,7 @@ namespace Game.Ai.V2
 
             if (strike.Attacked)
             {
-                V2StateVersion.Bump();
+                WorldDeltaLifecycle.CommitMutation();
                 passResult.RecordStrike();
                 if (perMissionResult != null)
                     perMissionResult.CombatChanged = true;

@@ -25,6 +25,12 @@ namespace Game.Ai.V2
         public int DrawActionsUsed;
         public int GenerationAttemptsUsed;
 
+        internal static void EndTurn(PlayerSetupData player, int turn)
+        {
+            if (player != null && ByPlayer.TryGetValue(player, out StrategicTempoBudget entry) && entry.Turn == turn)
+                ByPlayer.Remove(player);
+        }
+
         private static readonly Dictionary<PlayerSetupData, StrategicTempoBudget> ByPlayer =
             new Dictionary<PlayerSetupData, StrategicTempoBudget>();
 

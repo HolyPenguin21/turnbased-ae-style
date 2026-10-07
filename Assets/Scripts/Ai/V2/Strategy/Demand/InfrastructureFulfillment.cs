@@ -79,7 +79,7 @@ namespace Game.Ai.V2
         {
             if (player == null || reservation == null) return;
             IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
-                .ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
+                .Development.ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
                 {
                     if (card?.Definition?.cardType != CardType.Hero
                         || hand?.Hand?.Contains(card) != true
@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                     materials = beforeM - root.GetResource(ResourceType.Materials),
                     tech = beforeT - root.GetResource(ResourceType.Tech),
                 };
-                int version = generated.StateChanged ? V2StateVersion.Bump() : V2StateVersion.Current;
+                int version = generated.StateChanged ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
                 return new InfraFulfillResult
                 {
                     Built = false, GenerationAttempted = generated.Attempted,
@@ -216,7 +216,7 @@ namespace Game.Ai.V2
             // --- authoritative transaction ---
             BuildingPlayResult r = cand.Execute();
             if (r.Built && economyOwner != null)
-                StrategicResourceReservationLedger.ReleaseByOwner(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     economyOwner);
             if (!r.Built)
             {
@@ -232,12 +232,17 @@ namespace Game.Ai.V2
                 StateVersionAfter = r.StateVersionAfter, Detail = cand.Explain };
         }
 
-        internal static string EconomyReservationOwner(AxisDemand demand)
+        internal static string EconomyReservationOwner(AxisDemand demand) => EconomyReservationIdentity(demand);
+        internal static string EconomyBuildOwner(EconomyTaskKind kind, ResourceType? resourceType,
+            HexCoord target) => EconomyBuildIdentity(kind, resourceType, target);
+        internal static string EconomyHeroPrerequisiteOwner(AxisDemand demand) => EconomyHeroPrerequisiteIdentity(demand);
+
+        internal static ReservationOwner EconomyReservationIdentity(AxisDemand demand)
         {
             if (demand?.TargetHex == null || (demand.Capability != CapabilityKind.EconomicInfrastructure
                 && demand.Capability != CapabilityKind.EconomicExpansionBase))
                 return null;
-            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+            return EconomyBuildIdentity(DemandLayer.EconomyBuildKind(demand),
                 demand.EconomyResourceType, demand.TargetHex.Value);
         }
 
@@ -284,10 +289,10 @@ namespace Game.Ai.V2
         }
 
         // The reservation owner key of one build: the same key its mission and intent carry.
-        internal static string EconomyBuildOwner(EconomyTaskKind kind, ResourceType? resourceType,
+        internal static ReservationOwner EconomyBuildIdentity(EconomyTaskKind kind, ResourceType? resourceType,
             HexCoord target)
         {
-            return EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(kind,
+            return EconomyMissionPlanner.ReservationIdentity(StableMissionKey.ForEconomy(kind,
                 MissionIntentKey.EconomyObjectiveId(kind, null, null, resourceType), target));
         }
 
@@ -339,7 +344,7 @@ namespace Game.Ai.V2
         internal static void ReserveDeferredEconomyResources(
             WorldSnapshot snap, PlayerSetupData player, int turn, AxisDemand demand)
         {
-            string owner = EconomyReservationOwner(demand);
+            ReservationOwner owner = EconomyReservationIdentity(demand);
             if (owner == null || !ShouldReserveDeferredEconomyResources(snap, demand))
                 return;
             ReserveDeferredEconomyResourcesCore(player, turn, owner, demand);
@@ -356,7 +361,7 @@ namespace Game.Ai.V2
                 || economy.BuildResourceCost == null)
                 return;
 
-            string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
+            ReservationOwner owner = EconomyMissionPlanner.ReservationIdentity(intent.LastAttemptKey);
             // AP is turn-local execution capacity and has no legal deferred state:
             // StrategicResourceReservationLedger.Upsert clamps any EconomyDeferredBuild
             // ActionPoints write to zero, and OwnerReasonMatches expects zero for the same reason.
@@ -386,7 +391,7 @@ namespace Game.Ai.V2
         internal static void ReserveDeferredEconomyResourcesForPendingHero(
             PlayerSetupData player, int turn, AxisDemand heroPrerequisiteDemand)
         {
-            string owner = EconomyHeroPrerequisiteOwner(heroPrerequisiteDemand);
+            ReservationOwner owner = EconomyHeroPrerequisiteIdentity(heroPrerequisiteDemand);
             if (owner == null)
                 return;
             ReserveDeferredEconomyResourcesCore(player, turn, owner, heroPrerequisiteDemand);
@@ -394,7 +399,7 @@ namespace Game.Ai.V2
 
         // The build an Economy Hero/escort prerequisite serves, as its reservation owner key; null
         // for any other demand. See AxisDemand.EconomyHeroBuildOwner.
-        internal static string EconomyHeroPrerequisiteOwner(AxisDemand demand)
+        internal static ReservationOwner EconomyHeroPrerequisiteIdentity(AxisDemand demand)
         {
             if (demand == null || demand.RequestingAxis != DesireAxis.Economy
                 || (demand.Capability != CapabilityKind.Hero
@@ -402,12 +407,12 @@ namespace Game.Ai.V2
                 || !demand.TargetHex.HasValue
                 || demand.EconomyBuildResourceCost == null)
                 return null;
-            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+            return EconomyBuildIdentity(DemandLayer.EconomyBuildKind(demand),
                 demand.EconomyResourceType, demand.TargetHex.Value);
         }
 
         private static void ReserveDeferredEconomyResourcesCore(
-            PlayerSetupData player, int turn, string owner, AxisDemand demand, float buildAp = 0f)
+            PlayerSetupData player, int turn, ReservationOwner owner, AxisDemand demand, float buildAp = 0f)
         {
             // Every test here is OWNER-specific, and the completion test must run BEFORE the
             // deferred replacement:
@@ -427,7 +432,7 @@ namespace Game.Ai.V2
                     StrategicReservationReason.EconomyDeferredBuild,
                     demand.EconomyBuildResourceCost, buildAp))
                 return;
-            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+            MissionLeaseBook.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner,
                 replaceOwnerRows: true);
             ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, buildAp,
@@ -444,7 +449,7 @@ namespace Game.Ai.V2
                 return;
             if (!durableValid || intent?.Economy == null)
             {
-                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, owner);
+                MissionLeaseBook.ReleaseByOwner(player, turn, owner);
                 return;
             }
             if (completionThisTurn)
@@ -453,9 +458,9 @@ namespace Game.Ai.V2
             // Explicit owner-scoped downgrade: a repeated Phase A deferred request MUST NOT
             // implicitly demote a still-executable Completion, but this settled lifecycle
             // decision has proved it cannot finish this turn. Keep only durable H/E/M/T.
-            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+            MissionLeaseBook.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
-            ReserveEconomyCost(player, turn, owner, intent.Economy.BuildResourceCost, 0f,
+            ReserveEconomyCost(player, turn, EconomyMissionPlanner.ReservationIdentity(intent.LastAttemptKey), intent.Economy.BuildResourceCost, 0f,
                 StrategicReservationReason.EconomyDeferredBuild);
         }
 
@@ -556,10 +561,10 @@ namespace Game.Ai.V2
                         break;
                     float released = UnityEngine.Mathf.Min(cover, row.Amount);
                     cover -= released;
-                    StrategicResourceReservationLedger.Upsert(player, turn,
+                    MissionLeaseBook.Upsert(player, turn,
                         new StrategicResourceReservation
                         {
-                            Owner = row.Owner, Reason = row.Reason, Resource = row.Resource,
+                            Identity = row.Identity, Reason = row.Reason, Resource = row.Resource,
                             Amount = row.Amount - released, ExpirationStage = row.ExpirationStage,
                         });
                 }
@@ -572,19 +577,19 @@ namespace Game.Ai.V2
         // explicit owner drops only that build's deferred rows and leaves every other build's hold.
         internal static void ClearDeferredEconomyResources(PlayerSetupData player, int turn,
             string owner = null) =>
-            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+            MissionLeaseBook.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner);
 
         // Keep only `keepOwner`'s deferred Economy hold (StrategicPhaseA's single pre-intent hold).
         internal static void RetainDeferredEconomyOwner(PlayerSetupData player, int turn,
             string keepOwner) =>
-            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+            MissionLeaseBook.ReleaseReasonExceptOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, keepOwner);
 
         // One canonical writer for direct, deferred and provisioned Economy build reservations.
         // Provisioning adds AP only when completion is reachable this turn; Phase A protects only
         // persistent H/E/M/T while a confirmed route is still being delivered.
-        internal static void ReserveEconomyCost(PlayerSetupData player, int turn, string owner,
+        internal static void ReserveEconomyCost(PlayerSetupData player, int turn, ReservationOwner owner,
             ResourceCost cost, float buildAp,
             StrategicReservationReason reason = StrategicReservationReason.EconomyBuildCompletion)
         {
@@ -594,20 +599,20 @@ namespace Game.Ai.V2
             {
                 // This owner's own deferred hold is being promoted to completion — downgrade only
                 // ITS rows; every other Economy build's deferred H/E/M/T hold stays.
-                StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                MissionLeaseBook.ReplaceReasonOwner(player, turn,
                     StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                         reason, cost, buildAp))
                     return;
-                StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                MissionLeaseBook.ReplaceReasonOwner(player, turn,
                     StrategicReservationReason.EconomyBuildCompletion, owner,
                     replaceOwnerRows: true);
             }
             if (buildAp > 0f)
-                StrategicResourceReservationLedger.Upsert(player, turn,
+                MissionLeaseBook.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = owner, Reason = reason,
+                        Identity = owner, Reason = reason,
                         Resource = StrategicReservedResource.ActionPoints, Amount = buildAp,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
@@ -618,10 +623,10 @@ namespace Game.Ai.V2
                 int amount = cost.Get(type);
                 if (amount <= 0)
                     continue;
-                StrategicResourceReservationLedger.Upsert(player, turn,
+                MissionLeaseBook.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = owner, Reason = reason,
+                        Identity = owner, Reason = reason,
                         Resource = StrategicResourceReservationLedger.Map(type), Amount = amount,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
@@ -924,7 +929,7 @@ namespace Game.Ai.V2
             int apBefore = root.ActionPoints;
             if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
                 return BuildingPlayResult.Fail("capacity upgrade refused");
-            int upgradeVersion = V2StateVersion.Bump();
+            int upgradeVersion = WorldDeltaLifecycle.CommitMutation();
             BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
                 player, root, hand, ctx, card, hex);
             // The upgrade is a real mutation even if the placement then fails.

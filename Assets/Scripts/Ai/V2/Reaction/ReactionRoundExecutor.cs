@@ -45,7 +45,7 @@ namespace Game.Ai.V2
                 && !StrategicReactionPass.ReactionStillActionable(
                     player, root, ctx, snapshot))
             {
-                StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
                 AiDebugLog.Write("[AI][V2] reaction — the feasibility probe no longer finds a feasible "
                     + "reaction; released the reaction-budget + envelope reservation before executing");
@@ -76,7 +76,7 @@ namespace Game.Ai.V2
             // round now owns that AP and resource envelope: release it before Phase A, allocation
             // and Provisioning so its own Recon/Aggression/Economy/Development work can spend it.
             // Other owners' Economy reservations remain in the ledger.
-            StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+            MissionLeaseBook.ReleaseByReason(player, ctx.TurnNumber,
                 StrategicReservationReason.StrategicReactionPass);
 
             int apAtStart = root.ActionPoints;
@@ -169,7 +169,7 @@ namespace Game.Ai.V2
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
                 commitments, player);
-            var provSession = new ProvisioningSession(snapshot);
+            using var provSession = new ProvisioningSession(snapshot, AiTurnSession.Peek(player, ctx.TurnNumber));
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();
 
@@ -271,7 +271,10 @@ namespace Game.Ai.V2
                 outcomeLedger.RecordExecution(er);
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
-            MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());
+            var stepOutcomes = outcomeLedger.FinalizeSteps();
+            var turnSession = AiTurnSession.Peek(player, snapshot.TurnNumber);
+            if (turnSession != null) turnSession.SettleAfterTurn(stepOutcomes);
+            else MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, stepOutcomes);
 
             if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {
