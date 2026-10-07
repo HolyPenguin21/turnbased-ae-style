@@ -229,18 +229,7 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
-                // Production context, applied BEFORE the gain is priced so the task score, the card
-                // EV and the plan Phase A later rebuilds from this opportunity all see one value:
-                // units run short (supply) and a card made lately is damped (diversity).
-                float diversity = DevelopmentDiversity.RepeatFactor(player, snap.TurnNumber, card,
-                    out string diversityNote);
-                float scale = diversity * ProductionSupplyMultiplier(snap);
-                if (!Mathf.Approximately(scale, 1f))
-                {
-                    best.ExpectedGain *= scale;
-                    best.TacticalGain *= scale;
-                    diversityNote += $"supply x{ProductionSupplyMultiplier(snap):0.#} ";
-                }
+                // Supply/diversity are already inside the gain (EquipmentOpportunities, source set).
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
@@ -272,7 +261,7 @@ namespace Game.Ai.V2
                 // Preserve sunk-facility admission: Phase A owns the final card EV comparison.
                 best.Explain = $"{best.Mode} '{card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} tactical={best.TacticalGain:0.0} "
-                    + diversityNote + best.Explain;
+                    + best.Explain;
                 result.Add(best);
                 admitted++;
             }
@@ -906,6 +895,21 @@ namespace Game.Ai.V2
             // Memoised only for the standard (no explicit attachment card) call.
             bool memoised = attachmentCard == null;
 
+            // Production context of a real generation source (READY, and its materialization
+            // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
+            // the plan Phase A rebuilds all see one value: units run short (supply) and a card made
+            // lately is damped (diversity). Previews (no source) and hand cards keep their own rules.
+            float productionScale = 1f;
+            string productionNote = string.Empty;
+            if (generation != null)
+            {
+                float supply = ProductionSupplyMultiplier(snap);
+                productionScale = DevelopmentDiversity.RepeatFactor(player, snap?.TurnNumber ?? 0,
+                    equipment, out productionNote) * supply;
+                if (!Mathf.Approximately(productionScale, 1f))
+                    productionNote += $"supply x{supply:0.#} ";
+            }
+
             RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit)
             {
                 if (memoised && RecipientEvaluationMemo.TryGet(equipment, recipient, futureAttachment,
@@ -960,8 +964,9 @@ namespace Game.Ai.V2
                     SuccessChance = successChance, Generation = generation,
                     RecipientKind = kind, RecipientCard = card, RecipientUnit = unit,
                     RecipientArmyId = armyId, RecipientLabel = label,
-                    ExpectedGain = v.Gain.Total * powerUnit,
-                    TacticalGain = v.Gain.Tactical * powerUnit, Explain = explain,
+                    ExpectedGain = v.Gain.Total * powerUnit * productionScale,
+                    TacticalGain = v.Gain.Tactical * powerUnit * productionScale,
+                    Explain = productionNote + explain,
                 });
             }
 
