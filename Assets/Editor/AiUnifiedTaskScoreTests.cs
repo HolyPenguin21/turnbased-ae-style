@@ -778,7 +778,7 @@ namespace Game.EditorTests
             Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
             // No fresh opportunity report: a started stationary neutral/event Raid keeps
             // the exact same intrinsic target value. Fog changes visibility only; it does not
-            // move the objective or remove RaidReward. Actual target destruction/invalidation
+            // move the objective or change its intrinsic value. Actual target destruction/invalidation
             // is a separate continuity decision.
             intent.Raid.LastKnownHex = destination;
             breakdown.OpportunityReport = new CombatOpportunityReport
@@ -793,10 +793,10 @@ namespace Game.EditorTests
                 - TaskScoreEvaluator.Price(pinned.ActivationApCost)
                 - TaskScoreEvaluator.Price(ActionPrice.RecurringAp(pinned.ActivationApCost,
                     fog.Requirements.EtaTurns));
-            Assert.That(objective.TaskScore.RaidReward,
-                Is.EqualTo(AiConfigV2.RaidReward).Within(0.0001f));
+            Assert.That(objective.TaskScore.RaidReward, Is.Zero,
+                "a plain neutral has no reward of its own (2026-10-07)");
             Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f),
-                "fog must preserve the stationary Raid target's fixed RaidReward");
+                "fog must preserve the stationary Raid target's intrinsic value");
             Assert.That(TaskScoreEvaluator.IntelAgePenalty(1f), Is.GreaterThan(0f),
                 "shared intel-age price remains available for future mobile player targets");
         }

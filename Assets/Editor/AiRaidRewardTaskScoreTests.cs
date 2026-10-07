@@ -9,31 +9,31 @@ namespace Game.EditorTests
     public class AiRaidRewardTaskScoreTests
     {
         [Test]
-        public void NeutralRaidReward_IsEightAndIndependentOfDefenderPowerValue()
+        public void PlainNeutralRaid_HasNoRewardAndIsIndependentOfDefenderPowerValue()
         {
             RaidTargetRef target = RaidTargetRef.ForNeutralArmy(42);
             RaidObjective weak = Evaluate(target, 0.1f);
             RaidObjective strong = Evaluate(target, 1000f);
 
-            Assert.That(weak.TaskScore.RaidReward, Is.EqualTo(8f));
-            Assert.That(strong.TaskScore.RaidReward, Is.EqualTo(8f));
+            Assert.That(weak.TaskScore.RaidReward, Is.Zero);
+            Assert.That(strong.TaskScore.RaidReward, Is.Zero);
             Assert.That(weak.TaskScore.EconomicHexBenefit, Is.Zero);
-            Assert.That(weak.BaseValue, Is.EqualTo(8f + weak.TaskScore.OwnTerritoryProximity));
+            Assert.That(weak.BaseValue, Is.EqualTo(weak.TaskScore.OwnTerritoryProximity));
             Assert.That(strong.BaseValue, Is.EqualTo(weak.BaseValue),
                 "defender combat strength must not masquerade as loot value");
         }
 
         [Test]
-        public void EventGuardRaid_ReceivesSameFixedReward_PlusTheEventReward()
+        public void EventGuardRaid_ReceivesOnlyTheEventReward()
         {
             RaidObjective guard = Evaluate(
                 RaidTargetRef.ForEventGuard(new HexCoord(3, 0)), 999f);
             RaidObjective neutral = Evaluate(RaidTargetRef.ForNeutralArmy(42), 999f);
 
-            Assert.That(guard.TaskScore.RaidReward, Is.EqualTo(AiConfigV2.RaidReward));
+            Assert.That(guard.TaskScore.RaidReward, Is.Zero);
             // No remembered guard here: the unknown-tier reward.
             Assert.That(guard.TaskScore.EventReward, Is.EqualTo(AiConfigV2.taskScoreEventRewardUnknownTier));
-            Assert.That(guard.BaseValue, Is.EqualTo(8f + AiConfigV2.taskScoreEventRewardUnknownTier
+            Assert.That(guard.BaseValue, Is.EqualTo(AiConfigV2.taskScoreEventRewardUnknownTier
                 + guard.TaskScore.OwnTerritoryProximity));
             Assert.That(neutral.TaskScore.EventReward, Is.Zero, "a neutral army carries no event reward");
         }

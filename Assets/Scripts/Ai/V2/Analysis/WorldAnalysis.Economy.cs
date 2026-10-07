@@ -104,13 +104,34 @@ namespace Game.Ai.V2
             }
             var extraction = new List<EconomyExtractionOpportunity>();
             var collectorSites = new List<EconomyExtractionOpportunity>();
+            var guardedExtraction = new List<EconomyExtractionOpportunity>();
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
                      in KnownExtractionYields(snap))
             {
                 ResourceType resourceType = site.Type;
                 int effectiveYield = site.Yield;
                 if (KnownHostileAtHex(snap, site.Hex))
+                {
+                    // Only a neutral standing on it: not an Economy opportunity, but the price a
+                    // Raid that clears it earns (the facility income, nothing else).
+                    if (KnownNeutralOnlyAtHex(snap, site.Hex)
+                        && !knownBuildings.ContainsKey(site.Hex))
+                    {
+                        (int guardedFacilityGain, _) = MarginalSiteCollectionGains(
+                            effectiveYield, 0, 0, true);
+                        if (guardedFacilityGain > 0)
+                            guardedExtraction.Add(new EconomyExtractionOpportunity
+                            {
+                                Hex = site.Hex,
+                                ResourceType = resourceType,
+                                EffectiveYield = effectiveYield,
+                                MarginalIncomeGain = guardedFacilityGain,
+                                BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
+                                BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>(),
+                            });
+                    }
                     continue;
+                }
 
                 bool hasBuilding = knownBuildings.TryGetValue(site.Hex,
                     out AiMapMemory.KnownBuilding building);
@@ -160,6 +181,7 @@ namespace Game.Ai.V2
             }
             eco.CollectorSites = collectorSites;
             eco.ExtractionOpportunities = extraction;
+            eco.GuardedExtractionSites = guardedExtraction;
 
             var mobileCollection = new List<MobileCollectionOpportunity>();
             var committedCollectors = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
@@ -236,6 +258,7 @@ namespace Game.Ai.V2
             // Actionability (HasActionableOpportunity below) still requires a real playable carrier,
             // so storage and actionable-availability are checked separately here on purpose.
             var baseOpportunities = new List<EconomyBaseOpportunity>();
+            var guardedBaseSites = new List<GuardedBaseSite>();
             List<CardData> baseCards = (snap.Self.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition?.cardType == CardType.Base).ToList();
             if (snap.Self.BaseHexes != null)
@@ -271,7 +294,16 @@ namespace Game.Ai.V2
                         if (hasBuilding && !convertsOwnedExtraction)
                             continue;
                         if (KnownHostileAtHex(snap, hex))
+                        {
+                            if (!hasBuilding && KnownNeutralOnlyAtHex(snap, hex))
+                                guardedBaseSites.Add(new GuardedBaseSite
+                                {
+                                    Hex = hex,
+                                    NewResourceClusterHexes = CountNewResourceClusterHexes(
+                                        hex, snap.Self.BaseHexes, knownSites),
+                                });
                             continue;
+                        }
                         int supportDistance = snap.Self.BaseHexes
                             .Min(baseHex => HexGridMath.Distance(baseHex, hex));
                         // Economy expansion must remain connected to our support network. The
@@ -325,6 +357,7 @@ namespace Game.Ai.V2
                     }
             }
             eco.BaseOpportunities = baseOpportunities;
+            eco.GuardedBaseSites = guardedBaseSites;
             // Unchanged semantics: a structural site with no playable Base carrier in hand must not
             // by itself raise Economy desire — actionable-availability still requires a real card.
             bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
@@ -709,7 +742,19 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                 .Any(contact => contact.Hex.Equals(hex));
 
-        private static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
+        // KnownHostileAtHex's neutral half: the hex is blocked by a neutral army or event guard and
+        // by no enemy player's army.
+        internal static bool KnownNeutralOnlyAtHex(WorldSnapshot snap, HexCoord hex) =>
+            !(snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Any(contact => contact.Hex.Equals(hex))
+            && ((snap?.Known?.NeutralSightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Any(contact => contact.Hex.Equals(hex))
+                || (snap?.Known?.EventGuards
+                    ?? System.Array.Empty<KnownEventGuardSnapshot>())
+                .Any(g => g.Hex.Equals(hex)));
+
+        internal static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
         {
             if (snap?.Self?.BaseHexes == null || snap.Self.BaseHexes.Count == 0)
                 return 0f;

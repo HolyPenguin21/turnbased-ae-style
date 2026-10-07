@@ -851,6 +851,15 @@ namespace Game.Ai.V2
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
+    // A site that stands free of enemy players and buildings but has a neutral army or event guard
+    // on it. Economy cannot found anything there until the guard is cleared, so these sites are
+    // NOT in ExtractionOpportunities / BaseOpportunities; Raid prices the clearing from them.
+    public struct GuardedBaseSite
+    {
+        public HexCoord Hex;
+        public int NewResourceClusterHexes;
+    }
+
     public sealed class EconomyStanding
     {
         // Frozen, fog-honest opportunity facts. Strategy scores these records; it never
@@ -866,6 +875,11 @@ namespace Game.Ai.V2
             System.Array.Empty<MobileCollectionOpportunity>();
         public IReadOnlyList<EconomyBaseOpportunity> BaseOpportunities =
             System.Array.Empty<EconomyBaseOpportunity>();
+        // Raid-only facts (see GuardedBaseSite): resource and Base sites blocked only by a neutral.
+        public IReadOnlyList<EconomyExtractionOpportunity> GuardedExtractionSites =
+            System.Array.Empty<EconomyExtractionOpportunity>();
+        public IReadOnlyList<GuardedBaseSite> GuardedBaseSites =
+            System.Array.Empty<GuardedBaseSite>();
 
         // One entry per ResourceType, in ResourceBundle.All order.
         public IReadOnlyList<EconomyResourceStanding> PerType;

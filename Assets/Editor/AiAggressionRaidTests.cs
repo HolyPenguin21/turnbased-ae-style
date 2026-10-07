@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Economy;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
@@ -278,8 +279,8 @@ namespace Game.EditorTests
             RaidObjective neutralRaid = RaidObjectiveEvaluator.Enumerate(
                 neutral, neutralReport).Single();
             Assert.That(neutralRaid.TaskScore.Staleness, Is.Zero);
-            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
-                + TaskScoreEvaluator.OwnTerritoryProximity(
+            Assert.That(neutralRaid.BaseValue, Is.EqualTo(
+                TaskScoreEvaluator.OwnTerritoryProximity(
                     TaskScoreEvaluator.NearestOwnedHomeDistance(neutral, neutralRaid.LastKnownHex))));
 
             WorldSnapshot eventSnap = SnapshotWithEventGuard(
@@ -290,12 +291,81 @@ namespace Game.EditorTests
                 eventSnap, eventReport).Single();
             Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
             Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
-            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
-                + AiConfigV2.taskScoreEventRewardUnknownTier
+            Assert.That(eventRaid.BaseValue, Is.EqualTo(
+                AiConfigV2.taskScoreEventRewardUnknownTier
                 + TaskScoreEvaluator.OwnTerritoryProximity(
                     TaskScoreEvaluator.NearestOwnedHomeDistance(eventSnap, eventRaid.LastKnownHex))));
             Assert.That(eventRaid.TaskScore.IntelAgePenalty, Is.Zero);
             Assert.That(TaskScoreEvaluator.IntelAgePenalty(0.5f), Is.GreaterThan(0f));
+        }
+
+        // ---- Raid intrinsic value by the reason to clear the hex (2026-10-07) -------------------
+
+        private static EconomyStanding StarvedEconomy()
+        {
+            var perType = new List<EconomyResourceStanding>();
+            foreach (ResourceType t in ResourceBundle.All)
+                perType.Add(EconomyStanding.CalculateResource(t, 0f, 6f, 6f, 6f, 0f, 0f, 1f));
+            return new EconomyStanding { PerType = perType };
+        }
+
+        private static EconomyExtractionOpportunity GuardedSite(HexCoord hex, WorldSnapshot snap) =>
+            new EconomyExtractionOpportunity
+            {
+                Hex = hex, ResourceType = ResourceBundle.All.First(), EffectiveYield = 3,
+                MarginalIncomeGain = 3, BaseNetworkSynergy = WorldAnalysis.EconomyBaseNetworkSynergy(snap, hex),
+            };
+
+        [Test]
+        public void RaidValue_PlainNeutralEarnsNoReward()
+        {
+            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 90, hex: new HexCoord(2, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            snap.Economy = StarvedEconomy();
+            TaskScore score = RaidObjectiveEvaluator.BuildRaidScore(snap,
+                RaidTargetRef.ForNeutralArmy(90), new HexCoord(2, 0));
+            Assert.That(score.RaidReward, Is.Zero);
+            Assert.That(score.EconomicHexBenefit, Is.Zero);
+            Assert.That(score.EconomicExpansionValue, Is.Zero);
+            Assert.That(score.EventReward, Is.Zero);
+        }
+
+        [Test]
+        public void RaidValue_NeutralOnAResourceHexEarnsTheFreedIncome_AndFadesWithDistance()
+        {
+            var nearHex = new HexCoord(2, 0);
+            WorldSnapshot near = SnapshotWithNeutralSighting(armyId: 91, hex: nearHex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            near.Economy = StarvedEconomy();
+            near.Economy.GuardedExtractionSites = new[] { GuardedSite(nearHex, near) };
+            float nearBenefit = RaidObjectiveEvaluator.BuildRaidScore(near,
+                RaidTargetRef.ForNeutralArmy(91), nearHex).EconomicHexBenefit;
+            Assert.That(nearBenefit, Is.GreaterThan(0f));
+
+            var farHex = new HexCoord(40, 0);
+            WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 92, hex: farHex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            far.Economy = StarvedEconomy();
+            far.Economy.GuardedExtractionSites = new[] { GuardedSite(farHex, far) };
+            Assert.That(RaidObjectiveEvaluator.BuildRaidScore(far,
+                RaidTargetRef.ForNeutralArmy(92), farHex).EconomicHexBenefit, Is.Zero,
+                "income never lures a Raid away from the base network");
+        }
+
+        [Test]
+        public void RaidValue_NeutralOnABaseSiteEarnsTheNewClusterValue()
+        {
+            var hex = new HexCoord(2, 0);
+            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 93, hex: hex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            snap.Economy = StarvedEconomy();
+            snap.Economy.GuardedBaseSites = new[]
+                { new GuardedBaseSite { Hex = hex, NewResourceClusterHexes = 1 } };
+            TaskScore score = RaidObjectiveEvaluator.BuildRaidScore(snap,
+                RaidTargetRef.ForNeutralArmy(93), hex);
+            Assert.That(score.EconomicExpansionValue, Is.GreaterThan(0f));
+            Assert.That(score.EconomicExpansionValue,
+                Is.LessThanOrEqualTo(AiConfigV2.taskScoreEconomicExpansionMax));
         }
 
         [Test]
@@ -307,22 +377,22 @@ namespace Game.EditorTests
             RaidObjective nearRaid = RaidObjectiveEvaluator.Enumerate(near,
                 CombatOpportunityAnalyzer.Analyze(near)).Single();
             Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(1.5f).Within(0.0001f));
-            Assert.That(nearRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward + 1.5f).Within(0.0001f));
+            // A plain neutral earns nothing for itself: only the shorter route (proximity) remains.
+            Assert.That(nearRaid.BaseValue, Is.EqualTo(1.5f).Within(0.0001f));
 
             WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 82,
                 hex: new HexCoord(12, 0),
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
-            RaidObjective farRaid = RaidObjectiveEvaluator.Enumerate(far,
-                CombatOpportunityAnalyzer.Analyze(far)).Single();
-            Assert.That(farRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
-            Assert.That(farRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward - 3f).Within(0.0001f));
+            // ...so a far plain neutral falls below raidObjectiveMinBaseValue and is not an objective.
+            Assert.That(RaidObjectiveEvaluator.Enumerate(far, CombatOpportunityAnalyzer.Analyze(far)),
+                Is.Empty);
 
             WorldSnapshot eventSnap = SnapshotWithEventGuard(nearHex, Weak(), withOwnArmy: true);
             RaidObjective eventRaid = RaidObjectiveEvaluator.Enumerate(eventSnap,
                 CombatOpportunityAnalyzer.Analyze(eventSnap)).Single();
             Assert.That(eventRaid.TaskScore.OwnTerritoryProximity,
                 Is.EqualTo(nearRaid.TaskScore.OwnTerritoryProximity));
-            // Same position, same RaidReward; the event guard adds its own EventReward on top.
+            // Same position; the event guard adds its own EventReward on top.
             Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue
                 + AiConfigV2.taskScoreEventRewardUnknownTier).Within(0.0001f));
         }

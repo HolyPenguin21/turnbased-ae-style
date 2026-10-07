@@ -490,7 +490,7 @@ namespace Game.EditorTests
             };
             far.Known.NeutralSightings = new[]
             {
-                Sighting(70, new HexCoord(12, 0), Neutral, Body(1f, 1f, 4f, 1)),
+                Sighting(70, new HexCoord(3, 0), Neutral, Body(1f, 1f, 4f, 1)),
             };
             float nearTask = RaidObjectiveEvaluator.Enumerate(near,
                 CombatOpportunityAnalyzer.Analyze(near)).Single().TaskScore.Value;
