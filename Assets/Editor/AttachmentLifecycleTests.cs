@@ -155,14 +155,14 @@ namespace Game.EditorTests
                 Resource = reserved, Amount = reserved == StrategicReservedResource.Tech ? 10 : 20,
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn,
             });
-            int version = V2StateVersion.Current;
+            int version = WorldDeltaLifecycle.Current;
             var result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand, ctx);
             bool blocked = !produced;
             Assert.That(result.Played, Is.EqualTo(!blocked));
             if (blocked)
             {
                 Assert.That(result.StateChanged, Is.False);
-                Assert.That(V2StateVersion.Current, Is.EqualTo(version));
+                Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(version));
                 Assert.That(_root.ActionPoints, Is.EqualTo(20));
                 Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(10));
                 Assert.That(EquipmentSystem.GetAttachment(unit, definition), Is.Null);

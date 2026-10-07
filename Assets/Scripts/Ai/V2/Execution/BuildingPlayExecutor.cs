@@ -106,7 +106,7 @@ namespace Game.Ai.V2
                 });
             if (!outcome.Ok)
                 return new BuildingPlayResult { FailReason = outcome.FailReason,
-                    StateVersionAfter = V2StateVersion.Current };
+                    StateVersionAfter = WorldDeltaLifecycle.Current };
 
             // Gameplay is committed. A hand observer throwing after RemoveCard's mutation
             // must not leave the other paid card playable or report a failed founding.

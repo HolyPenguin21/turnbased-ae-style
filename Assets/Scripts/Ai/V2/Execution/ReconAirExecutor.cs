@@ -77,7 +77,7 @@ namespace Game.Ai.V2
             if (plan == null || player == null || root == null || ctx?.Map == null || snapshot?.Self == null)
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] exec — not reached ({plan?.Summary ?? "no plan"})");
-                result.StateVersionAfter = V2StateVersion.Current;
+                result.StateVersionAfter = WorldDeltaLifecycle.Current;
                 yield break;
             }
             if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
@@ -99,7 +99,7 @@ namespace Game.Ai.V2
                     MarkSatisfiedNoOp(pm, er);
                 else
                     er.StopReason = skipped.Reason;
-                er.StateVersionAfter = V2StateVersion.Current;
+                er.StateVersionAfter = WorldDeltaLifecycle.Current;
                 perMissionResults.Add(er);
             }
 
@@ -140,7 +140,7 @@ namespace Game.Ai.V2
                     ExecutionResult stale = NewPerMissionResult(pm, air?.Hex ?? pm.ExecutionHex,
                         air != null ? air.Id : -1);
                     MarkSatisfiedNoOp(pm, stale);
-                    stale.StateVersionAfter = V2StateVersion.Current;
+                    stale.StateVersionAfter = WorldDeltaLifecycle.Current;
                     perMissionResults?.Add(stale);
                     continue;
                 }
@@ -151,7 +151,7 @@ namespace Game.Ai.V2
                     {
                         ExecutionResult missing = NewPerMissionResult(pm, pm.ExecutionHex, -1);
                         missing.StopReason = ExecutionStopReason.MoverLost;
-                        missing.StateVersionAfter = V2StateVersion.Current;
+                        missing.StateVersionAfter = WorldDeltaLifecycle.Current;
                         perMissionResults.Add(missing);
                     }
                     continue;
@@ -179,7 +179,7 @@ namespace Game.Ai.V2
             result.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
                 ? new Game.Cards.ResourceCost { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
                 : null;
-            result.StateVersionAfter = V2StateVersion.Current;
+            result.StateVersionAfter = WorldDeltaLifecycle.Current;
         }
 
         private static bool PrepareStoredMissions(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
@@ -262,7 +262,7 @@ namespace Game.Ai.V2
             if (plan == null || player == null || root == null || ctx?.Map == null
                 || snapshot?.Self == null || perMissionResults == null)
             {
-                result.StateVersionAfter = V2StateVersion.Current;
+                result.StateVersionAfter = WorldDeltaLifecycle.Current;
                 yield break;
             }
 
@@ -277,7 +277,7 @@ namespace Game.Ai.V2
                     MarkSatisfiedNoOp(pm, er);
                 else
                     er.StopReason = skipped.Reason;
-                er.StateVersionAfter = V2StateVersion.Current;
+                er.StateVersionAfter = WorldDeltaLifecycle.Current;
                 er.ResourcesBefore = AiV2Trace.Stamp(root);
                 er.ResourcesAfter = AiV2Trace.Stamp(root);
                 perMissionResults.Add(er);
@@ -297,7 +297,7 @@ namespace Game.Ai.V2
                     ExecutionResult stale = NewPerMissionResult(pm, air.Hex, air.Id);
                     stale.ResourcesBefore = AiV2Trace.Stamp(root);
                     MarkSatisfiedNoOp(pm, stale);
-                    stale.StateVersionAfter = V2StateVersion.Current;
+                    stale.StateVersionAfter = WorldDeltaLifecycle.Current;
                     stale.ResourcesAfter = AiV2Trace.Stamp(root);
                     perMissionResults.Add(stale);
                     yield break;
@@ -336,7 +336,7 @@ namespace Game.Ai.V2
         {
             if (er == null)
                 return;
-            er.StateVersionAfter = V2StateVersion.Current;
+            er.StateVersionAfter = WorldDeltaLifecycle.Current;
             if (player == null || pm == null || er.ReachedGoal || er.StopReason == ExecutionStopReason.MoverLost)
                 return;
             bool satisfied = ObjectiveSatisfied(player, pm);
@@ -436,7 +436,7 @@ namespace Game.Ai.V2
                 ? new Game.Cards.ResourceCost
                     { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
                 : null;
-            stepResult.StateVersionAfter = V2StateVersion.Current;
+            stepResult.StateVersionAfter = WorldDeltaLifecycle.Current;
 
             if (perMissionResult != null)
             {
@@ -667,7 +667,7 @@ namespace Game.Ai.V2
             {
                 perMissionResult.FinalHex = settled?.Hex ?? perMissionResult.FinalHex;
                 perMissionResult.StopReason = stop;
-                perMissionResult.StateVersionAfter = V2StateVersion.Current;
+                perMissionResult.StateVersionAfter = WorldDeltaLifecycle.Current;
             }
         }
 

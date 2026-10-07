@@ -59,13 +59,13 @@ namespace Game.EditorTests
                 StrategicReservedResource.ActionPoints, 2);
             other.Reserve(StrategicReservationReason.EconomyBuildCompletion,
                 StrategicReservedResource.ActionPoints, 3);
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             session.Apply(new WorldDelta(true, StrategicInvalidationReason.Actor, actorIds: new[] { 0 }));
             var payload = new ExtensionFacts { Sequence = 7 };
             var step = new MissionStepResult<ExtensionFacts>(key, disposition, payload) {
                 MadeProgress = disposition == MissionStepDisposition.Progress,
                 ObjectiveSatisfied = disposition == MissionStepDisposition.Completed,
-                StateVersionAfter = V2StateVersion.Current };
+                StateVersionAfter = WorldDeltaLifecycle.Current };
             session.Settle(step);
             Assert.That(step.Payload, Is.SameAs(payload));
             Assert.That(payload.Sequence, Is.EqualTo(7));
@@ -74,7 +74,7 @@ namespace Game.EditorTests
             Assert.That(lease.ResourceClaims.Count > 0, Is.EqualTo(retained));
             Assert.That(other.ActorClaims, Is.EqualTo(new[] { 1 }));
             Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(3));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
             Assert.That(session.PendingInvalidations.ActorIds, Is.EqualTo(new[] { 0 }));
             session.Dispose();
             Assert.That(StrategicResourceReservationLedger.Rows(p, 4), Is.Empty);

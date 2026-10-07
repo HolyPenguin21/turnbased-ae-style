@@ -274,7 +274,7 @@ namespace Game.Ai.V2
         {
             r.ResourcesSpent = DeltaCost(resStart, Snapshot(root));
             if (r.StateChanged) WorldDeltaLifecycle.CommitMutation();
-            r.StateVersionAfter = V2StateVersion.Current;
+            r.StateVersionAfter = WorldDeltaLifecycle.Current;
         }
     }
 }

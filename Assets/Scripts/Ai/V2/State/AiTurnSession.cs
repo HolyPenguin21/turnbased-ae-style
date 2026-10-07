@@ -17,7 +17,7 @@ namespace Game.Ai.V2
         internal AiHandData Hand { get; }
         internal AiTurnContext Context { get; }
         internal int TurnNumber { get; }
-        internal int DecisionRevision => V2StateVersion.Current;
+        internal int DecisionRevision => WorldDeltaLifecycle.Current;
         internal MissionIntentState PersistentState { get; }
         internal MissionLeaseBook Leases { get; }
         private readonly ReconTurnState _recon;

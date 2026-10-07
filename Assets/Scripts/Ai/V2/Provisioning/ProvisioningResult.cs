@@ -81,7 +81,7 @@ namespace Game.Ai.V2
 
         // `bumpVersion` lets a caller that is itself the SOLE version-bump owner for its own
         // execution result (TaskExecutor.StampVersion, during the deferred garrison-extraction
-        // Execution step) suppress this constructor's bump so V2StateVersion is bumped exactly once
+        // Execution step) suppress this constructor's bump so WorldDeltaLifecycle is bumped exactly once
         // per real mutation. Every other caller (Provisioning's direct-army path, which has no
         // separate StampVersion call for this mutation) keeps the default `true`.
         // `otherMutation` — a committed world change that moved no member (the assault
@@ -90,7 +90,7 @@ namespace Game.Ai.V2
             bool bumpVersion = true, bool otherMutation = false)
         {
             bool changed = transferredMemberCount > 0 || otherMutation;
-            int version = changed && bumpVersion ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
+            int version = changed && bumpVersion ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
             if (m != null) m.PlannedAtStateVersion = version;
             return new ProvisioningResult
             {
@@ -105,7 +105,7 @@ namespace Game.Ai.V2
         public static ProvisioningResult Fail(ProvisionFailure f,
             bool stateChanged = false, int transferredMemberCount = 0)
         {
-            int version = stateChanged ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
+            int version = stateChanged ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
             return new ProvisioningResult
             {
                 Success = false,

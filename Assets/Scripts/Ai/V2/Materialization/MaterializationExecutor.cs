@@ -144,7 +144,7 @@ namespace Game.Ai.V2
                 res.ResourcesSpent = (dh | de | dm | dt) == 0
                     ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
                 if (res.StateChanged && !childAlreadyStamped) WorldDeltaLifecycle.CommitMutation();
-                res.StateVersionAfter = V2StateVersion.Current;
+                res.StateVersionAfter = WorldDeltaLifecycle.Current;
             }
 
             // ---------------------------------------------------------------- 1. generate ----

@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                     materials = beforeM - root.GetResource(ResourceType.Materials),
                     tech = beforeT - root.GetResource(ResourceType.Tech),
                 };
-                int version = generated.StateChanged ? WorldDeltaLifecycle.CommitMutation() : V2StateVersion.Current;
+                int version = generated.StateChanged ? WorldDeltaLifecycle.CommitMutation() : WorldDeltaLifecycle.Current;
                 return new InfraFulfillResult
                 {
                     Built = false, GenerationAttempted = generated.Attempted,

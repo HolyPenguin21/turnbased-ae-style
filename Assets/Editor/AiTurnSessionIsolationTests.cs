@@ -72,12 +72,12 @@ namespace Game.EditorTests
             var p = new PlayerSetupData();
             using var session = AiTurnSession.Begin(p, null, null, null, 9);
             session.Apply(new WorldDelta(false, StrategicInvalidationReason.Actor, actorIds: new[] { 7 }));
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             Assert.Throws<InvalidOperationException>(() => WorldDeltaLifecycle.Apply(p, 8,
                 new WorldDelta(mutation, StrategicInvalidationReason.Contact, contactIds: new[] { 2 })));
             Assert.That(session.PendingInvalidations.Reasons, Is.EqualTo(StrategicInvalidationReason.Actor));
             Assert.That(session.PendingInvalidations.ActorIds, Is.EqualTo(new[] { 7 }));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 
         [Test]

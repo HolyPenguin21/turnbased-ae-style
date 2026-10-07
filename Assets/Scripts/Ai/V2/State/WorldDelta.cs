@@ -31,10 +31,14 @@ namespace Game.Ai.V2
     }
 
     // One revision policy, using the existing invalidation storage without mirrored flags.
-    // Legacy commit endpoints use CommitMutation; observed facts use Publish (no second bump).
+    // Committed mutation endpoints use CommitMutation; observed facts use Publish (no second bump).
     internal static class WorldDeltaLifecycle
     {
         internal static int Current { get; private set; }
+
+        // Freshness check for plans made at a given revision; only equality/order is meaningful.
+        internal static bool IsCurrent(int plannedAtVersion) =>
+            plannedAtVersion >= 0 && plannedAtVersion == Current;
         // Only synchronous canonical transactions may use this scope. Never retain it across
         // a coroutine yield: other game actions must keep their own revision boundary.
         [ThreadStatic] private static MutationTransaction _transaction;

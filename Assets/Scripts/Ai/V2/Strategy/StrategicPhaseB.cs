@@ -113,7 +113,7 @@ namespace Game.Ai.V2
             // §P1.8 — parking is keyed by (ActionKey, StateVersion). A parked candidate stays
             // parked only while StateVersion is unchanged; any real mutation bumps the version and
             // every park goes stale (== the whole candidate set is rebuilt, spec §2/§3). ARCH-02
-            // review r3 — the version IS the canonical V2StateVersion, not a second local counter.
+            // review r3 — the version IS the canonical WorldDeltaLifecycle, not a second local counter.
             var parkedAt = new Dictionary<string, int>(System.StringComparer.Ordinal);
             int iter = 0;
             string stopReason = null;
@@ -254,7 +254,7 @@ namespace Game.Ai.V2
                 {
                     // Canonical bump — exactly ONCE per mutating action. PlayMat / PlayNonCombat
                     // already bump inside MaterializationExecutor / CardPlayExecutor (and their
-                    // result's StateVersionAfter must stay == V2StateVersion.Current), so bumping
+                    // result's StateVersionAfter must stay == WorldDeltaLifecycle.Current), so bumping
                     // again here would break that equality. Draw / MaintenanceSpend /
                     // do NOT version themselves — bump for those. AviationRebase records each
                     // committed launch/flight action inside its executor.
@@ -266,8 +266,8 @@ namespace Game.Ai.V2
                 }
                 if (!exec.Progressed)
                 {
-                    parkedAt[best.ActionKey] = V2StateVersion.Current;
-                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}@v{V2StateVersion.Current}");
+                    parkedAt[best.ActionKey] = WorldDeltaLifecycle.Current;
+                    AiDebugLog.Write($"[AI][V2]   tempo — {best.Kind} did not complete; parked {best.ActionKey}@v{WorldDeltaLifecycle.Current}");
                 }
                 if (exec.Interrupt)
                 {
@@ -310,7 +310,7 @@ namespace Game.Ai.V2
         private static string TempoBlockReason(TempoCandidate c, float spendableAp, StrategicTempoBudget budget,
             Dictionary<string, int> parkedAt, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
-            if (parkedAt.TryGetValue(c.ActionKey, out int v) && v == V2StateVersion.Current)
+            if (parkedAt.TryGetValue(c.ActionKey, out int v) && v == WorldDeltaLifecycle.Current)
                 return $"parked@v{v}";
             if (c.CountsAsTerminalDraw && budget.DrawCapHit) return "draw budget";
             if (c.ConsumesGeneration && budget.GenerationCapHit) return "generation budget";

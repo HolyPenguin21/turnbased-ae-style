@@ -63,7 +63,7 @@ namespace Game.Ai.V2
         }
     }
 
-    // Compatibility lookups have no second set. A session owns the same per-player scope.
+    // Detached lookups have no second set. A session owns the same per-player scope.
     // Detached fixtures use their own identity, never a shared null player.
     internal static class ReconTurnStateStore
     {
