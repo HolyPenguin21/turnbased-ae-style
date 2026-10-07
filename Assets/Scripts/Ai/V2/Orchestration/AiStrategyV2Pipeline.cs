@@ -1302,6 +1302,7 @@ namespace Game.Ai.V2
                 if (phaseB.StateChanged)
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
+                yield return ctx.WaitAtObserverActionBoundary();
             }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
@@ -1338,6 +1339,7 @@ namespace Game.Ai.V2
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
+            yield return ctx.WaitAtObserverActionBoundary();
 
             // --- Main-phase activity bucket. DERIVED once, here, from this pipeline's own facts —
             //     never incremented inside a nested layer (spec §11). The Reaction bucket is owned
