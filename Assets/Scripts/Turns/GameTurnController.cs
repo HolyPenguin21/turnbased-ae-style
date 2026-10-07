@@ -206,7 +206,8 @@ namespace Game.Turns
             {
                 _otherTurnPopupSuspended = false;
                 _suspendedOtherTurnPlayer = null;
-                if (!_gameOver && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
+                if (!_gameOver && !IsAiObserverPaused
+                    && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
                     popupPanel.ShowForOther(CurrentPlayer);
             }
 
@@ -1217,7 +1218,7 @@ namespace Game.Turns
         private void ShowNextAviationMessage()
         {
             if (popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
-                || _aviationMessageQueue.Count == 0)
+                || IsAiObserverPaused || _aviationMessageQueue.Count == 0)
                 return;
             popupPanel.ShowHint(_aviationMessageQueue.Dequeue());
         }
