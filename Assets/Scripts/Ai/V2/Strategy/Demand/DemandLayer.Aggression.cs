@@ -20,18 +20,23 @@ namespace Game.Ai.V2
             IReadOnlyList<RaidObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player)
         {
-            AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
-                snap, objectives, activeIntents, commitments, player);
+            AggressionDemandEvaluation eval;
+            using (new Game.Core.ProfileScope("AI/Aggr.Build"))
+                eval = AggressionDemandEvaluator.Build(
+                    snap, objectives, activeIntents, commitments, player);
             AiDebugLog.WriteBlockRepeatSuppressed("aggression", eval.Diagnostics);
             foreach (AxisDemand d in eval.Demands)
                 yield return d;
 
-            IReadOnlyList<ActiveDefenceObjective> defenceObjectives =
-                ActiveDefenceObjectiveEvaluator.Enumerate(snap);
-            IReadOnlyList<AxisDemand> defenceDemands =
-                AggressionDemandEvaluator.BuildActiveDefenceDemands(
+            IReadOnlyList<ActiveDefenceObjective> defenceObjectives;
+            using (new Game.Core.ProfileScope("AI/Aggr.DefenceObjectives"))
+                defenceObjectives = ActiveDefenceObjectiveEvaluator.Enumerate(snap);
+            IReadOnlyList<AxisDemand> defenceDemands;
+            IReadOnlyList<string> defenceDiagnostics;
+            using (new Game.Core.ProfileScope("AI/Aggr.DefenceDemands"))
+                defenceDemands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
                     snap, defenceObjectives, activeIntents, commitments, player,
-                    out IReadOnlyList<string> defenceDiagnostics);
+                    out defenceDiagnostics);
             AiDebugLog.WriteBlockRepeatSuppressed("active-defence", defenceDiagnostics);
             foreach (AxisDemand d in defenceDemands)
                 yield return d;

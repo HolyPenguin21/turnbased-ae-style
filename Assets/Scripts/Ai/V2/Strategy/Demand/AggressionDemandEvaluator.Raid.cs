@@ -30,7 +30,9 @@ namespace Game.Ai.V2
             // target disappears. That makes continuity depend on an unrelated map objective.
             objectives ??= System.Array.Empty<RaidObjective>();
 
-            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+            CapabilityInventory inv;
+            using (new Game.Core.ProfileScope("AI/Aggr.Inventory"))
+                inv = CapabilityInventory.Build(snap, player, commitments);
 
             // ===================================================================================
             //  An active Raid intent is NOT automatically "covered". A claimed actor only proves
@@ -72,6 +74,7 @@ namespace Game.Ai.V2
                     // materialization for this exact ConsumerIntentKey is accepted/funded
                     // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build also serves the
                     // bounded reaction probe, which must never commit the real mission to anything.
+                    using var __shortage = new Game.Core.ProfileScope("AI/Aggr.BoundShortage");
                     AxisDemand raidShortage = GroundCombatDemandPolicy.BoundPrimaryShortage(snap, inv, commitments, i,
                         MissionKind.Raid, ri.Target.DiagnosticLabel, primaryId, ri.SupportArmyId,
                         ri.ReinforcementRequestedTurn, AiV2Util.KnownOpposition(snap, ri.Target),
@@ -88,8 +91,10 @@ namespace Game.Ai.V2
                 }
             // ATK §41 — the Attack lane's proven shortages join the SAME demand list, through the
             // same rules, in AggressionDemandEvaluator.Attack.cs.
-            AppendAttackDemands(snap, activeIntents, commitments, inv, diag, reinforcementDemands);
-            AppendHeldBaseGarrisonDemands(snap, diag, reinforcementDemands);
+            using (new Game.Core.ProfileScope("AI/Aggr.AttackDemands"))
+                AppendAttackDemands(snap, activeIntents, commitments, inv, diag, reinforcementDemands);
+            using (new Game.Core.ProfileScope("AI/Aggr.HeldBaseDemands"))
+                AppendHeldBaseGarrisonDemands(snap, diag, reinforcementDemands);
 
             RaidObjective chosen = null;
             RaidOperationalReadiness chosenReadiness = null;
@@ -113,8 +118,10 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
-                    snap, o, AiV2Util.KnownOpposition(snap, o.Target), commitments, inv);
+                RaidOperationalReadiness readiness;
+                using (new Game.Core.ProfileScope("AI/Aggr.RaidReadiness"))
+                    readiness = RaidOperationalReadiness.Evaluate(
+                        snap, o, AiV2Util.KnownOpposition(snap, o.Target), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
                     readyList.Add((o, readiness.ReadyPlan));
