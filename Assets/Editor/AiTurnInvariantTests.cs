@@ -130,6 +130,37 @@ namespace Game.EditorTests
             Assert.That(session.AuditTurnEnd(Snapshot(), null), Is.Empty);
         }
 
+        // The FoundBase + immediate-garrison path (BuildingPlayExecutor.PlayBaseCard) stamps the
+        // base and the deployed garrison inside one transaction. Playtest 2026-10-07 never reached
+        // it (stagedChildren=0 in all 66 summaries), so pin the one-stamp contract here, including
+        // a transaction nested in another one.
+        [Test]
+        public void NestedStagedStampsAdvanceTheRevisionExactlyOnce()
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            int revisionBefore = WorldDeltaLifecycle.Current;
+            int commitsBefore = WorldDeltaLifecycle.CommitEvents;
+            int stagedBefore = WorldDeltaLifecycle.StagedChildMutations;
+            int receipt;
+            using (var outer = WorldDeltaLifecycle.BeginTransaction())
+            {
+                using (var inner = WorldDeltaLifecycle.BeginTransaction())
+                {
+                    WorldDeltaLifecycle.CommitMutation();
+                    receipt = inner.Commit(p, 4, new WorldDelta(true, StrategicInvalidationReason.Infrastructure));
+                    Assert.That(receipt, Is.EqualTo(revisionBefore), "a nested commit defers to the outer one");
+                }
+                WorldDeltaLifecycle.CommitMutation();
+                receipt = outer.Commit(p, 4, new WorldDelta(true, StrategicInvalidationReason.Infrastructure));
+            }
+            Assert.That(receipt, Is.EqualTo(revisionBefore + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(revisionBefore + 1));
+            Assert.That(WorldDeltaLifecycle.CommitEvents, Is.EqualTo(commitsBefore + 1));
+            Assert.That(WorldDeltaLifecycle.StagedChildMutations, Is.EqualTo(stagedBefore + 2));
+            Assert.That(session.AuditTurnEnd(Snapshot(), null), Is.Empty);
+        }
+
         [Test]
         public void LifecycleLineShowsExecutionNormalizationDomainDecisionAndClaims()
         {
