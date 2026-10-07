@@ -181,6 +181,25 @@ namespace Game.Ai.V2
                 outputs++;
             }
 
+            // Coverage reads only attack, abilities and the ground flag, so identical hosts (the same
+            // unit type several times on the map, in hand and in the catalog) and identical grants
+            // (several copies of one card) add nothing: keep one of each. The mutator-occupied bit
+            // is part of a host's identity because it decides which grants fit.
+            int grantCount = grants.Count;
+            grants = grants.Distinct().ToList();
+            var seenHosts = new HashSet<(string, bool)>();
+            var uniqueHosts = new List<(WorthIt.DefenderProfile Host, bool Occupied)>();
+            for (int i = 0; i < attackers.Count; i++)
+            {
+                bool occupied = occupiedMutators.Contains(i);
+                if (seenHosts.Add((ProfileKey(attackers[i]), occupied)))
+                    uniqueHosts.Add((attackers[i], occupied));
+            }
+            attackers = uniqueHosts.Select(h => h.Host).ToList();
+            occupiedMutators = new HashSet<int>(uniqueHosts.Select((h, i) => (h.Occupied, i))
+                .Where(x => x.Occupied).Select(x => x.i));
+            var seenAttackers = new HashSet<string>(attackers.Select(ProfileKey));
+
             int baseCount = attackers.Count;
             for (int i = 0; i < baseCount; i++)
                 foreach (CardDefinition attachment in grants)
@@ -190,7 +209,9 @@ namespace Game.Ai.V2
                         && (occupiedMutators.Contains(i) || !EquipmentSystem.FitsHostCore(attachment,
                             host.IsHero ? EquipmentHostKind.Hero : EquipmentHostKind.Unit,
                             host.TypeTags != null ? new List<UnitTypeTag>(host.TypeTags) : null, out _))) continue;
-                    attackers.Add(Equipped(host, attachment.equipment));
+                    WorthIt.DefenderProfile equipped = Equipped(host, attachment.equipment);
+                    if (seenAttackers.Add(ProfileKey(equipped)))
+                        attackers.Add(equipped);
                 }
 
             if (attackers.Any(a => a.Abilities != null && a.Abilities.Contains(UnitAbilities.RaiseTheRots)))
@@ -206,10 +227,18 @@ namespace Game.Ai.V2
             {
                 Attackers = attackers,
                 Bounded = bounded,
-                Summary = $"map{map}/hand{hand}/deck{deck}/outputs{outputs}/equipment{grants.Count}"
+                Summary = $"map{map}/hand{hand}/deck{deck}/outputs{outputs}/equipment{grantCount}"
                     + (bounded ? "" : "/unbounded"),
             };
         }
+
+        // Every field of a profile that any coverage or damage check can read; two profiles with the
+        // same key are interchangeable inside the pool.
+        private static string ProfileKey(WorthIt.DefenderProfile p) =>
+            $"{p.Attack}|{p.Defense}|{p.HitPoints}|{p.Initiative}|{p.IsGroundCombatant}|{p.IsHero}|"
+            + $"{p.HasCeramicArmor}|{p.IsSummoned}|"
+            + string.Join(",", (p.Abilities ?? System.Array.Empty<string>()).OrderBy(a => a, System.StringComparer.Ordinal))
+            + "|" + string.Join(",", (p.TypeTags ?? System.Array.Empty<UnitTypeTag>()).OrderBy(t => t));
 
         // `p` with one equipment grant applied on top (attack and abilities are what coverage reads).
         private static WorthIt.DefenderProfile Equipped(WorthIt.DefenderProfile p, EquipmentGrant g)
