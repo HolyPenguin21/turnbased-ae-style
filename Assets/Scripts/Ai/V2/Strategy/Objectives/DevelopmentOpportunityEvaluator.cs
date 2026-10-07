@@ -904,6 +904,7 @@ namespace Game.Ai.V2
                 if (memoised && RecipientEvaluationMemo.TryGet(equipment, recipient, futureAttachment,
                     out RecipientVerdict cached))
                     return cached;
+                using var __miss = new Game.Core.ProfileScope("AI/Dev.RecipientVerdict");
                 string why;
                 bool legal = unit != null
                     ? futureAttachment
@@ -920,15 +921,19 @@ namespace Game.Ai.V2
                     StrategicCardEvaluator.EquipmentDelta gain = unit != null
                         ? StrategicCardEvaluator.EquipmentDeltaParts(equipment, unit, snap, inv)
                         : StrategicCardEvaluator.EquipmentDeltaParts(equipment, card, snap, inv);
-                    string purpose = StrategicCardEvaluator.EquipmentPurposeLabel(snap, card, unit);
+                    string purpose;
+                    using (new Game.Core.ProfileScope("AI/Dev.PurposeLabel"))
+                        purpose = StrategicCardEvaluator.EquipmentPurposeLabel(snap, card, unit);
                     DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain, powerUnit);
                     // Delta already includes mission-scoped penetration and effect usefulness.
                     // Utility is required even for in-advance investment; surplus alone cannot admit it.
                     bool noNeed = StrategicCardEvaluator.EquipmentUpgradeValue(probe) <= 0f;
                     // A real card in hand is the pending stage. Reuse it before manufacturing more
                     // for its useful recipient slot; ordinary hand attachment enumeration stays live.
-                    bool covers = !noNeed && futureAttachment
-                        && PendingEquipmentCovers(probe, hand, snap, inv);
+                    bool covers;
+                    using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
+                        covers = !noNeed && futureAttachment
+                            && PendingEquipmentCovers(probe, hand, snap, inv);
                     verdict = new RecipientVerdict(true, null, gain, purpose, noNeed, covers);
                 }
                 if (memoised) RecipientEvaluationMemo.Store(equipment, recipient, futureAttachment, verdict);

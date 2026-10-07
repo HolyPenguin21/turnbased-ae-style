@@ -1333,6 +1333,7 @@ namespace Game.Ai.V2
             IReadOnlyList<UnitTypeTag> hostTags = null, MissionIntent purpose = null, ArmyData army = null,
             MaterializationPlan deployment = null, int hpSpent = 0)
         {
+            using var __scope = new Game.Core.ProfileScope("AI/Equip.ScoreDelta");
             PredictedEquipmentState predicted = projected ?? EquipmentSystem.Predict(grant, before, hostAbilities);
             int After(EquipmentStat stat) =>
                 predicted.Stats != null && predicted.Stats.TryGetValue(stat, out int value) ? value : before[stat];
@@ -1392,8 +1393,14 @@ namespace Game.Ai.V2
             }
             if (snap != null)
             {
-                var opposition = EquipmentOpposition(snap, purpose);
-                var targets = EquipmentTargetsFor(snap, purpose);
+                List<WorthIt.DefendingArmy> opposition;
+                List<WorthIt.DefenderProfile> targets;
+                using (new Game.Core.ProfileScope("AI/Equip.Targets"))
+                {
+                    opposition = EquipmentOpposition(snap, purpose);
+                    targets = EquipmentTargetsFor(snap, purpose);
+                }
+                using var __combat = new Game.Core.ProfileScope("AI/Equip.CombatAndEffects");
                 if (!isHero)
                     combat = EquipmentCombatValue(predicted.Stats, predicted.Abilities, hostTags, targets)
                         - EquipmentCombatValue(before, hostAbilities, hostTags, targets)
@@ -1422,6 +1429,7 @@ namespace Game.Ai.V2
             float raw = combat + tactical;
             float bounded = Mathf.Clamp(raw, -1.5f, 1.5f);
             float scale = Mathf.Abs(raw) > 1e-6f ? bounded / raw : 1f;
+            using var __detail = new Game.Core.ProfileScope("AI/Equip.Detail");
             string detail = snap == null ? null
                 : "stats=" + string.Join(",", before.OrderBy(k => k.Key)
                     .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
