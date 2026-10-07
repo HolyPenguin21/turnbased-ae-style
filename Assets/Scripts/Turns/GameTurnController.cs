@@ -18,6 +18,7 @@ using Game.Units;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using TMPro;
 
 namespace Game.Turns
 {
@@ -37,6 +38,19 @@ namespace Game.Turns
         [SerializeField] private TurnOrderPopupUI turnOrderPopup;
         [SerializeField] private Button endTurnButton;
         [SerializeField] private float aiStepDelay = 0.5f;
+
+        // Spectator controls for AI-only matches. The runtime button is cloned from the existing
+        // end-turn button so old scenes need no serialized migration. A pause request never freezes
+        // a coroutine mid-command: V2 reaches PauseAtAiActionBoundary only after the current atomic
+        // action has completed, then exposes a read-only inspection window until Play is pressed.
+        private Button _aiObserverPauseButton;
+        private bool _aiObserverMatch;
+        private bool _aiObserverPauseRequested;
+        private bool _aiObserverPauseEngaged;
+        public bool IsAiObserverMatch => _aiObserverMatch;
+        public bool IsAiObserverPaused => _aiObserverPauseEngaged;
+        public bool IsAiObserverInspectionMode => _aiObserverMatch && _aiObserverPauseEngaged
+            && !IsCombatPresentationActive;
 
         // Dev-only: one switch for watching an AI turn play out. When on it (a) makes the fog
         // overlay follow whichever AI is currently acting instead of staying on the last human's
@@ -163,12 +177,15 @@ namespace Game.Turns
         // Re-derives both cached bools from the underlying popups' current IsShowing/
         // IsRenamePopupShowing state — called once up front (OnEnable) and again every time one
         // of them raises VisibilityChanged, never on a timer/every frame.
+        private bool IsCombatPresentationActive =>
+            (battleContactPopup != null && battleContactPopup.IsShowing)
+            || (battleScreen != null && battleScreen.IsShowing)
+            || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
+            || (aaChoicePopup != null && aaChoicePopup.IsShowing);
+
         private void RecomputeBlockedState()
         {
-            bool combatShowing = (battleContactPopup != null && battleContactPopup.IsShowing)
-                || (battleScreen != null && battleScreen.IsShowing)
-                || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
-                || (aaChoicePopup != null && aaChoicePopup.IsShowing);
+            bool combatShowing = IsCombatPresentationActive;
 
             // A strategic turn notification cannot cover the human's tactical controls.
             // Suspend only ShowForOther, never a hint or a human turn confirmation. Set the
@@ -189,7 +206,8 @@ namespace Game.Turns
             {
                 _otherTurnPopupSuspended = false;
                 _suspendedOtherTurnPlayer = null;
-                if (!_gameOver && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
+                if (!_gameOver && !IsAiObserverPaused
+                    && (CurrentPlayer == null || !CurrentPlayer.IsHuman))
                     popupPanel.ShowForOther(CurrentPlayer);
             }
 
@@ -224,6 +242,7 @@ namespace Game.Turns
                 CardDraggingBlockedChanged?.Invoke(_cardDraggingBlocked);
             }
             RefreshEndTurnInteractable();
+            RefreshAiObserverPauseButton();
         }
 
         public void ShowSpawnHint(string message)
@@ -507,6 +526,13 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
+            _aiObserverMatch = GameSession.Players != null
+                && GameSession.Players.Count > 0
+                && GameSession.FindHumanPlayer() == null;
+            _aiObserverPauseRequested = false;
+            _aiObserverPauseEngaged = false;
+            ConfigureAiObserverPauseButton();
+
             if (gameMenu != null) gameMenu.gameObject.SetActive(true);
             // One trigger for the whole bottom panel — the hand, the resource bar and the
             // end-turn button all live under CardHandPanel.
@@ -975,7 +1001,7 @@ namespace Game.Turns
             {
                 CurrentPlayer = null;
                 ReplenishMoveForOwner(null);
-                if (popupPanel != null)
+                if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(null);
                 TurnStateChanged?.Invoke();
                 StartCoroutine(PassAfterDelay(BeginNewTurn));
@@ -993,7 +1019,7 @@ namespace Game.Turns
 
             CurrentPlayer = player;
             ReplenishMoveForOwner(player);
-            if (player.IsHuman || debugWatchAiTurns)
+            if (player.IsHuman || debugWatchAiTurns || _aiObserverMatch)
                 VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
 
@@ -1007,15 +1033,16 @@ namespace Game.Turns
             else
             {
                 StealthSystem.TakeDetectionNotices(player);
-                if (popupPanel != null)
+                if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(player);
-                if (debugWatchAiTurns && cardHand != null)
+                if ((debugWatchAiTurns || _aiObserverMatch) && cardHand != null)
                     cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
-                if (debugWatchAiTurns)
+                if (debugWatchAiTurns || _aiObserverMatch)
                     resourceBar?.ShowRootDebug(PlayerRootRegistry.FindFor(player));
                 AiTurnContext ctx = AiTurnContext.From(cameraController, map, hexSelectionController,
                     cardHand, aiStepDelay, gameConfig, TurnNumber,
-                    researchProductionModal != null ? researchProductionModal.Catalog : null);
+                    researchProductionModal != null ? researchProductionModal.Catalog : null,
+                    _aiObserverMatch ? PauseAtAiActionBoundary : null);
                 StartCoroutine(AiTurnController.RunTurn(player, ctx, AdvanceToNextPlayer));
             }
         }
@@ -1067,6 +1094,8 @@ namespace Game.Turns
         private IEnumerator PassAfterDelay(Action onDone)
         {
             yield return new WaitForSeconds(aiStepDelay);
+            if (_aiObserverMatch)
+                yield return PauseAtAiActionBoundary();
             onDone();
         }
 
@@ -1091,10 +1120,96 @@ namespace Game.Turns
             BeginPlayerTurn(_currentPlayerIndex + 1);
         }
 
+        private void ConfigureAiObserverPauseButton()
+        {
+            if (!_aiObserverMatch || endTurnButton == null)
+            {
+                if (_aiObserverPauseButton != null)
+                    Destroy(_aiObserverPauseButton.gameObject);
+                _aiObserverPauseButton = null;
+                return;
+            }
+
+            if (_aiObserverPauseButton == null)
+            {
+                _aiObserverPauseButton = Instantiate(endTurnButton, endTurnButton.transform.parent);
+                _aiObserverPauseButton.name = "AiObserverPauseButton";
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(_aiObserverPauseButton);
+                _aiObserverPauseButton.onClick.AddListener(OnAiObserverPauseClicked);
+
+                RectTransform endRect = endTurnButton.transform as RectTransform;
+                RectTransform pauseRect = _aiObserverPauseButton.transform as RectTransform;
+                if (endRect != null && pauseRect != null)
+                {
+                    float width = Mathf.Max(48f, endRect.rect.width > 0f ? endRect.rect.width : endRect.sizeDelta.x);
+                    pauseRect.anchoredPosition = endRect.anchoredPosition + Vector2.left * (width + 8f);
+                }
+            }
+
+            _aiObserverPauseButton.gameObject.SetActive(true);
+            RefreshAiObserverPauseButton();
+        }
+
+        private void OnAiObserverPauseClicked()
+        {
+            if (!_aiObserverMatch || IsCombatPresentationActive || _gameOver)
+                return;
+
+            _aiObserverPauseRequested = !_aiObserverPauseRequested;
+            if (!_aiObserverPauseRequested && _aiObserverPauseEngaged)
+            {
+                _aiObserverPauseEngaged = false;
+                TurnStateChanged?.Invoke();
+            }
+            RefreshAiObserverPauseButton();
+        }
+
+        private IEnumerator PauseAtAiActionBoundary()
+        {
+            if (!_aiObserverMatch || !_aiObserverPauseRequested || _gameOver)
+                yield break;
+
+            _aiObserverPauseEngaged = true;
+            if (popupPanel != null && popupPanel.IsOtherTurnShowing)
+                popupPanel.Hide();
+            hexSelectionController?.Deselect();
+            TurnStateChanged?.Invoke();
+            RefreshAiObserverPauseButton();
+
+            while (_aiObserverMatch && _aiObserverPauseRequested && !_gameOver)
+                yield return null;
+
+            if (_aiObserverPauseEngaged)
+            {
+                _aiObserverPauseEngaged = false;
+                TurnStateChanged?.Invoke();
+                RefreshAiObserverPauseButton();
+            }
+        }
+
+        private void RefreshAiObserverPauseButton()
+        {
+            if (_aiObserverPauseButton == null)
+                return;
+
+            _aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
+            _aiObserverPauseButton.interactable = _aiObserverMatch && !_gameOver && !IsCombatPresentationActive;
+            string label = _aiObserverPauseRequested ? ">" : "||";
+            TMP_Text tmp = _aiObserverPauseButton.GetComponentInChildren<TMP_Text>(true);
+            if (tmp != null)
+                tmp.text = label;
+            else
+            {
+                Text legacy = _aiObserverPauseButton.GetComponentInChildren<Text>(true);
+                if (legacy != null)
+                    legacy.text = label;
+            }
+        }
+
         private void ShowNextAviationMessage()
         {
             if (popupPanel == null || popupPanel.IsShowing || _otherTurnPopupSuspended
-                || _aviationMessageQueue.Count == 0)
+                || IsAiObserverPaused || _aviationMessageQueue.Count == 0)
                 return;
             popupPanel.ShowHint(_aviationMessageQueue.Dequeue());
         }

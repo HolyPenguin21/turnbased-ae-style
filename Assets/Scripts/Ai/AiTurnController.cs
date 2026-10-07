@@ -50,6 +50,16 @@ namespace Game.Ai
         // priority taper (see its own comment): the only consumer, so this stays a plain int
         // snapshot rather than a live reference to the whole controller.
         public int TurnNumber;
+
+        // AI-only observer pause seam. GameTurnController owns the UI/request state; the AI
+        // pipeline only reaches this delegate at completed action boundaries, so pressing Pause
+        // can never freeze a movement, battle, card transaction or reservation half-applied.
+        public Func<IEnumerator> ObserverActionBoundaryPause;
+        public IEnumerator WaitAtObserverActionBoundary()
+        {
+            if (ObserverActionBoundaryPause != null)
+                yield return ObserverActionBoundaryPause();
+        }
         // Cross-category oscillation guard — every army a unit has actually sat in THIS turn via
         // an AI-issued transfer (WouldRevisitArmy/RecordArmyVisit below). Started as
         // GarrisonReorgTask's own private guard (its FindReorgMove tiers can undo each other
@@ -135,7 +145,8 @@ namespace Game.Ai
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
             CardHandUI humanCardHand, float stepDelay,
             GameConfig gameConfig, int turnNumber,
-            ResearchProductionCatalog researchProductionCatalog = null)
+            ResearchProductionCatalog researchProductionCatalog = null,
+            Func<IEnumerator> observerActionBoundaryPause = null)
         {
             return new AiTurnContext
             {
@@ -150,6 +161,7 @@ namespace Game.Ai
                 StepDelay = stepDelay,
                 GameConfig = gameConfig,
                 TurnNumber = turnNumber,
+                ObserverActionBoundaryPause = observerActionBoundaryPause,
             };
         }
     }
@@ -246,6 +258,9 @@ namespace Game.Ai
             AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
                 + $"entries={battleStats.Entries}");
+            // Final safety boundary: the turn-scoped simulation cache is already closed, all
+            // pipeline cleanup is complete, and only the handoff callback remains.
+            yield return ctx.WaitAtObserverActionBoundary();
             onDone?.Invoke();
             yield break;
         }
