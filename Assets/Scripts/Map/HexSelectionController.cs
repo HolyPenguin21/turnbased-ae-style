@@ -345,20 +345,8 @@ namespace Game.Map
                 SelectArmyForOrders(lastViewedArmy);
                 return;
             }
-            SelectHex(hex, preserveSelection: ShouldPreserveSelectionAfterModalClose(hex));
-        }
-
-        // False only when the hex has exactly one non-garrison army and it isn't already what's
-        // selected — i.e. there's an obvious, unambiguous army to select and nothing has claimed
-        // it yet. True in every other case (0 or 2+ armies, or the sole army is already
-        // selected) so this never fights the button-row-driven multi-army selection.
-        private bool ShouldPreserveSelectionAfterModalClose(HexCoord hex)
-        {
-            List<ArmyData> armies = ArmyRegistry.AllAt(hex);
-            ArmyData soleArmy = armies.Count == 1 && !armies[0].IsGarrison ? armies[0] : null;
-            if (soleArmy == null)
-                return true;
-            return _selectedArmy != null && _selectedArmy.Data == soleArmy;
+            SetSelectedArmy(null);
+            SelectHex(hex, preserveSelection: true);
         }
 
         // Same reasoning as OnArmyModalClosed — an Upgrade purchased inside the Base modal
@@ -531,44 +519,25 @@ namespace Game.Map
 
             if (ownRepresentative != null && IsMarkerHit(ownRepresentative.Controller.Visual, screenPosition))
             {
-                BuildingData building = BuildingRegistry.FindAt(hex);
-                bool hasBarracks = building != null && building.Owner == human && building.HasAbility(UnitAbilities.Barracks);
-                if (hasBarracks)
-                {
-                    ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex, human);
-                    if (garrison == null)
-                        return false;
-                    // The garrison marker also stands in for a non-empty airfield (see
-                    // RestackArmiesOn) — when that's the ONLY thing actually stored here (garrison
-                    // itself empty), the click should open the airfield, not an empty garrison. A
-                    // non-empty garrison always wins over the airfield regardless.
-                    ArmyData target = garrison;
-                    if (garrison.Members.Count == 0)
-                    {
-                        ArmyData airfield = AviationRules.FindAirfieldAt(hex, human);
-                        if (airfield != null && airfield.Members.Count > 0)
-                            target = airfield;
-                    }
-                    // This shortcut never runs SelectHex (it jumps straight to the modal instead
-                    // of the usual highlight/info-panel flow) — _selectedHex still needs to be
-                    // tracked so OnArmyModalClosed knows which hex's button row to refresh once
-                    // the player closes it.
-                    _selectedHex = hex;
-                    ShowArmyModal(target);
-                    return true;
-                }
-
-                if (ownRepresentative.IsGarrison)
-                    return false; // an empty/unreachable garrison off its own Barracks hex — nothing to open here
-                // Whichever of the player's own armies is actually the one being clicked —
-                // 2+ sharing the hex is no longer ambiguous now that the modal's own button row
-                // (see ArmyViewerModalUI.RefreshButtonRow) can switch to the others from here.
+                List<ArmyData> ownArmies = ArmyRegistry.AllAt(hex).FindAll(a => a.Owner == human);
+                ArmyData target = ResolveArmyMarkerTarget(ownArmies, GetSelectedArmy());
+                if (target == null)
+                    return false;
                 _selectedHex = hex;
-                ShowArmyModal(ownRepresentative);
+                ShowArmyModal(target);
                 return true;
             }
 
             return TryHandleEnemyArmyMarkerClick(hex, screenPosition, human);
+        }
+
+        private static ArmyData ResolveArmyMarkerTarget(List<ArmyData> armies, ArmyData selected)
+        {
+            if (selected != null && !selected.IsGarrison && !selected.IsAirfield && !selected.IsPrison
+                && armies.Contains(selected))
+                return selected;
+            return armies.Find(a => a.IsGarrison)
+                ?? armies.Find(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison);
         }
 
         // Same precise-click shortcut as the human's own marker above, for every other owner's
@@ -1098,4 +1067,5 @@ namespace Game.Map
         // moved to HexSelectionController.Visuals.cs — see that file's own class-level comment.
     }
 }
+
 
