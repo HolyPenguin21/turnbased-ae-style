@@ -325,6 +325,14 @@ namespace Game.Map
         // player clicked the hex a second time — see ShouldPreserveSelectionAfterModalClose.
         private void OnArmyModalClosed()
         {
+            if (turnController != null && turnController.IsAiObserverInspectionMode)
+            {
+                SetSelectedArmy(null);
+                if (_selectedHex.HasValue)
+                    SelectHex(_selectedHex.Value, preserveSelection: true);
+                return;
+            }
+
             // Only the current player can ever open their own army/garrison modal in the first
             // place (see IsInputAllowed) — a member gaining/losing an r1sX Recce tag in there
             // changes that army's own vision radius (see Game.Cards.AbilityParams /
@@ -387,10 +395,18 @@ namespace Game.Map
 
             HexCoord? hoverCoord = RaycastHexCached();
 
-            UpdateMovePreview(hoverCoord);
-
-            if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame && hoverCoord.HasValue)
-                TryIssueMoveOrder(hoverCoord.Value);
+            bool observerInspection = turnController != null && turnController.IsAiObserverInspectionMode;
+            if (!observerInspection)
+            {
+                UpdateMovePreview(hoverCoord);
+                if (Mouse.current != null && Mouse.current.rightButton.wasPressedThisFrame && hoverCoord.HasValue)
+                    TryIssueMoveOrder(hoverCoord.Value);
+            }
+            else if (_lastPreviewedHover.HasValue)
+            {
+                _lastPreviewedHover = null;
+                HidePathPreview();
+            }
 
             if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
                 HandleLeftClick(hoverCoord);
@@ -411,6 +427,8 @@ namespace Game.Map
             // turnController.InputBlocked already folds in armyViewerModal.IsShowing (see
             // GameTurnController), so map input is locked out while the modal is open without
             // needing a second check here.
+            if (turnController.IsAiObserverInspectionMode)
+                return !turnController.InputBlocked;
             return turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman
                 && turnController.TurnConfirmed && !turnController.InputBlocked;
         }
@@ -503,6 +521,28 @@ namespace Game.Map
         {
             if (armyViewerModal == null || targetCamera == null || turnController == null)
                 return false;
+
+            if (turnController.IsAiObserverInspectionMode)
+            {
+                foreach (ArmyData representative in ArmyRegistry.AllAt(hex))
+                {
+                    if (representative?.Owner == null || representative.Controller?.Visual == null
+                        || !representative.Controller.Visual.IsVisible
+                        || !IsMarkerHit(representative.Controller.Visual, screenPosition))
+                        continue;
+                    List<ArmyData> ownerArmies = ArmyRegistry.AllAt(hex)
+                        .FindAll(a => a.Owner == representative.Owner);
+                    ArmyData target = ResolveArmyMarkerTarget(ownerArmies, null);
+                    if (target == null)
+                        continue;
+                    _selectedHex = hex;
+                    armyButtonRow?.Hide();
+                    ShowArmyModalReadOnly(target);
+                    return true;
+                }
+                return false;
+            }
+
             PlayerSetupData human = turnController.CurrentPlayer;
             if (human == null || !human.IsHuman)
                 return false;
@@ -589,6 +629,13 @@ namespace Game.Map
             if (building != null && IsMarkerHit(building.Visual, screenPosition))
             {
                 SelectHex(hex);
+                if (turnController != null && turnController.IsAiObserverInspectionMode)
+                {
+                    if (building.IsBase || !building.HasTieredUnlock)
+                        ShowBaseModalReadOnly(building);
+                    return true;
+                }
+
                 PlayerSetupData human = turnController != null ? turnController.CurrentPlayer : null;
                 // Citadel/Base and the hero-built extraction Facility share BaseViewerModalUI.
                 // Foreign buildings remain inspectable only through the ordinary hex info,
@@ -639,6 +686,7 @@ namespace Game.Map
 
             BuildingData buildingHere = BuildingRegistry.FindAt(coord);
             PlayerSetupData owner = buildingHere?.Owner;
+            bool observerInspection = turnController != null && turnController.IsAiObserverInspectionMode;
             // The bonus (if any) belongs permanently to the hex itself — stamped once when a
             // citadel was placed there (see HexResourceBonusRegistry), independent of whatever
             // building currently stands on it.
@@ -653,8 +701,16 @@ namespace Game.Map
                 // movement plan: a lone unit sits in the garrison, which can't move, until
                 // it's sorted into a real army from this modal).
                 bool isOwnBarracks = isOwn && buildingHere.HasAbility(UnitAbilities.Barracks);
-                ArmyData garrisonForButton = isOwnBarracks ? ArmyRegistry.FindGarrisonAt(coord, owner) : null;
-                infoPanel.SetGarrisonButtonVisible(garrisonForButton != null, () => ShowArmyModal(garrisonForButton));
+                bool observerBarracks = observerInspection && owner != null && buildingHere != null
+                    && buildingHere.HasAbility(UnitAbilities.Barracks);
+                ArmyData garrisonForButton = (isOwnBarracks || observerBarracks)
+                    ? ArmyRegistry.FindGarrisonAt(coord, owner) : null;
+                infoPanel.SetGarrisonButtonVisible(garrisonForButton != null,
+                    () =>
+                    {
+                        if (observerInspection) ShowArmyModalReadOnly(garrisonForButton);
+                        else ShowArmyModal(garrisonForButton);
+                    });
 
                 // Same idea, for BaseViewerModalUI — any building with IsBase set (the citadel
                 // always has it, see CitadelSetupController; so does anything built from a
@@ -662,20 +718,32 @@ namespace Game.Map
                 // TryBuildExtractionFacility, identified by HasTieredUnlock=false rather than a
                 // separate tag) — both use the exact same modal.
                 bool isOwnBase = isOwn && (buildingHere.IsBase || !buildingHere.HasTieredUnlock);
-                BuildingData baseForButton = isOwnBase ? buildingHere : null;
-                infoPanel.SetBaseButtonVisible(baseForButton != null, () => ShowBaseModal(baseForButton));
+                bool observerBase = observerInspection && buildingHere != null
+                    && (buildingHere.IsBase || !buildingHere.HasTieredUnlock);
+                BuildingData baseForButton = (isOwnBase || observerBase) ? buildingHere : null;
+                infoPanel.SetBaseButtonVisible(baseForButton != null,
+                    () =>
+                    {
+                        if (observerInspection) ShowBaseModalReadOnly(baseForButton);
+                        else ShowBaseModal(baseForButton);
+                    });
 
                 // Same idea, for Research/Production — used to be separate entries on
                 // resourceActionRow (RefreshResourceActionRow below), now their own fixed
                 // buttons on this nav row. Eligibility itself is unchanged: ResearchProductionSystem.IsEligible.
-                bool researchEligible = ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Research, out _);
+                bool researchEligible = !observerInspection
+                    && ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Research, out _);
                 infoPanel.SetResearchButtonVisible(researchEligible, () => OnResearchActionClicked(coord));
 
-                bool productionEligible = ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Production, out _);
+                bool productionEligible = !observerInspection
+                    && ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Production, out _);
                 infoPanel.SetProductionButtonVisible(productionEligible, () => OnProductionActionClicked(coord));
             }
 
-            RefreshResourceActionRow(coord, buildingHere, effectiveYields);
+            if (observerInspection)
+                resourceActionRow?.Hide();
+            else
+                RefreshResourceActionRow(coord, buildingHere, effectiveYields);
 
             if (infoPanel != null)
             {
@@ -709,6 +777,13 @@ namespace Game.Map
             List<ArmyData> armies = ArmyRegistry.AllAt(coord).FindAll(a => a.Owner == turnController?.CurrentPlayer);
             List<ArmyData> mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison);
             ArmyData soleArmy = mobileArmies.Count == 1 ? mobileArmies[0] : null;
+
+            if (observerInspection)
+            {
+                SetSelectedArmy(null);
+                armyButtonRow?.Hide();
+                return;
+            }
 
             if (!preserveSelection)
                 SetSelectedArmy(soleArmy?.Controller);
@@ -974,6 +1049,26 @@ namespace Game.Map
                 researchProductionModal.Hide();
             armyButtonRow?.Hide();
             armyViewerModal?.Show(army);
+        }
+
+        private void ShowArmyModalReadOnly(ArmyData army)
+        {
+            if (baseViewerModal != null)
+                baseViewerModal.Hide();
+            if (researchProductionModal != null)
+                researchProductionModal.Hide();
+            armyButtonRow?.Hide();
+            armyViewerModal?.ShowReadOnly(army);
+        }
+
+        private void ShowBaseModalReadOnly(BuildingData building)
+        {
+            if (armyViewerModal != null)
+                armyViewerModal.Hide();
+            if (researchProductionModal != null)
+                researchProductionModal.Hide();
+            armyButtonRow?.Hide();
+            baseViewerModal?.ShowReadOnly(building);
         }
 
         private void ShowBaseModal(BuildingData building)
