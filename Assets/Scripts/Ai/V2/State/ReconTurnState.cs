@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Game.Players;
 
 namespace Game.Ai.V2
 {
@@ -63,7 +64,7 @@ namespace Game.Ai.V2
         }
     }
 
-    // Compatibility lookups have no second set. A session owns the same per-player scope.
+    // Detached lookups have no second set. A session owns the same per-player scope.
     // Detached fixtures use their own identity, never a shared null player.
     internal static class ReconTurnStateStore
     {
@@ -73,6 +74,11 @@ namespace Game.Ai.V2
         internal static ReconTurnState For(object owner, int turn)
         {
             if (owner == null) return new ReconTurnState(turn);
+            // A live session owns its turn's scope: a lookup for any other turn is a detached
+            // read and must never end the session's scope.
+            if (owner is PlayerSetupData player && AiTurnSession.PeekActive(player) is AiTurnSession live
+                && live.TurnNumber != turn)
+                return new ReconTurnState(turn);
             Entry entry = ByOwner.GetValue(owner, _ => new Entry());
             if (entry.State == null || entry.Turn != turn)
             {

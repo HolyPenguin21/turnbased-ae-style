@@ -41,21 +41,11 @@ namespace Game.Ai.V2
         public ArmyMutationContract MutationContractOf(int armyId) => _leases.ContractOf(armyId);
         public bool IsPreparationHost(int armyId) => _leases.IsPreparationHost(armyId);
         internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int armyId) => _leases.OwnersOf(armyId);
-        internal static ArmyMutationContract PhysicalMutationContract(PlayerSetupData player, int turn,
-            ArmyData army, ActorCommitments commitments) =>
-            MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
 
-        // Compatibility entry points; all role validation lives in MissionActorPolicy.
+        // Canonical derived-view factory; role validity lives only in MissionActorPolicy.
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
             WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives) =>
             MissionActorPolicy.Build(intents, snap, reconObjectives);
-        internal static bool PreparationHostStillValid(int armyId, WorldSnapshot snap) =>
-            MissionActorPolicy.PreparationHostStillValid(armyId, snap);
-        internal static bool GroundContainerStillValid(int armyId, WorldSnapshot snap) =>
-            MissionActorPolicy.GroundContainerStillValid(armyId, snap);
-        public static bool HasCapableActor(MissionIntent intent, WorldSnapshot snap, StealthRequirement requirement) =>
-            MissionActorPolicy.HasCapableActor(intent, snap, requirement);
-
     }
 
     // ===========================================================================================

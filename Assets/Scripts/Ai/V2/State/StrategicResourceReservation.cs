@@ -49,7 +49,7 @@ namespace Game.Ai.V2
     public sealed class StrategicResourceReservation
     {
         public ReservationOwner Identity { get; set; }
-        public string Owner { get => Identity; set => Identity = value; }
+        public string Owner { get => Identity; set => Identity = ReservationOwner.ForPass(value); }
         public StrategicReservationReason Reason;
         public StrategicReservedResource Resource;
         public float Amount;

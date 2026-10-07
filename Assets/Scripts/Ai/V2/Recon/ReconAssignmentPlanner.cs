@@ -533,7 +533,7 @@ namespace Game.Ai.V2
                     // Continuity may contract a surplus lane before Missions emits fresh work.
                     // The contraction is authoritative for this whole turn: another actor or air
                     // may serve the fresh mission, but the just-released scout cannot be rebound.
-                    excluded.UnionWith(MissionIntentRegistry.GetOrCreate(player)
+                    excluded.UnionWith(ReconTurnStateStore.For(player, snap?.TurnNumber ?? ctx?.TurnNumber ?? -1)
                         .ReconActorsTrimmedThisTurn(snap?.TurnNumber ?? ctx?.TurnNumber ?? -1));
                 }
                 if (alreadyClaimedArmyIds != null)
@@ -623,8 +623,7 @@ namespace Game.Ai.V2
             // while the Attack mobilization is open (ReconConcurrencyPolicy.GroundActorsPerTurn).
             // A scout already used this turn may keep serving; a new one only within the budget.
             int turn = snap?.TurnNumber ?? ctx?.TurnNumber ?? -1;
-            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
-            var usedGround = new HashSet<int>(intentState.ReconGroundActorsUsedThisTurn(turn));
+            var usedGround = new HashSet<int>(ReconTurnStateStore.For(player, turn).ReconGroundActorsUsedThisTurn(turn));
             int newGroundBudget = Mathf.Max(0,
                 ReconConcurrencyPolicy.GroundActorsPerTurn(snap) - usedGround.Count);
             List<HexCoord> fixedGroundFoci = (alreadyProvisioned ?? System.Array.Empty<ProvisionedMission>())

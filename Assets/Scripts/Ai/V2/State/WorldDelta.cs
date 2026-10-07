@@ -31,10 +31,21 @@ namespace Game.Ai.V2
     }
 
     // One revision policy, using the existing invalidation storage without mirrored flags.
-    // Legacy commit endpoints use CommitMutation; observed facts use Publish (no second bump).
+    // Committed mutation endpoints use CommitMutation; observed facts use Publish (no second bump).
     internal static class WorldDeltaLifecycle
     {
         internal static int Current { get; private set; }
+
+        // Independent commit-event counters for the end-of-turn revision audit. A commit event is
+        // one real top-level mutation request (or one outermost transaction commit); staged child
+        // stamps inside an open transaction are counted separately and never advance Current.
+        internal static int CommitEvents { get; private set; }
+        internal static int StagedChildMutations { get; private set; }
+        internal static bool TransactionOpen => _transaction != null;
+
+        // Freshness check for plans made at a given revision; only equality/order is meaningful.
+        internal static bool IsCurrent(int plannedAtVersion) =>
+            plannedAtVersion >= 0 && plannedAtVersion == Current;
         // Only synchronous canonical transactions may use this scope. Never retain it across
         // a coroutine yield: other game actions must keep their own revision boundary.
         [ThreadStatic] private static MutationTransaction _transaction;
@@ -64,6 +75,7 @@ namespace Game.Ai.V2
                     return Current;
                 }
                 ++Current;
+                ++CommitEvents;
                 foreach (var fact in _facts)
                     StrategicInterruptRegistry.Record(fact.player, fact.turn, fact.delta.DirtyFacts,
                         fact.delta.ActorIds, fact.delta.ContactIds, fact.delta.Hexes, fact.delta.Hand);
@@ -85,12 +97,22 @@ namespace Game.Ai.V2
                 throw new InvalidOperationException("World facts belong to another AI turn.");
             if (_transaction != null)
             {
+                if (delta.HasMutation) ++StagedChildMutations;
                 _transaction.Stage(player, turn, delta);
                 return Current;
             }
-            if (delta.HasMutation) ++Current;
+            if (delta.HasMutation) { ++Current; ++CommitEvents; }
             StrategicInterruptRegistry.Record(player, turn, delta.DirtyFacts,
                 delta.ActorIds, delta.ContactIds, delta.Hexes, delta.Hand);
+            return Current;
+        }
+
+        // The one "commit unless a child action already committed this same mutation" rule shared
+        // by aggregate executors. Returns the revision receipt for the action: one advance for a
+        // real change, none when nothing changed or a child receipt already covers it.
+        internal static int StampAction(bool changed, bool childAlreadyCommitted = false)
+        {
+            if (changed && !childAlreadyCommitted) CommitMutation();
             return Current;
         }
 

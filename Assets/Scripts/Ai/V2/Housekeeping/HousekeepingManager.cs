@@ -113,7 +113,7 @@ namespace Game.Ai.V2
             // point is ONLY the zero-AP / zero-resource structural reorganisation pass.
 
             Run(snapshot, player, root, ctx, commitments, result);
-            StrategicCapabilityLeaseRegistry.Clear(player, ctx?.TurnNumber ?? 0);
+            AiTurnSession.ReleaseCapabilityLeases(player, ctx?.TurnNumber ?? 0);
             yield break;
         }
 

@@ -59,13 +59,13 @@ namespace Game.EditorTests
                 StrategicReservedResource.ActionPoints, 2);
             other.Reserve(StrategicReservationReason.EconomyBuildCompletion,
                 StrategicReservedResource.ActionPoints, 3);
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             session.Apply(new WorldDelta(true, StrategicInvalidationReason.Actor, actorIds: new[] { 0 }));
             var payload = new ExtensionFacts { Sequence = 7 };
             var step = new MissionStepResult<ExtensionFacts>(key, disposition, payload) {
                 MadeProgress = disposition == MissionStepDisposition.Progress,
                 ObjectiveSatisfied = disposition == MissionStepDisposition.Completed,
-                StateVersionAfter = V2StateVersion.Current };
+                StateVersionAfter = WorldDeltaLifecycle.Current };
             session.Settle(step);
             Assert.That(step.Payload, Is.SameAs(payload));
             Assert.That(payload.Sequence, Is.EqualTo(7));
@@ -74,7 +74,7 @@ namespace Game.EditorTests
             Assert.That(lease.ResourceClaims.Count > 0, Is.EqualTo(retained));
             Assert.That(other.ActorClaims, Is.EqualTo(new[] { 1 }));
             Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(3));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
             Assert.That(session.PendingInvalidations.ActorIds, Is.EqualTo(new[] { 0 }));
             session.Dispose();
             Assert.That(StrategicResourceReservationLedger.Rows(p, 4), Is.Empty);
@@ -105,11 +105,6 @@ namespace Game.EditorTests
             Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(3));
         }
 
-        private sealed class CommonResultView : MissionStepResult
-        {
-            internal CommonResultView(MissionStepResult result) : base(result) { }
-        }
-
         [TearDown] public void Reset()
         {
             MissionIntentRegistry.Clear();
@@ -123,11 +118,11 @@ namespace Game.EditorTests
             var payload = new DevelopmentStepPayload { DeliveryReady = true };
             var result = new MissionStepResult<DevelopmentStepPayload>(key,
                 MissionStepDisposition.Progress, payload) { ApSpent = 2, MoverArmyId = 0 };
-            var view = MissionTurnOutcome.View(result);
+            var view = result;
             Assert.That(view.GetPayload<DevelopmentStepPayload>(), Is.SameAs(payload));
             Assert.That(view.MissionKind, Is.EqualTo(MissionKind.Development));
             Assert.That(view.MoverArmyId, Is.EqualTo(0));
-            view.StructuralFailure = true;
+            view.Disposition = MissionStepDisposition.PermanentFailure;
             Assert.That(result.Disposition, Is.EqualTo(MissionStepDisposition.PermanentFailure));
             result.ApSpent = 4;
             Assert.That(view.ApSpent, Is.EqualTo(4));
@@ -137,7 +132,7 @@ namespace Game.EditorTests
             Assert.That(result.Payload, Is.Null);
             result.SetPayload(payload);
             Assert.That(view.GetPayload<DevelopmentStepPayload>(), Is.SameAs(payload));
-            Assert.That(MissionTurnOutcome.View(view), Is.SameAs(view));
+            Assert.That(view, Is.SameAs(view));
         }
 
         [TestCase(MissionStepDisposition.Progress, true)]
@@ -185,7 +180,7 @@ namespace Game.EditorTests
             var legacyPlayer = new PlayerSetupData(); var commonPlayer = new PlayerSetupData();
             using var legacySession = AiTurnSession.Begin(legacyPlayer, null, null, null, 4);
             using var commonSession = AiTurnSession.Begin(commonPlayer, null, null, null, 4);
-            var legacy = Outcome(kind); var common = new CommonResultView(Outcome(kind));
+            var legacy = Outcome(kind); var common = Outcome(kind);
             var beforeLegacy = Intent(kind, legacy.IntentKey); var beforeCommon = Intent(kind, common.IntentKey);
             legacySession.PersistentState.Put(beforeLegacy); commonSession.PersistentState.Put(beforeCommon);
             MissionContinuityLayer.ReconcileStep(legacyPlayer, 4, legacy);
@@ -225,7 +220,7 @@ namespace Game.EditorTests
             Assert.That(result.GetPayload<DevelopmentStepPayload>(), Is.Not.Null);
         }
 
-        private static MissionTurnOutcome Outcome(MissionKind kind)
+        private static MissionStepResult Outcome(MissionKind kind)
         {
             var facts = AiLifecycleParityTests.Facts(kind);
             facts.Execution = new ExecutionResult { StopReason = ExecutionStopReason.StepCompleted,

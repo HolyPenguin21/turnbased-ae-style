@@ -273,8 +273,7 @@ namespace Game.Ai.V2
         private static void Stamp(CardPlayResult r, int[] resStart, PlayerRoot root)
         {
             r.ResourcesSpent = DeltaCost(resStart, Snapshot(root));
-            if (r.StateChanged) WorldDeltaLifecycle.CommitMutation();
-            r.StateVersionAfter = V2StateVersion.Current;
+            r.StateVersionAfter = WorldDeltaLifecycle.StampAction(r.StateChanged);
         }
     }
 }

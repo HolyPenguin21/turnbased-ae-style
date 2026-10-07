@@ -221,17 +221,14 @@ namespace Game.Ai.V2
             {
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
-                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                    snapshot, assessment.Breakdown.OpportunityReport);
                 // Direct Economy construction can atomically turn the builder's existing intent
-                // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
-                // before mission construction so stale pre-build actor claims cannot execute.
-                activeIntents = MissionContinuityLayer.ResolveActive(
-                    player, snapshot, reconObjectives, aggressionObjectives);
-                actorCommitments = turnSession.RefreshActors(
-                    activeIntents, snapshot, reconObjectives);
+                // into ReturnBuilder (or resume a safe scout); re-reading the same continuity owner
+                // here keeps stale pre-build actor claims from executing.
+                OperationalFrame phaseAFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                reconObjectives = phaseAFrame.Recon;
+                aggressionObjectives = phaseAFrame.Aggression;
+                activeIntents = phaseAFrame.Intents;
+                actorCommitments = phaseAFrame.Commitments;
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
@@ -475,14 +472,11 @@ namespace Game.Ai.V2
                     if (dirtyAxes.Count == 0)
                         return false;
 
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                    aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                        snapshot, assessment.Breakdown.OpportunityReport);
-                    activeIntents = MissionContinuityLayer.ResolveActive(
-                        player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = turnSession.RefreshActors(
-                        activeIntents, snapshot, reconObjectives);
+                    OperationalFrame reenterFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                    reconObjectives = reenterFrame.Recon;
+                    aggressionObjectives = reenterFrame.Aggression;
+                    activeIntents = reenterFrame.Intents;
+                    actorCommitments = reenterFrame.Commitments;
                     // T03 — the baseline is the input Generate actually evaluates: taken after
                     // continuity resolved (a completed target, a handed-off donor), before any
                     // follow-up delivery. Post-delivery state is judged by the delta it publishes,
@@ -519,14 +513,11 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                        aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport);
-                        activeIntents = MissionContinuityLayer.ResolveActive(
-                            player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = turnSession.RefreshActors(
-                            activeIntents, snapshot, reconObjectives);
+                        OperationalFrame followupFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                        reconObjectives = followupFrame.Recon;
+                        aggressionObjectives = followupFrame.Aggression;
+                        activeIntents = followupFrame.Intents;
+                        actorCommitments = followupFrame.Commitments;
                         ownershipFreshAfterPhaseA = true;
                     }
                     WorldAnalysis.StepObservationStamp afterCapabilities =
@@ -602,18 +593,11 @@ namespace Game.Ai.V2
                     if (!ownershipFreshAfterPhaseA)
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        // Rebuild the operational Aggression facts from THIS
-                        // settled snapshot before re-enumerating objectives, so a neutral destroyed
-                        // during the previous step is gone from the report in the same turn.
-                        StrategyLayer.RefreshAggressionOperationalFacts(
-                            snapshot, assessment.Breakdown);
-                        aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport);
-                        activeIntents = MissionContinuityLayer.ResolveActive(
-                            player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = turnSession.RefreshActors(
-                            activeIntents, snapshot, reconObjectives);
+                        OperationalFrame settledFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                        reconObjectives = settledFrame.Recon;
+                        aggressionObjectives = settledFrame.Aggression;
+                        activeIntents = settledFrame.Intents;
+                        actorCommitments = settledFrame.Commitments;
                     }
                     ownershipFreshAfterPhaseA = false;
                     // Demand families persist across settled admissions. Only
@@ -847,33 +831,9 @@ namespace Game.Ai.V2
                             Dictionary<StableMissionKey, ProvisionFailure> scoutFailureByKey =
                                 scoutFailures.ToDictionary(
                                     f => StableMissionKey.For(f.Funded.Mission), f => f.Failure);
-                            // Exhaustion is a claim about the whole physical pool, not about this
-                            // batch's session contention: only mark a pool exhausted when every
-                            // still-open mission drawing on it failed AND each failure is proven
-                            // pool-wide (ProvenPoolWideUnable), and no mission in that same pool
-                            // already succeeded this batch (a scout that got a mover is live proof
-                            // the pool is not exhausted).
-                            foreach (CapabilityPoolKind pool in openScouts
-                                         .Select(fe => CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission))
-                                         .Where(p => p != CapabilityPoolKind.None).Distinct())
-                            {
-                                List<FundedEntry> poolOpenScouts = openScouts.Where(fe =>
-                                    CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission) == pool).ToList();
-                                bool poolHasSuccessThisBatch = cycleProvisioning.Successful.Values.Any(m =>
-                                    m?.Mission != null
-                                    && CapabilityPoolExhaustionRegistry.PoolFor(m.Mission) == pool);
-                                if (poolHasSuccessThisBatch)
-                                    continue;
-                                bool poolWideExhausted = poolOpenScouts.Count > 0 && poolOpenScouts.All(fe =>
-                                    scoutFailureByKey.TryGetValue(StableMissionKey.For(fe.Mission),
-                                        out ProvisionFailure fail)
-                                    && CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                                        snapshot, player, fe.Mission, fail));
-                                if (poolWideExhausted)
-                                    CapabilityPoolExhaustionRegistry.MarkExhausted(player, pool,
-                                        $"assignment batch rejected all {poolOpenScouts.Count} funded "
-                                        + $"Scout mission(s) in pool {pool}, proven pool-wide unable");
-                            }
+                            CapabilityPoolExhaustionRegistry.SettleScoutBatch(snapshot, player,
+                                openScouts.Select(fe => fe.Mission), scoutFailureByKey,
+                                cycleProvisioning.Successful.Values.Select(m => m?.Mission));
 
                             // One batch means one re-pack. The allocator now sees every impossible
                             // Scout at once, so released AP can admit Economy/Development immediately.
@@ -917,14 +877,8 @@ namespace Game.Ai.V2
                         provisioningFailures.TryGetValue(provisionResult.Failure.Kind,
                             out int failureCount);
                         provisioningFailures[provisionResult.Failure.Kind] = failureCount + 1;
-                        CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
-                            player, selectedFunding.Mission, provisionResult.Failure);
-                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                            snapshot, player, selectedFunding.Mission, provisionResult.Failure);
-                        if (poolWide)
-                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
-                                CapabilityPoolExhaustionRegistry.PoolFor(selectedFunding.Mission),
-                                $"{provisionResult.Failure.Kind}: no eligible actor in snapshot");
+                        CapabilityPoolExhaustionRegistry.RecordProvisionFailure(snapshot, player,
+                            selectedFunding.Mission, provisionResult.Failure);
                         cycleSession.RegisterProvisionFailure(selectedFunding, provisionResult.Failure);
                         cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
                             provisionResult.Failure);
@@ -1180,14 +1134,11 @@ namespace Game.Ai.V2
                 {
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                    aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                        snapshot, assessment.Breakdown.OpportunityReport);
-                    activeIntents = MissionContinuityLayer.ResolveActive(
-                        player, snapshot, reconObjectives, aggressionObjectives);
-                    actorCommitments = turnSession.RefreshActors(
-                        activeIntents, snapshot, reconObjectives);
+                    OperationalFrame zeroRadarFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                    reconObjectives = zeroRadarFrame.Recon;
+                    aggressionObjectives = zeroRadarFrame.Aggression;
+                    activeIntents = zeroRadarFrame.Intents;
+                    actorCommitments = zeroRadarFrame.Commitments;
                     List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
                             actorCommitments, player, ctx, root, demandAxes)
@@ -1219,14 +1170,11 @@ namespace Game.Ai.V2
                                 WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
-                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                            StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
-                            aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                                snapshot, assessment.Breakdown.OpportunityReport);
-                            activeIntents = MissionContinuityLayer.ResolveActive(
-                                player, snapshot, reconObjectives, aggressionObjectives);
-                            actorCommitments = turnSession.RefreshActors(
-                                activeIntents, snapshot, reconObjectives);
+                            OperationalFrame coldFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                            reconObjectives = coldFrame.Recon;
+                            aggressionObjectives = coldFrame.Aggression;
+                            activeIntents = coldFrame.Intents;
+                            actorCommitments = coldFrame.Commitments;
                             demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
                                 aggressionObjectives, activeIntents, actorCommitments,
@@ -1357,6 +1305,7 @@ namespace Game.Ai.V2
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
+            turnSession.AuditTurnEnd(snapshot, reconObjectives);
             turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
@@ -1376,6 +1325,34 @@ namespace Game.Ai.V2
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
             turnSession.Dispose();
             yield return null;
+        }
+
+        // One recipe for re-deriving the operational facts of a decision frame after a settled
+        // mutation: Recon and Aggression objectives, durable intents, then the actor-claim view.
+        private readonly struct OperationalFrame
+        {
+            internal readonly List<ReconObjective> Recon;
+            internal readonly List<RaidObjective> Aggression;
+            internal readonly List<MissionIntent> Intents;
+            internal readonly ActorCommitments Commitments;
+            internal OperationalFrame(List<ReconObjective> recon, List<RaidObjective> aggression,
+                List<MissionIntent> intents, ActorCommitments commitments)
+            { Recon = recon; Aggression = aggression; Intents = intents; Commitments = commitments; }
+        }
+
+        private static OperationalFrame RefreshOperationalFrame(AiTurnSession session,
+            WorldSnapshot snapshot, DesireBreakdown breakdown)
+        {
+            List<ReconObjective> recon = ReconObjectiveEvaluator.Enumerate(snapshot);
+            // Rebuild the operational Aggression facts from this settled snapshot before
+            // re-enumerating objectives, so a neutral destroyed by the previous step is gone.
+            StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
+            List<RaidObjective> aggression = RaidObjectiveEvaluator.Enumerate(
+                snapshot, breakdown.OpportunityReport);
+            List<MissionIntent> intents = MissionContinuityLayer.ResolveActive(
+                session.Player, snapshot, recon, aggression);
+            return new OperationalFrame(recon, aggression, intents,
+                session.RefreshActors(intents, snapshot, recon));
         }
 
         private static List<MissionProposal> BuildMissionSet(WorldSnapshot snapshot,
@@ -1505,7 +1482,7 @@ namespace Game.Ai.V2
 
     // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
     // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier
-    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionTurnOutcome
+    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionStepResult
     // (the ordered per-turn record ReconcileAfterTurn transitions on). ScoutObjectiveEvaluator (the
     // shared completion / validity home) lives in ScoutObjectiveEvaluator.cs.
 

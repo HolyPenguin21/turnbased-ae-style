@@ -89,19 +89,17 @@ namespace Game.Ai.V2
         public void RefreshObjectiveStatesLive(PlayerSetupData player) =>
             MissionStepResultPolicy.RefreshObjectiveStatesLive(_rows.Values, player);
 
-        // Canonical operational ingress; compatibility Finalize exposes the same normalized objects.
-        public IReadOnlyList<MissionStepResult> FinalizeSteps() => Finalize();
-
-        public List<MissionTurnOutcome> Finalize()
+        // The one operational ingress: normalized results, one per registered proposal row.
+        public List<MissionStepResult> FinalizeSteps()
         {
-            var list = new List<MissionTurnOutcome>();
+            var list = new List<MissionStepResult>();
             foreach (KeyValuePair<StableMissionKey, MissionStepFacts> kv in _rows)
             {
                 MissionStepFacts r = kv.Value;
                 if (r.Proposal == null)
                     continue;
 
-                MissionTurnOutcome o = MissionStepResultPolicy.Normalize(kv.Key, r);
+                MissionStepResult o = MissionStepResultPolicy.Normalize(kv.Key, r);
                 list.Add(o);
             }
             return list;

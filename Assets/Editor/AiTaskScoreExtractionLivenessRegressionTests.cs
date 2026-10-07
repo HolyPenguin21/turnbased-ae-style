@@ -25,16 +25,16 @@ namespace Game.EditorTests
 
             // commitmentStallTurns == 2: the first consecutive failure only counts, the second
             // consecutive failure crosses the threshold and suppresses.
-            bool firstSuppressed = state.RecordExtractionDeliveryFailure(10, ResourceType.Energy, hex);
+            bool firstSuppressed = state.Economy.RecordExtractionDeliveryFailure(10, ResourceType.Energy, hex);
             Assert.That(firstSuppressed, Is.False,
                 "one failure must not retire an otherwise-live durable commitment");
-            Assert.That(state.IsExtractionDeliverySuppressed(10, ResourceType.Energy, hex), Is.False);
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(10, ResourceType.Energy, hex), Is.False);
 
-            bool secondSuppressed = state.RecordExtractionDeliveryFailure(11, ResourceType.Energy, hex);
+            bool secondSuppressed = state.Economy.RecordExtractionDeliveryFailure(11, ResourceType.Energy, hex);
             Assert.That(secondSuppressed, Is.True,
                 "repeated consecutive-turn MoverContended/NoMoverExists must eventually bound the suspension");
-            Assert.That(state.IsExtractionDeliverySuppressed(11, ResourceType.Energy, hex), Is.True);
-            Assert.That(state.IsExtractionDeliverySuppressed(12, ResourceType.Energy, hex), Is.True,
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(11, ResourceType.Energy, hex), Is.True);
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(12, ResourceType.Energy, hex), Is.True,
                 "the cooldown window must outlive the triggering turn, not just gate that one call");
         }
 
@@ -44,10 +44,10 @@ namespace Game.EditorTests
             var state = new MissionIntentState();
             var hex = new HexCoord(3, 4);
 
-            state.RecordExtractionDeliveryFailure(5, ResourceType.Materials, hex);
+            state.Economy.RecordExtractionDeliveryFailure(5, ResourceType.Materials, hex);
             // A gap turn without a capability failure (real progress, or a different suspend
             // reason) breaks the consecutive-turn streak on its own — no separate reset call.
-            bool suppressedAfterGap = state.RecordExtractionDeliveryFailure(8, ResourceType.Materials, hex);
+            bool suppressedAfterGap = state.Economy.RecordExtractionDeliveryFailure(8, ResourceType.Materials, hex);
 
             Assert.That(suppressedAfterGap, Is.False,
                 "a non-consecutive failure must restart the count, exactly like Base's own streak rule");
@@ -60,10 +60,10 @@ namespace Game.EditorTests
             var siteA = new HexCoord(8, -2);
             var siteB = new HexCoord(1, 1);
 
-            state.RecordExtractionDeliveryFailure(1, ResourceType.Energy, siteA);
-            bool siteASuppressed = state.RecordExtractionDeliveryFailure(2, ResourceType.Energy, siteA);
+            state.Economy.RecordExtractionDeliveryFailure(1, ResourceType.Energy, siteA);
+            bool siteASuppressed = state.Economy.RecordExtractionDeliveryFailure(2, ResourceType.Energy, siteA);
             bool siteBSuppressedByUnrelatedFailures =
-                state.IsExtractionDeliverySuppressed(2, ResourceType.Energy, siteB);
+                state.Economy.IsExtractionDeliverySuppressed(2, ResourceType.Energy, siteB);
 
             Assert.That(siteASuppressed, Is.True);
             Assert.That(siteBSuppressedByUnrelatedFailures, Is.False,

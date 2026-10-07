@@ -12,6 +12,17 @@ namespace Game.EditorTests
         public void Reset() { AiTurnSession.ClearAll(); MissionIntentRegistry.Clear(); }
 
         [Test]
+        public void LookupForAnotherTurnNeverEndsTheLiveSessionScope()
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            session.Recon.MarkReconActorTrimmed(4, 7);
+            Assert.That(ReconTurnStateStore.For(p, 9).ReconActorsTrimmedThisTurn(9), Is.Empty);
+            Assert.That(session.Recon.ReconActorsTrimmedThisTurn(4), Does.Contain(7));
+            Assert.That(ReconTurnStateStore.For(p, 4).ReconActorsTrimmedThisTurn(4), Does.Contain(7));
+        }
+
+        [Test]
         public void NewTurnHasFreshReconAndResourcesButKeepsIntent()
         {
             var player = new PlayerSetupData();
@@ -72,12 +83,12 @@ namespace Game.EditorTests
             var p = new PlayerSetupData();
             using var session = AiTurnSession.Begin(p, null, null, null, 9);
             session.Apply(new WorldDelta(false, StrategicInvalidationReason.Actor, actorIds: new[] { 7 }));
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             Assert.Throws<InvalidOperationException>(() => WorldDeltaLifecycle.Apply(p, 8,
                 new WorldDelta(mutation, StrategicInvalidationReason.Contact, contactIds: new[] { 2 })));
             Assert.That(session.PendingInvalidations.Reasons, Is.EqualTo(StrategicInvalidationReason.Actor));
             Assert.That(session.PendingInvalidations.ActorIds, Is.EqualTo(new[] { 7 }));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 
         [Test]

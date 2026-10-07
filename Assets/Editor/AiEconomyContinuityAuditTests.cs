@@ -84,7 +84,7 @@ namespace Game.EditorTests
             return intent;
         }
 
-        private static MissionTurnOutcome Settle(PlayerSetupData player, MissionProposal m, int turn,
+        private static MissionStepResult Settle(PlayerSetupData player, MissionProposal m, int turn,
             ProvisionFailure? failure = null, ExecutionResult execution = null)
         {
             var ledger = new MissionOutcomeLedger();
@@ -106,7 +106,7 @@ namespace Game.EditorTests
                     ledger.RecordExecution(execution);
                 }
             }
-            List<MissionTurnOutcome> outcomes = ledger.Finalize();
+            List<MissionStepResult> outcomes = ledger.FinalizeSteps();
             MissionContinuityLayer.ReconcileAfterTurn(player, turn, outcomes);
             return outcomes.Single();
         }
@@ -124,7 +124,7 @@ namespace Game.EditorTests
             MissionIntent intent = DurableIntent(player, m, 3);
             intent.StallTurns = 1;
 
-            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            MissionStepResult o = Settle(player, m, 4, execution: new ExecutionResult
             {
                 StopReason = ExecutionStopReason.StepCompleted, EconomyDeliveryReady = true,
                 FinalHex = Site,
@@ -204,12 +204,12 @@ namespace Game.EditorTests
                 new CardData(new CardDefinition { cardType = CardType.Base }));
             MissionIntent intent = DurableIntent(player, m, 3);
 
-            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            MissionStepResult o = Settle(player, m, 4, execution: new ExecutionResult
             {
                 StopReason = ExecutionStopReason.TargetInvalidated,
             });
 
-            Assert.That(o.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+            Assert.That(o.IsBlocked, Is.True);
             Assert.That(Has(player, intent), Is.True);
         }
 
@@ -285,13 +285,13 @@ namespace Game.EditorTests
             bool a = false, b = false;
             for (int turn = 1; turn <= 3; turn++)
             {
-                a |= state.RecordBaseExpansionDeliveryFailure(turn, cardA, hexA);
-                b |= state.RecordBaseExpansionDeliveryFailure(turn, cardB, hexB);
+                a |= state.Economy.RecordBaseExpansionDeliveryFailure(turn, cardA, hexA);
+                b |= state.Economy.RecordBaseExpansionDeliveryFailure(turn, cardB, hexB);
             }
 
             Assert.That(a && b, Is.True);
-            Assert.That(state.IsBaseExpansionDeliverySuppressed(3, cardA, hexA), Is.True);
-            Assert.That(state.IsBaseExpansionDeliverySuppressed(3, cardB, hexB), Is.True);
+            Assert.That(state.Economy.IsBaseExpansionDeliverySuppressed(3, cardA, hexA), Is.True);
+            Assert.That(state.Economy.IsBaseExpansionDeliverySuppressed(3, cardB, hexB), Is.True);
         }
 
         // --- B6: a fresh (no-intent) build blocked by alternating reasons is suppressed ------
@@ -311,11 +311,11 @@ namespace Game.EditorTests
 
             Settle(player, m, 4, failure: ProvisionFailure.NoMoverExists("no builder"));
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            Assert.That(state.IsExtractionDeliverySuppressed(4, ResourceType.Materials, Site), Is.False,
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(4, ResourceType.Materials, Site), Is.False,
                 "one blocked turn is transient");
 
             Settle(player, m, 5, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
-            Assert.That(state.IsExtractionDeliverySuppressed(5, ResourceType.Materials, Site), Is.True,
+            Assert.That(state.Economy.IsExtractionDeliverySuppressed(5, ResourceType.Materials, Site), Is.True,
                 "a project nobody could deliver two turns running must stop holding the build's resources");
         }
 
@@ -330,7 +330,7 @@ namespace Game.EditorTests
             Settle(player, m, 8, failure: ProvisionFailure.MoverContended("builder busy"));
 
             Assert.That(MissionIntentRegistry.GetOrCreate(player)
-                .IsBaseExpansionDeliverySuppressed(8, card, Site), Is.True);
+                .Economy.IsBaseExpansionDeliverySuppressed(8, card, Site), Is.True);
         }
 
         [Test]
@@ -343,7 +343,7 @@ namespace Game.EditorTests
             Settle(player, m, 6, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
 
             Assert.That(MissionIntentRegistry.GetOrCreate(player)
-                .IsExtractionDeliverySuppressed(6, ResourceType.Materials, Site), Is.False);
+                .Economy.IsExtractionDeliverySuppressed(6, ResourceType.Materials, Site), Is.False);
         }
 
         [Test]
@@ -352,12 +352,12 @@ namespace Game.EditorTests
             var state = new MissionIntentState();
             var hex = new HexCoord(2, 2);
 
-            state.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex);   // blocked attempt
-            state.RecordExtractionDeliveryProgress(4, ResourceType.Energy, hex);  // same turn delivered
-            bool suppressed = state.RecordExtractionDeliveryFailure(5, ResourceType.Energy, hex);
+            state.Economy.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex);   // blocked attempt
+            state.Economy.RecordExtractionDeliveryProgress(4, ResourceType.Energy, hex);  // same turn delivered
+            bool suppressed = state.Economy.RecordExtractionDeliveryFailure(5, ResourceType.Energy, hex);
 
             Assert.That(suppressed, Is.False, "a turn with progress must not start a failure streak");
-            Assert.That(state.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex), Is.False,
+            Assert.That(state.Economy.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex), Is.False,
                 "a later failure outcome of the progress turn is not counted either");
         }
 
@@ -436,7 +436,7 @@ namespace Game.EditorTests
                 ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
                 MaterialsMinimum = 3f, MaterialsDesired = 3f, MaterialsMaximum = 3f,
             };
-            InfrastructureFulfillment.ReserveEconomyCost(player, 1, "Economy:another-build",
+            InfrastructureFulfillment.ReserveEconomyCost(player, 1, ReservationOwner.ForPass("Economy:another-build"),
                 new ResourceCost(materials: 2), 0f, otherOwnersReason);
             var snap = new WorldSnapshot
             {
@@ -501,7 +501,7 @@ namespace Game.EditorTests
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
                 InfrastructureFulfillment.ReserveEconomyCost(player, turn,
-                    EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)),
+                    ReservationOwner.ForPass(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m))),
                     new ResourceCost(materials: 4), 1f);
                 return m;
             }
@@ -556,7 +556,7 @@ namespace Game.EditorTests
             intent.LastReconciledTurn = 6;
             intent.LastProtectedTurn = 7;   // Phase A still holds its resources this turn
 
-            MissionContinuityLayer.ReconcileAfterTurn(player, 7, new List<MissionTurnOutcome>());
+            MissionContinuityLayer.ReconcileAfterTurn(player, 7, new List<MissionStepResult>());
 
             Assert.That(Has(player, intent), Is.False,
                 "a build that has waited commitmentMaxTurns without any progress is released");

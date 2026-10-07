@@ -613,7 +613,7 @@ namespace Game.EditorTests
         public void CreateAttackIntent_IsBornHavingAlreadySpentTheTurnsStrike()
         {
             var state = new MissionIntentState();
-            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: true);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: true);
 
             MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
 
@@ -626,7 +626,7 @@ namespace Game.EditorTests
         public void CreateAttackIntent_WithoutAStrike_InheritsTheLegsMarker()
         {
             var state = new MissionIntentState();
-            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: false);
 
             MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
 
@@ -948,16 +948,16 @@ namespace Game.EditorTests
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 8);
             intent.Attack.RendezvousHex = EnRoute;
             MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: false);
             outcome.MoverArmyId = 8;
             outcome.MadeProgress = true;
-            outcome.Outcome = ExecutionOutcome.ProductiveStop;
-            outcome.ReinforcementHandoffAttempted = true;
-            AttackMissionTarget leg = outcome.AttackTarget;
+            outcome.Disposition = MissionStepDisposition.Progress;
+            outcome.GroundFactsForWrite().ReinforcementHandoffAttempted = true;
+            AttackMissionTarget leg = outcome.AttackFacts().AttackTarget;
             leg.Phase = AttackMissionPhase.Reinforcement;
             leg.SupportArmyId = 8;
             leg.DestinationHex = EnRoute;
-            outcome.AttackTarget = leg;
+            outcome.AttackFactsForWrite().AttackTarget = leg;
 
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
 
@@ -976,10 +976,10 @@ namespace Game.EditorTests
             // Continuity turned the gather into an Assault; nothing has marched yet.
             intent.Attack.Phase = AttackMissionPhase.Assault;
             MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+            MissionStepResult outcome = AttackOutcome(strikeSpent: false);
             outcome.MadeProgress = true;
             outcome.StepsMoved = 1;
-            outcome.Outcome = ExecutionOutcome.ProductiveStop;
+            outcome.Disposition = MissionStepDisposition.Progress;
 
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
 
@@ -1083,16 +1083,19 @@ namespace Game.EditorTests
                 new[] { Sighting(50, RedBase, SiteDefenders()) });
         }
 
-        private static MissionTurnOutcome AttackOutcome(bool strikeSpent)
+        private static MissionStepResult AttackOutcome(bool strikeSpent)
         {
             AttackTargetRef target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base);
-            return new MissionTurnOutcome
+            return new MissionStepResult
             {
                 MissionKind = MissionKind.Attack,
                 IntentKey = MissionIntentKey.ForAttack(target),
                 MoverArmyId = 7,
+            }
+            .WithPayload(new GroundCombatStepPayload { OperationStarted = true })
+            .WithPayload(new AttackStepPayload
+            {
                 HasAttackPayload = true,
-                OperationStarted = true,
                 AttackOpportunisticStrike = strikeSpent,
                 AttackTarget = new AttackMissionTarget
                 {
@@ -1101,7 +1104,7 @@ namespace Game.EditorTests
                     PrimaryArmyId = 7,
                     DestinationHex = RedBase,
                 },
-            };
+            });
         }
 
         private static MissionIntent AttackIntent(AttackMissionPhase phase, int primaryId,

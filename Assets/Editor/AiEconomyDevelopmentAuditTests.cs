@@ -150,7 +150,7 @@ namespace Game.EditorTests
             var costA = new ResourceCost(materials: 3);
             var costB = new ResourceCost(energy: 2);
 
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, a, costA, 4f,
+            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(a), costA, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
             ReserveDeferred(player, turn, new HexCoord(4, 5), ResourceType.Energy, costB);
 
@@ -200,7 +200,7 @@ namespace Game.EditorTests
                 new ResourceCost(materials: 3));
             ReserveDeferred(player, turn, new HexCoord(4, 5), ResourceType.Energy, costB);
             // B's builder reaches its site and Provisioning promotes only B.
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, b, costB, 4f,
+            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(b), costB, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
 
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn, a,
@@ -225,7 +225,7 @@ namespace Game.EditorTests
             string b = OwnerFor(new HexCoord(4, 5), ResourceType.Energy);
             var costB = new ResourceCost(energy: 2);
 
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, b, costB, 4f,
+            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(b), costB, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
             // A re-entrant Phase A pass in the SAME turn asks for the deferred hold again.
             ReserveDeferred(player, turn, new HexCoord(4, 5), ResourceType.Energy, costB);

@@ -130,15 +130,6 @@ namespace Game.Ai.V2
             if (hand != null) e.Hand = hand;
         }
 
-        // The caller invokes Mark only for an observed, non-empty factual delta. A compound reason
-        // is one observation and therefore advances Version once, not once per flag.
-        // Compatibility adapter; publication policy belongs to WorldDeltaLifecycle.
-        internal static void Mark(PlayerSetupData player, int turn,
-            StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
-            IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
-            AiHandData hand = null) =>
-            WorldDeltaLifecycle.Publish(player, turn, reasons, actorIds, contactIds, hexes, hand);
-
         // Storage-only merge; never advances the global world revision.
         internal static void Record(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
@@ -201,7 +192,7 @@ namespace Game.Ai.V2
             return snapshot;
         }
 
-        // Compatibility wrappers for the existing bounded StrategicReactionPass. Their observable
+        // Domain-named entry points for the bounded StrategicReactionPass. Their observable
         // meaning is unchanged: discovered army ids remain TargetIds; hand/capability remain the
         // only follow-up reasons. The additional ReconKnowledge flag is for the future task loop.
         public static void MarkDiscovery(PlayerSetupData player, int turn, IEnumerable<int> armyIds)
@@ -216,16 +207,16 @@ namespace Game.Ai.V2
                     && !newIds.Contains(id))
                     newIds.Add(id);
             if (newIds.Count == 0) return;
-            Mark(player, turn,
+            WorldDeltaLifecycle.Publish(player, turn,
                 StrategicInvalidationReason.ReconKnowledge | StrategicInvalidationReason.Contact,
                 contactIds: newIds);
         }
 
         public static void MarkHandOpportunity(PlayerSetupData player, int turn, AiHandData hand) =>
-            Mark(player, turn, StrategicInvalidationReason.Hand, hand: hand);
+            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Hand, hand: hand);
 
         public static void MarkCapabilityChanged(PlayerSetupData player, int turn, AiHandData hand) =>
-            Mark(player, turn, StrategicInvalidationReason.Capability, hand: hand);
+            WorldDeltaLifecycle.Publish(player, turn, StrategicInvalidationReason.Capability, hand: hand);
 
         // Current pending-invalidation generation for this turn (0 = no entry / different turn).
         public static int Version(PlayerSetupData player, int turn) =>

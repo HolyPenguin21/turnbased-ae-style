@@ -33,7 +33,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData(); HexCoord focus = new HexCoord(4, 3);
             var snap = Snapshot(player, 11, focus);
             snap.Self.ReconCaptureOpportunities = new[] { (20, focus) };
-            MissionIntentRegistry.GetOrCreate(player).MarkReconActorTrimmed(11, 20);
+            MissionIntentRegistry.GetOrCreate(player).ReconTurn(11).MarkReconActorTrimmed(11, 20);
             var capture = new ScoutMissionTarget { Kind = ScoutTargetKind.CaptureStructure, FocusHex = focus };
             Assert.That(ScoutMoverSelector.Eligible(snap, capture, null).Select(a => a.ArmyId), Is.EqualTo(new[] { 20 }));
             Assert.That(ScoutMoverSelector.Eligible(snap, capture, new HashSet<int> { 20 }), Is.Empty,
@@ -93,7 +93,7 @@ namespace Game.EditorTests
             MissionIntent incumbent = Incumbent(focus, preferredMover: 10);
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             state.Put(incumbent);
-            state.MarkReconActorTrimmed(snap.TurnNumber, 20);
+            state.ReconTurn(snap.TurnNumber).MarkReconActorTrimmed(snap.TurnNumber, 20);
 
             MissionProposal mission = ReconMissionPlanner.Propose(snap,
                 new DesireBreakdown { ReconExplorePressure = 1f },
@@ -115,7 +115,7 @@ namespace Game.EditorTests
             MissionIntent incumbent = Incumbent(focus, preferredMover: 10);
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             state.Put(incumbent);
-            state.MarkReconActorTrimmed(11, 20);
+            state.ReconTurn(11).MarkReconActorTrimmed(11, 20);
             MissionProposal mission = ReconMissionPlanner.Propose(snap,
                 new DesireBreakdown { ReconExplorePressure = 1f },
                 new[] { incumbent }, new List<ReconObjective>())[0];
@@ -137,7 +137,7 @@ namespace Game.EditorTests
             HexCoord focus = new HexCoord(4, 3);
             WorldSnapshot snap = Snapshot(player, turn: 11, focus);
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            state.MarkReconActorTrimmed(11, 20);
+            state.ReconTurn(11).MarkReconActorTrimmed(11, 20);
             var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = focus };
 
             Assert.That(ScoutMoverSelector.Eligible(snap, target, null).Select(a => a.ArmyId),
@@ -153,7 +153,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData { Nickname = "Recon regression" };
             HexCoord focus = new HexCoord(4, 3);
             WorldSnapshot snap = Snapshot(player, turn: 11, focus);
-            MissionIntentRegistry.GetOrCreate(player).MarkReconActorTrimmed(11, 20);
+            MissionIntentRegistry.GetOrCreate(player).ReconTurn(11).MarkReconActorTrimmed(11, 20);
             var job = new ReconObjective
                 { Kind = ReconObjectiveKind.Explore, FocusHex = focus, BaseValue = 10f };
 

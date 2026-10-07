@@ -6,8 +6,8 @@ namespace Game.Ai.V2
     // Domain composition only. Generic result/lease storage never implements these rules.
     internal static partial class MissionContinuityLayer
     {
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
-            ExecutionClassifiers = new Dictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
+        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
+            ExecutionClassifiers = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
                 [MissionKind.Scout] = ClassifyScoutStep,
                 [MissionKind.Raid] = ClassifyRaidStep,
@@ -28,27 +28,32 @@ namespace Game.Ai.V2
         internal static bool IsStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player, ProvisionedMission mission) =>
             LiveObjectiveReaders.TryGetValue(mission.Kind, out var read)
                 ? read(player, mission) : IsScoutStepObjectiveSatisfiedLive(player, mission);
-        private static readonly IReadOnlyDictionary<MissionKind, Func<MissionTurnOutcome, bool>>
-            InvalidatedTargetContinues = new Dictionary<MissionKind, Func<MissionTurnOutcome, bool>>
+        private static readonly IReadOnlyDictionary<MissionKind, Func<MissionStepResult, bool>>
+            InvalidatedTargetContinues = new Dictionary<MissionKind, Func<MissionStepResult, bool>>
             {
                 [MissionKind.Scout] = _ => true,
                 [MissionKind.Raid] = GroundCombatLegs.IsSupportLeg,
                 [MissionKind.Attack] = GroundCombatLegs.IsSupportLeg,
             };
-        internal static void ClassifyDomainExecution(ExecutionResult execution, MissionTurnOutcome outcome)
+        internal static void ClassifyDomainExecution(ExecutionResult execution, MissionStepResult outcome)
         {
             if (ExecutionClassifiers.TryGetValue(outcome.MissionKind, out var classify)) classify(execution, outcome);
             else MissionStepResultPolicy.ClassifyDefaultExecution(execution, outcome);
         }
-        internal static bool TryClassifySatisfiedDomainLeg(MissionTurnOutcome outcome) =>
+        internal static bool TryClassifySatisfiedDomainLeg(MissionStepResult outcome) =>
             outcome.MissionKind == MissionKind.Raid && TryClassifySatisfiedRaidLeg(outcome);
-        internal static void ClassifyInvalidatedDomainTarget(MissionTurnOutcome outcome) =>
-            outcome.Outcome = InvalidatedTargetContinues.TryGetValue(outcome.MissionKind, out var continues)
-                && continues(outcome) ? ExecutionOutcome.Blocked : ExecutionOutcome.Failed;
+        internal static void ClassifyInvalidatedDomainTarget(MissionStepResult outcome)
+        {
+            if (InvalidatedTargetContinues.TryGetValue(outcome.MissionKind, out var continues)
+                && continues(outcome))
+                outcome.Disposition = MissionStepDisposition.Waiting;
+            else
+                outcome.Fail();
+        }
         // Ordered compatibility bindings retain original side-leg/completion/payload precedence.
         // A handled completed leg may keep a durable operation; only domain retirement removes it.
         private delegate bool OutcomeTransition(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome result, int turn);
+            MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeTransition[] SideLegTransitions =
             { TryHandleAttackSideLeg, TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
@@ -59,21 +64,21 @@ namespace Game.Ai.V2
         private static readonly OutcomeTransition[] CreationTransitions =
             { TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
                 TryCreateEconomyStep, TryCreateDevelopmentStep };
-        private static readonly Action<MissionIntentState, MissionTurnOutcome, int>[] ProgressRecorders =
+        private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { RecordEconomyStepProgress };
-        private static void RecordDomainStepProgress(MissionIntentState state, MissionTurnOutcome result, int turn)
+        private static void RecordDomainStepProgress(MissionIntentState state, MissionStepResult result, int turn)
         {
             foreach (var record in ProgressRecorders) record(state, result, turn);
         }
         private static bool TryDomainTransition(IEnumerable<OutcomeTransition> handlers, MissionIntentState state,
-            AiAllocatorState allocator, MissionIntent intent, MissionTurnOutcome result, int turn)
+            AiAllocatorState allocator, MissionIntent intent, MissionStepResult result, int turn)
         {
             foreach (var handle in handlers)
                 if (handle(state, allocator, intent, result, turn)) return true;
             return false;
         }
         private delegate void OutcomeObservation(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome result, int turn);
+            MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeObservation[] BeforeMoverObservers = { ObserveReconMover };
         private static readonly OutcomeTransition[] MoverTransitions =
             { TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
@@ -84,7 +89,7 @@ namespace Game.Ai.V2
 
         // Existing durable pinning rule, composed here; generic lease storage knows no mission kind.
         private static bool TryPreservePinnedDomainMover(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome result, int turn) =>
+            MissionIntent intent, MissionStepResult result, int turn) =>
             (intent.Kind == MissionKind.Economy || intent.Kind == MissionKind.Development)
                 && intent.PreferredMoverArmyId.HasValue
                 && intent.PreferredMoverArmyId.Value != result.MoverArmyId.Value;
@@ -131,8 +136,8 @@ namespace Game.Ai.V2
                 [MissionKind.Raid] = ResolveRaidOperation,
             };
 
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ProvisionedMission, MissionTurnOutcome>>
-            ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionTurnOutcome>>
+        private static readonly IReadOnlyDictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
+            ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
             {
                 [MissionKind.Raid] = CaptureRaidProvisionFacts,
                 [MissionKind.Attack] = CaptureAttackProvisionFacts,
@@ -140,8 +145,8 @@ namespace Game.Ai.V2
                 [MissionKind.Economy] = CaptureEconomyProvisionFacts,
                 [MissionKind.Development] = CaptureDevelopmentProvisionFacts,
             };
-        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
-            ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
+        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
+            ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
                 [MissionKind.Scout] = CaptureScoutExecutionFacts,
                 [MissionKind.Raid] = CaptureRaidExecutionFacts,
@@ -149,12 +154,12 @@ namespace Game.Ai.V2
                 [MissionKind.Economy] = CaptureEconomyExecutionFacts,
                 [MissionKind.Development] = CaptureDevelopmentExecutionFacts,
             };
-        internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionTurnOutcome result)
+        internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionStepResult result)
         {
             if (ProvisionFactReaders.TryGetValue(provisioned.Kind, out var capture)) capture(provisioned, result);
             else CaptureScoutProvisionFacts(provisioned, result);
         }
-        internal static void CaptureExecutionFacts(ExecutionResult execution, MissionTurnOutcome result)
+        internal static void CaptureExecutionFacts(ExecutionResult execution, MissionStepResult result)
         {
             CaptureGroundHandoffFacts(execution, result);
             if (ExecutionFactReaders.TryGetValue(result.MissionKind, out var capture)) capture(execution, result);

@@ -350,7 +350,7 @@ namespace Game.Ai.V2
         internal static ArmyMutationContract MutationContractFor(PlayerSetupData player, int turn,
             ArmyData army, ActorCommitments commitments)
         {
-            ArmyMutationContract contract = ActorCommitments.PhysicalMutationContract(player, turn, army, commitments);
+            ArmyMutationContract contract = MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
             return contract?.ProtectsSoloRole == true ? null : contract;
         }
 
@@ -363,7 +363,7 @@ namespace Game.Ai.V2
                 return ReorgPhysicalRole.SpecialExcludedContainer;
             if (AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return ReorgPhysicalRole.Aviation;
-            ArmyMutationContract protection = ActorCommitments.PhysicalMutationContract(player, turn, army, commitments);
+            ArmyMutationContract protection = MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
             if (protection != null && !protection.ProtectsSoloRole)
                 return ReorgPhysicalRole.ProtectedMissionArmy;
             // §P1 — the SoloRecce role protects a scout only while it actually has recon WORK: a

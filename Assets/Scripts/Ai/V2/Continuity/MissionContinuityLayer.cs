@@ -498,7 +498,7 @@ namespace Game.Ai.V2
             int dropped = 0;
             foreach (MissionIntent v in shedable)
             {
-                if (dropped >= surplus || !state.TryConsumeReconLaneTrim(snap.TurnNumber))
+                if (dropped >= surplus || !ReconTurnStateStore.For(player, snap.TurnNumber).TryConsumeReconLaneTrim(snap.TurnNumber))
                     break;
                 state.Remove(v.IntentKey);
                 active.Remove(v);
@@ -506,7 +506,7 @@ namespace Game.Ai.V2
                 {
                     // A contraction decision is turn-wide. Do not let the same actor immediately
                     // acquire a fresh Recon mission later in this turn's bounded replans.
-                    state.MarkReconActorTrimmed(snap.TurnNumber,
+                    ReconTurnStateStore.For(player, snap.TurnNumber).MarkReconActorTrimmed(snap.TurnNumber,
                         v.PreferredMoverArmyId.Value);
                     ReconPatrolStateRegistry.Retire(player,
                         v.PreferredMoverArmyId.Value, "recon lane surplus trim");
@@ -662,14 +662,14 @@ namespace Game.Ai.V2
             if (player == null || outcome == null)
                 return;
             ReconcileOutcome(MissionIntentRegistry.GetOrCreate(player),
-                AiAllocatorStateRegistry.GetOrCreate(player), MissionTurnOutcome.View(outcome), turn);
+                AiAllocatorStateRegistry.GetOrCreate(player), outcome, turn);
         }
 
         // StrategicPhaseA's ProtectActiveEconomyBuild reserves this intent's physical resources
         // and claims its card every cycle it is still committed — a real per-turn touch of the
         // intent's lifecycle, just one that has nothing to execute yet (builder already at/near
         // target, simply waiting for H/E/M/T to accumulate). Without this call that touch is
-        // invisible to Continuity: the intent produces no MissionTurnOutcome this turn, and
+        // invisible to Continuity: the intent produces no MissionStepResult this turn, and
         // ReconcileAfterTurn's "unseen" branch grows StallTurns for it via the SAME raw idle
         // counter used for an abandoned project — reaping a still-legal, still-funded build that
         // is doing exactly the right thing (holding, not thrashing) after 2 quiet turns.
@@ -699,7 +699,7 @@ namespace Game.Ai.V2
 
             foreach (MissionStepResult result in outcomes ?? Array.Empty<MissionStepResult>())
             {
-                MissionTurnOutcome o = MissionTurnOutcome.View(result);
+                MissionStepResult o = result;
                 seen.Add(o.IntentKey);
                 ReconcileOutcome(state, allocState, o, turn);
             }
@@ -722,7 +722,7 @@ namespace Game.Ai.V2
                 intent.TurnsActive++;
                 // A committed Economy build Phase A is still protecting this very turn (reserving
                 // its resources, holding its card) has real, legitimate activity even though it
-                // produced no MissionTurnOutcome — it simply has nothing executable yet while H/E/
+                // produced no MissionStepResult — it simply has nothing executable yet while H/E/
                 // M/T accumulate. That is not the same "nothing happened" as an abandoned/invalid
                 // intent, so it must not spend the same StallTurns budget. See MarkProtectedThisTurn.
                 bool protectedWaitingOnResources = intent.LastProtectedTurn == turn;
@@ -741,13 +741,13 @@ namespace Game.Ai.V2
         }
 
         private static void ReconcileOutcome(MissionIntentState state,
-            AiAllocatorState allocState, MissionTurnOutcome o, int turn)
+            AiAllocatorState allocState, MissionStepResult o, int turn)
         {
             state.TryGet(o.IntentKey, out MissionIntent intent);
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
-            AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
+            AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Disposition}"
                 + (o.ObjectiveSatisfied ? " satisfied" : "")
-                + (o.StructuralFailure ? " structural" : "")
+                + (o.Disposition == MissionStepDisposition.PermanentFailure ? " structural" : "")
                 + $" {o.IntentKey}");
             RecordDomainStepProgress(state, o, turn);
             if (TryDomainTransition(SideLegTransitions, state, allocState, intent, o, turn)) return;
@@ -782,7 +782,7 @@ namespace Game.Ai.V2
             else TryDomainTransition(CreationTransitions, state, allocState, null, o, turn);
         }
 
-        private static void AdvanceIntent(MissionIntent intent, MissionTurnOutcome o, int turn,
+        private static void AdvanceIntent(MissionIntent intent, MissionStepResult o, int turn,
             MissionIntentState state, AiAllocatorState allocState)
         {
             bool firstReconcileThisTurn = intent.LastReconciledTurn != turn;
@@ -849,7 +849,7 @@ namespace Game.Ai.V2
             else
             {
                 AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} advanced "
-                    + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
+                    + $"({o.Disposition}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
                     + (capabilityUnavailable ? $", suspended CapabilityUnavailable:{o.ProvisionFailureKindValue}" : "") + ")");
             }
         }
@@ -859,7 +859,7 @@ namespace Game.Ai.V2
         // Docs/ai-duplicate-methods-analysis.md, group M). Collapsing them here means a future
         // field added to MissionIntent only has to be wired up once, instead of risking a silently
         // half-initialized intent from a copy nobody remembered to update.
-        private static MissionIntent NewIntent(MissionTurnOutcome o, int turn, MissionKind kind,
+        private static MissionIntent NewIntent(MissionStepResult o, int turn, MissionKind kind,
             CommitmentTier funding, object objective)
         {
             return new MissionIntent
@@ -892,7 +892,7 @@ namespace Game.Ai.V2
         // Retirement of whatever intent an outcome names: an Economy intent through its own owner
         // above, any other kind is simply removed (a loan can only point at an Economy borrower).
         private static void RetireOutcomeIntent(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome outcome, int turn)
+            MissionStepResult outcome, int turn)
         {
             foreach (var prepare in RetirementPreparers) prepare(state, null, intent, outcome, turn);
             state.Remove(intent?.IntentKey ?? outcome.IntentKey, turn);
@@ -947,7 +947,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] cooldown — {key} reason={reason} start=t{turn} until=t{until} duration={duration}");
         }
 
-        private static string Describe(MissionTurnOutcome o) =>
+        private static string Describe(MissionStepResult o) =>
             o.Proposal != null && o.Proposal.Target is ScoutMissionTarget t
                 ? ReconScoutKinds.Name(t.Kind)
                 : o.Proposal != null && o.Proposal.Target is EconomyMissionTarget e

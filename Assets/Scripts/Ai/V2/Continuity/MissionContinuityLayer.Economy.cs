@@ -32,19 +32,19 @@ namespace Game.Ai.V2
         internal static bool IsEconomyStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
             ProvisionedMission pm) => EconomyLifecycleState.ObjectiveSatisfied(player, pm.EconomyTarget);
 
-        internal static void ClassifyEconomyStep(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyEconomyStep(ExecutionResult e, MissionStepResult o)
         {
             // A committed roster mutation remains progress if its pinned tail became stale.
             if (e.EconomyPrepared && e.StopReason == ExecutionStopReason.TargetInvalidated)
             {
-                o.Outcome = ExecutionOutcome.ProductiveStop;
+                o.Disposition = MissionStepDisposition.Progress;
                 return;
             }
             switch (e.StopReason)
             {
                 case ExecutionStopReason.StepCompleted:
                 case ExecutionStopReason.OutOfMovement:
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.Disposition = MissionStepDisposition.Progress;
                     break;
                 case ExecutionStopReason.NoSafeStep:
                 case ExecutionStopReason.MoveRejected:
@@ -53,20 +53,20 @@ namespace Game.Ai.V2
                 // preparation gone this pass), never proof the durable build is invalid:
                 // Continuity re-validates the objective itself (ResolveActive).
                 case ExecutionStopReason.TargetInvalidated:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
                 default:
-                    o.Outcome = ExecutionOutcome.Failed;
+                    o.Fail();
                     break;
             }
             return;
         }
-        private static void RecordEconomyStepProgress(MissionIntentState state, MissionTurnOutcome o, int turn)
+        private static void RecordEconomyStepProgress(MissionIntentState state, MissionStepResult o, int turn)
         {
             // A build project that really progressed this turn is not failing to deliver: end its
             // delivery-failure streak before any branch below may record a failure for it.
             if (o.MissionKind == MissionKind.Economy
-                && (o.MadeProgress || o.Outcome == ExecutionOutcome.Completed)
+                && (o.MadeProgress || o.Disposition == MissionStepDisposition.Completed)
                 && TryGetEconomyTarget(o, out EconomyMissionTarget progressed))
             {
                 if (progressed.Kind == EconomyTaskKind.FoundBase)
@@ -79,11 +79,11 @@ namespace Game.Ai.V2
 
         }
         private static bool TryKeepEconomyRecovery(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             bool returnRecoveryOutcome = o.MissionKind == MissionKind.Economy
-                && (o.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
-                    || o.EconomyTarget.Kind == EconomyTaskKind.ReturnCollector
+                && (o.EconomyFacts().EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
+                    || o.EconomyFacts().EconomyTarget.Kind == EconomyTaskKind.ReturnCollector
                     || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder
                     || intent?.Economy?.Kind == EconomyTaskKind.ReturnCollector);
             if (returnRecoveryOutcome && intent != null)
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
             return false;
         }
         private static bool TryHandleEconomyNoProgress(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             if (o.MissionKind == MissionKind.Economy && !o.MadeProgress)
             {
@@ -146,9 +146,9 @@ namespace Game.Ai.V2
         }
 
         private static bool TryCreateEconomyStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.HasEconomyPayload && o.MadeProgress)) return false;
+            if (!(o.EconomyFacts().HasEconomyPayload && o.MadeProgress)) return false;
             CreateEconomyIntent(state, o, turn);
             return true;
         }
@@ -156,11 +156,11 @@ namespace Game.Ai.V2
 
         // A materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
         // provisioning before ever producing a ProvisionedMission only has it on the proposal.
-        private static bool TryGetEconomyTarget(MissionTurnOutcome o, out EconomyMissionTarget target)
+        private static bool TryGetEconomyTarget(MissionStepResult o, out EconomyMissionTarget target)
         {
-            if (o.HasEconomyPayload)
+            if (o.EconomyFacts().HasEconomyPayload)
             {
-                target = o.EconomyTarget;
+                target = o.EconomyFacts().EconomyTarget;
                 return true;
             }
             if (o.Proposal?.Target is EconomyMissionTarget proposed)
@@ -172,9 +172,9 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static void CreateEconomyIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        private static void CreateEconomyIntent(MissionIntentState state, MissionStepResult o, int turn)
         {
-            EconomyMissionTarget t = o.EconomyTarget;
+            EconomyMissionTarget t = o.EconomyFacts().EconomyTarget;
             var ei = new EconomyIntent
             {
                 Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
@@ -191,19 +191,19 @@ namespace Game.Ai.V2
                 BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                 IntrinsicValue = o.Proposal?.BaseValue,
                 MinimumFollowupAp = t.MinimumFollowupAp,
-                Loaned = o.EconomyLoanSource.HasValue,
-                LoanSource = o.EconomyLoanSource ?? default,
+                Loaned = o.EconomyFacts().EconomyLoanSource.HasValue,
+                LoanSource = o.EconomyFacts().EconomyLoanSource ?? default,
             };
-            CommitmentTier funding = o.EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft;
+            CommitmentTier funding = o.EconomyFacts().EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft;
             MissionIntent intent = NewIntent(o, turn, MissionKind.Economy, funding, ei);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
         }
 
         private static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,
-            MissionTurnOutcome outcome)
+            MissionStepResult outcome)
         {
-            MissionIntentKey? source = outcome?.EconomyLoanSource;
+            MissionIntentKey? source = outcome?.EconomyFacts().EconomyLoanSource;
             if (!source.HasValue && economy?.Economy?.Loaned == true)
                 source = economy.Economy.LoanSource;
             if (source.HasValue && state.TryGet(source.Value, out MissionIntent lender))
@@ -215,7 +215,7 @@ namespace Game.Ai.V2
         // rest of the turn), then the intent goes. `outcome` may carry the loan of a mission that
         // never became durable. Economy audit B8.
         private static void RetireEconomyIntent(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome outcome, int turn, bool returnLoan = true)
+            MissionStepResult outcome, int turn, bool returnLoan = true)
         {
             if (returnLoan)
                 RepayEconomyLoan(state, intent, outcome);
@@ -228,7 +228,7 @@ namespace Game.Ai.V2
         }
 
         // A proven route failure of an outbound Economy step (see ReconcileOutcome).
-        private static bool IsEconomyRouteFailure(MissionTurnOutcome o) =>
+        private static bool IsEconomyRouteFailure(MissionStepResult o) =>
             o.ProvisionFailureKindValue == ProvisionFailureKind.NoExecutableStep
             || (!o.ProvisionFailureKindValue.HasValue
                 && (o.StopReason == ExecutionStopReason.NoSafeStep
@@ -239,7 +239,7 @@ namespace Game.Ai.V2
         // a builder that has not advanced for commitmentMaxTurns is released, its lender resumed,
         // instead of holding the hero (and the lender) forever. Economy audit S1.
         private static void KeepEconomyReturn(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome o, int turn)
+            MissionStepResult o, int turn)
         {
             // Preserve the collector's existing bounded capability retry contract. Lost-home
             // failure stays alive until fresh ResolveActive can retarget and reset the stall.
@@ -277,7 +277,7 @@ namespace Game.Ai.V2
             && (i.Economy?.Kind == EconomyTaskKind.MobileCollection
                 || i.Economy?.Kind == EconomyTaskKind.ReturnCollector);
         private static void PrepareEconomyRetirement(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             // Preserve the old null-intent loan hand-back (the attempt may never become durable).
             // Ownership cleanup belongs to the common retirement boundary, not this domain hook.
@@ -285,11 +285,11 @@ namespace Game.Ai.V2
         }
 
         private static void ApplyEconomyStepFacts(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (o.HasEconomyPayload && intent.Economy != null)
+            if (o.EconomyFacts().HasEconomyPayload && intent.Economy != null)
             {
-                intent.Economy.TargetHex = o.EconomyTarget.TargetHex;
+                intent.Economy.TargetHex = o.EconomyFacts().EconomyTarget.TargetHex;
                 intent.Economy.BuilderArmyId = intent.PreferredMoverArmyId;
                 // The mission has already used the continuity-pinned builder's world score.
                 // Persist the last accepted intrinsic value so a later turn without a refreshed
@@ -299,13 +299,13 @@ namespace Game.Ai.V2
                     && scored.TargetHex.Equals(intent.Economy.TargetHex)
                     && scored.BuilderArmyId == intent.PreferredMoverArmyId)
                     intent.Economy.IntrinsicValue = o.Proposal.BaseValue;
-                if (o.EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
+                if (o.EconomyFacts().EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
             }
 
         }
 
         private static bool TryHandleEconomyCapabilityFailure(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             // Base expansion is deliberately exempt from StallTurns/ShouldReap aging (see the
             // comment above transientCapability in ReconcileOutcome) so an in-progress delivery
@@ -539,16 +539,16 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureEconomyProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureEconomyProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasEconomyPayload = true;
-            o.EconomyTarget = pm.EconomyTarget;
-            o.EconomyLoanSource = pm.EconomyLoanSource;
+            o.EconomyFactsForWrite().HasEconomyPayload = true;
+            o.EconomyFactsForWrite().EconomyTarget = pm.EconomyTarget;
+            o.EconomyFactsForWrite().EconomyLoanSource = pm.EconomyLoanSource;
         }
 
-        private static void CaptureEconomyExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureEconomyExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
-            o.EconomyBuildCompleted = e.InfrastructureChanged;
+            o.EconomyFactsForWrite().EconomyBuildCompleted = e.InfrastructureChanged;
             o.PayloadForWrite<EconomyStepPayload>().DeliveryReady = e.EconomyDeliveryReady;
             o.PayloadForWrite<EconomyStepPayload>().Holding = e.EconomyHolding;
         }

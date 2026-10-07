@@ -29,7 +29,7 @@ namespace Game.EditorTests
                     var ledger = new MissionOutcomeLedger(); ledger.RegisterProposals(new[] { proposal });
                     ledger.RecordProvisionFailure(proposal, new ProvisionFailure(failure,
                         ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, "parity"));
-                    Append(rows, ledger.Finalize()[0]);
+                    Append(rows, ledger.FinalizeSteps()[0]);
                 }
                 foreach (ExecutionStopReason stop in Enum.GetValues(typeof(ExecutionStopReason)))
                 for (int flags = 0; flags < 64; ++flags)
@@ -51,7 +51,7 @@ namespace Game.EditorTests
                         AttackOpportunisticStrike = flags % 29 == 0, AttackCaptureHadBattle = flags % 31 == 0,
                         AirSupportStrikeSucceeded = flags % 37 == 0, RaidRefitSucceeded = flags % 41 == 0,
                         ApSpent = flags % 4, ActualActorArmyId = 0, FinalHex = new HexCoord(2, 3) });
-                    Append(rows, ledger.Finalize()[0]);
+                    Append(rows, ledger.FinalizeSteps()[0]);
                 }
             }
             using var sha = SHA256.Create();
@@ -69,20 +69,26 @@ namespace Game.EditorTests
             return new MissionProposal { Kind = kind, Target = target };
         }
 
-        private static void Append(StringBuilder rows, MissionTurnOutcome outcome)
+        // The frozen fingerprints encode the original four-state execution outcome ordinal.
+        private static int LegacyOutcome(MissionStepResult r) =>
+            r.Disposition == MissionStepDisposition.Completed ? 0
+            : r.Disposition == MissionStepDisposition.Progress ? 1
+            : r.IsBlocked ? 2 : 3;
+
+        private static void Append(StringBuilder rows, MissionStepResult outcome)
         {
             // These are the original externally visible facts, including all currently carried domain flags.
-            rows.Append((int)outcome.Outcome).Append('|').Append(outcome.ObjectiveSatisfied).Append('|')
-                .Append(outcome.ObjectiveSatisfiedExternally).Append('|').Append(outcome.StructuralFailure).Append('|')
+            rows.Append(LegacyOutcome(outcome)).Append('|').Append(outcome.ObjectiveSatisfied).Append('|')
+                .Append(outcome.ObjectiveSatisfiedExternally).Append('|').Append(outcome.Disposition == MissionStepDisposition.PermanentFailure).Append('|')
                 .Append(outcome.MadeProgress).Append('|').Append(outcome.StepsMoved).Append('|')
                 .Append(outcome.ApSpent).Append('|').Append(outcome.MoverArmyId).Append('|').Append(outcome.FinalHex).Append('|')
-                .Append(outcome.OperationStarted).Append('|').Append(outcome.ReinforcementHandoffAttempted).Append('|')
-                .Append(outcome.AttackIntermediateCaptured).Append('|').Append(outcome.AttackCaptureHadBattle).Append('|')
-                .Append(outcome.AttackOpportunisticStrike).Append('|').Append(outcome.RaidRefitSucceeded).Append('|')
-                .Append(outcome.RaidAirSupportStrikeSucceeded).Append('|').Append(outcome.EconomyBuildCompleted).Append('|')
-                .Append(outcome.HasRaidPayload).Append('|').Append(outcome.HasAttackPayload).Append('|')
-                .Append(outcome.HasEconomyPayload).Append('|').Append(outcome.HasDevelopmentPayload).Append('|')
-                .Append(outcome.HasActiveDefencePayload).Append('|').Append(outcome.HasScoutPayload).Append('\n');
+                .Append(outcome.GroundFacts().OperationStarted).Append('|').Append(outcome.GroundFacts().ReinforcementHandoffAttempted).Append('|')
+                .Append(outcome.AttackFacts().AttackIntermediateCaptured).Append('|').Append(outcome.AttackFacts().AttackCaptureHadBattle).Append('|')
+                .Append(outcome.AttackFacts().AttackOpportunisticStrike).Append('|').Append(outcome.RaidFacts().RaidRefitSucceeded).Append('|')
+                .Append(outcome.RaidFacts().RaidAirSupportStrikeSucceeded).Append('|').Append(outcome.EconomyFacts().EconomyBuildCompleted).Append('|')
+                .Append(outcome.RaidFacts().HasRaidPayload).Append('|').Append(outcome.AttackFacts().HasAttackPayload).Append('|')
+                .Append(outcome.EconomyFacts().HasEconomyPayload).Append('|').Append(outcome.DevelopmentFacts().HasDevelopmentPayload).Append('|')
+                .Append(outcome.DefenceFacts().HasActiveDefencePayload).Append('|').Append(outcome.ReconFacts().HasScoutPayload).Append('\n');
         }
     }
 }

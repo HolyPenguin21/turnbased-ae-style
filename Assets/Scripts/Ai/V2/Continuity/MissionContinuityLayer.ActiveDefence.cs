@@ -160,9 +160,9 @@ namespace Game.Ai.V2
         }
 
         private static void CreateActiveDefenceIntent(MissionIntentState state,
-            MissionTurnOutcome o, int turn)
+            MissionStepResult o, int turn)
         {
-            ActiveDefenceMissionTarget t = o.ActiveDefenceTarget;
+            ActiveDefenceMissionTarget t = o.DefenceFacts().ActiveDefenceTarget;
             var payload = new ActiveDefenceIntent
             {
                 Phase = t.Phase,
@@ -198,9 +198,9 @@ namespace Game.Ai.V2
                 + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
         private static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.HasActiveDefencePayload && o.MadeProgress)) return false;
+            if (!(o.DefenceFacts().HasActiveDefencePayload && o.MadeProgress)) return false;
             CreateActiveDefenceIntent(state, o, turn);
             return true;
         }
@@ -219,10 +219,10 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasActiveDefencePayload = true;
-            o.ActiveDefenceTarget = pm.ActiveDefenceTarget;
+            o.DefenceFactsForWrite().HasActiveDefencePayload = true;
+            o.DefenceFactsForWrite().ActiveDefenceTarget = pm.ActiveDefenceTarget;
         }
 
     }

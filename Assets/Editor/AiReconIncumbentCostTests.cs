@@ -87,7 +87,7 @@ namespace Game.EditorTests
             // Witness must follow the actor actually priced (#20), not the structurally-ineligible
             // nominal incumbent (#10). This is a proposal-internal consistency fix only — durable
             // ownership (MissionIntent.PreferredMoverArmyId) is set from the real post-execution
-            // MissionTurnOutcome.MoverArmyId in MissionContinuityLayer, never from this witness.
+            // MissionStepResult.MoverArmyId in MissionContinuityLayer, never from this witness.
             Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(20),
                 "witness must name the same actor Requirements/BaseValue were actually priced against");
             Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(1f),

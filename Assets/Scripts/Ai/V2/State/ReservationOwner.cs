@@ -23,10 +23,9 @@ namespace Game.Ai.V2
         public static ReservationOwner ForPass(string token) =>
             string.IsNullOrEmpty(token) ? null : new ReservationOwner(null, token);
 
-        // Compatibility for existing bank/test callers. Production operation writers pass
-        // ForOperation; pass holds intentionally have no durable mission identity.
-        public static implicit operator ReservationOwner(string token) => ForPass(token);
         public static implicit operator string(ReservationOwner owner) => owner?.Token;
+        // Writers must pick ForOperation or ForPass explicitly; only the read-only token
+        // projection is implicit, so no raw string can become an owner by accident.
         public bool Equals(ReservationOwner other) => other != null
             && StringComparer.Ordinal.Equals(Token, other.Token);
         public override bool Equals(object obj) => obj is ReservationOwner owner ? Equals(owner)

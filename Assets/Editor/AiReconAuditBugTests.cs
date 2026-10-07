@@ -160,9 +160,9 @@ namespace Game.EditorTests
                 Key = pm.Key, Source = pm, StepsMoved = 1,
                 StopReason = ExecutionStopReason.TargetInvalidated,
             });
-            MissionTurnOutcome outcome = ledger.Finalize().Single();
+            MissionStepResult outcome = ledger.FinalizeSteps().Single();
 
-            Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+            Assert.That(outcome.IsBlocked, Is.True);
             MissionContinuityLayer.ReconcileStep(player, 8, outcome);
             Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent kept), Is.True);
             Assert.That(kept.PreferredMoverArmyId, Is.EqualTo(10));
@@ -176,7 +176,7 @@ namespace Game.EditorTests
             ledger.RegisterProposals(new[] { m });
             ledger.RecordProvisionFailure(m, ProvisionFailure.TargetInvalidated("focus holds a known army"));
 
-            Assert.That(ledger.Finalize().Single().Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+            Assert.That(ledger.FinalizeSteps().Single().IsBlocked, Is.True);
         }
 
         // B6 — aviation serves only AirSweep, so a mover-less ground Refresh must not ask the

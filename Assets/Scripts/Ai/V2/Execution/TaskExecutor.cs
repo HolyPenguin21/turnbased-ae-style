@@ -161,7 +161,7 @@ namespace Game.Ai.V2
             List<ExecutionResult> results, bool enforceFreshPlan, bool logStalePlan)
         {
             if (!enforceFreshPlan || pm.PlannedAtStateVersion < 0
-                || V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
+                || WorldDeltaLifecycle.IsCurrent(pm.PlannedAtStateVersion))
                 return false;
 
             result.StartHex = pm.ExecutionHex;
@@ -176,7 +176,7 @@ namespace Game.Ai.V2
             ReleaseEconomyReservation(player, ctx, pm);
             if (logStalePlan)
                 AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — stale plan "
-                    + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
+                    + $"planned@v{pm.PlannedAtStateVersion}, current=v{WorldDeltaLifecycle.Current}; no command issued");
             return true;
         }
 
@@ -229,7 +229,7 @@ namespace Game.Ai.V2
                 && ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(pm.ScoutKind,
                     pm.Mission?.FromDurableIntent == true, AiArmyRoles.IsSoloRecce(army),
                     actedThisTurn: false);
-            result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
+            result.StateVersionAfter = WorldDeltaLifecycle.Current;   // nothing mutated
             result.StopReason = validity == MissionValidity.StaleMoverLost
                 ? ExecutionStopReason.MoverLost
                 : validity == MissionValidity.StaleGoalMet
@@ -444,7 +444,7 @@ namespace Game.Ai.V2
                     Key = pm.Key,
                     Source = pm,
                     PlannedAtStateVersion = pm.PlannedAtStateVersion,
-                    StateVersionBefore = V2StateVersion.Current,
+                    StateVersionBefore = WorldDeltaLifecycle.Current,
                     ResourcesBefore = AiV2Trace.Stamp(root),
                 };
                 yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
@@ -474,7 +474,7 @@ namespace Game.Ai.V2
                 Key = pm.Key,
                 Source = pm,
                 PlannedAtStateVersion = pm.PlannedAtStateVersion,
-                StateVersionBefore = V2StateVersion.Current,
+                StateVersionBefore = WorldDeltaLifecycle.Current,
                 ResourcesBefore = AiV2Trace.Stamp(root),
             };
             var soloQueue = new List<ProvisionedMission> { pm };
@@ -880,20 +880,19 @@ namespace Game.Ai.V2
             // No extra counter or independent "changed" flag is introduced.
             // ActorMaterialized (a garrison-extraction CreateArmy/TransferMember) is a real world
             // mutation with no movement/stealth/infrastructure/combat signal of its own, so it
-            // bumps V2StateVersion explicitly.
-            if (result.StateVersionAfter < 0
-                && (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
+            // bumps WorldDeltaLifecycle explicitly.
+            result.StateVersionAfter = WorldDeltaLifecycle.StampAction(
+                result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
                     || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
-                    || result.EconomyPrepared))
-                WorldDeltaLifecycle.CommitMutation();
-            result.StateVersionAfter = V2StateVersion.Current;
+                    || result.EconomyPrepared,
+                childAlreadyCommitted: result.StateVersionAfter >= 0);
         }
 
         private static void CompleteResult(ExecutionResult result, PlayerRoot root)
         {
             if (result == null) return;
             if (result.StateVersionAfter < 0)
-                result.StateVersionAfter = V2StateVersion.Current;
+                result.StateVersionAfter = WorldDeltaLifecycle.Current;
             result.ResourcesAfter = AiV2Trace.Stamp(root);
         }
     }

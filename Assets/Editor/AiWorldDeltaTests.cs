@@ -17,19 +17,19 @@ namespace Game.EditorTests
         [TestCase(false)]
         public void AviationLaunchRevisionUsesTheCommittedReceiptWithoutRequiringASurvivingActor(bool committed)
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             // No registry actor: a destroyed wing is no longer available to the caller.
             AviationRebasePlanner.RecordLaunchReceipt(new Game.Ai.AiMoveExecutionTrace
                 { FormationCommitted = committed });
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + (committed ? 1 : 0)));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + (committed ? 1 : 0)));
         }
 
         [Test]
         public void MissingAviationLaunchReceiptDoesNotAdvanceRevision()
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             AviationRebasePlanner.RecordLaunchReceipt(null);
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 
         [TestCase(true)]
@@ -53,7 +53,7 @@ namespace Game.EditorTests
             var proposal = new MissionProposal { Kind = MissionKind.Development };
             var execution = new ExecutionResult { Key = StableMissionKey.For(proposal),
                 StopReason = ExecutionStopReason.StepCompleted, StepsMoved = changed ? 1 : 0 };
-            int initial = V2StateVersion.Current;
+            int initial = WorldDeltaLifecycle.Current;
             WorldDeltaLifecycle.RecordExecutionMutation(execution, changed);
             WorldAnalysis.PublishStepObservationDelta(p, 4,
                 new WorldAnalysis.StepObservationStamp(before, new V2ResourceStamp(3, 2, 2, 2, 2), null),
@@ -66,9 +66,9 @@ namespace Game.EditorTests
             ledger.RegisterProposals(new[] { proposal }); ledger.RecordExecution(execution);
             var step = ledger.FinalizeSteps()[0];
             Assert.That(step.WorldDeltas, Is.SameAs(execution.WorldDeltas));
-            Assert.That(MissionTurnOutcome.View(step).WorldDeltas, Is.SameAs(step.WorldDeltas));
+            Assert.That(step.WorldDeltas, Is.SameAs(step.WorldDeltas));
             Assert.That(step.StateVersionAfter, Is.EqualTo(execution.StateVersionAfter));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(initial + (changed ? 1 : 0)));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(initial + (changed ? 1 : 0)));
             Assert.That(session.PendingInvalidations.RegistryVersion, Is.EqualTo(pending.RegistryVersion));
             if (changed)
             {
@@ -106,13 +106,13 @@ namespace Game.EditorTests
                 plan.Transfers.Add(PlannedTransfer.Reorder(2, army.Id, "promote second"));
                 plan.Transfers.Add(PlannedTransfer.Reorder(1, army.Id, "restore first"));
                 plan.Transfers.Add(PlannedTransfer.Reorder(1, army.Id, "already first"));
-                int before = V2StateVersion.Current;
+                int before = WorldDeltaLifecycle.Current;
                 var result = HousekeepingExecutor.Execute(plan, analysis, p,
                     new Game.Ai.AiTurnContext { TurnNumber = 4 }, new ActorCommitments());
                 Assert.That(result.Applied, Is.EqualTo(2));
                 Assert.That(result.Failed, Is.EqualTo(1));
                 Assert.That(army.Members, Is.EqualTo(new[] { first, second }));
-                Assert.That(V2StateVersion.Current - before, Is.EqualTo(2));
+                Assert.That(WorldDeltaLifecycle.Current - before, Is.EqualTo(2));
             }
             finally { indexed.Remove(army.Hex); }
         }
@@ -122,7 +122,7 @@ namespace Game.EditorTests
         [TestCase(3)]
         public void ConsecutiveFlightActionsKeepSeparateReceiptsWithoutAnAggregateBump(int returnSteps)
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             var result = new ExecutionResult { CombatChanged = true };
             // One committed stationary strike, then zero or more actual return moves. A rejected
             // return is not a mutation even though the aggregate still contains CombatChanged.
@@ -135,18 +135,18 @@ namespace Game.EditorTests
             WorldDeltaLifecycle.RecordExecutionMutation(result, false);
             typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.NonPublic | BindingFlags.Static)
                 .Invoke(null, new object[] { result });
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1 + returnSteps));
-            Assert.That(result.StateVersionAfter, Is.EqualTo(V2StateVersion.Current));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1 + returnSteps));
+            Assert.That(result.StateVersionAfter, Is.EqualTo(WorldDeltaLifecycle.Current));
         }
 
         [Test]
         public void RejectedFlightDoesNotManufactureAReceiptOrRevision()
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             var result = new ExecutionResult();
             WorldDeltaLifecycle.RecordExecutionMutation(result, false);
             Assert.That(result.StateVersionAfter, Is.EqualTo(-1));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 
         [TestCase((int)(StrategicInvalidationReason.Actor))]
@@ -158,9 +158,9 @@ namespace Game.EditorTests
         {
             var facts = (StrategicInvalidationReason)value;
             var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 7);
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             session.Apply(new WorldDelta(true, facts, new[] { 0 }, new[] { 3 }));
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
             Assert.That(StrategicInterruptRegistry.Peek(p, 7).Reasons, Is.EqualTo(facts));
             Assert.That(StrategicInterruptRegistry.Peek(p, 7).ActorIds, Is.EqualTo(new[] { 0 }));
         }
@@ -169,9 +169,33 @@ namespace Game.EditorTests
         [TestCase(true)]
         public void NoOpAndRollbackDoNotAdvanceRevision(bool rollback)
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             WorldDeltaLifecycle.CommitMutation(committed: false);
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before), rollback ? "rollback" : "no-op");
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before), rollback ? "rollback" : "no-op");
+        }
+
+        // One shared rule: a real change advances once; nothing changed or a child receipt already
+        // covered the mutation advances zero times. Aggregate executors all stamp through it.
+        [TestCase(true, false, 1)]
+        [TestCase(true, true, 0)]
+        [TestCase(false, false, 0)]
+        [TestCase(false, true, 0)]
+        public void StampActionAdvancesAtMostOncePerAction(bool changed, bool childCommitted, int expected)
+        {
+            int before = WorldDeltaLifecycle.Current;
+            int receipt = WorldDeltaLifecycle.StampAction(changed, childCommitted);
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + expected));
+            Assert.That(receipt, Is.EqualTo(WorldDeltaLifecycle.Current));
+        }
+
+        [Test]
+        public void SequentialActionsEachAdvanceOnceAndNeverShareAReceipt()
+        {
+            int before = WorldDeltaLifecycle.Current;
+            int first = WorldDeltaLifecycle.StampAction(true);
+            int second = WorldDeltaLifecycle.StampAction(true);
+            Assert.That(second, Is.EqualTo(first + 1));
+            Assert.That(first, Is.EqualTo(before + 1));
         }
 
         [TestCase(true)]
@@ -179,19 +203,19 @@ namespace Game.EditorTests
         public void CanonicalCommitOwnsNestedCardPlayStampsAndRollbackDropsFacts(bool committed)
         {
             var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 7);
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             using (var transaction = WorldDeltaLifecycle.BeginTransaction())
             {
                 // FoundBase's synchronous garrison card is a child of the shared build transaction.
                 WorldDeltaLifecycle.CommitMutation();
                 WorldDeltaLifecycle.CommitMutation();
                 WorldDeltaLifecycle.Publish(p, 7, StrategicInvalidationReason.Actor, new[] { 0 });
-                Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+                Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
                 Assert.That(StrategicInterruptRegistry.Peek(p, 7).Any, Is.False);
                 transaction.Commit(p, 7, new WorldDelta(committed,
                     StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Hand));
             }
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + (committed ? 1 : 0)));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + (committed ? 1 : 0)));
             Assert.That(StrategicInterruptRegistry.Peek(p, 7).Reasons, Is.EqualTo(committed
                 ? StrategicInvalidationReason.Actor | StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Hand
                 : StrategicInvalidationReason.None));
@@ -200,22 +224,22 @@ namespace Game.EditorTests
         [Test]
         public void ExceptionDisposalDropsChildStampsAndDoesNotCaptureTheNextAction()
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             Assert.Throws<System.InvalidOperationException>(() =>
             {
                 using var transaction = WorldDeltaLifecycle.BeginTransaction();
                 WorldDeltaLifecycle.CommitMutation();
                 throw new System.InvalidOperationException("authoritative transaction aborted");
             });
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
             WorldDeltaLifecycle.CommitMutation();
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
         }
 
         [Test]
         public void NestedCommitStillBelongsToTheOutermostCanonicalTransaction()
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             using (var outer = WorldDeltaLifecycle.BeginTransaction())
             {
                 using (var child = WorldDeltaLifecycle.BeginTransaction())
@@ -223,33 +247,33 @@ namespace Game.EditorTests
                     WorldDeltaLifecycle.CommitMutation();
                     child.Commit(null, -1, new WorldDelta(true, StrategicInvalidationReason.None));
                 }
-                Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+                Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
                 outer.Commit(null, -1, new WorldDelta(true, StrategicInvalidationReason.None));
             }
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
         }
 
         [TestCase(false)]
         [TestCase(true)]
         public void AggregateExecutionConsumesAnExistingChildReceiptExactlyOnce(bool childStamped)
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             var result = new ExecutionResult { StepsMoved = 1, CombatChanged = true };
             if (childStamped) result.StateVersionAfter = WorldDeltaLifecycle.CommitMutation();
             typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { result });
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
-            Assert.That(result.StateVersionAfter, Is.EqualTo(V2StateVersion.Current));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + 1));
+            Assert.That(result.StateVersionAfter, Is.EqualTo(WorldDeltaLifecycle.Current));
         }
 
         [Test]
         public void StaleNoOpCompletionDoesNotAdvanceEvenWhenItsGoalIsSatisfied()
         {
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             var result = new ExecutionResult { ReachedGoal = true, StaleNoOp = true, NeedsReplan = true };
             typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.Static | BindingFlags.NonPublic)
                 .Invoke(null, new object[] { result });
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 
         [Test]
@@ -259,9 +283,9 @@ namespace Game.EditorTests
             var ids = new List<int> { 0 };
             var delta = new WorldDelta(false, StrategicInvalidationReason.Actor, ids);
             ids.Clear();
-            int before = V2StateVersion.Current;
+            int before = WorldDeltaLifecycle.Current;
             session.Apply(delta);
-            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
             Assert.That(StrategicInterruptRegistry.Peek(p, 7).ActorIds, Is.EqualTo(new[] { 0 }));
         }
     }

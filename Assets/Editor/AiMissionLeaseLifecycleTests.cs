@@ -12,6 +12,32 @@ namespace Game.EditorTests
     {
         [TearDown] public void Reset() { MissionIntentRegistry.Clear(); AiAllocatorStateRegistry.Clear(); }
 
+        // The session claim table and a detached FromIntents view are the same derivation of the
+        // same intents, so they must always agree for identical inputs.
+        [Test]
+        public void SessionClaimTableAgreesWithDetachedViewForSameInputs()
+        {
+            var player = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(player, null, null, null, 4);
+            var key = MissionIntentKey.ForEconomy(EconomyTaskKind.MobileCollection, 1, new HexCoord(2, 3));
+            var intent = new MissionIntent { Kind = MissionKind.Economy, IntentKey = key, CreatedTurn = 3,
+                LastProgressTurn = 3, PreferredMoverArmyId = 5,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.MobileCollection, TargetHex = new HexCoord(2, 3) } };
+            var snap = new WorldSnapshot { TurnNumber = 4, Self = new SelfSnapshot
+            {
+                Armies = new System.Collections.Generic.List<ArmySnapshot>
+                    { new ArmySnapshot { ArmyId = 5, MemberCount = 1 } },
+            } };
+            var intents = new[] { intent };
+
+            ActorCommitments viaSession = session.RefreshActors(intents, snap, null);
+            ActorCommitments detached = ActorCommitments.FromIntents(intents, snap, null);
+
+            Assert.That(viaSession.ClaimedArmyIdSet, Is.EquivalentTo(detached.ClaimedArmyIdSet));
+            Assert.That(session.Leases.ClaimedActors, Is.EquivalentTo(detached.ClaimedArmyIdSet));
+            Assert.That(session.Leases.ActorsFor(key), Is.EquivalentTo(new[] { 5 }));
+        }
+
         [TestCase(MissionStepDisposition.Progress, true)]
         [TestCase(MissionStepDisposition.Waiting, true)]
         [TestCase(MissionStepDisposition.Replan, true)]
@@ -30,7 +56,7 @@ namespace Game.EditorTests
             lease.Claim(0); other.Claim(1);
             lease.Reserve(StrategicReservationReason.EconomyBuildCompletion, StrategicReservedResource.ActionPoints, 2);
             other.Reserve(StrategicReservationReason.EconomyBuildCompletion, StrategicReservedResource.ActionPoints, 3);
-            MissionContinuityLayer.ReconcileStep(player, 4, new MissionTurnOutcome
+            MissionContinuityLayer.ReconcileStep(player, 4, new MissionStepResult
             {
                 IntentKey = key, MissionKind = MissionKind.Development, Disposition = disposition,
                 MadeProgress = disposition == MissionStepDisposition.Progress,
@@ -54,7 +80,7 @@ namespace Game.EditorTests
             failed.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 3);
             other.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 4);
             Assert.That(session.PersistentState.Count, Is.Zero);
-            MissionContinuityLayer.ReconcileStep(p, 4, new MissionTurnOutcome
+            MissionContinuityLayer.ReconcileStep(p, 4, new MissionStepResult
             { IntentKey = key, MissionKind = MissionKind.Economy, Disposition = MissionStepDisposition.PermanentFailure });
             Assert.That(failed.ResourceClaims, Is.Empty);
             Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(4));
@@ -86,18 +112,18 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot { Armies = new[] {
                     new ArmySnapshot { ArmyId = 7, MemberCount = 1 },
                     new ArmySnapshot { ArmyId = 8, MemberCount = 1 } } } };
-            var result = new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
+            var result = new MissionStepResult { IntentKey = key, MissionKind = kind,
                 Disposition = MissionStepDisposition.PermanentFailure,
                 ProvisionFailureKindValue = ProvisionFailureKind.AssemblyInfeasible };
             if (kind == MissionKind.Attack)
             {
-                result.HasAttackPayload = true;
-                result.AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Gather, SupportArmyId = 7 };
+                result.AttackFactsForWrite().HasAttackPayload = true;
+                result.AttackFactsForWrite().AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Gather, SupportArmyId = 7 };
             }
             else
             {
-                result.HasRaidPayload = true; result.RaidPhase = RaidMissionPhase.Reinforcement;
-                result.RaidSupportArmyId = 7;
+                result.RaidFactsForWrite().HasRaidPayload = true; result.RaidFactsForWrite().RaidPhase = RaidMissionPhase.Reinforcement;
+                result.RaidFactsForWrite().RaidSupportArmyId = 7;
             }
             session.Settle(result, snapshot);
             Assert.That(session.PersistentState.TryGet(key, out _), Is.True);
@@ -167,14 +193,14 @@ namespace Game.EditorTests
             if (kind == MissionKind.Scout) intent.Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore };
             if (kind == MissionKind.Attack) intent.Objective = new AttackIntent { Phase = AttackMissionPhase.Gather };
             session.PersistentState.Put(intent); var lease = session.Leases.For(key); lease.Claim(7);
-            MissionContinuityLayer.ReconcileStep(player, 4, new MissionTurnOutcome
+            MissionContinuityLayer.ReconcileStep(player, 4, new MissionStepResult
             {
                 IntentKey = key, MissionKind = kind, Disposition = MissionStepDisposition.Completed,
                 ObjectiveSatisfied = true, ObjectiveSatisfiedExternally = kind == MissionKind.Scout,
-                HasRaidPayload = kind == MissionKind.Raid, RaidPhase = RaidMissionPhase.Assault,
-                HasAttackPayload = kind == MissionKind.Attack,
-                AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Gather },
-            });
+            }
+            .WithPayload(new RaidStepPayload { HasRaidPayload = kind == MissionKind.Raid, RaidPhase = RaidMissionPhase.Assault })
+            .WithPayload(new AttackStepPayload { HasAttackPayload = kind == MissionKind.Attack,
+                AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Gather } }));
             Assert.That(session.PersistentState.TryGet(key, out _), Is.True);
             Assert.That(lease.ActorClaims, Is.EqualTo(new[] { 7 }));
         }

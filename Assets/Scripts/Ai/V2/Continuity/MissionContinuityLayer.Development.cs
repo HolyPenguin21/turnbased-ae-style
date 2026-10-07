@@ -13,39 +13,39 @@ namespace Game.Ai.V2
                 && Game.Cards.ResearchProductionSystem.IsEligible(player,
                     pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, out _);
 
-        internal static void ClassifyDevelopmentStep(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyDevelopmentStep(ExecutionResult e, MissionStepResult o)
         {
             switch (e.StopReason)
             {
                 case ExecutionStopReason.StepCompleted:
                 case ExecutionStopReason.OutOfMovement:
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.Disposition = MissionStepDisposition.Progress;
                     break;
                 case ExecutionStopReason.NoSafeStep:
                 case ExecutionStopReason.MoveRejected:
                 case ExecutionStopReason.BattleStarted:
                 case ExecutionStopReason.HexEventStarted:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
                 default:
-                    o.Outcome = ExecutionOutcome.Failed;
+                    o.Fail();
                     break;
             }
             return;
         }
         private static bool TryCreateDevelopmentStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.HasDevelopmentPayload && o.MadeProgress)) return false;
+            if (!(o.DevelopmentFacts().HasDevelopmentPayload && o.MadeProgress)) return false;
             CreateDevelopmentIntent(state, o, turn);
             return true;
         }
 
 
         private static void CreateDevelopmentIntent(MissionIntentState state,
-            MissionTurnOutcome o, int turn)
+            MissionStepResult o, int turn)
         {
-            DevelopmentMissionTarget target = o.DevelopmentTarget;
+            DevelopmentMissionTarget target = o.DevelopmentFacts().DevelopmentTarget;
             if (target.Hero == null || !o.MoverArmyId.HasValue
                 || state.All.Any(i => i?.Development?.Hero == target.Hero
                     || i?.Development != null && i.Development.Mode == target.Mode
@@ -99,13 +99,13 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureDevelopmentProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureDevelopmentProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasDevelopmentPayload = true;
-            o.DevelopmentTarget = pm.DevelopmentTarget;
+            o.DevelopmentFactsForWrite().HasDevelopmentPayload = true;
+            o.DevelopmentFactsForWrite().DevelopmentTarget = pm.DevelopmentTarget;
         }
 
-        private static void CaptureDevelopmentExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureDevelopmentExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             o.PayloadForWrite<DevelopmentStepPayload>().DeliveryReady = e.DevelopmentDeliveryReady;
         }

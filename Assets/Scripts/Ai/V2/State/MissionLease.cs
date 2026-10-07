@@ -64,7 +64,7 @@ namespace Game.Ai.V2
         internal void ClaimForPass(int actor, ArmyMutationContract contract) =>
             Add(actor, new ActorClaim { Contract = contract });
 
-        // Compatibility set for provisioning's tentative pass claims. The claim table is the
+        // Set view for provisioning's tentative pass claims. The claim table is the
         // only storage; a session closes its pass books together with the live turn book.
         internal ISet<int> PassActorSet() => new PassActors(this);
         private sealed class PassActors : ISet<int>, IDisposable
@@ -129,6 +129,13 @@ namespace Game.Ai.V2
             EnsureOpen();
             return _actors.Where(x => x.Value.Any(c => c.Operation.HasValue && c.Operation.Value.Equals(operation))).Select(x => x.Key).ToArray();
         }
+        // Every operation that currently owns at least one actor claim.
+        internal IReadOnlyCollection<MissionIntentKey> Operations()
+        {
+            EnsureOpen();
+            return _actors.Values.SelectMany(c => c).Where(c => c.Operation.HasValue)
+                .Select(c => c.Operation.Value).Distinct().ToArray();
+        }
         internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int actor)
         {
             EnsureOpen();
@@ -171,7 +178,7 @@ namespace Game.Ai.V2
                 foreach (var claim in claims)
                     if (claim.Operation.HasValue && claim.Operation.Value.Equals(oldKey)) claim.Operation = newKey;
         }
-        // Compatibility-backed resource lifecycle API. The ledger stores rows; all production
+        // Resource lifecycle API over the ledger, which stores the rows; all production
         // mutation requests enter here, including pass holds, replacement and expiry.
         private static void RequireTurn(PlayerSetupData player, int turn)
         {

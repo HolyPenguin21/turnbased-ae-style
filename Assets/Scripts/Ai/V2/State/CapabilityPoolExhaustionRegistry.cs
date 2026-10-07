@@ -253,6 +253,46 @@ namespace Game.Ai.V2
             }
         }
 
+        // The one single-mission provisioning-failure settlement shared by the main loop and the
+        // reaction rounds: defer, then mark the pool exhausted only on the pool-wide proof.
+        internal static bool RecordProvisionFailure(WorldSnapshot snap, PlayerSetupData player,
+            MissionProposal mission, ProvisionFailure failure, string reasonPrefix = "")
+        {
+            DeferNoExecutableStep(player, mission, failure);
+            bool poolWide = ProvenPoolWideUnable(snap, player, mission, failure);
+            if (poolWide)
+                MarkExhausted(player, PoolFor(mission),
+                    $"{reasonPrefix}{failure.Kind}: no eligible actor in snapshot");
+            return poolWide;
+        }
+
+        // Exhaustion is a claim about the whole physical pool, not about one batch's session
+        // contention: mark a pool exhausted only when every still-open mission drawing on it
+        // failed AND each failure is proven pool-wide, and no mission of that pool already
+        // succeeded this batch (a scout that got a mover is live proof the pool is not exhausted).
+        internal static void SettleScoutBatch(WorldSnapshot snap, PlayerSetupData player,
+            IEnumerable<MissionProposal> openMissions,
+            IReadOnlyDictionary<StableMissionKey, ProvisionFailure> failureByKey,
+            IEnumerable<MissionProposal> succeededMissions)
+        {
+            List<MissionProposal> open = openMissions.ToList();
+            List<MissionProposal> succeeded = succeededMissions.Where(m => m != null).ToList();
+            foreach (CapabilityPoolKind pool in open.Select(PoolFor)
+                         .Where(p => p != CapabilityPoolKind.None).Distinct())
+            {
+                if (succeeded.Any(m => PoolFor(m) == pool))
+                    continue;
+                List<MissionProposal> poolOpen = open.Where(m => PoolFor(m) == pool).ToList();
+                bool poolWideExhausted = poolOpen.Count > 0 && poolOpen.All(m =>
+                    failureByKey.TryGetValue(StableMissionKey.For(m), out ProvisionFailure fail)
+                    && ProvenPoolWideUnable(snap, player, m, fail));
+                if (poolWideExhausted)
+                    MarkExhausted(player, pool,
+                        $"assignment batch rejected all {poolOpen.Count} funded "
+                        + $"Scout mission(s) in pool {pool}, proven pool-wide unable");
+            }
+        }
+
         public static void Clear() => ByPlayer.Clear();
     }
 }

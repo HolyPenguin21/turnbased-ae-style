@@ -23,7 +23,7 @@ namespace Game.Ai.V2
     //        · every AxisDemand                 — {scope}-D01, D02, …   (rides on AxisDemand.TraceId)
     //        · every MissionProposal attempt    — {scope}-M01, M02, …   (rides on MissionProposal.AttemptId)
     //      The attempt id travels ON the proposal, so it follows the pipeline through FundedEntry
-    //      → ProvisionedMission → ExecutionResult → MissionOutcomeLedger → MissionTurnOutcome →
+    //      → ProvisionedMission → ExecutionResult → MissionOutcomeLedger → MissionStepResult →
     //      MissionContinuity with no extra plumbing. grep one attempt id => the whole lifecycle.
     //      P{colorIndex} is always present so several AI players never share a scope id; the
     //      spec's shorter "T12-M" examples are the single-AI reading of the same scheme.

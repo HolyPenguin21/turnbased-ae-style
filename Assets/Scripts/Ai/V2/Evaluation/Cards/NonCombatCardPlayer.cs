@@ -676,7 +676,7 @@ namespace Game.Ai.V2
             }
 
             int apBefore = root.ActionPoints;
-            int stateVersionBefore = V2StateVersion.Current;
+            int stateVersionBefore = WorldDeltaLifecycle.Current;
 
             // finding 9b — a generated non-combat play pays Challenge AP + ResourceCost,
             // then probabilistically mints and deploys the REAL instance. finding P1 — every real
@@ -872,8 +872,8 @@ namespace Game.Ai.V2
 
         private static void StampVersion(ref NonCombatExecuteResult result, int versionBefore)
         {
-            if (result.StateChanged && V2StateVersion.Current == versionBefore)
-                WorldDeltaLifecycle.CommitMutation();
+            WorldDeltaLifecycle.StampAction(result.StateChanged,
+                childAlreadyCommitted: WorldDeltaLifecycle.Current != versionBefore);
         }
     }
 }

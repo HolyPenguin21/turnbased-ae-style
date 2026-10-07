@@ -930,9 +930,9 @@ namespace Game.Ai.V2
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken
         // or a battle fought), never on a bare candidate enumeration.
-        internal static void CreateAttackIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        internal static void CreateAttackIntent(MissionIntentState state, MissionStepResult o, int turn)
         {
-            AttackMissionTarget t = o.AttackTarget;
+            AttackMissionTarget t = o.AttackFacts().AttackTarget;
             var payload = new AttackIntent
             {
                 Target = t.Target,
@@ -950,7 +950,7 @@ namespace Game.Ai.V2
                 // §17 — the operation may well have BEGUN with its side strike, in which case the
                 // intent is born having already spent this turn's one diversion. Anything else
                 // would let the very first turn take two.
-                LastOpportunisticStrikeTurn = o.AttackOpportunisticStrike
+                LastOpportunisticStrikeTurn = o.AttackFacts().AttackOpportunisticStrike
                     ? turn : t.OpportunisticStrikeTurn,
             };
             // Audit F7 — an operation born from its first Gather step carries the whole frozen
@@ -958,7 +958,7 @@ namespace Game.Ai.V2
             if (t.Phase == AttackMissionPhase.Gather && t.GatherSupportArmyIds != null)
                 payload.GatherSupportArmyIds.AddRange(t.GatherSupportArmyIds.Where(id =>
                     id != payload.PrimaryArmyId
-                    && !(o.ReinforcementHandoffAttempted && id == o.MoverArmyId)));
+                    && !(o.GroundFacts().ReinforcementHandoffAttempted && id == o.MoverArmyId)));
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
             RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
@@ -982,20 +982,20 @@ namespace Game.Ai.V2
         internal static bool AttackIntentIsProtected(MissionIntent intent) =>
             intent?.Attack != null && intent.Attack.OperationStarted
             && intent.Status == IntentStatus.Active;
-        internal static void ClassifyAttackStep(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyAttackStep(ExecutionResult e, MissionStepResult o)
         {
             if (GroundCombatLegs.IsSupportLeg(o)
                 && (e.StopReason == ExecutionStopReason.MoverLost
                     || e.StopReason == ExecutionStopReason.TargetInvalidated))
             {
-                o.Outcome = ExecutionOutcome.Blocked;
+                o.Disposition = MissionStepDisposition.Waiting;
                 return;
             }
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
         }
 
         private static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
             // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
@@ -1011,8 +1011,8 @@ namespace Game.Ai.V2
             // Failure of an optional base leg never invalidates its MAIN target. Claims/AP are
             // reconciled normally by the allocator; Continuity drops only the local choice.
             if (attackLeg.HasValue && attackLeg.Value.IsIntermediateAssault
-                && !o.ObjectiveSatisfied && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
-                    || o.Outcome == ExecutionOutcome.Blocked && !o.MadeProgress))
+                && !o.ObjectiveSatisfied && (o.IsFailed
+                    || o.IsBlocked && !o.MadeProgress))
             {
                 if (intent?.Attack != null)
                 {
@@ -1026,7 +1026,7 @@ namespace Game.Ai.V2
             if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
             {
                 AttackMissionTarget leg = attackLeg.Value;
-                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                bool failed = o.IsFailed
                     || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated;
                 if (failed && intent?.Attack != null
                     && leg.Phase == AttackMissionPhase.GatherReturn
@@ -1050,7 +1050,7 @@ namespace Game.Ai.V2
             return false;
         }
         private static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
             // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
@@ -1065,12 +1065,12 @@ namespace Game.Ai.V2
                 {
                     AdvanceIntent(intent, o, turn, state, allocState);
                     AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
-                        + (o.AttackTarget.Phase == AttackMissionPhase.Assault
+                        + (o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Assault
                             ? "objective reached; operation ends at the captured site"
-                            : $"{o.AttackTarget.Phase} leg reached its goal"));
+                            : $"{o.AttackFacts().AttackTarget.Phase} leg reached its goal"));
                     return true;
                 }
-                if (o.HasAttackPayload && o.OperationStarted)
+                if (o.AttackFacts().HasAttackPayload && o.GroundFacts().OperationStarted)
                 {
                     CreateAttackIntent(state, o, turn);
                     AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
@@ -1083,58 +1083,58 @@ namespace Game.Ai.V2
         }
 
         private static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.HasAttackPayload && o.OperationStarted)) return false;
+            if (!(o.AttackFacts().HasAttackPayload && o.GroundFacts().OperationStarted)) return false;
             CreateAttackIntent(state, o, turn);
             return true;
         }
 
         private static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn) =>
-            intent.Attack != null && o.HasAttackPayload
-                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase);
+            MissionIntent intent, MissionStepResult o, int turn) =>
+            intent.Attack != null && o.AttackFacts().HasAttackPayload
+                && GroundCombatLegs.IsAttackSupportLeg(o.AttackFacts().AttackTarget.Phase);
 
         private static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (o.HasAttackPayload && intent.Attack != null)
+            if (o.AttackFacts().HasAttackPayload && intent.Attack != null)
             {
                 AttackIntent ai = intent.Attack;
-                ai.OperationStarted |= o.OperationStarted;
-                if (o.AttackIntermediateCaptured && o.AttackTarget.IsIntermediateAssault)
+                ai.OperationStarted |= o.GroundFacts().OperationStarted;
+                if (o.AttackFacts().AttackIntermediateCaptured && o.AttackFacts().AttackTarget.IsIntermediateAssault)
                 {
-                    ai.RefitBaseHex = o.AttackTarget.IntermediateTarget.Hex;
+                    ai.RefitBaseHex = o.AttackFacts().AttackTarget.IntermediateTarget.Hex;
                     ai.RefitCaptureTurn = turn;
-                    ai.RefitBattleStopTurn = o.AttackCaptureHadBattle ? turn : -1;
+                    ai.RefitBattleStopTurn = o.AttackFacts().AttackCaptureHadBattle ? turn : -1;
                 }
-                if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
+                if (o.GroundFacts().OperationStarted && o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Assault)
                 {
                     ai.AssaultStarted = true;
-                    ai.IntermediateTarget = o.AttackOpportunisticStrike
-                        ? AttackTargetRef.None : o.AttackTarget.IntermediateTarget;
+                    ai.IntermediateTarget = o.AttackFacts().AttackOpportunisticStrike
+                        ? AttackTargetRef.None : o.AttackFacts().AttackTarget.IntermediateTarget;
                 }
-                if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
+                if (o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Gather)
                 {
                     // Audit F7 — an attempted handoff (full, partial or rejected) ends that
                     // support's gather leg. Strike force step 5: whatever container is left walks
                     // home (GatherReturn; ResolveAttackIntent picks the base). It never becomes the
                     // Reinforcement support.
-                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue
+                    if (o.GroundFacts().ReinforcementHandoffAttempted && o.MoverArmyId.HasValue
                         && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
                         && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
                         ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
                     // 2026-10-01 (variant B) — the fetched commander: its container is recorded
                     // once created; an attempted handoff ends its leg (a body exchanged into the
                     // container walks home like any gather donor; an emptied shell just stays).
-                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.FetchCommander
+                    if (o.AttackFacts().AttackTarget.PreparationStep == AttackPreparationStep.FetchCommander
                         && o.MoverArmyId.HasValue && o.MoverArmyId.Value >= 0)
                     {
                         ai.CommanderArmyId = o.MoverArmyId.Value;
                         intent.StallTurns = 0;
                         intent.LastProtectedTurn = turn;
                     }
-                    if (o.AttackTarget.CommanderLeg && o.ReinforcementHandoffAttempted
+                    if (o.AttackFacts().AttackTarget.CommanderLeg && o.GroundFacts().ReinforcementHandoffAttempted
                         && o.MoverArmyId.HasValue && ai.CommanderArmyId == o.MoverArmyId.Value)
                     {
                         ai.CommanderArmyId = null;
@@ -1144,10 +1144,10 @@ namespace Game.Ai.V2
                     // ATK-F05 — the one claim transition of a priced donor purchase: the frozen
                     // supports enter the operation; the lenders retire on the next pass
                     // ("given to an Attack gather"), their reservations with them.
-                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.RecruitDonors
-                        && o.AttackTarget.GatherSupportArmyIds != null)
+                    if (o.AttackFacts().AttackTarget.PreparationStep == AttackPreparationStep.RecruitDonors
+                        && o.AttackFacts().AttackTarget.GatherSupportArmyIds != null)
                     {
-                        foreach (int id in o.AttackTarget.GatherSupportArmyIds)
+                        foreach (int id in o.AttackFacts().AttackTarget.GatherSupportArmyIds)
                             if (id != ai.PrimaryArmyId && !ai.GatherSupportArmyIds.Contains(id))
                                 ai.GatherSupportArmyIds.Add(id);
                         intent.StallTurns = 0;
@@ -1158,10 +1158,10 @@ namespace Game.Ai.V2
                 {
                     // The primary's own walk to the rendezvous only names the support; it never
                     // (re)binds it — Continuity alone does, and may already have released it.
-                    if (o.AttackTarget.SupportArmyId.HasValue && !o.AttackTarget.PrimaryRendezvousLeg)
-                        ai.SupportArmyId = o.AttackTarget.SupportArmyId;
-                    if (o.AttackTarget.RecoveryBaseHex.HasValue)
-                        ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
+                    if (o.AttackFacts().AttackTarget.SupportArmyId.HasValue && !o.AttackFacts().AttackTarget.PrimaryRendezvousLeg)
+                        ai.SupportArmyId = o.AttackFacts().AttackTarget.SupportArmyId;
+                    if (o.AttackFacts().AttackTarget.RecoveryBaseHex.HasValue)
+                        ai.RecoveryBaseHex = o.AttackFacts().AttackTarget.RecoveryBaseHex;
                     // §46/§23 — a full/full swap displaced a primary body into the support
                     // container, so the whole support army must walk itself home. Same shared
                     // handoff semantics and the same SupportReturn leg the Raid lane uses.
@@ -1170,8 +1170,8 @@ namespace Game.Ai.V2
                     // 2026-10-04 — a committed Assault does not wait for that walk: the support's
                     // container goes home as a GatherReturn leg beside the operation, and the
                     // primary resumes its march at once.
-                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue && ai.AssaultStarted
-                        && o.AttackTarget.Phase == AttackMissionPhase.Reinforcement)
+                    if (o.GroundFacts().ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue && ai.AssaultStarted
+                        && o.AttackFacts().AttackTarget.Phase == AttackMissionPhase.Reinforcement)
                     {
                         int handedOver = ai.SupportArmyId.Value;
                         if (!ai.GatherReturns.Any(r => r.ArmyId == handedOver))
@@ -1180,12 +1180,12 @@ namespace Game.Ai.V2
                         ai.RendezvousHex = null;
                         ai.Phase = AttackMissionPhase.Assault;
                     }
-                    else if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                    else if (o.GroundFacts().ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
                         ai.Phase = AttackMissionPhase.SupportReturn;
                 }
                 // §17 — the operation's turn-local side-strike marker. Continuity is the only
                 // writer; Execution merely reported that the diversion was really spent.
-                if (o.AttackOpportunisticStrike)
+                if (o.AttackFacts().AttackOpportunisticStrike)
                     ai.LastOpportunisticStrikeTurn = turn;
             }
         }
@@ -1278,19 +1278,19 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasAttackPayload = true;
-            o.AttackTarget = pm.AttackTarget;
+            o.AttackFactsForWrite().HasAttackPayload = true;
+            o.AttackFactsForWrite().AttackTarget = pm.AttackTarget;
         }
 
-        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
-            o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
+            o.GroundFactsForWrite().OperationStarted = e.OperationStarted || e.StepsMoved > 0
                 || e.StopReason == ExecutionStopReason.BattleStarted;
-            o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
-            o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
-            o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
+            o.AttackFactsForWrite().AttackOpportunisticStrike = e.AttackOpportunisticStrike;
+            o.AttackFactsForWrite().AttackIntermediateCaptured = e.AttackIntermediateCaptured;
+            o.AttackFactsForWrite().AttackCaptureHadBattle = e.AttackCaptureHadBattle;
 
             o.PayloadForWrite<AttackStepPayload>().AirSupportStrikeSucceeded = e.AirSupportStrikeSucceeded;
         }

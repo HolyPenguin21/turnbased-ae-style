@@ -112,10 +112,10 @@ namespace Game.EditorTests
             var i = ReturnIntent(a, EconomyTaskKind.ReturnCollector);
             i.StallTurns = AiConfigV2.commitmentStallTurns - 1;
             MissionIntentRegistry.GetOrCreate(p).Put(i);
-            MissionContinuityLayer.ReconcileStep(p, 2, new MissionTurnOutcome
+            MissionContinuityLayer.ReconcileStep(p, 2, new MissionStepResult
             {
                 IntentKey = i.IntentKey, MissionKind = MissionKind.Economy,
-                Outcome = ExecutionOutcome.Failed, StructuralFailure = true,
+                Disposition = MissionStepDisposition.PermanentFailure,
                 ProvisionFailureKindValue = ProvisionFailureKind.TargetInvalidated,
             });
             var alternate = new HexCoord(7, 0);
@@ -381,11 +381,11 @@ namespace Game.EditorTests
         {
             var p = new PlayerSetupData(); var a = Builder(); var i = ReturnIntent(a, EconomyTaskKind.ReturnCollector);
             MissionIntentRegistry.GetOrCreate(p).Put(i);
-            MissionContinuityLayer.ReconcileStep(p, 2, new MissionTurnOutcome
+            MissionContinuityLayer.ReconcileStep(p, 2, new MissionStepResult
                 { IntentKey = i.IntentKey, MissionKind = MissionKind.Economy,
-                    Outcome = ExecutionOutcome.Failed, StructuralFailure = true,
-                    ProvisionFailureKindValue = ProvisionFailureKind.TargetInvalidated,
-                    EconomyTarget = new EconomyMissionTarget { Kind = EconomyTaskKind.ReturnCollector } });
+                    Disposition = MissionStepDisposition.PermanentFailure,
+                    ProvisionFailureKindValue = ProvisionFailureKind.TargetInvalidated }
+                    .WithPayload(new EconomyStepPayload { EconomyTarget = new EconomyMissionTarget { Kind = EconomyTaskKind.ReturnCollector } }));
             Assert.That(MissionIntentRegistry.GetOrCreate(p).TryGet(i.IntentKey, out _), Is.True);
         }
         [Test]
@@ -415,11 +415,11 @@ namespace Game.EditorTests
                 EconomyTaskKind.BuildExtraction, (int)ResourceType.Materials, Site));
             string b = EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(
                 EconomyTaskKind.BuildExtraction, (int)ResourceType.Materials, new HexCoord(3, 0)));
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, a, new ResourceCost { materials = 4 }, 0,
+            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 0,
                 StrategicReservationReason.EconomyDeferredBuild);
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, b, new ResourceCost { energy = 2 }, 0,
+            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(b), new ResourceCost { energy = 2 }, 0,
                 StrategicReservationReason.EconomyDeferredBuild);
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, a, new ResourceCost { materials = 4 }, 3);
+            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 3);
             StrategicResourceReservationLedger.ReleaseByOwner(p, 1, a);
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(p, 1, b,
                 StrategicReservationReason.EconomyDeferredBuild), Is.True);

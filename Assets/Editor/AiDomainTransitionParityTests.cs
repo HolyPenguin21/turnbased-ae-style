@@ -37,7 +37,7 @@ namespace Game.EditorTests
             var intent = new MissionIntent { Kind = kind, IntentKey = key, CreatedTurn = 3,
                 LastProgressTurn = 3, PreferredMoverArmyId = 0 };
             session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
-            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
+            session.Settle(new MissionStepResult { IntentKey = key, MissionKind = kind,
                 Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 1 });
             Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(0));
             Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
@@ -59,11 +59,12 @@ namespace Game.EditorTests
             var intent = new MissionIntent { Kind = MissionKind.Raid, IntentKey = key, Objective = raid,
                 CreatedTurn = 3, LastProgressTurn = 3 };
             session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
-            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = MissionKind.Raid,
+            session.Settle(new MissionStepResult { IntentKey = key, MissionKind = MissionKind.Raid,
                 Disposition = MissionStepDisposition.Progress, MadeProgress = true,
-                MoverArmyId = phase == RaidMissionPhase.AirSupport ? 2 : 1,
-                HasRaidPayload = true, RaidPhase = phase, RaidPrimaryArmyId = 0,
-                RaidSupportArmyId = 1, RaidAirSupportArmyId = 2, ReinforcementHandoffAttempted = handedOff });
+                MoverArmyId = phase == RaidMissionPhase.AirSupport ? 2 : 1 }
+                .WithPayload(new RaidStepPayload { HasRaidPayload = true, RaidPhase = phase, RaidPrimaryArmyId = 0,
+                    RaidSupportArmyId = 1, RaidAirSupportArmyId = 2 })
+                .WithPayload(new GroundCombatStepPayload { ReinforcementHandoffAttempted = handedOff }));
             Assert.That(raid.PrimaryArmyId, Is.EqualTo(0));
             if (phase == RaidMissionPhase.Reinforcement)
                 Assert.That(raid.SupportArmyId, Is.EqualTo(handedOff ? (int?)null : 1));
@@ -83,10 +84,10 @@ namespace Game.EditorTests
             var intent = new MissionIntent { Kind = MissionKind.Attack, IntentKey = key, Objective = attack,
                 CreatedTurn = 3, LastProgressTurn = 3 };
             session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
-            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = MissionKind.Attack,
+            session.Settle(new MissionStepResult { IntentKey = key, MissionKind = MissionKind.Attack,
                 Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 1,
-                HasAttackPayload = true, AttackTarget = new AttackMissionTarget
-                    { Phase = phase, PrimaryArmyId = 0, SupportArmyId = 1 } });
+                }.WithPayload(new AttackStepPayload { HasAttackPayload = true, AttackTarget = new AttackMissionTarget
+                    { Phase = phase, PrimaryArmyId = 0, SupportArmyId = 1 } }));
             Assert.That(attack.PrimaryArmyId, Is.EqualTo(0));
             Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
         }
@@ -139,11 +140,11 @@ namespace Game.EditorTests
                 StrategicReservedResource.ActionPoints, 2);
             other.Reserve(StrategicReservationReason.EconomyBuildCompletion,
                 StrategicReservedResource.ActionPoints, 3);
-            var o = new MissionTurnOutcome { MissionKind = kind, IntentKey = key, Disposition = disposition,
-                ObjectiveSatisfied = disposition == MissionStepDisposition.Completed, MadeProgress = true,
-                HasRaidPayload = kind == MissionKind.Raid, RaidPhase = RaidMissionPhase.Assault,
-                HasAttackPayload = kind == MissionKind.Attack,
-                AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Assault } };
+            var o = new MissionStepResult { MissionKind = kind, IntentKey = key, Disposition = disposition,
+                ObjectiveSatisfied = disposition == MissionStepDisposition.Completed, MadeProgress = true }
+                .WithPayload(new RaidStepPayload { HasRaidPayload = kind == MissionKind.Raid, RaidPhase = RaidMissionPhase.Assault })
+                .WithPayload(new AttackStepPayload { HasAttackPayload = kind == MissionKind.Attack,
+                    AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Assault } });
             session.Settle(o);
             Assert.That(session.PersistentState.TryGet(key, out _), Is.EqualTo(retained));
             Assert.That(lease.ActorClaims.Count > 0, Is.EqualTo(retained));
@@ -193,25 +194,26 @@ namespace Game.EditorTests
                     if (capabilityFailures && leg == 0) intent.PreferredMoverArmyId = 0;
                     state.Put(intent);
                 }
-                var o = new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
+                var o = new MissionStepResult { IntentKey = key, MissionKind = kind,
                     Disposition = disposition, MadeProgress = (flags & 2) != 0,
                     StepsMoved = (flags & 2) != 0 ? 1 : 0, ApSpent = 2,
                     ObjectiveSatisfied = (flags & 4) != 0, ObjectiveSatisfiedExternally = (flags & 8) != 0,
-                    OperationStarted = (flags & 16) != 0, MoverArmyId = leg == 0 ? 0 : 1,
+                    MoverArmyId = leg == 0 ? 0 : 1,
                     FinalHex = new HexCoord(2, 3),
                     ProvisionFailureKindValue = leg == 1 ? ProvisionFailureKind.AssemblyInfeasible : (ProvisionFailureKind?)null,
                     StopReason = leg == 4 ? ExecutionStopReason.NoSafeStep : (ExecutionStopReason?)null };
+                if ((flags & 16) != 0) o.GroundFactsForWrite().OperationStarted = true;
                 switch (kind)
                 {
-                    case MissionKind.Scout: o.HasScoutPayload = true; o.FocusHex = new HexCoord(2, 3); break;
-                    case MissionKind.Raid: o.HasRaidPayload = true; o.RaidPhase = raidPhase;
-                        o.RaidPrimaryArmyId = 0; o.RaidSupportArmyId = 1; break;
-                    case MissionKind.Attack: o.HasAttackPayload = true; o.AttackTarget = new AttackMissionTarget
+                    case MissionKind.Scout: o.ReconFactsForWrite().HasScoutPayload = true; o.ReconFactsForWrite().FocusHex = new HexCoord(2, 3); break;
+                    case MissionKind.Raid: o.RaidFactsForWrite().HasRaidPayload = true; o.RaidFactsForWrite().RaidPhase = raidPhase;
+                        o.RaidFactsForWrite().RaidPrimaryArmyId = 0; o.RaidFactsForWrite().RaidSupportArmyId = 1; break;
+                    case MissionKind.Attack: o.AttackFactsForWrite().HasAttackPayload = true; o.AttackFactsForWrite().AttackTarget = new AttackMissionTarget
                         { Phase = attackPhase, PrimaryArmyId = 0, SupportArmyId = 1 }; break;
-                    case MissionKind.ActiveDefence: o.HasActiveDefencePayload = true; break;
-                    case MissionKind.Economy: o.HasEconomyPayload = true; o.EconomyTarget = new EconomyMissionTarget
+                    case MissionKind.ActiveDefence: o.DefenceFactsForWrite().HasActiveDefencePayload = true; break;
+                    case MissionKind.Economy: o.EconomyFactsForWrite().HasEconomyPayload = true; o.EconomyFactsForWrite().EconomyTarget = new EconomyMissionTarget
                         { Kind = economyKind, TargetHex = new HexCoord(2, 3) }; break;
-                    case MissionKind.Development: o.HasDevelopmentPayload = true; break;
+                    case MissionKind.Development: o.DevelopmentFactsForWrite().HasDevelopmentPayload = true; break;
                 }
                 if (capabilityFailures)
                 {

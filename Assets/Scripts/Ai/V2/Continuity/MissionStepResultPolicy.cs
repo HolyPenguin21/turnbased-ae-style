@@ -29,9 +29,9 @@ namespace Game.Ai.V2
             }
         }
 
-        internal static MissionTurnOutcome Normalize(StableMissionKey attemptKey, MissionStepFacts r)
+        internal static MissionStepResult Normalize(StableMissionKey attemptKey, MissionStepFacts r)
         {
-                var o = new MissionTurnOutcome
+                var o = new MissionStepResult
                 {
                     AttemptKey = attemptKey,
                     IntentKey = MissionIntentKey.For(r.Proposal),
@@ -83,21 +83,21 @@ namespace Game.Ai.V2
                 else
                 {
                     o.AllocationDeferReason = r.Deferred;
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                 }
 
                 if (r.LiveSatisfiedOverride)
                 {
-                    o.Outcome = ExecutionOutcome.Completed;
+                    o.Disposition = MissionStepDisposition.Completed;
                     o.ObjectiveSatisfied = true;
                     o.ObjectiveSatisfiedExternally = true;
-                    o.StructuralFailure = false;
+                    o.ClearPermanentFailure();
                 }
 
                 return o;
         }
 
-        internal static void Classify(ExecutionResult e, MissionTurnOutcome o)
+        internal static void Classify(ExecutionResult e, MissionStepResult o)
         {
             if (e.ReachedGoal)
             {
@@ -106,11 +106,11 @@ namespace Game.Ai.V2
                 // objective: the MissionIntent is kept and re-focused next turn rather than retired.
                 if (e.DurableRoleContinues)
                 {
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.Disposition = MissionStepDisposition.Progress;
                     o.MadeProgress = true;
                     return;
                 }
-                o.Outcome = ExecutionOutcome.Completed;
+                o.Disposition = MissionStepDisposition.Completed;
                 o.ObjectiveSatisfied = true;
                 return;
 
@@ -118,7 +118,7 @@ namespace Game.Ai.V2
             MissionContinuityLayer.ClassifyDomainExecution(e, o);
         }
 
-        internal static void ClassifyDefaultExecution(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyDefaultExecution(ExecutionResult e, MissionStepResult o)
         {
             switch (e.StopReason)
             {
@@ -126,7 +126,7 @@ namespace Game.Ai.V2
                 case ExecutionStopReason.EnemyDiscovered:
                 case ExecutionStopReason.NeutralDiscovered:
                 case ExecutionStopReason.StepCompleted:
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.Disposition = MissionStepDisposition.Progress;
                     break;
                 case ExecutionStopReason.HexEventStarted:
                 case ExecutionStopReason.BattleStarted:
@@ -135,34 +135,34 @@ namespace Game.Ai.V2
                     // the interruption made productive progress and keeps its durable role. Only a
                     // scout that was ALREADY combat-locked before it could take a single step
                     // (BlockedBeforeMovement, no progress) is a recoverable Blocked.
-                    o.Outcome = (e.BlockedBeforeMovement && !o.MadeProgress)
-                        ? ExecutionOutcome.Blocked
-                        : ExecutionOutcome.ProductiveStop;
-                    if (o.Outcome == ExecutionOutcome.ProductiveStop)
+                    o.Disposition = (e.BlockedBeforeMovement && !o.MadeProgress)
+                        ? MissionStepDisposition.Waiting
+                        : MissionStepDisposition.Progress;
+                    if (o.Disposition == MissionStepDisposition.Progress)
                         o.MadeProgress = true;
                     break;
                 case ExecutionStopReason.NoSafeStep:
                 case ExecutionStopReason.MoveRejected:
                 case ExecutionStopReason.RequiredStealthUnavailable:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
                 default:
-                    o.Outcome = ExecutionOutcome.Failed;
+                    o.Fail();
                     break;
             }
         }
 
-        internal static void ClassifyProvisionFailure(ProvisionFailure f, MissionTurnOutcome o)
+        internal static void ClassifyProvisionFailure(ProvisionFailure f, MissionStepResult o)
         {
             switch (f.Kind)
             {
                 case ProvisionFailureKind.NoMoverExists:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
                 case ProvisionFailureKind.NoObservationVantage:
                 case ProvisionFailureKind.AssemblyInfeasible:
-                    o.Outcome = ExecutionOutcome.Failed;
-                    o.StructuralFailure = true;
+                    o.Fail();
+                    o.Disposition = MissionStepDisposition.PermanentFailure;
                     break;
                 case ProvisionFailureKind.TargetSatisfied:
                     // SupportReturn is a sub-leg of one durable Raid campaign. ProvisionReturn can
@@ -178,7 +178,7 @@ namespace Game.Ai.V2
                     // assigned; the durable actor lives on the existing MissionIntent, so mark
                     // this as an external satisfaction and let ReconcileAfterTurn keep the
                     // Explore/Refresh intent for re-focus instead of retiring it.
-                    o.Outcome = ExecutionOutcome.Completed;
+                    o.Disposition = MissionStepDisposition.Completed;
                     o.ObjectiveSatisfied = true;
                     o.ObjectiveSatisfiedExternally = true;
                     break;
@@ -194,7 +194,7 @@ namespace Game.Ai.V2
                     MissionContinuityLayer.ClassifyInvalidatedDomainTarget(o);
                     break;
                 default:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
             }
         }
