@@ -138,6 +138,7 @@ namespace Game.Ai.V2
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
             using var recipientMemo = new RecipientEvaluationMemo();
+            using var targetMemo = new StrategicCardEvaluator.EquipmentTargetMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();

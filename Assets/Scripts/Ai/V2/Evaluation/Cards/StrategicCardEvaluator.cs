@@ -1393,7 +1393,7 @@ namespace Game.Ai.V2
             if (snap != null)
             {
                 var opposition = EquipmentOpposition(snap, purpose);
-                var targets = EquipmentTargets(snap, opposition);
+                var targets = EquipmentTargetsFor(snap, purpose);
                 if (!isHero)
                     combat = EquipmentCombatValue(predicted.Stats, predicted.Abilities, hostTags, targets)
                         - EquipmentCombatValue(before, hostAbilities, hostTags, targets)
@@ -1483,6 +1483,49 @@ namespace Game.Ai.V2
             return scoped.Count > 0 ? scoped : EquipmentValuationThreats(snap);
         }
 
+        // One settled Development Enumerate prices many (equipment, recipient) pairs against the
+        // same snapshot; the target set (and its sort) depends only on snapshot + purpose.
+        // Memoised for that scope only; outside it nothing is cached.
+        internal sealed class EquipmentTargetMemo : System.IDisposable
+        {
+            [System.ThreadStatic] private static EquipmentTargetMemo s_current;
+            private readonly EquipmentTargetMemo _outer;
+            private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefenderProfile>> _sets = new();
+
+            public EquipmentTargetMemo() { _outer = s_current; s_current = this; }
+            public void Dispose() => s_current = _outer;
+
+            internal static bool TryGet(WorldSnapshot snap, MissionIntent purpose,
+                out List<WorthIt.DefenderProfile> targets)
+            {
+                targets = null;
+                return s_current != null && s_current._sets.TryGetValue((snap, purpose), out targets);
+            }
+
+            internal static void Store(WorldSnapshot snap, MissionIntent purpose,
+                List<WorthIt.DefenderProfile> targets)
+            {
+                if (s_current != null) s_current._sets[(snap, purpose)] = targets;
+            }
+        }
+
+        private static List<WorthIt.DefenderProfile> EquipmentTargetsFor(WorldSnapshot snap,
+            MissionIntent purpose)
+        {
+            if (EquipmentTargetMemo.TryGet(snap, purpose, out var cached))
+                return cached;
+            List<WorthIt.DefenderProfile> targets = SortTargets(
+                EquipmentTargets(snap, EquipmentOpposition(snap, purpose)));
+            EquipmentTargetMemo.Store(snap, purpose, targets);
+            return targets;
+        }
+
+        private static List<WorthIt.DefenderProfile> SortTargets(List<WorthIt.DefenderProfile> targets) =>
+            targets.OrderBy(p => p.Defense).ThenBy(p => p.Attack)
+                .ThenBy(p => p.HitPoints)
+                .ThenBy(p => string.Join(",", p.TypeTags.OrderBy(t => t)))
+                .ThenBy(p => string.Join(",", p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))).ToList();
+
         private static List<WorthIt.DefenderProfile> EquipmentTargets(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition)
         {
@@ -1520,11 +1563,9 @@ namespace Game.Ai.V2
         {
             if (targets.Count == 0) return 0f;
             // Deterministic stratified sample bounds the work per pair independently of army
-            // count. No positions, battle simulation, random sampling or persistent cache.
-            var ordered = targets.OrderBy(p => p.Defense).ThenBy(p => p.Attack)
-                .ThenBy(p => p.HitPoints)
-                .ThenBy(p => string.Join(",", p.TypeTags.OrderBy(t => t)))
-                .ThenBy(p => string.Join(",", p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))).ToList();
+            // count. No positions, battle simulation or random sampling. `targets` arrives
+            // already in the canonical order of SortTargets (sorted once per target set).
+            var ordered = targets;
             float total = 0;
             int count = System.Math.Min(16, ordered.Count);
             for (int i = 0; i < count; i++)
