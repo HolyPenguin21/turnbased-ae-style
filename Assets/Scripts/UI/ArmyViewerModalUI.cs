@@ -772,7 +772,7 @@ namespace Game.UI
             foreach (ArmyData army in atHex)
                 if (!army.IsPrison && !army.IsAirfield && !army.IsGarrison)
                     siblings.Add(army);
-            armyButtonRow.Show(siblings, SwitchTo);
+            armyButtonRow.Show(siblings, SwitchTo, _currentArmy);
         }
 
         // Individual stealth (see Game.Map.StealthSystem): when inspecting SOMEONE ELSE's army
