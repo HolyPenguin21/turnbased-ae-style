@@ -55,14 +55,20 @@ namespace Game.Ai.V2
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
-            snap.Self = BuildSelf(player, root, hand, ctx);
-            snap.Development = BuildDevelopment(player, root, hand, ctx);
-            snap.Known = BuildKnown(player, snap.Self.BaseHexes);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
+                snap.Self = BuildSelf(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
+                snap.Development = BuildDevelopment(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
+                snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
                 snap.Known.EnemySightings);
-            snap.TrueWorld = BuildTrueWorld(player, ctx);
-            snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
-            snap.Economy = BuildEconomy(player, root, ctx, snap);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
+                snap.TrueWorld = BuildTrueWorld(player, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))
+                snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildEconomy"))
+                snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
             return snap;
@@ -92,13 +98,17 @@ namespace Game.Ai.V2
                 Known = prev.Known,
                 MapKnowledge = prev.MapKnowledge,
             };
-            snap.Self = BuildSelf(player, root, hand, ctx);
-            snap.Development = BuildDevelopment(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
+                snap.Self = BuildSelf(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
+                snap.Development = BuildDevelopment(player, root, hand, ctx);
             // Operational combat facts must follow the registries even when honest knowledge did
             // not change (HP loss, reinforcement, destruction). This is materially cheaper than
             // rebuilding MapKnowledge and keeps the sanctioned TrueWorld boundary explicit.
-            snap.TrueWorld = BuildTrueWorld(player, ctx);
-            snap.Economy = BuildEconomy(player, root, ctx, snap);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
+                snap.TrueWorld = BuildTrueWorld(player, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildEconomy"))
+                snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             return snap;
@@ -127,14 +137,20 @@ namespace Game.Ai.V2
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
-            snap.Self = BuildSelf(player, root, hand, ctx);
-            snap.Development = BuildDevelopment(player, root, hand, ctx);
-            snap.Known = BuildKnown(player, snap.Self.BaseHexes);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
+                snap.Self = BuildSelf(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
+                snap.Development = BuildDevelopment(player, root, hand, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
+                snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
                 snap.Known.EnemySightings);
-            snap.TrueWorld = BuildTrueWorld(player, ctx);
-            snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
-            snap.Economy = BuildEconomy(player, root, ctx, snap);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildTrueWorld"))
+                snap.TrueWorld = BuildTrueWorld(player, ctx);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildMapKnowledge"))
+                snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
+            using (new Game.Core.ProfileScope("AI/Analysis.BuildEconomy"))
+                snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             return snap;
