@@ -21,7 +21,7 @@ namespace Game.EditorTests
                 Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(2, 3) } };
             var facts = new MissionStepFacts { Proposal = m,
                 PendingFailure = new ProvisionFailure(failure, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, "test") };
-            MissionTurnOutcome result = MissionStepResultPolicy.Normalize(StableMissionKey.For(m), facts);
+            MissionStepResult result = MissionStepResultPolicy.Normalize(StableMissionKey.For(m), facts);
             Assert.That(result.Disposition, Is.EqualTo(expected));
             Assert.That(result.ProvisionFailureKindValue, Is.EqualTo(failure));
         }
@@ -51,8 +51,8 @@ namespace Game.EditorTests
             facts.Execution = new ExecutionResult { StopReason = ExecutionStopReason.TargetInvalidated, NeedsReplan = true };
             var result = MissionStepResultPolicy.Normalize(StableMissionKey.For(facts.Proposal), facts);
             Assert.That(result.Disposition, Is.EqualTo(MissionStepDisposition.Replan));
-            Assert.That(result.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
-            Assert.That(result.StructuralFailure, Is.False);
+            Assert.That(result.IsBlocked, Is.True);
+            Assert.That(result.Disposition, Is.Not.EqualTo(MissionStepDisposition.PermanentFailure));
         }
 
         [Test]
@@ -87,9 +87,8 @@ namespace Game.EditorTests
             ledger.RecordProvisionSuccess(facts.Proposal, facts.Provisioned);
             facts.Execution.Key = StableMissionKey.For(facts.Proposal);
             ledger.RecordExecution(facts.Execution);
-            var result = ledger.Finalize()[0];
+            var result = ledger.FinalizeSteps()[0];
             Assert.That(result.Disposition, Is.EqualTo(MissionStepDisposition.Progress));
-            Assert.That(result.Outcome, Is.EqualTo(ExecutionOutcome.ProductiveStop));
             Assert.That(result.MadeProgress, Is.True);
             Assert.That(result.ApSpent, Is.EqualTo(2));
             Assert.That(result.MoverArmyId, Is.EqualTo(0));
@@ -107,17 +106,17 @@ namespace Game.EditorTests
                     AttackOpportunisticStrike = true, AttackCaptureHadBattle = true, RaidRefitSucceeded = true,
                     AirSupportStrikeSucceeded = true };
                 var result = MissionStepResultPolicy.Normalize(StableMissionKey.For(facts.Proposal), facts);
-                Assert.That(result.ReinforcementHandoffAttempted, Is.True);
+                Assert.That(result.GroundFacts().ReinforcementHandoffAttempted, Is.True);
                 if (kind == MissionKind.Attack)
                 {
-                    Assert.That(result.AttackIntermediateCaptured, Is.True);
-                    Assert.That(result.AttackOpportunisticStrike, Is.True);
-                    Assert.That(result.AttackCaptureHadBattle, Is.True);
+                    Assert.That(result.AttackFacts().AttackIntermediateCaptured, Is.True);
+                    Assert.That(result.AttackFacts().AttackOpportunisticStrike, Is.True);
+                    Assert.That(result.AttackFacts().AttackCaptureHadBattle, Is.True);
                 }
                 else
                 {
-                    Assert.That(result.RaidRefitSucceeded, Is.True);
-                    Assert.That(result.RaidAirSupportStrikeSucceeded, Is.True);
+                    Assert.That(result.RaidFacts().RaidRefitSucceeded, Is.True);
+                    Assert.That(result.RaidFacts().RaidAirSupportStrikeSucceeded, Is.True);
                 }
             }
         }

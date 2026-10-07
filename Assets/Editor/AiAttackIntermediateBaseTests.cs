@@ -115,7 +115,7 @@ namespace Game.EditorTests
         public void ActualLocalProgress_PinsBaseWithoutReplacingMainTargetOrPrimary()
         {
             var intent = Intent(); MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            var outcome = Outcome(); outcome.OperationStarted = true; outcome.MadeProgress = true;
+            var outcome = Outcome(); outcome.GroundFactsForWrite().OperationStarted = true; outcome.MadeProgress = true;
             outcome.StepsMoved = 1;
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
             Assert.That(intent.Attack.IntermediateTarget, Is.EqualTo(Local));
@@ -128,10 +128,10 @@ namespace Game.EditorTests
         {
             var intent = Intent(); intent.Attack.IntermediateTarget = Local;
             MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            var outcome = Outcome(); outcome.OperationStarted = true; outcome.MadeProgress = true;
-            outcome.AttackOpportunisticStrike = true;
-            outcome.AttackIntermediateCaptured = true;
-            outcome.AttackCaptureHadBattle = battle;
+            var outcome = Outcome(); outcome.GroundFactsForWrite().OperationStarted = true; outcome.MadeProgress = true;
+            outcome.AttackFactsForWrite().AttackOpportunisticStrike = true;
+            outcome.AttackFactsForWrite().AttackIntermediateCaptured = true;
+            outcome.AttackFactsForWrite().AttackCaptureHadBattle = battle;
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
             Assert.That(MissionIntentRegistry.GetOrCreate(Us).All.Single().Status, Is.EqualTo(IntentStatus.Active));
             Assert.That(intent.Attack.Target, Is.EqualTo(Main));
@@ -146,8 +146,8 @@ namespace Game.EditorTests
         public void ChangedLocalOwner_DoesNotRetireMainOperation()
         {
             var intent = Intent(); MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            var outcome = Outcome(); outcome.Outcome = ExecutionOutcome.Failed;
-            outcome.StructuralFailure = true;
+            var outcome = Outcome(); outcome.Fail();
+            outcome.Disposition = MissionStepDisposition.PermanentFailure;
             MissionContinuityLayer.ReconcileStep(Us, 6, outcome);
             Assert.That(MissionIntentRegistry.GetOrCreate(Us).All.Single().Status, Is.EqualTo(IntentStatus.Active));
             Assert.That(intent.Attack.Target, Is.EqualTo(Main));
@@ -252,10 +252,11 @@ namespace Game.EditorTests
             Target = new AttackMissionTarget { Phase = AttackMissionPhase.Assault, Target = Main,
                 IntermediateTarget = local ? Local : AttackTargetRef.None, PrimaryArmyId = 7, ForceCommitted = true,
                 DestinationHex = local ? Local.Hex : Main.Hex } };
-        private static MissionTurnOutcome Outcome() { var proposal = Proposal(true); return new MissionTurnOutcome {
+        private static MissionStepResult Outcome() { var proposal = Proposal(true); return new MissionStepResult {
             Proposal = proposal, AttemptKey = StableMissionKey.For(proposal), IntentKey = MissionIntentKey.For(proposal),
-            MissionKind = MissionKind.Attack, HasAttackPayload = true, AttackTarget = (AttackMissionTarget)proposal.Target,
-            MoverArmyId = 7, Outcome = ExecutionOutcome.ProductiveStop, WasCommitment = true }; }
+            MissionKind = MissionKind.Attack,
+            MoverArmyId = 7, Disposition = MissionStepDisposition.Progress, WasCommitment = true }
+            .WithPayload(new AttackStepPayload { HasAttackPayload = true, AttackTarget = (AttackMissionTarget)proposal.Target }); }
         private static WorldSnapshot Snapshot(int seen = 6) {
             var roster = new[] { Body(30, 20, 30), Body(30, 20, 30) };
             return new WorldSnapshot { TurnNumber = 6, Observer = Us,

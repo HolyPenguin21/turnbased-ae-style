@@ -9,10 +9,9 @@ namespace Game.Ai.V2
     public enum MissionStepDisposition { Progress, Completed, Waiting, Replan, Invalidated, PermanentFailure }
 
     // Common step lifecycle. A completed sub-leg is never itself authority to retire a campaign.
-    // Domain facts are typed and stored once. Legacy outcomes project into the same payloads.
-    public abstract class MissionStepResult
+    // Domain facts are typed and stored once, as payloads (see MissionStepPayloads).
+    public class MissionStepResult
     {
-        // Compatibility views share this exact record. No fact or payload is copied or mirrored.
         private sealed class Facts
         {
             internal MissionIntentKey IntentKey;
@@ -39,16 +38,10 @@ namespace Game.Ai.V2
         }
         private readonly Facts _facts;
         private readonly Dictionary<Type, IMissionStepPayload> _payloads;
-        protected MissionStepResult()
+        public MissionStepResult()
         {
             _facts = new Facts();
             _payloads = new Dictionary<Type, IMissionStepPayload>();
-        }
-        protected MissionStepResult(MissionStepResult source)
-        {
-            if (source == null) throw new ArgumentNullException(nameof(source));
-            _facts = source._facts;
-            _payloads = source._payloads;
         }
         public MissionIntentKey IntentKey { get => _facts.IntentKey; set => _facts.IntentKey = value; }
         public MissionStepDisposition Disposition { get => _facts.Disposition; set => _facts.Disposition = value; }
@@ -63,6 +56,22 @@ namespace Game.Ai.V2
         public int StepsMoved { get => _facts.StepsMoved; set => _facts.StepsMoved = value; }
         public DeferReason? AllocationDeferReason { get => _facts.AllocationDeferReason; set => _facts.AllocationDeferReason = value; }
         public ProvisionFailureKind? ProvisionFailureKindValue { get => _facts.ProvisionFailureKindValue; set => _facts.ProvisionFailureKindValue = value; }
+        // Named projections of the one stored disposition; neither is a second state.
+        public bool IsBlocked => Disposition == MissionStepDisposition.Waiting
+            || Disposition == MissionStepDisposition.Replan;
+        public bool IsFailed => Disposition == MissionStepDisposition.Invalidated
+            || Disposition == MissionStepDisposition.PermanentFailure;
+        // A plain failure never downgrades an already structural one.
+        public void Fail()
+        {
+            if (Disposition != MissionStepDisposition.PermanentFailure)
+                Disposition = MissionStepDisposition.Invalidated;
+        }
+        public void ClearPermanentFailure()
+        {
+            if (Disposition == MissionStepDisposition.PermanentFailure)
+                Disposition = MissionStepDisposition.Invalidated;
+        }
         public ExecutionStopReason? StopReason { get => _facts.StopReason; set => _facts.StopReason = value; }
         public HexCoord FinalHex { get => _facts.FinalHex; set => _facts.FinalHex = value; }
         public MissionKind MissionKind { get => _facts.MissionKind; set => _facts.MissionKind = value; }

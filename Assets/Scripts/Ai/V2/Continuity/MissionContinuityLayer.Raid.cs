@@ -609,13 +609,13 @@ namespace Game.Ai.V2
                     && primary.ReachableOwnBaseHexes.Contains(hex.Value)));
         }
 
-        private static void CreateRaidIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        private static void CreateRaidIntent(MissionIntentState state, MissionStepResult o, int turn)
         {
             var ri = new RaidIntent
             {
-                Target = o.RaidTarget,
-                LastKnownHex = o.RaidLastKnownHex,
-                TargetIsNeutral = o.RaidTargetIsNeutral,
+                Target = o.RaidFacts().RaidTarget,
+                LastKnownHex = o.RaidFacts().RaidLastKnownHex,
+                TargetIsNeutral = o.RaidFacts().RaidTargetIsNeutral,
                 OperationStarted = true,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Raid, CommitmentTier.Hard, ri);
@@ -624,7 +624,7 @@ namespace Game.Ai.V2
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
-        internal static void ClassifyRaidStep(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyRaidStep(ExecutionResult e, MissionStepResult o)
         {
             switch (e.StopReason)
             {
@@ -634,34 +634,35 @@ namespace Game.Ai.V2
                 case ExecutionStopReason.EnemyDiscovered:
                 case ExecutionStopReason.NeutralDiscovered:
                 case ExecutionStopReason.StepCompleted:
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    o.Disposition = MissionStepDisposition.Progress;
                     break;
                 case ExecutionStopReason.NoSafeStep:
                 case ExecutionStopReason.MoveRejected:
-                    o.Outcome = ExecutionOutcome.Blocked;
+                    o.Disposition = MissionStepDisposition.Waiting;
                     break;
                 case ExecutionStopReason.MoverLost:
                 case ExecutionStopReason.TargetInvalidated:
                     // Support-local for a support leg (GroundCombatLegs.IsSupportLeg); fatal for
                     // Assault/Return, where the mover is the primary.
-                    o.Outcome = GroundCombatLegs.IsSupportLeg(o)
-                        ? ExecutionOutcome.Blocked
-                        : ExecutionOutcome.Failed;
+                    if (GroundCombatLegs.IsSupportLeg(o))
+                        o.Disposition = MissionStepDisposition.Waiting;
+                    else
+                        o.Fail();
                     break;
                 default:
-                    o.Outcome = ExecutionOutcome.Failed;
+                    o.Fail();
                     break;
             }
             return;
         }
 
-        internal static bool TryClassifySatisfiedRaidLeg(MissionTurnOutcome o)
+        internal static bool TryClassifySatisfiedRaidLeg(MissionStepResult o)
         {
                     if (o.Proposal?.Target is RaidMissionTarget raidTarget
                         && (raidTarget.Phase == RaidMissionPhase.SupportReturn
                             || raidTarget.Phase == RaidMissionPhase.RecoveryReturn))
                     {
-                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        o.Disposition = MissionStepDisposition.Progress;
                         o.MadeProgress = true;
                         return true;
                     }
@@ -669,7 +670,7 @@ namespace Game.Ai.V2
         }
 
         private static bool TryCompleteRaidTarget(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
             // Raid completion ends only the CURRENT neutral target, not the durable campaign.
@@ -678,8 +679,8 @@ namespace Game.Ai.V2
             // or enter Return. Removing it here strands the victorious army and makes the
             // Assault -> next target / Return phase machine unreachable.
             bool completedRaidAssault = o.MissionKind == MissionKind.Raid
-                && (o.HasRaidPayload
-                    ? o.RaidPhase == RaidMissionPhase.Assault
+                && (o.RaidFacts().HasRaidPayload
+                    ? o.RaidFacts().RaidPhase == RaidMissionPhase.Assault
                     : o.Proposal?.Target is RaidMissionTarget raidTarget
                         && raidTarget.Phase == RaidMissionPhase.Assault);
             if (completedRaidAssault)
@@ -691,7 +692,7 @@ namespace Game.Ai.V2
                         + "target completed; durable campaign kept for re-orient/return");
                     return true;
                 }
-                if (o.HasRaidPayload && o.OperationStarted)
+                if (o.RaidFacts().HasRaidPayload && o.GroundFacts().OperationStarted)
                 {
                     CreateRaidIntent(state, o, turn);
                     AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
@@ -704,15 +705,15 @@ namespace Game.Ai.V2
         }
 
         private static bool TryCreateRaidStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.HasRaidPayload && o.OperationStarted)) return false;
+            if (!(o.RaidFacts().HasRaidPayload && o.GroundFacts().OperationStarted)) return false;
             CreateRaidIntent(state, o, turn);
             return true;
         }
 
         private static bool TryApplyRaidMoverFacts(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             // For a Raid the executor of a given turn may be the
             // SUPPORT army (Reinforcement transit / handoff), not the primary. Generic code
@@ -725,27 +726,27 @@ namespace Game.Ai.V2
             // live intent to Assault; inspecting that mutated phase here used to misclassify the
             // convoy as the new primary. A completed handoff deliberately releases the convoy;
             // only a still-travelling selected support becomes a durable claim.
-            bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
-                && (o.RaidPhase == RaidMissionPhase.Reinforcement || o.RaidPhase == RaidMissionPhase.SupportReturn)
-                && o.RaidPrimaryArmyId == raid.PrimaryArmyId
-                && o.RaidSupportArmyId.HasValue
-                && o.RaidSupportArmyId.Value == o.MoverArmyId.Value;
-            bool airSupportExecutedThisTurn = raid != null && o.HasRaidPayload
-                && o.RaidPhase == RaidMissionPhase.AirSupport
-                && o.RaidAirSupportArmyId.HasValue
-                && o.RaidAirSupportArmyId.Value == o.MoverArmyId.Value;
+            bool supportExecutedThisTurn = raid != null && o.RaidFacts().HasRaidPayload
+                && (o.RaidFacts().RaidPhase == RaidMissionPhase.Reinforcement || o.RaidFacts().RaidPhase == RaidMissionPhase.SupportReturn)
+                && o.RaidFacts().RaidPrimaryArmyId == raid.PrimaryArmyId
+                && o.RaidFacts().RaidSupportArmyId.HasValue
+                && o.RaidFacts().RaidSupportArmyId.Value == o.MoverArmyId.Value;
+            bool airSupportExecutedThisTurn = raid != null && o.RaidFacts().HasRaidPayload
+                && o.RaidFacts().RaidPhase == RaidMissionPhase.AirSupport
+                && o.RaidFacts().RaidAirSupportArmyId.HasValue
+                && o.RaidFacts().RaidAirSupportArmyId.Value == o.MoverArmyId.Value;
             if (airSupportExecutedThisTurn)
             {
                 raid.Phase = RaidMissionPhase.AirSupport;
-                raid.AirSupportArmyId = o.RaidAirSupportArmyId;
-                raid.AirSupportLandingHex = o.RaidAirSupportLandingHex;
-                raid.AirSupportStrikeSucceeded |= o.RaidAirSupportStrikeSucceeded;
+                raid.AirSupportArmyId = o.RaidFacts().RaidAirSupportArmyId;
+                raid.AirSupportLandingHex = o.RaidFacts().RaidAirSupportLandingHex;
+                raid.AirSupportStrikeSucceeded |= o.RaidFacts().RaidAirSupportStrikeSucceeded;
                 return true;
             }
             else if (supportExecutedThisTurn)
             {
-                if (o.RaidPhase == RaidMissionPhase.Reinforcement
-                    && !o.ReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
+                if (o.RaidFacts().RaidPhase == RaidMissionPhase.Reinforcement
+                    && !o.GroundFacts().ReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
                     raid.SupportArmyId = o.MoverArmyId.Value;
                 return true;
             }
@@ -753,12 +754,12 @@ namespace Game.Ai.V2
         }
 
         private static void ApplyRaidStepFacts(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (o.HasRaidPayload && intent.Raid != null)
+            if (o.RaidFacts().HasRaidPayload && intent.Raid != null)
             {
-                intent.Raid.LastKnownHex = o.RaidLastKnownHex;
-                if (o.OperationStarted)
+                intent.Raid.LastKnownHex = o.RaidFacts().RaidLastKnownHex;
+                if (o.GroundFacts().OperationStarted)
                 {
                     intent.Raid.OperationStarted = true;
                     if (intent.Funding != CommitmentTier.Hard)
@@ -790,32 +791,32 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureRaidProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureRaidProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasRaidPayload = true;
-            o.RaidTarget = pm.RaidTarget;
-            o.RaidLastKnownHex = pm.RaidLastKnownHex;
-            o.RaidTargetIsNeutral = pm.RaidTargetIsNeutral;
-            o.RaidPhase = pm.RaidPhase;
-            o.RaidPrimaryArmyId = pm.RaidPrimaryArmyId;
-            o.RaidSupportArmyId = pm.RaidSupportArmyId;
-            o.RaidAirSupportArmyId = pm.RaidAirSupportArmyId;
-            o.RaidAirSupportLandingHex = pm.RaidAirSupportLandingHex;
-            o.RaidRefitAction = pm.RaidRefitAction;
+            o.RaidFactsForWrite().HasRaidPayload = true;
+            o.RaidFactsForWrite().RaidTarget = pm.RaidTarget;
+            o.RaidFactsForWrite().RaidLastKnownHex = pm.RaidLastKnownHex;
+            o.RaidFactsForWrite().RaidTargetIsNeutral = pm.RaidTargetIsNeutral;
+            o.RaidFactsForWrite().RaidPhase = pm.RaidPhase;
+            o.RaidFactsForWrite().RaidPrimaryArmyId = pm.RaidPrimaryArmyId;
+            o.RaidFactsForWrite().RaidSupportArmyId = pm.RaidSupportArmyId;
+            o.RaidFactsForWrite().RaidAirSupportArmyId = pm.RaidAirSupportArmyId;
+            o.RaidFactsForWrite().RaidAirSupportLandingHex = pm.RaidAirSupportLandingHex;
+            o.RaidFactsForWrite().RaidRefitAction = pm.RaidRefitAction;
         }
 
-        private static void CaptureRaidExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureRaidExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             bool raidEngaged = o.MissionKind == MissionKind.Raid
                 && (e.StopReason == ExecutionStopReason.BattleStarted
                     || e.StopReason == ExecutionStopReason.HexEventStarted);
 
-            o.OperationStarted = e.OperationStarted
+            o.GroundFactsForWrite().OperationStarted = e.OperationStarted
                 || e.StepsMoved > 0 || raidEngaged;
-            o.RaidAirSupportStrikeSucceeded =
+            o.RaidFactsForWrite().RaidAirSupportStrikeSucceeded =
                 e.AirSupportStrikeSucceeded;
-            o.RaidRefitSucceeded = e.RaidRefitSucceeded;
-            o.RaidResourcesSpent = e.ResourcesSpent;
+            o.RaidFactsForWrite().RaidRefitSucceeded = e.RaidRefitSucceeded;
+            o.RaidFactsForWrite().RaidResourcesSpent = e.ResourcesSpent;
 
             o.MadeProgress |= raidEngaged;
         }

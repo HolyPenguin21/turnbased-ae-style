@@ -20,8 +20,8 @@ namespace Game.EditorTests
         public void FreshRefresh_CreatesAnUnfundedRoleFromThePayload()
         {
             var player = new PlayerSetupData { Nickname = "Recon payload" };
-            MissionTurnOutcome o = Outcome(ScoutTargetKind.Refresh, new HexCoord(5, 1), mover: 10);
-            o.ScoutRequiresStealth = true;
+            MissionStepResult o = Outcome(ScoutTargetKind.Refresh, new HexCoord(5, 1), mover: 10);
+            o.ReconFactsForWrite().ScoutRequiresStealth = true;
 
             MissionContinuityLayer.ReconcileStep(player, 4, o);
 
@@ -40,8 +40,8 @@ namespace Game.EditorTests
             HexCoord focus = new HexCoord(4, 3);
             MissionIntent incumbent = AiReconAuditBugTests.Incumbent(focus, preferredMover: 10);
             MissionIntentRegistry.GetOrCreate(player).Put(incumbent);
-            MissionTurnOutcome o = Outcome(ScoutTargetKind.Explore, focus, mover: 10);
-            o.ScoutRequiresStealth = true;
+            MissionStepResult o = Outcome(ScoutTargetKind.Explore, focus, mover: 10);
+            o.ReconFactsForWrite().ScoutRequiresStealth = true;
 
             MissionContinuityLayer.ReconcileStep(player, 4, o);
 
@@ -56,7 +56,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData { Nickname = "Recon payload" };
             MissionIntent incumbent = AiReconAuditBugTests.Incumbent(new HexCoord(4, 3), preferredMover: 10);
             MissionIntentRegistry.GetOrCreate(player).Put(incumbent);
-            MissionTurnOutcome o = Outcome(ScoutTargetKind.Refresh, new HexCoord(5, 1), mover: 10);
+            MissionStepResult o = Outcome(ScoutTargetKind.Refresh, new HexCoord(5, 1), mover: 10);
 
             MissionContinuityLayer.ReconcileStep(player, 4, o);
 
@@ -98,24 +98,21 @@ namespace Game.EditorTests
             Assert.That(c.IsArmyClaimed(20), Is.True);
         }
 
-        private static MissionTurnOutcome Outcome(ScoutTargetKind kind, HexCoord focus, int mover)
+        private static MissionStepResult Outcome(ScoutTargetKind kind, HexCoord focus, int mover)
         {
             var target = new ScoutMissionTarget { Kind = kind, FocusHex = focus };
             var proposal = new MissionProposal { Kind = MissionKind.Scout, Target = target, BaseValue = 5f };
-            return new MissionTurnOutcome
+            return new MissionStepResult
             {
                 AttemptKey = StableMissionKey.For(proposal),
                 IntentKey = MissionIntentKey.For(proposal),
                 Proposal = proposal,
                 MissionKind = MissionKind.Scout,
-                Outcome = ExecutionOutcome.ProductiveStop,
+                Disposition = MissionStepDisposition.Progress,
                 MadeProgress = true,
                 StepsMoved = 1,
-                HasScoutPayload = true,
                 MoverArmyId = mover,
-                ScoutKind = kind,
-                FocusHex = focus,
-            };
+            }.WithPayload(new ReconStepPayload { HasScoutPayload = true, ScoutKind = kind, FocusHex = focus });
         }
     }
 }

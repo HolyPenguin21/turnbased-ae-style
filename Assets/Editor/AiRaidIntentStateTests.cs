@@ -98,9 +98,9 @@ namespace Game.EditorTests
             ledger.RecordProvisionFailure(proposal,
                 ProvisionFailure.TargetSatisfied("support already home"));
 
-            MissionTurnOutcome outcome = ledger.Finalize().Single();
+            MissionStepResult outcome = ledger.FinalizeSteps().Single();
 
-            Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.ProductiveStop));
+            Assert.That(outcome.Disposition, Is.EqualTo(MissionStepDisposition.Progress));
             Assert.That(outcome.MadeProgress, Is.True);
             Assert.That(outcome.ObjectiveSatisfied, Is.False);
         }
@@ -126,9 +126,9 @@ namespace Game.EditorTests
             ledger.RecordProvisionFailure(proposal,
                 ProvisionFailure.TargetSatisfied("primary already home"));
 
-            MissionTurnOutcome outcome = ledger.Finalize().Single();
+            MissionStepResult outcome = ledger.FinalizeSteps().Single();
 
-            Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Completed));
+            Assert.That(outcome.Disposition, Is.EqualTo(MissionStepDisposition.Completed));
             Assert.That(outcome.ObjectiveSatisfied, Is.True);
         }
 

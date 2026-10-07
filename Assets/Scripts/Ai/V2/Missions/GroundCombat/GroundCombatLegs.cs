@@ -108,14 +108,14 @@ namespace Game.Ai.V2
         // never competes with the operation's other legs for admission.
         // The leg an outcome reports, read from the provisioned payload or — when Provisioning
         // failed before a payload existed — from the proposal itself.
-        internal static RaidMissionPhase? RaidLegOf(MissionTurnOutcome o) =>
+        internal static RaidMissionPhase? RaidLegOf(MissionStepResult o) =>
             o == null || o.MissionKind != MissionKind.Raid ? (RaidMissionPhase?)null
-            : o.HasRaidPayload ? o.RaidPhase
+            : o.RaidFacts().HasRaidPayload ? o.RaidFacts().RaidPhase
             : o.Proposal?.Target is RaidMissionTarget rt ? rt.Phase : (RaidMissionPhase?)null;
 
-        internal static AttackMissionTarget? AttackLegOf(MissionTurnOutcome o) =>
+        internal static AttackMissionTarget? AttackLegOf(MissionStepResult o) =>
             o == null || o.MissionKind != MissionKind.Attack ? (AttackMissionTarget?)null
-            : o.HasAttackPayload ? o.AttackTarget
+            : o.AttackFacts().HasAttackPayload ? o.AttackFacts().AttackTarget
             : o.Proposal?.Target is AttackMissionTarget at ? at : (AttackMissionTarget?)null;
 
         // THE "support-local" rule, one answer for every ground-combat lane: a leg moved by a
@@ -123,7 +123,7 @@ namespace Game.Ai.V2
         // support leg; ActiveDefence has none) that loses its mover, its primary or its target
         // never ends the operation. The ledger reports it Blocked and ResolveActive's next pass cleans up only that support
         // (or, for a lost primary, retires the operation itself).
-        internal static bool IsSupportLeg(MissionTurnOutcome o)
+        internal static bool IsSupportLeg(MissionStepResult o)
         {
             RaidMissionPhase? raid = RaidLegOf(o);
             if (raid.HasValue)

@@ -126,13 +126,13 @@ namespace Game.EditorTests
                 Key = pm.Key, Source = pm, StepsMoved = 1,
                 ActualActorArmyId = 7, StopReason = ExecutionStopReason.StepCompleted,
             });
-            MissionTurnOutcome outcome = ledger.Finalize().Single();
+            MissionStepResult outcome = ledger.FinalizeSteps().Single();
             Assert.That(outcome.MissionKind, Is.EqualTo(MissionKind.Development));
-            Assert.That(outcome.HasDevelopmentPayload, Is.True);
-            Assert.That(outcome.DevelopmentTarget.Hero, Is.SameAs(hero));
+            Assert.That(outcome.DevelopmentFacts().HasDevelopmentPayload, Is.True);
+            Assert.That(outcome.DevelopmentFacts().DevelopmentTarget.Hero, Is.SameAs(hero));
             Assert.That(outcome.MoverArmyId, Is.EqualTo(7));
             Assert.That(outcome.MadeProgress, Is.True);
-            Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.ProductiveStop));
+            Assert.That(outcome.Disposition, Is.EqualTo(MissionStepDisposition.Progress));
         }
 
         [Test]

@@ -278,7 +278,7 @@ namespace Game.Ai.V2
             // publishes must name that SAME actor, never the nominal incumbent the price was not
             // actually computed against. This is a proposal-internal consistency fix only: it does
             // NOT touch durable ownership (MissionIntent.PreferredMoverArmyId), which Continuity
-            // still sets exclusively from the real post-execution MissionTurnOutcome.MoverArmyId in
+            // still sets exclusively from the real post-execution MissionStepResult.MoverArmyId in
             // MissionContinuityLayer.NewIntent — a structurally-ineligible incumbent is not silently
             // "demoted" anywhere durable by this change.
             var req = new MissionRequirements

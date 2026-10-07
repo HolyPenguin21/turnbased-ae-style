@@ -331,13 +331,13 @@ namespace Game.EditorTests
                 MissionIntent intercept = DefenceIntent(ActiveDefencePhase.Intercept, 42, 7, null);
                 state.Put(intercept);
 
-                MissionContinuityLayer.ReconcileAfterTurn(player, 6, new List<MissionTurnOutcome>
+                MissionContinuityLayer.ReconcileAfterTurn(player, 6, new List<MissionStepResult>
                 {
-                    new MissionTurnOutcome
+                    new MissionStepResult
                     {
                         IntentKey = intercept.IntentKey,
                         MissionKind = MissionKind.ActiveDefence,
-                        Outcome = ExecutionOutcome.Completed,
+                        Disposition = MissionStepDisposition.Completed,
                         ObjectiveSatisfied = true,
                         MoverArmyId = 7,
                     },

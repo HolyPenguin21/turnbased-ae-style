@@ -84,7 +84,7 @@ namespace Game.EditorTests
             return intent;
         }
 
-        private static MissionTurnOutcome Settle(PlayerSetupData player, MissionProposal m, int turn,
+        private static MissionStepResult Settle(PlayerSetupData player, MissionProposal m, int turn,
             ProvisionFailure? failure = null, ExecutionResult execution = null)
         {
             var ledger = new MissionOutcomeLedger();
@@ -106,7 +106,7 @@ namespace Game.EditorTests
                     ledger.RecordExecution(execution);
                 }
             }
-            List<MissionTurnOutcome> outcomes = ledger.Finalize();
+            List<MissionStepResult> outcomes = ledger.FinalizeSteps();
             MissionContinuityLayer.ReconcileAfterTurn(player, turn, outcomes);
             return outcomes.Single();
         }
@@ -124,7 +124,7 @@ namespace Game.EditorTests
             MissionIntent intent = DurableIntent(player, m, 3);
             intent.StallTurns = 1;
 
-            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            MissionStepResult o = Settle(player, m, 4, execution: new ExecutionResult
             {
                 StopReason = ExecutionStopReason.StepCompleted, EconomyDeliveryReady = true,
                 FinalHex = Site,
@@ -204,12 +204,12 @@ namespace Game.EditorTests
                 new CardData(new CardDefinition { cardType = CardType.Base }));
             MissionIntent intent = DurableIntent(player, m, 3);
 
-            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            MissionStepResult o = Settle(player, m, 4, execution: new ExecutionResult
             {
                 StopReason = ExecutionStopReason.TargetInvalidated,
             });
 
-            Assert.That(o.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+            Assert.That(o.IsBlocked, Is.True);
             Assert.That(Has(player, intent), Is.True);
         }
 
@@ -436,7 +436,7 @@ namespace Game.EditorTests
                 ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
                 MaterialsMinimum = 3f, MaterialsDesired = 3f, MaterialsMaximum = 3f,
             };
-            InfrastructureFulfillment.ReserveEconomyCost(player, 1, "Economy:another-build",
+            InfrastructureFulfillment.ReserveEconomyCost(player, 1, ReservationOwner.ForPass("Economy:another-build"),
                 new ResourceCost(materials: 2), 0f, otherOwnersReason);
             var snap = new WorldSnapshot
             {
@@ -501,7 +501,7 @@ namespace Game.EditorTests
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
                 InfrastructureFulfillment.ReserveEconomyCost(player, turn,
-                    EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)),
+                    ReservationOwner.ForPass(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m))),
                     new ResourceCost(materials: 4), 1f);
                 return m;
             }
@@ -556,7 +556,7 @@ namespace Game.EditorTests
             intent.LastReconciledTurn = 6;
             intent.LastProtectedTurn = 7;   // Phase A still holds its resources this turn
 
-            MissionContinuityLayer.ReconcileAfterTurn(player, 7, new List<MissionTurnOutcome>());
+            MissionContinuityLayer.ReconcileAfterTurn(player, 7, new List<MissionStepResult>());
 
             Assert.That(Has(player, intent), Is.False,
                 "a build that has waited commitmentMaxTurns without any progress is released");

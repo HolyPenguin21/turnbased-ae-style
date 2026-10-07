@@ -22,7 +22,7 @@ namespace Game.Ai.V2
         // StableMissionKey (stable proposal/execution identity) and MissionIntentKey (durable
         // multi-turn intent). Assigned by the orchestrator right after the pass's mission list is
         // built; it then rides through FundedEntry → ProvisionedMission → ExecutionResult →
-        // MissionOutcomeLedger → MissionTurnOutcome → MissionContinuity.
+        // MissionOutcomeLedger → MissionStepResult → MissionContinuity.
         public string AttemptId;
         // Every DemandTraceId whose capability shortage was blocking this exact operation (an
         // exact target-hex + capability match — never inferred from the shared axis, spec §1.6).

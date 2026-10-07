@@ -18,5 +18,7 @@ namespace Game.Ai.V2
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
         public ResourceVector RaidResourcesSpent;
+        // Read-only projection of RaidTarget for non-Raid/logging readers; never a second copy.
+        public int RaidTargetArmyId => RaidTarget.Kind == RaidTargetKind.NeutralArmy ? RaidTarget.ArmyId : 0;
     }
 }

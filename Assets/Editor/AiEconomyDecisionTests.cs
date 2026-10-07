@@ -399,7 +399,7 @@ namespace Game.EditorTests
         // Runs the exact production sequence one durable Economy attempt goes through in a real
         // turn: Provision -> ledger classification -> ReconcileAfterTurn. Returns both the raw
         // provisioning result and the finalised outcome so a test can assert on either.
-        private static (ProvisioningResult Result, MissionTurnOutcome Outcome) RunDurableEconomyAttempt(
+        private static (ProvisioningResult Result, MissionStepResult Outcome) RunDurableEconomyAttempt(
             Game.Players.PlayerSetupData player, PlayerRoot root, Game.Ai.AiTurnContext ctx,
             ProvisioningSession session, MissionProposal mission, int turn, Game.Ai.AiHandData hand = null)
         {
@@ -412,8 +412,8 @@ namespace Game.EditorTests
                 ledger.RecordProvisionSuccess(mission, result.Provisioned);
             else
                 ledger.RecordProvisionFailure(mission, result.Failure);
-            List<MissionTurnOutcome> outcomes = ledger.Finalize();
-            MissionTurnOutcome outcome = outcomes.Single();
+            List<MissionStepResult> outcomes = ledger.FinalizeSteps();
+            MissionStepResult outcome = outcomes.Single();
 
             MissionContinuityLayer.ReconcileAfterTurn(player, turn, outcomes);
             return (result, outcome);
@@ -465,14 +465,14 @@ namespace Game.EditorTests
                 Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
                     .IsArmyClaimed(army.Id), Is.True);
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1, hand: hand);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
                 Assert.That(outcome.IntentKey, Is.EqualTo(intent.IntentKey));
                 Assert.That(outcome.ProvisionFailureKindValue, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
-                Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+                Assert.That(outcome.IsBlocked, Is.True);
                 Assert.That(outcome.MadeProgress, Is.False);
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.False,
                     "a proven route failure must release the commitment, not hold it forever");
@@ -521,7 +521,7 @@ namespace Game.EditorTests
                 var session = new ProvisioningSession(snapshot);
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 // This is the exact check that would fail if MaxMovement were ever swapped for
@@ -577,7 +577,7 @@ namespace Game.EditorTests
                 session.ClaimedArmyIds.Add(army.Id); // something else already spent this actor this pass
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
@@ -680,12 +680,12 @@ namespace Game.EditorTests
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
-                Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Failed));
+                Assert.That(outcome.IsFailed, Is.True);
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.False);
             }
             finally
@@ -847,7 +847,7 @@ namespace Game.EditorTests
                     new ProvisioningSession(snapshot), mission, 1);
                 Assert.That(attempt.Result.Success, Is.False);
                 Assert.That(attempt.Result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
-                Assert.That(attempt.Outcome.Outcome, Is.EqualTo(ExecutionOutcome.Failed));
+                Assert.That(attempt.Outcome.IsFailed, Is.True);
                 Assert.That(state.TryGet(oldKey, out MissionIntent preserved), Is.True);
                 Assert.That(preserved, Is.SameAs(intent));
                 Assert.That(preserved.Status, Is.EqualTo(IntentStatus.Active));
@@ -1112,7 +1112,7 @@ namespace Game.EditorTests
                     map, army.Owner, army.Hex, shelter, army.MaxMovement), Is.Not.EqualTo(int.MaxValue),
                     "test setup sanity: a safe route home must exist independent of movement");
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
@@ -1165,7 +1165,7 @@ namespace Game.EditorTests
                 var session = new ProvisioningSession(snapshot);
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                (ProvisioningResult result, MissionStepResult outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
@@ -2824,7 +2824,7 @@ namespace Game.EditorTests
             StrategicResourceReservationLedger.BeginTurn(player, 13);
             var completionCost = new ResourceCost { human = 2 };
             InfrastructureFulfillment.ReserveEconomyCost(player, 13,
-                "Economy:completion", completionCost, 1f);
+                ReservationOwner.ForPass("Economy:completion"), completionCost, 1f);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             ArmySnapshot builder = EconomyBuilder(62, 2, 5f);
             snapshot.Self.Armies = new[] { builder };

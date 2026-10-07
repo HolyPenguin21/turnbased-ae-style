@@ -266,6 +266,33 @@ namespace Game.Ai.V2
             return poolWide;
         }
 
+        // Exhaustion is a claim about the whole physical pool, not about one batch's session
+        // contention: mark a pool exhausted only when every still-open mission drawing on it
+        // failed AND each failure is proven pool-wide, and no mission of that pool already
+        // succeeded this batch (a scout that got a mover is live proof the pool is not exhausted).
+        internal static void SettleScoutBatch(WorldSnapshot snap, PlayerSetupData player,
+            IEnumerable<MissionProposal> openMissions,
+            IReadOnlyDictionary<StableMissionKey, ProvisionFailure> failureByKey,
+            IEnumerable<MissionProposal> succeededMissions)
+        {
+            List<MissionProposal> open = openMissions.ToList();
+            List<MissionProposal> succeeded = succeededMissions.Where(m => m != null).ToList();
+            foreach (CapabilityPoolKind pool in open.Select(PoolFor)
+                         .Where(p => p != CapabilityPoolKind.None).Distinct())
+            {
+                if (succeeded.Any(m => PoolFor(m) == pool))
+                    continue;
+                List<MissionProposal> poolOpen = open.Where(m => PoolFor(m) == pool).ToList();
+                bool poolWideExhausted = poolOpen.Count > 0 && poolOpen.All(m =>
+                    failureByKey.TryGetValue(StableMissionKey.For(m), out ProvisionFailure fail)
+                    && ProvenPoolWideUnable(snap, player, m, fail));
+                if (poolWideExhausted)
+                    MarkExhausted(player, pool,
+                        $"assignment batch rejected all {poolOpen.Count} funded "
+                        + $"Scout mission(s) in pool {pool}, proven pool-wide unable");
+            }
+        }
+
         public static void Clear() => ByPlayer.Clear();
     }
 }

@@ -9,17 +9,17 @@ namespace Game.Ai.V2
         internal static bool IsScoutStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
             ProvisionedMission pm) => ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
 
-        internal static void ClassifyScoutStep(ExecutionResult e, MissionTurnOutcome o)
+        internal static void ClassifyScoutStep(ExecutionResult e, MissionStepResult o)
         {
             if (e.StopReason == ExecutionStopReason.TargetInvalidated)
             {
-                o.Outcome = ExecutionOutcome.Blocked;
+                o.Disposition = MissionStepDisposition.Waiting;
                 return;
             }
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
         }
         private static bool TryContinueScoutWaypoint(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
             // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
@@ -38,7 +38,7 @@ namespace Game.Ai.V2
                 // this turn (so ReconPatrolState already exists). A provisioning-only
                 // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
                 // false / MadeProgress == false and is correctly NOT made durable.
-                bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress;
+                bool freshScoutRole = intent == null && o.ReconFacts().HasScoutPayload && o.MadeProgress;
 
                 if (existingScoutRole)
                 {
@@ -65,9 +65,9 @@ namespace Game.Ai.V2
         }
 
         private static bool TryCreateScoutStep(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (!(o.MadeProgress && o.HasScoutPayload)) return false;
+            if (!(o.MadeProgress && o.ReconFacts().HasScoutPayload)) return false;
             if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
                 CreateIntent(state, o, turn);
             return true;
@@ -82,9 +82,9 @@ namespace Game.Ai.V2
         // creating a second durable intent for the same physical actor. Ownership is actor-
         // exclusive across all three Recon sub-kinds. Returns true when it absorbed the outcome.
         private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
-            MissionTurnOutcome o, int turn, AiAllocatorState allocState)
+            MissionStepResult o, int turn, AiAllocatorState allocState)
         {
-            if (!o.HasScoutPayload || o.MoverArmyId == null)
+            if (!o.ReconFacts().HasScoutPayload || o.MoverArmyId == null)
                 return false;
 
             MissionIntent owner = null;
@@ -118,14 +118,14 @@ namespace Game.Ai.V2
         // THE one writer of a Scout outcome's provisioned payload into a durable ScoutIntent — used
         // when a role is created, advanced and when an actor's existing role absorbs a fresh
         // mission, so the three can never drift apart again.
-        private static void ApplyScoutPayload(ScoutIntent s, MissionTurnOutcome o)
+        private static void ApplyScoutPayload(ScoutIntent s, MissionStepResult o)
         {
-            s.FocusHex = o.FocusHex;
-            s.Kind = o.ScoutKind;
-            s.RequiresStealth = o.ScoutRequiresStealth;
+            s.FocusHex = o.ReconFacts().FocusHex;
+            s.Kind = o.ReconFacts().ScoutKind;
+            s.RequiresStealth = o.ReconFacts().ScoutRequiresStealth;
         }
 
-        private static void CreateIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
+        private static void CreateIntent(MissionIntentState state, MissionStepResult o, int turn)
         {
             var si = new ScoutIntent();
             ApplyScoutPayload(si, o);
@@ -154,13 +154,13 @@ namespace Game.Ai.V2
             }
         }
         private static void ObserveReconMover(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn) =>
+            MissionIntent intent, MissionStepResult o, int turn) =>
             ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
 
         private static void ApplyScoutStepFacts(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
-            if (o.HasScoutPayload && intent.Scout != null)
+            if (o.ReconFacts().HasScoutPayload && intent.Scout != null)
                 ApplyScoutPayload(intent.Scout, o);
 
         }
@@ -304,15 +304,15 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void CaptureScoutProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        private static void CaptureScoutProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
-            o.HasScoutPayload = true;
-            o.ScoutKind = pm.ScoutKind;
-            o.ScoutRequiresStealth = pm.RequiresStealth;
-            o.FocusHex = pm.FocusHex;
+            o.ReconFactsForWrite().HasScoutPayload = true;
+            o.ReconFactsForWrite().ScoutKind = pm.ScoutKind;
+            o.ReconFactsForWrite().ScoutRequiresStealth = pm.RequiresStealth;
+            o.ReconFactsForWrite().FocusHex = pm.FocusHex;
         }
 
-        private static void CaptureScoutExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureScoutExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             o.PayloadForWrite<ReconStepPayload>().DurableRoleContinues = e.DurableRoleContinues;
         }

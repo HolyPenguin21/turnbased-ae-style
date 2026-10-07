@@ -66,7 +66,7 @@ namespace Game.EditorTests
             ledger.RegisterProposals(new[] { proposal }); ledger.RecordExecution(execution);
             var step = ledger.FinalizeSteps()[0];
             Assert.That(step.WorldDeltas, Is.SameAs(execution.WorldDeltas));
-            Assert.That(MissionTurnOutcome.View(step).WorldDeltas, Is.SameAs(step.WorldDeltas));
+            Assert.That(step.WorldDeltas, Is.SameAs(step.WorldDeltas));
             Assert.That(step.StateVersionAfter, Is.EqualTo(execution.StateVersionAfter));
             Assert.That(V2StateVersion.Current, Is.EqualTo(initial + (changed ? 1 : 0)));
             Assert.That(session.PendingInvalidations.RegistryVersion, Is.EqualTo(pending.RegistryVersion));

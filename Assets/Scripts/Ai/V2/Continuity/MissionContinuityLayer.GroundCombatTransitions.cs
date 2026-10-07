@@ -5,14 +5,14 @@ namespace Game.Ai.V2
     internal static partial class MissionContinuityLayer
     {
         private static bool TryHandleInvalidGroundSupport(MissionIntentState state, AiAllocatorState allocState,
-            MissionIntent intent, MissionTurnOutcome o, int turn)
+            MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
             // A support whose roster no longer improves the primary (Provisioning AssemblyInfeasible
             // on a convoy / gather leg) invalidates only that assignment, never the durable
             // operation or its target: the support is released and the operation stays in its
             // reinforcement / gather phase. One edge for Raid and Attack (GroundCombatLegs.IsSupportLeg).
-            if (o.StructuralFailure && intent != null
+            if (o.Disposition == MissionStepDisposition.PermanentFailure && intent != null
                 && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible
                 && GroundCombatLegs.IsSupportLeg(o) && ReleaseInvalidSupport(intent, o))
             {
@@ -29,7 +29,7 @@ namespace Game.Ai.V2
 
         // Releases the support an AssemblyInfeasible convoy / gather leg named. False when the leg
         // is not one whose support can be released this way (the generic failure path applies).
-        private static bool ReleaseInvalidSupport(MissionIntent intent, MissionTurnOutcome o)
+        private static bool ReleaseInvalidSupport(MissionIntent intent, MissionStepResult o)
         {
             if (intent.Raid != null
                 && GroundCombatLegs.RaidLegOf(o) == RaidMissionPhase.Reinforcement)
@@ -80,10 +80,10 @@ namespace Game.Ai.V2
             GroundCombatAirSupport.ReleaseOrphanStrikes(player, pass.State.All);
         }
 
-        private static void CaptureGroundHandoffFacts(ExecutionResult e, MissionTurnOutcome o)
+        private static void CaptureGroundHandoffFacts(ExecutionResult e, MissionStepResult o)
         {
             if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack)
-                o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
+                o.GroundFactsForWrite().ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
         }
 
     }

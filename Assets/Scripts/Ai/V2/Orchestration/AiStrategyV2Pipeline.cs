@@ -831,33 +831,9 @@ namespace Game.Ai.V2
                             Dictionary<StableMissionKey, ProvisionFailure> scoutFailureByKey =
                                 scoutFailures.ToDictionary(
                                     f => StableMissionKey.For(f.Funded.Mission), f => f.Failure);
-                            // Exhaustion is a claim about the whole physical pool, not about this
-                            // batch's session contention: only mark a pool exhausted when every
-                            // still-open mission drawing on it failed AND each failure is proven
-                            // pool-wide (ProvenPoolWideUnable), and no mission in that same pool
-                            // already succeeded this batch (a scout that got a mover is live proof
-                            // the pool is not exhausted).
-                            foreach (CapabilityPoolKind pool in openScouts
-                                         .Select(fe => CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission))
-                                         .Where(p => p != CapabilityPoolKind.None).Distinct())
-                            {
-                                List<FundedEntry> poolOpenScouts = openScouts.Where(fe =>
-                                    CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission) == pool).ToList();
-                                bool poolHasSuccessThisBatch = cycleProvisioning.Successful.Values.Any(m =>
-                                    m?.Mission != null
-                                    && CapabilityPoolExhaustionRegistry.PoolFor(m.Mission) == pool);
-                                if (poolHasSuccessThisBatch)
-                                    continue;
-                                bool poolWideExhausted = poolOpenScouts.Count > 0 && poolOpenScouts.All(fe =>
-                                    scoutFailureByKey.TryGetValue(StableMissionKey.For(fe.Mission),
-                                        out ProvisionFailure fail)
-                                    && CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                                        snapshot, player, fe.Mission, fail));
-                                if (poolWideExhausted)
-                                    CapabilityPoolExhaustionRegistry.MarkExhausted(player, pool,
-                                        $"assignment batch rejected all {poolOpenScouts.Count} funded "
-                                        + $"Scout mission(s) in pool {pool}, proven pool-wide unable");
-                            }
+                            CapabilityPoolExhaustionRegistry.SettleScoutBatch(snapshot, player,
+                                openScouts.Select(fe => fe.Mission), scoutFailureByKey,
+                                cycleProvisioning.Successful.Values.Select(m => m?.Mission));
 
                             // One batch means one re-pack. The allocator now sees every impossible
                             // Scout at once, so released AP can admit Economy/Development immediately.
@@ -1505,7 +1481,7 @@ namespace Game.Ai.V2
 
     // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
     // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier
-    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionTurnOutcome
+    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionStepResult
     // (the ordered per-turn record ReconcileAfterTurn transitions on). ScoutObjectiveEvaluator (the
     // shared completion / validity home) lives in ScoutObjectiveEvaluator.cs.
 

@@ -24,13 +24,13 @@ namespace Game.EditorTests
         [Test]
         public void EmptyCompatibilityReadsDoNotCreatePayloadsOrInventNullableIdentityZero()
         {
-            var outcome = new MissionTurnOutcome();
-            Assert.That(outcome.HasRaidPayload, Is.False);
-            Assert.That(outcome.RaidPrimaryArmyId, Is.Null);
-            Assert.That(outcome.RaidSupportArmyId, Is.Null);
-            Assert.That(outcome.RaidAirSupportArmyId, Is.Null);
-            Assert.That(outcome.RaidAirSupportLandingHex, Is.Null);
-            Assert.That(outcome.EconomyLoanSource, Is.Null);
+            var outcome = new MissionStepResult();
+            Assert.That(outcome.RaidFacts().HasRaidPayload, Is.False);
+            Assert.That(outcome.RaidFacts().RaidPrimaryArmyId, Is.Null);
+            Assert.That(outcome.RaidFacts().RaidSupportArmyId, Is.Null);
+            Assert.That(outcome.RaidFacts().RaidAirSupportArmyId, Is.Null);
+            Assert.That(outcome.RaidFacts().RaidAirSupportLandingHex, Is.Null);
+            Assert.That(outcome.EconomyFacts().EconomyLoanSource, Is.Null);
             Assert.That(outcome.GetPayload<RaidStepPayload>(), Is.Null);
             Assert.That(outcome.GetPayload<EconomyStepPayload>(), Is.Null);
         }
@@ -38,16 +38,16 @@ namespace Game.EditorTests
         [Test]
         public void LegacyAndTypedRaidFactsShareOneValueIncludingActorZeroAndNull()
         {
-            var outcome = new MissionTurnOutcome { HasRaidPayload = true, RaidPrimaryArmyId = 0,
-                RaidPhase = RaidMissionPhase.Reinforcement, RaidAirSupportLandingHex = new HexCoord(1, 2) };
+            var outcome = new MissionStepResult().WithPayload(new RaidStepPayload { HasRaidPayload = true, RaidPrimaryArmyId = 0,
+                RaidPhase = RaidMissionPhase.Reinforcement, RaidAirSupportLandingHex = new HexCoord(1, 2) });
             var payload = outcome.GetPayload<RaidStepPayload>();
             Assert.That(payload.RaidPrimaryArmyId, Is.EqualTo(0));
             payload.RaidPrimaryArmyId = null;
-            Assert.That(outcome.RaidPrimaryArmyId, Is.Null);
-            outcome.RaidSupportArmyId = 8;
+            Assert.That(outcome.RaidFacts().RaidPrimaryArmyId, Is.Null);
+            outcome.RaidFactsForWrite().RaidSupportArmyId = 8;
             Assert.That(payload.RaidSupportArmyId, Is.EqualTo(8));
             payload.RaidAirSupportLandingHex = null;
-            Assert.That(outcome.RaidAirSupportLandingHex, Is.Null);
+            Assert.That(outcome.RaidFacts().RaidAirSupportLandingHex, Is.Null);
             Assert.That(outcome.GetPayload<RaidStepPayload>(), Is.SameAs(payload));
         }
 
@@ -55,12 +55,12 @@ namespace Game.EditorTests
         public void TypedEconomyLoanPreservesMissingIdentityAndUpdatesLegacyProjection()
         {
             var key = new MissionIntentKey(MissionKind.Scout, 0, 0, 2, 3);
-            var outcome = new MissionTurnOutcome();
+            var outcome = new MissionStepResult();
             outcome.SetPayload(new EconomyStepPayload { HasEconomyPayload = true, EconomyLoanSource = key });
-            Assert.That(outcome.EconomyLoanSource, Is.EqualTo(key));
-            outcome.EconomyLoanSource = null;
+            Assert.That(outcome.EconomyFacts().EconomyLoanSource, Is.EqualTo(key));
+            outcome.EconomyFactsForWrite().EconomyLoanSource = null;
             Assert.That(outcome.GetPayload<EconomyStepPayload>().EconomyLoanSource, Is.Null);
-            Assert.That(outcome.EconomyLoanSource, Is.Null);
+            Assert.That(outcome.EconomyFacts().EconomyLoanSource, Is.Null);
         }
 
         [TestCase(MissionKind.Scout)]
@@ -80,7 +80,7 @@ namespace Game.EditorTests
                 DurableRoleContinues = true, EconomyDeliveryReady = true, EconomyHolding = true,
                 DevelopmentDeliveryReady = true, AirSupportStrikeSucceeded = true,
                 ReinforcementHandoffAttempted = true, AttackOpportunisticStrike = true });
-            var result = ledger.Finalize()[0];
+            var result = ledger.FinalizeSteps()[0];
             Assert.That(result.MoverArmyId, Is.EqualTo(0));
             switch (kind)
             {
