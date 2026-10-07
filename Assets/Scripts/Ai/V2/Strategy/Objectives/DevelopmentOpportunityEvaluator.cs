@@ -229,6 +229,15 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
+                // Diversity: damp the gain BEFORE it is priced, so the task score, the card EV and
+                // the plan Phase A later rebuilds from this opportunity all see the same value.
+                float diversity = DevelopmentDiversity.Factor(player, hand, snap.TurnNumber, card,
+                    out string diversityNote);
+                if (diversity < 1f)
+                {
+                    best.ExpectedGain *= diversity;
+                    best.TacticalGain *= diversity;
+                }
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
@@ -260,7 +269,7 @@ namespace Game.Ai.V2
                 // Preserve sunk-facility admission: Phase A owns the final card EV comparison.
                 best.Explain = $"{best.Mode} '{card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} tactical={best.TacticalGain:0.0} "
-                    + best.Explain;
+                    + diversityNote + best.Explain;
                 result.Add(best);
                 admitted++;
             }

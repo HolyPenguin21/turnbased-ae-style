@@ -713,6 +713,7 @@ namespace Game.Ai.V2
                         };
                         result.Reservation.RecordGenerationAttempt(plan.Generation, attempted);
                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
+                        DevelopmentDiversity.RecordAttempt(player, ctx.TurnNumber, plan.DevelopmentUpgrade?.Card);
                         if (up.ChallengeWon) result.GeneratedCardsSucceeded++;
                         // Creation is complete; the capability is delivered by the hand-card lane.
                         selected.State.Blocked = true;
