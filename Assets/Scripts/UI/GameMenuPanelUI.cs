@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
-using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace Game.UI
@@ -110,16 +109,6 @@ namespace Game.UI
             if (selectable != null && selectable.isActiveAndEnabled && selectable.IsInteractable()) selectable.Select();
             else if (MenuAvailable) gearButton?.Select();
             previousSelection = null;
-        }
-        private void Update()
-        {
-            if (!MenuAvailable) return;
-            if (Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame || UIFocusUtility.IsTextFieldFocused()) return;
-            Game.Audio.GameAudioManager.Instance?.PlayClick();
-            blockedThroughFrame = Time.frameCount;
-            if (!IsShowing) OpenMenu();
-            else if (optionsPanel != null && optionsPanel.gameObject.activeSelf) optionsPanel.Close();
-            else ContinueGame();
         }
         private void BlockGameplayCanvases()
         {
