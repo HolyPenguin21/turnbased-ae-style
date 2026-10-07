@@ -36,6 +36,7 @@ namespace Game.Core
         // so this lives here rather than as a duplicated [SerializeField] on each, same
         // reasoning as playerRowPrefab/resourceIconPrefab below.
         public ArmyButtonUI armyButtonPrefab;
+        public ArmyButtonUI armyModalButtonPrefab;
         public ArmyUnitCardUI armyUnitCardPrefab;
 
         [Header("Detailed Card Stat Colors")]
