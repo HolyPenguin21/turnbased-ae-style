@@ -130,6 +130,7 @@ namespace Game.Ai.V2
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
+            using var recipientMemo = new RecipientEvaluationMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
@@ -756,6 +757,48 @@ namespace Game.Ai.V2
             return best;
         }
 
+        // One settled Enumerate evaluates the same (equipment, recipient) pair for every mode and
+        // site, and the verdict depends on neither: legality, signed delta, purpose label and the
+        // pending-hand check read only the snapshot, the inventory, the hand and the registries,
+        // none of which Enumerate mutates. Memoised for that one call only; outside it (hand
+        // attachment, materialization re-enumeration) nothing is cached.
+        private readonly struct RecipientVerdict
+        {
+            public readonly bool Legal;
+            public readonly string Why;
+            public readonly StrategicCardEvaluator.EquipmentDelta Gain;
+            public readonly string Purpose;
+            public readonly bool NoNeed;
+            public readonly bool PendingCovers;
+            public RecipientVerdict(bool legal, string why, StrategicCardEvaluator.EquipmentDelta gain,
+                string purpose, bool noNeed, bool pendingCovers)
+            { Legal = legal; Why = why; Gain = gain; Purpose = purpose; NoNeed = noNeed; PendingCovers = pendingCovers; }
+        }
+
+        private sealed class RecipientEvaluationMemo : System.IDisposable
+        {
+            [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
+            private readonly RecipientEvaluationMemo _outer;
+            private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts = new();
+
+            public RecipientEvaluationMemo() { _outer = s_current; s_current = this; }
+            public void Dispose() => s_current = _outer;
+
+            public static bool TryGet(CardDefinition equipment, object recipient, bool future,
+                out RecipientVerdict verdict)
+            {
+                verdict = default;
+                return s_current != null
+                    && s_current._verdicts.TryGetValue((equipment, recipient, future), out verdict);
+            }
+
+            public static void Store(CardDefinition equipment, object recipient, bool future,
+                RecipientVerdict verdict)
+            {
+                if (s_current != null) s_current._verdicts[(equipment, recipient, future)] = verdict;
+            }
+        }
+
         // Keep recipient alternatives until the shared portfolio has checked competing chains.
         // Re-enumeration also refreshes slot legality, signed deltas and matchup after each action.
         internal static List<DevelopmentOpportunity> EquipmentOpportunities(ResearchProductionMode mode,
@@ -774,32 +817,63 @@ namespace Game.Ai.V2
 
             int handChecked = 0, mapChecked = 0, noNeed = 0;
             string lastReject = null;
-            void Consider(DevelopmentOpportunity cand, ArmyData army = null)
-            {
-                // Delta already includes mission-scoped penetration and effect usefulness.
-                cand.Explain = "purpose=" + StrategicCardEvaluator.EquipmentPurposeLabel(snap, cand.RecipientCard, cand.RecipientUnit)
-                    + " slot=" + equipment.attachmentSlot + " " + cand.Explain;
-                float selection = StrategicCardEvaluator.EquipmentUpgradeValue(cand);
-                // Utility is required even for in-advance investment; surplus alone cannot admit it.
-                if (selection <= 0f) { noNeed++; lastReject = cand.Explain; return; }
-                // A real card in hand is the pending stage. Reuse it before manufacturing more
-                // for its useful recipient slot; ordinary hand attachment enumeration stays live.
-                if (futureAttachment && PendingEquipmentCovers(cand, hand, snap, inv))
-                { lastReject = "use_pending_equipment_first"; return; }
-                result.Add(cand);
-            }
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
-            DevelopmentOpportunity Make(DevRecipientKind kind, CardData card, UnitData unit,
-                int? armyId, string label, StrategicCardEvaluator.EquipmentDelta delta) =>
-                new DevelopmentOpportunity
+            // Memoised only for the standard (no explicit attachment card) call.
+            bool memoised = attachmentCard == null;
+
+            RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit)
             {
-                Mode = mode, FacilityHex = facilityHex, Card = equipment, ProducesEquipment = true,
-                SuccessChance = successChance, Generation = generation,
-                RecipientKind = kind, RecipientCard = card, RecipientUnit = unit,
-                RecipientArmyId = armyId, RecipientLabel = label,
-                ExpectedGain = delta.Total * powerUnit,
-                TacticalGain = delta.Tactical * powerUnit, Explain = delta.Detail,
-            };
+                if (memoised && RecipientEvaluationMemo.TryGet(equipment, recipient, futureAttachment,
+                    out RecipientVerdict cached))
+                    return cached;
+                string why;
+                bool legal = unit != null
+                    ? futureAttachment
+                        ? EquipmentSystem.CanAttachPreview(equipment, unit, out why)
+                        : EquipmentSystem.CanAttach(generatedPreview, unit, root, out why)
+                    : futureAttachment
+                        ? EquipmentSystem.CanAttachPreview(equipment, card, out why)
+                        : EquipmentSystem.CanAttach(generatedPreview, card, root, out why);
+                RecipientVerdict verdict;
+                if (!legal)
+                    verdict = new RecipientVerdict(false, why, default, null, false, false);
+                else
+                {
+                    StrategicCardEvaluator.EquipmentDelta gain = unit != null
+                        ? StrategicCardEvaluator.EquipmentDeltaParts(equipment, unit, snap, inv)
+                        : StrategicCardEvaluator.EquipmentDeltaParts(equipment, card, snap, inv);
+                    string purpose = StrategicCardEvaluator.EquipmentPurposeLabel(snap, card, unit);
+                    DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain, powerUnit);
+                    // Delta already includes mission-scoped penetration and effect usefulness.
+                    // Utility is required even for in-advance investment; surplus alone cannot admit it.
+                    bool noNeed = StrategicCardEvaluator.EquipmentUpgradeValue(probe) <= 0f;
+                    // A real card in hand is the pending stage. Reuse it before manufacturing more
+                    // for its useful recipient slot; ordinary hand attachment enumeration stays live.
+                    bool covers = !noNeed && futureAttachment
+                        && PendingEquipmentCovers(probe, hand, snap, inv);
+                    verdict = new RecipientVerdict(true, null, gain, purpose, noNeed, covers);
+                }
+                if (memoised) RecipientEvaluationMemo.Store(equipment, recipient, futureAttachment, verdict);
+                return verdict;
+            }
+
+            void Consider(RecipientVerdict v, DevRecipientKind kind, CardData card, UnitData unit,
+                int? armyId, string label)
+            {
+                string explain = "purpose=" + v.Purpose + " slot=" + equipment.attachmentSlot + " "
+                    + v.Gain.Detail;
+                if (v.NoNeed) { noNeed++; lastReject = explain; return; }
+                if (v.PendingCovers) { lastReject = "use_pending_equipment_first"; return; }
+                result.Add(new DevelopmentOpportunity
+                {
+                    Mode = mode, FacilityHex = facilityHex, Card = equipment, ProducesEquipment = true,
+                    SuccessChance = successChance, Generation = generation,
+                    RecipientKind = kind, RecipientCard = card, RecipientUnit = unit,
+                    RecipientArmyId = armyId, RecipientLabel = label,
+                    ExpectedGain = v.Gain.Total * powerUnit,
+                    TacticalGain = v.Gain.Tactical * powerUnit, Explain = explain,
+                });
+            }
 
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
@@ -807,15 +881,10 @@ namespace Game.Ai.V2
                     if (c?.Definition == null) continue;
                     if (c.Definition.cardType != CardType.Unit && c.Definition.cardType != CardType.Hero) continue;
                     handChecked++;
-                    bool legal = futureAttachment
-                        ? EquipmentSystem.CanAttachPreview(equipment, c, out string why)
-                        : EquipmentSystem.CanAttach(generatedPreview, c, root, out why);
-                    if (!legal)
-                    { lastReject = why; continue; }
-                    StrategicCardEvaluator.EquipmentDelta gain =
-                        StrategicCardEvaluator.EquipmentDeltaParts(equipment, c, snap, inv);
-                    Consider(Make(DevRecipientKind.HandCard, c, null, null,
-                        $"hand:{c.Definition.displayName}", gain));
+                    RecipientVerdict v = Evaluate(c, c, null);
+                    if (!v.Legal)
+                    { lastReject = v.Why; continue; }
+                    Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
                 }
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -825,16 +894,12 @@ namespace Game.Ai.V2
                 {
                     if (u == null || u.IsPrisoner) continue;
                     mapChecked++;
-                    bool legal = futureAttachment
-                        ? EquipmentSystem.CanAttachPreview(equipment, u, out string whyU)
-                        : EquipmentSystem.CanAttach(generatedPreview, u, root, out whyU);
-                    if (!legal)
-                    { lastReject = whyU; continue; }
-                    StrategicCardEvaluator.EquipmentDelta gain =
-                        StrategicCardEvaluator.EquipmentDeltaParts(equipment, u, snap, inv);
-                    Consider(Make(army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
+                    RecipientVerdict v = Evaluate(u, null, u);
+                    if (!v.Legal)
+                    { lastReject = v.Why; continue; }
+                    Consider(v, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
                         null, u, army.Id,
-                        $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
+                        $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}");
                 }
             }
 
@@ -843,6 +908,15 @@ namespace Game.Ai.V2
                     + (lastReject != null ? $", last reject \"{lastReject}\"" : "");
             return result;
         }
+
+        // The slice of a candidate that PendingEquipmentCovers and the need check read.
+        private static DevelopmentOpportunity MakeProbe(CardDefinition equipment, CardData card,
+            UnitData unit, StrategicCardEvaluator.EquipmentDelta gain, float powerUnit) =>
+            new DevelopmentOpportunity
+            {
+                Card = equipment, RecipientCard = card, RecipientUnit = unit,
+                ExpectedGain = gain.Total * powerUnit, TacticalGain = gain.Tactical * powerUnit,
+            };
 
         internal static bool PendingEquipmentCovers(DevelopmentOpportunity op, AiHandData hand,
             WorldSnapshot snap, CapabilityInventory inv)
