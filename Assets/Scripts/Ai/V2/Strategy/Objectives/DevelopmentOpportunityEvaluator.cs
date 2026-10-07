@@ -229,14 +229,17 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
-                // Diversity: damp the gain BEFORE it is priced, so the task score, the card EV and
-                // the plan Phase A later rebuilds from this opportunity all see the same value.
-                float diversity = DevelopmentDiversity.Factor(player, hand, snap.TurnNumber, card,
+                // Production context, applied BEFORE the gain is priced so the task score, the card
+                // EV and the plan Phase A later rebuilds from this opportunity all see one value:
+                // units run short (supply) and a card made lately is damped (diversity).
+                float diversity = DevelopmentDiversity.RepeatFactor(player, snap.TurnNumber, card,
                     out string diversityNote);
-                if (diversity < 1f)
+                float scale = diversity * ProductionSupplyMultiplier(snap);
+                if (!Mathf.Approximately(scale, 1f))
                 {
-                    best.ExpectedGain *= diversity;
-                    best.TacticalGain *= diversity;
+                    best.ExpectedGain *= scale;
+                    best.TacticalGain *= scale;
+                    diversityNote += $"supply x{ProductionSupplyMultiplier(snap):0.#} ";
                 }
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
@@ -685,6 +688,17 @@ namespace Game.Ai.V2
             return op;
         }
 
+        // How much a produced item beats a plain unit by how few cards are left (deck + hand): x1 while
+        // units are plentiful (a unit is the better buy), rising as the deck runs out
+        // (EquipmentEfficiency.SupplyMultiplier). A snapshot without Self counts as a full deck.
+        internal static float ProductionSupplyMultiplier(WorldSnapshot snap)
+        {
+            if (snap?.Self == null)
+                return 1f;
+            return EquipmentEfficiency.SupplyMultiplier(
+                (snap.Self.Deck?.Count ?? 0) + (snap.Self.Hand?.Count ?? 0));
+        }
+
         private static DevelopmentOpportunity PriceEquipmentPreview(CardDefinition card,
             ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float chance,
             WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
@@ -695,6 +709,14 @@ namespace Game.Ai.V2
                 snap, inv, player, root, hand, out _);
             if (op == null)
                 return null;
+            // The staffed site will price this output at the supply multiplier of the day it makes
+            // it; the investment is judged at today's multiplier (units still plentiful => x1).
+            float supply = ProductionSupplyMultiplier(snap);
+            if (!Mathf.Approximately(supply, 1f))
+            {
+                op.ExpectedGain *= supply;
+                op.TacticalGain *= supply;
+            }
             // The future output is priced exactly as the staffed facility will price it: the SAME
             // plan shape and StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade (equipment value
             // minus its Challenge + attach cost). The preview source is never executed. Every

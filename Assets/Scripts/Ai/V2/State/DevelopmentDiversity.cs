@@ -15,7 +15,8 @@ namespace Game.Ai.V2
     //  game). Two multiplicative damps on the opportunity's gain, applied once where a READY site
     //  prices its output (DevelopmentOpportunityEvaluator.AddReady):
     //
-    //    saturation = 1 / (1 + carriers)   — only for abilities whose value saturates (Stealth,
+    //    saturation (moved to EquipmentEfficiency, priced for hand items too) = 1 / (1 + carriers) —
+    //                 only for abilities whose value saturates (Stealth,
     //                 Recce, Splash, Scorcher, AA, Regeneration, RapidReaction): `carriers` is the
     //                 number of own units (map + hand) that already have the ability's family. The
     //                 sixth stealth unit is worth nothing; pure stat items are never damped, so
@@ -100,22 +101,18 @@ namespace Game.Ai.V2
             return count;
         }
 
-        // Pure rule (EditMode-testable): 1 for a fresh pure-stat card, falling with saturation
-        // carriers and recent repeats.
-        internal static float Factor(int carriers, int recentAttempts) =>
-            1f / ((1f + System.Math.Max(0, carriers))
-                * (1f + AiConfigV2.devDiversityRecentWeight * System.Math.Max(0, recentAttempts)));
+        // Pure rule (EditMode-testable): 1 for a card not attempted lately, falling with every recent
+        // attempt. Ability saturation by carriers is priced where the ability is valued
+        // (EquipmentEfficiency), so existing hand items saturate too.
+        internal static float RepeatFactor(int recentAttempts) =>
+            1f / (1f + AiConfigV2.devDiversityRecentWeight * System.Math.Max(0, recentAttempts));
 
-        internal static float Factor(PlayerSetupData player, AiHandData hand, int turn,
-            CardDefinition card, out string note)
+        internal static float RepeatFactor(PlayerSetupData player, int turn, CardDefinition card,
+            out string note)
         {
-            List<string> families = SaturatingFamilies(card);
-            int carriers = families.Count > 0 ? Carriers(player, hand, families) : 0;
             int recent = RecentAttempts(player, turn, card);
-            float factor = Factor(carriers, recent);
-            note = factor < 1f
-                ? $"diversity={factor:0.00} (carriers {carriers}{(families.Count > 0 ? " of " + string.Join("/", families) : "")}, recent {recent}) "
-                : string.Empty;
+            float factor = RepeatFactor(recent);
+            note = recent > 0 ? $"diversity={factor:0.00} (recent {recent}) " : string.Empty;
             return factor;
         }
 

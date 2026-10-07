@@ -25,14 +25,27 @@ namespace Game.EditorTests
         public void Cleanup() => DevelopmentDiversity.ClearAll();
 
         [Test]
-        public void Factor_IsOneForAFreshCardAndFallsWithCarriersAndRepeats()
+        public void RepeatFactor_IsOneForAFreshCardAndFallsWithRecentAttempts()
         {
             float w = AiConfigV2.devDiversityRecentWeight;
-            Assert.That(DevelopmentDiversity.Factor(0, 0), Is.EqualTo(1f));
-            Assert.That(DevelopmentDiversity.Factor(1, 0), Is.EqualTo(0.5f).Within(1e-5f));
-            Assert.That(DevelopmentDiversity.Factor(0, 2), Is.EqualTo(1f / (1f + 2f * w)).Within(1e-5f));
-            Assert.That(DevelopmentDiversity.Factor(2, 1), Is.EqualTo(1f / (3f * (1f + w))).Within(1e-5f));
-            Assert.That(DevelopmentDiversity.Factor(-3, -1), Is.EqualTo(1f), "negative counts never raise the value");
+            Assert.That(DevelopmentDiversity.RepeatFactor(0), Is.EqualTo(1f));
+            Assert.That(DevelopmentDiversity.RepeatFactor(2), Is.EqualTo(1f / (1f + 2f * w)).Within(1e-5f));
+            Assert.That(DevelopmentDiversity.RepeatFactor(3), Is.LessThan(DevelopmentDiversity.RepeatFactor(1)));
+            Assert.That(DevelopmentDiversity.RepeatFactor(-3), Is.EqualTo(1f), "negative counts never raise the value");
+        }
+
+        [Test]
+        public void ProductionSupplyMultiplier_ReadsDeckPlusHandAndTreatsNoSelfAsFull()
+        {
+            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(null), Is.EqualTo(1f));
+            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(new WorldSnapshot()), Is.EqualTo(1f));
+            var low = new WorldSnapshot { Self = new SelfSnapshot {
+                Deck = new CardDefinition[5], Hand = new Game.Cards.CardData[4] } };
+            var full = new WorldSnapshot { Self = new SelfSnapshot {
+                Deck = new CardDefinition[29], Hand = new Game.Cards.CardData[6] } };
+            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(full), Is.EqualTo(1f));
+            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(low),
+                Is.GreaterThan(AiConfigV2.equipSupplyMidMultiplier * 0.9f), "9 of 35 cards: near the one-third point and beyond");
         }
 
         [Test]

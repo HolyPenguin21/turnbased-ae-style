@@ -306,7 +306,9 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendable = root == null ? null
                 : (System.Func<ResourceType, float>)(type =>
                     StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            return marginalBenefit - ResourceCost(plan, snap, spendable, player);
+            // The attachment AP is paid only on a won Challenge: it is charged at the success chance.
+            return marginalBenefit - ResourceCost(plan, snap, spendable, player,
+                deferredAttachmentWeight: Mathf.Clamp01(op.SuccessChance));
         }
 
         // -----------------------------------------------------------------------------------------
@@ -775,10 +777,12 @@ namespace Game.Ai.V2
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            float deferredAttachmentWeight = 1f)
         {
             if (plan == null) return 0f;
-            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost + plan.DeferredAttachmentAp))
+            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost
+                       + deferredAttachmentWeight * plan.DeferredAttachmentAp))
                    + StrategicResourceCostValue(plan.ResCost, snap, spendableResource, player)
                    + ChainStepPenalty(plan.Kind);
         }
