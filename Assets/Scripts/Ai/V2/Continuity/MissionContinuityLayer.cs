@@ -734,8 +734,7 @@ namespace Game.Ai.V2
                     RetireOutcomeIntent(state, intent, null, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedIdle");
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (idle: "
-                        + $"stall {intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, "
-                        + $"age {intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
+                        + $"{ReapProgress(intent)})");
                 }
             }
         }
@@ -842,9 +841,8 @@ namespace Game.Ai.V2
             {
                 RetireOutcomeIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
-                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} reaped (stall "
-                    + $"{intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, age "
-                    + $"{intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
+                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} reaped ("
+                    + $"{ReapProgress(intent)})");
             }
             else
             {
@@ -910,6 +908,20 @@ namespace Game.Ai.V2
                     return standing.UsefulRetainedIncomeGain(contribution)
                         > AiConfigV2.allocatorSliceEpsilon;
             return false;
+        }
+
+        // The limits ShouldReap applies to this intent, for the reap log line. A Raid is judged by
+        // the raid* caps and Scout/Attack have no absolute age cap, so printing the shared
+        // commitment* limits for every kind (e.g. "age 10/6" for a Raid) misreported the cause.
+        private static string ReapProgress(MissionIntent i)
+        {
+            if (i.Kind == MissionKind.Raid)
+                return $"stall {i.StallTurns}/{AiConfigV2.raidIntentStallTurns}, "
+                    + $"age {i.TurnsActive}/{AiConfigV2.raidIntentMaxTurns}";
+            if (i.Kind == MissionKind.Scout || i.Kind == MissionKind.Attack)
+                return $"stall {i.StallTurns}/{AiConfigV2.commitmentStallTurns}, age {i.TurnsActive} (no age cap)";
+            return $"stall {i.StallTurns}/{AiConfigV2.commitmentStallTurns}, "
+                + $"age {i.TurnsActive}/{AiConfigV2.commitmentMaxTurns}";
         }
 
         private static bool ShouldReap(MissionIntent i, int turn)
