@@ -530,14 +530,9 @@ namespace Game.Map
                         || !representative.Controller.Visual.IsVisible
                         || !IsMarkerHit(representative.Controller.Visual, screenPosition))
                         continue;
-                    List<ArmyData> ownerArmies = ArmyRegistry.AllAt(hex)
-                        .FindAll(a => a.Owner == representative.Owner);
-                    ArmyData target = ResolveArmyMarkerTarget(ownerArmies, null);
-                    if (target == null)
-                        continue;
                     _selectedHex = hex;
                     armyButtonRow?.Hide();
-                    ShowArmyModalReadOnly(target);
+                    ShowArmyModalReadOnly(representative);
                     return true;
                 }
                 return false;
