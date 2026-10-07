@@ -109,11 +109,19 @@ namespace Game.Ai.V2
             reason = null;
             if (snap?.Self == null || opposition == null || opposition.Count == 0)
                 return false;
-            PoolBox pool = PoolCache.GetValue(snap, BuildKnownPool);
+            PoolBox pool = PoolCache.GetValue(snap, s =>
+            {
+                using (new Game.Core.ProfileScope("AI/Pool.Build"))
+                    return BuildKnownPool(s);
+            });
             if (!pool.Bounded)
                 return false;
-            if (WorthIt.CanDamageAll(pool.Attackers, opposition, hexBonus))
+            bool covered;
+            using (new Game.Core.ProfileScope("AI/Pool.CanDamageAll"))
+                covered = WorthIt.CanDamageAll(pool.Attackers, opposition, hexBonus);
+            if (covered)
                 return false;
+            using var __reason = new Game.Core.ProfileScope("AI/Pool.Reason");
             foreach (WorthIt.DefendingArmy army in opposition)
                 foreach (WorthIt.DefenderProfile d in army.Units ?? System.Array.Empty<WorthIt.DefenderProfile>())
                 {
