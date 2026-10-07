@@ -52,6 +52,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -95,6 +96,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -138,6 +140,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -182,6 +185,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -225,6 +229,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -251,7 +256,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 6
-    defenseRating: 5
+    defenseRating: 4
     resistanceRating: 3
     range: 1
     hitPoints: 12
@@ -262,13 +267,13 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0100000002000000
-    grantedAbilities:
-    - CeramicArmor
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -313,6 +318,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -356,6 +362,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
@@ -406,6 +413,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
@@ -456,6 +464,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
@@ -506,6 +515,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
@@ -556,6 +566,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
@@ -1202,6 +1213,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 04000000
       hostKinds: 00000000
@@ -1233,7 +1245,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1249,7 +1261,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1260,7 +1272,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1280,7 +1292,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1296,7 +1308,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1307,7 +1319,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1327,7 +1339,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1343,7 +1355,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1354,7 +1366,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1380,7 +1392,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1396,7 +1408,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1407,7 +1419,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1430,7 +1442,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1446,7 +1458,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1457,7 +1469,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - Regeneration
@@ -1475,7 +1487,7 @@ MonoBehaviour:
       energy: 2
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1491,7 +1503,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1502,7 +1514,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - Regeneration
@@ -1526,7 +1538,7 @@ MonoBehaviour:
       energy: 2
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1542,7 +1554,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1553,7 +1565,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - Regeneration
@@ -1577,7 +1589,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1593,7 +1605,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1604,7 +1616,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1630,7 +1642,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1646,7 +1658,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1657,7 +1669,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1680,7 +1692,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1696,7 +1708,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1707,7 +1719,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1733,7 +1745,7 @@ MonoBehaviour:
       energy: 2
       materials: 0
       tech: 3
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1749,7 +1761,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1760,7 +1772,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -1783,7 +1795,7 @@ MonoBehaviour:
       energy: 2
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1799,7 +1811,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1810,7 +1822,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - RapidReaction
@@ -1831,7 +1843,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1847,7 +1859,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1858,7 +1870,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - r1s4
@@ -1879,7 +1891,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1895,7 +1907,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1906,7 +1918,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - r1s4
@@ -1930,7 +1942,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1946,7 +1958,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -1957,7 +1969,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - r1s4
@@ -1981,7 +1993,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -1997,7 +2009,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2008,7 +2020,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - Stealth4
@@ -2029,7 +2041,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2045,7 +2057,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2056,7 +2068,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 01000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2076,7 +2088,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2092,7 +2104,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2103,7 +2115,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 01000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - Stealth4
@@ -2121,7 +2133,7 @@ MonoBehaviour:
       energy: 1
       materials: 0
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2137,7 +2149,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2148,7 +2160,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 01000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - r1s4
@@ -2166,7 +2178,7 @@ MonoBehaviour:
       energy: 2
       materials: 0
       tech: 3
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2182,7 +2194,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 0
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2193,7 +2205,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 00000000
       hostKinds: 01000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - RapidReaction
@@ -2211,7 +2223,7 @@ MonoBehaviour:
       energy: 0
       materials: 1
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2227,7 +2239,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2238,7 +2250,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2258,7 +2270,7 @@ MonoBehaviour:
       energy: 0
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2274,7 +2286,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2285,7 +2297,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - CeramicArmor
@@ -2303,7 +2315,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2319,7 +2331,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2330,7 +2342,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2350,7 +2362,7 @@ MonoBehaviour:
       energy: 0
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2366,7 +2378,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2377,7 +2389,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2397,7 +2409,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2413,7 +2425,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2424,7 +2436,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2454,7 +2466,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2470,7 +2482,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2481,7 +2493,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2509,7 +2521,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2525,7 +2537,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2536,7 +2548,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2564,7 +2576,7 @@ MonoBehaviour:
       energy: 2
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2580,7 +2592,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2591,7 +2603,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2619,7 +2631,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2635,7 +2647,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2646,7 +2658,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2674,7 +2686,7 @@ MonoBehaviour:
       energy: 2
       materials: 1
       tech: 3
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2690,7 +2702,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2701,7 +2713,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2732,7 +2744,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2748,7 +2760,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2759,7 +2771,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2790,7 +2802,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2806,7 +2818,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2817,7 +2829,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -2850,7 +2862,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2866,7 +2878,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2877,7 +2889,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - AA
@@ -2895,7 +2907,7 @@ MonoBehaviour:
       energy: 0
       materials: 2
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2911,7 +2923,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2922,7 +2934,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 01000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2945,7 +2957,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -2961,7 +2973,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -2972,7 +2984,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 01000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -2992,7 +3004,7 @@ MonoBehaviour:
       energy: 0
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3008,7 +3020,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3019,7 +3031,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 01000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - CeramicArmor
@@ -3037,7 +3049,7 @@ MonoBehaviour:
       energy: 0
       materials: 2
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3053,7 +3065,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3064,7 +3076,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 01000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -3087,7 +3099,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 0
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3103,7 +3115,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3114,7 +3126,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -3137,7 +3149,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3153,7 +3165,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3164,7 +3176,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3194,7 +3206,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3210,7 +3222,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3221,7 +3233,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3249,7 +3261,7 @@ MonoBehaviour:
       energy: 2
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3265,7 +3277,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3276,7 +3288,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3305,7 +3317,7 @@ MonoBehaviour:
       energy: 2
       materials: 2
       tech: 3
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3321,7 +3333,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3332,7 +3344,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3363,7 +3375,7 @@ MonoBehaviour:
       energy: 2
       materials: 1
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3379,7 +3391,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3390,7 +3402,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - ShockAttack
@@ -3408,7 +3420,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3424,7 +3436,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3435,7 +3447,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities:
       - AA
@@ -3453,7 +3465,7 @@ MonoBehaviour:
       energy: 0
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3469,7 +3481,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3480,7 +3492,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3513,7 +3525,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3529,7 +3541,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3540,7 +3552,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3571,7 +3583,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3587,7 +3599,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3598,7 +3610,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3629,7 +3641,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3645,7 +3657,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3656,7 +3668,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3687,7 +3699,7 @@ MonoBehaviour:
       energy: 1
       materials: 2
       tech: 2
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3703,7 +3715,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3714,7 +3726,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 0400000005000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
