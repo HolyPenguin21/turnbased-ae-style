@@ -38,8 +38,7 @@ namespace Game.Map
         [SerializeField] private HexInfoPanelUI infoPanel;
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
-        // Shown whenever the selected hex has 2+ armies on it (see SelectHex) — click opens
-        // armyViewerModal for that army.
+        // Shown for one or more owned mobile armies; click selects an army for orders.
         [SerializeField] private ArmyButtonRowUI armyButtonRow;
         [SerializeField] private ArmyViewerModalUI armyViewerModal;
         [SerializeField] private BaseViewerModalUI baseViewerModal;
@@ -733,21 +732,20 @@ namespace Game.Map
                 else infoPanel.HideAnimated();
             }
 
-            // 2+ armies (or a garrison sharing the hex with a named army) on this hex — one
-            // button per army. A lone garrison shows neither: it can't move and isn't "an army"
+            // One button per mobile army. A lone garrison shows neither: it can't move and isn't "an army"
             // for this purpose (see the garrison button on HexInfoPanelUI for how to actually
             // reach it). Only the current player's OWN armies ever show here — an enemy army
             // sharing the hex is what the battle trigger (see Game.Combat.BattleInitiator) is
             // for, not something to select/command from this panel.
             List<ArmyData> armies = ArmyRegistry.AllAt(coord).FindAll(a => a.Owner == turnController?.CurrentPlayer);
+            List<ArmyData> mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield && !a.IsPrison);
+            ArmyData soleArmy = mobileArmies.Count == 1 ? mobileArmies[0] : null;
+
+            if (!preserveSelection)
+                SetSelectedArmy(soleArmy?.Controller);
             RefreshArmyButtonRow(armies);
-
-            ArmyData soleArmy = armies.Count == 1 && !armies[0].IsGarrison ? armies[0] : null;
-
             if (preserveSelection)
                 return;
-
-            SetSelectedArmy(soleArmy?.Controller);
             // RestackArmiesOn's own representative-for-owner pick (see its own comment) only
             // updates when it actually runs — a plain hex click never ran it before, so
             // whichever army was left visible from the last time it DID run (spawn, or a
@@ -769,15 +767,17 @@ namespace Game.Map
             // Prison is only ever reachable from inside ArmyViewerModalUI's own in-modal switcher
             // (see its RefreshButtonRow) — never selectable for a move order from here, and never
             // worth a button of its own on the hex-side row at all.
-            armies = armies.FindAll(a => !a.IsPrison && !a.IsAirfield && !a.IsGarrison);
-            // Only worth showing with 2+ MOBILE armies to pick between (garrison/airfield/prison
+            armies = armies.FindAll(a => a.Owner == turnController?.CurrentPlayer
+                && !a.IsPrison && !a.IsAirfield && !a.IsGarrison);
+            // Show even a single MOBILE army (garrison/airfield/prison
             // don't count), and never over an open army/base modal — both re-run SelectHex on
             // close, which re-evaluates this.
             int mobileArmies = armies.Count;
             bool modalShowing = (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing);
-            if (mobileArmies >= 2 && !modalShowing)
-                armyButtonRow.Show(armies, OnArmyButtonClicked, GetSelectedArmy(), showStats: true);
+            if (mobileArmies >= 1 && !modalShowing)
+                armyButtonRow.Show(armies, OnArmyButtonClicked, GetSelectedArmy(), showStats: true,
+                    presentationContext: _selectedHex);
             else
                 armyButtonRow.Hide();
         }
@@ -1098,3 +1098,4 @@ namespace Game.Map
         // moved to HexSelectionController.Visuals.cs — see that file's own class-level comment.
     }
 }
+
