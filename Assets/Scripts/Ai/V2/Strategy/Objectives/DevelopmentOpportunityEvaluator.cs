@@ -488,6 +488,9 @@ namespace Game.Ai.V2
             float preparationShare = preparationCost / Mathf.Max(1, AiConfigV2.devFacilityExpectedUses);
 
             int outputs = 0, admitted = 0;
+            // Diagnostic only (2026-10-07): why each Production output was kept or dropped. Printed
+            // after the loop and only when nothing was admitted, so a working site stays quiet.
+            List<string> outputTrace = mode == ResearchProductionMode.Production ? new List<string>() : null;
             float bestValue = float.NegativeInfinity, bestEv = float.NegativeInfinity;
             string bestRejected = null;
             var unaffordable = new HashSet<ResourceType>();
@@ -512,7 +515,11 @@ namespace Game.Ai.V2
                     : PrepareEquipment(card, mode, hex, projectedActor, operatorChance,
                         preparationShare, snap, inv, player, root, hand, ctx);
                 if (op == null)
+                {
+                    outputTrace?.Add($"{card.displayName} [{card.cardType}{(card.isAviation ? "/air" : "")}] "
+                        + "dropped=no_priced_output (no placement / no recipient gains / value<=0)");
                     continue;
+                }
                 // Every output term is conditional on first winning a generated operator.
                 float outputChance = operatorChance * Mathf.Clamp01(op.SuccessChance);
                 float amplificationBodies = op.ProducesEquipment
@@ -530,7 +537,19 @@ namespace Game.Ai.V2
                 // Card chain worth its cards (card currency) AND a positive world task.
                 if (op.Ev <= AiConfigV2.devEvMargin
                     || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
+                {
+                    outputTrace?.Add($"{card.displayName} [{card.cardType}{(card.isAviation ? "/air" : "")}] "
+                        + $"dropped={(op.Ev <= AiConfigV2.devEvMargin ? "card_ev" : "task_value")} "
+                        + $"ev={op.Ev:0.##} (opChance {operatorChance:0.##} x output "
+                        + $"{(op.Ev + preparationShare) / Mathf.Max(0.01f, operatorChance):0.##} "
+                        + $"- prepShare {preparationShare:0.##}) success={op.SuccessChance:0.##} "
+                        + (op.ProducesEquipment
+                            ? $"equipBenefit={op.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(op):0.##} "
+                            : string.Empty)
+                        + $"gain={op.ExpectedGain:0.##} task={op.BaseValue:0.##} "
+                        + $"amplify={op.WorldTaskScore.ForceAmplification:0.##} recipient={op.RecipientLabel}");
                     continue;
+                }
                 // Resource/window rejection comes AFTER useful-output proof. Hand/deck already
                 // include facility/operator cards; only capacity and a minted operator are extra.
                 op.ForecastExtraCost = SumCost(capacityTier?.cost,
@@ -559,6 +578,11 @@ namespace Game.Ai.V2
                 result.Add(op);
                 admitted++;
             }
+            if (outputTrace != null && admitted == 0)
+                foreach (string line in outputTrace)
+                    AiDebugLog.WriteDeduped("devprod:" + line.Substring(0, line.IndexOf('[')),
+                        $"[AI][V2][Dev][ProductionTrace] opChance={operatorChance:0.##} "
+                        + $"prepShare={preparationShare:0.##} {line}");
             string need = $"need[{(capacityTier != null ? "upgrade " : "")}{(facility != null ? "facility" : "")}"
                 + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : deckOperator != null ? " hero-deck" : " hero-generate") : "")}]";
             return $"{need} outputs={outputs} admitted={admitted}"
