@@ -238,6 +238,8 @@ namespace Game.Ai.V2
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
                     player, ctx, root, demandAxes);
             }
+            // Phase A is fully reflected in the settled snapshot/continuity view before pause.
+            yield return ctx.WaitAtObserverActionBoundary();
 
             // Combat support preparation for existing ground operations. AirSweep formation
             // belongs to execution of its own admitted and funded Scout task.
@@ -261,6 +263,7 @@ namespace Game.Ai.V2
                         actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
+                    yield return ctx.WaitAtObserverActionBoundary();
                 }
             }
 
@@ -969,6 +972,9 @@ namespace Game.Ai.V2
                     settledSteps++;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"step {settledSteps} task={selectedKey}");
+                    // Snapshot, mission ledger and reservation reconciliation now all describe
+                    // the completed command; inspection never sees a half-settled action.
+                    yield return ctx.WaitAtObserverActionBoundary();
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
@@ -1062,6 +1068,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
+                    yield return ctx.WaitAtObserverActionBoundary();
                     // Phase B has spent first; return legs now take what is left.
                     bool releaseReturnsNow = !lifecycleReturnsReleased && lifecycleReturnsDeferred;
                     lifecycleReturnsReleased = true;
@@ -1180,7 +1187,12 @@ namespace Game.Ai.V2
                                 aggressionObjectives, activeIntents, actorCommitments,
                                 player, ctx, root, demandAxes);
                             ownershipFreshAfterPhaseA = true;
+                            yield return ctx.WaitAtObserverActionBoundary();
                             yield return RunTypedAdmissions();
+                        }
+                        else
+                        {
+                            yield return ctx.WaitAtObserverActionBoundary();
                         }
                     }
                 }
@@ -1203,6 +1215,7 @@ namespace Game.Ai.V2
                         beforeRecall, afterRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"air-support recall #{unsafeWing.Id}");
+                    yield return ctx.WaitAtObserverActionBoundary();
                 }
 
                 // Cold Phase A and the following typed admissions may have created or
@@ -1237,6 +1250,7 @@ namespace Game.Ai.V2
                 if (phaseB.StateChanged)
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
+                yield return ctx.WaitAtObserverActionBoundary();
             }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
@@ -1273,6 +1287,7 @@ namespace Game.Ai.V2
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
+            yield return ctx.WaitAtObserverActionBoundary();
 
             // --- Main-phase activity bucket. DERIVED once, here, from this pipeline's own facts —
             //     never incremented inside a nested layer (spec §11). The Reaction bucket is owned
