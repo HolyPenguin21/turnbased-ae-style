@@ -124,9 +124,14 @@ namespace Game.Ai.V2
                 return result;
             // Exact staffed sources, including those rejected only by today's resources/window.
             // Executable enumeration elsewhere keeps its original gates.
-            List<GenerationStep> forecastSources = GenerationSource.Enumerate(player, root, ctx,
-                hand, null, null, resourceForecast: true);
-            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            List<GenerationStep> forecastSources;
+            CapabilityInventory inv;
+            using (new Game.Core.ProfileScope("AI/Dev.Sources"))
+            {
+                forecastSources = GenerationSource.Enumerate(player, root, ctx,
+                    hand, null, null, resourceForecast: true);
+                inv = CapabilityInventory.Build(snap, player, null);
+            }
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
@@ -189,6 +194,7 @@ namespace Game.Ai.V2
             ActorCommitments occupied, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx)
         {
+            using var __scope = new Game.Core.ProfileScope("AI/Dev.AddReady");
             int admitted = 0, offered = 0;
             string last = "no_affordable_offering";
             foreach (GenerationStep source in sources)
@@ -268,6 +274,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ref List<GenerationStep> generatedOperatorSources)
         {
+            using var __scope = new Game.Core.ProfileScope("AI/Dev.AddPreparation");
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
                 return "reason=enemy_on_site";
             // A built facility of this mode elsewhere is reused, never duplicated.
@@ -620,6 +627,7 @@ namespace Game.Ai.V2
         {
             if (card.equipment == null)
                 return null;
+            using var __scope = new Game.Core.ProfileScope("AI/Dev.PrepareEquipment");
             DevelopmentOpportunity op = BestEquipmentOpportunity(mode, hex, card,
                 ResearchProductionSystem.EstimateSuccessChance(projectedActor, card), null,
                 snap, inv, player, root, hand, out _);
@@ -660,6 +668,7 @@ namespace Game.Ai.V2
                 return null;
             // Aviation is owned by the generated non-combat lane and needs real airfield
             // capacity; never pretend it is a ground GenerateDeploy.
+            using var __scope = new Game.Core.ProfileScope("AI/Dev.PrepareDeployable");
             float futureValue = card.isAviation
                 ? NonCombatCardPlayer.ProjectedAviationInvestmentValue(card, mode, hex,
                     projectedActor, snap, player, root, hand, ctx)
