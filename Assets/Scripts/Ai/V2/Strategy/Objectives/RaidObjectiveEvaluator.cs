@@ -195,14 +195,57 @@ namespace Game.Ai.V2
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
             // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
             // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
-            // A Hex Event guard also pays the event's own reward (EventReward), by the guard tier
-            // the observer remembers; a neutral army has no reward beyond RaidReward.
+            // A Raid is worth what clearing its hex gives (2026-10-07, user decision). Four
+            // reasons exist, summed when they coincide:
+            //   · a resource hex  — the facility income a free hex would pay (EconomicHexBenefit);
+            //   · a Hex Event     — the event's own reward (EventReward), by the guard tier the
+            //                       observer remembers;
+            //   · a Base site     — the new resource cluster a Base there would open;
+            //   · none of those   — nothing: only OwnTerritoryProximity remains (a shorter route
+            //                       for our own armies), so a far plain neutral falls below
+            //                       raidObjectiveMinBaseValue and is never gathered for.
+            // Both site rewards fade with the distance from our base network
+            // (EconomyBaseNetworkSynergy), so a Raid is never lured far from home by income.
             return new TaskScore(
+                economicHexBenefit: ClearedResourceHexBenefit(snap, targetHex),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                raidReward: TaskScoreEvaluator.RaidReward(),
                 eventReward: target.Kind == RaidTargetKind.EventGuard
                     ? TaskScoreEvaluator.EventReward(KnownEventGuardTier(snap, targetHex)) : 0f,
+                economicExpansionValue: ClearedBaseSiteValue(snap, targetHex),
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
+        }
+
+        private static float ClearedResourceHexBenefit(WorldSnapshot snap, HexCoord hex)
+        {
+            EconomyStanding eco = snap?.Economy;
+            if (eco?.PerType == null)
+                return 0f;
+            var perResource = new List<(float Gain, float Priority)>();
+            float synergy = 0f;
+            foreach (EconomyExtractionOpportunity site in eco.GuardedExtractionSites)
+            {
+                if (!site.Hex.Equals(hex))
+                    continue;
+                foreach (EconomyResourceStanding standing in eco.PerType)
+                    if (standing.Type == site.ResourceType)
+                        perResource.Add((standing.UsefulMarginalIncomeGain(site.MarginalIncomeGain),
+                            TaskScoreEvaluator.ResourcePriority(standing)));
+                synergy = Mathf.Max(synergy, site.BaseNetworkSynergy);
+            }
+            return TaskScoreEvaluator.EconomicHexBenefit(perResource) * synergy;
+        }
+
+        private static float ClearedBaseSiteValue(WorldSnapshot snap, HexCoord hex)
+        {
+            EconomyStanding eco = snap?.Economy;
+            if (eco == null)
+                return 0f;
+            float best = 0f;
+            foreach (GuardedBaseSite site in eco.GuardedBaseSites)
+                if (site.Hex.Equals(hex))
+                    best = Mathf.Max(best, TaskScoreEvaluator.EconomicExpansionValue(
+                        site.NewResourceClusterHexes / AiConfigV2.economyBaseExpansionClusterFullCount));
+            return best * WorldAnalysis.EconomyBaseNetworkSynergy(snap, hex);
         }
 
         // The remembered guard tier of the event on `hex` (AiMapMemory via Known.EventGuards);

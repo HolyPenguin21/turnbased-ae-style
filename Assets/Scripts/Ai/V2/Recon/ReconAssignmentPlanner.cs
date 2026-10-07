@@ -471,12 +471,23 @@ namespace Game.Ai.V2
                 {
                     UnitData aircraft = live.Members.FirstOrDefault(u => u.RuntimeId == planned.RuntimeId);
                     if (!AviationRules.IsAviation(aircraft)) continue;
+                    var pickDiag = new List<string>();
                     var choice = ReconAirStepPlanner.PickFromStorage(player, ctx, live.Hex, new[] { aircraft },
-                        snap, mode, snap.TurnNumber, missionFocusHex: target.FocusHex);
+                        snap, mode, snap.TurnNumber, missionFocusHex: target.FocusHex, diagnostics: pickDiag);
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                         + AbilityParams.GetBestRecceRadius(aircraft);
                     if (!choice.HasValue || !ReconAirStepPlanner.MakesGenuineProgress(live.Hex,
-                        choice.Value.Hex, target.FocusHex, vision)) continue;
+                        choice.Value.Hex, target.FocusHex, vision))
+                    {
+                        // Why a stored aircraft (a helicopter with TurnsWithoutRefuel > 0 included)
+                        // cannot serve this focus; without it a never-launched wing is silent.
+                        AiDebugLog.WriteDeduped($"air-stored-none|{aircraft.RuntimeId}|{target.FocusHex.Q},{target.FocusHex.R}",
+                            $"[AI][V2][Recon][Assignment][AirStored] aircraft={aircraft.RuntimeId} at ({live.Hex.Q},{live.Hex.R}) "
+                            + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) turnsWithoutRefuel={aircraft.TurnsWithoutRefuel} "
+                            + $"decision=NO_CANDIDATE reason={(choice.HasValue ? "no_progress_toward_focus" : "no_safe_step")}"
+                            + (pickDiag.Count > 0 ? $" [{string.Join(" ", pickDiag.Take(6))}]" : ""));
+                        continue;
+                    }
                     list.Add(new ScoutExecutionCandidate(source, target.FocusHex,
                         Mathf.RoundToInt(choice.Value.ActivationAp), 1, 0, 0f, 0, false,
                         choice.Value.ActivationAp, ScoutExecutorKind.AirStored,

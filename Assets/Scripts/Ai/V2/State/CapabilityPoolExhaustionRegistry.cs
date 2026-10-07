@@ -45,6 +45,9 @@ namespace Game.Ai.V2
                 new Dictionary<CapabilityPoolKind, string>();
             public readonly Dictionary<StableMissionKey, string> DeferredMissions =
                 new Dictionary<StableMissionKey, string>();
+            // Missions whose provisioning already failed with RetryNextTurn in an earlier admission
+            // of this turn (see CarryRetryNextTurn).
+            public readonly HashSet<StableMissionKey> RetryNextTurn = new HashSet<StableMissionKey>();
         }
 
         private static readonly Dictionary<PlayerSetupData, Scope> ByPlayer =
@@ -65,6 +68,7 @@ namespace Game.Ai.V2
             s.Round = 0;
             s.Exhausted.Clear();
             s.DeferredMissions.Clear();
+            s.RetryNextTurn.Clear();
         }
 
         internal static void EndTurn(PlayerSetupData player, int turn)
@@ -84,6 +88,7 @@ namespace Game.Ai.V2
             {
                 s.Exhausted.Clear();
                 s.DeferredMissions.Clear();
+                s.RetryNextTurn.Clear();
             }
             s.Turn = turn;
             s.Round = round;
@@ -143,6 +148,36 @@ namespace Game.Ai.V2
             s.DeferredMissions[key] = failure.Detail ?? "no executable step";
             AiDebugLog.Write($"[AI][V2] mission deferred until next turn — {key}: "
                 + s.DeferredMissions[key]);
+        }
+
+        // A RetryNextTurn failure is "out of the running THIS turn", but the pipeline's per-admission
+        // set forgets it when the next admission of the same turn starts, so a later admission
+        // re-runs the batch solve for the same mission and reaches the same rejection. Remember it
+        // here for the rest of the turn; ShouldSkipRetried decides whether that is still true.
+        internal static void CarryRetryNextTurn(PlayerSetupData player, MissionProposal mission)
+        {
+            if (player == null || mission == null)
+                return;
+            Get(player).RetryNextTurn.Add(StableMissionKey.For(mission));
+        }
+
+        // True only while nothing could change the verdict: the mission is already deferred this
+        // turn (NoExecutableStep), or its pool is still proven empty on the CURRENT snapshot
+        // (a recovered pool lifts the mark, so the mission is attempted again as before).
+        internal static bool ShouldSkipRetried(PlayerSetupData player, MissionProposal mission,
+            WorldSnapshot snap)
+        {
+            if (player == null || mission == null)
+                return false;
+            Scope s = Get(player);
+            StableMissionKey key = StableMissionKey.For(mission);
+            if (!s.RetryNextTurn.Contains(key))
+                return false;
+            if (s.DeferredMissions.ContainsKey(key))
+                return true;
+            CapabilityPoolKind pool = PoolFor(mission);
+            return pool != CapabilityPoolKind.None && s.Exhausted.ContainsKey(pool)
+                && !RevalidateAndClearIfRecovered(player, pool, snap);
         }
 
         private static bool PoolHasEligibleActor(WorldSnapshot snap, PlayerSetupData player, CapabilityPoolKind pool)

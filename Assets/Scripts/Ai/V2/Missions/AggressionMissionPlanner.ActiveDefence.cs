@@ -60,7 +60,7 @@ namespace Game.Ai.V2
             // Air support of every listed threat, decided independently of the ground answer below
             // (Intercept, Defer, Regroup, Shortage or none): a separate technical assignment of the
             // same objective that never touches the ground response, its actor or its key.
-            AppendActiveDefenceAirSupport(snap, activeIntents, committed, proposals);
+            AppendActiveDefenceAirSupport(snap, activeIntents, committed, proposals, deferredThisPass);
 
             HashSet<int> withdrawing = ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(activeIntents);
             // The army an opening Attack preparation would host in: an Intercept that takes it pays
@@ -203,7 +203,8 @@ namespace Game.Ai.V2
         // the launch fitting the free bank (provisioning) are the whole basis.
         private static void AppendActiveDefenceAirSupport(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             if (snap?.Self?.Armies == null)
                 return;
@@ -224,7 +225,14 @@ namespace Game.Ai.V2
                 if (incumbent != null && (!fixedWing.HasValue
                         || GroundCombatAirSupport.HoldingThisTurn(snap.Observer, fixedWing.Value,
                             snap.TurnNumber)))
+                {
+                    // Not a vanished proposal: the durable leg is deliberately not re-proposed
+                    // this turn. Say so, or Continuity warns that nothing explains the absence.
+                    if (deferredThisPass != null)
+                        deferredThisPass[incumbent.IntentKey] = fixedWing.HasValue
+                            ? "air_support_holds_over_target_this_turn" : "air_support_wing_unbound";
                     continue;
+                }
                 IReadOnlyList<WorthIt.DefendingArmy> opposition =
                     ActiveDefenceObjectiveEvaluator.Opposition(snap, enemyId);
                 if (opposition == null)

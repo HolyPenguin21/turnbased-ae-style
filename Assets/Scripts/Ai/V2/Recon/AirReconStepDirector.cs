@@ -186,6 +186,16 @@ namespace Game.Ai.V2
                     nextBestOutboundScore, true);
         }
 
+        // The same-turn "keep MP for the way home" pivot exists for a wing that MUST land this turn.
+        // A wing with a safe unlanded end left (a helicopter, TurnsWithoutRefuel > 0) may spend its
+        // movement outward and end the turn aloft (Hold); the route planner already proves a
+        // landing inside the endurance budget, and the executor turns it home when that stops
+        // holding. Without this a helicopter flew like a plane and turned back after two steps.
+        internal static bool TurnsForReturnReserve(int requiredTurns, int mpSlackAfterStep,
+            int safeUnlandedEnds) =>
+            requiredTurns <= 1 && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack
+            && safeUnlandedEnds <= 0;
+
         // Decide the next thing this airborne wing should do — READ-ONLY. `newTurn` is the result
         // of the executor's own sortie.BeginTurn(turn) lifecycle call. Strike eligibility is read
         // live on every step, including the first step of a new turn and the return leg.
@@ -246,8 +256,8 @@ namespace Game.Ai.V2
                 int mpSlackAfterStep = air.CurrentMovement - choice.Value.RouteCost;
                 bool marginalDrop = bestOutbound > 0.01f
                     && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
-                bool returnReserve = choice.Value.RequiredTurns <= 1
-                    && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
+                bool returnReserve = TurnsForReturnReserve(choice.Value.RequiredTurns,
+                    mpSlackAfterStep, safeUnlandedEnds);
                 // No Recon-specific distance cap: the route planner already proves after every
                 // adjacent step that a landing remains reachable inside the live endurance budget.
                 // For TurnsWithoutRefuel=0 this naturally preserves a same-turn round trip; positive
