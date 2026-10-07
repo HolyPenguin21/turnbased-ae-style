@@ -670,6 +670,49 @@ namespace Game.Ai.V2
             return false;
         }
 
+        private static bool TryCompleteRaidTarget(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            // Raid completion ends only the CURRENT neutral target, not the durable campaign.
+            // Keep (or create, when the first attack completed immediately) the operation so
+            // the next ResolveActive pass can re-orient the same primary onto another neutral
+            // or enter Return. Removing it here strands the victorious army and makes the
+            // Assault -> next target / Return phase machine unreachable.
+            bool completedRaidAssault = o.MissionKind == MissionKind.Raid
+                && (o.HasRaidPayload
+                    ? o.RaidPhase == RaidMissionPhase.Assault
+                    : o.Proposal?.Target is RaidMissionTarget raidTarget
+                        && raidTarget.Phase == RaidMissionPhase.Assault);
+            if (completedRaidAssault)
+            {
+                if (intent != null)
+                {
+                    AdvanceIntent(intent, o, turn, state, allocState);
+                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} current "
+                        + "target completed; durable campaign kept for re-orient/return");
+                    return true;
+                }
+                if (o.HasRaidPayload && o.OperationStarted)
+                {
+                    CreateRaidIntent(state, o, turn);
+                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
+                        + "target completed during opening step; campaign created for return/refocus");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryCreateRaidStep(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (!(o.HasRaidPayload && o.OperationStarted)) return false;
+            CreateRaidIntent(state, o, turn);
+            return true;
+        }
+
     }
 }
 

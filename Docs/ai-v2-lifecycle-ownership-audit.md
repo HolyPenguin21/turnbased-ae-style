@@ -446,3 +446,11 @@ The six live objective checks previously embedded in the normalization coordinat
 ### Common ingress checkpoint
 
 `MissionStepResult` now owns the existing common facts, not just disposition/cost/actor. Its private record is shared only by explicit compatibility views. `MissionTurnOutcome` has no common storage; outcome flags and domain properties remain projections. Pipeline consumes the common ledger result and session settlement API. The sixteen original common fact defaults remain unchanged. Fifteen new tests prove shared reference facts, six generic result transitions, another operation surviving cleanup, six-domain step parity and stale-session refusal. No new persistent state or cache was added.
+
+### Domain transition checkpoint on updated master
+
+Master `13210b16fc1ed6a42facc17ec3cc55d06aa83afb` was fetched through the connector. No AI path overlaps the upstream UI/scene/badge changes; feature-only merge `a69c7392` preserves the full master tree and assets. A separate frozen baseline compile/test run retains 984/525 across 1,509 managed cases; the original 706b1bbd baseline was not replaced.
+
+ReconcileOutcome now uses the common disposition and ordered callback groups: progress facts → side leg → completion → terminal recovery/retirement → no-progress → existing advancement/fresh creation. Composition ordering preserves legacy payload precedence, including fixtures lacking MissionKind. Raid/Attack/Recon completion and Economy return/recovery remain domain decisions; completed leg does not retire an active campaign. Intent retirement still releases through the sole MissionLeaseBook owner.
+
+Fourteen moved domain/helper methods are byte-identical. The 5,760-transition fingerprint was captured from the pre-extraction assembly before compiling the modified policies and remains identical. Separate all-domain lease tests retain other operation rows. No eligibility, spending, dirty-mask, cache or revision policy was copied or changed. AdvanceIntent/ResolveActive role coordination and remaining committed-action transaction boundaries remain explicit migration items.

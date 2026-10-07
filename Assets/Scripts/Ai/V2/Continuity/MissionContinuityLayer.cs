@@ -1169,354 +1169,46 @@ namespace Game.Ai.V2
             }
         }
 
-        // A materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
-        // provisioning before ever producing a ProvisionedMission only has it on the proposal.
-        private static bool TryGetEconomyTarget(MissionTurnOutcome o, out EconomyMissionTarget target)
-        {
-            if (o.HasEconomyPayload)
-            {
-                target = o.EconomyTarget;
-                return true;
-            }
-            if (o.Proposal?.Target is EconomyMissionTarget proposed)
-            {
-                target = proposed;
-                return true;
-            }
-            target = default;
-            return false;
-        }
-
         private static void ReconcileOutcome(MissionIntentState state,
             AiAllocatorState allocState, MissionTurnOutcome o, int turn)
         {
             state.TryGet(o.IntentKey, out MissionIntent intent);
-
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
-            bool returnRecoveryOutcome = o.MissionKind == MissionKind.Economy
-                && (o.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
-                    || o.EconomyTarget.Kind == EconomyTaskKind.ReturnCollector
-                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder
-                    || intent?.Economy?.Kind == EconomyTaskKind.ReturnCollector);
             AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
                 + (o.ObjectiveSatisfied ? " satisfied" : "")
                 + (o.StructuralFailure ? " structural" : "")
                 + $" {o.IntentKey}");
+            RecordDomainStepProgress(state, o, turn);
+            if (TryDomainTransition(SideLegTransitions, state, allocState, intent, o, turn)) return;
 
-            // A build project that really progressed this turn is not failing to deliver: end its
-            // delivery-failure streak before any branch below may record a failure for it.
-            if (o.MissionKind == MissionKind.Economy
-                && (o.MadeProgress || o.Outcome == ExecutionOutcome.Completed)
-                && TryGetEconomyTarget(o, out EconomyMissionTarget progressed))
+            if (o.Disposition == MissionStepDisposition.Completed && o.ObjectiveSatisfied)
             {
-                if (progressed.Kind == EconomyTaskKind.FoundBase)
-                    state.Economy.RecordBaseExpansionDeliveryProgress(
-                        turn, progressed.BuildCard, progressed.TargetHex);
-                else if (progressed.Kind == EconomyTaskKind.BuildExtraction)
-                    state.Economy.RecordExtractionDeliveryProgress(
-                        turn, progressed.ResourceType, progressed.TargetHex);
-            }
-
-            // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
-            // no step of the operation: whatever its outcome, the Attack intent's lifecycle
-            // (progress, stall, suspension, retirement) is untouched. Arrival, landing or loss is
-            // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
-            // failed leg releases just that donor or wing (an airborne wing then lands through
-            // GroundCombatAirSupport.ReleaseOrphanStrikes).
-            // The leg is read from the payload or, when Provisioning failed before one existed,
-            // from the proposal (GroundCombatLegs.AttackLegOf): it shares the operation's
-            // IntentKey, so the generic branches below would otherwise end the whole operation.
-            AttackMissionTarget? attackLeg = GroundCombatLegs.AttackLegOf(o);
-            // Failure of an optional base leg never invalidates its MAIN target. Claims/AP are
-            // reconciled normally by the allocator; Continuity drops only the local choice.
-            if (attackLeg.HasValue && attackLeg.Value.IsIntermediateAssault
-                && !o.ObjectiveSatisfied && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
-                    || o.Outcome == ExecutionOutcome.Blocked && !o.MadeProgress))
-            {
-                if (intent?.Attack != null)
-                {
-                    intent.Attack.IntermediateTarget = AttackTargetRef.None;
-                    intent.Attack.LastOpportunisticStrikeTurn = turn;
-                }
-                AiDebugLog.Write($"[AI][V2][Attack][Intermediate] {o.IntentKey} "
-                    + "local leg rejected; main operation preserved, no further detour this turn");
-                return;
-            }
-            if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
-            {
-                AttackMissionTarget leg = attackLeg.Value;
-                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
-                    || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated;
-                if (failed && intent?.Attack != null
-                    && leg.Phase == AttackMissionPhase.GatherReturn
-                    && leg.SupportArmyId.HasValue)
-                {
-                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == leg.SupportArmyId.Value);
-                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
-                        + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
-                }
-                if (failed && intent?.Attack != null
-                    && leg.Phase == AttackMissionPhase.AirSupport
-                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
-                {
-                    ReleaseAttackAirSupport(intent.Attack, turn);
-                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
-                        + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
-                }
-                return;
-            }
-
-            // A support whose roster no longer improves the primary (Provisioning AssemblyInfeasible
-            // on a convoy / gather leg) invalidates only that assignment, never the durable
-            // operation or its target: the support is released and the operation stays in its
-            // reinforcement / gather phase. One edge for Raid and Attack (GroundCombatLegs.IsSupportLeg).
-            if (o.StructuralFailure && intent != null
-                && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible
-                && GroundCombatLegs.IsSupportLeg(o) && ReleaseInvalidSupport(intent, o))
-            {
-                intent.Status = IntentStatus.Active;
-                intent.Suspended = SuspendReason.None;
-                intent.LastReconciledTurn = turn;
-                AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} support assembly "
-                    + "invalid; support released, operation kept");
-                return;
-            }
-
-            if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
-            {
-                // Raid completion ends only the CURRENT neutral target, not the durable campaign.
-                // Keep (or create, when the first attack completed immediately) the operation so
-                // the next ResolveActive pass can re-orient the same primary onto another neutral
-                // or enter Return. Removing it here strands the victorious army and makes the
-                // Assault -> next target / Return phase machine unreachable.
-                bool completedRaidAssault = o.MissionKind == MissionKind.Raid
-                    && (o.HasRaidPayload
-                        ? o.RaidPhase == RaidMissionPhase.Assault
-                        : o.Proposal?.Target is RaidMissionTarget raidTarget
-                            && raidTarget.Phase == RaidMissionPhase.Assault);
-                if (completedRaidAssault)
-                {
-                    if (intent != null)
-                    {
-                        AdvanceIntent(intent, o, turn, state, allocState);
-                        AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} current "
-                            + "target completed; durable campaign kept for re-orient/return");
-                        return;
-                    }
-                    if (o.HasRaidPayload && o.OperationStarted)
-                    {
-                        CreateRaidIntent(state, o, turn);
-                        AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
-                            + "target completed during opening step; campaign created for return/refocus");
-                        return;
-                    }
-                }
-
-                // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
-                // target stronghold (Base/Citadel captured), so there is
-                // deliberately no re-orient here: the army stays where it
-                // is, the claim is released, and the next global replan decides what the new
-                // topology is worth. An intent that still exists is advanced so ResolveActive
-                // observes the capture through the ordinary path and logs the release once.
-                if (o.MissionKind == MissionKind.Attack)
-                {
-                    if (intent != null)
-                    {
-                        AdvanceIntent(intent, o, turn, state, allocState);
-                        AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
-                            + (o.AttackTarget.Phase == AttackMissionPhase.Assault
-                                ? "objective reached; operation ends at the captured site"
-                                : $"{o.AttackTarget.Phase} leg reached its goal"));
-                        return;
-                    }
-                    if (o.HasAttackPayload && o.OperationStarted)
-                    {
-                        CreateAttackIntent(state, o, turn);
-                        AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
-                            + "captured on its opening step; intent recorded for a clean release");
-                        return;
-                    }
-                }
-
-                // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
-                // OTHER than this actor's own execution reaching goal (another scout opened it
-                // mid-turn, or provisioning found it already live-satisfied) is a satisfied
-                // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
-                // began executing this turn, CREATE — the durable ground-scout intent so
-                // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
-                // (its hex now fails IsIntentStillValid). Own-execution completion uses
-                // ExecutionResult.DurableRoleContinues.
-                if (o.ObjectiveSatisfiedExternally)
-                {
-                    bool existingScoutRole = intent != null
-                        && intent.Scout != null;
-                    // Fresh role: the mission was provisioned AND executed at least one step
-                    // this turn (so ReconPatrolState already exists). A provisioning-only
-                    // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
-                    // false / MadeProgress == false and is correctly NOT made durable.
-                    bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress;
-
-                    if (existingScoutRole)
-                    {
-                        // Count the AP / steps the scout actually spent before the waypoint
-                        // was taken (accumulated-state preservation), same as any other
-                        // productive turn — AdvanceIntent owns that accounting.
-                        o.MadeProgress = true;
-                        AdvanceIntent(intent, o, turn, state, allocState);
-                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
-                            + "externally; durable scout role kept for next-turn re-focus");
-                        return;
-                    }
-                    if (freshScoutRole)
-                    {
-                        if (TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
-                            return;
-                        CreateIntent(state, o, turn);
-                        AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} fresh scout began "
-                            + "this turn; waypoint satisfied externally, durable intent created for re-focus");
-                        return;
-                    }
-                }
+                if (TryDomainTransition(CompletionTransitions, state, allocState, intent, o, turn)) return;
                 if (intent != null)
                     AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
                 RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
-
-            if (o.StructuralFailure)
+            if (o.Disposition == MissionStepDisposition.PermanentFailure)
             {
-                if (returnRecoveryOutcome && intent != null)
-                {
-                    KeepEconomyReturn(state, intent, o, turn);
-                    return;
-                }
+                if (TryDomainTransition(RecoveryTransitions, state, allocState, intent, o, turn)) return;
                 RetireOutcomeIntent(state, intent, o, turn);
                 string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
                 StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
                 AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
                 return;
             }
-
-            if (o.Outcome == ExecutionOutcome.Failed)
+            if (o.Disposition == MissionStepDisposition.Invalidated)
             {
-                if (returnRecoveryOutcome && intent != null)
-                {
-                    KeepEconomyReturn(state, intent, o, turn);
-                    return;
-                }
+                if (TryDomainTransition(RecoveryTransitions, state, allocState, intent, o, turn)) return;
                 if (intent != null)
                     AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
                 RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
-
-            if (o.MissionKind == MissionKind.Economy && !o.MadeProgress)
-            {
-                if (returnRecoveryOutcome && intent != null)
-                {
-                    KeepEconomyReturn(state, intent, o, turn);
-                    return;
-                }
-                // A no-progress Economy outcome ends its outbound commitment only on a PROVEN
-                // route failure: Provisioning's NoExecutableStep (no live safe route for the
-                // committed mover) or an executed step that found no safe / legal move. Every
-                // other no-progress outcome is transient — NoMoverExists / MoverContended
-                // suspend the intent (AdvanceIntent, CapabilityUnavailable, bounded by the
-                // per-project delivery-failure streaks), anything else (an AP / resource
-                // envelope that did not fit this pass, a stale plan or activation) ages it
-                // through StallTurns/ShouldReap like any idle intent (Economy audit B1/B2).
-                // ReturnBuilder (the return-trip leg) keeps its own preservation rule above.
-                // P1 fix: a build project that never got far enough to become a durable intent
-                // must still count toward the delivery-failure streak, or that project can retry
-                // forever without ever reaching AdvanceIntent's own call (below), which only fires
-                // once intent != null. Every no-progress kind counts here, not only NoMoverExists /
-                // MoverContended: a fresh project blocked turn after turn by alternating reasons
-                // (no mover, then no AP envelope, then no step) is just as undeliverable, and while
-                // Demand keeps selecting it Phase A keeps its H/E/M/T frozen under an
-                // EconomyDeferredBuild hold. The streak is per project and consecutive-turn only,
-                // so a transient one-turn miss never suppresses anything. BuildExtraction is
-                // counted the same way as FoundBase. This is the ONE registration point for the
-                // no-intent case; the intent paths below only fire for an existing intent, so the
-                // two never double-count the same outcome.
-                if (intent == null && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget))
-                {
-                    if (freshTarget.Kind == EconomyTaskKind.FoundBase)
-                        state.Economy.RecordBaseExpansionDeliveryFailure(
-                            turn, freshTarget.BuildCard, freshTarget.TargetHex);
-                    else if (freshTarget.Kind == EconomyTaskKind.BuildExtraction)
-                        state.Economy.RecordExtractionDeliveryFailure(
-                            turn, freshTarget.ResourceType, freshTarget.TargetHex);
-                }
-
-                if (intent != null && !IsEconomyRouteFailure(o))
-                {
-                    AdvanceIntent(intent, o, turn, state, allocState);
-                    return;
-                }
-                RetireEconomyIntent(state, intent, o, turn);
-                return;
-            }
-
-            if (intent != null)
-            {
-                AdvanceIntent(intent, o, turn, state, allocState);
-            }
-            else if (o.MadeProgress && o.HasScoutPayload)
-            {
-                if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
-                    CreateIntent(state, o, turn);
-            }
-            else if (o.HasRaidPayload && o.OperationStarted)
-            {
-                CreateRaidIntent(state, o, turn);
-            }
-            else if (o.HasAttackPayload && o.OperationStarted)
-            {
-                CreateAttackIntent(state, o, turn);
-            }
-            else if (o.HasActiveDefencePayload && o.MadeProgress)
-            {
-                CreateActiveDefenceIntent(state, o, turn);
-            }
-            else if (o.HasEconomyPayload && o.MadeProgress)
-            {
-                CreateEconomyIntent(state, o, turn);
-            }
-            else if (o.HasDevelopmentPayload && o.MadeProgress)
-            {
-                CreateDevelopmentIntent(state, o, turn);
-            }
-
-        }
-
-        // Releases the support an AssemblyInfeasible convoy / gather leg named. False when the leg
-        // is not one whose support can be released this way (the generic failure path applies).
-        private static bool ReleaseInvalidSupport(MissionIntent intent, MissionTurnOutcome o)
-        {
-            if (intent.Raid != null
-                && GroundCombatLegs.RaidLegOf(o) == RaidMissionPhase.Reinforcement)
-            {
-                intent.Raid.SupportArmyId = null;
-                intent.Raid.ReinforcementRequestedTurn = -1;
-                intent.Raid.Phase = RaidMissionPhase.Reinforcement;
-                return true;
-            }
-            AttackMissionTarget? leg = GroundCombatLegs.AttackLegOf(o);
-            if (intent.Attack == null || !leg.HasValue)
-                return false;
-            if (leg.Value.Phase == AttackMissionPhase.Gather && leg.Value.SupportArmyId.HasValue)
-            {
-                intent.Attack.GatherSupportArmyIds.Remove(leg.Value.SupportArmyId.Value);
-                return true;
-            }
-            if (leg.Value.Phase == AttackMissionPhase.Reinforcement)
-            {
-                intent.Attack.SupportArmyId = null;
-                intent.Attack.RendezvousHex = null;
-                intent.Attack.ReinforcementRequestedTurn = -1;
-                return true;
-            }
-            return false;
+            if (TryDomainTransition(NoProgressTransitions, state, allocState, intent, o, turn)) return;
+            if (intent != null) AdvanceIntent(intent, o, turn, state, allocState);
+            else TryDomainTransition(CreationTransitions, state, allocState, null, o, turn);
         }
 
         private static void AdvanceIntent(MissionIntent intent, MissionTurnOutcome o, int turn,
@@ -1801,74 +1493,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void ReleaseOtherReconActorClaims(MissionIntentState state,
-            MissionIntent owner, int moverArmyId)
-        {
-            if (state == null || owner == null || owner.Kind != MissionKind.Scout)
-                return;
 
-            foreach (MissionIntent other in state.All)
-            {
-                if (other == null || object.ReferenceEquals(other, owner)
-                    || other.Kind != MissionKind.Scout || other.Scout == null
-                    || other.PreferredMoverArmyId != moverArmyId)
-                    continue;
-                other.PreferredMoverArmyId = null;
-                AiDebugLog.Write($"[AI][V2] continuity — actor #{moverArmyId} moved to "
-                    + $"{owner.IntentKey}; unbound prior role {other.IntentKey}");
-            }
-        }
-
-        // Spec §1/§10 — the physical scout that produced this fresh scout outcome already owns a
-        // durable Recon role (Explore / Refresh) under a different key: a new
-        // opportunistic mission ran on a mover continuity already tracks. Re-point that existing
-        // role at the new objective and re-key its registry slot, preserving CreatedTurn /
-        // TurnsActive / CumulativeApSpent / StepsMovedTotal / PreferredMoverArmyId, instead of
-        // creating a second durable intent for the same physical actor. Ownership is actor-
-        // exclusive across all three Recon sub-kinds. Returns true when it absorbed the outcome.
-        private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
-            MissionTurnOutcome o, int turn, AiAllocatorState allocState)
-        {
-            if (!o.HasScoutPayload || o.MoverArmyId == null)
-                return false;
-
-            MissionIntent owner = null;
-            foreach (MissionIntent it in state.All)
-            {
-                if (it.Kind != MissionKind.Scout || it.Scout == null)
-                    continue;
-                if (it.PreferredMoverArmyId == o.MoverArmyId && !it.IntentKey.Equals(o.IntentKey))
-                {
-                    owner = it;
-                    break;
-                }
-            }
-            if (owner == null)
-                return false;
-
-            MissionIntentKey oldKey = owner.IntentKey;
-            ApplyScoutPayload(owner.Scout, o);
-            owner.Funding = owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.None;
-            owner.IntentKey = MissionIntentKey.For(owner);
-            state.Remove(oldKey);
-            state.Put(owner);
-
-            o.MadeProgress = true;
-            AdvanceIntent(owner, o, turn, state, allocState);
-            AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] actor #{o.MoverArmyId} already "
-                + $"owns {oldKey}; absorbed fresh {o.IntentKey} into that durable role (no duplicate intent)");
-            return true;
-        }
-
-        // THE one writer of a Scout outcome's provisioned payload into a durable ScoutIntent — used
-        // when a role is created, advanced and when an actor's existing role absorbs a fresh
-        // mission, so the three can never drift apart again.
-        private static void ApplyScoutPayload(ScoutIntent s, MissionTurnOutcome o)
-        {
-            s.FocusHex = o.FocusHex;
-            s.Kind = o.ScoutKind;
-            s.RequiresStealth = o.ScoutRequiresStealth;
-        }
 
         // Shared skeleton for the three Create*Intent methods below — was three independent,
         // hand-written copies of the same 12-field MissionIntent construction (see
@@ -1903,137 +1528,22 @@ namespace Game.Ai.V2
             };
         }
 
-        private static void CreateIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
-        {
-            var si = new ScoutIntent();
-            ApplyScoutPayload(si, o);
-            CommitmentTier funding = CommitmentTier.None;
-            MissionIntent intent = NewIntent(o, turn, MissionKind.Scout, funding, si);
-            state.Put(intent);
-            AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "
-                + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
-        }
 
-        // The zero-value walk-home leg that leaves its actor to fresh global allocation: a
-        // completed Raid target's Return. When that actor is bound to a new ground-combat
-        // operation the fallback leg is retired, never kept as a second owner of the same army.
-        // (An ActiveDefence Return is a real, claimed withdrawal — not a fallback.)
-        private static void RetireReturnFallbacksForActor(MissionIntentState state,
-            int? actorId, string reason)
-        {
-            if (state == null || !actorId.HasValue)
-                return;
-            foreach (MissionIntent fallback in state.All.Where(i =>
-                i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
-                    && i.Raid.PrimaryArmyId == actorId).ToList())
-            {
-                state.Remove(fallback.IntentKey);
-                AiDebugLog.Write($"[AI][V2][{fallback.Kind}] {fallback.IntentKey} return fallback retired — "
-                    + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
-            }
-        }
 
-        private static void CreateEconomyIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
-        {
-            EconomyMissionTarget t = o.EconomyTarget;
-            var ei = new EconomyIntent
-            {
-                Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
-                BuilderArmyId = t.Kind == EconomyTaskKind.MobileCollection
-                    || t.Kind == EconomyTaskKind.ReturnCollector ? t.BuilderArmyId : o.MoverArmyId,
-                CollectorArmyId = t.Kind == EconomyTaskKind.MobileCollection
-                    || t.Kind == EconomyTaskKind.ReturnCollector ? o.MoverArmyId : t.CollectorArmyId,
-                CollectorSourceArmyId = t.CollectorSourceArmyId,
-                ExpectedMarginalYield = t.ExpectedMarginalYield,
-                SafeReturnHex = t.SafeReturnHex,
-                ArrivalTurn = t.Kind == EconomyTaskKind.MobileCollection
-                    && o.FinalHex.Equals(t.TargetHex) ? turn : -1,
-                BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
-                BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
-                IntrinsicValue = o.Proposal?.BaseValue,
-                MinimumFollowupAp = t.MinimumFollowupAp,
-                Loaned = o.EconomyLoanSource.HasValue,
-                LoanSource = o.EconomyLoanSource ?? default,
-            };
-            CommitmentTier funding = o.EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft;
-            MissionIntent intent = NewIntent(o, turn, MissionKind.Economy, funding, ei);
-            state.Put(intent);
-            AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
-        }
 
-        private static void CreateDevelopmentIntent(MissionIntentState state,
-            MissionTurnOutcome o, int turn)
-        {
-            DevelopmentMissionTarget target = o.DevelopmentTarget;
-            if (target.Hero == null || !o.MoverArmyId.HasValue
-                || state.All.Any(i => i?.Development?.Hero == target.Hero
-                    || i?.Development != null && i.Development.Mode == target.Mode
-                        && i.Development.FacilityHex.Equals(target.FacilityHex)))
-                return;
-            var objective = new DevelopmentIntent
-            {
-                Hero = target.Hero, HeroKey = target.HeroKey,
-                FacilityHex = target.FacilityHex, Mode = target.Mode,
-                IntrinsicValue = o.Proposal?.BaseValue ?? target.IntrinsicValue,
-            };
-            MissionIntent intent = NewIntent(o, turn, MissionKind.Development,
-                CommitmentTier.Soft, objective);
-            state.Put(intent);
-            AiDebugLog.Write($"[AI][V2][Development] continuity create {intent.IntentKey} "
-                + $"hero={target.HeroKey} actor=#{o.MoverArmyId}");
-        }
 
-        private static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,
-            MissionTurnOutcome outcome)
-        {
-            MissionIntentKey? source = outcome?.EconomyLoanSource;
-            if (!source.HasValue && economy?.Economy?.Loaned == true)
-                source = economy.Economy.LoanSource;
-            if (source.HasValue && state.TryGet(source.Value, out MissionIntent lender))
-                ResumeEconomyLender(lender);
-        }
 
-        // The ONE retirement of an Economy intent: a borrowed Recon/Raid owner gets its actor back,
-        // this owner's turn-scoped H/E/M/T/AP holds are released (Phase B may spend them for the
-        // rest of the turn), then the intent goes. `outcome` may carry the loan of a mission that
-        // never became durable. Economy audit B8.
-        private static void RetireEconomyIntent(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome outcome, int turn, bool returnLoan = true)
-        {
-            if (returnLoan)
-                RepayEconomyLoan(state, intent, outcome);
-            if (intent == null)
-            {
-                if (outcome != null) state.Remove(outcome.IntentKey, turn);
-                return;
-            }
-            state.Remove(intent.IntentKey, turn);
-        }
 
         // Retirement of whatever intent an outcome names: an Economy intent through its own owner
         // above, any other kind is simply removed (a loan can only point at an Economy borrower).
         private static void RetireOutcomeIntent(MissionIntentState state, MissionIntent intent,
             MissionTurnOutcome outcome, int turn)
         {
-            if (intent == null || intent.Kind == MissionKind.Economy)
-            {
-                RetireEconomyIntent(state, intent, outcome, turn);
-                return;
-            }
+            if (TryDomainTransition(RetirementTransitions, state, null, intent, outcome, turn)) return;
             state.Remove(intent.IntentKey);
         }
 
-        // A proven route failure of an outbound Economy step (see ReconcileOutcome).
-        private static bool IsEconomyRouteFailure(MissionTurnOutcome o) =>
-            o.ProvisionFailureKindValue == ProvisionFailureKind.NoExecutableStep
-            || (!o.ProvisionFailureKindValue.HasValue
-                && (o.StopReason == ExecutionStopReason.NoSafeStep
-                    || o.StopReason == ExecutionStopReason.MoveRejected));
 
-        internal static bool IsCollectorEconomyIntent(MissionIntent i) =>
-            i != null && i.Kind == MissionKind.Economy
-            && (i.Economy?.Kind == EconomyTaskKind.MobileCollection
-                || i.Economy?.Kind == EconomyTaskKind.ReturnCollector);
 
         // Is an already-collecting actor still worth its site? Analysis' admission test for a
         // NEW collector (UsefulMarginalIncomeGain), judged against own income without this
@@ -2047,44 +1557,6 @@ namespace Game.Ai.V2
                     return standing.UsefulRetainedIncomeGain(contribution)
                         > AiConfigV2.allocatorSliceEpsilon;
             return false;
-        }
-
-        // Economy return legs are preserved through every transient failure (a lost shelter is re-targeted
-        // by ResolveActive, a blocked way home may clear) — but only while it still gets home:
-        // a builder that has not advanced for commitmentMaxTurns is released, its lender resumed,
-        // instead of holding the hero (and the lender) forever. Economy audit S1.
-        private static void KeepEconomyReturn(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome o, int turn)
-        {
-            // Preserve the collector's existing bounded capability retry contract. Lost-home
-            // failure stays alive until fresh ResolveActive can retarget and reset the stall.
-            if (intent.Economy?.Kind == EconomyTaskKind.ReturnCollector)
-            {
-                // A vanished home needs fresh ownership/route facts, not another capability
-                // strike against the actor. ResolveActive either retargets or retires it.
-                if (o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated
-                    || o.StopReason == ExecutionStopReason.TargetInvalidated)
-                {
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                    intent.LastReconciledTurn = turn;
-                    return;
-                }
-                AdvanceIntent(intent, o, turn, state, AiAllocatorStateRegistry.GetOrCreate(state.Owner));
-                if (ShouldReap(intent, turn)) RetireEconomyIntent(state, intent, o, turn);
-                return;
-            }
-            if (turn - intent.LastProgressTurn >= AiConfigV2.commitmentMaxTurns)
-            {
-                AiDebugLog.Write($"[AI][V2][Economy][Recovery] release {intent.IntentKey} — no progress "
-                    + $"home since t{intent.LastProgressTurn}");
-                RetireEconomyIntent(state, intent, o, turn);
-                return;
-            }
-            intent.Status = IntentStatus.Active;
-            intent.Suspended = SuspendReason.None;
-            intent.LastReconciledTurn = turn;
-            intent.StallTurns = 0;
         }
 
         private static bool ShouldReap(MissionIntent i, int turn)

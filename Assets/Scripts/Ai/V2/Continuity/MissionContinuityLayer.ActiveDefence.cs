@@ -197,6 +197,14 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
                 + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
+        private static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (!(o.HasActiveDefencePayload && o.MadeProgress)) return false;
+            CreateActiveDefenceIntent(state, o, turn);
+            return true;
+        }
+
     }
 }
 

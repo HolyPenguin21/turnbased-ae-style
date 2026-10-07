@@ -993,6 +993,102 @@ namespace Game.Ai.V2
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
         }
 
+        private static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
+            // no step of the operation: whatever its outcome, the Attack intent's lifecycle
+            // (progress, stall, suspension, retirement) is untouched. Arrival, landing or loss is
+            // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
+            // failed leg releases just that donor or wing (an airborne wing then lands through
+            // GroundCombatAirSupport.ReleaseOrphanStrikes).
+            // The leg is read from the payload or, when Provisioning failed before one existed,
+            // from the proposal (GroundCombatLegs.AttackLegOf): it shares the operation's
+            // IntentKey, so the generic branches below would otherwise end the whole operation.
+            AttackMissionTarget? attackLeg = GroundCombatLegs.AttackLegOf(o);
+            // Failure of an optional base leg never invalidates its MAIN target. Claims/AP are
+            // reconciled normally by the allocator; Continuity drops only the local choice.
+            if (attackLeg.HasValue && attackLeg.Value.IsIntermediateAssault
+                && !o.ObjectiveSatisfied && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.Outcome == ExecutionOutcome.Blocked && !o.MadeProgress))
+            {
+                if (intent?.Attack != null)
+                {
+                    intent.Attack.IntermediateTarget = AttackTargetRef.None;
+                    intent.Attack.LastOpportunisticStrikeTurn = turn;
+                }
+                AiDebugLog.Write($"[AI][V2][Attack][Intermediate] {o.IntentKey} "
+                    + "local leg rejected; main operation preserved, no further detour this turn");
+                return true;
+            }
+            if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
+            {
+                AttackMissionTarget leg = attackLeg.Value;
+                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated;
+                if (failed && intent?.Attack != null
+                    && leg.Phase == AttackMissionPhase.GatherReturn
+                    && leg.SupportArmyId.HasValue)
+                {
+                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == leg.SupportArmyId.Value);
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
+                        + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
+                }
+                if (failed && intent?.Attack != null
+                    && leg.Phase == AttackMissionPhase.AirSupport
+                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
+                {
+                    ReleaseAttackAirSupport(intent.Attack, turn);
+                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
+                        + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
+                }
+                return true;
+            }
+
+            return false;
+        }
+        private static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            string aid = AiV2Trace.FormatCorrelation(o.Proposal);
+            // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
+            // target stronghold (Base/Citadel captured), so there is
+            // deliberately no re-orient here: the army stays where it
+            // is, the claim is released, and the next global replan decides what the new
+            // topology is worth. An intent that still exists is advanced so ResolveActive
+            // observes the capture through the ordinary path and logs the release once.
+            if (o.MissionKind == MissionKind.Attack)
+            {
+                if (intent != null)
+                {
+                    AdvanceIntent(intent, o, turn, state, allocState);
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                        + (o.AttackTarget.Phase == AttackMissionPhase.Assault
+                            ? "objective reached; operation ends at the captured site"
+                            : $"{o.AttackTarget.Phase} leg reached its goal"));
+                    return true;
+                }
+                if (o.HasAttackPayload && o.OperationStarted)
+                {
+                    CreateAttackIntent(state, o, turn);
+                    AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                        + "captured on its opening step; intent recorded for a clean release");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (!(o.HasAttackPayload && o.OperationStarted)) return false;
+            CreateAttackIntent(state, o, turn);
+            return true;
+        }
+
     }
 }
 

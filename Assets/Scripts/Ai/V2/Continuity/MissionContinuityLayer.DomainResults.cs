@@ -45,5 +45,32 @@ namespace Game.Ai.V2
         internal static void ClassifyInvalidatedDomainTarget(MissionTurnOutcome outcome) =>
             outcome.Outcome = InvalidatedTargetContinues.TryGetValue(outcome.MissionKind, out var continues)
                 && continues(outcome) ? ExecutionOutcome.Blocked : ExecutionOutcome.Failed;
+        // Ordered compatibility bindings retain original side-leg/completion/payload precedence.
+        // A handled completed leg may keep a durable operation; only domain retirement removes it.
+        private delegate bool OutcomeTransition(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome result, int turn);
+        private static readonly OutcomeTransition[] SideLegTransitions =
+            { TryHandleAttackSideLeg, TryHandleInvalidGroundSupport };
+        private static readonly OutcomeTransition[] CompletionTransitions =
+            { TryCompleteRaidTarget, TryCompleteAttackLeg, TryContinueScoutWaypoint };
+        private static readonly OutcomeTransition[] RecoveryTransitions = { TryKeepEconomyRecovery };
+        private static readonly OutcomeTransition[] RetirementTransitions = { TryRetireEconomyOutcome };
+        private static readonly OutcomeTransition[] NoProgressTransitions = { TryHandleEconomyNoProgress };
+        private static readonly OutcomeTransition[] CreationTransitions =
+            { TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,
+                TryCreateEconomyStep, TryCreateDevelopmentStep };
+        private static readonly Action<MissionIntentState, MissionTurnOutcome, int>[] ProgressRecorders =
+            { RecordEconomyStepProgress };
+        private static void RecordDomainStepProgress(MissionIntentState state, MissionTurnOutcome result, int turn)
+        {
+            foreach (var record in ProgressRecorders) record(state, result, turn);
+        }
+        private static bool TryDomainTransition(IEnumerable<OutcomeTransition> handlers, MissionIntentState state,
+            AiAllocatorState allocator, MissionIntent intent, MissionTurnOutcome result, int turn)
+        {
+            foreach (var handle in handlers)
+                if (handle(state, allocator, intent, result, turn)) return true;
+            return false;
+        }
     }
 }
