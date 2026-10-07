@@ -353,6 +353,27 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void GuardedSiteFact_IsNeutralOrEventGuardOnly_NeverAnEnemyPlayer()
+        {
+            var hex = new HexCoord(2, 0);
+            WorldSnapshot neutral = SnapshotWithNeutralSighting(armyId: 94, hex: hex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() });
+            Assert.That(WorldAnalysis.KnownNeutralOnlyAtHex(neutral, hex), Is.True);
+            Assert.That(WorldAnalysis.KnownNeutralOnlyAtHex(neutral, new HexCoord(5, 5)), Is.False);
+
+            WorldSnapshot guard = SnapshotWithEventGuard(hex, Weak());
+            Assert.That(WorldAnalysis.KnownNeutralOnlyAtHex(guard, hex), Is.True);
+
+            neutral.Known.EnemySightings = new List<Game.Ai.AiMapMemory.KnownEnemySighting>
+            {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(hex, new PlayerSetupData { Nickname = "Foe" },
+                    "Foe", 1, 1f, 1f, new List<WorthIt.DefenderProfile> { Weak() }, armyId: 95),
+            };
+            Assert.That(WorldAnalysis.KnownNeutralOnlyAtHex(neutral, hex), Is.False,
+                "an enemy player's army on the hex is not a Raid reason");
+        }
+
+        [Test]
         public void RaidValue_NeutralOnABaseSiteEarnsTheNewClusterValue()
         {
             var hex = new HexCoord(2, 0);
