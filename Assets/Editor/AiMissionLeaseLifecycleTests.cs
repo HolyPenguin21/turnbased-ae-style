@@ -12,6 +12,32 @@ namespace Game.EditorTests
     {
         [TearDown] public void Reset() { MissionIntentRegistry.Clear(); AiAllocatorStateRegistry.Clear(); }
 
+        // The session claim table and a detached FromIntents view are the same derivation of the
+        // same intents, so they must always agree for identical inputs.
+        [Test]
+        public void SessionClaimTableAgreesWithDetachedViewForSameInputs()
+        {
+            var player = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(player, null, null, null, 4);
+            var key = MissionIntentKey.ForEconomy(EconomyTaskKind.MobileCollection, 1, new HexCoord(2, 3));
+            var intent = new MissionIntent { Kind = MissionKind.Economy, IntentKey = key, CreatedTurn = 3,
+                LastProgressTurn = 3, PreferredMoverArmyId = 5,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.MobileCollection, TargetHex = new HexCoord(2, 3) } };
+            var snap = new WorldSnapshot { TurnNumber = 4, Self = new SelfSnapshot
+            {
+                Armies = new System.Collections.Generic.List<ArmySnapshot>
+                    { new ArmySnapshot { ArmyId = 5, MemberCount = 1 } },
+            } };
+            var intents = new[] { intent };
+
+            ActorCommitments viaSession = session.RefreshActors(intents, snap, null);
+            ActorCommitments detached = ActorCommitments.FromIntents(intents, snap, null);
+
+            Assert.That(viaSession.ClaimedArmyIdSet, Is.EquivalentTo(detached.ClaimedArmyIdSet));
+            Assert.That(session.Leases.ClaimedActors, Is.EquivalentTo(detached.ClaimedArmyIdSet));
+            Assert.That(session.Leases.ActorsFor(key), Is.EquivalentTo(new[] { 5 }));
+        }
+
         [TestCase(MissionStepDisposition.Progress, true)]
         [TestCase(MissionStepDisposition.Waiting, true)]
         [TestCase(MissionStepDisposition.Replan, true)]

@@ -51,7 +51,7 @@ namespace Game.Ai.V2
                     + "reaction; released the reaction-budget + envelope reservation before executing");
             }
 
-            StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
+            AiTurnSession.ClearPendingInvalidations(player, ctx.TurnNumber);
             result.Ran = true;
             result.Rounds++;
             result.DiscoveredTargets += targetIds.Count;
@@ -266,9 +266,7 @@ namespace Game.Ai.V2
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
             var stepOutcomes = outcomeLedger.FinalizeSteps();
-            var turnSession = AiTurnSession.Peek(player, snapshot.TurnNumber);
-            if (turnSession != null) turnSession.SettleAfterTurn(stepOutcomes);
-            else MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, stepOutcomes);
+            AiTurnSession.SettleResultsAfterTurn(player, snapshot.TurnNumber, stepOutcomes);
 
             if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {
@@ -329,7 +327,7 @@ namespace Game.Ai.V2
                 else
                 {
                     AiDebugLog.Write("[AI][V2] reaction — follow-up bound reached; remaining hand/capability invalidation deferred to next strategic scan");
-                    StrategicInterruptRegistry.Clear(player, ctx.TurnNumber);
+                    AiTurnSession.ClearPendingInvalidations(player, ctx.TurnNumber);
                 }
             }
         }

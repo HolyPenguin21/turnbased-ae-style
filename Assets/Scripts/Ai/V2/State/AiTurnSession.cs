@@ -148,6 +148,23 @@ namespace Game.Ai.V2
             MissionContinuityLayer.ReconcileAfterTurn(Player, TurnNumber, results);
         }
 
+        // Entry points for passes that run inside the turn (Reaction, Housekeeping), so they do not
+        // reach the turn-scoped owners directly. A detached caller (no session, e.g. a fixture)
+        // falls through to the same owner unchanged.
+        internal static void SettleResultsAfterTurn(PlayerSetupData player, int turn,
+            IReadOnlyList<MissionStepResult> results)
+        {
+            AiTurnSession session = Peek(player, turn);
+            if (session != null) session.SettleAfterTurn(results);
+            else MissionContinuityLayer.ReconcileAfterTurn(player, turn, results);
+        }
+
+        internal static void ClearPendingInvalidations(PlayerSetupData player, int turn) =>
+            StrategicInterruptRegistry.Clear(player, turn);
+
+        internal static void ReleaseCapabilityLeases(PlayerSetupData player, int turn) =>
+            StrategicCapabilityLeaseRegistry.Clear(player, turn);
+
         internal int Apply(WorldDelta delta)
         {
             EnsureActive();
