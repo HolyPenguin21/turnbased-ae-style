@@ -1305,6 +1305,7 @@ namespace Game.Ai.V2
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
+            turnSession.AuditTurnEnd(snapshot, reconObjectives);
             turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 

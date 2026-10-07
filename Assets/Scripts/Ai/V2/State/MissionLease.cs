@@ -129,6 +129,13 @@ namespace Game.Ai.V2
             EnsureOpen();
             return _actors.Where(x => x.Value.Any(c => c.Operation.HasValue && c.Operation.Value.Equals(operation))).Select(x => x.Key).ToArray();
         }
+        // Every operation that currently owns at least one actor claim.
+        internal IReadOnlyCollection<MissionIntentKey> Operations()
+        {
+            EnsureOpen();
+            return _actors.Values.SelectMany(c => c).Where(c => c.Operation.HasValue)
+                .Select(c => c.Operation.Value).Distinct().ToArray();
+        }
         internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int actor)
         {
             EnsureOpen();
