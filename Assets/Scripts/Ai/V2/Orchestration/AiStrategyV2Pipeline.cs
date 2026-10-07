@@ -645,8 +645,10 @@ namespace Game.Ai.V2
                                     || CapabilityPoolExhaustionRegistry.ShouldSkipRetried(
                                         player, mission, snapshot)))
                             {
-                                if (mission.FromDurableIntent
-                                    && mission.DurableFundingTier != CommitmentTier.None)
+                                // A durable leg at tier None (a Raid's fresh-decision return
+                                // fallback) still belongs to an intent that is funded: dropping
+                                // it here without a reason made BindFunding warn.
+                                if (mission.FromDurableIntent)
                                     missionDeferrals[MissionIntentKey.For(mission)] =
                                         "retry_next_turn_after_provision_failure";
                                 continue;
