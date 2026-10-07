@@ -212,6 +212,8 @@ namespace Game.Ai.V2
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
+            // Observer pause is sampled only after Phase A's complete transaction boundary.
+            yield return ctx.WaitAtObserverActionBoundary();
             phaseA.CardsDrawn += replenishDrawn;
 
             // S4. Analysis owns refresh granularity. The existing AiMapMemory revision decides
@@ -253,6 +255,7 @@ namespace Game.Ai.V2
                     bool formedWing = false;
                     yield return AviationRebasePlanner.Execute(player, root, ctx, formation,
                         changed => formedWing |= changed);
+                    yield return ctx.WaitAtObserverActionBoundary();
                     if (formedWing)
                     {
                         // The launch/flight actions already published their revision receipts.
@@ -987,6 +990,10 @@ namespace Game.Ai.V2
                             selected, stepResults, snapshot, enforceFreshPlan: true);
                     }
 
+                    // The selected task (ground or air) has fully settled before pausing. This
+                    // prevents inspection from ever seeing half-moved armies or an open spend.
+                    yield return ctx.WaitAtObserverActionBoundary();
+
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     ExecutionResult settled = stepResults.FirstOrDefault();
@@ -1099,6 +1106,7 @@ namespace Game.Ai.V2
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, phaseB.Reservation ?? phaseA.Reservation,
                         phaseBRound, reconObjectives);
+                    yield return ctx.WaitAtObserverActionBoundary();
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
@@ -1207,6 +1215,7 @@ namespace Game.Ai.V2
                             phaseB.Reservation ?? phaseA.Reservation,
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
                             radar: radar);
+                        yield return ctx.WaitAtObserverActionBoundary();
                         phaseA.Accumulate(coldPass);
                         phaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
                         AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual — demands={coldDemands.Count} "
