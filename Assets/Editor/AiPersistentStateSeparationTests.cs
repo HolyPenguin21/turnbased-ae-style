@@ -52,9 +52,9 @@ namespace Game.EditorTests
         public void DetachedCompatibilityStoresNeverShareReconState()
         {
             var a = new MissionIntentState(); var b = new MissionIntentState();
-            a.MarkReconGroundActorUsed(3, 0);
-            Assert.That(b.ReconGroundActorsUsedThisTurn(3), Is.Empty);
-            Assert.That(a.ReconGroundActorsUsedThisTurn(3), Is.EqualTo(new[] { 0 }));
+            a.ReconTurn(3).MarkReconGroundActorUsed(3, 0);
+            Assert.That(b.ReconTurn(3).ReconGroundActorsUsedThisTurn(3), Is.Empty);
+            Assert.That(a.ReconTurn(3).ReconGroundActorsUsedThisTurn(3), Is.EqualTo(new[] { 0 }));
         }
     }
 }

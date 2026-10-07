@@ -3623,11 +3623,11 @@ namespace Game.EditorTests
             var card = new CardData(new CardDefinition { cardType = CardType.Base });
             HexCoord target = new HexCoord(5, -2);
 
-            Assert.That(state.RecordBaseExpansionDeliveryFailure(4, card, target), Is.False);
-            Assert.That(state.RecordBaseExpansionDeliveryFailure(5, card, target), Is.True);
-            Assert.That(state.IsBaseExpansionDeliverySuppressed(6, card, target), Is.True);
-            Assert.That(state.IsBaseExpansionDeliverySuppressed(7, card, target), Is.True);
-            Assert.That(state.IsBaseExpansionDeliverySuppressed(8, card, target), Is.False,
+            Assert.That(state.Economy.RecordBaseExpansionDeliveryFailure(4, card, target), Is.False);
+            Assert.That(state.Economy.RecordBaseExpansionDeliveryFailure(5, card, target), Is.True);
+            Assert.That(state.Economy.IsBaseExpansionDeliverySuppressed(6, card, target), Is.True);
+            Assert.That(state.Economy.IsBaseExpansionDeliverySuppressed(7, card, target), Is.True);
+            Assert.That(state.Economy.IsBaseExpansionDeliverySuppressed(8, card, target), Is.False,
                 "The project must be reconsidered, not permanently blacklisted.");
         }
 
@@ -3701,10 +3701,10 @@ namespace Game.EditorTests
         {
             var state = new MissionIntentState();
 
-            state.MarkReconActorTrimmed(11, 15);
+            state.ReconTurn(11).MarkReconActorTrimmed(11, 15);
 
-            Assert.That(state.ReconActorsTrimmedThisTurn(11), Does.Contain(15));
-            Assert.That(state.ReconActorsTrimmedThisTurn(12), Is.Empty);
+            Assert.That(state.ReconTurn(11).ReconActorsTrimmedThisTurn(11), Does.Contain(15));
+            Assert.That(state.ReconTurn(12).ReconActorsTrimmedThisTurn(12), Is.Empty);
         }
 
         // 2026-10-01 — the turn-wide distinct-scout budget counts per turn only.
@@ -3713,12 +3713,12 @@ namespace Game.EditorTests
         {
             var state = new MissionIntentState();
 
-            state.MarkReconGroundActorUsed(11, 15);
-            state.MarkReconGroundActorUsed(11, 15);
-            state.MarkReconGroundActorUsed(11, 20);
+            state.ReconTurn(11).MarkReconGroundActorUsed(11, 15);
+            state.ReconTurn(11).MarkReconGroundActorUsed(11, 15);
+            state.ReconTurn(11).MarkReconGroundActorUsed(11, 20);
 
-            Assert.That(state.ReconGroundActorsUsedThisTurn(11), Has.Count.EqualTo(2));
-            Assert.That(state.ReconGroundActorsUsedThisTurn(12), Is.Empty);
+            Assert.That(state.ReconTurn(11).ReconGroundActorsUsedThisTurn(11), Has.Count.EqualTo(2));
+            Assert.That(state.ReconTurn(12).ReconGroundActorsUsedThisTurn(12), Is.Empty);
         }
 
         [Test]

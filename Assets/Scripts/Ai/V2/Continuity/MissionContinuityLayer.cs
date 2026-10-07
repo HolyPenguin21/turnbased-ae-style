@@ -498,7 +498,7 @@ namespace Game.Ai.V2
             int dropped = 0;
             foreach (MissionIntent v in shedable)
             {
-                if (dropped >= surplus || !state.TryConsumeReconLaneTrim(snap.TurnNumber))
+                if (dropped >= surplus || !ReconTurnStateStore.For(player, snap.TurnNumber).TryConsumeReconLaneTrim(snap.TurnNumber))
                     break;
                 state.Remove(v.IntentKey);
                 active.Remove(v);
@@ -506,7 +506,7 @@ namespace Game.Ai.V2
                 {
                     // A contraction decision is turn-wide. Do not let the same actor immediately
                     // acquire a fresh Recon mission later in this turn's bounded replans.
-                    state.MarkReconActorTrimmed(snap.TurnNumber,
+                    ReconTurnStateStore.For(player, snap.TurnNumber).MarkReconActorTrimmed(snap.TurnNumber,
                         v.PreferredMoverArmyId.Value);
                     ReconPatrolStateRegistry.Retire(player,
                         v.PreferredMoverArmyId.Value, "recon lane surplus trim");

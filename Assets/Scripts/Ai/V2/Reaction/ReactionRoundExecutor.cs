@@ -207,14 +207,8 @@ namespace Game.Ai.V2
                     else
                     {
                         anyFailure = true;
-                        CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
-                            player, fe.Mission, provision.Failure);
-                        bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                            snapshot, player, fe.Mission, provision.Failure);
-                        if (poolWide)
-                            CapabilityPoolExhaustionRegistry.MarkExhausted(player,
-                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
-                                $"reaction {provision.Failure.Kind}: no eligible actor in snapshot");
+                        bool poolWide = CapabilityPoolExhaustionRegistry.RecordProvisionFailure(
+                            snapshot, player, fe.Mission, provision.Failure, "reaction ");
                         allFailuresArePoolWide &= poolWide;
                         session.RegisterProvisionFailure(fe, provision.Failure);
                         outcomeLedger.RecordProvisionFailure(fe.Mission, provision.Failure);

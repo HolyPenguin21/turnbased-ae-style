@@ -103,7 +103,7 @@ namespace Game.Ai.V2
             // Continuity's turn-wide contraction makes the released actor unavailable to Recon
             // until the next turn. Do not advertise it as idle supply after removing its intent.
             IReadOnlyCollection<int> trimmedThisTurn = player != null && snap != null
-                ? MissionIntentRegistry.GetOrCreate(player).ReconActorsTrimmedThisTurn(snap.TurnNumber)
+                ? ReconTurnStateStore.For(player, snap.TurnNumber).ReconActorsTrimmedThisTurn(snap.TurnNumber)
                 : System.Array.Empty<int>();
 
             // --- Active durable GENERIC lanes, split by requirement. A claimed mover only; a

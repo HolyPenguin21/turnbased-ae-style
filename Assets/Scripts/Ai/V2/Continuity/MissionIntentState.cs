@@ -49,27 +49,8 @@ namespace Game.Ai.V2
 
         internal EconomyLifecycleState Economy { get; } = new EconomyLifecycleState();
         internal DevelopmentLifecycleState Development { get; } = new DevelopmentLifecycleState();
-        private ReconTurnState Recon(int turn) => ReconTurnStateStore.For((object)Owner ?? this, turn);
-
-        // Compatibility adapters for existing fixtures/callers. No storage or policy here.
-        internal void RememberGeneratedDevelopmentOperator(CardData card, HexCoord site,
-            ResearchProductionMode mode, int turn) =>
-            Development.RememberGeneratedDevelopmentOperator(card, site, mode, turn);
-        internal IReadOnlyList<CardData> ReconcileGeneratedDevelopmentOperators(int turn,
-            Func<CardData, HexCoord, ResearchProductionMode, bool> stillNeeded) =>
-            Development.ReconcileGeneratedDevelopmentOperators(turn, stillNeeded);
-        internal bool TryConsumeReconLaneTrim(int turn) => Recon(turn).TryConsumeReconLaneTrim(turn);
-        internal void MarkReconActorTrimmed(int turn, int armyId) => Recon(turn).MarkReconActorTrimmed(turn, armyId);
-        internal IReadOnlyCollection<int> ReconActorsTrimmedThisTurn(int turn) => Recon(turn).ReconActorsTrimmedThisTurn(turn);
-        internal IReadOnlyCollection<int> ReconGroundActorsUsedThisTurn(int turn) => Recon(turn).ReconGroundActorsUsedThisTurn(turn);
-        internal void MarkReconGroundActorUsed(int turn, int armyId) => Recon(turn).MarkReconGroundActorUsed(turn, armyId);
-        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) => Economy.IsBaseExpansionDeliverySuppressed(turn, card, target);
-        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target) => Economy.RecordBaseExpansionDeliveryFailure(turn, card, target);
-        internal void RecordBaseExpansionDeliveryProgress(int turn, CardData card, HexCoord? target) => Economy.RecordBaseExpansionDeliveryProgress(turn, card, target);
-        internal void RecordExtractionDeliveryProgress(int turn, ResourceType? resourceType, HexCoord target) => Economy.RecordExtractionDeliveryProgress(turn, resourceType, target);
-        internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) => Economy.IsExtractionDeliverySuppressed(turn, resourceType, target);
-        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) => Economy.RecordExtractionDeliveryFailure(turn, resourceType, target);
-
+        // Same per-player/turn scope the session exposes; detached states use their own identity.
+        internal ReconTurnState ReconTurn(int turn) => ReconTurnStateStore.For((object)Owner ?? this, turn);
     }
 
     public static class MissionIntentRegistry

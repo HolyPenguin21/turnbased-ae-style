@@ -393,7 +393,7 @@ namespace Game.Ai.V2
                     ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
                 // The turn-wide distinct-scout budget counts scouts that really walked.
                 if (!ReconScoutKinds.IsCapture(pm.ScoutKind))
-                    MissionIntentRegistry.GetOrCreate(player)
+                    ReconTurnStateStore.For(player, ctx.TurnNumber)
                         .MarkReconGroundActorUsed(ctx.TurnNumber, pm.MoverArmyId);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                 ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,

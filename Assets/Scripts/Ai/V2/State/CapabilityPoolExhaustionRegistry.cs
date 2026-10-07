@@ -253,6 +253,19 @@ namespace Game.Ai.V2
             }
         }
 
+        // The one single-mission provisioning-failure settlement shared by the main loop and the
+        // reaction rounds: defer, then mark the pool exhausted only on the pool-wide proof.
+        internal static bool RecordProvisionFailure(WorldSnapshot snap, PlayerSetupData player,
+            MissionProposal mission, ProvisionFailure failure, string reasonPrefix = "")
+        {
+            DeferNoExecutableStep(player, mission, failure);
+            bool poolWide = ProvenPoolWideUnable(snap, player, mission, failure);
+            if (poolWide)
+                MarkExhausted(player, PoolFor(mission),
+                    $"{reasonPrefix}{failure.Kind}: no eligible actor in snapshot");
+            return poolWide;
+        }
+
         public static void Clear() => ByPlayer.Clear();
     }
 }

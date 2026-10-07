@@ -111,7 +111,9 @@ namespace Game.Ai.V2
         {
             EnsureActive();
             RequireFrame(snapshot);
+            string before = result == null ? null : IntentState(result.IntentKey);
             MissionContinuityLayer.ReconcileStep(Player, TurnNumber, result);
+            if (result != null) LogTransition(result, before);
             if (result == null || snapshot == null) return;
             // A domain may release only a support leg while retaining its durable operation.
             // Re-project that operation through the authoritative role policy, preserving every
@@ -122,6 +124,22 @@ namespace Game.Ai.V2
                 snapshot, objectives, projection);
             Leases.ReplaceOperationActors(result.IntentKey, projection);
             projection.Close();
+        }
+
+        private string IntentState(MissionIntentKey key) =>
+            PersistentState.TryGet(key, out MissionIntent intent) && intent != null
+                ? intent.Status.ToString() : "none";
+
+        // The single lifecycle-transition line; domain continuity keeps its own detail lines.
+        private void LogTransition(MissionStepResult result, string before)
+        {
+            MissionIntentKey key = result.IntentKey;
+            var dirty = StrategicInvalidationReason.None;
+            foreach (WorldDelta delta in result.WorldDeltas) dirty |= delta.DirtyFacts;
+            AiDebugLog.Write($"[AI][V2][Lifecycle] operation={key} kind={key.Kind} old={before} "
+                + $"result={result.Disposition} new={IntentState(key)} "
+                + $"actors=[{string.Join(",", Leases.ActorsFor(key))}] "
+                + $"resources={Leases.ResourcesFor(key).Count} dirty={dirty}");
         }
 
         internal void SettleAfterTurn(IReadOnlyList<MissionStepResult> results)

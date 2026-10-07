@@ -458,6 +458,10 @@ namespace Game.Ai.V2
             kind == RaidRefitActionKind.RepairUnit ? "REPAIR"
             : kind == RaidRefitActionKind.TransferUnit ? "TRANSFER" : "SWAP";
 
+        private static MissionIntent RaidIntentOfPrimary(PlayerSetupData player, int primaryArmyId) =>
+            MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i => i?.Raid != null
+                && i.Raid.PrimaryArmyId == primaryArmyId);
+
         // Execution has finished the atomic rendezvous handoff. Continuity (the
         // sole owner of intent state) releases the support claim and returns the operation to
         // Assault ONLY when the post-transfer roster actually re-cleared the shared estimator.
@@ -466,9 +470,7 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
-                && i.Raid.PrimaryArmyId == primaryArmyId);
+            MissionIntent intent = RaidIntentOfPrimary(player, primaryArmyId);
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;
@@ -488,9 +490,7 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
-                && i.Raid.PrimaryArmyId == primaryArmyId);
+            MissionIntent intent = RaidIntentOfPrimary(player, primaryArmyId);
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;
@@ -532,9 +532,7 @@ namespace Game.Ai.V2
         {
             if (player == null)
                 return;
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
-                && i.Raid.PrimaryArmyId == primaryArmyId);
+            MissionIntent intent = RaidIntentOfPrimary(player, primaryArmyId);
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;

@@ -152,7 +152,7 @@ namespace Game.Ai.V2
             // not override this actor-level restriction (Mordak T12: retired #20 was reassigned).
             PlayerSetupData owner = snap.Self.Armies.FirstOrDefault(a => a?.Owner != null)?.Owner;
             IReadOnlyCollection<int> trimmedThisTurn = owner != null
-                ? MissionIntentRegistry.GetOrCreate(owner).ReconActorsTrimmedThisTurn(snap.TurnNumber)
+                ? ReconTurnStateStore.For(owner, snap.TurnNumber).ReconActorsTrimmedThisTurn(snap.TurnNumber)
                 : System.Array.Empty<int>();
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
