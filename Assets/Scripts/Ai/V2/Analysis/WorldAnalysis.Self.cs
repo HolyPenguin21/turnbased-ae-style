@@ -49,9 +49,11 @@ namespace Game.Ai.V2
             self.HoldsStartingCitadel = canonicalCitadel.HasValue
                 && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
-            self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), ctx)).ToList();
+            using (new ProfileScope("AI/Self.ArmySnapshots"))
+                self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), ctx)).ToList();
             // Includes own remaining MP: rebuild with Self even when enemy knowledge is unchanged.
-            self.ReconCaptureOpportunities = ownArmies.Where(AiArmyRoles.IsSoloRecce)
+            using (new ProfileScope("AI/Self.ReconCapture"))
+                self.ReconCaptureOpportunities = ownArmies.Where(AiArmyRoles.IsSoloRecce)
                 .SelectMany(a => HexGridMath.Neighbors(a.Hex).Concat(new[] { a.Hex })
                     .Where(h => ReconReactionPolicy.CanCaptureStructureAt(player, ctx?.Map, a, h))
                     .Select(h => (a.Id, h))).ToList();
@@ -62,6 +64,7 @@ namespace Game.Ai.V2
             // snapshot-only consumer (AiReturnBasePolicy.SelectReturnBase /
             // ReturnBaseStillValid) can tell a structurally unreachable base apart from one that is
             // merely temporarily blocked this turn, without doing live pathing itself.
+            using (new ProfileScope("AI/Self.ReturnRoutes"))
             if (baseHexes.Count > 0)
                 foreach (ArmySnapshot a in self.Armies)
                 {
@@ -75,6 +78,7 @@ namespace Game.Ai.V2
 
             // Economy consumes exact physical home costs, including solo collectors. Keep the
             // combat return-policy facts above unchanged: its fallback contract is different.
+            using (new ProfileScope("AI/Self.HomeRoutes"))
             foreach (ArmySnapshot actor in self.Armies.Where(a => !a.IsAir && !a.IsAirfield
                          && !a.IsGarrison && !a.IsPrison))
                 actor.EconomyHomeRouteCosts = EconomyHomeRoutes(player, ctx,
@@ -111,9 +115,11 @@ namespace Game.Ai.V2
                 .Any(m => m != null && m.IsHero
                     && (m.HasAbility(UnitAbilities.Researcher) || m.HasAbility(UnitAbilities.Assembler)));
 
-            BuildApActionEconomy(self, player, ownArmies, hand, ctx);
+            using (new ProfileScope("AI/Self.ApActionEconomy"))
+                BuildApActionEconomy(self, player, ownArmies, hand, ctx);
 
-            BuildForceMeasures(self, player, ownArmies);
+            using (new ProfileScope("AI/Self.ForceMeasures"))
+                BuildForceMeasures(self, player, ownArmies);
 
             self.MobilizationHeld = ctx != null
                 && OperationContinuationWindow.IsMobilizationHeld(player, ctx.TurnNumber);
@@ -236,19 +242,25 @@ namespace Game.Ai.V2
                     null, null);
 
             // One commander-in-slot rule for every nested ceiling (AiPower.NestedPotentials).
-            AiPower.ForcePotentials ceilings = AiPower.NestedPotentials(
-                ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck);
+            AiPower.ForcePotentials ceilings;
+            using (new ProfileScope("AI/Self.NestedPotentials"))
+                ceilings = AiPower.NestedPotentials(
+                    ownArmies.SelectMany(a => a.Members), self.Hand, self.Deck);
 
             self.FieldPotential = ceilings.Field;
             self.BestStackPotential = AiPower.TotalMilitaryPotential(
                 mapPool.Concat(handUnits).Concat(handHeroes).ToList());
             self.TotalMilitaryPotential = ceilings.Total;
-            PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
-                out self.DeployedPower, out self.AvailablePower);
-            self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
+            using (new ProfileScope("AI/Self.AdditivePower"))
+                PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
+                    out self.DeployedPower, out self.AvailablePower);
+            using (new ProfileScope("AI/Self.FieldStrikePotential"))
+                self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
             // The force an Attack can actually assemble (busy armies, scouts, garrison defence,
             // garrison heroes and operators out): its peak, roster and pool.
-            AttackForcePool attackPool = AttackForcePool.Build(player, self);
+            AttackForcePool attackPool;
+            using (new ProfileScope("AI/Self.AttackForcePool"))
+                attackPool = AttackForcePool.Build(player, self);
             self.AttackPeak = attackPool.Peak;
             self.StrikeRoster = attackPool.Roster;
             self.StrikePool = attackPool.Pool;
