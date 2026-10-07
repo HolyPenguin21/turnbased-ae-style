@@ -178,11 +178,16 @@ namespace Game.Ai.V2
             string source = result.StopReason.HasValue ? "execution"
                 : result.ProvisionFailureKindValue.HasValue ? "provisioning"
                 : result.AllocationDeferReason.HasValue ? "deferral" : "none";
-            bool alive = before.Intent != null && PersistentState.All.Contains(before.Intent);
-            IntentTrace after = alive ? TraceIntent(before.Intent.IntentKey) : default;
-            string fate = before.Intent == null ? "none"
+            // The step may have created the durable intent, kept it, rekeyed it or retired it.
+            bool alive = before.Intent != null
+                ? PersistentState.All.Contains(before.Intent)
+                : PersistentState.TryGet(key, out _);
+            IntentTrace after = alive
+                ? TraceIntent(before.Intent != null ? before.Intent.IntentKey : key) : default;
+            string fate = before.Intent == null ? (alive ? "created" : "none")
                 : !alive ? "retired"
                 : before.Intent.IntentKey.Equals(key) ? "kept" : "rekeyed:" + before.Intent.IntentKey;
+            string newState = alive ? after.State : (before.Intent == null ? "none" : "retired");
             string payloads = (result.GetPayload<ReconStepPayload>() != null ? "recon," : "")
                 + (result.GetPayload<RaidStepPayload>() != null ? "raid," : "")
                 + (result.GetPayload<AttackStepPayload>() != null ? "attack," : "")
@@ -201,14 +206,16 @@ namespace Game.Ai.V2
                 + $" mover={(result.MoverArmyId.HasValue ? result.MoverArmyId.Value.ToString() : "-")}"
                 + $" payload=[{payloads.TrimEnd(',')}]"
                 + $" | norm src={source} result={result.Disposition}"
-                + $" | domain intent={fate} old={before.State} new={(alive ? after.State : "retired")}"
+                + $" | domain intent={fate} old={before.State} new={newState}"
                 + $" stall={before.Stall}>{(alive ? after.Stall : 0)}"
                 + $" | claims actors={before.ActorCount}>{Leases.ActorsFor(key).Count}"
                 + $" [{string.Join(",", Leases.ActorsFor(key))}]"
                 + $" resources={before.ResourceRows}>{Leases.ResourcesFor(key).Count}"
                 + $" dirty={dirty}");
             LastLifecycleLine = line;
-            AiDebugLog.Write(line);
+            // A repeated identical transition for the same operation (a failed attempt retried by
+            // later cycles) is written once.
+            AiDebugLog.WriteDeduped("lifecycle:" + key, line);
         }
 
         // End-of-turn invariants. Violations are written as [AI][V2][Invariant] ERROR lines and
