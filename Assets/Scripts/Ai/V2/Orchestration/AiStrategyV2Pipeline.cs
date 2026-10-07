@@ -119,6 +119,9 @@ namespace Game.Ai.V2
 
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+            // The first Analyze (desires, Aggression facts) is ~50 ms of Monte Carlo: fill the exact
+            // estimate cache across frames first, so Analyze below only reads it.
+            yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
             // P_start: the first scanned force ceiling is this player's baseline for the game.
             ForceBaselineRegistry.RecordStart(player, snapshot.Self.TotalMilitaryPotential);
             AiFrameLog.GameState(snapshot, hand);
