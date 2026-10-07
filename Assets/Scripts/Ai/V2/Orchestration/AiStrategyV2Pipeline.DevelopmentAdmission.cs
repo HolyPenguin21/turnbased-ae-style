@@ -49,6 +49,10 @@ namespace Game.Ai.V2
             // The need's exact inputs, not its value: computing the value runs the Monte Carlo
             // behind every known fight, which this "did anything change" key must not pay for.
             + $"|need={(snapshot != null ? ForceNeedModel.ChangeKey(snapshot) : "none")}"
+            // Production's price of an output reads how few cards are left (deck + hand) and which
+            // cards this player already made lately (DevelopmentDiversity).
+            + $"|supply={(snapshot?.Self != null ? (snapshot.Self.Deck?.Count ?? 0) + (snapshot.Self.Hand?.Count ?? 0) : -1)}"
+            + $"|repeat={DevelopmentDiversity.HistoryKey(player, snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0)}"
             + $"|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current

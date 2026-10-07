@@ -58,6 +58,17 @@ namespace Game.Ai.V2
             return list.Count(e => e.CardKey == key && turn - e.Turn < AiConfigV2.devDiversityWindowTurns);
         }
 
+        // Every card attempted inside the window with its count, for the Development admission
+        // fingerprint: the repeat damp is an input of the decision, so it must invalidate it.
+        internal static string HistoryKey(PlayerSetupData player, int turn)
+        {
+            if (player == null || !History.TryGetValue(player, out var list))
+                return "-";
+            return string.Join(",", list.Where(e => turn - e.Turn < AiConfigV2.devDiversityWindowTurns)
+                .GroupBy(e => e.CardKey).OrderBy(g => g.Key, System.StringComparer.Ordinal)
+                .Select(g => g.Key + "x" + g.Count()));
+        }
+
         // The saturating family an added ability belongs to; null = it never saturates.
         internal static string FamilyOf(string ability)
         {

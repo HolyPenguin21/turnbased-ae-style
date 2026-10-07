@@ -1213,7 +1213,9 @@ namespace Game.Ai.V2
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
                 includeStealthTrait: false, deployment: p);
-            return EquipmentUpgradeValue(delta);
+            // Hand/generated equipment carried onto a deployed body is priced at the same supply
+            // multiplier as producing and attaching it (units short => any upgrade is worth more).
+            return EquipmentUpgradeValue(delta) * DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(snap);
         }
 
         // A deployed unit inside `army` (hand Equipment played onto the map).

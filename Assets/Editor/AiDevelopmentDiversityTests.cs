@@ -34,6 +34,33 @@ namespace Game.EditorTests
             Assert.That(DevelopmentDiversity.RepeatFactor(-3), Is.EqualTo(1f), "negative counts never raise the value");
         }
 
+        // The supply multiplier and the repeat damp are inputs of the Development decision, so the
+        // admission fingerprint must change with them (otherwise Development is not re-evaluated).
+        [Test]
+        public void AdmissionFingerprint_ChangesWithDeckSize()
+        {
+            WorldSnapshot Snap(int deck) => new WorldSnapshot { TurnNumber = 8,
+                Self = new SelfSnapshot { Deck = new CardDefinition[deck], Hand = new Game.Cards.CardData[0],
+                    BaseHexes = new[] { new Game.HexGrid.HexCoord(0, 0) }, Armies = new ArmySnapshot[0] },
+                Development = new DevelopmentReadiness { Facilities = new DevelopmentFacility[0] } };
+            string full = Pipeline.DevelopmentAdmissionFingerprint(Snap(30), null, 4, "3,3,3,3", 7);
+            Assert.That(Pipeline.DevelopmentAdmissionFingerprint(Snap(29), null, 4, "3,3,3,3", 7),
+                Is.Not.EqualTo(full), "one card fewer in the deck moves the supply multiplier");
+        }
+
+        [Test]
+        public void HistoryKey_FollowsAttemptsInsideTheWindow()
+        {
+            Assert.That(DevelopmentDiversity.HistoryKey(player, 7), Is.EqualTo("-"));
+            DevelopmentDiversity.RecordAttempt(player, 7, new CardDefinition { authoredKey = "card-a" });
+            string key = DevelopmentDiversity.HistoryKey(player, 7);
+            Assert.That(key, Is.EqualTo("card-ax1"));
+            DevelopmentDiversity.RecordAttempt(player, 8, new CardDefinition { authoredKey = "card-a" });
+            Assert.That(DevelopmentDiversity.HistoryKey(player, 8), Is.Not.EqualTo(key));
+            Assert.That(DevelopmentDiversity.HistoryKey(player, 8 + AiConfigV2.devDiversityWindowTurns), Is.Empty.Or.EqualTo(""),
+                "attempts leave the key when they leave the window");
+        }
+
         [Test]
         public void ProductionSupplyMultiplier_ReadsDeckPlusHandAndTreatsNoSelfAsFull()
         {
