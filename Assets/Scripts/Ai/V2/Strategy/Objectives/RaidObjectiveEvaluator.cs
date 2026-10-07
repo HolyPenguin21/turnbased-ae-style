@@ -208,7 +208,7 @@ namespace Game.Ai.V2
             // (EconomyBaseNetworkSynergy), so a Raid is never lured far from home by income.
             return new TaskScore(
                 economicHexBenefit: ClearedResourceHexBenefit(snap, targetHex),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                ownTerritoryProximity: TaskScoreEvaluator.RaidProximity(homeDistance),
                 eventReward: target.Kind == RaidTargetKind.EventGuard
                     ? TaskScoreEvaluator.EventReward(KnownEventGuardTier(snap, targetHex)) : 0f,
                 economicExpansionValue: ClearedBaseSiteValue(snap, targetHex),

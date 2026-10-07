@@ -18,6 +18,12 @@ namespace Game.Ai.V2
         // taskScoreActiveDefenceLeashPerHex (a desire penalty, never a hard gate).
         public const int activeDefenceLeashHexes = 4;
         public const float taskScoreActiveDefenceLeashPerHex = 2f;
+        // 2026-10-07 (user decision) — a Raid stays near its home network: first the events
+        // around the Citadel, then a Base, then raids from that Base. Past this many hexes from
+        // the nearest own Base/Citadel (~1.3 turns at 3 MP) every further hex lowers
+        // OwnTerritoryProximity by taskScoreRaidLeashPerHex (a desire penalty, never a hard gate).
+        public const int raidLeashHexes = 4;
+        public const float taskScoreRaidLeashPerHex = 2f;
         // 2026-10-01 (user decision) — a regroup at the Citadel or a withdrawal walks every usable
         // field army home: only for a threat that reaches its asset within this many turns. A
         // farther one is deferred (the field armies keep their tasks; the next pass re-decides).

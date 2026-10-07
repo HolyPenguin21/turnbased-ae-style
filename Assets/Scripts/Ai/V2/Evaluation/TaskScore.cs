@@ -465,6 +465,15 @@ namespace Game.Ai.V2
             - Mathf.Max(0, nearestHomeDistance - AiConfigV2.activeDefenceLeashHexes)
                 * AiConfigV2.taskScoreActiveDefenceLeashPerHex;
 
+        // Raid's proximity: the common signed slope, steepened past the leash radius so a raid
+        // that walks several turns from the nearest own Base/Citadel loses its desire gradually
+        // (no hard gate). Home distance is measured to the nearest Base, so a new Base moves the
+        // leash outward by itself.
+        internal static float RaidProximity(int nearestHomeDistance) =>
+            OwnTerritoryProximity(nearestHomeDistance)
+            - Mathf.Max(0, nearestHomeDistance - AiConfigV2.raidLeashHexes)
+                * AiConfigV2.taskScoreRaidLeashPerHex;
+
         internal static float HexThreatRisk(float normalizedRisk) =>
             Mathf.Clamp01(normalizedRisk) * AiConfigV2.taskScoreThreatRiskMax;
 

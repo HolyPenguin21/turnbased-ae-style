@@ -56,6 +56,31 @@ namespace Game.EditorTests
             Assert.That(Game.Ai.HexEventGuardEstimate.RewardTier(entry), Is.EqualTo(-1));
         }
 
+        // 2026-10-07 (user decision) — a Raid is led on a leash: past raidLeashHexes from the
+        // nearest own Base/Citadel every hex costs taskScoreRaidLeashPerHex on top of the slope
+        // (a desire penalty, never a gate); a Base closer to the target moves the leash outward.
+        [Test]
+        public void RaidProximity_PenalizesPastTheLeashAndFollowsTheNearestBase()
+        {
+            int leash = AiConfigV2.raidLeashHexes;
+            Assert.That(TaskScoreEvaluator.RaidProximity(leash), Is.EqualTo(
+                TaskScoreEvaluator.OwnTerritoryProximity(leash)).Within(1e-4f));
+            Assert.That(TaskScoreEvaluator.RaidProximity(leash + 2), Is.EqualTo(
+                TaskScoreEvaluator.OwnTerritoryProximity(leash + 2)
+                - 2 * AiConfigV2.taskScoreRaidLeashPerHex).Within(1e-4f));
+
+            var target = RaidTargetRef.ForEventGuard(new HexCoord(leash + 2, 0));
+            var citadelOnly = new WorldSnapshot { Self = new SelfSnapshot { Citadel = new HexCoord(0, 0) } };
+            var withBase = new WorldSnapshot { Self = new SelfSnapshot {
+                Citadel = new HexCoord(0, 0), BaseHexes = new[] { new HexCoord(leash, 0) } } };
+            TaskScore far = RaidObjectiveEvaluator.BuildRaidScore(citadelOnly, target, target.Hex);
+            TaskScore near = RaidObjectiveEvaluator.BuildRaidScore(withBase, target, target.Hex);
+
+            Assert.That(far.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.RaidProximity(leash + 2)));
+            Assert.That(near.OwnTerritoryProximity, Is.EqualTo(TaskScoreEvaluator.RaidProximity(2)));
+            Assert.That(near.Value, Is.GreaterThan(far.Value));
+        }
+
         [Test]
         public void RewardIsNotImplicitOnEconomyOrReconOrLifecycleScores()
         {
