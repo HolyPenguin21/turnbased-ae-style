@@ -253,8 +253,8 @@ namespace Game.EditorTests
                 "The neutral's hidden live Hex must not enter Production valuation once identity is known");
 
             snap.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
-                "An unknown neutral must not become a Production threat merely because TrueWorld can see it");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+                "An unknown neutral must not become a Production threat merely because TrueWorld can see it (the efficiency value stands, no fabricated threat)");
         }
 
         [Test]
@@ -302,8 +302,8 @@ namespace Game.EditorTests
                 "Location must not leak from an event witness into production valuation");
 
             snap.Known.EventGuards = System.Array.Empty<KnownEventGuardSnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
-                "An undiscovered event must not be fabricated as a Production target");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+                "An undiscovered event must not be fabricated as a Production target (the efficiency value stands, no fabricated threat)");
         }
 
         [Test]
@@ -350,8 +350,8 @@ namespace Game.EditorTests
                 "Aviation composition may affect valuation, but its hidden identity/position must not");
 
             snap.TrueWorld.EnemyArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
-                "Without the aviation composition witness the contextual combat delta must disappear");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.LessThan(withAir),
+                "Without the aviation witness AA falls back to the default share of air enemies");
         }
 
         [Test]
@@ -392,8 +392,8 @@ namespace Game.EditorTests
                 "Only composition is permitted to reach equipment valuation, not a hidden target");
 
             snap.TrueWorld = null;
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
-                "With no composition available the original intrinsic equipment score must stand");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+                "With no composition available the original intrinsic equipment score must stand (the efficiency value stands, no fabricated threat)");
         }
 
         private static CardDefinition PolicyGear(EquipmentStat stat, int amount, bool flat = false)
@@ -444,7 +444,7 @@ namespace Game.EditorTests
             Assert.That(predicted.Stats[EquipmentStat.Defense], Is.EqualTo(unit.Defense));
             var snap = PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 3, hitPoints: 5));
             var delta = StrategicCardEvaluator.EquipmentDeltaParts(attachment, unit, snap);
-            Assert.That(delta.Combat, Is.GreaterThan(0f));
+            Assert.That(delta.Total, Is.GreaterThan(0f));
             Assert.That(unit.Equipment, Is.Null);
             Assert.That(unit.Mutator, Is.Null);
             Assert.That(unit.HitPointsCurrent, Is.EqualTo(4));
@@ -595,9 +595,11 @@ namespace Game.EditorTests
                 Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
                 intent.Attack.Target = AttackTargetRef.None;
                 float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
-                snap.Observer = null;
-                Assert.That(noTarget, Is.EqualTo(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total),
-                    "An absent target is not a real objective at hex 0,0");
+                float expected = AiConfigV2.equipPyrokineticFactor * 8 * AiConfigV2.equipDefaultBioShare
+                    * AiConfigV2.equipAttackOffenseMult * AiConfigV2.equipCardValuePerE
+                    / AiConfigV2.equipmentUpgradePersistence;
+                Assert.That(noTarget, Is.EqualTo(expected).Within(1e-4f),
+                    "An absent target is not a real objective at hex 0,0: only the Attack mission multiplier applies, no hex defence");
             }
             finally { MissionIntentRegistry.Clear(); }
         }
@@ -657,18 +659,22 @@ namespace Game.EditorTests
             finally { MissionIntentRegistry.Clear(); }
         }
 
+        // 2026-10-07 (user decision) — Regeneration restores 1 HP at the end of its owner's turn, between
+        // battles: it is worth 0.5 x (Defense + HP) of its carrier, not a function of the enemy.
         [Test]
-        public void EndOfTurnRegenerationNeedsDamageAndSurvival()
+        public void RegenerationIsPricedFromTheCarriersDurabilityNotFromTheEnemy()
         {
             var body = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 5, defenseRating = 3, hitPoints = 6 });
             var regen = PolicySkill(UnitAbilities.Regeneration);
-            float safe = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
+            float weak = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 6, hitPoints: 6))).Total;
             float lethal = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 40, hitPoints: 6))).Total;
-            Assert.That(safe, Is.GreaterThan(0));
-            Assert.That(lethal, Is.LessThan(safe * 0.05f), "End-of-turn healing cannot save a dead carrier");
+            float expected = AiConfigV2.equipRegenerationFactor * (3 + 6)
+                * AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
+            Assert.That(weak, Is.EqualTo(expected).Within(0.0001f));
+            Assert.That(lethal, Is.EqualTo(weak).Within(0.0001f), "Between-battle healing does not read the enemy");
         }
     }
 }

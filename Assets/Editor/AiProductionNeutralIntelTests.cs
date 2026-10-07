@@ -74,8 +74,8 @@ namespace Game.EditorTests
                 "Last observed neutral profiles remain legitimate even when the live roster disappears");
 
             snapshot.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.Zero,
-                "Without a known witness, an unseen neutral must provide no contextual combat information");
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+                "Without a known witness, an unseen neutral must provide no contextual combat information (the efficiency value stands, no fabricated threat)");
         }
     }
 }
