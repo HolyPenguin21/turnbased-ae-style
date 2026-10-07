@@ -4,6 +4,7 @@ Status: **incomplete full task; verified session/pass lease, normalized payload,
 
 Initial baseline: connector-verified master `706b1bbddee9abe4c4f052caea353bc3a790a332`.
 Continuation baseline: connector-verified master `13210b16fc1ed6a42facc17ec3cc55d06aa83afb`. Feature-only merge `a69c7392` preserves upstream army UI/scene/badge changes; master was not modified. The new master has no overlapping AI changes. Its separate managed baseline remains 1,509 cases, 984 passed / 525 failed; the original baseline is retained unchanged.
+Latest master rechecked: `27856c202b118ed4ff46de00d499c0f1a6184c4a`; feature-only merge `e89ef147` preserves the subsequent Map/Modal prefab split, scene and badge textures, including removal of the old prefab paths. It changes no C# or AI source; the managed source baseline remains valid.
 Branch: `refactor/ai-v2-lifecycle-ownership`.
 Unity: `6000.5.4f1` (`d550df8bd089`).
 
@@ -64,7 +65,7 @@ The latest continuation also changes these existing files (all Unity metadata re
 | Pipeline, ReactionRoundExecutor | direct turn invalidation/persistent lookup and legacy reaction outcomes → session API and FinalizeSteps; Economy completion predicate moved unchanged to its domain |
 | GroundCombatLegStep, ReconGround/Raid/Attack/ActiveDefence/TaskExecutor | aggregate mutation stamp → committed per-action receipts, including subsequent movement after capture |
 | AviationRebasePlanner, Pipeline, StrategicPhaseB | strike/return/rebase plus outer duplicate stamps → executor-owned action receipts |
-| AiTurnSessionIsolationTests, AiMissionLeaseLifecycleTests, AiWorldDeltaTests, AiHousekeepingMissionContractTests | 13 additional cases: pass/foreign-frame isolation, support release, action receipts and live preparation contract |
+| AiTurnSessionIsolationTests, AiMissionLeaseLifecycleTests, AiWorldDeltaTests, AiHousekeepingMissionContractTests | 14 additional cases: pass/foreign-frame isolation, support release, action receipts, canonical Housekeeping revision and live preparation contract |
 
 ## D. Removed coupling / duplication
 
@@ -124,6 +125,8 @@ Mutation endpoints use one process-monotonic policy; observation publication doe
 
 This continuation changes receipt ownership at continuous ground and aviation action boundaries while preserving dirty masks, storage adapters and snapshot refresh ordering. GroundCombatLegStep, ReconGround, assault/intercept and Economy/Development transport report actual movement/battle/stealth commits; capture retains its original guarded commit. Aviation strikes and each return/rebase movement report their own receipt. Pipeline and Phase B no longer stamp those self-versioning actions a second time. The new atomic session.Apply API and nested synchronous transaction policy are tested. Raid/Attack handoff commit and publication have been combined without changing their masks. Other producers retain separate commit/observation endpoints delegated to the same owner. Generic receipt tests cover zero/one/three return actions, rejected no-op and aggregate suppression; they do not execute the native movement APIs. Complete write→refresh→next-read gameplay verification remains pending. Cache fixture results are below; native combat cache tests did not pass in either managed baseline or refactor.
 
+The continued bottom-up audit found that canonical Housekeeping roster mutations were not advancing V2 freshness. A regression executed two real ArmyData.TryReorderCommander operations and one rejected no-op through HousekeepingExecutor; before the fix it observed revision delta 0 instead of 2, while the original membership/order/accounting assertions passed. The executor now stamps after successful whole-fold/swap/transfer/reorder; no eligibility, cost, membership action or dirty mask changed. This fixes a lifecycle omission, not Housekeeping gameplay policy. Native transfer/visibility/cache acceptance still needs Unity.
+
 ## H. Tests and environment limits
 
 The prescribed setup.sh could not install tools in this container. Used the already available Roslyn/.NET SDK and real Unity reference DLLs for a differential compile, plus the existing reflection NUnit harness. These are scratch-only verification tools; no stub/adapter entered product code.
@@ -131,8 +134,8 @@ The prescribed setup.sh could not install tools in this container. Used the alre
 Raw compile baseline has three old reference/stub errors: two FindObjectsInactive overloads and one Mathf.SmoothDamp. Diagnostic copies adapt only those UI/audio calls to compile runnable managed tests; baseline and refactor use identical adapters. This is not a Unity build.
 
 Baseline: **1,509 cases; 984 passed / 525 failed**.
-Refactor: **1,642 cases; 1,117 passed / 525 failed**.
-**133 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+Refactor: **1,643 cases; 1,118 passed / 525 failed**.
+**134 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
 
 During the continuation, one token API initially returned ReservationOwner where an existing assertion expected a string; the token compatibility API was restored while reservation writers retain typed identity. New test setup initially assigned read-only role projections; it was corrected to use the existing Objective model. During typed payload migration, two existing loan-repayment tests exposed nullable getters coalescing missing identity to struct/integer zero. Getters now use explicitly nullable defaults; new tests distinguish null from legal actor id 0 and prove that read access does not create payload facts. A moved shared-ground helper initially lacked its System.Linq import; the diagnostic compile caught it and the import was restored. The final compile/test gates have zero new failures.
 

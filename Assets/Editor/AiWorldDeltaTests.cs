@@ -2,13 +2,49 @@
 using System.Collections.Generic;
 using System.Reflection;
 using Game.Ai.V2;
+using Game.HexGrid;
+using Game.Map;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
 {
     public sealed class AiWorldDeltaTests
     {
+        [Test]
+        public void HousekeepingCommitsEachCanonicalReorderButNotARejectedNoOp()
+        {
+            var p = new PlayerSetupData();
+            var first = new UnitData { IsHero = true, Owner = p };
+            var second = new UnitData { IsHero = true, Owner = p };
+            var army = new ArmyData { Owner = p, Hex = new HexCoord(177777, 299999) };
+            army.Members.Add(first); army.Members.Add(second);
+            // Seed the registered-world fixture without unrelated native visibility callbacks.
+            // Execution still invokes the real canonical ArmyData.TryReorderCommander.
+            var indexed = (Dictionary<HexCoord, List<ArmyData>>)typeof(ArmyRegistry)
+                .GetField("ByHex", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            indexed.Add(army.Hex, new List<ArmyData> { army });
+            try
+            {
+                var analysis = new ArmyReorgAnalysis {
+                    ArmyById = new Dictionary<int, ArmyData> { { army.Id, army } },
+                    UnitByKey = new Dictionary<int, UnitData> { { 1, first }, { 2, second } } };
+                var plan = new ReorganizationPlan();
+                plan.Transfers.Add(PlannedTransfer.Reorder(2, army.Id, "promote second"));
+                plan.Transfers.Add(PlannedTransfer.Reorder(1, army.Id, "restore first"));
+                plan.Transfers.Add(PlannedTransfer.Reorder(1, army.Id, "already first"));
+                int before = V2StateVersion.Current;
+                var result = HousekeepingExecutor.Execute(plan, analysis, p,
+                    new Game.Ai.AiTurnContext { TurnNumber = 4 }, new ActorCommitments());
+                Assert.That(result.Applied, Is.EqualTo(2));
+                Assert.That(result.Failed, Is.EqualTo(1));
+                Assert.That(army.Members, Is.EqualTo(new[] { first, second }));
+                Assert.That(V2StateVersion.Current - before, Is.EqualTo(2));
+            }
+            finally { indexed.Remove(army.Hex); }
+        }
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(3)]

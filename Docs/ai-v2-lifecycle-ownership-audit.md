@@ -480,4 +480,11 @@ Separate bottom-up bank review: physical stock, TurnResourceBook, StrategicSpend
 
 Separate cache review: no cache, key or new dirty mask was added. AiMapMemory and pathing revision remain their existing source of truth; route/combat/Recon intel and derived capability readers retain the existing keys/refresh order. Changed action boundaries use per-action receipts; observations publish the same reason-scoped facts without another bump. The managed raw compile still reports exactly the same three UI/audio reference-stub errors; diagnostic copies alone adapt those calls. Native next-read/cache acceptance remains outstanding.
 
-Current managed gate: 1,642 cases, 1,117 passed / 525 failed; all 133 new cases pass; no original passing case disappeared/regressed; first error line of every baseline failure unchanged. Neither a failed baseline nor an omitted native coroutine is counted as passing. No PR workflow run was available on the preceding feature checkpoint; no full Unity/E2E result is claimed.
+Current managed gate: 1,643 cases, 1,118 passed / 525 failed; all 134 new cases pass; no original passing case disappeared/regressed; first error line of every baseline failure unchanged. Neither a failed baseline nor an omitted native coroutine is counted as passing. No PR workflow run was available on the preceding feature checkpoint; no full Unity/E2E result is claimed.
+
+
+### Further master sync and canonical Housekeeping revision
+
+Master advanced to `27856c202b118ed4ff46de00d499c0f1a6184c4a` during final checks. Its only changes are UI prefab/scene/texture assets, with no C# source changes. Feature merge `e89ef147` overlays all 14 real Git tree entries (including two deletions) without reconstructing binary files; every upstream entry and every changed AI blob was verified. Master is unchanged by this work.
+
+The canonical Housekeeping executor had no revision request after successful roster mutation. A focused test runs two real commander reorders and a third rejected no-op, preserving membership and original Applied=2/Failed=1 behavior. Before the change its revision delta is 0 (test failure); after the change it is 2. The four successful canonical branches now request WorldDeltaLifecycle.CommitMutation immediately after success. This adds no gameplay predicate, resource spend, actor ownership writer or dirty mask. Native transfer/swap/fold and subsequent combat-cache reads remain acceptance items.
