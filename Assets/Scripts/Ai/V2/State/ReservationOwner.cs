@@ -15,7 +15,11 @@ namespace Game.Ai.V2
             new ReservationOwner(key, key.Kind == MissionKind.Economy
                 ? EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(
                     (EconomyTaskKind)key.SubKind, key.ObjectiveId, new HexCoord(key.Q, key.R)))
-                : key.ToString());
+                : key.Kind == MissionKind.Scout || key.Kind == MissionKind.Raid
+                    || key.Kind == MissionKind.Attack || key.Kind == MissionKind.ActiveDefence
+                    || key.Kind == MissionKind.Development
+                    ? key.ToString() // Preserve existing gameplay bank tokens exactly.
+                    : FormattableString.Invariant($"Operation:{(int)key.Kind}:{key.SubKind}:{key.ObjectiveId}:{key.Q}:{key.R}:{(int)key.TargetKind}"));
         public static ReservationOwner ForPass(string token) =>
             string.IsNullOrEmpty(token) ? null : new ReservationOwner(null, token);
 

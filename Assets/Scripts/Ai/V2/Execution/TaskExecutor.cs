@@ -111,6 +111,9 @@ namespace Game.Ai.V2
         public int PlannedAtStateVersion = -1;
         public int StateVersionBefore = -1;
         public int StateVersionAfter = -1;
+        // Observation boundary supplies immutable receipts; the registry remains the sole
+        // pending-fact owner. Canonical mutation freshness is StateVersionAfter above.
+        internal IReadOnlyList<WorldDelta> WorldDeltas = System.Array.Empty<WorldDelta>();
         public V2ResourceStamp ResourcesBefore;
         public V2ResourceStamp ResourcesAfter;
 
@@ -895,5 +898,4 @@ namespace Game.Ai.V2
         }
     }
 }
-
 

@@ -8,6 +8,103 @@ namespace Game.EditorTests
 {
     public sealed class AiLifecycleIngressTests
     {
+        // Deliberately absent from production enums/domain bindings and legacy ledger fields.
+        private sealed class ExtensionFacts : IMissionStepPayload { public int Sequence; }
+
+        [TestCase(MissionKind.Scout)]
+        [TestCase(MissionKind.Raid)]
+        [TestCase(MissionKind.Attack)]
+        [TestCase(MissionKind.ActiveDefence)]
+        [TestCase(MissionKind.Development)]
+        public void ExistingNonEconomyReservationTokensRemainExactlyTheLegacyTokens(MissionKind kind)
+        {
+            var key = new MissionIntentKey(kind, 3, 17, 2, 3);
+            var owner = ReservationOwner.ForOperation(key);
+            Assert.That(owner.Token, Is.EqualTo(key.ToString()));
+            Assert.That(owner.Operation.Value, Is.EqualTo(key));
+        }
+
+        [Test]
+        public void ExtensionReservationTokensEncodeEveryCanonicalKeyField()
+        {
+            var key = new MissionIntentKey((MissionKind)900, 3, 17, 2, 3);
+            var keys = new[] { key, new MissionIntentKey((MissionKind)901, 3, 17, 2, 3),
+                new MissionIntentKey((MissionKind)900, 4, 17, 2, 3),
+                new MissionIntentKey((MissionKind)900, 3, 18, 2, 3),
+                new MissionIntentKey((MissionKind)900, 3, 17, 3, 3),
+                new MissionIntentKey((MissionKind)900, 3, 17, 2, 4),
+                new MissionIntentKey((MissionKind)900, 3, 17, 2, 3, RaidTargetKind.EventGuard) };
+            var tokens = new System.Collections.Generic.HashSet<string>();
+            foreach (var operation in keys) Assert.That(tokens.Add(ReservationOwner.ForOperation(operation).Token), Is.True);
+        }
+
+        [TestCase(MissionStepDisposition.Progress, true)]
+        [TestCase(MissionStepDisposition.Waiting, true)]
+        [TestCase(MissionStepDisposition.Replan, true)]
+        [TestCase(MissionStepDisposition.Completed, false)]
+        [TestCase(MissionStepDisposition.Invalidated, false)]
+        [TestCase(MissionStepDisposition.PermanentFailure, false)]
+        public void NewDomainPayloadUsesGenericLeaseAndLifecycleWithoutCleanupBindings(
+            MissionStepDisposition disposition, bool retained)
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey((MissionKind)900, 3, 17, 2, 3);
+            var otherKey = new MissionIntentKey((MissionKind)900, 3, 18, 7, 3);
+            session.PersistentState.Put(new MissionIntent { Kind = key.Kind, IntentKey = key,
+                CreatedTurn = 4 });
+            var lease = session.Leases.For(key); var other = session.Leases.For(otherKey);
+            lease.Claim(0); other.Claim(1);
+            lease.Reserve(StrategicReservationReason.EconomyBuildCompletion,
+                StrategicReservedResource.ActionPoints, 2);
+            other.Reserve(StrategicReservationReason.EconomyBuildCompletion,
+                StrategicReservedResource.ActionPoints, 3);
+            int before = V2StateVersion.Current;
+            session.Apply(new WorldDelta(true, StrategicInvalidationReason.Actor, actorIds: new[] { 0 }));
+            var payload = new ExtensionFacts { Sequence = 7 };
+            var step = new MissionStepResult<ExtensionFacts>(key, disposition, payload) {
+                MadeProgress = disposition == MissionStepDisposition.Progress,
+                ObjectiveSatisfied = disposition == MissionStepDisposition.Completed,
+                StateVersionAfter = V2StateVersion.Current };
+            session.Settle(step);
+            Assert.That(step.Payload, Is.SameAs(payload));
+            Assert.That(payload.Sequence, Is.EqualTo(7));
+            Assert.That(session.PersistentState.TryGet(key, out _), Is.EqualTo(retained));
+            Assert.That(lease.ActorClaims.Count > 0, Is.EqualTo(retained));
+            Assert.That(lease.ResourceClaims.Count > 0, Is.EqualTo(retained));
+            Assert.That(other.ActorClaims, Is.EqualTo(new[] { 1 }));
+            Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(3));
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(session.PendingInvalidations.ActorIds, Is.EqualTo(new[] { 0 }));
+            session.Dispose();
+            Assert.That(StrategicResourceReservationLedger.Rows(p, 4), Is.Empty);
+            Assert.Throws<ObjectDisposedException>(() => lease.Claim(2));
+        }
+
+        [TestCase(MissionStepDisposition.Completed)]
+        [TestCase(MissionStepDisposition.Invalidated)]
+        [TestCase(MissionStepDisposition.PermanentFailure)]
+        public void NewDomainTerminalAttemptWithoutDurableIntentReleasesOnlyItsOwnLease(
+            MissionStepDisposition disposition)
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey((MissionKind)900, 3, 17, 2, 3);
+            var otherKey = new MissionIntentKey((MissionKind)900, 3, 18, 7, 3);
+            var lease = session.Leases.For(key); var other = session.Leases.For(otherKey);
+            lease.Claim(0); other.Claim(1);
+            lease.Reserve(StrategicReservationReason.EconomyBuildCompletion,
+                StrategicReservedResource.ActionPoints, 2);
+            other.Reserve(StrategicReservationReason.EconomyBuildCompletion,
+                StrategicReservedResource.ActionPoints, 3);
+            session.Settle(new MissionStepResult<ExtensionFacts>(key, disposition, new ExtensionFacts()) {
+                ObjectiveSatisfied = disposition == MissionStepDisposition.Completed });
+            Assert.That(lease.ActorClaims, Is.Empty);
+            Assert.That(lease.ResourceClaims, Is.Empty);
+            Assert.That(other.ActorClaims, Is.EqualTo(new[] { 1 }));
+            Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(3));
+        }
+
         private sealed class CommonResultView : MissionStepResult
         {
             internal CommonResultView(MissionStepResult result) : base(result) { }

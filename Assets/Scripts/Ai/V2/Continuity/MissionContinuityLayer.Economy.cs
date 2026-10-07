@@ -276,12 +276,12 @@ namespace Game.Ai.V2
             i != null && i.Kind == MissionKind.Economy
             && (i.Economy?.Kind == EconomyTaskKind.MobileCollection
                 || i.Economy?.Kind == EconomyTaskKind.ReturnCollector);
-        private static bool TryRetireEconomyOutcome(MissionIntentState state, AiAllocatorState allocState,
+        private static void PrepareEconomyRetirement(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionTurnOutcome o, int turn)
         {
-            if (intent != null && intent.Kind != MissionKind.Economy) return false;
-            RetireEconomyIntent(state, intent, o, turn);
-            return true;
+            // Preserve the old null-intent loan hand-back (the attempt may never become durable).
+            // Ownership cleanup belongs to the common retirement boundary, not this domain hook.
+            if (intent == null || intent.Kind == MissionKind.Economy) RepayEconomyLoan(state, intent, o);
         }
 
         private static void ApplyEconomyStepFacts(MissionIntentState state, AiAllocatorState allocator,

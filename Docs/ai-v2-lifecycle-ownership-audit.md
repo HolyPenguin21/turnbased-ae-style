@@ -488,3 +488,20 @@ Current managed gate: 1,643 cases, 1,118 passed / 525 failed; all 134 new cases 
 Master advanced to `27856c202b118ed4ff46de00d499c0f1a6184c4a` during final checks. Its only changes are UI prefab/scene/texture assets, with no C# source changes. Feature merge `e89ef147` overlays all 14 real Git tree entries (including two deletions) without reconstructing binary files; every upstream entry and every changed AI blob was verified. Master is unchanged by this work.
 
 The canonical Housekeeping executor had no revision request after successful roster mutation. A focused test runs two real commander reorders and a third rejected no-op, preserving membership and original Applied=2/Failed=1 behavior. Before the change its revision delta is 0 (test failure); after the change it is 2. The four successful canonical branches now request WorldDeltaLifecycle.CommitMutation immediately after success. This adds no gameplay predicate, resource spend, actor ownership writer or dirty mask. Native transfer/swap/fold and subsequent combat-cache reads remain acceptance items.
+
+
+## Final source delivery audit
+
+Master rechecked through GitHub connector: `dee26a1d5d32ba1b1d4a95e09134a839aef8d16c`. Feature-only merge `bc3dab7a` preserves seven upstream entries, including binary prefab/scene changes; no overlapping AI path. Master is not merged by this task.
+
+Final managed gate: 1,665 cases, 1,140 passed / 525 unchanged baseline failures; all 156 added cases pass. Comparing both original 706b1bbd and frozen pre-delivery feature assemblies finds no lost passing case, no new failure and no changed first baseline error line. The result, transition and aging fingerprints remain unchanged. Native UnityTest/TestCaseSource and gameplay E2E are delegated to the owner, not counted as passed.
+
+Common retirement owns removal once; Economy retirement preparation owns only domain loan repayment. A hypothetical new kind requires no generic cleanup branch. Its initially colliding diagnostic owner token is replaced by a canonical serialization of all six MissionIntentKey fields; existing mission bank tokens remain unchanged.
+
+Execution and common results share historical immutable WorldDelta receipts and revision receipt. Original observation conditions/order/dirty masks mechanically match the pre-delivery implementation. Result ingestion never replays publication. Stale turn publication is rejected before registry/revision writes. No new cache or mirrored dirty state exists.
+
+Aviation formation commits its trace only after the guarded rollback path. Rebase records that receipt before querying actor survival. Three managed cases verify committed/missing/uncommitted receipt behavior without a registry actor; anti-air loss and actual formation rollback still require the native acceptance scenarios.
+
+Production reservations are still mutated through MissionLeaseBook; no bank rule or cost changed. Original deferred saving protection can exceed physical stock and remains explicitly distinguished from committed spendable/coverage checks. Source delivery is not blocked on native acceptance; the exact remaining checks are in [ai-v2-lifecycle-unity-acceptance.md](ai-v2-lifecycle-unity-acceptance.md).
+
+Delivery sync: master advanced to `55237f4896e457c5922ca2c95506cd312db39c0e` during publication. Feature-only merge `584dffbb` preserves all five changed entries (four UI/map/editor C# files and one prefab), with no AI overlap or deletion. Managed parity was rechecked after this sync.

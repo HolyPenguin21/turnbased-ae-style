@@ -386,7 +386,7 @@ reactivate when important contact becomes stale or blind again.
   real hand-card consumption (true for the DEV Facility card, false for the hero-built extraction
   site). (`ProvisioningResult` stays on its own `Success`/`Failure` shape — provisioning is §34,
   not §35 execution.)
-* **One execution state-version counter** — `State/V2StateVersion`. It is bumped by every V2
+* **One execution state-version counter** — `State/WorldDeltaLifecycle`; `State/V2StateVersion` is its storage-free freshness view. Revision is advanced by every V2
   execution-tier operation that mutates authoritative world state: `CardPlayExecutor` /
   `BuildingPlayExecutor` / `MaterializationExecutor` / `TaskExecutor`, the air-recon executor
   (per confirmed move / launch / strike), `StrategicPhaseB` tempo (Draw / capacity-upgrade /
@@ -401,7 +401,7 @@ Final FoundBase admission reuses `DemandLayer.SelectEconomyBuilder` with live in
 
 ## Lifecycle ownership migration (706b1bbd baseline)
 
-This is a session/lease ownership migration checkpoint; full operational result ingestion and transaction migration is not complete.
+Source ownership migration is delivered. Full native Unity acceptance is performed by the project owner using Docs/ai-v2-lifecycle-unity-acceptance.md; managed parity is not a substitute for that acceptance.
 
 * `AiTurnSession` owns one player/turn scope. Pipeline creates it before card refill and closes it explicitly after the final summary; `using` is an exception/disposal fallback. Starting the next turn also closes a scope abandoned by native coroutine cancellation. Persistent stores are never cleared by turn disposal.
 * Session delegates reservation storage to `StrategicResourceReservationLedger` and pending-fact storage to `StrategicInterruptRegistry`. It begins telemetry/exhaustion/reservations, and ends reservations, invalidations, exhaustion, temporary capability protection, tempo, aviation stall and the continuation window. Pass-scoped assignment/admission/budget objects stay with their existing owners. Provisioning tentative actors use a pass lease book created by the turn session; disposing the pass closes it, and turn disposal also closes abandoned pass handles. A new pass cannot see another pass's tentative claims. The unused DurableClaimedArmyIds copy was removed; real durable exclusions still use the existing normalized commitments and pinned-leg constraints. Diagnostic summaries are emitted before cleanup.
@@ -420,3 +420,14 @@ Domain transition composition: the common ReconcileOutcome coordinator switches 
 Operational result ingress: Pipeline reads `FinalizeSteps()` and calls `AiTurnSession.Settle(MissionStepResult)`. Public step/end reconciliation accepts common results. `MissionTurnOutcome.View` is a temporary noncopying adapter for existing internal domain transitions; both objects share one common fact record and one typed payload dictionary. Changes through either API cannot diverge. The generic constructor derives MissionKind from the existing operation key; no additional operation identity is created. Session rejects settlement after its turn has ended.
 
 Allowed direction at this stage: generic session/result/delta infrastructure delegates storage to old adapters; domain policies invoke authoritative game eligibility; normalized ownership/Housekeeping do not implement mission strategy. Bank formulas, physical spending and allocator competition are unchanged.
+
+
+### Final result and retirement contracts
+
+Observation publication returns immutable `WorldDelta` packets in the original reason-specific order. `ExecutionResult.WorldDeltas`, `MissionStepResult.WorldDeltas` and its legacy view share those already-applied receipts; they are history, never a pending queue or cache. Normalization also carries `StateVersionAfter`. Settlement reads receipts without replaying publication or revision. Dirty masks, evidence buckets and strategic refresh placement retain the previous semantics. A publication for a different turn than an active player's session is rejected before changing revision or pending facts.
+
+Domain retirement callbacks prepare domain facts (for example Economy loan repayment). The common coordinator then invokes exactly one `MissionIntentState.Remove`, which retires the operation through the lease owner even when no durable intent was created. A domain can continue a completed leg through its existing transition; shared infrastructure must not confuse that with operation retirement.
+
+`ReservationOwner.ForOperation` preserves all existing domain tokens. For a new kind, its token serializes the six fields of the existing `MissionIntentKey` using invariant formatting; diagnostic `ToString()` is not an ownership key. There is no separate operation-id store. The hypothetical new-kind fixture exercises every common disposition, payload, other-operation isolation and scope cleanup without editing bank cleanup, ledger fields or revision policy. New domain role validation and transitions still belong to the existing domain registration points.
+
+Aviation launch formation sets a factual `FormationCommitted` trace after its guarded rollback boundary. Rebase consumes it before looking for a surviving wing. This preserves freshness when the wing dies during the first flight, while rolled-back formation publishes no mutation receipt. The trace adds no movement, admission, cost or endurance policy.

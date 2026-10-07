@@ -894,8 +894,8 @@ namespace Game.Ai.V2
         private static void RetireOutcomeIntent(MissionIntentState state, MissionIntent intent,
             MissionTurnOutcome outcome, int turn)
         {
-            if (TryDomainTransition(RetirementTransitions, state, null, intent, outcome, turn)) return;
-            state.Remove(intent.IntentKey);
+            foreach (var prepare in RetirementPreparers) prepare(state, null, intent, outcome, turn);
+            state.Remove(intent?.IntentKey ?? outcome.IntentKey, turn);
         }
 
         // Is an already-collecting actor still worth its site? Analysis' admission test for a

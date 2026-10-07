@@ -705,6 +705,8 @@ namespace Game.Ai.V2
         public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision,
             AiTurnContext ctx, AirSortieKind taskKind, AiMoveExecutionTrace executionTrace = null)
         {
+            bool formed = false;
+            if (executionTrace != null) executionTrace.FormationCommitted = false;
             ArmyData airArmy = decision.ExistingArmy;
             if (airArmy == null)
             {
@@ -723,6 +725,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI] {player.Nickname}: {taskKind} launch failed — {failReason}");
                     yield break;
                 }
+                formed = true;
                 AiDebugLog.Write($"[AI] {player.Nickname}: launches \"{airArmy.Name}\" ({decision.AircraftToLaunch.Count} aircraft) "
                     + $"from ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
             }
@@ -778,6 +781,7 @@ namespace Game.Ai.V2
             if (taskKind == AirSortieKind.Strike && task.Outbound
                 && firstMove.TargetHex.Equals(task.TargetHex))
                 firstMove.AirStrikePolicy = AirStrikePolicy.Standard;
+            if (executionTrace != null) executionTrace.FormationCommitted = formed;
             yield return AiTurnController.MoveArmyRoutine(player, firstMove, ctx, executionTrace);
         }
     }

@@ -34,6 +34,8 @@ namespace Game.Ai.V2
             // Actual post-step location, including Economy arrival/holding evidence.
             internal HexCoord FinalHex;
             internal MissionKind MissionKind = MissionKind.Scout;
+            internal IReadOnlyList<WorldDelta> WorldDeltas = Array.Empty<WorldDelta>();
+            internal int StateVersionAfter = -1;
         }
         private readonly Facts _facts;
         private readonly Dictionary<Type, IMissionStepPayload> _payloads;
@@ -64,6 +66,10 @@ namespace Game.Ai.V2
         public ExecutionStopReason? StopReason { get => _facts.StopReason; set => _facts.StopReason = value; }
         public HexCoord FinalHex { get => _facts.FinalHex; set => _facts.FinalHex = value; }
         public MissionKind MissionKind { get => _facts.MissionKind; set => _facts.MissionKind = value; }
+        // Read-only receipts of already-published observations, not pending invalidations or a
+        // replay instruction. Settlement must never apply them or advance the revision again.
+        internal IReadOnlyList<WorldDelta> WorldDeltas { get => _facts.WorldDeltas; set => _facts.WorldDeltas = value; }
+        public int StateVersionAfter { get => _facts.StateVersionAfter; set => _facts.StateVersionAfter = value; }
 
         // Read access never creates a payload or changes provisioned-presence evidence.
         public T GetPayload<T>() where T : class, IMissionStepPayload =>

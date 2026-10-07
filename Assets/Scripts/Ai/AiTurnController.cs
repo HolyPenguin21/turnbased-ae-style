@@ -162,6 +162,9 @@ namespace Game.Ai
     // passes one of these; every V1 call site leaves it null and is unaffected.
     public sealed class AiMoveExecutionTrace
     {
+        // Formation survived the guarded launch rollback boundary; actor death during the
+        // ensuing flight cannot erase this already committed world mutation.
+        public bool FormationCommitted;
         public MoveOrderResult MoveResult;   // exactly what IssueMoveOrder returned
         public bool BattleOccurred;          // a fight was open (or the post-move safety net opened one) on this step
         public bool HexEventOccurred;        // a clean Hex Event resolved (explored or skipped) during this step

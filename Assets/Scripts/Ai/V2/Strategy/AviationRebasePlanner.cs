@@ -40,6 +40,11 @@ namespace Game.Ai.V2
 
     internal static class AviationRebasePlanner
     {
+        // Launch and guarded first flight form one transaction. Consume its factual receipt
+        // before looking for a surviving wing; later flight steps have separate receipts.
+        internal static void RecordLaunchReceipt(AiMoveExecutionTrace trace) =>
+            WorldDeltaLifecycle.RecordExecutionMutation(null, trace?.FormationCommitted == true);
+
         // The relocation pays ONE sortie launch (AP + Energy at the neutral resource price — no
         // snapshot here). A multi-turn route costs nothing more: continuing a paid sortie is free
         // on every later turn (ArmyData.PendingActivation*), so there is no recurring delivery.
@@ -361,16 +366,13 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiAirSortiePlanner.LaunchRoutine(
                 player, decision, ctx, AirSortieKind.Rebase, trace);
+            RecordLaunchReceipt(trace);
 
             ArmyData wing = ArmyRegistry.AllForOwner(player)
                 .Where(a => AviationRules.IsValidAirArmy(a) && !before.Contains(a.Id))
                 .OrderBy(a => a.Id).FirstOrDefault();
             if (wing == null)
                 yield break;
-
-            // Formation and its guarded first flight are the launch transaction. Later flight
-            // steps below have independent receipts; no caller stamps this sequence again.
-            WorldDeltaLifecycle.RecordExecutionMutation(null, true);
 
             bool changed = !wing.Hex.Equals(plan.SourceHex);
             int guard = Mathf.Max(1, wing.CurrentMovement + 1);

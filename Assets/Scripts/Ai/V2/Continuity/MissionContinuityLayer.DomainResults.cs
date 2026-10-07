@@ -54,7 +54,7 @@ namespace Game.Ai.V2
         private static readonly OutcomeTransition[] CompletionTransitions =
             { TryCompleteRaidTarget, TryCompleteAttackLeg, TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { TryKeepEconomyRecovery };
-        private static readonly OutcomeTransition[] RetirementTransitions = { TryRetireEconomyOutcome };
+        private static readonly OutcomeObservation[] RetirementPreparers = { PrepareEconomyRetirement };
         private static readonly OutcomeTransition[] NoProgressTransitions = { TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
             { TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, TryCreateActiveDefenceStep,

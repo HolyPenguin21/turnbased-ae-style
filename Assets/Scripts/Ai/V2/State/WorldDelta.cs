@@ -23,9 +23,9 @@ namespace Game.Ai.V2
         {
             HasMutation = hasMutation;
             DirtyFacts = dirtyFacts;
-            ActorIds = actorIds?.ToArray();
-            ContactIds = contactIds?.ToArray();
-            Hexes = hexes?.ToArray();
+            ActorIds = actorIds == null ? null : Array.AsReadOnly(actorIds.ToArray());
+            ContactIds = contactIds == null ? null : Array.AsReadOnly(contactIds.ToArray());
+            Hexes = hexes == null ? null : Array.AsReadOnly(hexes.ToArray());
             Hand = hand;
         }
     }
@@ -80,6 +80,9 @@ namespace Game.Ai.V2
 
         internal static int Apply(PlayerSetupData player, int turn, WorldDelta delta)
         {
+            var active = AiTurnSession.PeekActive(player);
+            if (active != null && active.TurnNumber != turn)
+                throw new InvalidOperationException("World facts belong to another AI turn.");
             if (_transaction != null)
             {
                 _transaction.Stage(player, turn, delta);
@@ -105,10 +108,16 @@ namespace Game.Ai.V2
             return revision;
         }
 
-        internal static void Publish(PlayerSetupData player, int turn,
+        internal static WorldDelta Publish(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
             IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,
-            AiHandData hand = null) =>
-            Apply(player, turn, new WorldDelta(false, reasons, actorIds, contactIds, hexes, hand));
+            AiHandData hand = null)
+        {
+            var delta = new WorldDelta(false, reasons, actorIds, contactIds, hexes, hand);
+            var session = AiTurnSession.Peek(player, turn);
+            if (session != null) session.Apply(delta);
+            else Apply(player, turn, delta);
+            return delta;
+        }
     }
 }

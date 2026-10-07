@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
+using System;
 using System.Reflection;
 using Game.Ai.V2;
 using Game.HexGrid;
@@ -12,6 +13,77 @@ namespace Game.EditorTests
 {
     public sealed class AiWorldDeltaTests
     {
+        [TestCase(true)]
+        [TestCase(false)]
+        public void AviationLaunchRevisionUsesTheCommittedReceiptWithoutRequiringASurvivingActor(bool committed)
+        {
+            int before = V2StateVersion.Current;
+            // No registry actor: a destroyed wing is no longer available to the caller.
+            AviationRebasePlanner.RecordLaunchReceipt(new Game.Ai.AiMoveExecutionTrace
+                { FormationCommitted = committed });
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + (committed ? 1 : 0)));
+        }
+
+        [Test]
+        public void MissingAviationLaunchReceiptDoesNotAdvanceRevision()
+        {
+            int before = V2StateVersion.Current;
+            AviationRebasePlanner.RecordLaunchReceipt(null);
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ObservationReceiptsReachTheCommonResultWithoutRepublishingOrLosingReasonEvidence(bool changed)
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var before = new WorldSnapshot { Observer = p, TurnNumber = 4,
+                Self = new SelfSnapshot { Armies = new[] {
+                    new ArmySnapshot { ArmyId = 7, MemberCount = 1, Hex = new HexCoord(1, 1) } } } };
+            var after = changed ? new WorldSnapshot { Observer = p, TurnNumber = 4,
+                Self = new SelfSnapshot { Armies = new[] {
+                    new ArmySnapshot { ArmyId = 7, MemberCount = 1, Hex = new HexCoord(2, 1) } } },
+                Known = new KnownSnapshot { Buildings = new[] {
+                    new Game.Ai.AiMapMemory.KnownBuilding(new HexCoord(5, 5), p, false, null, isBase: true) } } } : before;
+            // Only identity/version are read here; constructing a deck invokes unrelated native
+            // Unity Object equality in the managed harness. No gameplay hand methods are mocked.
+            var hand = changed ? (Game.Ai.AiHandData)System.Runtime.Serialization.FormatterServices
+                .GetUninitializedObject(typeof(Game.Ai.AiHandData)) : null;
+            var proposal = new MissionProposal { Kind = MissionKind.Development };
+            var execution = new ExecutionResult { Key = StableMissionKey.For(proposal),
+                StopReason = ExecutionStopReason.StepCompleted, StepsMoved = changed ? 1 : 0 };
+            int initial = V2StateVersion.Current;
+            WorldDeltaLifecycle.RecordExecutionMutation(execution, changed);
+            WorldAnalysis.PublishStepObservationDelta(p, 4,
+                new WorldAnalysis.StepObservationStamp(before, new V2ResourceStamp(3, 2, 2, 2, 2), null),
+                new WorldAnalysis.StepObservationStamp(after,
+                    new V2ResourceStamp(3, changed ? 1 : 2, 2, 2, 2), hand), execution);
+            var pending = session.PendingInvalidations;
+            Assert.That(pending.RegistryVersion, Is.EqualTo(changed ? 4 : 0));
+            Assert.That(execution.WorldDeltas.Count, Is.EqualTo(changed ? 4 : 0));
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(new[] { proposal }); ledger.RecordExecution(execution);
+            var step = ledger.FinalizeSteps()[0];
+            Assert.That(step.WorldDeltas, Is.SameAs(execution.WorldDeltas));
+            Assert.That(MissionTurnOutcome.View(step).WorldDeltas, Is.SameAs(step.WorldDeltas));
+            Assert.That(step.StateVersionAfter, Is.EqualTo(execution.StateVersionAfter));
+            Assert.That(V2StateVersion.Current, Is.EqualTo(initial + (changed ? 1 : 0)));
+            Assert.That(session.PendingInvalidations.RegistryVersion, Is.EqualTo(pending.RegistryVersion));
+            if (changed)
+            {
+                Assert.That(step.WorldDeltas[0].DirtyFacts, Is.EqualTo(StrategicInvalidationReason.Actor));
+                Assert.That(step.WorldDeltas[0].ActorIds, Is.EqualTo(new[] { 7 }));
+                Assert.Throws<NotSupportedException>(() => ((IList<WorldDelta>)step.WorldDeltas).Clear());
+                Assert.Throws<NotSupportedException>(() => ((ICollection<int>)step.WorldDeltas[0].ActorIds).Clear());
+                session.ConsumeInvalidations(StrategicInvalidationReason.Actor);
+                Assert.That(session.PendingInvalidations.ActorIds, Is.Empty);
+                Assert.That(session.PendingInvalidations.Reasons, Is.EqualTo(
+                    StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability
+                    | StrategicInvalidationReason.Resources | StrategicInvalidationReason.Hand));
+            }
+        }
+
         [Test]
         public void HousekeepingCommitsEachCanonicalReorderButNotARejectedNoOp()
         {

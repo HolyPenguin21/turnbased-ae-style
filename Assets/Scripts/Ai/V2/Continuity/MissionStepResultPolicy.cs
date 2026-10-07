@@ -51,6 +51,8 @@ namespace Game.Ai.V2
                 if (r.Execution != null)
                 {
                     ExecutionResult e = r.Execution;
+                    o.WorldDeltas = e.WorldDeltas;
+                    o.StateVersionAfter = e.StateVersionAfter;
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
                     o.FinalHex = e.FinalHex;

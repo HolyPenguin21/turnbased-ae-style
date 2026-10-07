@@ -1,16 +1,16 @@
 # AI V2 lifecycle ownership migration — execution report
 
-Status: **incomplete full task; verified session/pass lease, normalized payload, domain resolution and action receipt checkpoint**. No merge to master.
+Status: **source implementation delivered; native Unity acceptance is assigned to the project owner and does not block this delivery**. No merge to master. The full original Definition of Done is not certified until that acceptance is complete. See [Unity acceptance checklist](ai-v2-lifecycle-unity-acceptance.md).
 
 Initial baseline: connector-verified master `706b1bbddee9abe4c4f052caea353bc3a790a332`.
 Continuation baseline: connector-verified master `13210b16fc1ed6a42facc17ec3cc55d06aa83afb`. Feature-only merge `a69c7392` preserves upstream army UI/scene/badge changes; master was not modified. The new master has no overlapping AI changes. Its separate managed baseline remains 1,509 cases, 984 passed / 525 failed; the original baseline is retained unchanged.
-Latest master rechecked: `27856c202b118ed4ff46de00d499c0f1a6184c4a`; feature-only merge `e89ef147` preserves the subsequent Map/Modal prefab split, scene and badge textures, including removal of the old prefab paths. It changes no C# or AI source; the managed source baseline remains valid.
+Latest master rechecked: `55237f4896e457c5922ca2c95506cd312db39c0e`; feature-only merges `bc3dab7a` and `584dffbb` preserve the subsequent UI/prefab/scene/config entries and modal selection changes on the real remote tree. No upstream AI overlap. The original immutable baseline is retained; the pre-delivery feature checkpoint independently reproduced 1,643 cases, 1,118 passed / 525 failed.
 Branch: `refactor/ai-v2-lifecycle-ownership`.
 Unity: `6000.5.4f1` (`d550df8bd089`).
 
 ## A. Root cause / before
 
-Confirmed mixed lifetimes in MissionIntentState, role-specific validation inside the normalized actor view, domain interpretation inside outcome ledger, and scattered turn boundaries. Importantly, result completion often describes a sub-leg rather than a terminal durable operation. A generic release-on-Completed migration cannot be applied to the existing status without changing gameplay.
+Confirmed mixed lifetimes in MissionIntentState, role-specific validation inside the normalized actor view, domain interpretation inside outcome ledger, and scattered turn boundaries. Result completion often describes a sub-leg rather than a terminal durable operation. A generic release-on-Completed migration cannot be applied to the existing status without changing gameplay.
 
 The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-audit.md). It includes owner scope, mutation/reset ownership, baseline external readers/writers, cache contracts and the additional capability lease registry outside State/.
 
@@ -29,7 +29,7 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 | world revision and fact publication | WorldDeltaLifecycle | V2StateVersion and interrupt Mark are storage-free compatibility adapters |
 | common step disposition | result boundary + registered MissionContinuityLayer domain classifiers | one MissionStepResult.Disposition; old Outcome/StructuralFailure are projections |
 | typed domain facts | MissionStepResult payload store | one typed value per payload type; legacy field API owns no copies |
-| domain durable lifecycle transitions | existing MissionContinuityLayer domain paths | same transitions in domain partial policies; common coordinator uses disposition and ordered handlers; common AdvanceIntent accounting delegates domain role/fact/capability policy; ResolveActive and transaction migration still pending |
+| domain durable lifecycle transitions | existing MissionContinuityLayer domain paths | same transitions in domain partial policies; common coordinator uses disposition and ordered handlers; common AdvanceIntent accounting delegates domain role/fact/capability policy; ResolveActive delegates to existing domain handlers; synchronous transactions and coroutine action receipts use the same revision owner |
 
 ## C. Changed files
 
@@ -48,7 +48,7 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 | Continuity domain partials; GroundCombatTransitions; DomainResults | ReconcileOutcome mission branches → ordered domain callbacks; same side-leg/completion/recovery/payload precedence; 14 moved helpers are byte-identical |
 | AiDomainTransitionParityTests | two frozen 5,760-transition fingerprints, completed-leg/terminal-operation independent lease cleanup, pinned mover and frozen support-role tests |
 | AdvanceIntent / domain fact and mover callbacks | inline role interpretation and domain fact mutations → ordered domain callbacks; accounting, existing suspension/stall/reap order unchanged |
-| ARCHITECTURE.md | documents actual migrated contracts and explicitly lists remaining work |
+| ARCHITECTURE.md | documents actual owners, receipt direction, domain handlers and native acceptance limits |
 | nine new Editor test files (+ Unity metadata) | session/persistent/result/delta/domain fact parity plus lease lifetime, bank stages, stale-turn write and pre-intent failure tests; no product verification stubs |
 
 Existing Unity GUIDs, scenes and prefabs are unchanged. New C# files include fresh .meta files.
@@ -66,6 +66,22 @@ The latest continuation also changes these existing files (all Unity metadata re
 | GroundCombatLegStep, ReconGround/Raid/Attack/ActiveDefence/TaskExecutor | aggregate mutation stamp → committed per-action receipts, including subsequent movement after capture |
 | AviationRebasePlanner, Pipeline, StrategicPhaseB | strike/return/rebase plus outer duplicate stamps → executor-owned action receipts |
 | AiTurnSessionIsolationTests, AiMissionLeaseLifecycleTests, AiWorldDeltaTests, AiHousekeepingMissionContractTests | 14 additional cases: pass/foreign-frame isolation, support release, action receipts, canonical Housekeeping revision and live preparation contract |
+
+
+### Final source delivery changes
+
+| Files | Confirmed problem → delivered contract |
+|---|---|
+| Continuity/MissionContinuityLayer.cs, .DomainResults.cs, .Economy.cs | Economy callback independently removed intents → domain callback only repays the loan; generic retirement invokes the same authoritative Remove/lease boundary once, including unknown kinds and fresh terminal operations |
+| State/ReservationOwner.cs | unknown-kind diagnostic string collided for different operation keys → canonical fallback includes all six existing key fields; Economy and all other existing domain bank tokens remain byte-identical |
+| Analysis/WorldAnalysis.Observation.cs, Execution/TaskExecutor.cs, Continuity/MissionStepResult.cs and Policy | observed facts disappeared at result ingress → execution and common result share immutable already-published WorldDelta receipts and StateVersionAfter; settlement cannot republish them |
+| State/WorldDelta.cs | exposed arrays could be mutated; stale turn publication could replace current pending facts → read-only payloads and rejection before counter/registry mutation |
+| AiTurnController.cs, Recon/AiAirSortiePlanner.cs, Strategy/AviationRebasePlanner.cs | launch revision inferred from surviving wing → factual FormationCommitted receipt set after rollback boundary, consumed before actor lookup; committed actor loss advances once, no-op/rollback receipt does not |
+| AiLifecycleIngressTests, AiTurnSessionIsolationTests, AiWorldDeltaTests | 22 additional cases since the pre-delivery checkpoint: future-kind transitions, all-field identity uniqueness, legacy bank-token compatibility, stale publications, shared observation receipts and launch receipt consumption |
+
+A hypothetical unregistered kind initially exposed six new test failures: two operations both encoded as `Intent(900)`. The fallback now derives solely from MissionIntentKey, with no additional identity system. One new observation test initially invoked native Unity equality through a hand constructor; it now supplies only the identity/version object needed by the observation contract. All final new cases pass. The launch receipt tests exercise the production receipt consumer without a registry actor; the native anti-air death and formation rollback scenarios remain in user acceptance.
+
+The final separate bank search confirms production ledger writes still enter MissionLeaseBook. Known-domain token, expiration, replacement and downgrade semantics are unchanged. The final cache review mechanically compares every observation condition, publication order and dirty mask with the pre-delivery source: identical. Historical result receipts introduce neither a cache nor an extra invalidation/revision. The three frozen result/transition/aging matrices still pass.
 
 ## D. Removed coupling / duplication
 
@@ -134,8 +150,8 @@ The prescribed setup.sh could not install tools in this container. Used the alre
 Raw compile baseline has three old reference/stub errors: two FindObjectsInactive overloads and one Mathf.SmoothDamp. Diagnostic copies adapt only those UI/audio calls to compile runnable managed tests; baseline and refactor use identical adapters. This is not a Unity build.
 
 Baseline: **1,509 cases; 984 passed / 525 failed**.
-Refactor: **1,643 cases; 1,118 passed / 525 failed**.
-**134 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+Refactor: **1,665 cases; 1,140 passed / 525 failed**.
+**156 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
 
 During the continuation, one token API initially returned ReservationOwner where an existing assertion expected a string; the token compatibility API was restored while reservation writers retain typed identity. New test setup initially assigned read-only role projections; it was corrected to use the existing Objective model. During typed payload migration, two existing loan-repayment tests exposed nullable getters coalescing missing identity to struct/integer zero. Getters now use explicitly nullable defaults; new tests distinguish null from legal actor id 0 and prove that read access does not create payload facts. A moved shared-ground helper initially lacked its System.Linq import; the diagnostic compile caught it and the import was restored. The final compile/test gates have zero new failures.
 
@@ -167,7 +183,7 @@ The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execu
 
 ## I. Remaining work / adapters
 
-The overall task is **not done**: full native acceptance and the complete mutation/cache E2E proof are outstanding.
+The source delivery is complete. Native Unity acceptance and mutation/cache E2E evidence are explicitly handed to the project owner; these were not executed here. Retained adapters below have no independently writable copy of the same fact.
 
 | Adapter | Why retained / remaining readers | Removal requirement |
 |---|---|---|
@@ -179,12 +195,12 @@ The overall task is **not done**: full native acceptance and the complete mutati
 | V2StateVersion | freshness readers and tests; delegates to the one WorldDeltaLifecycle counter | migrate read signatures; no semantic persistent value or separate counter |
 | Detached actor/pass views | pre-turn initiative, selectors and standalone test fixtures; derived/read-only for durable ownership | must remain isolated from the live session until those APIs receive explicit scope |
 
-Remaining acceptance work:
+User-owned Unity acceptance (see the concrete checklist):
 
 1. Run Unity 6000.5.4f1 full AI Editor suite and the specified Recon, Economy base-builder, Attack, Raid, ActiveDefence and Development E2E scenarios. This container has no native Unity runtime/editor. The managed harness omits UnityTest/TestCaseSource and cannot supply engine object equality/assets/combat.
 2. Verify every native committed mutation, rollback and no-op through revision → invalidation → refresh → next read. The known FoundBase, child+aggregate, continuous ground/capture and aviation strike/return receipt paths have been centralized, but global exactly-once is not claimed without engine scenarios.
 3. Validate simultaneous Economy obligations and same-turn release/retry against physical stock in Unity. Deferred H/E/M/T saving claims retain the existing ability to exceed stock; changing that would change the requested bank semantics.
-4. Run a real new-mission integration proof with the existing domain registration points. Source ownership is centralized, but native mission-extension acceptance is not claimed.
+4. Optionally exercise a playable new mission through domain registration. The delivered hypothetical-kind test already proves all six dispositions, typed payloads, operation identity, actor/resource cleanup, isolation, revision and session end without adding generic cleanup branches. This is an infrastructure extension proof, not a playable mission or native E2E result.
 
 Generated Development output remains deliberately persistent domain state: its original facility/role uniqueness, reconciliation predicate and age rule govern removal. It is not a temporary mission actor claim and must not be cleared merely because a delivery leg completed. Persistent Economy suppression and durable aviation/Recon role state retain their original domain rules.
 
