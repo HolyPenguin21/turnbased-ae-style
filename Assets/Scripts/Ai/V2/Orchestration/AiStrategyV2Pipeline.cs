@@ -212,8 +212,6 @@ namespace Game.Ai.V2
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
-            // Observer pause is sampled only after Phase A's complete transaction boundary.
-            yield return ctx.WaitAtObserverActionBoundary();
             phaseA.CardsDrawn += replenishDrawn;
 
             // S4. Analysis owns refresh granularity. The existing AiMapMemory revision decides
@@ -243,6 +241,8 @@ namespace Game.Ai.V2
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
                     player, ctx, root, demandAxes);
             }
+            // Phase A is fully reflected in the settled snapshot/continuity view before pause.
+            yield return ctx.WaitAtObserverActionBoundary();
 
             // Combat support preparation for existing ground operations. AirSweep formation
             // belongs to execution of its own admitted and funded Scout task.
@@ -255,7 +255,6 @@ namespace Game.Ai.V2
                     bool formedWing = false;
                     yield return AviationRebasePlanner.Execute(player, root, ctx, formation,
                         changed => formedWing |= changed);
-                    yield return ctx.WaitAtObserverActionBoundary();
                     if (formedWing)
                     {
                         // The launch/flight actions already published their revision receipts.
@@ -267,6 +266,7 @@ namespace Game.Ai.V2
                         actorCommitments = turnSession.RefreshActors(
                             activeIntents, snapshot, reconObjectives);
                     }
+                    yield return ctx.WaitAtObserverActionBoundary();
                 }
             }
 
@@ -990,10 +990,6 @@ namespace Game.Ai.V2
                             selected, stepResults, snapshot, enforceFreshPlan: true);
                     }
 
-                    // The selected task (ground or air) has fully settled before pausing. This
-                    // prevents inspection from ever seeing half-moved armies or an open spend.
-                    yield return ctx.WaitAtObserverActionBoundary();
-
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     ExecutionResult settled = stepResults.FirstOrDefault();
@@ -1022,6 +1018,9 @@ namespace Game.Ai.V2
                     settledSteps++;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"step {settledSteps} task={selectedKey}");
+                    // Snapshot, mission ledger and reservation reconciliation now all describe
+                    // the completed command; inspection never sees a half-settled action.
+                    yield return ctx.WaitAtObserverActionBoundary();
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
@@ -1106,7 +1105,6 @@ namespace Game.Ai.V2
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, phaseB.Reservation ?? phaseA.Reservation,
                         phaseBRound, reconObjectives);
-                    yield return ctx.WaitAtObserverActionBoundary();
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
@@ -1116,6 +1114,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
+                    yield return ctx.WaitAtObserverActionBoundary();
                     // Phase B has spent first; return legs now take what is left.
                     bool releaseReturnsNow = !lifecycleReturnsReleased && lifecycleReturnsDeferred;
                     lifecycleReturnsReleased = true;
@@ -1215,7 +1214,6 @@ namespace Game.Ai.V2
                             phaseB.Reservation ?? phaseA.Reservation,
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
                             radar: radar);
-                        yield return ctx.WaitAtObserverActionBoundary();
                         phaseA.Accumulate(coldPass);
                         phaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
                         AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual — demands={coldDemands.Count} "
@@ -1241,7 +1239,12 @@ namespace Game.Ai.V2
                                 aggressionObjectives, activeIntents, actorCommitments,
                                 player, ctx, root, demandAxes);
                             ownershipFreshAfterPhaseA = true;
+                            yield return ctx.WaitAtObserverActionBoundary();
                             yield return RunTypedAdmissions();
+                        }
+                        else
+                        {
+                            yield return ctx.WaitAtObserverActionBoundary();
                         }
                     }
                 }
@@ -1264,6 +1267,7 @@ namespace Game.Ai.V2
                         beforeRecall, afterRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"air-support recall #{unsafeWing.Id}");
+                    yield return ctx.WaitAtObserverActionBoundary();
                 }
 
                 // Cold Phase A and the following typed admissions may have created or
