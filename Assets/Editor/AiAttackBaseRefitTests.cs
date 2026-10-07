@@ -269,6 +269,37 @@ namespace Game.EditorTests
             finally { UnityEngine.Object.DestroyImmediate(obj); }
         }
 
+        // 2026-10-07 playtest: 4 AP of EconomyBuildCompletion + 3 AP of continuation against 6 AP
+        // raised CommittedHoldUncovered. The continuation is the junior claim: it protects only the
+        // AP the committed ledger rows leave, so the two never exceed the stock.
+        [TestCase(0, 3f)] [TestCase(3, 3f)] [TestCase(4, 0f)] [TestCase(6, 0f)]
+        public void OperationContinuationHold_NeverExceedsWhatCommittedLedgerRowsLeave(int ledgerAp, float expected)
+        {
+            var obj = new UnityEngine.GameObject("continuation-hold-vs-ledger-test");
+            try
+            {
+                var root = obj.AddComponent<PlayerRoot>(); root.ActionPoints = 6;
+                var runner = new ArmyData { Owner = player, Hex = new HexCoord(0, 0) };
+                runner.Members.Add(Body(2, activation: 3)); ArmyRegistry.Register(runner);
+                var raid = new MissionIntent { Kind = MissionKind.Raid, Status = IntentStatus.Active,
+                    Funding = CommitmentTier.Hard, Objective = new RaidIntent {
+                        Phase = RaidMissionPhase.Assault, OperationStarted = true, PrimaryArmyId = runner.Id } };
+                raid.IntentKey = MissionIntentKey.For(raid);
+                MissionIntentRegistry.GetOrCreate(player).Put(raid);
+                if (ledgerAp > 0)
+                    StrategicResourceReservationLedger.Upsert(player, 7, new StrategicResourceReservation {
+                        Owner = "build", Reason = StrategicReservationReason.EconomyBuildCompletion,
+                        Resource = StrategicReservedResource.ActionPoints, Amount = ledgerAp });
+                var ctx = new AiTurnContext { TurnNumber = 7 };
+
+                float hold = StrategicSpendability.OperationContinuationHold(player, root, ctx);
+
+                Assert.That(hold, Is.EqualTo(expected));
+                Assert.That(hold + ledgerAp, Is.LessThanOrEqualTo(root.ActionPoints));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(obj); }
+        }
+
         [TestCase(false)] [TestCase(true)]
         public void Enumeration_UsesHeldCardOnlyAndPricesDirectOrFullRosterExchange(bool full)
         {

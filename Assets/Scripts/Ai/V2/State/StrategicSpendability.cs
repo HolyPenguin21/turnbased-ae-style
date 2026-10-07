@@ -171,7 +171,16 @@ namespace Game.Ai.V2
                 && AggressionMissionLayer.LiveAttackOperation(intents) == null;
             if (movers.Count == 0 && !firstPreparationStep)
                 return 0f;
-            float available = Mathf.Max(0f, root.ActionPoints);
+            // The continuation is the junior claim: it protects only the AP the ledger's committed
+            // AP rows (a build completing now, a reaction envelope) leave over, so the two
+            // together never exceed the stock (2026-10-07 playtest: 4 completion + 3 continuation
+            // against 6 AP).
+            float ledgerCommittedAp = 0f;
+            foreach (ResourceClaim c in TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
+                         StrategicReservedResource.ActionPoints))
+                if (ReservationInvariants.IsCommitted(c.Kind))
+                    ledgerCommittedAp += Mathf.Max(0f, c.Amount);
+            float available = Mathf.Max(0f, root.ActionPoints - ledgerCommittedAp);
             float protectedAp = 0f;
             var live = new Dictionary<int, ArmyData>();
             foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
