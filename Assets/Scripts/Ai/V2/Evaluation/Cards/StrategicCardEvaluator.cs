@@ -1455,12 +1455,10 @@ namespace Game.Ai.V2
             };
             if (targets.Count > 0)
             {
-                float n = targets.Count;
-                ctx.ArmoredShare = targets.Count(t => t.TypeTags != null && (t.TypeTags.Contains(UnitTypeTag.Armored)
-                    || t.TypeTags.Contains(UnitTypeTag.Vehicle) || t.TypeTags.Contains(UnitTypeTag.Mecha))) / n;
-                ctx.BioShare = targets.Count(t => t.TypeTags != null && (t.TypeTags.Contains(UnitTypeTag.Bio)
-                    || t.TypeTags.Contains(UnitTypeTag.Infantry))) / n;
-                ctx.AirShare = targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Aircraft)) / n;
+                var shares = EquipmentTargetMemo.Shares(targets);
+                ctx.ArmoredShare = shares.Armored;
+                ctx.BioShare = shares.Bio;
+                ctx.AirShare = shares.Air;
             }
             if (opposition.Count > 0)
             {
@@ -1497,7 +1495,9 @@ namespace Game.Ai.V2
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
 
-            EfficiencyBreakdown delta = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
+            EfficiencyBreakdown delta;
+            using (new Game.Core.ProfileScope("AI/Equip.EffDelta"))
+                delta = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
             float perE = AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
             float combat = delta.Combat * perE;
             float tactical = delta.Tactical * perE;
@@ -1512,6 +1512,7 @@ namespace Game.Ai.V2
                     - StrategicEffectRegistry.AttachmentValue(before, unpricedBefore, hostTags, opposition, army,
                         isHero, snap, includeStealthTrait, deployment, targets, hpSpent);
 
+            using var __effDetail = new Game.Core.ProfileScope("AI/Equip.EffDetail");
             string detail = "stats=" + string.Join(",", before.OrderBy(k => k.Key)
                     .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
@@ -1594,6 +1595,26 @@ namespace Game.Ai.V2
                 List<WorthIt.DefenderProfile> targets)
             {
                 if (s_current != null) s_current._sets[(snap, purpose)] = targets;
+            }
+
+            // Armoured / bio / air shares of one target list: the list is shared by every pair priced
+            // against the same snapshot + purpose, so it is scanned once (reference-keyed).
+            private readonly Dictionary<List<WorthIt.DefenderProfile>, (float Armored, float Bio, float Air)> _shares
+                = new();
+
+            internal static (float Armored, float Bio, float Air) Shares(List<WorthIt.DefenderProfile> targets)
+            {
+                if (s_current != null && s_current._shares.TryGetValue(targets, out var hit))
+                    return hit;
+                float n = targets.Count;
+                var shares = (
+                    targets.Count(t => t.TypeTags != null && (t.TypeTags.Contains(UnitTypeTag.Armored)
+                        || t.TypeTags.Contains(UnitTypeTag.Vehicle) || t.TypeTags.Contains(UnitTypeTag.Mecha))) / n,
+                    targets.Count(t => t.TypeTags != null && (t.TypeTags.Contains(UnitTypeTag.Bio)
+                        || t.TypeTags.Contains(UnitTypeTag.Infantry))) / n,
+                    targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Aircraft)) / n);
+                if (s_current != null) s_current._shares[targets] = shares;
+                return shares;
             }
 
             internal static int Carriers(PlayerSetupData player, string family, System.Func<int> count)

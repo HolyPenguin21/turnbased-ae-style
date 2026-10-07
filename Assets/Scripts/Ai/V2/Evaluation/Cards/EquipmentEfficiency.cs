@@ -247,8 +247,22 @@ namespace Game.Ai.V2
         }
 
         // Abilities this table prices; everything else stays with StrategicEffectRegistry.
-        internal static bool IsPriced(string ability) =>
-            TryValue(ability, default, new EfficiencyContext(), out Group _, out float _);
+        // The answer depends on the ability name alone, so it is computed once per name (this ran
+        // for every ability of every (equipment, recipient) pair and allocated a context each time).
+        private static readonly Dictionary<string, bool> s_priced = new Dictionary<string, bool>();
+
+        internal static bool IsPriced(string ability)
+        {
+            if (ability == null)
+                return TryValue(ability, default, new EfficiencyContext(), out Group _, out float _);
+            lock (s_priced)
+            {
+                if (!s_priced.TryGetValue(ability, out bool priced))
+                    s_priced[ability] = priced = TryValue(ability, default, new EfficiencyContext(),
+                        out Group _, out float _);
+                return priced;
+            }
+        }
 
         // ---- mission context ---------------------------------------------------------------------------
         // The host's assignment shifts which bonuses matter; `hexDefenseBonus` is the target hex's
