@@ -19,8 +19,10 @@ namespace Game.UI
         [SerializeField] private GameObject lampOff;
         [SerializeField] private TMP_Text apLabel;
         [SerializeField] private TMP_Text movementLabel;
+        [SerializeField] private TMP_Text capacityLabel;
         [SerializeField] private GameObject apIcon;
         [SerializeField] private GameObject movementIcon;
+        [SerializeField] private GameObject capacityIcon;
 
         public ArmyData Army { get; private set; }
         public RectTransform RectTransform => (RectTransform)transform;
@@ -65,9 +67,11 @@ namespace Game.UI
             if (lampOn == null) lampOn = transform.Find("Image_LampOn")?.gameObject;
             if (lampOff == null) lampOff = transform.Find("Image_LampOff")?.gameObject;
             if (apLabel == null) apLabel = transform.Find("Text_AP")?.GetComponent<TMP_Text>();
-            if (movementLabel == null) movementLabel = transform.Find("Text_Cap")?.GetComponent<TMP_Text>();
+            if (movementLabel == null) movementLabel = transform.Find("Text_Move")?.GetComponent<TMP_Text>();
+            if (capacityLabel == null) capacityLabel = transform.Find("Text_Cap")?.GetComponent<TMP_Text>();
             if (apIcon == null) apIcon = transform.Find("Image_AP")?.gameObject;
-            if (movementIcon == null) movementIcon = transform.Find("Image_Cap")?.gameObject;
+            if (movementIcon == null) movementIcon = transform.Find("Icon_Move")?.gameObject;
+            if (capacityIcon == null) capacityIcon = transform.Find("Image_Cap")?.gameObject;
         }
 
         // Called after a rename so an already-instantiated button (both the hex-side row's and
@@ -83,13 +87,18 @@ namespace Game.UI
                 apLabel.gameObject.SetActive(statsVisible);
                 apLabel.text = Army.PendingActivationApCost.ToString();
             }
+            if (capacityLabel != null)
+            {
+                capacityLabel.gameObject.SetActive(statsVisible);
+                capacityLabel.text = $"{Army.Members.Count}/{Army.EffectiveCapacity}";
+            }
             if (movementLabel != null)
             {
                 movementLabel.gameObject.SetActive(statsVisible);
-                // Preserve the map row's existing movement semantics despite the prefab's Text_Cap name.
                 movementLabel.text = $"{Army.CurrentMovement}/{Army.MaxMovement}";
             }
             if (apIcon != null) apIcon.SetActive(statsVisible);
+            if (capacityIcon != null) capacityIcon.SetActive(statsVisible);
             if (movementIcon != null) movementIcon.SetActive(statsVisible);
             if (apLabel != null && movementLabel != null)
             {
@@ -109,4 +118,5 @@ namespace Game.UI
         }
     }
 }
+
 

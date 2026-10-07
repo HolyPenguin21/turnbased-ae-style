@@ -305,6 +305,7 @@ namespace Game.UI
             bool wasShowing = IsShowing;
             ArmyData closingArmy = _currentArmy;
             LastClosedSelectableArmy = !_readOnly && closingArmy != null && !closingArmy.IsGarrison
+                && !closingArmy.IsAirfield && !closingArmy.IsPrison
                 && closingArmy.Members.Count > 0 ? closingArmy : null;
             if (panelRoot != null)
                 panelRoot.SetActive(false);
@@ -942,3 +943,4 @@ namespace Game.UI
         }
     }
 }
+

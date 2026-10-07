@@ -58,6 +58,76 @@ namespace Game.EditorTests
         private static void Field(object obj, string name, object value) =>
             obj.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).SetValue(obj, value);
 
+
+        [UnityTest]
+        public IEnumerator MarkerTargetPrefersSelectionThenGarrisonThenFirstMobileArmy()
+        {
+            var resolve = typeof(HexSelectionController).GetMethod("ResolveArmyMarkerTarget",
+                BindingFlags.Static | BindingFlags.NonPublic);
+            var first = new ArmyData();
+            var second = new ArmyData();
+            var garrison = new ArmyData { IsGarrison = true };
+            var armies = new List<ArmyData> { first, second, garrison };
+            Assert.That(resolve.Invoke(null, new object[] { armies, second }), Is.SameAs(second));
+            Assert.That(resolve.Invoke(null, new object[] { armies, null }), Is.SameAs(garrison));
+            armies.Remove(garrison);
+            Assert.That(resolve.Invoke(null, new object[] { armies, second }), Is.SameAs(second));
+            Assert.That(resolve.Invoke(null, new object[] { armies, null }), Is.SameAs(first));
+            Assert.That(resolve.Invoke(null, new object[] { armies, new ArmyData() }), Is.SameAs(first));
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator ClosingStorageTabsDoesNotReturnAnArmyForMapSelection()
+        {
+            var root = new GameObject("modal");
+            root.transform.SetParent(_canvas.transform, false);
+            var modal = root.AddComponent<ArmyViewerModalUI>();
+            foreach (ArmyData army in new[]
+            {
+                new ArmyData { IsGarrison = true }, new ArmyData { IsPrison = true },
+                new ArmyData { IsAirfield = true }, new ArmyData()
+            })
+            {
+                army.Members.Add(new Game.Units.UnitData());
+                Field(modal, "_currentArmy", army);
+                modal.Hide();
+                if (army.IsGarrison || army.IsPrison || army.IsAirfield)
+                    Assert.That(modal.LastClosedSelectableArmy, Is.Null);
+                else
+                    Assert.That(modal.LastClosedSelectableArmy, Is.SameAs(army));
+            }
+            yield return null;
+        }
+
+        [UnityTest]
+        public IEnumerator MapBadgeDisplaysRosterCountSeparatelyFromMovement()
+        {
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<ArmyButtonUI>(
+                "Assets/Prefabs/UI/ArmyButton_Map.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var button = Object.Instantiate(prefab, _canvas.transform);
+            var army = new ArmyData { Name = "Roster" };
+            army.Members.Add(new Game.Units.UnitData());
+            army.Members.Add(new Game.Units.UnitData());
+            button.Setup(army, null, false, true);
+            Assert.That(button.transform.Find("Text_Cap").GetComponent<TMPro.TMP_Text>().text,
+                Is.EqualTo($"2/{army.EffectiveCapacity}"));
+            Assert.That(button.transform.Find("Text_Move").GetComponent<TMPro.TMP_Text>().text,
+                Is.EqualTo($"{army.CurrentMovement}/{army.MaxMovement}"));
+            Assert.That(button.transform.Find("Icon_Move").GetComponent<TMPro.TMP_Text>().text,
+                Is.EqualTo(">>"));
+            army.Members.RemoveAt(0);
+            button.Refresh();
+            Assert.That(button.transform.Find("Text_Cap").GetComponent<TMPro.TMP_Text>().text,
+                Is.EqualTo($"1/{army.EffectiveCapacity}"));
+            button.Setup(army, null, false, false);
+            Assert.That(button.transform.Find("Text_Cap").gameObject.activeSelf, Is.False);
+            Assert.That(button.transform.Find("Text_Move").gameObject.activeSelf, Is.False);
+            Assert.That(button.transform.Find("Icon_Move").gameObject.activeSelf, Is.False);
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator SelectionUpdatesLampsWithoutReplacingButtons()
         {
@@ -172,3 +242,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+
