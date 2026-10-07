@@ -870,12 +870,16 @@ namespace Game.Ai.V2
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
+            // A child action's non-negative StateVersionAfter is its committed revision receipt.
+            // Air execution already provides it; aggregate completion must not stamp it twice.
+            // No extra counter or independent "changed" flag is introduced.
             // ActorMaterialized (a garrison-extraction CreateArmy/TransferMember) is a real world
             // mutation with no movement/stealth/infrastructure/combat signal of its own, so it
             // bumps V2StateVersion explicitly.
-            if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
-                || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
-                || result.EconomyPrepared)
+            if (result.StateVersionAfter < 0
+                && (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
+                    || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
+                    || result.EconomyPrepared))
                 WorldDeltaLifecycle.CommitMutation();
             result.StateVersionAfter = V2StateVersion.Current;
         }

@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // MissionContinuityLayer (Strategy V2 build-order step 7).
     // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
     // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
-    // not a partial class.
+    // domain policies share this partial class and one durable intent store.
     internal static partial class MissionContinuityLayer
     {
         internal static HexCoord? SelectEconomyRecoveryTarget(WorldSnapshot snap,
@@ -600,7 +600,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    bool completedBuild = ei == null || MissionOutcomeLedger.EconomyObjectiveSatisfied(player,
+                    bool completedBuild = ei == null || EconomyLifecycleState.ObjectiveSatisfied(player,
                         new EconomyMissionTarget { Kind = ei.Kind, TargetHex = ei.TargetHex,
                             ResourceType = ei.ResourceType, BuilderArmyId = ei.BuilderArmyId });
                     bool targetValidBuild = ei != null && (ei.Kind == EconomyTaskKind.FoundBase

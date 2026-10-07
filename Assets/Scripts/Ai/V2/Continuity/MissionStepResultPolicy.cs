@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Map;
 using Game.Players;
-using Game.Cards;
 
 namespace Game.Ai.V2
 {
@@ -20,73 +18,7 @@ namespace Game.Ai.V2
                 if (r.Execution != null && r.Execution.ReachedGoal)
                     continue;
                 ProvisionedMission pm = r.Provisioned;
-                bool satisfied;
-                if (pm.Kind == MissionKind.Raid)
-                {
-                    // Only the ASSAULT leg's objective is the target army. A
-                    // Reinforcement convoy or a Return march must never be reported as "objective
-                    // already met" just because the (by definition already dead) previous target no
-                    // longer exists — that would retire the whole operation mid-leg.
-                    satisfied = pm.RaidPhase == RaidMissionPhase.Assault
-                        && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget);
-                }
-                else if (pm.Kind == MissionKind.Economy)
-                {
-                    satisfied = EconomyObjectiveSatisfied(player, pm.EconomyTarget);
-                }
-                else if (pm.Kind == MissionKind.Attack)
-                {
-                    // ATK §25 — same answer as MissionRevalidator's Attack branch. Without it an
-                    // Attack fell through to the Explore rule below, where the already-seen target
-                    // hex read as "objective met" after every single assault step.
-                    AttackMissionTarget attack = pm.AttackTarget;
-                    if (attack.Phase == AttackMissionPhase.RecoveryReturn
-                        || attack.Phase == AttackMissionPhase.SupportReturn
-                        || attack.Phase == AttackMissionPhase.GatherReturn)
-                    {
-                        ArmyData actor = ArmyRegistry.AllForOwner(player)
-                            .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
-                        satisfied = actor != null && actor.Hex.Equals(attack.DestinationHex);
-                    }
-                    else
-                    {
-                        // Reinforcement is a rendezvous with the primary, never the site's capture.
-                        satisfied = attack.Phase == AttackMissionPhase.Assault
-                            && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
-                                == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
-                    }
-                }
-                else if (pm.Kind == MissionKind.Development)
-                {
-                    satisfied = ResearchProductionSystem.ActorStillQualifies(player,
-                        pm.DevelopmentTarget.Hero, pm.DevelopmentTarget.FacilityHex,
-                        pm.DevelopmentTarget.Mode)
-                        && ResearchProductionSystem.IsEligible(player,
-                            pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, out _);
-                }
-                else if (pm.Kind == MissionKind.ActiveDefence)
-                {
-                    if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return)
-                    {
-                        ArmyData actor = ArmyRegistry.AllForOwner(player)
-                            .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
-                        satisfied = actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
-                            && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
-                    }
-                    else
-                    {
-                        // Same fog-of-war seam as MissionRevalidator: the post-execution
-                        // pass may not learn from a global ArmyRegistry sweep what observation
-                        // never told this player. One owner for the question, one answer.
-                        satisfied = ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(
-                            player, pm.ActiveDefenceTarget.EnemyArmyId);
-                    }
-                }
-                else
-                {
-                    satisfied = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind,
-                        pm.FocusHex);
-                }
+                bool satisfied = MissionContinuityLayer.IsStepObjectiveSatisfiedLive(player, pm);
 
                 if (satisfied)
                 {
@@ -96,27 +28,6 @@ namespace Game.Ai.V2
                 }
             }
         }
-
-        internal static bool EconomyObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
-        {
-            if (t.Kind == EconomyTaskKind.MobileCollection)
-                return false;
-            if (t.Kind == EconomyTaskKind.ReturnCollector)
-                return t.CollectorArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
-                    && a.Id == t.CollectorArmyId.Value && a.Owner == player
-                    && a.Hex.Equals(t.TargetHex));
-            if (t.Kind == EconomyTaskKind.ReturnBuilder)
-                return t.BuilderArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
-                    && a.Id == t.BuilderArmyId.Value && a.Owner == player
-                    && a.Hex.Equals(t.TargetHex));
-            BuildingData b = BuildingRegistry.AllBuildings().FirstOrDefault(x => x != null
-                && x.Owner == player && x.Hex.Equals(t.TargetHex));
-            if (t.Kind == EconomyTaskKind.FoundBase)
-                return b != null && b.IsBase;
-            return b != null && t.ResourceType.HasValue
-                && b.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(t.ResourceType.Value));
-        }
-
 
         internal static MissionTurnOutcome Normalize(StableMissionKey attemptKey, MissionStepFacts r)
         {
@@ -227,8 +138,18 @@ namespace Game.Ai.V2
                         o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
                         o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
                     }
+                    if (o.MissionKind == MissionKind.Scout)
+                        o.PayloadForWrite<ReconStepPayload>().DurableRoleContinues = e.DurableRoleContinues;
                     if (o.MissionKind == MissionKind.Economy)
+                    {
                         o.EconomyBuildCompleted = e.InfrastructureChanged;
+                        o.PayloadForWrite<EconomyStepPayload>().DeliveryReady = e.EconomyDeliveryReady;
+                        o.PayloadForWrite<EconomyStepPayload>().Holding = e.EconomyHolding;
+                    }
+                    if (o.MissionKind == MissionKind.Development)
+                        o.PayloadForWrite<DevelopmentStepPayload>().DeliveryReady = e.DevelopmentDeliveryReady;
+                    if (o.MissionKind == MissionKind.Attack)
+                        o.PayloadForWrite<AttackStepPayload>().AirSupportStrikeSucceeded = e.AirSupportStrikeSucceeded;
                     MissionStepResultPolicy.Classify(e, o);
                     if (o.Disposition == MissionStepDisposition.Waiting && e.NeedsReplan)
                         o.Disposition = MissionStepDisposition.Replan;
@@ -271,110 +192,13 @@ namespace Game.Ai.V2
                 o.Outcome = ExecutionOutcome.Completed;
                 o.ObjectiveSatisfied = true;
                 return;
-            }
 
-            if (o.MissionKind == MissionKind.Raid)
-            {
-                switch (e.StopReason)
-                {
-                    case ExecutionStopReason.BattleStarted:
-                    case ExecutionStopReason.HexEventStarted:
-                    case ExecutionStopReason.OutOfMovement:
-                    case ExecutionStopReason.EnemyDiscovered:
-                    case ExecutionStopReason.NeutralDiscovered:
-                    case ExecutionStopReason.StepCompleted:
-                        o.Outcome = ExecutionOutcome.ProductiveStop;
-                        break;
-                    case ExecutionStopReason.NoSafeStep:
-                    case ExecutionStopReason.MoveRejected:
-                        o.Outcome = ExecutionOutcome.Blocked;
-                        break;
-                    case ExecutionStopReason.MoverLost:
-                    case ExecutionStopReason.TargetInvalidated:
-                        // Support-local for a support leg (GroundCombatLegs.IsSupportLeg); fatal for
-                        // Assault/Return, where the mover is the primary.
-                        o.Outcome = GroundCombatLegs.IsSupportLeg(o)
-                            ? ExecutionOutcome.Blocked
-                            : ExecutionOutcome.Failed;
-                        break;
-                    default:
-                        o.Outcome = ExecutionOutcome.Failed;
-                        break;
-                }
-                return;
             }
+            MissionContinuityLayer.ClassifyDomainExecution(e, o);
+        }
 
-            // The same support-local rule for Attack (GroundCombatLegs.IsSupportLeg).
-            if (o.MissionKind == MissionKind.Attack && GroundCombatLegs.IsSupportLeg(o)
-                && (e.StopReason == ExecutionStopReason.MoverLost
-                    || e.StopReason == ExecutionStopReason.TargetInvalidated))
-            {
-                o.Outcome = ExecutionOutcome.Blocked;
-                return;
-            }
-
-            if (o.MissionKind == MissionKind.Economy)
-            {
-                // A committed roster mutation remains progress if its pinned tail became stale.
-                if (e.EconomyPrepared && e.StopReason == ExecutionStopReason.TargetInvalidated)
-                {
-                    o.Outcome = ExecutionOutcome.ProductiveStop;
-                    return;
-                }
-                switch (e.StopReason)
-                {
-                    case ExecutionStopReason.StepCompleted:
-                    case ExecutionStopReason.OutOfMovement:
-                        o.Outcome = ExecutionOutcome.ProductiveStop;
-                        break;
-                    case ExecutionStopReason.NoSafeStep:
-                    case ExecutionStopReason.MoveRejected:
-                    // Economy audit B2 — every execution-side TargetInvalidated of an Economy step
-                    // is transient (stale plan, unaffordable activation, AP/resources of a pinned
-                    // preparation gone this pass), never proof the durable build is invalid:
-                    // Continuity re-validates the objective itself (ResolveActive).
-                    case ExecutionStopReason.TargetInvalidated:
-                        o.Outcome = ExecutionOutcome.Blocked;
-                        break;
-                    default:
-                        o.Outcome = ExecutionOutcome.Failed;
-                        break;
-                }
-                return;
-            }
-
-            if (o.MissionKind == MissionKind.Development)
-            {
-                switch (e.StopReason)
-                {
-                    case ExecutionStopReason.StepCompleted:
-                    case ExecutionStopReason.OutOfMovement:
-                        o.Outcome = ExecutionOutcome.ProductiveStop;
-                        break;
-                    case ExecutionStopReason.NoSafeStep:
-                    case ExecutionStopReason.MoveRejected:
-                    case ExecutionStopReason.BattleStarted:
-                    case ExecutionStopReason.HexEventStarted:
-                        o.Outcome = ExecutionOutcome.Blocked;
-                        break;
-                    default:
-                        o.Outcome = ExecutionOutcome.Failed;
-                        break;
-                }
-                return;
-            }
-
-            // Recon audit B5 — a Scout's TargetInvalidated is tactical (an opportunistic attack /
-            // sabotage target gone, a stale vantage or plan), never proof the durable objective is
-            // invalid. Continuity re-validates the objective itself next pass (IsIntentStillValid ->
-            // re-focus or retire); Failed would drop the whole durable role here.
-            if (o.MissionKind == MissionKind.Scout
-                && e.StopReason == ExecutionStopReason.TargetInvalidated)
-            {
-                o.Outcome = ExecutionOutcome.Blocked;
-                return;
-            }
-
+        internal static void ClassifyDefaultExecution(ExecutionResult e, MissionTurnOutcome o)
+        {
             switch (e.StopReason)
             {
                 case ExecutionStopReason.OutOfMovement:
@@ -426,15 +250,8 @@ namespace Game.Ai.V2
                     // would make generic continuity retire the WHOLE Raid. Keep the campaign alive;
                     // ResolveActive owns the canonical CompleteRaidSupportReturn transition and will
                     // consume this already-home fact on the next reconciliation/reaction pass.
-                    if (o.MissionKind == MissionKind.Raid
-                        && o.Proposal?.Target is RaidMissionTarget raidTarget
-                        && (raidTarget.Phase == RaidMissionPhase.SupportReturn
-                            || raidTarget.Phase == RaidMissionPhase.RecoveryReturn))
-                    {
-                        o.Outcome = ExecutionOutcome.ProductiveStop;
-                        o.MadeProgress = true;
+                    if (MissionContinuityLayer.TryClassifySatisfiedDomainLeg(o))
                         break;
-                    }
                     // Review P1 #2 — provisioning short-circuited because the focus hex was
                     // already visited/refreshed by an earlier action this turn. No mover was
                     // assigned; the durable actor lives on the existing MissionIntent, so mark
@@ -453,9 +270,7 @@ namespace Game.Ai.V2
                     // (the primary's own legs) keep their failure semantics.
                     // A Scout target is re-validated by Continuity itself (Recon audit B5, same
                     // rule as the execution-side Classify).
-                    o.Outcome = GroundCombatLegs.IsSupportLeg(o) || o.MissionKind == MissionKind.Scout
-                        ? ExecutionOutcome.Blocked
-                        : ExecutionOutcome.Failed;
+                    MissionContinuityLayer.ClassifyInvalidatedDomainTarget(o);
                     break;
                 default:
                     o.Outcome = ExecutionOutcome.Blocked;

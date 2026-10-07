@@ -16,6 +16,11 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
+        // Only the assault leg owns the previous target; support/return are independent legs.
+        internal static bool IsRaidStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm) =>
+            pm.RaidPhase == RaidMissionPhase.Assault
+                && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget);
+
         // The Raid lane's own lifecycle answers for ResolveActive (the counterpart of
         // ResolveAttackIntent). Returns false when the intent must be retired; true keeps it, and
         // ResolveActive adds it to this pass's active set while it is Active.
@@ -621,6 +626,50 @@ namespace Game.Ai.V2
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
+        internal static void ClassifyRaidStep(ExecutionResult e, MissionTurnOutcome o)
+        {
+            switch (e.StopReason)
+            {
+                case ExecutionStopReason.BattleStarted:
+                case ExecutionStopReason.HexEventStarted:
+                case ExecutionStopReason.OutOfMovement:
+                case ExecutionStopReason.EnemyDiscovered:
+                case ExecutionStopReason.NeutralDiscovered:
+                case ExecutionStopReason.StepCompleted:
+                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    break;
+                case ExecutionStopReason.NoSafeStep:
+                case ExecutionStopReason.MoveRejected:
+                    o.Outcome = ExecutionOutcome.Blocked;
+                    break;
+                case ExecutionStopReason.MoverLost:
+                case ExecutionStopReason.TargetInvalidated:
+                    // Support-local for a support leg (GroundCombatLegs.IsSupportLeg); fatal for
+                    // Assault/Return, where the mover is the primary.
+                    o.Outcome = GroundCombatLegs.IsSupportLeg(o)
+                        ? ExecutionOutcome.Blocked
+                        : ExecutionOutcome.Failed;
+                    break;
+                default:
+                    o.Outcome = ExecutionOutcome.Failed;
+                    break;
+            }
+            return;
+        }
+
+        internal static bool TryClassifySatisfiedRaidLeg(MissionTurnOutcome o)
+        {
+                    if (o.Proposal?.Target is RaidMissionTarget raidTarget
+                        && (raidTarget.Phase == RaidMissionPhase.SupportReturn
+                            || raidTarget.Phase == RaidMissionPhase.RecoveryReturn))
+                    {
+                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        o.MadeProgress = true;
+                        return true;
+                    }
+            return false;
+        }
+
     }
 }
 

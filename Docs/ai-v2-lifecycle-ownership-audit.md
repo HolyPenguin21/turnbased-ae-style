@@ -428,3 +428,17 @@ The generic lease book contains no Attack/Raid/etc. role validation or lifecycle
 Separate bank pass: unchanged physical-stock/free/authority math, costs and caps; typed writes preserve the exact Economy tokens. Owner-scoped completion→deferred and deferred→completion, repeat reservation, no deferred AP, abort, independent second owner and stale-turn write are tested. Deferred saving above physical stock remains deliberately unchanged.
 
 Separate cache pass: no cache/key/dirtiness rule added. FoundBase previously allowed child CardPlay stamping before canonical commit and unconditionally stamped a rolled-back failure; synchronous staging fixes that transaction boundary. Its dirty facts still come from the original observation pass. Existing Raid/Attack handoff flags are unchanged when combining commit/publication. TaskExecutor/air aggregate-vs-inner stamping and native next-read acceptance remain open; do not claim global exactly-once or full E2E parity.
+
+### Typed result continuation
+
+MissionStepResult owns a per-step typed payload dictionary, not a world cache or ownership registry. Normalization writes its facts; domain continuity reads them. Legacy MissionTurnOutcome properties contain no second storage. Missing read access is non-mutating; nullable identity stays null and actor id 0 remains legal. Extra execution evidence (Recon durable continuation, Economy delivery/holding, Development delivery and Attack air strike) is retained explicitly.
+
+Domain execution classification uses immutable code bindings to the existing Continuity partials. The same common interruption and provisioning semantics remain. Economy's live goal predicate moved verbatim to EconomyLifecycleState; ledger now owns neither that rule nor a domain field schema. Generic MissionStepResult<T> transport is tested, but existing operational ingress still uses MissionTurnOutcome; full mission extension without an ingress adapter is not claimed. The 5,442-combination golden matrix and all baseline-passing managed tests remain unchanged.
+
+### Child revision receipt audit
+
+TaskExecutor previously always re-stamped any productive result, including already stamped ReconAir child actions. The existing `ExecutionResult.StateVersionAfter >= 0` receipt now prevents that duplicate aggregate stamp. Raid/Attack terminal handoff records the receipt returned by the same existing masked Apply. Actual baseline/current reflection proof: child+aggregate revision delta 2 → 1. No new revision counter or result boolean was introduced.
+
+Ground capture and air-support paths may continue moving after a child commit. They must not claim a terminal receipt for that intermediate mutation; their producer boundaries remain an explicit transaction migration item. Synchronous transaction scopes must not cross coroutine yields.
+
+The six live objective checks previously embedded in the normalization coordinator now bind to existing domain Continuity partials; the exact actor/phase/target predicates and fog-of-war restrictions are retained.

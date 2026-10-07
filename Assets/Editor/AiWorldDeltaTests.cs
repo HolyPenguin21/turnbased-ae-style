@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
+using System.Reflection;
 using Game.Ai.V2;
 using Game.Players;
 using NUnit.Framework;
@@ -86,6 +87,29 @@ namespace Game.EditorTests
                 outer.Commit(null, -1, new WorldDelta(true, StrategicInvalidationReason.None));
             }
             Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void AggregateExecutionConsumesAnExistingChildReceiptExactlyOnce(bool childStamped)
+        {
+            int before = V2StateVersion.Current;
+            var result = new ExecutionResult { StepsMoved = 1, CombatChanged = true };
+            if (childStamped) result.StateVersionAfter = WorldDeltaLifecycle.CommitMutation();
+            typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { result });
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1));
+            Assert.That(result.StateVersionAfter, Is.EqualTo(V2StateVersion.Current));
+        }
+
+        [Test]
+        public void StaleNoOpCompletionDoesNotAdvanceEvenWhenItsGoalIsSatisfied()
+        {
+            int before = V2StateVersion.Current;
+            var result = new ExecutionResult { ReachedGoal = true, StaleNoOp = true, NeedsReplan = true };
+            typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { result });
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
         }
 
         [Test]

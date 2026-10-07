@@ -50,7 +50,7 @@ namespace Game.Ai.V2
                 return ProvisionMobileCollection(player, root, ctx, session, funded, target, key);
             if (target.Kind == EconomyTaskKind.ReturnBuilder)
                 return ProvisionEconomyRecovery(player, root, ctx, session, funded, target, key);
-            if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, target))
+            if (EconomyLifecycleState.ObjectiveSatisfied(player, target))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied("economy target already built"));
             if (target.Kind == EconomyTaskKind.FoundBase
                 && (target.BuildCard == null || hand?.Hand == null || !hand.Hand.Contains(target.BuildCard)))

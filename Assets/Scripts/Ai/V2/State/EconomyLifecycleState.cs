@@ -12,6 +12,28 @@ namespace Game.Ai.V2
     // Persistent per-project delivery evidence and bounded suppression. No resource storage.
     internal sealed class EconomyLifecycleState
     {
+        internal static bool ObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
+        {
+            if (t.Kind == EconomyTaskKind.MobileCollection)
+                return false;
+            if (t.Kind == EconomyTaskKind.ReturnCollector)
+                return t.CollectorArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
+                    && a.Id == t.CollectorArmyId.Value && a.Owner == player
+                    && a.Hex.Equals(t.TargetHex));
+            if (t.Kind == EconomyTaskKind.ReturnBuilder)
+                return t.BuilderArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
+                    && a.Id == t.BuilderArmyId.Value && a.Owner == player
+                    && a.Hex.Equals(t.TargetHex));
+            BuildingData b = BuildingRegistry.AllBuildings().FirstOrDefault(x => x != null
+                && x.Owner == player && x.Hex.Equals(t.TargetHex));
+            if (t.Kind == EconomyTaskKind.FoundBase)
+                return b != null && b.IsBase;
+            return b != null && t.ResourceType.HasValue
+                && b.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(t.ResourceType.Value));
+        }
+
+
+
         // Bounded delivery-failure streaks. A structurally valid site may still be operationally
         // impossible for every builder: count only CONSECUTIVE-turn delivery-gate failures of the
         // exact project and, once the ordinary commitment stall window is exhausted, briefly

@@ -19,6 +19,23 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
+        internal static bool IsAttackStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
+        {
+            AttackMissionTarget attack = pm.AttackTarget;
+            if (attack.Phase == AttackMissionPhase.RecoveryReturn
+                || attack.Phase == AttackMissionPhase.SupportReturn
+                || attack.Phase == AttackMissionPhase.GatherReturn)
+            {
+                ArmyData actor = ArmyRegistry.AllForOwner(player)
+                    .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                return actor != null && actor.Hex.Equals(attack.DestinationHex);
+            }
+            // Reinforcement is a rendezvous with the primary, never the site's capture.
+            return attack.Phase == AttackMissionPhase.Assault
+                && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
+                    == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
+        }
+
         // Returns false when the intent must be retired. `success` distinguishes "we took the
         // Base" (§8: the army STAYS there, mission claim released, Housekeeping stabilises) from
         // "this operation is over for another reason".
@@ -964,6 +981,18 @@ namespace Game.Ai.V2
         internal static bool AttackIntentIsProtected(MissionIntent intent) =>
             intent?.Attack != null && intent.Attack.OperationStarted
             && intent.Status == IntentStatus.Active;
+        internal static void ClassifyAttackStep(ExecutionResult e, MissionTurnOutcome o)
+        {
+            if (GroundCombatLegs.IsSupportLeg(o)
+                && (e.StopReason == ExecutionStopReason.MoverLost
+                    || e.StopReason == ExecutionStopReason.TargetInvalidated))
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
+                return;
+            }
+            MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
+        }
+
     }
 }
 
