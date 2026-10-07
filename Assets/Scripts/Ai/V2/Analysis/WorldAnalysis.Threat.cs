@@ -23,6 +23,7 @@ namespace Game.Ai.V2
     {
         private static ThreatModel BuildThreat(PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snap)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Analysis.BuildThreat");
             var model = new ThreatModel();
             var contacts = new List<EnemyContactSnapshot>();
 
@@ -105,15 +106,14 @@ namespace Game.Ai.V2
             List<ArmySnapshot> ownFieldForResponse = snap.Self.Armies
                 .Where(a => !a.IsPrison && !a.IsGarrison && !a.IsAirfield && a.MemberCount > 0).ToList();
             var responseCosts = ownFieldForResponse.ToDictionary(a => a.ArmyId,
-                a => HexPathfinder.FindCosts(ctx.Map, new[] { a.Hex },
-                    maxMovement: Mathf.Max(1, a.MaxMovement), flatCost: a.IsAir));
+                a => TerrainCostField(ctx.Map, a.Hex, Mathf.Max(1, a.MaxMovement), a.IsAir));
 
             foreach (EnemyContactSnapshot c in contacts)
             {
                 // Public terrain only; no live enemy registry or hidden occupancy blockers.
                 Dictionary<HexCoord, int> approachCosts = c.Position.HasValue
-                    ? HexPathfinder.FindCosts(ctx.Map, new[] { c.Position.Value },
-                        maxMovement: Mathf.Max(1, c.Army.MaxMovement), flatCost: c.Army.IsAir)
+                    ? TerrainCostField(ctx.Map, c.Position.Value,
+                        Mathf.Max(1, c.Army.MaxMovement), c.Army.IsAir)
                     : new Dictionary<HexCoord, int>();
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
@@ -168,6 +168,36 @@ namespace Game.Ai.V2
             return model;
         }
 
+        // FindCosts floods the whole public map (maxMovement only rejects single steps), so one
+        // field costs a full Dijkstra. It reads terrain only, hence is identical for the same
+        // (source, maxMovement, flat) until the map's PathingVersion changes: contacts and own
+        // armies keep their position across the refreshes of a turn and across turns. Callers
+        // only read the returned field.
+        private const int MaxTerrainCostFields = 256;
+        private static HexMap _terrainFieldMap;
+        private static int _terrainFieldVersion = -1;
+        private static readonly Dictionary<(HexCoord, int, bool), Dictionary<HexCoord, int>>
+            _terrainFields = new();
+
+        private static Dictionary<HexCoord, int> TerrainCostField(HexMap map, HexCoord source,
+            int maxMovement, bool flat)
+        {
+            if (map == null)
+                return new Dictionary<HexCoord, int>();
+            if (!ReferenceEquals(map, _terrainFieldMap) || map.PathingVersion != _terrainFieldVersion
+                || _terrainFields.Count >= MaxTerrainCostFields)
+            {
+                _terrainFields.Clear();
+                _terrainFieldMap = map;
+                _terrainFieldVersion = map.PathingVersion;
+            }
+            var key = (source, maxMovement, flat);
+            if (!_terrainFields.TryGetValue(key, out Dictionary<HexCoord, int> field))
+                _terrainFields[key] = field = HexPathfinder.FindCosts(map, new[] { source },
+                    maxMovement: maxMovement, flatCost: flat);
+            return field;
+        }
+
         // Cost to the asset from the last honest location, discounted by the maximum advance
         // since that observation. A current contact uses the real terrain route; a historical
         // contact whose old origin is now blocked/unreachable falls back to geometric proximity.
@@ -177,8 +207,7 @@ namespace Game.Ai.V2
         {
             if (map == null || contact?.Army == null || !contact.Position.HasValue) return null;
             int movement = Mathf.Max(1, contact.Army.MaxMovement);
-            costs ??= HexPathfinder.FindCosts(map, new[] { contact.Position.Value },
-                maxMovement: movement, flatCost: contact.Army.IsAir);
+            costs ??= TerrainCostField(map, contact.Position.Value, movement, contact.Army.IsAir);
             bool reachable = costs.TryGetValue(destination, out int cost);
             if (contact.Knowledge == ContactKnowledge.Exact) return reachable ? cost : (int?)null;
             if (!reachable) cost = HexGridMath.Distance(contact.Position.Value, destination);

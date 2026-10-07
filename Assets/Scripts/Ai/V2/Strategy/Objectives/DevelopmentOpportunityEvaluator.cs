@@ -100,6 +100,8 @@ namespace Game.Ai.V2
         internal ResourceCost ForecastExtraCost;
         internal int ForecastUses = 1;
         public bool IsPreparation => Generation == null;
+
+        internal DevelopmentOpportunity Clone() => (DevelopmentOpportunity)MemberwiseClone();
     }
 
     public static class DevelopmentOpportunityEvaluator
@@ -628,8 +630,34 @@ namespace Game.Ai.V2
             if (card.equipment == null)
                 return null;
             using var __scope = new Game.Core.ProfileScope("AI/Dev.PrepareEquipment");
-            DevelopmentOpportunity op = BestEquipmentOpportunity(mode, hex, card,
-                ResearchProductionSystem.EstimateSuccessChance(projectedActor, card), null,
+            // The projected output (best recipient + its priced value) depends on the card and the
+            // operator's success chance, never on the site: one settled Enumerate prices it once
+            // per (mode, card, chance) and every site re-uses a copy with its own hex and cost.
+            float chance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card);
+            float output;
+            DevelopmentOpportunity op;
+            if (RecipientEvaluationMemo.TryGetPreview(mode, card, chance, out var cachedOp, out output))
+                op = cachedOp?.Clone();
+            else
+            {
+                op = PriceEquipmentPreview(card, mode, hex, projectedActor, chance, snap, inv,
+                    player, root, hand, ctx, out output);
+                RecipientEvaluationMemo.StorePreview(mode, card, chance, op?.Clone(), output);
+            }
+            if (op == null)
+                return null;
+            op.FacilityHex = hex;
+            op.Ev = operatorChance * output - preparationCost;
+            return op;
+        }
+
+        private static DevelopmentOpportunity PriceEquipmentPreview(CardDefinition card,
+            ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float chance,
+            WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, out float output)
+        {
+            output = 0f;
+            DevelopmentOpportunity op = BestEquipmentOpportunity(mode, hex, card, chance, null,
                 snap, inv, player, root, hand, out _);
             if (op == null)
                 return null;
@@ -647,12 +675,9 @@ namespace Game.Ai.V2
                 op, preview, DesireAxis.Development);
             if (plan == null)
                 return null;
-            float output = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
+            output = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
                 op, plan, snap, player, root, ctx);
-            if (float.IsNaN(output) || float.IsNegativeInfinity(output))
-                return null;
-            op.Ev = operatorChance * output - preparationCost;
-            return op;
+            return float.IsNaN(output) || float.IsNegativeInfinity(output) ? null : op;
         }
 
         // Non-equipment outputs already have ONE canonical materialization/scoring path. Use a
@@ -789,6 +814,8 @@ namespace Game.Ai.V2
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
             private readonly RecipientEvaluationMemo _outer;
             private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts = new();
+            private readonly Dictionary<(ResearchProductionMode, CardDefinition, float),
+                (DevelopmentOpportunity Op, float Output)> _previews = new();
 
             public RecipientEvaluationMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
@@ -799,6 +826,23 @@ namespace Game.Ai.V2
                 verdict = default;
                 return s_current != null
                     && s_current._verdicts.TryGetValue((equipment, recipient, future), out verdict);
+            }
+
+            public static bool TryGetPreview(ResearchProductionMode mode, CardDefinition card,
+                float chance, out DevelopmentOpportunity op, out float output)
+            {
+                op = null; output = 0f;
+                if (s_current == null
+                    || !s_current._previews.TryGetValue((mode, card, chance), out var hit))
+                    return false;
+                op = hit.Op; output = hit.Output;
+                return true;
+            }
+
+            public static void StorePreview(ResearchProductionMode mode, CardDefinition card,
+                float chance, DevelopmentOpportunity op, float output)
+            {
+                if (s_current != null) s_current._previews[(mode, card, chance)] = (op, output);
             }
 
             public static void Store(CardDefinition equipment, object recipient, bool future,
