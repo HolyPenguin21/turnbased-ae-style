@@ -194,6 +194,7 @@ namespace Game.Ai.V2
                     return false;
                 }
                 result.EnteredStealth |= entered;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, entered);
             }
 
             RefreshObjectiveSatisfied(player, pm, result);
@@ -237,7 +238,7 @@ namespace Game.Ai.V2
                 result.StealthChanged |= ExitArmyStealth(army);
                 VisionSystem.RecomputeFor(player);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                WorldDeltaLifecycle.CommitMutation();
+                WorldDeltaLifecycle.RecordExecutionMutation(result, true);
                 RefreshObjectiveSatisfied(player, pm, result);
                 control.StopReason = result.ReachedGoal ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.StepCompleted;
@@ -323,7 +324,9 @@ namespace Game.Ai.V2
 
             if (forceDecloakForAttack)
             {
-                result.StealthChanged |= ExitArmyStealth(army);
+                bool revealed = ExitArmyStealth(army);
+                result.StealthChanged |= revealed;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, revealed);
                 VisionSystem.RecomputeFor(player);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
                 ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, army);
@@ -351,8 +354,10 @@ namespace Game.Ai.V2
             {
                 runtime.OptionalStealthChecked = true;
                 float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
-                result.EnteredStealth |= MaybeEnterOptionalStealth(player, root, ctx, army, pm,
+                bool entered = MaybeEnterOptionalStealth(player, root, ctx, army, pm,
                     next.Value, assignment.StrategicAnchor, mandatoryClaims);
+                result.EnteredStealth |= entered;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, entered);
             }
 
             HashSet<int> knownEnemyIds = AiV2Util.KnownArmyIds(AiMapMemory.AllKnownEnemySightings(player));
@@ -379,6 +384,8 @@ namespace Game.Ai.V2
             army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             bool moved = !endHex.Equals(beforeHex);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
             if (moved)
             {
                 result.StepsMoved++;
@@ -413,7 +420,7 @@ namespace Game.Ai.V2
                 result.StealthChanged |= ExitArmyStealth(army);
                 VisionSystem.RecomputeFor(player);
                 AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                WorldDeltaLifecycle.CommitMutation();
+                WorldDeltaLifecycle.RecordExecutionMutation(result, true);
             }
 
             if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)

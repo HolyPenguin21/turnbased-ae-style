@@ -32,7 +32,8 @@ namespace Game.Ai.V2
     internal static class GroundCombatLegStep
     {
         internal static IEnumerator Transit(PlayerSetupData player, AiTurnContext ctx,
-            ArmyData army, HexCoord destination, string reason, GroundLegStepResult r)
+            ArmyData army, HexCoord destination, string reason, GroundLegStepResult r,
+            ExecutionResult execution = null)
         {
             r.StartHex = army.Hex;
             r.EndHex = army.Hex;
@@ -61,6 +62,8 @@ namespace Game.Ai.V2
             r.Moved = !r.EndHex.Equals(r.StartHex);
             r.BattleOccurred = trace.BattleOccurred;
             r.HexEventOccurred = trace.HexEventOccurred;
+            WorldDeltaLifecycle.RecordExecutionMutation(execution, r.Moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
         }
 
         // THE flight cycle of a ground-combat task's air support (Raid / Attack / ActiveDefence):
@@ -121,6 +124,7 @@ namespace Game.Ai.V2
                     attacked = strike.Attacked;
                     result.CombatChanged |= strike.Attacked;
                     result.AirSupportStrikeSucceeded |= strike.Attacked;
+                    WorldDeltaLifecycle.RecordExecutionMutation(result, strike.Attacked);
                 }
             }
             else
@@ -147,6 +151,7 @@ namespace Game.Ai.V2
                 if (moved != null)
                     moved.PendingAirStrikePolicy = null;
                 HexCoord final = moved?.Hex ?? trace.EndHex;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, !final.Equals(before));
                 if (!final.Equals(before))
                     result.StepsMoved++;
                 result.FinalHex = final;
@@ -175,9 +180,6 @@ namespace Game.Ai.V2
                 result.CombatChanged |= attacked;
                 result.AirSupportStrikeSucceeded |= attacked;
             }
-            if (attacked)
-                WorldDeltaLifecycle.CommitMutation();
-
             // Over the target: keep striking on later turns, or end the series and go home.
             bool targetsRemain = AviationCombatPresenter.FindAirStrikeTargetsAt(wing.Hex, player,
                 policy.ExactTargetArmyId).Sum(t => t.Members.Count) > policy.MinimumSurvivors;
@@ -224,5 +226,4 @@ namespace Game.Ai.V2
         }
     }
 }
-
 

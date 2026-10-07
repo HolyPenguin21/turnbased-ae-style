@@ -169,7 +169,7 @@ namespace Game.Ai.V2
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
                 commitments, player);
-            var provSession = new ProvisioningSession(snapshot);
+            using var provSession = new ProvisioningSession(snapshot, AiTurnSession.Peek(player, ctx.TurnNumber));
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();
 
@@ -271,7 +271,10 @@ namespace Game.Ai.V2
                 outcomeLedger.RecordExecution(er);
             outcomeLedger.RecordDeferrals(allocation.Deferred);
             outcomeLedger.RefreshObjectiveStatesLive(player);
-            MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, outcomeLedger.Finalize());
+            var stepOutcomes = outcomeLedger.FinalizeSteps();
+            var turnSession = AiTurnSession.Peek(player, snapshot.TurnNumber);
+            if (turnSession != null) turnSession.SettleAfterTurn(stepOutcomes);
+            else MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, stepOutcomes);
 
             if (StrategicInterruptRegistry.HasPendingContactDiscovery(player, ctx.TurnNumber))
             {

@@ -9,6 +9,38 @@ namespace Game.EditorTests
 {
     public sealed class AiWorldDeltaTests
     {
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(3)]
+        public void ConsecutiveFlightActionsKeepSeparateReceiptsWithoutAnAggregateBump(int returnSteps)
+        {
+            int before = V2StateVersion.Current;
+            var result = new ExecutionResult { CombatChanged = true };
+            // One committed stationary strike, then zero or more actual return moves. A rejected
+            // return is not a mutation even though the aggregate still contains CombatChanged.
+            WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            for (int step = 0; step < returnSteps; step++)
+            {
+                result.StepsMoved++;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            }
+            WorldDeltaLifecycle.RecordExecutionMutation(result, false);
+            typeof(TaskExecutor).GetMethod("StampVersion", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { result });
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before + 1 + returnSteps));
+            Assert.That(result.StateVersionAfter, Is.EqualTo(V2StateVersion.Current));
+        }
+
+        [Test]
+        public void RejectedFlightDoesNotManufactureAReceiptOrRevision()
+        {
+            int before = V2StateVersion.Current;
+            var result = new ExecutionResult();
+            WorldDeltaLifecycle.RecordExecutionMutation(result, false);
+            Assert.That(result.StateVersionAfter, Is.EqualTo(-1));
+            Assert.That(V2StateVersion.Current, Is.EqualTo(before));
+        }
+
         [TestCase((int)(StrategicInvalidationReason.Actor))]
         [TestCase((int)(StrategicInvalidationReason.Resources))]
         [TestCase((int)(StrategicInvalidationReason.Hand | StrategicInvalidationReason.Capability))]

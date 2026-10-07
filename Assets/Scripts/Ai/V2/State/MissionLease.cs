@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Players;
@@ -41,12 +42,67 @@ namespace Game.Ai.V2
         internal MissionLease For(MissionIntentKey operation)
         { EnsureOpen(); return new MissionLease(this, operation); }
         internal void ResetActors() { EnsureOpen(); _actors.Clear(); }
+        internal void ReplaceOperationActors(MissionIntentKey operation, MissionLeaseBook projection)
+        {
+            EnsureOpen();
+            foreach (int actor in _actors.Keys.ToArray())
+            {
+                _actors[actor].RemoveAll(c => c.Operation.HasValue && c.Operation.Value.Equals(operation));
+                if (_actors[actor].Count == 0) _actors.Remove(actor);
+            }
+            if (projection == null) return;
+            projection.EnsureOpen();
+            foreach (var actor in projection._actors)
+                foreach (var claim in actor.Value.Where(c => c.Operation.HasValue && c.Operation.Value.Equals(operation)))
+                    Add(actor.Key, new ActorClaim { Operation = operation, Contract = claim.Contract,
+                        PreparationHost = claim.PreparationHost });
+        }
         internal void Claim(MissionIntentKey operation, int actor, ArmyMutationContract contract,
             bool preparationHost = false) => Add(actor, new ActorClaim
             { Operation = operation, Contract = contract, PreparationHost = preparationHost });
         // Anonymous claims preserve pass-local actor use without inventing an operation id.
         internal void ClaimForPass(int actor, ArmyMutationContract contract) =>
             Add(actor, new ActorClaim { Contract = contract });
+
+        // Compatibility set for provisioning's tentative pass claims. The claim table is the
+        // only storage; a session closes its pass books together with the live turn book.
+        internal ISet<int> PassActorSet() => new PassActors(this);
+        private sealed class PassActors : ISet<int>, IDisposable
+        {
+            private readonly MissionLeaseBook _book;
+            internal PassActors(MissionLeaseBook book) { _book = book; }
+            public int Count => _book.ClaimedActors.Count;
+            public bool IsReadOnly => false;
+            public bool Add(int actor)
+            {
+                if (_book.IsClaimed(actor)) return false;
+                _book.ClaimForPass(actor, ArmyMutationContract.FullyProtected); return true;
+            }
+            void ICollection<int>.Add(int actor) => Add(actor);
+            public bool Contains(int actor) => _book.IsClaimed(actor);
+            public void Clear() => _book.ResetActors();
+            public bool Remove(int actor) { _book.EnsureOpen(); return _book._actors.Remove(actor); }
+            public IEnumerator<int> GetEnumerator() => _book.ClaimedActors.GetEnumerator();
+            IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+            public void CopyTo(int[] array, int index)
+            { foreach (int actor in this) array[index++] = actor; }
+            public void UnionWith(IEnumerable<int> other) { foreach (int actor in other) Add(actor); }
+            public void ExceptWith(IEnumerable<int> other) { foreach (int actor in other.ToArray()) Remove(actor); }
+            public void IntersectWith(IEnumerable<int> other)
+            {
+                var keep = new HashSet<int>(other);
+                foreach (int actor in this.ToArray()) if (!keep.Contains(actor)) Remove(actor);
+            }
+            public void SymmetricExceptWith(IEnumerable<int> other)
+            { foreach (int actor in new HashSet<int>(other)) if (!Remove(actor)) Add(actor); }
+            public bool IsSubsetOf(IEnumerable<int> other) => new HashSet<int>(this).IsSubsetOf(other);
+            public bool IsSupersetOf(IEnumerable<int> other) => new HashSet<int>(this).IsSupersetOf(other);
+            public bool IsProperSubsetOf(IEnumerable<int> other) => new HashSet<int>(this).IsProperSubsetOf(other);
+            public bool IsProperSupersetOf(IEnumerable<int> other) => new HashSet<int>(this).IsProperSupersetOf(other);
+            public bool Overlaps(IEnumerable<int> other) => new HashSet<int>(this).Overlaps(other);
+            public bool SetEquals(IEnumerable<int> other) => new HashSet<int>(this).SetEquals(other);
+            public void Dispose() => _book.Close();
+        }
         private void Add(int actor, ActorClaim claim)
         {
             EnsureOpen();

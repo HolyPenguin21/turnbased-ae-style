@@ -1,6 +1,9 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
+using Game.Players;
+using Game.Units;
 
 namespace Game.Ai.V2
 {
@@ -38,6 +41,9 @@ namespace Game.Ai.V2
         public ArmyMutationContract MutationContractOf(int armyId) => _leases.ContractOf(armyId);
         public bool IsPreparationHost(int armyId) => _leases.IsPreparationHost(armyId);
         internal IReadOnlyCollection<MissionIntentKey> OwnersOf(int armyId) => _leases.OwnersOf(armyId);
+        internal static ArmyMutationContract PhysicalMutationContract(PlayerSetupData player, int turn,
+            ArmyData army, ActorCommitments commitments) =>
+            MissionActorPolicy.PhysicalMutationContract(player, turn, army, commitments);
 
         // Compatibility entry points; all role validation lives in MissionActorPolicy.
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
@@ -81,16 +87,33 @@ namespace Game.Ai.V2
         public readonly bool MayReorderCommander;
         public readonly bool KeepsMovement;
         public readonly bool MayReleaseExcessHeroes;
+        internal readonly bool ProtectsSoloRole;
+        private readonly Func<ArmyData, IReadOnlyList<string>> _targetKeys;
+        private readonly Func<ArmyData, IReadOnlyList<string>> _deploymentKeys;
+        private readonly Func<ArmyData, UnitData, bool> _releaseBody;
 
         private ArmyMutationContract(string label, bool mayReceive, bool mayReorderCommander,
-            bool keepsMovement, bool mayReleaseExcessHeroes = false)
+            bool keepsMovement, bool mayReleaseExcessHeroes = false, bool protectsSoloRole = false,
+            Func<ArmyData, IReadOnlyList<string>> targetKeys = null,
+            Func<ArmyData, IReadOnlyList<string>> deploymentKeys = null,
+            Func<ArmyData, UnitData, bool> releaseBody = null)
         {
             Label = label;
             MayReceive = mayReceive;
             MayReorderCommander = mayReorderCommander;
             KeepsMovement = keepsMovement;
             MayReleaseExcessHeroes = mayReleaseExcessHeroes;
+            ProtectsSoloRole = protectsSoloRole;
+            _targetKeys = targetKeys; _deploymentKeys = deploymentKeys; _releaseBody = releaseBody;
         }
+
+        // Read-only domain projections. No roster or mission lifecycle state is copied here.
+        internal IReadOnlyList<string> TargetRosterKeys(ArmyData host) => _targetKeys?.Invoke(host);
+        internal IReadOnlyList<string> ReservedDeploymentKeys(ArmyData host) => _deploymentKeys?.Invoke(host);
+        internal bool MayReleaseBody(ArmyData host, UnitData unit) =>
+            MayReleaseExcessHeroes && _releaseBody?.Invoke(host, unit) == true;
+        internal static readonly ArmyMutationContract SoloRole =
+            new ArmyMutationContract("solo-role", false, false, true, protectsSoloRole: true);
 
         public static readonly ArmyMutationContract FullyProtected =
             new ArmyMutationContract("protected", false, false, true);
@@ -106,6 +129,14 @@ namespace Game.Ai.V2
             new ArmyMutationContract("Attack:PreparationHost", true, true, false,
                 mayReleaseExcessHeroes: true);
 
+        internal static ArmyMutationContract PreparationHost(
+            Func<ArmyData, IReadOnlyList<string>> targetKeys,
+            Func<ArmyData, IReadOnlyList<string>> deploymentKeys,
+            Func<ArmyData, UnitData, bool> releaseBody) =>
+            new ArmyMutationContract("Attack:PreparationHost", true, true, false,
+                mayReleaseExcessHeroes: true, targetKeys: targetKeys,
+                deploymentKeys: deploymentKeys, releaseBody: releaseBody);
+
         // Raid / Attack / ActiveDefence primaries, including their return legs.
         public static ArmyMutationContract MovingOperation(string label) =>
             new ArmyMutationContract(label, true, true, true);
@@ -115,6 +146,9 @@ namespace Game.Ai.V2
                 MayReceive && other.MayReceive,
                 MayReorderCommander && other.MayReorderCommander,
                 KeepsMovement || other.KeepsMovement,
-                MayReleaseExcessHeroes && other.MayReleaseExcessHeroes);
+                MayReleaseExcessHeroes && other.MayReleaseExcessHeroes,
+                ProtectsSoloRole || other.ProtectsSoloRole,
+                _targetKeys ?? other._targetKeys, _deploymentKeys ?? other._deploymentKeys,
+                (host, unit) => MayReleaseBody(host, unit) && other.MayReleaseBody(host, unit));
     }
 }

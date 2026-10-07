@@ -15,17 +15,15 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    public sealed class ProvisioningSession
+    public sealed class ProvisioningSession : IDisposable
     {
         public readonly WorldSnapshot Snapshot;
         public float ApClaimed { get; private set; }
         // Cumulative current-turn aviation Energy claimed in this planning pass.
         public float EnergyClaimed { get; private set; }
-        public readonly HashSet<int> ClaimedArmyIds = new HashSet<int>();
-        // Durable ownership is distinct from same-pass claims. Provisioning must preserve both:
-        // the batch solvers filter with this set, and Raid live revalidation uses it for hosts and
-        // assembly donors so a retry cannot steal an Economy/Recon/Raid incumbent.
-        public readonly HashSet<int> DurableClaimedArmyIds = new HashSet<int>();
+        // Tentative pass claims use the same claim storage abstraction and are closed by the turn
+        // owner. Durable exclusions remain the read-only commitment projection below.
+        public readonly ISet<int> ClaimedArmyIds;
 
         private readonly Dictionary<StableMissionKey, ProvisionedMission> _successful =
             new Dictionary<StableMissionKey, ProvisionedMission>();
@@ -46,12 +44,24 @@ namespace Game.Ai.V2
         private ActorCommitments _groundCombatDurableCommitments;
         private HashSet<int> _groundCombatPinnedByOtherLegs = new HashSet<int>();
 
-        public ProvisioningSession(WorldSnapshot snapshot) { Snapshot = snapshot; }
+        public ProvisioningSession(WorldSnapshot snapshot) : this(snapshot,
+            AiTurnSession.Peek(snapshot?.Observer, snapshot?.TurnNumber ?? -1)) { }
+        internal ProvisioningSession(WorldSnapshot snapshot, AiTurnSession turn)
+        {
+            if (turn != null && snapshot != null && (snapshot.TurnNumber != turn.TurnNumber
+                || snapshot.Observer != null && !ReferenceEquals(snapshot.Observer, turn.Player)))
+                throw new InvalidOperationException("Provisioning belongs to another player or turn.");
+            Snapshot = snapshot;
+            ClaimedArmyIds = turn?.CreateProvisioningClaims() ?? new MissionLeaseBook().PassActorSet();
+        }
+        public void Dispose() => (ClaimedArmyIds as IDisposable)?.Dispose();
+        private void EnsureActive() { _ = ClaimedArmyIds.Count; }
         public IReadOnlyDictionary<StableMissionKey, ProvisionedMission> Successful => _successful;
         public bool AlreadyProvisioned(StableMissionKey k) => _successful.ContainsKey(k);
 
         public void RegisterSuccess(StableMissionKey k, ProvisionedMission m)
         {
+            EnsureActive();
             // Success pins this mission for the pass. A retry/repack may acknowledge it again,
             // but must not reserve its AP/Energy a second time while the keyed result stays single.
             if (_successful.ContainsKey(k))
@@ -72,6 +82,7 @@ namespace Game.Ai.V2
 
         internal void SetAssignment(ReconAssignmentResult result)
         {
+            EnsureActive();
             _assignment.Clear();
             _assignmentRejections.Clear();
             if (result == null) return;
@@ -93,6 +104,7 @@ namespace Game.Ai.V2
         internal void SetGroundCombatConstraints(ActorCommitments durableCommitments,
             ISet<int> pinnedByOtherLegs)
         {
+            EnsureActive();
             _groundCombatDurableCommitments = durableCommitments;
             _groundCombatPinnedByOtherLegs = pinnedByOtherLegs == null
                 ? new HashSet<int>() : new HashSet<int>(pinnedByOtherLegs);
@@ -132,16 +144,10 @@ namespace Game.Ai.V2
 
         internal void SetGroundCombatAssignment(Dictionary<StableMissionKey, int> a)
         {
+            EnsureActive();
             _groundCombatAssignment.Clear();
             foreach (KeyValuePair<StableMissionKey, int> kv in a)
                 _groundCombatAssignment[kv.Key] = kv.Value;
-        }
-
-        internal void SetDurableClaims(IEnumerable<int> ids)
-        {
-            DurableClaimedArmyIds.Clear();
-            if (ids == null) return;
-            foreach (int id in ids) DurableClaimedArmyIds.Add(id);
         }
 
         internal bool TryGetAssignedGroundCombatActor(StableMissionKey k, out int armyId) =>

@@ -378,6 +378,8 @@ namespace Game.Ai.V2
             army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             HexCoord endHex = army != null ? army.Hex : trace.EndHex;
             bool moved = !endHex.Equals(before);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
             if (moved)
                 result.StepsMoved++;
             result.FinalHex = endHex;
@@ -475,7 +477,7 @@ namespace Game.Ai.V2
             }
             var leg = new GroundLegStepResult();
             yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg);
+                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg, result);
             if (leg.Blocked.HasValue)
             {
                 result.StopReason = leg.Blocked.Value;
@@ -561,7 +563,7 @@ namespace Game.Ai.V2
                 var leg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
                     $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
-                    leg);
+                    leg, result);
                 if (leg.Blocked.HasValue)
                 {
                     result.StopReason = leg.Blocked.Value;

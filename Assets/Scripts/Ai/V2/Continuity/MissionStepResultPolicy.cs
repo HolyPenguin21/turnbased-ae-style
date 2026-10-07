@@ -45,47 +45,7 @@ namespace Game.Ai.V2
                     // Recon binds an existing army; extraction in other lanes may report the
                     // materialized actor through ActualActorArmyId after execution.
                     o.MoverArmyId = r.Provisioned.MoverArmyId;
-                    if (r.Provisioned.Kind == MissionKind.Raid)
-                    {
-                        o.HasRaidPayload = true;
-                        o.RaidTarget = r.Provisioned.RaidTarget;
-                        o.RaidLastKnownHex = r.Provisioned.RaidLastKnownHex;
-                        o.RaidTargetIsNeutral = r.Provisioned.RaidTargetIsNeutral;
-                        o.RaidPhase = r.Provisioned.RaidPhase;
-                        o.RaidPrimaryArmyId = r.Provisioned.RaidPrimaryArmyId;
-                        o.RaidSupportArmyId = r.Provisioned.RaidSupportArmyId;
-                        o.RaidAirSupportArmyId = r.Provisioned.RaidAirSupportArmyId;
-                        o.RaidAirSupportLandingHex = r.Provisioned.RaidAirSupportLandingHex;
-                        o.RaidRefitAction = r.Provisioned.RaidRefitAction;
-                    }
-                    else if (r.Provisioned.Kind == MissionKind.Attack)
-                    {
-                        o.HasAttackPayload = true;
-                        o.AttackTarget = r.Provisioned.AttackTarget;
-                    }
-                    else if (r.Provisioned.Kind == MissionKind.ActiveDefence)
-                    {
-                        o.HasActiveDefencePayload = true;
-                        o.ActiveDefenceTarget = r.Provisioned.ActiveDefenceTarget;
-                    }
-                    else if (r.Provisioned.Kind == MissionKind.Economy)
-                    {
-                        o.HasEconomyPayload = true;
-                        o.EconomyTarget = r.Provisioned.EconomyTarget;
-                        o.EconomyLoanSource = r.Provisioned.EconomyLoanSource;
-                    }
-                    else if (r.Provisioned.Kind == MissionKind.Development)
-                    {
-                        o.HasDevelopmentPayload = true;
-                        o.DevelopmentTarget = r.Provisioned.DevelopmentTarget;
-                    }
-                    else
-                    {
-                        o.HasScoutPayload = true;
-                        o.ScoutKind = r.Provisioned.ScoutKind;
-                        o.ScoutRequiresStealth = r.Provisioned.RequiresStealth;
-                        o.FocusHex = r.Provisioned.FocusHex;
-                    }
+                    MissionContinuityLayer.CaptureProvisionFacts(r.Provisioned, o);
                 }
 
                 if (r.Execution != null)
@@ -97,9 +57,6 @@ namespace Game.Ai.V2
                     // A materialized actor supersedes the provisional mover identity.
                     if (e.ActualActorArmyId.HasValue)
                         o.MoverArmyId = e.ActualActorArmyId;
-                    bool raidEngaged = o.MissionKind == MissionKind.Raid
-                        && (e.StopReason == ExecutionStopReason.BattleStarted
-                            || e.StopReason == ExecutionStopReason.HexEventStarted);
                     // Extraction and direct-army preparation are distinct productive mutations:
                     // the former creates the actor, the latter changes its roster and/or donor intent.
                     // An Economy actor standing productively on its target (a build ready for
@@ -107,49 +64,11 @@ namespace Game.Ai.V2
                     // doing its job without a mutation of its own — progress, not a stall.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
-                        || e.OperationStarted || raidEngaged
+                        || e.OperationStarted
                         || e.ActorMaterialized || e.EconomyPrepared
                         || e.EconomyDeliveryReady || e.EconomyHolding;
                     o.StopReason = e.StopReason;
-                    // The ground-combat roster handoff (GroundCombatReinforcement) is one shared
-                    // lifecycle fact: Raid and Attack continuity both read it to release the
-                    // support role, so it is published for every lane that runs a convoy.
-                    if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack)
-                        o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
-                    if (o.MissionKind == MissionKind.Raid)
-                    {
-                        o.OperationStarted = e.OperationStarted
-                            || e.StepsMoved > 0 || raidEngaged;
-                        o.RaidAirSupportStrikeSucceeded =
-                            e.AirSupportStrikeSucceeded;
-                        o.RaidRefitSucceeded = e.RaidRefitSucceeded;
-                        o.RaidResourcesSpent = e.ResourcesSpent;
-                    }
-                    // ATK §22/§70 — the Attack lane reads exactly the same two ownership facts in
-                    // AdvanceIntent/CreateAttackIntent (operation really begun, roster handoff
-                    // attempted), so they have to be published for Attack too. Engagement counts as
-                    // a start for the same reason it does for a Raid: a battle on the way IS the
-                    // operation physically beginning, even on a step that moved zero hexes.
-                    if (o.MissionKind == MissionKind.Attack)
-                    {
-                        o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
-                            || e.StopReason == ExecutionStopReason.BattleStarted;
-                        o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
-                        o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
-                        o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
-                    }
-                    if (o.MissionKind == MissionKind.Scout)
-                        o.PayloadForWrite<ReconStepPayload>().DurableRoleContinues = e.DurableRoleContinues;
-                    if (o.MissionKind == MissionKind.Economy)
-                    {
-                        o.EconomyBuildCompleted = e.InfrastructureChanged;
-                        o.PayloadForWrite<EconomyStepPayload>().DeliveryReady = e.EconomyDeliveryReady;
-                        o.PayloadForWrite<EconomyStepPayload>().Holding = e.EconomyHolding;
-                    }
-                    if (o.MissionKind == MissionKind.Development)
-                        o.PayloadForWrite<DevelopmentStepPayload>().DeliveryReady = e.DevelopmentDeliveryReady;
-                    if (o.MissionKind == MissionKind.Attack)
-                        o.PayloadForWrite<AttackStepPayload>().AirSupportStrikeSucceeded = e.AirSupportStrikeSucceeded;
+                    MissionContinuityLayer.CaptureExecutionFacts(e, o);
                     MissionStepResultPolicy.Classify(e, o);
                     if (o.Disposition == MissionStepDisposition.Waiting && e.NeedsReplan)
                         o.Disposition = MissionStepDisposition.Replan;

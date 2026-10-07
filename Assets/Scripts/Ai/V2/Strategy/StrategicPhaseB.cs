@@ -256,9 +256,10 @@ namespace Game.Ai.V2
                     // already bump inside MaterializationExecutor / CardPlayExecutor (and their
                     // result's StateVersionAfter must stay == V2StateVersion.Current), so bumping
                     // again here would break that equality. Draw / MaintenanceSpend /
-                    // AviationRebase do NOT version themselves — bump for those.
+                    // do NOT version themselves — bump for those. AviationRebase records each
+                    // committed launch/flight action inside its executor.
                     bool executorSelfVersions = best.Kind == TempoKind.PlayMat
-                        || best.Kind == TempoKind.PlayNonCombat;
+                        || best.Kind == TempoKind.PlayNonCombat || best.Kind == TempoKind.AviationRebase;
                     if (!executorSelfVersions)
                         WorldDeltaLifecycle.CommitMutation();
                     result.StateChanged |= exec.StateChanged;
@@ -323,4 +324,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

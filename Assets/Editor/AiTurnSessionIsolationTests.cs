@@ -78,6 +78,78 @@ namespace Game.EditorTests
             Assert.That(AiTurnSession.Peek(p, 9), Is.SameAs(next));
         }
 
+        [Test]
+        public void ProvisioningPassesOwnIndependentTentativeClaims()
+        {
+            var p = new PlayerSetupData();
+            using var turn = AiTurnSession.Begin(p, null, null, null, 8);
+            var operation = new MissionIntentKey(MissionKind.Scout, 0, 0, 2, 3);
+            turn.Leases.For(operation).Claim(42);
+            var snapshot = new WorldSnapshot { Observer = p, TurnNumber = 8 };
+            using var first = new ProvisioningSession(snapshot, turn);
+            using var second = new ProvisioningSession(snapshot, turn);
+            Assert.That(first.ClaimedArmyIds.Add(7), Is.True);
+            Assert.That(first.ClaimedArmyIds.Add(7), Is.False);
+            Assert.That(second.ClaimedArmyIds.Contains(7), Is.False);
+            first.Dispose();
+            Assert.Throws<ObjectDisposedException>(() => first.ClaimedArmyIds.Contains(7));
+            Assert.Throws<ObjectDisposedException>(() => first.ClaimedArmyIds.Add(8));
+            Assert.Throws<ObjectDisposedException>(() => first.RegisterSuccess(default,
+                new ProvisionedMission { MoverArmyId = 8, ClaimedAp = 2 }));
+            Assert.That(first.Successful, Is.Empty);
+            Assert.That(first.ApClaimed, Is.Zero);
+            Assert.That(second.ClaimedArmyIds.Add(7), Is.True);
+            Assert.That(turn.Leases.For(operation).ActorClaims, Is.EqualTo(new[] { 42 }));
+        }
+
+        [Test]
+        public void NextTurnClosesAbandonedProvisioningPass()
+        {
+            var p = new PlayerSetupData();
+            var oldTurn = AiTurnSession.Begin(p, null, null, null, 8);
+            using var oldPass = new ProvisioningSession(new WorldSnapshot { Observer = p, TurnNumber = 8 }, oldTurn);
+            oldPass.ClaimedArmyIds.Add(7);
+            using var nextTurn = AiTurnSession.Begin(p, null, null, null, 9);
+            using var nextPass = new ProvisioningSession(new WorldSnapshot { Observer = p, TurnNumber = 9 }, nextTurn);
+            Assert.That(nextPass.ClaimedArmyIds, Is.Empty);
+            Assert.Throws<ObjectDisposedException>(() => oldPass.ClaimedArmyIds.Contains(7));
+            Assert.Throws<ObjectDisposedException>(() => oldPass.ClaimedArmyIds.Add(8));
+            oldTurn.Dispose();
+            Assert.That(nextPass.ClaimedArmyIds.Add(7), Is.True);
+        }
+
+        [Test]
+        public void ProvisioningCannotBindAnotherPlayerOrTurn()
+        {
+            var p = new PlayerSetupData();
+            using var turn = AiTurnSession.Begin(p, null, null, null, 8);
+            Assert.Throws<InvalidOperationException>(() => new ProvisioningSession(
+                new WorldSnapshot { Observer = new PlayerSetupData(), TurnNumber = 8 }, turn));
+            Assert.Throws<InvalidOperationException>(() => new ProvisioningSession(
+                new WorldSnapshot { Observer = p, TurnNumber = 9 }, turn));
+            using var own = new ProvisioningSession(new WorldSnapshot { Observer = p, TurnNumber = 8 }, turn);
+            Assert.That(own.ClaimedArmyIds.Add(7), Is.True);
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void SettlementRejectsForeignFrameBeforeChangingOwnership(bool anotherTurn)
+        {
+            var p = new PlayerSetupData();
+            using var turn = AiTurnSession.Begin(p, null, null, null, 8);
+            var key = new MissionIntentKey(MissionKind.Development, 0, 0, 2, 3);
+            var intent = new MissionIntent { IntentKey = key, Kind = MissionKind.Development };
+            turn.PersistentState.Put(intent); turn.Leases.For(key).Claim(7);
+            var foreign = new WorldSnapshot { Observer = anotherTurn ? p : new PlayerSetupData(),
+                TurnNumber = anotherTurn ? 9 : 8 };
+            Assert.Throws<InvalidOperationException>(() => turn.Settle(
+                new MissionStepResult<DevelopmentStepPayload>(key,
+                    MissionStepDisposition.PermanentFailure, null), foreign));
+            Assert.That(turn.PersistentState.TryGet(key, out var retained), Is.True);
+            Assert.That(retained, Is.SameAs(intent));
+            Assert.That(turn.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 7 }));
+        }
+
         private static void Reserve(PlayerSetupData p, int turn) => StrategicResourceReservationLedger.Upsert(p, turn,
             new StrategicResourceReservation { Owner = "test", Resource = StrategicReservedResource.ActionPoints,
                 Reason = StrategicReservationReason.StrategicReactionPass, Amount = 1,

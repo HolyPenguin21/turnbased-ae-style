@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -162,6 +163,158 @@ namespace Game.Ai.V2
             if (o.HasScoutPayload && intent.Scout != null)
                 ApplyScoutPayload(intent.Scout, o);
 
+        }
+
+        private static void CollectScoutFoci(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var scoutFoci = pass.ScoutFoci;
+            // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
+            // durable intents on the same waypoint. Mutated as intents are re-pointed below.
+            foreach (MissionIntent i in state.All)
+                if (i.Scout != null && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
+                    scoutFoci.Add(i.Scout.FocusHex);
+        }
+
+        private static void ResolveScoutOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+            var scoutFoci = pass.ScoutFoci;
+            bool underSiege = snap?.Threat?.UnderSiege == true;
+            ScoutIntent s = intent.Scout;
+            if (s == null) { dead.Add(intent.IntentKey); return; }
+
+            // A donor parked on an Economy loan (SuspendReason.EconomyLoan) keeps its pre-loan
+            // identity untouched. ProvisioningManager is the sole owner of granting the loan;
+            // RepayEconomyLoan is the only place that resumes it, and it does so by re-finding
+            // this exact IntentKey via the borrowing Economy intent's LoanSource. Refocusing (or
+            // retiring, if no runnable waypoint remains) a stale objective here would rekey or
+            // delete that identity mid-loan; the orphan-repair pass above then finds no live
+            // Economy intent pointing at the surviving key and wrongly reactivates the donor
+            // while its actor is still out on loan — one actor claimed by two active intents.
+            // Leave it parked; its waypoint is stale by definition anyway once it resumes.
+            if (intent.Status == IntentStatus.Suspended
+                && intent.Suspended == SuspendReason.EconomyLoan)
+                return;
+
+            // A ground Recon role whose bound actor no longer exists (killed / merged away) is
+            // not a lane any more. Unbind it so AdvanceIntent ages it like any idle intent
+            // instead of parking it forever under the CapabilityUnavailable exemption, and so
+            // TrimSurplusReconLanes never counts it as a physical lane (2026-09-25 audit F4:
+            // Vex Intent(Refresh 1,-2) outlived scout #8 from T8 and displaced live scout #7 at
+            // T13). AirSweep is exempt: its wing legitimately leaves the army list while stored.
+            // Recon audit B11 — an actor that still exists but can no longer serve the role at all
+            // (no longer a solo Recce, a prison, empty) is the same case: the structural test is
+            // MissionActorPolicy.HasCapableActor, whose answer also decides the actor claim.
+            // Stealth is deliberately not part of it (a scout that cannot hide THIS turn keeps
+            // its role; the claim itself applies the objective's stealth requirement).
+            if (intent.PreferredMoverArmyId.HasValue && !ReconScoutKinds.IsAirSweep(s.Kind)
+                && snap?.Self?.Armies != null
+                && !MissionActorPolicy.HasCapableActor(intent, snap, StealthRequirement.None))
+            {
+                AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
+                    + $"#{intent.PreferredMoverArmyId.Value} no longer exists or can no longer "
+                    + "scout; role unbound");
+                intent.PreferredMoverArmyId = null;
+            }
+
+            if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
+            {
+                // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
+                // identity. Re-point it at the nearest still-runnable Explore frontier / stale
+                // Refresh hex not already owned by another scout intent, re-key the ledger row
+                // in place, and keep the intent (with its CreatedTurn / PreferredMoverArmyId /
+                // accumulated progress). Only genuine exhaustion retires it.
+                MissionIntentKey oldKey = intent.IntentKey;
+                if (TryRefocusScoutIntent(snap, s, scoutFoci))
+                {
+                    intent.IntentKey = MissionIntentKey.For(intent);
+                    intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                    intent.StallTurns = 0;
+                    if (!intent.IntentKey.Equals(oldKey))
+                        rekeys.Add((oldKey, intent));
+                    AiDebugLog.Write($"[AI][V2] continuity — {oldKey} waypoint done; re-focused to "
+                        + $"{intent.IntentKey} — durable identity kept");
+                    if (intent.Status == IntentStatus.Active)
+                        active.Add(intent);
+                    return;
+                }
+                dead.Add(oldKey);
+                AiDebugLog.Write($"[AI][V2] continuity — {oldKey} retired at turn start (no runnable re-focus)");
+                return;
+            }
+
+            ResumeTransientSuspension(intent);
+
+            if (intent.Funding == CommitmentTier.Soft && underSiege)
+            {
+                intent.Status = IntentStatus.Suspended;
+                intent.Suspended = SuspendReason.Siege;
+                return;
+            }
+            if (intent.Status == IntentStatus.Suspended && intent.Suspended == SuspendReason.Siege && !underSiege)
+            {
+                intent.Status = IntentStatus.Active;
+                intent.Suspended = SuspendReason.None;
+            }
+
+            if (intent.Status == IntentStatus.Active)
+                active.Add(intent);
+        }
+
+        private static void FinalizeReconResolution(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var reconObjectives = pass.ReconObjectives;
+            // §P1 — if desired concurrency has fallen below the number of active durable Scout
+            // lanes (map mostly explored, fewer reachable regions), retire the surplus lanes
+            // instead of carrying them forever. A "not create more" cap alone leaves earlier
+            // lanes alive; this actively sheds them.
+            if (reconObjectives != null)
+                TrimSurplusReconLanes(player, active, state, snap, reconObjectives);
+
+            // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
+            // role. Prevention lives in ReconAssignmentPlanner, but persisted saves/log replays may
+            // already contain a collision. Repair it here at the continuity boundary: keep the role
+            // most recently reconciled/progressed by the physical actor and unbind the rest. The
+            // objectives remain alive and may acquire another actor; no mission is silently deleted.
+            foreach (IGrouping<int, MissionIntent> g in active
+                .Where(i => i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId.HasValue)
+                .GroupBy(i => i.PreferredMoverArmyId.Value))
+            {
+                List<MissionIntent> claims = g
+                    .OrderByDescending(i => i.LastReconciledTurn)
+                    .ThenByDescending(i => i.LastProgressTurn)
+                    .ThenByDescending(i => i.Funding)
+                    .ThenBy(i => i.CreatedTurn)
+                    .ThenBy(i => i.IntentKey)
+                    .ToList();
+                if (claims.Count <= 1) continue;
+
+                MissionIntent owner = claims[0];
+                foreach (MissionIntent duplicate in claims.Skip(1))
+                {
+                    duplicate.PreferredMoverArmyId = null;
+                    AiDebugLog.Write($"[AI][V2] continuity — repaired duplicate Recon actor #{g.Key}: "
+                        + $"kept {owner.IntentKey}, unbound {duplicate.IntentKey}");
+                }
+            }
+        }
+
+        private static void CaptureScoutProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasScoutPayload = true;
+            o.ScoutKind = pm.ScoutKind;
+            o.ScoutRequiresStealth = pm.RequiresStealth;
+            o.FocusHex = pm.FocusHex;
+        }
+
+        private static void CaptureScoutExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            o.PayloadForWrite<ReconStepPayload>().DurableRoleContinues = e.DurableRoleContinues;
         }
 
     }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
+using Game.Players;
 
 namespace Game.Ai.V2
 {
@@ -138,7 +139,7 @@ namespace Game.Ai.V2
                     if (valid)
                     {
                         c.Claim(i.IntentKey, actorId, preparing
-                            ? ArmyMutationContract.PreparationHost()
+                            ? MissionContinuityLayer.AttackPreparationMutationContract(snap.TurnNumber)
                             : attack.AssaultStarted ? ArmyMutationContract.FullyProtected
                             : ArmyMutationContract.MovingOperation($"Attack:{attack.Phase}"),
                             preparationHost: preparing);
@@ -294,5 +295,28 @@ namespace Game.Ai.V2
                 return false;
             return true;
         }
+        // Normalize claims, temporary capability protection and persistent solo-role protection.
+        // Housekeeping consumes this contract; the domain state remains owned by its registry.
+        internal static ArmyMutationContract PhysicalMutationContract(PlayerSetupData player, int turn,
+            ArmyData army, ActorCommitments commitments)
+        {
+            if (army == null || army.IsGarrison)
+                return null;
+            ArmyMutationContract claimed = commitments != null && commitments.IsArmyClaimed(army.Id)
+                ? commitments.MutationContractOf(army.Id) ?? ArmyMutationContract.FullyProtected
+                : null;
+            if (!StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id))
+            {
+                if (claimed != null) return claimed;
+                if ((AiArmyRoles.IsSoloRecce(army) && ReconPatrolStateRegistry.TryGet(player, army.Id, out _))
+                    || AiArmyRoles.IsSoloCollector(army)) return ArmyMutationContract.SoloRole;
+                return null;
+            }
+            ArmyMutationContract lease = AiArmyRoles.IsSoloRecce(army) || AiArmyRoles.IsSoloCollector(army)
+                ? ArmyMutationContract.FullyProtected
+                : ArmyMutationContract.Leased;
+            return claimed == null ? lease : claimed.Intersect(lease);
+        }
+
     }
 }

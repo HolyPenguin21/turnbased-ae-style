@@ -21,6 +21,7 @@ namespace Game.Ai.V2
         internal MissionIntentState PersistentState { get; }
         internal MissionLeaseBook Leases { get; }
         private readonly ReconTurnState _recon;
+        private readonly List<MissionLeaseBook> _passClaims = new List<MissionLeaseBook>();
         private bool _ended;
 
         internal ReconTurnState Recon
@@ -75,11 +76,25 @@ namespace Game.Ai.V2
             WorldSnapshot snapshot, IReadOnlyList<ReconObjective> objectives)
         {
             EnsureActive();
+            RequireFrame(snapshot);
             return MissionActorPolicy.Build(intents, snapshot, objectives, Leases);
         }
 
         internal static AiTurnSession PeekActive(PlayerSetupData player) =>
             player != null && Active.TryGetValue(player, out var session) && !session._ended ? session : null;
+
+        internal ISet<int> CreateProvisioningClaims()
+        {
+            EnsureActive();
+            var pass = new MissionLeaseBook(Player, TurnNumber);
+            _passClaims.Add(pass);
+            return pass.PassActorSet();
+        }
+
+        internal StrategicInvalidation PendingInvalidations
+        { get { EnsureActive(); return StrategicInterruptRegistry.Peek(Player, TurnNumber); } }
+        internal void ConsumeInvalidations(StrategicInvalidationReason reasons)
+        { EnsureActive(); StrategicInterruptRegistry.Consume(Player, TurnNumber, reasons); }
 
         // Preserve the original normal-turn expiry/diagnostic ordering before the summary.
         // Dispose also runs this boundary on coroutine disposal or an exception.
@@ -91,10 +106,28 @@ namespace Game.Ai.V2
             MissionLeaseBook.AssertClearAtTurnEnd(Player, TurnNumber);
         }
 
-        internal void Settle(MissionStepResult result)
+        internal void Settle(MissionStepResult result, WorldSnapshot snapshot = null,
+            IReadOnlyList<ReconObjective> objectives = null)
         {
             EnsureActive();
+            RequireFrame(snapshot);
             MissionContinuityLayer.ReconcileStep(Player, TurnNumber, result);
+            if (result == null || snapshot == null) return;
+            // A domain may release only a support leg while retaining its durable operation.
+            // Re-project that operation through the authoritative role policy, preserving every
+            // other operation and anonymous same-pass claim. No second eligibility rule lives here.
+            var projection = new MissionLeaseBook();
+            PersistentState.TryGet(result.IntentKey, out var intent);
+            MissionActorPolicy.Build(intent == null ? Array.Empty<MissionIntent>() : new[] { intent },
+                snapshot, objectives, projection);
+            Leases.ReplaceOperationActors(result.IntentKey, projection);
+            projection.Close();
+        }
+
+        internal void SettleAfterTurn(IReadOnlyList<MissionStepResult> results)
+        {
+            EnsureActive();
+            MissionContinuityLayer.ReconcileAfterTurn(Player, TurnNumber, results);
         }
 
         internal int Apply(WorldDelta delta)
@@ -106,6 +139,13 @@ namespace Game.Ai.V2
         internal void EnsureActive()
         {
             if (_ended) throw new ObjectDisposedException(nameof(AiTurnSession));
+        }
+
+        private void RequireFrame(WorldSnapshot snapshot)
+        {
+            if (snapshot != null && (snapshot.TurnNumber != TurnNumber
+                || snapshot.Observer != null && !ReferenceEquals(snapshot.Observer, Player)))
+                throw new InvalidOperationException("Decision frame belongs to another player or turn.");
         }
 
         internal static void ClearAll()
@@ -125,6 +165,8 @@ namespace Game.Ai.V2
             AviationObligationStallRegistry.EndTurn(Player, TurnNumber);
             OperationContinuationWindow.EndTurn(Player, TurnNumber);
             ReconTurnStateStore.End(Player);
+            foreach (var pass in _passClaims) pass.Close();
+            _passClaims.Clear();
             Leases.Close();
             _ended = true;
             Active.Remove(Player);

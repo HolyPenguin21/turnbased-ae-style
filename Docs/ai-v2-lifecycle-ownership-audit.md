@@ -460,3 +460,24 @@ Fourteen moved domain/helper methods are byte-identical. The 5,760-transition fi
 AdvanceIntent now contains shared accounting/suspension/stall/reap ordering and delegates mover identity and typed domain fact writes to ordered policies. Raid reads the frozen leg/primary/support facts, Attack calls GroundCombatLegs.IsAttackSupportLeg, Economy/Development preserve their existing pins, and Recon uses its existing exclusivity owner. Payload application keeps Scout → Attack → Raid → Economy ordering. Economy owns repeated capability-failure suppression. Two former capability-failure age exceptions share one domain composition predicate; existing eligibility owners are called, not copied.
 
 The original transition fingerprint is unchanged. An additional 5,760-case pre-extraction fingerprint (`FF74620661454EAA6C80DAF01394D39EB1E5ED37F9B3C9FA875F92FAA5DFBECF`) covers NoMoverExists/MoverContended, pool exhaustion, stalled/aged operations, moverless scouts and collectors. Explicit frozen-role tests cover Raid handoff/air support and Attack support without primary reassignment; pinning tests cover Economy/Development retry. No bank, revision, cache, threshold or cost code changed.
+
+
+## Continuation: resolution, Housekeeping and pass ownership
+
+Master rechecked through the connector: `13210b16fc1ed6a42facc17ec3cc55d06aa83afb`; feature checkpoint before these changes: `5369c7afd18afc117105bad3bf71d553ea816e10`. No overlapping upstream AI changes.
+
+| Concern | Authoritative owner / current evidence |
+|---|---|
+| Active intent resolution | existing domain Continuity partials; common ResolveActive preserves preparer → resolver → rekey/remove → sort → finalizer order; six branch bodies match mechanically |
+| Result payload capture | same domain partials; common normalization owns common facts/status; original 5,442-case fingerprint unchanged |
+| Tentative provisioning actors | pass lease book under AiTurnSession; ISet adapter has no second claim storage; pass close and abandoned-turn close reject stale writes/read access |
+| Support-leg release | session projects only that operation through MissionActorPolicy; another operation and anonymous pass claim remain; resource hold stays if domain retains operation |
+| Housekeeping mutation permission | normalized ArmyMutationContract; Attack domain supplies live roster/deployment/release-body readers; Analyzer and Executor no longer interpret Attack/Recon intent registries |
+| Revision | WorldDeltaLifecycle only counter; ground/capture/strike/return/rebase actions update existing receipt; TaskExecutor/phase/Pipeline avoid outer duplicate stamps |
+| Generated Development output | one persistent DevelopmentLifecycleState store; existing uniqueness/age/reconciliation rules intentionally survive a completed delivery leg |
+
+Separate bottom-up bank review: physical stock, TurnResourceBook, StrategicSpendability, allocator budgets, canonical materialization/provisioning/execution spending and completion↔deferred replacement conditions are unchanged. A production call-site search finds direct reservation mutations only inside MissionLeaseBook. Side-leg ownership tests retain another operation's rows; no operation identity/token encoding or reservation amount changed. Deferred saving protection may exceed physical stock by the original design; it is not silently rebalanced.
+
+Separate cache review: no cache, key or new dirty mask was added. AiMapMemory and pathing revision remain their existing source of truth; route/combat/Recon intel and derived capability readers retain the existing keys/refresh order. Changed action boundaries use per-action receipts; observations publish the same reason-scoped facts without another bump. The managed raw compile still reports exactly the same three UI/audio reference-stub errors; diagnostic copies alone adapt those calls. Native next-read/cache acceptance remains outstanding.
+
+Current managed gate: 1,642 cases, 1,117 passed / 525 failed; all 133 new cases pass; no original passing case disappeared/regressed; first error line of every baseline failure unchanged. Neither a failed baseline nor an omitted native coroutine is counted as passing. No PR workflow run was available on the preceding feature checkpoint; no full Unity/E2E result is claimed.

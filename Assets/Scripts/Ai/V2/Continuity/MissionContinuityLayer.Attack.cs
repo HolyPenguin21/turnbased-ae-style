@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Combat;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -1188,6 +1189,156 @@ namespace Game.Ai.V2
                     ai.LastOpportunisticStrikeTurn = turn;
             }
         }
+
+        private static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var dead = pass.Dead;
+            var donatedOperations = pass.DonatedOperations;
+            // Strike force — a Raid whose primary an Attack gather bought ends here.
+            // The gather priced the abandoned Raid into its own score
+            // (GroundCombatDonorPolicy.BorrowableDonorValues) and won the allocation; the army now
+            // walks to the host and, after the handoff, home. ActiveDefence responders are never
+            // gather donors and therefore never enter this retirement path.
+            var givenToGather = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            foreach (MissionIntent lender in state.All.Where(i => i != null
+                && i.Kind == MissionKind.Raid
+                && i.PreferredMoverArmyId.HasValue
+                && givenToGather.Contains(i.PreferredMoverArmyId.Value)))
+            {
+                donatedOperations.Add(lender.IntentKey);
+                dead.Add(lender.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {lender.IntentKey} retired: "
+                    + $"its army #{lender.PreferredMoverArmyId} was given to an Attack gather "
+                    + $"(abandoned value {lender.LastIntrinsicValue:0.00})");
+            }
+        }
+
+        private static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+            var raidClaims = pass.ActorClaims;
+
+            // ATK §24/§25 — the Attack lane's own lifecycle answers live in
+            // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
+            // Audit F7 — a Gather re-plan may not recruit another intent's actor. T07 — an
+            // army walking home on a completed Raid's Return fallback is NOT another
+            // intent's actor (the fallback has no commitment protection and no claim); if
+            // the gather recruits it, its fallback is retired below in this same pass.
+            pass.AttackGatherUnavailable = pass.AttackGatherUnavailable
+                ?? new HashSet<int>(raidClaims ?? new HashSet<int>());
+            if (!ResolveAttackIntent(player, snap, intent, intent.Attack,
+                    pass.AttackGatherUnavailable, out bool captured))
+            {
+                dead.Add(intent.IntentKey);
+                if (captured)
+                    // §8/§59 — success releases the claim in place. Nothing here touches the
+                    // army's roster or its garrison: Housekeeping owns local stabilisation.
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} claim released on "
+                        + "captured base; Housekeeping owns garrison stabilisation");
+                return;
+            }
+            // A transient capability / pool suspension is re-tested every pass, exactly as
+            // Raid and ActiveDefence do. Without this an Attack suspended once was never
+            // resumed, never aged by ReconcileAfterTurn and never reaped.
+            ResumeTransientSuspension(intent);
+            if (intent.Status == IntentStatus.Active) active.Add(intent);
+            return;
+        }
+
+        private static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            // T07 — a live Attack gather re-planned above may just have recruited the actor of a
+            // completed Raid's Return fallback. Hand it over in this same pass (the rule the
+            // pre-loop "given to gather" retirement applies next pass): the fallback leg is
+            // retired, so the army never has two owners and never walks home instead.
+            var recruitedNow = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            foreach (MissionIntent fallback in state.All.Where(i => i?.Raid != null
+                && i.Raid.CompletedTargetAwaitingFreshDecision && i.Raid.PrimaryArmyId.HasValue
+                && recruitedNow.Contains(i.Raid.PrimaryArmyId.Value)
+                && !dead.Contains(i.IntentKey)).ToList())
+            {
+                dead.Add(fallback.IntentKey);
+                active.Remove(fallback);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {fallback.IntentKey} return "
+                    + $"fallback retired: its army #{fallback.Raid.PrimaryArmyId} joins a live Attack "
+                    + "gather after completing its Raid target");
+            }
+        }
+
+        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasAttackPayload = true;
+            o.AttackTarget = pm.AttackTarget;
+        }
+
+        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
+                || e.StopReason == ExecutionStopReason.BattleStarted;
+            o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
+            o.AttackIntermediateCaptured = e.AttackIntermediateCaptured;
+            o.AttackCaptureHadBattle = e.AttackCaptureHadBattle;
+
+            o.PayloadForWrite<AttackStepPayload>().AirSupportStrikeSucceeded = e.AirSupportStrikeSucceeded;
+        }
+
+        // The frozen target roster of the live Attack preparation this army hosts (null if none).
+        private static List<StrikeRosterSlot> PreparationTargetRoster(PlayerSetupData player, ArmyData army)
+        {
+            if (player == null || army == null)
+                return null;
+            MissionIntent prep = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+                i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
+                && i.Attack != null && i.Attack.Preparation && i.Attack.Phase == AttackMissionPhase.Gather
+                && i.Attack.PrimaryArmyId == army.Id);
+            return prep?.Attack?.TargetRoster;
+        }
+
+        // Card keys of the held ground Unit cards that deploy on `hex` (a held card lands in the
+        // host by Phase A only through a building there that deploys it).
+        // A card Phase A already failed to chain into this host frees no slot either.
+        private static List<string> HeldFieldCardKeys(PlayerSetupData player, HexCoord hex,
+            int hostArmyId, int turn) =>
+            (AiHandRegistry.Peek(player)?.Hand ?? Enumerable.Empty<CardData>())
+                .Select(c => c?.Definition)
+                .Where(d => d != null && d.cardType == CardType.Unit && !d.isAviation
+                    && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, d)
+                    && !PreparationDeliveryMemory.NoChainRecently(player, hostArmyId, turn,
+                        StrikeRoster.CardKey(d)))
+                .Select(StrikeRoster.CardKey).ToList();
+
+        // Live twin of the planner's body release (HousekeepingExecutor preflight): is this a
+        // non-commander BODY of a preparation host that its target roster does not contain?
+        private static bool IsPreparationNonRosterBody(PlayerSetupData player, ArmyData host, UnitData unit)
+        {
+            if (unit == null || unit.IsHero || host == null || !host.Members.Contains(unit))
+                return false;
+            List<StrikeRosterSlot> target = PreparationTargetRoster(player, host);
+            return target != null && target.Count > 0
+                && StrikeRoster.NonTargetBodies(target, host.Members).Contains(unit);
+        }
+
+        internal static ArmyMutationContract AttackPreparationMutationContract(int turn) =>
+            ArmyMutationContract.PreparationHost(
+                host => {
+                    var target = PreparationTargetRoster(host?.Owner, host);
+                    return target != null && target.Count > 0 ? target.Select(slot => slot.Key).ToArray() : null;
+                },
+                host => host == null ? null : HeldFieldCardKeys(host.Owner, host.Hex, host.Id, turn),
+                (host, unit) => IsPreparationNonRosterBody(host?.Owner, host, unit));
 
     }
 }

@@ -60,6 +60,53 @@ namespace Game.EditorTests
             Assert.That(other.ResourceClaims[0].Amount, Is.EqualTo(4));
         }
 
+        [TestCase(MissionKind.Attack)]
+        [TestCase(MissionKind.Raid)]
+        public void InvalidSupportReleasesOnlyThatOperationsActorAtSettlement(MissionKind kind)
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey(kind, 0, 0, 2, 3);
+            var otherKey = new MissionIntentKey(MissionKind.Economy, 0, 0, 5, 3);
+            var intent = new MissionIntent { IntentKey = key, Kind = kind, Status = IntentStatus.Active };
+            if (kind == MissionKind.Attack)
+            {
+                var attack = new AttackIntent { Phase = AttackMissionPhase.Gather };
+                attack.GatherSupportArmyIds.Add(7); attack.GatherSupportArmyIds.Add(8);
+                intent.Objective = attack;
+            }
+            else intent.Objective = new RaidIntent { Phase = RaidMissionPhase.Reinforcement, SupportArmyId = 7 };
+            session.PersistentState.Put(intent);
+            var lease = session.Leases.For(key); lease.Claim(7);
+            if (kind == MissionKind.Attack) lease.Claim(8);
+            lease.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 3);
+            session.Leases.For(otherKey).Claim(7);
+            session.Leases.ClaimForPass(99, ArmyMutationContract.FullyProtected);
+            var snapshot = new WorldSnapshot { Observer = p, TurnNumber = 4,
+                Self = new SelfSnapshot { Armies = new[] {
+                    new ArmySnapshot { ArmyId = 7, MemberCount = 1 },
+                    new ArmySnapshot { ArmyId = 8, MemberCount = 1 } } } };
+            var result = new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
+                Disposition = MissionStepDisposition.PermanentFailure,
+                ProvisionFailureKindValue = ProvisionFailureKind.AssemblyInfeasible };
+            if (kind == MissionKind.Attack)
+            {
+                result.HasAttackPayload = true;
+                result.AttackTarget = new AttackMissionTarget { Phase = AttackMissionPhase.Gather, SupportArmyId = 7 };
+            }
+            else
+            {
+                result.HasRaidPayload = true; result.RaidPhase = RaidMissionPhase.Reinforcement;
+                result.RaidSupportArmyId = 7;
+            }
+            session.Settle(result, snapshot);
+            Assert.That(session.PersistentState.TryGet(key, out _), Is.True);
+            Assert.That(lease.ActorClaims, Is.EqualTo(kind == MissionKind.Attack ? new[] { 8 } : Array.Empty<int>()));
+            Assert.That(lease.ResourceClaims.Count, Is.EqualTo(1));
+            Assert.That(session.Leases.For(otherKey).ActorClaims, Is.EqualTo(new[] { 7 }));
+            Assert.That(session.Leases.IsClaimed(99), Is.True);
+        }
+
         [Test]
         public void StaleResourceWriteCannotResetANewTurnsReservationStorage()
         {

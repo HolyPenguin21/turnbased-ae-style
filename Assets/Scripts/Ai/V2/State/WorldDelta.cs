@@ -94,6 +94,17 @@ namespace Game.Ai.V2
         internal static int CommitMutation(bool committed = true) =>
             Apply(null, -1, new WorldDelta(committed, StrategicInvalidationReason.None));
 
+        // A coroutine action publishes only after its canonical mutation completes. Its caller
+        // receives the existing execution receipt, rather than stamping the aggregate again.
+        // This scope is never held across a yield; consecutive actions each advance once.
+        internal static int RecordExecutionMutation(ExecutionResult result, bool committed)
+        {
+            if (!committed) return Current;
+            int revision = CommitMutation();
+            if (result != null) result.StateVersionAfter = revision;
+            return revision;
+        }
+
         internal static void Publish(PlayerSetupData player, int turn,
             StrategicInvalidationReason reasons, IEnumerable<int> actorIds = null,
             IEnumerable<int> contactIds = null, IEnumerable<HexCoord> hexes = null,

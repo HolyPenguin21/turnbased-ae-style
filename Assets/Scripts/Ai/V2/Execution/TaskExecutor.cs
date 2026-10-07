@@ -831,6 +831,8 @@ namespace Game.Ai.V2
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
+            WorldDeltaLifecycle.RecordExecutionMutation(result, result.StepsMoved > 0
+                || trace.BattleOccurred || trace.EnteredStealthThisStep);
             result.StopReason = army == null ? ExecutionStopReason.MoverLost
                 : pm.Kind == MissionKind.Development && trace.BattleOccurred
                 ? ExecutionStopReason.BattleStarted

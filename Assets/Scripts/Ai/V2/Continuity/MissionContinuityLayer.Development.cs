@@ -1,3 +1,5 @@
+using Game.Cards;
+using Game.Map;
 using System.Linq;
 
 namespace Game.Ai.V2
@@ -61,5 +63,52 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][Development] continuity create {intent.IntentKey} "
                 + $"hero={target.HeroKey} actor=#{o.MoverArmyId}");
         }
+        private static void ResolveDevelopmentOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+
+            DevelopmentIntent d = intent.Development;
+            ArmyData actual = d?.Hero == null ? null : ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a != null && !a.IsPrison
+                    && a.Members.Contains(d.Hero));
+            BuildingData building = d == null ? null : BuildingRegistry.FindAt(d.FacilityHex);
+            bool valid = d != null && actual != null && d.Hero.Owner == player
+                && !d.Hero.IsPrisoner && d.Hero.IsHero
+                && d.Hero.HasAbility(ResearchProductionSystem.RoleAbility(d.Mode))
+                && string.Equals(d.HeroKey, GenerationSource.StableHeroKey(d.Hero),
+                    System.StringComparison.Ordinal)
+                && building != null && building.Owner == player
+                && building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(d.Mode))
+                && (intent.PreferredMoverArmyId == actual.Id
+                    || !intent.PreferredMoverArmyId.HasValue);
+            bool arrived = valid && ResearchProductionSystem.ActorStillQualifies(
+                player, d.Hero, d.FacilityHex, d.Mode)
+                && ResearchProductionSystem.IsEligible(player, d.FacilityHex, d.Mode, out _);
+            if (!valid || arrived || ShouldReap(intent, snap?.TurnNumber ?? 0))
+            {
+                dead.Add(intent.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Development] retire {intent.IntentKey} "
+                    + $"valid={valid} arrived={arrived} stall={intent.StallTurns}");
+                return;
+            }
+            ResumeTransientSuspension(intent);
+            active.Add(intent);
+            return;
+        }
+
+        private static void CaptureDevelopmentProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasDevelopmentPayload = true;
+            o.DevelopmentTarget = pm.DevelopmentTarget;
+        }
+
+        private static void CaptureDevelopmentExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            o.PayloadForWrite<DevelopmentStepPayload>().DeliveryReady = e.DevelopmentDeliveryReady;
+        }
+
     }
 }

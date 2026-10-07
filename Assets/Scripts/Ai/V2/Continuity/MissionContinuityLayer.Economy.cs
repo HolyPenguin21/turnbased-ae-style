@@ -1,8 +1,34 @@
+using System.Collections.Generic;
+using System.Linq;
+using Game.HexGrid;
 namespace Game.Ai.V2
 {
     // Existing domain result semantics, owned by the same continuity policy.
     internal static partial class MissionContinuityLayer
     {
+        internal static bool EconomyBuilderReadyForCompletion(IEnumerable<MissionIntent> activeIntents,
+            WorldSnapshot snapshot)
+        {
+            foreach (MissionIntent intent in activeIntents ?? new List<MissionIntent>())
+            {
+                if (intent?.Kind != MissionKind.Economy
+                    || intent.Status != IntentStatus.Active
+                    || intent.Economy == null
+                    || !intent.PreferredMoverArmyId.HasValue)
+                    continue;
+                ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
+                if (actor == null || !actor.Hex.Equals(intent.Economy.TargetHex))
+                    continue;
+                // A ReturnBuilder that just reached home is about to be retired by the next
+                // MissionContinuityLayer.ResolveActive pass, freeing its builder for a new
+                // Economy demand this same turn — that is exactly as actionable as a builder
+                // arriving at a fresh build hex.
+                return true;
+            }
+            return false;
+        }
+
         internal static bool IsEconomyStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
             ProvisionedMission pm) => EconomyLifecycleState.ObjectiveSatisfied(player, pm.EconomyTarget);
 
@@ -327,6 +353,204 @@ namespace Game.Ai.V2
                 return true;
             }
             return false;
+        }
+
+        private static void RepairEconomyLoans(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            var state = pass.State;
+            // There is deliberately NO global "primary" build selection here. ResolveActive
+            // validates each build intent on its OWN facts (objective completed / target still
+            // legal / actor still alive / route still usable). Progress on one site is not evidence
+            // that another site's obligation became illegal; real ownership conflicts (same actor,
+            // same objective identity, same physical card) are resolved where ownership is actually
+            // granted — BeginEconomyDelivery — not by retiring bystanders here.
+            var liveLoanSources = new HashSet<MissionIntentKey>(state.All
+                .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
+                .Select(i => i.Economy.LoanSource));
+            foreach (MissionIntent orphanedDonor in state.All.Where(i => i != null
+                && i.Status == IntentStatus.Suspended && i.Suspended == SuspendReason.EconomyLoan
+                && !liveLoanSources.Contains(i.IntentKey)))
+            {
+                AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
+                ResumeEconomyLender(orphanedDonor);
+            }
+        }
+
+        private static void ResolveEconomyOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+
+            EconomyIntent ei = intent.Economy;
+            bool collectorMission = ei?.Kind == EconomyTaskKind.MobileCollection
+                || ei?.Kind == EconomyTaskKind.ReturnCollector;
+            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == intent.PreferredMoverArmyId && !a.IsPrison && !a.IsAir
+                && (collectorMission || a.HasHero));
+            if (ei?.Kind == EconomyTaskKind.MobileCollection)
+            {
+                bool capable = actor != null && ei.ResourceType.HasValue
+                    && actor.CollectionCapacity.Get(ei.ResourceType.Value) > 0f;
+                bool arrived = capable && actor.Hex.Equals(ei.TargetHex);
+                if (arrived && ei.ArrivalTurn < 0)
+                    ei.ArrivalTurn = snap.TurnNumber;
+                if (arrived && snap.TurnNumber > ei.ArrivalTurn)
+                    ei.LastConfirmedIncomeTick = snap.TurnNumber;
+                // Economy audit B12 — the SAME usefulness test Analysis admits a collector
+                // with (UsefulMarginalIncomeGain), judged without the income this collector
+                // itself now produces; a second "income below target" rule sent a still
+                // useful collector home and Analysis sent it straight back.
+                bool useful = capable && ei.ResourceType.HasValue
+                    && CollectorStillUseful(snap, ei.ResourceType.Value, ei.ExpectedMarginalYield)
+                    && WorldAnalysis.KnownExtractionYields(snap).Any(x =>
+                        x.Hex.Equals(ei.TargetHex) && x.Type == ei.ResourceType.Value
+                        && x.Yield > 0);
+                bool safe = !WorldAnalysis.KnownHostileAtHex(snap, ei.TargetHex);
+                if (!capable)
+                {
+                    RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                    AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire {intent.IntentKey} "
+                        + "reason=collector_lost_or_capability_lost");
+                    return;
+                }
+                if (arrived && ei.LastConfirmedIncomeTick >= 0 && (!useful || !safe))
+                {
+                    HexCoord? home = ei.SafeReturnHex;
+                    if (!home.HasValue || !IsProtectedEconomyHex(snap, player, home.Value))
+                        home = SelectEconomyRecoveryTarget(snap, player, actor);
+                    if (!home.HasValue)
+                    {
+                        RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                        return;
+                    }
+                    MissionIntentKey oldKey = intent.IntentKey;
+                    ei.Kind = EconomyTaskKind.ReturnCollector;
+                    ei.TargetHex = home.Value;
+                    intent.IntentKey = MissionIntentKey.For(intent);
+                    if (!oldKey.Equals(intent.IntentKey))
+                        rekeys.Add((oldKey, intent));
+                    active.Add(intent);
+                    AiDebugLog.Write($"[AI][V2][Economy][Mobile] return collector "
+                        + $"#{actor.ArmyId} -> ({home.Value.Q},{home.Value.R})");
+                    return;
+                }
+                // Holding the site IS the collector's activity (the planner proposes no
+                // step for it): record it as progress so it neither stalls nor ages out.
+                if (arrived)
+                {
+                    intent.LastProgressTurn = snap.TurnNumber;
+                    intent.LastProtectedTurn = snap.TurnNumber;
+                    intent.StallTurns = 0;
+                }
+                ResumeTransientSuspension(intent);
+                active.Add(intent);
+                return;
+            }
+            if (ei?.Kind == EconomyTaskKind.ReturnBuilder || ei?.Kind == EconomyTaskKind.ReturnCollector)
+            {
+                bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
+                bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
+                if (!targetValid && actor != null)
+                {
+                    HexCoord? retarget = SelectEconomyRecoveryTarget(snap, player, actor);
+                    if (retarget.HasValue)
+                    {
+                        MissionIntentKey oldKey = intent.IntentKey;
+                        ei.TargetHex = retarget.Value;
+                        ei.SafeReturnHex = retarget.Value;
+                        intent.StallTurns = 0;
+                        completed = actor.Hex.Equals(ei.TargetHex);
+                        intent.IntentKey = completed ? oldKey : MissionIntentKey.For(intent);
+                        if (!completed && !oldKey.Equals(intent.IntentKey))
+                            rekeys.Add((oldKey, intent));
+                        targetValid = true;
+                    }
+                }
+                if (completed || actor == null || !targetValid)
+                {
+                    RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                    AiDebugLog.Write($"[AI][V2][Economy][Recovery] retire {intent.IntentKey} "
+                        + $"arrived={(completed ? 1 : 0)} actor={(actor != null ? 1 : 0)} "
+                        + $"target={(targetValid ? 1 : 0)}");
+                    return;
+                }
+                ResumeTransientSuspension(intent);
+                active.Add(intent);
+                return;
+            }
+
+            bool completedBuild = ei == null || EconomyLifecycleState.ObjectiveSatisfied(player,
+                new EconomyMissionTarget { Kind = ei.Kind, TargetHex = ei.TargetHex,
+                    ResourceType = ei.ResourceType, BuilderArmyId = ei.BuilderArmyId });
+            bool targetValidBuild = ei != null && (ei.Kind == EconomyTaskKind.FoundBase
+                ? snap?.Self?.Hand?.Contains(ei.BuildCard) == true
+                    && snap?.Economy?.BaseOpportunities?.Any(
+                        site => site.Hex.Equals(ei.TargetHex)) == true
+                : ei.ResourceType.HasValue && snap?.Economy?.IsExtractionActionable(
+                    ei.TargetHex, ei.ResourceType.Value) == true);
+            if (completedBuild || actor == null || !targetValidBuild)
+            {
+                RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                AiDebugLog.Write($"[AI][V2][Economy] retire {intent.IntentKey} "
+                    + $"completed={(completedBuild ? 1 : 0)} actor={(actor != null ? 1 : 0)} "
+                    + $"target={(targetValidBuild ? 1 : 0)}");
+                return;
+            }
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes = ei.Kind == EconomyTaskKind.FoundBase
+                ? snap.Economy.BaseOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)).BuilderRoutes
+                : snap.Economy.ExtractionOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)
+                    && ei.ResourceType.HasValue && x.ResourceType == ei.ResourceType.Value).BuilderRoutes;
+            bool recoveredBuilder = false;
+            foreach (EconomyBuilderRouteSnapshot route in routes
+                ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+            {
+                if (route.ArmyId != actor.ArmyId) continue;
+                var suitability = DemandLayer.AssessEconomyArmy(snap, ei.TargetHex, route,
+                    actor, ei.BuildApCost, includeReturn: ei.Kind == EconomyTaskKind.BuildExtraction);
+                if (suitability.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
+                    || suitability.IneligibleReason == "escort_activated_this_turn")
+                    break;
+                // A composition failure does not heal when movement resets. Release the
+                // outbound envelope and let the existing recovery lifecycle own the actor.
+                MissionLeaseBook.ReleaseByOwner(player, snap.TurnNumber,
+                    EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                AiDebugLog.Write($"[AI][V2][Economy] recover {intent.IntentKey} actor=#{actor.ArmyId} "
+                    + $"reason={suitability.IneligibleReason}");
+                BeginEconomyBuilderRecovery(player, snap, new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.EconomicInfrastructure,
+                    TargetHex = ei.TargetHex, EconomySiteValue = ei.BuildValue,
+                }, actor.ArmyId, snap.TurnNumber);
+                // Publish a replacement recovery in this same pass so downstream actor
+                // commitments cannot briefly expose the returning builder as unassigned.
+                if (state.TryGet(intent.IntentKey, out MissionIntent recovery)
+                    && recovery.Economy?.Kind == EconomyTaskKind.ReturnBuilder)
+                    active.Add(recovery);
+                // Recovery may instead have released the actor at a protected hex.
+                recoveredBuilder = true;
+                break;
+            }
+            if (recoveredBuilder) return;
+            ResumeTransientSuspension(intent);
+            if (intent.Status == IntentStatus.Active) active.Add(intent);
+            return;
+        }
+
+        private static void CaptureEconomyProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasEconomyPayload = true;
+            o.EconomyTarget = pm.EconomyTarget;
+            o.EconomyLoanSource = pm.EconomyLoanSource;
+        }
+
+        private static void CaptureEconomyExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            o.EconomyBuildCompleted = e.InfrastructureChanged;
+            o.PayloadForWrite<EconomyStepPayload>().DeliveryReady = e.EconomyDeliveryReady;
+            o.PayloadForWrite<EconomyStepPayload>().Holding = e.EconomyHolding;
         }
 
     }

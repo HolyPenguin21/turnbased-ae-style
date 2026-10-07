@@ -773,6 +773,55 @@ namespace Game.Ai.V2
 
         }
 
+        private static void ResolveRaidOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+            var raidClaims = pass.ActorClaims;
+            var safeRouteCost = pass.SafeRouteCost;
+
+            if (!ResolveRaidIntent(player, snap, intent, raidClaims, safeRouteCost))
+            {
+                dead.Add(intent.IntentKey);
+                return;
+            }
+            if (intent.Status == IntentStatus.Active)
+                active.Add(intent);
+            return;
+        }
+
+        private static void CaptureRaidProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasRaidPayload = true;
+            o.RaidTarget = pm.RaidTarget;
+            o.RaidLastKnownHex = pm.RaidLastKnownHex;
+            o.RaidTargetIsNeutral = pm.RaidTargetIsNeutral;
+            o.RaidPhase = pm.RaidPhase;
+            o.RaidPrimaryArmyId = pm.RaidPrimaryArmyId;
+            o.RaidSupportArmyId = pm.RaidSupportArmyId;
+            o.RaidAirSupportArmyId = pm.RaidAirSupportArmyId;
+            o.RaidAirSupportLandingHex = pm.RaidAirSupportLandingHex;
+            o.RaidRefitAction = pm.RaidRefitAction;
+        }
+
+        private static void CaptureRaidExecutionFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            bool raidEngaged = o.MissionKind == MissionKind.Raid
+                && (e.StopReason == ExecutionStopReason.BattleStarted
+                    || e.StopReason == ExecutionStopReason.HexEventStarted);
+
+            o.OperationStarted = e.OperationStarted
+                || e.StepsMoved > 0 || raidEngaged;
+            o.RaidAirSupportStrikeSucceeded =
+                e.AirSupportStrikeSucceeded;
+            o.RaidRefitSucceeded = e.RaidRefitSucceeded;
+            o.RaidResourcesSpent = e.ResourcesSpent;
+
+            o.MadeProgress |= raidEngaged;
+        }
+
     }
 }
 

@@ -93,5 +93,71 @@ namespace Game.Ai.V2
         private static bool DomainAgesCapabilityFailure(MissionIntent intent, bool forReaping) =>
             intent.Kind == MissionKind.Development || forReaping && intent.Kind == MissionKind.Raid
                 || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent);
+
+        // One derived, pass-scoped workspace. Domain handlers mutate the existing durable owner;
+        // this object owns only deferred retire/rekey ordering and normalized actor availability.
+        private sealed class ActiveResolution
+        {
+            internal readonly MissionIntentState State;
+            internal readonly List<MissionIntent> Active = new List<MissionIntent>();
+            internal readonly List<MissionIntentKey> Dead = new List<MissionIntentKey>();
+            internal readonly List<(MissionIntentKey Old, MissionIntent Intent)> Rekeys =
+                new List<(MissionIntentKey, MissionIntent)>();
+            internal readonly HashSet<MissionIntentKey> DonatedOperations = new HashSet<MissionIntentKey>();
+            internal readonly HashSet<Game.HexGrid.HexCoord> ScoutFoci = new HashSet<Game.HexGrid.HexCoord>();
+            internal readonly IReadOnlyList<ReconObjective> ReconObjectives;
+            internal readonly Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> SafeRouteCost;
+            internal HashSet<int> ActorClaims;
+            internal HashSet<int> AttackGatherUnavailable;
+            internal ActiveResolution(MissionIntentState state, IReadOnlyList<ReconObjective> objectives,
+                Func<Game.HexGrid.HexCoord, Game.HexGrid.HexCoord, int, int> routeCost)
+            { State = state; ReconObjectives = objectives; SafeRouteCost = routeCost; }
+        }
+        private delegate void ResolutionPreparation(Game.Players.PlayerSetupData player,
+            WorldSnapshot snapshot, ActiveResolution pass);
+        private delegate void ActiveResolver(Game.Players.PlayerSetupData player,
+            WorldSnapshot snapshot, MissionIntent intent, ActiveResolution pass);
+        private static readonly ResolutionPreparation[] ResolutionPreparers =
+            { RepairEconomyLoans, RetireGatherDonors, CollectScoutFoci };
+        private static readonly ResolutionPreparation[] ResolutionFinalizers =
+            { FinalizeReconResolution, FinalizeAirSupportResolution };
+        private static readonly IReadOnlyDictionary<MissionKind, ActiveResolver> ActiveResolvers =
+            new Dictionary<MissionKind, ActiveResolver>
+            {
+                [MissionKind.Development] = ResolveDevelopmentOperation,
+                [MissionKind.Economy] = ResolveEconomyOperation,
+                [MissionKind.ActiveDefence] = ResolveDefenceOperation,
+                [MissionKind.Attack] = ResolveAttackOperation,
+                [MissionKind.Raid] = ResolveRaidOperation,
+            };
+
+        private static readonly IReadOnlyDictionary<MissionKind, Action<ProvisionedMission, MissionTurnOutcome>>
+            ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionTurnOutcome>>
+            {
+                [MissionKind.Raid] = CaptureRaidProvisionFacts,
+                [MissionKind.Attack] = CaptureAttackProvisionFacts,
+                [MissionKind.ActiveDefence] = CaptureActiveDefenceProvisionFacts,
+                [MissionKind.Economy] = CaptureEconomyProvisionFacts,
+                [MissionKind.Development] = CaptureDevelopmentProvisionFacts,
+            };
+        private static readonly IReadOnlyDictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
+            ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionTurnOutcome>>
+            {
+                [MissionKind.Scout] = CaptureScoutExecutionFacts,
+                [MissionKind.Raid] = CaptureRaidExecutionFacts,
+                [MissionKind.Attack] = CaptureAttackExecutionFacts,
+                [MissionKind.Economy] = CaptureEconomyExecutionFacts,
+                [MissionKind.Development] = CaptureDevelopmentExecutionFacts,
+            };
+        internal static void CaptureProvisionFacts(ProvisionedMission provisioned, MissionTurnOutcome result)
+        {
+            if (ProvisionFactReaders.TryGetValue(provisioned.Kind, out var capture)) capture(provisioned, result);
+            else CaptureScoutProvisionFacts(provisioned, result);
+        }
+        internal static void CaptureExecutionFacts(ExecutionResult execution, MissionTurnOutcome result)
+        {
+            CaptureGroundHandoffFacts(execution, result);
+            if (ExecutionFactReaders.TryGetValue(result.MissionKind, out var capture)) capture(execution, result);
+        }
     }
 }

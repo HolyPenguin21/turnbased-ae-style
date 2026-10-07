@@ -79,7 +79,7 @@ namespace Game.Ai.V2
                 }
                 var returnLeg = new GroundLegStepResult();
                 yield return GroundCombatLegStep.Transit(player, ctx, army, home,
-                    "V2 active defence — return", returnLeg);
+                    "V2 active defence — return", returnLeg, result);
                 if (returnLeg.Blocked.HasValue)
                 {
                     result.StopReason = returnLeg.Blocked.Value;
@@ -150,6 +150,8 @@ namespace Game.Ai.V2
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             bool moved = !after.Equals(before);
+            WorldDeltaLifecycle.RecordExecutionMutation(result, moved || trace.BattleOccurred
+                || trace.EnteredStealthThisStep);
             if (moved) result.StepsMoved++;
             result.FinalHex = after;
             result.ActualActorArmyId = pm.MoverArmyId;

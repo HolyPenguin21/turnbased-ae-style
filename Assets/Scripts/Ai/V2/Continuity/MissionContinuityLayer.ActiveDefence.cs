@@ -205,6 +205,26 @@ namespace Game.Ai.V2
             return true;
         }
 
+        private static void ResolveDefenceOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        {
+            var state = pass.State;
+            var active = pass.Active;
+            var dead = pass.Dead;
+            var rekeys = pass.Rekeys;
+
+            if (!ResolveActiveDefenceIntent(player, snap, intent, rekeys))
+                dead.Add(intent.IntentKey);
+            else if (intent.Status == IntentStatus.Active)
+                active.Add(intent);
+            return;
+        }
+
+        private static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionTurnOutcome o)
+        {
+            o.HasActiveDefencePayload = true;
+            o.ActiveDefenceTarget = pm.ActiveDefenceTarget;
+        }
+
     }
 }
 

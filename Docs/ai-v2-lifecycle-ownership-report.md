@@ -1,6 +1,6 @@
 # AI V2 lifecycle ownership migration — execution report
 
-Status: **incomplete full task; verified session/lease, typed-payload and domain transition checkpoint**. No merge to master.
+Status: **incomplete full task; verified session/pass lease, normalized payload, domain resolution and action receipt checkpoint**. No merge to master.
 
 Initial baseline: connector-verified master `706b1bbddee9abe4c4f052caea353bc3a790a332`.
 Continuation baseline: connector-verified master `13210b16fc1ed6a42facc17ec3cc55d06aa83afb`. Feature-only merge `a69c7392` preserves upstream army UI/scene/badge changes; master was not modified. The new master has no overlapping AI changes. Its separate managed baseline remains 1,509 cases, 984 passed / 525 failed; the original baseline is retained unchanged.
@@ -52,6 +52,20 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 
 Existing Unity GUIDs, scenes and prefabs are unchanged. New C# files include fresh .meta files.
 
+
+The latest continuation also changes these existing files (all Unity metadata retained):
+
+| Files | Before → after |
+|---|---|
+| Continuity/MissionContinuityLayer.cs, DomainResults and six domain partials | inline ResolveActive branches → ordered domain resolution callbacks; derived pass workspace only |
+| MissionStepResultPolicy and domain partials | inline mission payload assignments → domain capture callbacks; common facts/disposition remain at normalization |
+| ActorCommitments, MissionActorPolicy, Attack partial, ArmyReorgAnalyzer, HousekeepingExecutor | Housekeeping queried mission roster/delivery state → normalized live mutation-contract callbacks |
+| MissionLease, AiTurnSession, ProvisioningSession/Manager | independent tentative HashSet and unused durable copy → scoped pass lease table, explicit close and stale-reference rejection |
+| Pipeline, ReactionRoundExecutor | direct turn invalidation/persistent lookup and legacy reaction outcomes → session API and FinalizeSteps; Economy completion predicate moved unchanged to its domain |
+| GroundCombatLegStep, ReconGround/Raid/Attack/ActiveDefence/TaskExecutor | aggregate mutation stamp → committed per-action receipts, including subsequent movement after capture |
+| AviationRebasePlanner, Pipeline, StrategicPhaseB | strike/return/rebase plus outer duplicate stamps → executor-owned action receipts |
+| AiTurnSessionIsolationTests, AiMissionLeaseLifecycleTests, AiWorldDeltaTests, AiHousekeepingMissionContractTests | 13 additional cases: pass/foreign-frame isolation, support release, action receipts and live preparation contract |
+
 ## D. Removed coupling / duplication
 
 * Generic intent storage no longer contains Recon clocks/sets or Economy/Development storage dictionaries.
@@ -71,14 +85,16 @@ Existing Unity GUIDs, scenes and prefabs are unchanged. New C# files include fre
 * Domain facts now reside in Recon/Raid/Attack/Defence/Economy/Development typed payloads plus shared ground-combat facts. Legacy outcome properties are projections; common result schema need not add fields for a new payload.
 * Result classification branches now execute in existing domain Continuity partials. They are invoked once by the normalization boundary; later intent reconciliation reads that result and domain facts rather than re-running classifiers.
 * The normalization coordinator no longer implements six live objective branches. Existing domain policies provide registered readers with the original predicates and fog-of-war restrictions.
-* TaskExecutor no longer stamps a child-completed mutation a second time. A nonnegative existing StateVersionAfter is the child receipt; Raid/Attack terminal handoff now carries that receipt. Ground routines that may still move after a child stamp deliberately retain their old boundaries pending a full action transaction audit.
+* TaskExecutor no longer stamps a child-completed mutation a second time. A nonnegative existing StateVersionAfter is the child receipt; Raid/Attack terminal handoff now carries that receipt. Ground/capture and aviation strike/return routines now update the same receipt after each committed canonical action, preventing both aggregate double-stamping and a stale receipt hiding later movement.
 * MissionOutcomeLedger no longer declares any domain payload fields or provides the Economy objective predicate. It contains only fact correlation/delegation; the legacy facade moved to its own file.
 
-Common operational ingestion is now migrated; operation-level terminal interpretation and all revision transaction boundaries remain incomplete. Pipeline uses FinalizeSteps → session.Settle(MissionStepResult). Internal legacy domain handlers temporarily consume a view sharing the exact common fact record and typed payload dictionary. There is no conversion copy or second disposition. New tests cover all six dispositions through a generic typed result, stale-session refusal and six-domain ingress parity.
+Main and reaction ingestion use common results through the session. Domain transition handlers remain the authority for leg-versus-operation completion; global native transaction acceptance remains incomplete. Pipeline uses FinalizeSteps → session.Settle(MissionStepResult). Internal legacy domain handlers temporarily consume a view sharing the exact common fact record and typed payload dictionary. There is no conversion copy or second disposition. New tests cover all six dispositions through a generic typed result, stale-session refusal and six-domain ingress parity.
 
 The ReconcileOutcome coordinator no longer embeds Raid campaign completion, Attack intermediate/side-leg/completion, Recon external waypoint continuation, Economy progress/recovery/no-progress or ordered payload creation branches. Domain partial callbacks retain the original order. Economy retirement/loan repayment and generated intent constructors moved to their corresponding domains; generic retirement delegates domain preparation, then uses the same intent removal/lease owner. Fourteen moved helper methods match the pre-extraction source byte-for-byte.
 
 AdvanceIntent no longer directly copies Scout/Attack/Raid/Economy payloads or interprets support/air actors as a primary. Ordered mover callbacks call the same ground-leg owner, preserve durable Economy/Development pins and reconcile Recon exclusivity. Economy suppression-on-capability-failure runs in the Economy partial. The accounting and suspension/stall/reap sequence remains unchanged; no additional eligibility predicate was introduced.
+
+Additional removed paths: the unused ProvisioningSession.DurableClaimedArmyIds store/writer; Provisioning's independent tentative HashSet; Housekeeping's Attack roster/non-roster/deployment interpretation; Pipeline's Economy completion predicate; common Normalize domain fact branches; common ResolveActive mission branches; outer formation/rebase/recall bumps. Support release now re-projects only its operation at session settlement, without removing other owners or anonymous pass claims.
 
 ## E. Behaviour parity
 
@@ -89,6 +105,8 @@ No score, threshold, target, priority, cost, movement, combat/capture, endurance
 A second frozen fingerprint covers **5,760 lifecycle transitions** against the assembly before this domain extraction (after prior validated session/lease migration): `C521F075668400B3A1CBE227EB370F298ADF2F5714D78E01761F77A07DDE5335`. It includes six mission kinds/dispositions, existing/fresh intent, progress, satisfied/external goal, operation start, five legs, accounting and cooldown state. New lease tests distinguish completed Raid/Attack legs (existing durable continuation retained) from terminal main-operation invalidation/failure and verify another operation remains untouched.
 
 A third frozen pre-extraction fingerprint covers **5,760 capability-failure/aging transitions**: `FF74620661454EAA6C80DAF01394D39EB1E5ED37F9B3C9FA875F92FAA5DFBECF`. It exercises missing/contended mover, pool exhaustion, age/stall edges, moverless Recon and Economy collector cases. Twelve added cases include that fingerprint, durable pinning and Raid/Attack side actors whose live phase may already have changed. Both transition fingerprints were captured by compiling the fixture against the immutable pre-extraction assembly, then running with an isolated copy of that assembly.
+
+All six extracted ResolveActive branch bodies mechanically match their pre-extraction source after alias/continue adaptation. An attempted 270-case native ResolveActive fingerprint could not execute Unity object equality even at its baseline; that fixture was removed and is not counted as passing.
 
 This proves result-fact parity for that matrix and differential unit coverage, not full native gameplay parity. Representative Unity E2E scenarios were **not run**.
 
@@ -104,7 +122,7 @@ Production/Development paths still use their original bank APIs. The continuatio
 
 Mutation endpoints use one process-monotonic policy; observation publication does not advance revision. FoundBase now has a tested synchronous child/outer commit boundary and rollback/no-op drops pending stamps. TaskExecutor respects an existing child StateVersionAfter receipt instead of advancing again for the same settled action. A reflection proof against the actual immutable baseline and current assemblies reports child+aggregate revision delta **2 → 1**; new tests cover stamped, unstamped and no-op aggregate cases. This is an intentional freshness correction, not a gameplay rule change. Dirty masks, reason-scoped payloads, freshness equality checks, snapshot refresh placement, AiMapMemory knowledge revision and route/combat keys are unchanged. FoundBase still lets the existing observation pass determine dirty facts; no speculative new mask was added. No new cache was added. WorldDelta freezes its actor/contact/hex payload.
 
-This domain transition phase introduces no revision writer, cache or dirty-mask change; revision/storage adapters and snapshot refresh ordering are untouched. The new atomic session.Apply API and nested synchronous transaction policy are tested. Raid/Attack handoff commit and publication have been combined without changing their masks. Other producers still retain separate commit/observation endpoints. Complete WorldDelta transaction migration and complete write→refresh→next-read gameplay verification remain pending. Cache fixture results are below; native combat cache tests did not pass in either managed baseline or refactor.
+This continuation changes receipt ownership at continuous ground and aviation action boundaries while preserving dirty masks, storage adapters and snapshot refresh ordering. GroundCombatLegStep, ReconGround, assault/intercept and Economy/Development transport report actual movement/battle/stealth commits; capture retains its original guarded commit. Aviation strikes and each return/rebase movement report their own receipt. Pipeline and Phase B no longer stamp those self-versioning actions a second time. The new atomic session.Apply API and nested synchronous transaction policy are tested. Raid/Attack handoff commit and publication have been combined without changing their masks. Other producers retain separate commit/observation endpoints delegated to the same owner. Generic receipt tests cover zero/one/three return actions, rejected no-op and aggregate suppression; they do not execute the native movement APIs. Complete write→refresh→next-read gameplay verification remains pending. Cache fixture results are below; native combat cache tests did not pass in either managed baseline or refactor.
 
 ## H. Tests and environment limits
 
@@ -113,8 +131,8 @@ The prescribed setup.sh could not install tools in this container. Used the alre
 Raw compile baseline has three old reference/stub errors: two FindObjectsInactive overloads and one Mathf.SmoothDamp. Diagnostic copies adapt only those UI/audio calls to compile runnable managed tests; baseline and refactor use identical adapters. This is not a Unity build.
 
 Baseline: **1,509 cases; 984 passed / 525 failed**.
-Refactor: **1,629 cases; 1,104 passed / 525 failed**.
-**120 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+Refactor: **1,642 cases; 1,117 passed / 525 failed**.
+**133 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
 
 During the continuation, one token API initially returned ReservationOwner where an existing assertion expected a string; the token compatibility API was restored while reservation writers retain typed identity. New test setup initially assigned read-only role projections; it was corrected to use the existing Objective model. During typed payload migration, two existing loan-repayment tests exposed nullable getters coalescing missing identity to struct/integer zero. Getters now use explicitly nullable defaults; new tests distinguish null from legal actor id 0 and prove that read access does not create payload facts. A moved shared-ground helper initially lacked its System.Linq import; the diagnostic compile caught it and the import was restored. The final compile/test gates have zero new failures.
 
@@ -132,7 +150,7 @@ The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execu
 | AiRaidIntentStateTests | 7 | 8 |
 | AiAttackLaneTests | 23 | 33 |
 | AiAggressionOwnershipRegressionTests | 12 | 10 |
-| AiHousekeepingMissionContractTests | 14 | 0 |
+| AiHousekeepingMissionContractTests | 16 | 0 |
 | AiReconTrimEligibilityTests | 8 | 3 |
 | AiReconContinuityPayloadTests | 3 | 1 |
 | AiReconAirLifecycleTests | 10 | 4 |
@@ -146,12 +164,25 @@ The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execu
 
 ## I. Remaining work / adapters
 
-The overall task is **not done**. Remaining requirements:
+The overall task is **not done**: full native acceptance and the complete mutation/cache E2E proof are outstanding.
 
-1. Complete operation-level normalized disposition migration. The operational Pipeline/session/Continuity entry points now accept MissionStepResult, including generic typed results. Internal domain transitions now bind ordered partial-policy handlers and still use a noncopying MissionTurnOutcome view of the same core record/payloads. ReconcileOutcome has no embedded mission branches. AdvanceIntent now retains common accounting/suspension/aging and delegates actor-role and payload facts to domain callbacks. Its two existing capability-failure aging expressions are one domain composition predicate, preserving Raid's reap-only exception and existing Recon/Economy predicates. ResolveActive still contains domain coordination to review; generic operation-level disposition/remaining transaction acceptance is not claimed complete. Current common lease retirement consumes the existing domain decision to remove the durable intent; it deliberately does not re-interpret leg Completed as whole-operation completion. New-mission extension still needs transition-policy adaptation before the full criterion is met.
-2. Audit and consolidate every remaining actual mutation boundary (including continuous ground/capture and air support strike→return sequences). Known TaskExecutor stamped-child duplication and FoundBase are fixed and proven at the synchronous scope boundary; the global exactly-once transaction criterion is not claimed yet.
-3. Remove remaining compatibility callers only after parity. Current adapters: MissionIntentState methods (fixtures and Recon production callers), ActorCommitments.FromIntents/static validity methods and detached pass views, MissionTurnOutcome legacy projections and noncopying domain ingress view, V2StateVersion readers/tests, interrupt discovery/capability wrappers. The old resource ledger's production mutation callers are now only MissionLeaseBook.
-4. Full Unity 6000.5.4f1 EditMode suite and specified Recon/Economy base/Attack/Raid/Defence/Development E2E scenarios. Native null/combat/asset failures cannot be evaluated by this managed harness.
-5. Complete bottom-up domain-local support release and generated-output handling review, all transaction/cache gameplay acceptance and mission-extension proof before declaring the architectural goal achieved.
+| Adapter | Why retained / remaining readers | Removal requirement |
+|---|---|---|
+| MissionIntentState legacy methods | existing fixtures and Recon callers; delegate to the one scoped/domain store | migrate these caller signatures after native parity; no storage to merge |
+| ActorCommitments and static validity facades | planners/Provisioning/Housekeeping require normalized views; use MissionActorPolicy and lease storage | callers can adopt an equivalent read interface; do not delete authoritative role gates |
+| MissionTurnOutcome.View | existing internal domain handlers and fixtures; shares one common record/payload dictionary | direct typed policy migration, preserving frozen mixed-payload precedence; no second disposition owner exists |
+| StrategicResourceReservationLedger | original bank row/replacement/expiry semantics; production writes enter MissionLeaseBook | move storage only after native bank parity; there is no mirrored reservation store |
+| StrategicInterruptRegistry | reason-scoped pending fact storage behind WorldDelta/session APIs; diagnostic/read wrappers remain | replace storage only after native trigger/cache acceptance |
+| V2StateVersion | freshness readers and tests; delegates to the one WorldDeltaLifecycle counter | migrate read signatures; no semantic persistent value or separate counter |
+| Detached actor/pass views | pre-turn initiative, selectors and standalone test fixtures; derived/read-only for durable ownership | must remain isolated from the live session until those APIs receive explicit scope |
 
-No dual-written storage was introduced: one persistent store per domain, one actor claim table per active session, the original resource row store and one revision policy. Detached pass views are derived from intents/snapshot and do not retire or mutate the session's operation lifecycle. The new generic lease coordinator contains no mission eligibility, scores or strategic transitions. The full task is still incomplete because operation-level transitions and remaining mutation adapters still require mission-specific migration work. Common ingestion plus typed payload transport alone does not satisfy the end-to-end new-mission criterion.
+Remaining acceptance work:
+
+1. Run Unity 6000.5.4f1 full AI Editor suite and the specified Recon, Economy base-builder, Attack, Raid, ActiveDefence and Development E2E scenarios. This container has no native Unity runtime/editor. The managed harness omits UnityTest/TestCaseSource and cannot supply engine object equality/assets/combat.
+2. Verify every native committed mutation, rollback and no-op through revision → invalidation → refresh → next read. The known FoundBase, child+aggregate, continuous ground/capture and aviation strike/return receipt paths have been centralized, but global exactly-once is not claimed without engine scenarios.
+3. Validate simultaneous Economy obligations and same-turn release/retry against physical stock in Unity. Deferred H/E/M/T saving claims retain the existing ability to exceed stock; changing that would change the requested bank semantics.
+4. Run a real new-mission integration proof with the existing domain registration points. Source ownership is centralized, but native mission-extension acceptance is not claimed.
+
+Generated Development output remains deliberately persistent domain state: its original facility/role uniqueness, reconciliation predicate and age rule govern removal. It is not a temporary mission actor claim and must not be cleared merely because a delivery leg completed. Persistent Economy suppression and durable aviation/Recon role state retain their original domain rules.
+
+No dual-written storage was introduced: one persistent store per domain, one claim table per active lease book, the original bank row store and one revision counter. Tentative provisioning passes have independent scope, use the same lease storage abstraction and cannot retire another operation. Session disposal closes all pass handles. The common settlement coordinator re-projects a released support through the existing authoritative policy; domains do not manually clean actor tables.

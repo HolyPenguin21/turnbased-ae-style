@@ -75,5 +75,16 @@ namespace Game.Ai.V2
                     + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
             }
         }
+        private static void FinalizeAirSupportResolution(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        {
+            GroundCombatAirSupport.ReleaseOrphanStrikes(player, pass.State.All);
+        }
+
+        private static void CaptureGroundHandoffFacts(ExecutionResult e, MissionTurnOutcome o)
+        {
+            if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack)
+                o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
+        }
+
     }
 }

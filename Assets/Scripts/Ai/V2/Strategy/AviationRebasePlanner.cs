@@ -368,6 +368,10 @@ namespace Game.Ai.V2
             if (wing == null)
                 yield break;
 
+            // Formation and its guarded first flight are the launch transaction. Later flight
+            // steps below have independent receipts; no caller stamps this sequence again.
+            WorldDeltaLifecycle.RecordExecutionMutation(null, true);
+
             bool changed = !wing.Hex.Equals(plan.SourceHex);
             int guard = Mathf.Max(1, wing.CurrentMovement + 1);
             while (!wing.Hex.Equals(plan.DestinationHex) && wing.CurrentMovement > 0 && guard-- > 0)
@@ -381,6 +385,8 @@ namespace Game.Ai.V2
                 HexCoord prior = wing.Hex;
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
+                WorldDeltaLifecycle.RecordExecutionMutation(null,
+                    !(wing?.Hex ?? trace.EndHex).Equals(prior));
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;
@@ -441,7 +447,7 @@ namespace Game.Ai.V2
                             result.CombatChanged = true;
                             result.AirSupportStrikeSucceeded = true;
                         }
-                        WorldDeltaLifecycle.CommitMutation();
+                        WorldDeltaLifecycle.RecordExecutionMutation(result, true);
                         AiDebugLog.Write($"[AI][V2][Aviation][RecoveryStrike] actor=#{wing.Id} "
                             + $"hex=({wing.Hex.Q},{wing.Hex.R}) attacked=1 "
                             + $"policy={task.StrikePolicy.Kind} "
@@ -461,6 +467,8 @@ namespace Game.Ai.V2
                 HexCoord prior = wing.Hex;
                 yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
                 wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
+                WorldDeltaLifecycle.RecordExecutionMutation(result,
+                    !(wing?.Hex ?? trace.EndHex).Equals(prior));
                 if (wing == null || wing.Hex.Equals(prior))
                     break;
                 changed = true;
