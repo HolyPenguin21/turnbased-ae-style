@@ -12,6 +12,17 @@ namespace Game.EditorTests
         public void Reset() { AiTurnSession.ClearAll(); MissionIntentRegistry.Clear(); }
 
         [Test]
+        public void LookupForAnotherTurnNeverEndsTheLiveSessionScope()
+        {
+            var p = new PlayerSetupData();
+            using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            session.Recon.MarkReconActorTrimmed(4, 7);
+            Assert.That(ReconTurnStateStore.For(p, 9).ReconActorsTrimmedThisTurn(9), Is.Empty);
+            Assert.That(session.Recon.ReconActorsTrimmedThisTurn(4), Does.Contain(7));
+            Assert.That(ReconTurnStateStore.For(p, 4).ReconActorsTrimmedThisTurn(4), Does.Contain(7));
+        }
+
+        [Test]
         public void NewTurnHasFreshReconAndResourcesButKeepsIntent()
         {
             var player = new PlayerSetupData();
