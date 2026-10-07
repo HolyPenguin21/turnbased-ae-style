@@ -89,6 +89,9 @@ namespace Game.Ai.V2
         public void RefreshObjectiveStatesLive(PlayerSetupData player) =>
             MissionStepResultPolicy.RefreshObjectiveStatesLive(_rows.Values, player);
 
+        // Canonical operational ingress; compatibility Finalize exposes the same normalized objects.
+        public IReadOnlyList<MissionStepResult> FinalizeSteps() => Finalize();
+
         public List<MissionTurnOutcome> Finalize()
         {
             var list = new List<MissionTurnOutcome>();

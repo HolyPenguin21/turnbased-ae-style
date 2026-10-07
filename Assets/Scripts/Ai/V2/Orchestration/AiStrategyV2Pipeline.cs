@@ -979,10 +979,9 @@ namespace Game.Ai.V2
                     if (selected == null)
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
-                        foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                        foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
                                      .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                            MissionContinuityLayer.ReconcileStep(
-                                player, snapshot.TurnNumber, outcome);
+                            turnSession.Settle(outcome);
                         noProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
@@ -1032,10 +1031,9 @@ namespace Game.Ai.V2
                     }
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
-                    foreach (MissionTurnOutcome outcome in cycleLedger.Finalize()
+                    foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
                                  .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                        MissionContinuityLayer.ReconcileStep(
-                            player, snapshot.TurnNumber, outcome);
+                        turnSession.Settle(outcome);
                     // A single atomic move may consume the last MP after Provisioning had
                     // legitimately reserved this owner's completion AP. Settle its stage now.
                     InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
@@ -1297,7 +1295,7 @@ namespace Game.Ai.V2
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
                 MissionContinuityLayer.ReconcileAfterTurn(player,
-                    snapshot.TurnNumber, new List<MissionTurnOutcome>());
+                    snapshot.TurnNumber, System.Array.Empty<MissionStepResult>());
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
             }
 

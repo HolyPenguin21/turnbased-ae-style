@@ -1086,12 +1086,12 @@ namespace Game.Ai.V2
         // Mid-turn variant: apply exactly one settled outcome without aging, stalling or
         // reaping unrelated intents. ReconcileAfterTurn remains the sole end-of-turn sweep owner.
         public static void ReconcileStep(PlayerSetupData player, int turn,
-            MissionTurnOutcome outcome)
+            MissionStepResult outcome)
         {
             if (player == null || outcome == null)
                 return;
             ReconcileOutcome(MissionIntentRegistry.GetOrCreate(player),
-                AiAllocatorStateRegistry.GetOrCreate(player), outcome, turn);
+                AiAllocatorStateRegistry.GetOrCreate(player), MissionTurnOutcome.View(outcome), turn);
         }
 
         // StrategicPhaseA's ProtectActiveEconomyBuild reserves this intent's physical resources
@@ -1120,14 +1120,15 @@ namespace Game.Ai.V2
         }
 
         public static void ReconcileAfterTurn(PlayerSetupData player, int turn,
-            IReadOnlyList<MissionTurnOutcome> outcomes)
+            IReadOnlyList<MissionStepResult> outcomes)
         {
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             AiAllocatorState allocState = AiAllocatorStateRegistry.GetOrCreate(player);
             var seen = new HashSet<MissionIntentKey>();
 
-            foreach (MissionTurnOutcome o in outcomes ?? new List<MissionTurnOutcome>())
+            foreach (MissionStepResult result in outcomes ?? Array.Empty<MissionStepResult>())
             {
+                MissionTurnOutcome o = MissionTurnOutcome.View(result);
                 seen.Add(o.IntentKey);
                 ReconcileOutcome(state, allocState, o, turn);
             }

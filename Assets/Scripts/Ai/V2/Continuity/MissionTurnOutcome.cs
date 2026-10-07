@@ -7,9 +7,12 @@ namespace Game.Ai.V2
 
     public sealed class MissionTurnOutcome : MissionStepResult
     {
-        public StableMissionKey AttemptKey;
-        public MissionProposal Proposal;
-        public bool WasCommitment;
+        public MissionTurnOutcome() { }
+        private MissionTurnOutcome(MissionStepResult source) : base(source) { }
+        // Temporary domain-policy adapter: shares common facts and typed payloads by reference.
+        internal static MissionTurnOutcome View(MissionStepResult result) =>
+            result as MissionTurnOutcome ?? new MissionTurnOutcome(result);
+
         public ExecutionOutcome Outcome
         {
             get => Disposition == MissionStepDisposition.Completed ? ExecutionOutcome.Completed
@@ -22,14 +25,6 @@ namespace Game.Ai.V2
                 : Disposition == MissionStepDisposition.PermanentFailure
                     ? MissionStepDisposition.PermanentFailure : MissionStepDisposition.Invalidated;
         }
-        public bool ObjectiveSatisfied;
-        // Review P1 #1/#2 — the objective was met by something OTHER than this actor's own
-        // execution reaching its goal: another action opened the hex mid-turn (live pass), or
-        // provisioning found it already satisfied (ProvisionFailureKind.TargetSatisfied). For a
-        // durable Explore/Refresh ground scout that is a satisfied WAYPOINT, not a finished role,
-        // so ReconcileAfterTurn keeps the intent and re-focuses it next turn — mirroring the
-        // own-execution ExecutionResult.DurableRoleContinues path.
-        public bool ObjectiveSatisfiedExternally;
         public bool StructuralFailure
         {
             get => Disposition == MissionStepDisposition.PermanentFailure;
@@ -40,13 +35,6 @@ namespace Game.Ai.V2
                     Disposition = MissionStepDisposition.Invalidated;
             }
         }
-        public bool MadeProgress;
-        public int StepsMoved;
-        public DeferReason? AllocationDeferReason;
-        public ProvisionFailureKind? ProvisionFailureKindValue;
-        // The executor's stop reason when the mission reached Execution (null otherwise).
-        // Continuity reads it to tell a proven route failure from a transient stop.
-        public ExecutionStopReason? StopReason;
         public ScoutTargetKind ScoutKind
         {
             get => GetPayload<ReconStepPayload>()?.ScoutKind ?? default(ScoutTargetKind);
@@ -62,16 +50,11 @@ namespace Game.Ai.V2
             get => GetPayload<ReconStepPayload>()?.FocusHex ?? default(HexCoord);
             set => PayloadForWrite<ReconStepPayload>().FocusHex = value;
         }
-        // The mover's actual hex after this turn's execution step — set from
-        // ExecutionResult.FinalHex. Continuity reads it to tell "arrived at target this turn"
-        // apart from "still en route" (e.g. EconomyIntent.ArrivalTurn for MobileCollection).
-        public HexCoord FinalHex;
         public bool HasScoutPayload
         {
             get => GetPayload<ReconStepPayload>()?.HasScoutPayload ?? default(bool);
             set => PayloadForWrite<ReconStepPayload>().HasScoutPayload = value;
         }
-        public MissionKind MissionKind = MissionKind.Scout;
         public bool HasRaidPayload
         {
             get => GetPayload<RaidStepPayload>()?.HasRaidPayload ?? default(bool);

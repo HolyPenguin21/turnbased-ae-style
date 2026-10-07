@@ -91,6 +91,12 @@ namespace Game.Ai.V2
             MissionLeaseBook.AssertClearAtTurnEnd(Player, TurnNumber);
         }
 
+        internal void Settle(MissionStepResult result)
+        {
+            EnsureActive();
+            MissionContinuityLayer.ReconcileStep(Player, TurnNumber, result);
+        }
+
         internal int Apply(WorldDelta delta)
         {
             EnsureActive();

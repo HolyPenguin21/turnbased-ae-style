@@ -433,7 +433,7 @@ Separate cache pass: no cache/key/dirtiness rule added. FoundBase previously all
 
 MissionStepResult owns a per-step typed payload dictionary, not a world cache or ownership registry. Normalization writes its facts; domain continuity reads them. Legacy MissionTurnOutcome properties contain no second storage. Missing read access is non-mutating; nullable identity stays null and actor id 0 remains legal. Extra execution evidence (Recon durable continuation, Economy delivery/holding, Development delivery and Attack air strike) is retained explicitly.
 
-Domain execution classification uses immutable code bindings to the existing Continuity partials. The same common interruption and provisioning semantics remain. Economy's live goal predicate moved verbatim to EconomyLifecycleState; ledger now owns neither that rule nor a domain field schema. Generic MissionStepResult<T> transport is tested, but existing operational ingress still uses MissionTurnOutcome; full mission extension without an ingress adapter is not claimed. The 5,442-combination golden matrix and all baseline-passing managed tests remain unchanged.
+Domain execution classification uses immutable code bindings to the existing Continuity partials. The same common interruption and provisioning semantics remain. Economy's live goal predicate moved verbatim to EconomyLifecycleState; ledger now owns neither that rule nor a domain field schema. Generic MissionStepResult<T> transport and operational ingress are tested. Pipeline now calls session.Settle(MissionStepResult); internal legacy domain paths read a noncopying MissionTurnOutcome view sharing one fact record/payload dictionary. Full mission extension without transition-policy adaptation is not claimed. The 5,442-combination golden matrix and all baseline-passing managed tests remain unchanged.
 
 ### Child revision receipt audit
 
@@ -442,3 +442,7 @@ TaskExecutor previously always re-stamped any productive result, including alrea
 Ground capture and air-support paths may continue moving after a child commit. They must not claim a terminal receipt for that intermediate mutation; their producer boundaries remain an explicit transaction migration item. Synchronous transaction scopes must not cross coroutine yields.
 
 The six live objective checks previously embedded in the normalization coordinator now bind to existing domain Continuity partials; the exact actor/phase/target predicates and fog-of-war restrictions are retained.
+
+### Common ingress checkpoint
+
+`MissionStepResult` now owns the existing common facts, not just disposition/cost/actor. Its private record is shared only by explicit compatibility views. `MissionTurnOutcome` has no common storage; outcome flags and domain properties remain projections. Pipeline consumes the common ledger result and session settlement API. The sixteen original common fact defaults remain unchanged. Fifteen new tests prove shared reference facts, six generic result transitions, another operation surviving cleanup, six-domain step parity and stale-session refusal. No new persistent state or cache was added.
