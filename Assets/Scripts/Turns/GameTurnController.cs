@@ -1001,7 +1001,7 @@ namespace Game.Turns
             {
                 CurrentPlayer = null;
                 ReplenishMoveForOwner(null);
-                if (popupPanel != null)
+                if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(null);
                 TurnStateChanged?.Invoke();
                 StartCoroutine(PassAfterDelay(BeginNewTurn));
@@ -1033,7 +1033,7 @@ namespace Game.Turns
             else
             {
                 StealthSystem.TakeDetectionNotices(player);
-                if (popupPanel != null)
+                if (popupPanel != null && !_aiObserverMatch)
                     popupPanel.ShowForOther(player);
                 if ((debugWatchAiTurns || _aiObserverMatch) && cardHand != null)
                     cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
@@ -1159,7 +1159,6 @@ namespace Game.Turns
             if (!_aiObserverPauseRequested && _aiObserverPauseEngaged)
             {
                 _aiObserverPauseEngaged = false;
-                RestoreAiTurnPopupAfterObserverPause();
                 TurnStateChanged?.Invoke();
             }
             RefreshAiObserverPauseButton();
@@ -1183,18 +1182,9 @@ namespace Game.Turns
             if (_aiObserverPauseEngaged)
             {
                 _aiObserverPauseEngaged = false;
-                RestoreAiTurnPopupAfterObserverPause();
                 TurnStateChanged?.Invoke();
                 RefreshAiObserverPauseButton();
             }
-        }
-
-        private void RestoreAiTurnPopupAfterObserverPause()
-        {
-            if (!_aiObserverMatch || _gameOver || IsCombatPresentationActive || popupPanel == null
-                || popupPanel.IsShowing)
-                return;
-            popupPanel.ShowForOther(CurrentPlayer);
         }
 
         private void RefreshAiObserverPauseButton()
