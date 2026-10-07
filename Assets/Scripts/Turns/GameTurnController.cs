@@ -1204,14 +1204,15 @@ namespace Game.Turns
 
             _aiObserverPauseButton.gameObject.SetActive(_aiObserverMatch);
             _aiObserverPauseButton.interactable = _aiObserverMatch && !_gameOver && !IsCombatPresentationActive;
+            string label = _aiObserverPauseRequested ? ">" : "||";
             TMP_Text tmp = _aiObserverPauseButton.GetComponentInChildren<TMP_Text>(true);
             if (tmp != null)
-                tmp.text = _aiObserverPauseEngaged ? ">" : "||";
+                tmp.text = label;
             else
             {
                 Text legacy = _aiObserverPauseButton.GetComponentInChildren<Text>(true);
                 if (legacy != null)
-                    legacy.text = _aiObserverPauseEngaged ? ">" : "||";
+                    legacy.text = label;
             }
         }
 
