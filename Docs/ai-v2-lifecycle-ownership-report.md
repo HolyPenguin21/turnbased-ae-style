@@ -28,7 +28,7 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 | world revision and fact publication | WorldDeltaLifecycle | V2StateVersion and interrupt Mark are storage-free compatibility adapters |
 | common step disposition | result boundary + registered MissionContinuityLayer domain classifiers | one MissionStepResult.Disposition; old Outcome/StructuralFailure are projections |
 | typed domain facts | MissionStepResult payload store | one typed value per payload type; legacy field API owns no copies |
-| domain durable lifecycle transitions | existing MissionContinuityLayer domain paths | same transitions in domain partial policies; common coordinator uses disposition and ordered handlers; further AdvanceIntent/ResolveActive and transaction migration still pending |
+| domain durable lifecycle transitions | existing MissionContinuityLayer domain paths | same transitions in domain partial policies; common coordinator uses disposition and ordered handlers; common AdvanceIntent accounting delegates domain role/fact/capability policy; ResolveActive and transaction migration still pending |
 
 ## C. Changed files
 
@@ -45,7 +45,8 @@ The audit is in [ai-v2-lifecycle-ownership-audit.md](ai-v2-lifecycle-ownership-a
 | CapabilityPoolExhaustionRegistry, AviationObligationStallRegistry, StrategicTempoBudget, StrategicSpendability | scoped EndTurn adapters used by session after final strategic reads |
 | AiTurnSession.Settle; Pipeline; Continuity public entry points | operational result ingress accepts MissionStepResult; existing domain handlers use a noncopying compatibility view, preserving leg/campaign distinctions |
 | Continuity domain partials; GroundCombatTransitions; DomainResults | ReconcileOutcome mission branches → ordered domain callbacks; same side-leg/completion/recovery/payload precedence; 14 moved helpers are byte-identical |
-| AiDomainTransitionParityTests | frozen 5,760-transition fingerprint plus completed-leg/terminal-operation independent lease cleanup tests |
+| AiDomainTransitionParityTests | two frozen 5,760-transition fingerprints, completed-leg/terminal-operation independent lease cleanup, pinned mover and frozen support-role tests |
+| AdvanceIntent / domain fact and mover callbacks | inline role interpretation and domain fact mutations → ordered domain callbacks; accounting, existing suspension/stall/reap order unchanged |
 | ARCHITECTURE.md | documents actual migrated contracts and explicitly lists remaining work |
 | nine new Editor test files (+ Unity metadata) | session/persistent/result/delta/domain fact parity plus lease lifetime, bank stages, stale-turn write and pre-intent failure tests; no product verification stubs |
 
@@ -77,6 +78,8 @@ Common operational ingestion is now migrated; operation-level terminal interpret
 
 The ReconcileOutcome coordinator no longer embeds Raid campaign completion, Attack intermediate/side-leg/completion, Recon external waypoint continuation, Economy progress/recovery/no-progress or ordered payload creation branches. Domain partial callbacks retain the original order. Economy retirement/loan repayment and generated intent constructors moved to their corresponding domains; generic retirement delegates domain preparation, then uses the same intent removal/lease owner. Fourteen moved helper methods match the pre-extraction source byte-for-byte.
 
+AdvanceIntent no longer directly copies Scout/Attack/Raid/Economy payloads or interprets support/air actors as a primary. Ordered mover callbacks call the same ground-leg owner, preserve durable Economy/Development pins and reconcile Recon exclusivity. Economy suppression-on-capability-failure runs in the Economy partial. The accounting and suspension/stall/reap sequence remains unchanged; no additional eligibility predicate was introduced.
+
 ## E. Behaviour parity
 
 No score, threshold, target, priority, cost, movement, combat/capture, endurance, capacity, production choice or Housekeeping policy was edited. The first checkpoint compared nine mechanically moved method bodies byte-for-byte against baseline. The subsequent actor-build change adds operation keys to the same claims and stores the same preparation-host flag; role validity predicates are unchanged. A golden result matrix of **5,442** provisioning/execution combinations across Recon, Economy, Raid, Attack, ActiveDefence and Development exactly matches the original master fingerprint:
@@ -84,6 +87,8 @@ No score, threshold, target, priority, cost, movement, combat/capture, endurance
 `88C62EC22801E3E8127D1F2E15205FB3978A32FBA292484249A1E3EABAAECE8F`
 
 A second frozen fingerprint covers **5,760 lifecycle transitions** against the assembly before this domain extraction (after prior validated session/lease migration): `C521F075668400B3A1CBE227EB370F298ADF2F5714D78E01761F77A07DDE5335`. It includes six mission kinds/dispositions, existing/fresh intent, progress, satisfied/external goal, operation start, five legs, accounting and cooldown state. New lease tests distinguish completed Raid/Attack legs (existing durable continuation retained) from terminal main-operation invalidation/failure and verify another operation remains untouched.
+
+A third frozen pre-extraction fingerprint covers **5,760 capability-failure/aging transitions**: `FF74620661454EAA6C80DAF01394D39EB1E5ED37F9B3C9FA875F92FAA5DFBECF`. It exercises missing/contended mover, pool exhaustion, age/stall edges, moverless Recon and Economy collector cases. Twelve added cases include that fingerprint, durable pinning and Raid/Attack side actors whose live phase may already have changed. Both transition fingerprints were captured by compiling the fixture against the immutable pre-extraction assembly, then running with an isolated copy of that assembly.
 
 This proves result-fact parity for that matrix and differential unit coverage, not full native gameplay parity. Representative Unity E2E scenarios were **not run**.
 
@@ -108,8 +113,8 @@ The prescribed setup.sh could not install tools in this container. Used the alre
 Raw compile baseline has three old reference/stub errors: two FindObjectsInactive overloads and one Mathf.SmoothDamp. Diagnostic copies adapt only those UI/audio calls to compile runnable managed tests; baseline and refactor use identical adapters. This is not a Unity build.
 
 Baseline: **1,509 cases; 984 passed / 525 failed**.
-Refactor: **1,617 cases; 1,092 passed / 525 failed**.
-**108 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
+Refactor: **1,629 cases; 1,104 passed / 525 failed**.
+**120 new cases pass; zero previously passing cases regress or disappear.** The first error line of every baseline failure is unchanged. The baseline failures include unsupported native Unity Object equality and asset loading. They were not fixed or hidden.
 
 During the continuation, one token API initially returned ReservationOwner where an existing assertion expected a string; the token compatibility API was restored while reservation writers retain typed identity. New test setup initially assigned read-only role projections; it was corrected to use the existing Objective model. During typed payload migration, two existing loan-repayment tests exposed nullable getters coalescing missing identity to struct/integer zero. Getters now use explicitly nullable defaults; new tests distinguish null from legal actor id 0 and prove that read access does not create payload facts. A moved shared-ground helper initially lacked its System.Linq import; the diagnostic compile caught it and the import was restored. The final compile/test gates have zero new failures.
 
@@ -143,7 +148,7 @@ The harness covers Test/TestCase fixtures in Game.EditorTests; it does not execu
 
 The overall task is **not done**. Remaining requirements:
 
-1. Complete operation-level normalized disposition migration. The operational Pipeline/session/Continuity entry points now accept MissionStepResult, including generic typed results. Internal domain transitions now bind ordered partial-policy handlers and still use a noncopying MissionTurnOutcome view of the same core record/payloads. ReconcileOutcome has no embedded mission branches. AdvanceIntent and ResolveActive still contain cross-domain accounting/role coordination to migrate carefully. Current common lease retirement consumes the existing domain decision to remove the durable intent; it deliberately does not re-interpret leg Completed as whole-operation completion. New-mission extension still needs transition-policy adaptation before the full criterion is met.
+1. Complete operation-level normalized disposition migration. The operational Pipeline/session/Continuity entry points now accept MissionStepResult, including generic typed results. Internal domain transitions now bind ordered partial-policy handlers and still use a noncopying MissionTurnOutcome view of the same core record/payloads. ReconcileOutcome has no embedded mission branches. AdvanceIntent now retains common accounting/suspension/aging and delegates actor-role and payload facts to domain callbacks. Its two existing capability-failure aging expressions are one domain composition predicate, preserving Raid's reap-only exception and existing Recon/Economy predicates. ResolveActive still contains domain coordination to review; generic operation-level disposition/remaining transaction acceptance is not claimed complete. Current common lease retirement consumes the existing domain decision to remove the durable intent; it deliberately does not re-interpret leg Completed as whole-operation completion. New-mission extension still needs transition-policy adaptation before the full criterion is met.
 2. Audit and consolidate every remaining actual mutation boundary (including continuous ground/capture and air support strike→return sequences). Known TaskExecutor stamped-child duplication and FoundBase are fixed and proven at the synchronous scope boundary; the global exactly-once transaction criterion is not claimed yet.
 3. Remove remaining compatibility callers only after parity. Current adapters: MissionIntentState methods (fixtures and Recon production callers), ActorCommitments.FromIntents/static validity methods and detached pass views, MissionTurnOutcome legacy projections and noncopying domain ingress view, V2StateVersion readers/tests, interrupt discovery/capability wrappers. The old resource ledger's production mutation callers are now only MissionLeaseBook.
 4. Full Unity 6000.5.4f1 EditMode suite and specified Recon/Economy base/Attack/Raid/Defence/Development E2E scenarios. Native null/combat/asset failures cannot be evaluated by this managed harness.

@@ -713,6 +713,66 @@ namespace Game.Ai.V2
             return true;
         }
 
+        private static bool TryApplyRaidMoverFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            // For a Raid the executor of a given turn may be the
+            // SUPPORT army (Reinforcement transit / handoff), not the primary. Generic code
+            // must never let that support id overwrite PrimaryArmyId and silently orphan the
+            // real raiding force. Only a mover that IS (or is taking over as) the primary may
+            // rewrite it: a support-executed step leaves the primary untouched.
+            RaidIntent raid = intent.Raid;
+            // Actor role is taken from the immutable provisioned outcome. Execution may already
+            // have called CompleteRaidReinforcement, clearing SupportArmyId and switching the
+            // live intent to Assault; inspecting that mutated phase here used to misclassify the
+            // convoy as the new primary. A completed handoff deliberately releases the convoy;
+            // only a still-travelling selected support becomes a durable claim.
+            bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
+                && (o.RaidPhase == RaidMissionPhase.Reinforcement || o.RaidPhase == RaidMissionPhase.SupportReturn)
+                && o.RaidPrimaryArmyId == raid.PrimaryArmyId
+                && o.RaidSupportArmyId.HasValue
+                && o.RaidSupportArmyId.Value == o.MoverArmyId.Value;
+            bool airSupportExecutedThisTurn = raid != null && o.HasRaidPayload
+                && o.RaidPhase == RaidMissionPhase.AirSupport
+                && o.RaidAirSupportArmyId.HasValue
+                && o.RaidAirSupportArmyId.Value == o.MoverArmyId.Value;
+            if (airSupportExecutedThisTurn)
+            {
+                raid.Phase = RaidMissionPhase.AirSupport;
+                raid.AirSupportArmyId = o.RaidAirSupportArmyId;
+                raid.AirSupportLandingHex = o.RaidAirSupportLandingHex;
+                raid.AirSupportStrikeSucceeded |= o.RaidAirSupportStrikeSucceeded;
+                return true;
+            }
+            else if (supportExecutedThisTurn)
+            {
+                if (o.RaidPhase == RaidMissionPhase.Reinforcement
+                    && !o.ReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
+                    raid.SupportArmyId = o.MoverArmyId.Value;
+                return true;
+            }
+            return false;
+        }
+
+        private static void ApplyRaidStepFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (o.HasRaidPayload && intent.Raid != null)
+            {
+                intent.Raid.LastKnownHex = o.RaidLastKnownHex;
+                if (o.OperationStarted)
+                {
+                    intent.Raid.OperationStarted = true;
+                    if (intent.Funding != CommitmentTier.Hard)
+                    {
+                        intent.Funding = CommitmentTier.Hard;
+                        AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} promoted to Hard commitment (operation started)");
+                    }
+                }
+            }
+
+        }
+
     }
 }
 

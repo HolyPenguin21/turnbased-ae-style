@@ -1089,6 +1089,106 @@ namespace Game.Ai.V2
             return true;
         }
 
+        private static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn) =>
+            intent.Attack != null && o.HasAttackPayload
+                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase);
+
+        private static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (o.HasAttackPayload && intent.Attack != null)
+            {
+                AttackIntent ai = intent.Attack;
+                ai.OperationStarted |= o.OperationStarted;
+                if (o.AttackIntermediateCaptured && o.AttackTarget.IsIntermediateAssault)
+                {
+                    ai.RefitBaseHex = o.AttackTarget.IntermediateTarget.Hex;
+                    ai.RefitCaptureTurn = turn;
+                    ai.RefitBattleStopTurn = o.AttackCaptureHadBattle ? turn : -1;
+                }
+                if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
+                {
+                    ai.AssaultStarted = true;
+                    ai.IntermediateTarget = o.AttackOpportunisticStrike
+                        ? AttackTargetRef.None : o.AttackTarget.IntermediateTarget;
+                }
+                if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
+                {
+                    // Audit F7 — an attempted handoff (full, partial or rejected) ends that
+                    // support's gather leg. Strike force step 5: whatever container is left walks
+                    // home (GatherReturn; ResolveAttackIntent picks the base). It never becomes the
+                    // Reinforcement support.
+                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue
+                        && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
+                        && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                        ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    // 2026-10-01 (variant B) — the fetched commander: its container is recorded
+                    // once created; an attempted handoff ends its leg (a body exchanged into the
+                    // container walks home like any gather donor; an emptied shell just stays).
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.FetchCommander
+                        && o.MoverArmyId.HasValue && o.MoverArmyId.Value >= 0)
+                    {
+                        ai.CommanderArmyId = o.MoverArmyId.Value;
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
+                    if (o.AttackTarget.CommanderLeg && o.ReinforcementHandoffAttempted
+                        && o.MoverArmyId.HasValue && ai.CommanderArmyId == o.MoverArmyId.Value)
+                    {
+                        ai.CommanderArmyId = null;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
+                    }
+                    // ATK-F05 — the one claim transition of a priced donor purchase: the frozen
+                    // supports enter the operation; the lenders retire on the next pass
+                    // ("given to an Attack gather"), their reservations with them.
+                    if (o.AttackTarget.PreparationStep == AttackPreparationStep.RecruitDonors
+                        && o.AttackTarget.GatherSupportArmyIds != null)
+                    {
+                        foreach (int id in o.AttackTarget.GatherSupportArmyIds)
+                            if (id != ai.PrimaryArmyId && !ai.GatherSupportArmyIds.Contains(id))
+                                ai.GatherSupportArmyIds.Add(id);
+                        intent.StallTurns = 0;
+                        intent.LastProtectedTurn = turn;
+                    }
+                }
+                else
+                {
+                    // The primary's own walk to the rendezvous only names the support; it never
+                    // (re)binds it — Continuity alone does, and may already have released it.
+                    if (o.AttackTarget.SupportArmyId.HasValue && !o.AttackTarget.PrimaryRendezvousLeg)
+                        ai.SupportArmyId = o.AttackTarget.SupportArmyId;
+                    if (o.AttackTarget.RecoveryBaseHex.HasValue)
+                        ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
+                    // §46/§23 — a full/full swap displaced a primary body into the support
+                    // container, so the whole support army must walk itself home. Same shared
+                    // handoff semantics and the same SupportReturn leg the Raid lane uses.
+                    // The destination itself is chosen by ResolveAttackIntent, which has the
+                    // snapshot and the player: AdvanceIntent only records the immutable fact.
+                    // 2026-10-04 — a committed Assault does not wait for that walk: the support's
+                    // container goes home as a GatherReturn leg beside the operation, and the
+                    // primary resumes its march at once.
+                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue && ai.AssaultStarted
+                        && o.AttackTarget.Phase == AttackMissionPhase.Reinforcement)
+                    {
+                        int handedOver = ai.SupportArmyId.Value;
+                        if (!ai.GatherReturns.Any(r => r.ArmyId == handedOver))
+                            ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = handedOver });
+                        ai.SupportArmyId = null;
+                        ai.RendezvousHex = null;
+                        ai.Phase = AttackMissionPhase.Assault;
+                    }
+                    else if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                        ai.Phase = AttackMissionPhase.SupportReturn;
+                }
+                // §17 — the operation's turn-local side-strike marker. Continuity is the only
+                // writer; Execution merely reported that the diversion was really spent.
+                if (o.AttackOpportunisticStrike)
+                    ai.LastOpportunisticStrikeTurn = turn;
+            }
+        }
+
     }
 }
 

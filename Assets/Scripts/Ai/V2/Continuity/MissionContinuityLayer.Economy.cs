@@ -258,5 +258,76 @@ namespace Game.Ai.V2
             return true;
         }
 
+        private static void ApplyEconomyStepFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (o.HasEconomyPayload && intent.Economy != null)
+            {
+                intent.Economy.TargetHex = o.EconomyTarget.TargetHex;
+                intent.Economy.BuilderArmyId = intent.PreferredMoverArmyId;
+                // The mission has already used the continuity-pinned builder's world score.
+                // Persist the last accepted intrinsic value so a later turn without a refreshed
+                // demand cannot silently revive the unrelated site-only BuildValue.
+                if (o.MadeProgress && o.Proposal?.Target is EconomyMissionTarget scored
+                    && scored.Kind == intent.Economy.Kind
+                    && scored.TargetHex.Equals(intent.Economy.TargetHex)
+                    && scored.BuilderArmyId == intent.PreferredMoverArmyId)
+                    intent.Economy.IntrinsicValue = o.Proposal.BaseValue;
+                if (o.EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
+            }
+
+        }
+
+        private static bool TryHandleEconomyCapabilityFailure(MissionIntentState state, AiAllocatorState allocState,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            // Base expansion is deliberately exempt from StallTurns/ShouldReap aging (see the
+            // comment above transientCapability in ReconcileOutcome) so an in-progress delivery
+            // survives a transient blip. That exemption previously had no upper bound: the same
+            // stuck project — NoMoverExists / MoverContended, turn after turn — never triggered
+            // the existing MissionIntentState delivery-failure cooldown because nothing called
+            // it. Wire it here, the one place this intent is suspended for that reason. A gap
+            // turn without a capability failure (real progress or a different suspend reason)
+            // breaks RecordBaseExpansionDeliveryFailure's consecutive-turn streak on its own —
+            // no separate reset is needed.
+            if (!o.MadeProgress && intent.Kind == MissionKind.Economy
+                && intent.Economy?.Kind == EconomyTaskKind.FoundBase
+                && state.Economy.RecordBaseExpansionDeliveryFailure(
+                    turn, intent.Economy.BuildCard, intent.Economy.TargetHex))
+            {
+                RetireEconomyIntent(state, intent, o, turn);
+                StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
+                    "BaseExpansionDeliverySuppressed");
+                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                    + $"{intent.IntentKey} Base delivery repeatedly failed "
+                    + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
+                return true;
+            }
+
+            // BuildExtraction needs the same upper bound: it is exempt from StallTurns/ShouldReap
+            // for the identical reason (capabilityUnavailable, above), so its consecutive
+            // NoMoverExists/MoverContended turns are counted here — otherwise an intent whose
+            // pinned mover can no longer advance (e.g. its safe route stays blocked every turn)
+            // would stay suspended forever with its actor and card claim held.
+            // Extraction has no single staged slot like Base (several sites can be active at
+            // once), so the counter is keyed per (resource, site) in MissionIntentState — same
+            // owner, same StartPersistentCooldown exit already used by every other retirement
+            // path (reap/structural-failure/Base) — no new registry or manager.
+            if (!o.MadeProgress && intent.Kind == MissionKind.Economy
+                && intent.Economy?.Kind == EconomyTaskKind.BuildExtraction
+                && state.Economy.RecordExtractionDeliveryFailure(
+                    turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
+            {
+                RetireEconomyIntent(state, intent, o, turn);
+                StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
+                    "ExtractionDeliverySuppressed");
+                AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                    + $"{intent.IntentKey} Extraction delivery repeatedly failed "
+                    + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
+                return true;
+            }
+            return false;
+        }
+
     }
 }

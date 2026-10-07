@@ -72,5 +72,26 @@ namespace Game.Ai.V2
                 if (handle(state, allocator, intent, result, turn)) return true;
             return false;
         }
+        private delegate void OutcomeObservation(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome result, int turn);
+        private static readonly OutcomeObservation[] BeforeMoverObservers = { ObserveReconMover };
+        private static readonly OutcomeTransition[] MoverTransitions =
+            { TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
+        private static readonly OutcomeObservation[] IntentFactObservers =
+            { ApplyScoutStepFacts, ApplyAttackStepFacts, ApplyRaidStepFacts, ApplyEconomyStepFacts };
+        private static readonly OutcomeTransition[] CapabilityFailureTransitions =
+            { TryHandleEconomyCapabilityFailure };
+
+        // Existing durable pinning rule, composed here; generic lease storage knows no mission kind.
+        private static bool TryPreservePinnedDomainMover(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome result, int turn) =>
+            (intent.Kind == MissionKind.Economy || intent.Kind == MissionKind.Development)
+                && intent.PreferredMoverArmyId.HasValue
+                && intent.PreferredMoverArmyId.Value != result.MoverArmyId.Value;
+
+        // Same capability-failure exceptions as the former two expressions; Raid ages only for reap.
+        private static bool DomainAgesCapabilityFailure(MissionIntent intent, bool forReaping) =>
+            intent.Kind == MissionKind.Development || forReaping && intent.Kind == MissionKind.Raid
+                || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent);
     }
 }

@@ -21,6 +21,76 @@ namespace Game.EditorTests
             Assert.That(Fingerprint(), Is.EqualTo("C521F075668400B3A1CBE227EB370F298ADF2F5714D78E01761F77A07DDE5335"));
         }
 
+        [Test]
+        public void CapabilityFailureAgingMatchesFrozenPreExtractionRules()
+        {
+            // Another 5,760 transitions: no-mover/contention, pool exhaustion, age/stall edges.
+            Assert.That(Fingerprint(true), Is.EqualTo("FF74620661454EAA6C80DAF01394D39EB1E5ED37F9B3C9FA875F92FAA5DFBECF"));
+        }
+
+        [TestCase(MissionKind.Economy)]
+        [TestCase(MissionKind.Development)]
+        public void PinnedDeliveryActorIsNotReplacedByARetry(MissionKind kind)
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey(kind, 0, 17, 2, 3);
+            var intent = new MissionIntent { Kind = kind, IntentKey = key, CreatedTurn = 3,
+                LastProgressTurn = 3, PreferredMoverArmyId = 0 };
+            session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
+            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
+                Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 1 });
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(0));
+            Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
+        }
+
+        [TestCase(RaidMissionPhase.Reinforcement, false)]
+        [TestCase(RaidMissionPhase.Reinforcement, true)]
+        [TestCase(RaidMissionPhase.SupportReturn, false)]
+        [TestCase(RaidMissionPhase.SupportReturn, true)]
+        [TestCase(RaidMissionPhase.AirSupport, false)]
+        [TestCase(RaidMissionPhase.AirSupport, true)]
+        public void RaidSideActorFactsNeverReplacePrimaryAfterLivePhaseChanged(RaidMissionPhase phase,
+            bool handedOff)
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey(MissionKind.Raid, 0, 17, 2, 3);
+            // Execution may already have cleared support and returned the live intent to Assault.
+            var raid = new RaidIntent { PrimaryArmyId = 0, Phase = RaidMissionPhase.Assault };
+            var intent = new MissionIntent { Kind = MissionKind.Raid, IntentKey = key, Objective = raid,
+                CreatedTurn = 3, LastProgressTurn = 3 };
+            session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
+            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = MissionKind.Raid,
+                Disposition = MissionStepDisposition.Progress, MadeProgress = true,
+                MoverArmyId = phase == RaidMissionPhase.AirSupport ? 2 : 1,
+                HasRaidPayload = true, RaidPhase = phase, RaidPrimaryArmyId = 0,
+                RaidSupportArmyId = 1, RaidAirSupportArmyId = 2, ReinforcementHandoffAttempted = handedOff });
+            Assert.That(raid.PrimaryArmyId, Is.EqualTo(0));
+            if (phase == RaidMissionPhase.Reinforcement)
+                Assert.That(raid.SupportArmyId, Is.EqualTo(handedOff ? (int?)null : 1));
+            if (phase == RaidMissionPhase.AirSupport)
+                Assert.That(raid.AirSupportArmyId, Is.EqualTo(2));
+            Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
+        }
+
+        [TestCase(AttackMissionPhase.Reinforcement)]
+        [TestCase(AttackMissionPhase.Gather)]
+        [TestCase(AttackMissionPhase.SupportReturn)]
+        public void AttackSupportFactsNeverReplacePrimary(AttackMissionPhase phase)
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var key = new MissionIntentKey(MissionKind.Attack, 0, 17, 2, 3);
+            var attack = new AttackIntent { PrimaryArmyId = 0, SupportArmyId = 1 };
+            var intent = new MissionIntent { Kind = MissionKind.Attack, IntentKey = key, Objective = attack,
+                CreatedTurn = 3, LastProgressTurn = 3 };
+            session.PersistentState.Put(intent); session.Leases.For(key).Claim(0);
+            session.Settle(new MissionTurnOutcome { IntentKey = key, MissionKind = MissionKind.Attack,
+                Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 1,
+                HasAttackPayload = true, AttackTarget = new AttackMissionTarget
+                    { Phase = phase, PrimaryArmyId = 0, SupportArmyId = 1 } });
+            Assert.That(attack.PrimaryArmyId, Is.EqualTo(0));
+            Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
+        }
+
         [TearDown] public void Reset()
         {
             MissionIntentRegistry.Clear(); AiAllocatorStateRegistry.Clear();
@@ -84,7 +154,7 @@ namespace Game.EditorTests
 
         // This source can be compiled separately against the frozen pre-extraction assembly.
         // Reflection is only the access seam for the existing internal Continuity entry point.
-        public static string Fingerprint()
+        public static string Fingerprint(bool capabilityFailures = false)
         {
             var reconcile = typeof(MissionIntent).Assembly.GetType("Game.Ai.V2.MissionContinuityLayer")
                 .GetMethod("ReconcileStep", BindingFlags.Static | BindingFlags.Public);
@@ -103,7 +173,8 @@ namespace Game.EditorTests
                     RaidMissionPhase.SupportReturn, RaidMissionPhase.AirSupport, RaidMissionPhase.Return }[leg];
                 var attackPhase = new[] { AttackMissionPhase.Assault, AttackMissionPhase.Reinforcement,
                     AttackMissionPhase.GatherReturn, AttackMissionPhase.AirSupport, AttackMissionPhase.Gather }[leg];
-                var economyKind = leg == 4 ? EconomyTaskKind.ReturnBuilder : EconomyTaskKind.FoundBase;
+                var economyKind = leg == 4 ? EconomyTaskKind.ReturnBuilder
+                    : capabilityFailures && leg == 3 ? EconomyTaskKind.MobileCollection : EconomyTaskKind.FoundBase;
                 if ((flags & 1) != 0)
                 {
                     object objective = kind == MissionKind.Scout ? (object)new ScoutIntent()
@@ -114,8 +185,13 @@ namespace Game.EditorTests
                         : kind == MissionKind.ActiveDefence ? new ActiveDefenceIntent { PrimaryArmyId = 0 }
                         : kind == MissionKind.Economy ? new EconomyIntent { Kind = economyKind }
                         : (object)new DevelopmentIntent();
-                    state.Put(new MissionIntent { Kind = kind, IntentKey = key, Objective = objective,
-                        CreatedTurn = 3, LastReconciledTurn = 3, LastProgressTurn = 3 });
+                    var intent = new MissionIntent { Kind = kind, IntentKey = key, Objective = objective,
+                        CreatedTurn = 3, LastReconciledTurn = 3, LastProgressTurn = 3,
+                        TurnsActive = capabilityFailures ? (kind == MissionKind.Raid
+                            ? AiConfigV2.raidIntentMaxTurns - 1 : AiConfigV2.commitmentMaxTurns - 1) : 0,
+                        StallTurns = capabilityFailures ? AiConfigV2.commitmentStallTurns - 1 : 0 };
+                    if (capabilityFailures && leg == 0) intent.PreferredMoverArmyId = 0;
+                    state.Put(intent);
                 }
                 var o = new MissionTurnOutcome { IntentKey = key, MissionKind = kind,
                     Disposition = disposition, MadeProgress = (flags & 2) != 0,
@@ -136,6 +212,13 @@ namespace Game.EditorTests
                     case MissionKind.Economy: o.HasEconomyPayload = true; o.EconomyTarget = new EconomyMissionTarget
                         { Kind = economyKind, TargetHex = new HexCoord(2, 3) }; break;
                     case MissionKind.Development: o.HasDevelopmentPayload = true; break;
+                }
+                if (capabilityFailures)
+                {
+                    o.MoverArmyId = null;
+                    o.ProvisionFailureKindValue = leg % 2 == 0
+                        ? ProvisionFailureKind.NoMoverExists : ProvisionFailureKind.MoverContended;
+                    o.AllocationDeferReason = leg == 2 ? DeferReason.CommitmentPoolExhausted : (DeferReason?)null;
                 }
                 reconcile.Invoke(null, new object[] { player, 4, o });
                 rows.Append(kind).Append('|').Append(disposition).Append('|').Append(flags).Append('|')

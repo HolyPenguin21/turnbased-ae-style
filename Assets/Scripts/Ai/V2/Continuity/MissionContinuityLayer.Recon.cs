@@ -152,5 +152,17 @@ namespace Game.Ai.V2
                     + $"{owner.IntentKey}; unbound prior role {other.IntentKey}");
             }
         }
+        private static void ObserveReconMover(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn) =>
+            ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
+
+        private static void ApplyScoutStepFacts(MissionIntentState state, AiAllocatorState allocator,
+            MissionIntent intent, MissionTurnOutcome o, int turn)
+        {
+            if (o.HasScoutPayload && intent.Scout != null)
+                ApplyScoutPayload(intent.Scout, o);
+
+        }
+
     }
 }
