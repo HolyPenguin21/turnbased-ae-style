@@ -77,6 +77,10 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.infantry.marksman-rifle
     factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.optical-scope
+    factionRestriction: 2
+  - cardKey: neutral.equipment.infantry.mobility-harness
+    factionRestriction: 2
   - cardKey: neutral.equipment.infantry.shotgun
     factionRestriction: 2
   - cardKey: neutral.equipment.infantry.grenade-launcher
@@ -139,3 +143,4 @@ MonoBehaviour:
     factionRestriction: 2
   - cardKey: neutral.equipment.vehicle.assault-conversion-kit
     factionRestriction: 2
+
