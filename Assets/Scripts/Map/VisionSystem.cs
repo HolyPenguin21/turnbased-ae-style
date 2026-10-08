@@ -148,6 +148,12 @@ namespace Game.Map
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
+                // A Prison (never has a map presence) and an empty shell are containers, not
+                // observers. A captured base/citadel leaves the previous owner's Prison and any
+                // empty shell registered on the hex; counting them kept the hex visible to that
+                // player after the building changed hands.
+                if (army.IsPrison || army.Members.Count == 0)
+                    continue;
                 // ArmyData.Hex only updates once a whole move finishes (see ArmyRegistry.
                 // MoveArmy's own comment) — mid-move, ArmyController.CurrentHex is the live,
                 // per-step position instead (see ArmyController's own comment on the two), which
