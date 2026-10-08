@@ -92,25 +92,25 @@ U «ссылка из ТЗ (после) → реализация»:
 | Ghost Genome | Mut | 16 | 0.000 …   0.041 | Dorian Kesh | Lira Sable | 6 / 0 |
 | Hunter Genome | Mut | 16 | 0.000 …   0.080 | Dorian Kesh | Lira Sable | 6 / 0 |
 | Reflex Genome | Mut | 16 | 0.000 …   0.225 | Dorian Kesh | Nadia Thorne | 3 / 0 |
-| Flamer | Eq | 19 | -2.443 …   1.510 | Rad Brute | HI Ash Walker | 0 / 17 |
-| AT Launcher | Eq | 19 | -0.678 …   2.168 | Rad Brute | HI Ash Walker | 0 / 3 |
-| Claws | Eq | 19 | -2.395 …   0.462 | Rad Brute | HI Ash Walker | 0 / 41 |
-| Heavy MG | Eq | 19 | -0.789 …   2.542 | Shard Wanderer | HI Ash Walker | 0 / 3 |
-| Plasma Gun | Eq | 19 | 1.005 …   4.409 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Flamer | Eq | 19 | -2.443 …   1.510 | Rad Brute | Ash Walker | 0 / 17 |
+| AT Launcher | Eq | 19 | -0.678 …   2.168 | Rad Brute | Ash Walker | 0 / 3 |
+| Claws | Eq | 19 | -2.395 …   0.462 | Rad Brute | Ash Walker | 0 / 41 |
+| Heavy MG | Eq | 19 | -0.789 …   2.542 | Shard Wanderer | Ash Walker | 0 / 3 |
+| Plasma Gun | Eq | 19 | 1.005 …   4.409 | Shard Wanderer | Ash Walker | 0 / 0 |
 | Ballistic Shield | Eq | 19 | -0.024 …   0.171 | AT Infantry | Heavy Infantry | 0 / 4 |
 | Ceramic Vest | Eq | 19 | -0.055 …   0.285 | AT Infantry | Heavy Infantry | 0 / 4 |
-| Assault Rifle Kit | Eq | 19 | 0.148 …   1.405 | HI Ash Walker | Tech Scrapper | 0 / 0 |
-| Marksman Rifle | Eq | 19 | -0.391 …   2.927 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Assault Rifle Kit | Eq | 19 | 0.148 …   1.405 | Ash Walker | Tech Scrapper | 0 / 0 |
+| Marksman Rifle | Eq | 19 | -0.391 …   2.927 | Shard Wanderer | Ash Walker | 0 / 3 |
 | Optical Scope | Eq | 19 | 0.259 …   2.550 | Flamer | Tech Scrapper | 0 / 0 |
 | Mobility Harness | Eq | 19 | 0.080 …   0.160 | Hooded | Scrapper | 0 / 0 |
-| Shotgun | Eq | 19 | -2.148 …   1.172 | Shard Wanderer | HI Ash Walker | 0 / 11 |
-| Grenade Launcher | Eq | 19 | 0.000 …   2.940 | Rad Brute | HI Ash Walker | 3 / 0 |
-| Shock Rifle | Eq | 19 | -1.487 …   1.319 | Rad Brute | HI Ash Walker | 0 / 6 |
-| Incendiary Rifle | Eq | 19 | -1.495 …   2.524 | Rad Brute | HI Ash Walker | 11 / 4 |
-| Rail Rifle | Eq | 19 | -1.413 …   1.459 | Rad Brute | HI Ash Walker | 3 / 3 |
-| Twin SMG | Eq | 19 | -1.723 …   1.032 | Flamer | HI Ash Walker | 0 / 10 |
+| Shotgun | Eq | 19 | -2.148 …   1.172 | Shard Wanderer | Ash Walker | 0 / 11 |
+| Grenade Launcher | Eq | 19 | 0.000 …   2.940 | Rad Brute | Ash Walker | 3 / 0 |
+| Shock Rifle | Eq | 19 | -1.487 …   1.319 | Rad Brute | Ash Walker | 0 / 6 |
+| Incendiary Rifle | Eq | 19 | -1.495 …   2.524 | Rad Brute | Ash Walker | 11 / 4 |
+| Rail Rifle | Eq | 19 | -1.413 …   1.459 | Rad Brute | Ash Walker | 3 / 3 |
+| Twin SMG | Eq | 19 | -1.723 …   1.032 | Flamer | Ash Walker | 0 / 10 |
 | Portable Mortar | Eq | 19 | 0.314 …   3.334 | Heavy Infantry | Tech Scrapper | 0 / 0 |
-| Recoil Cannon | Eq | 19 | 0.376 …   3.743 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Recoil Cannon | Eq | 19 | 0.376 …   3.743 | Shard Wanderer | Ash Walker | 0 / 0 |
 | AA Launcher | Eq | 19 | 0.010 …   0.069 | Flamer | Scout | 0 / 0 |
 | Armor Plate | Eq | 43 | 0.000 …   0.243 | Artillery Tank | Medium Tank | 11 / 0 |
 | Reinforced Chassis | Eq | 43 | -0.231 …   0.512 | Scrap Mortar | Ash Howitzer | 0 / 88 |
@@ -123,17 +123,17 @@ U «ссылка из ТЗ (после) → реализация»:
 | AT VH Launcher | Eq | 15 | -9.403 …   1.126 | Heavy Tank | Ash Howitzer | 0 / 12 |
 | Double Barrel | Eq | 15 | 0.780 …  11.096 | Artillery Tank | Scav Carrier | 0 / 0 |
 | Plasma Cannon | Eq | 15 | -9.073 …   3.737 | RC Vehicle | Ash Howitzer | 0 / 6 |
-| Autocannon | Eq | 21 | -9.563 …   2.359 | BS Grave Engine | Ash Howitzer | 0 / 18 |
-| HE Cannon | Eq | 21 | -6.550 …   3.886 | BS Grave Engine | Ash Howitzer | 3 / 10 |
-| Flame Projector | Eq | 21 | -12.435 …   1.212 | BS Grave Engine | Ash Howitzer | 3 / 50 |
+| Autocannon | Eq | 21 | -9.563 …   2.359 | Grave Engine | Ash Howitzer | 0 / 18 |
+| HE Cannon | Eq | 21 | -6.550 …   3.886 | Grave Engine | Ash Howitzer | 3 / 10 |
+| Flame Projector | Eq | 21 | -12.435 …   1.212 | Grave Engine | Ash Howitzer | 3 / 50 |
 | Rail Cannon | Eq | 21 | -9.403 …   4.006 | Bastion Frame | Ash Howitzer | 0 / 9 |
 | Shock Projector | Eq | 21 | 0.000 …   0.401 | Scrap Mortar | RC Vehicle | 16 / 0 |
 | AA Mount | Eq | 21 | 0.000 …   0.190 | Artillery Tank | Crawler | 3 / 0 |
 | Dozer Blade | Eq | 21 | -12.147 …   0.306 | Bastion Frame | Ash Howitzer | 0 / 54 |
-| Siege Ram | Eq | 21 | -12.072 …   0.583 | BS Grave Engine | Ash Howitzer | 0 / 54 |
+| Siege Ram | Eq | 21 | -12.072 …   0.583 | Grave Engine | Ash Howitzer | 0 / 54 |
 | Spiked Ram | Eq | 21 | -12.130 …   0.306 | Bastion Frame | Ash Howitzer | 0 / 54 |
 | Mortar Rack | Eq | 21 | -2.822 …   4.096 | Heavy Tank | Ash Howitzer | 0 / 9 |
-| Assault Conversion Kit | Eq | 21 | -12.355 …   0.013 | BS Grave Engine | Ash Howitzer | 3 / 54 |
+| Assault Conversion Kit | Eq | 21 | -12.355 …   0.013 | Grave Engine | Ash Howitzer | 3 / 54 |
 
 Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объяснены правилами, не подгонкой: дальность ответа цели теперь учтена (`DefenderProfile.Range`), вторичный сосед считается копией основной цели, Regeneration по среднему полю даёт ~2× к контрольной. Цены/Chance/S-колонки
 референса здесь не воспроизводились (общая арифметика S не менялась и покрыта существующими тестами цепочек).
@@ -194,25 +194,25 @@ NaN/Infinity — 0, исключений — 0. Отрицательные зн�
 | Ghost Genome | Mut | 16 | 0.000 …   0.041 | Dorian Kesh | Lira Sable | 6 / 0 |
 | Hunter Genome | Mut | 16 | 0.000 …   0.080 | Dorian Kesh | Lira Sable | 6 / 0 |
 | Reflex Genome | Mut | 16 | 0.000 …   0.225 | Dorian Kesh | Nadia Thorne | 3 / 0 |
-| Flamer | Eq | 19 | -2.463 …   1.523 | Rad Brute | HI Ash Walker | 0 / 16 |
-| AT Launcher | Eq | 19 | -0.684 …   2.197 | Rad Brute | HI Ash Walker | 0 / 3 |
-| Claws | Eq | 19 | -2.415 …   0.465 | Rad Brute | HI Ash Walker | 0 / 41 |
-| Heavy MG | Eq | 19 | -0.796 …   2.563 | Shard Wanderer | HI Ash Walker | 0 / 3 |
-| Plasma Gun | Eq | 19 | 0.986 …   4.445 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Flamer | Eq | 19 | -2.463 …   1.523 | Rad Brute | Ash Walker | 0 / 16 |
+| AT Launcher | Eq | 19 | -0.684 …   2.197 | Rad Brute | Ash Walker | 0 / 3 |
+| Claws | Eq | 19 | -2.415 …   0.465 | Rad Brute | Ash Walker | 0 / 41 |
+| Heavy MG | Eq | 19 | -0.796 …   2.563 | Shard Wanderer | Ash Walker | 0 / 3 |
+| Plasma Gun | Eq | 19 | 0.986 …   4.445 | Shard Wanderer | Ash Walker | 0 / 0 |
 | Ballistic Shield | Eq | 19 | -0.034 …   0.181 | AT Infantry | Heavy Infantry | 0 / 4 |
 | Ceramic Vest | Eq | 19 | -0.075 …   0.294 | AT Infantry | Heavy Infantry | 0 / 4 |
-| Assault Rifle Kit | Eq | 19 | 0.150 …   1.417 | HI Ash Walker | Tech Scrapper | 0 / 0 |
-| Marksman Rifle | Eq | 19 | -0.404 …   2.943 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Assault Rifle Kit | Eq | 19 | 0.150 …   1.417 | Ash Walker | Tech Scrapper | 0 / 0 |
+| Marksman Rifle | Eq | 19 | -0.404 …   2.943 | Shard Wanderer | Ash Walker | 0 / 3 |
 | Optical Scope | Eq | 19 | 0.243 …   2.550 | Flamer | Tech Scrapper | 0 / 0 |
 | Mobility Harness | Eq | 19 | 0.080 …   0.160 | Hooded | Scrapper | 0 / 0 |
-| Shotgun | Eq | 19 | -2.170 …   1.181 | Shard Wanderer | HI Ash Walker | 0 / 11 |
-| Grenade Launcher | Eq | 19 | 0.000 …   3.011 | Rad Brute | HI Ash Walker | 3 / 0 |
-| Shock Rifle | Eq | 19 | -1.500 …   1.353 | Rad Brute | HI Ash Walker | 0 / 6 |
-| Incendiary Rifle | Eq | 19 | -1.507 …   2.576 | Rad Brute | HI Ash Walker | 11 / 4 |
-| Rail Rifle | Eq | 19 | -1.425 …   1.474 | Rad Brute | HI Ash Walker | 3 / 3 |
-| Twin SMG | Eq | 19 | -1.738 …   1.032 | Rad Brute | HI Ash Walker | 0 / 10 |
+| Shotgun | Eq | 19 | -2.170 …   1.181 | Shard Wanderer | Ash Walker | 0 / 11 |
+| Grenade Launcher | Eq | 19 | 0.000 …   3.011 | Rad Brute | Ash Walker | 3 / 0 |
+| Shock Rifle | Eq | 19 | -1.500 …   1.353 | Rad Brute | Ash Walker | 0 / 6 |
+| Incendiary Rifle | Eq | 19 | -1.507 …   2.576 | Rad Brute | Ash Walker | 11 / 4 |
+| Rail Rifle | Eq | 19 | -1.425 …   1.474 | Rad Brute | Ash Walker | 3 / 3 |
+| Twin SMG | Eq | 19 | -1.738 …   1.032 | Rad Brute | Ash Walker | 0 / 10 |
 | Portable Mortar | Eq | 19 | 0.294 …   3.505 | Heavy Infantry | Tech Scrapper | 0 / 0 |
-| Recoil Cannon | Eq | 19 | 0.373 …   3.765 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Recoil Cannon | Eq | 19 | 0.373 …   3.765 | Shard Wanderer | Ash Walker | 0 / 0 |
 | AA Launcher | Eq | 19 | 0.010 …   0.069 | Flamer | Scout | 0 / 0 |
 | Armor Plate | Eq | 43 | 0.000 …   0.480 | Scrap Mortar | Medium Tank | 11 / 0 |
 | Reinforced Chassis | Eq | 43 | -0.180 …   0.970 | Scrap Mortar | Leviathan | 0 / 82 |
@@ -225,16 +225,16 @@ NaN/Infinity — 0, исключений — 0. Отрицательные зн�
 | AT VH Launcher | Eq | 15 | -9.548 …   1.135 | Heavy Tank | Ash Howitzer | 0 / 11 |
 | Double Barrel | Eq | 15 | 0.769 …  11.201 | Artillery Tank | Scav Carrier | 0 / 0 |
 | Plasma Cannon | Eq | 15 | -9.195 …   3.768 | RC Vehicle | Ash Howitzer | 0 / 6 |
-| Autocannon | Eq | 21 | -9.698 …   2.378 | BS Grave Engine | Ash Howitzer | 0 / 18 |
-| HE Cannon | Eq | 21 | -6.702 …   3.918 | BS Grave Engine | Ash Howitzer | 3 / 6 |
-| Flame Projector | Eq | 21 | -12.527 …   1.222 | BS Grave Engine | Ash Howitzer | 3 / 50 |
+| Autocannon | Eq | 21 | -9.698 …   2.378 | Grave Engine | Ash Howitzer | 0 / 18 |
+| HE Cannon | Eq | 21 | -6.702 …   3.918 | Grave Engine | Ash Howitzer | 3 / 6 |
+| Flame Projector | Eq | 21 | -12.527 …   1.222 | Grave Engine | Ash Howitzer | 3 / 50 |
 | Rail Cannon | Eq | 21 | -9.548 …   4.039 | Bastion Frame | Ash Howitzer | 0 / 9 |
 | Shock Projector | Eq | 21 | 0.000 …   0.652 | Scrap Mortar | RC Vehicle | 20 / 0 |
 | AA Mount | Eq | 21 | 0.000 …   0.192 | Artillery Tank | Crawler | 3 / 0 |
 | Dozer Blade | Eq | 21 | -12.214 …   0.309 | Bastion Frame | Ash Howitzer | 0 / 54 |
-| Siege Ram | Eq | 21 | -12.224 …   0.589 | BS Grave Engine | Ash Howitzer | 0 / 54 |
+| Siege Ram | Eq | 21 | -12.224 …   0.589 | Grave Engine | Ash Howitzer | 0 / 54 |
 | Spiked Ram | Eq | 21 | -12.259 …   0.309 | Bastion Frame | Ash Howitzer | 0 / 54 |
 | Mortar Rack | Eq | 21 | -3.166 …   4.130 | Heavy Tank | Ash Howitzer | 0 / 9 |
-| Assault Conversion Kit | Eq | 21 | -12.437 …   0.014 | BS Grave Engine | Ash Howitzer | 3 / 54 |
+| Assault Conversion Kit | Eq | 21 | -12.437 …   0.014 | Grave Engine | Ash Howitzer | 3 / 54 |
 
 Наблюдения (после учёта дальности ответа цели): порядки величин совпадают с референсом Приложения В: Plasma Gun 1.01…4.41 (референс 2.03…5.11), Dozer Blade −12.1…0.31 (−10.1…0.35), Mobility Harness 0.080…0.160 — точно. Оборонительные предметы вернулись к референсу: Ceramic Plating макс 0.52 (0.47), Armor Plate 0.24 (0.23), Reactive Armor 0.32 (0.28), Ballistic Shield −0.02…0.17 (−0.03…0.10). Hero-карты (Genome) оцениваются только на героях. AA Launcher/Mount положительны, потому что в составе колод есть воздушные цели; без них было бы 0.

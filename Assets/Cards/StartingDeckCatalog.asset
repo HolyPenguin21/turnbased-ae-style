@@ -114,25 +114,25 @@ MonoBehaviour:
       count: 1
     - cardKey: The Ashen/Tech Scrapper
       count: 1
-    - cardKey: The Ashen/AA Rad Hunter
+    - cardKey: The Ashen/Rad Hunter
       count: 1
     - cardKey: The Ashen/Ash Drifter
       count: 4
-    - cardKey: The Ashen/LI Ash Runner
+    - cardKey: The Ashen/Ash Runner
       count: 3
-    - cardKey: The Ashen/MI Iron Husk
+    - cardKey: The Ashen/Iron Husk
       count: 2
     - cardKey: The Ashen/Scav Carrier
       count: 1
     - cardKey: The Ashen/Rad Brute
       count: 0
-    - cardKey: The Ashen/HI Ash Walker
+    - cardKey: The Ashen/Ash Walker
       count: 1
-    - cardKey: The Ashen/BS Grave Engine
+    - cardKey: The Ashen/Grave Engine
       count: 1
-    - cardKey: The Ashen/MT Rust Tank
+    - cardKey: The Ashen/Rust Tank
       count: 2
-    - cardKey: The Ashen/HT Boomstick
+    - cardKey: The Ashen/Boomstick
       count: 1
     - cardKey: The Ashen/Leviathan
       count: 0
