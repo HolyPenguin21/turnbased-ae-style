@@ -460,6 +460,32 @@ namespace Game.EditorTests
             // the claim is derived from this very Active intent (ActorCommitments), so it survives with it
         }
 
+        // ---- world revision: a decision is not a mutation -----------------------------------------
+
+        [Test]
+        public void DecisionsAndTheRetreatEdge_NeverAdvanceTheWorldRevision_ARealMutationAdvancesItOnce()
+        {
+            int start = WorldDeltaLifecycle.Current;
+            ArmySnapshot weak = Army(7, Origin, new[] { Body(2, 2, 6) });
+            var enemy = Sight(5, new HexCoord(2, 0), Red, new[] { Body(60, 60, 500), Body(60, 60, 500) });
+            WorldSnapshot snap = Snap(weak, enemy);
+            AttackTacticalOpportunity.Decide(snap, weak, Main, -1, false, null);
+            AttackRetreatWitness.Blocks(MissionIntentRegistry.GetOrCreate(Us), snap, Main, weak, out _);
+            AttackIntent attack = Marching();
+            MissionContinuityLayer.ResolveAttackIntent(Us, snap, Intent(attack), attack, new HashSet<int>(), out _);
+            Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start), "pure selection / phase change: no world receipt");
+
+            var result = new ExecutionResult();
+            WorldDeltaLifecycle.RecordExecutionMutation(result, false);
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start), "a step that changed nothing stamps nothing");
+            WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start + 1));
+            Assert.That(result.StateVersionAfter, Is.EqualTo(start + 1));
+            WorldDeltaLifecycle.StampAction(true, childAlreadyCommitted: true);
+            Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start + 1), "the child receipt already covers the aggregate");
+        }
+
         // ---- fixtures -----------------------------------------------------------------------------
 
         private AttackLocalAction Decide(ArmySnapshot us, params AiMapMemory.KnownEnemySighting[] enemies) =>
