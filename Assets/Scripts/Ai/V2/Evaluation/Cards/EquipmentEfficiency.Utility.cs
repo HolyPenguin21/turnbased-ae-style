@@ -150,6 +150,33 @@ namespace Game.Ai.V2
         private static bool IsDefensiveAbility(string a) =>
             a == UnitAbilities.Regeneration || a == UnitAbilities.CeramicArmor;
 
+        // An aviation host strikes once per sortie, on one random living ground defender, without return fire
+        // (AviationCombatEstimator's shape). Each attack is one armed exchange of the shared kernel, so the
+        // expectation is read from the kernel directly: analytic, deterministic, and the SAME for the before and
+        // after state (the estimator's seeded 25-trial Monte Carlo would put different noise in each).
+        // Sorties in the horizon = ExpectedActivations (proxy). Defence/HP/speed of aircraft stay on the
+        // legacy table (AA fire is not modelled by the estimator either).
+        internal static float AviationOffenseDelta(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
+            EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)
+        {
+            IReadOnlyList<WorthIt.DefenderProfile> ground = GroundTargets(ctx);
+            return AiConfigV2.equipCombatCardScale * (SortieValue(after, afterAbilities, ground, ctx)
+                - SortieValue(before, beforeAbilities, ground, ctx));
+        }
+
+        private static float SortieValue(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            IReadOnlyList<WorthIt.DefenderProfile> targets, EfficiencyContext ctx)
+        {
+            float sum = 0f;
+            foreach (var t in targets)
+            {
+                int hp = Mathf.Max(1, Mathf.CeilToInt(t.HitPoints));
+                sum += BattleSimulationKernel.ExpectedExchangeDamage(s.Attack, Mathf.RoundToInt(t.Defense),
+                    abilities, t.TypeTags, t.Abilities ?? Array.Empty<string>(), hp, out _) / hp;
+            }
+            return AiConfigV2.equipCombatBodyScale * ctx.ExpectedActivations * sum / targets.Count;
+        }
+
         // RapidReaction makes an activation free: the effective AP is what a turn really pays.
         private static int EffectiveAp(EfficiencyStats s, IReadOnlyCollection<string> abilities) =>
             abilities.Contains(UnitAbilities.RapidReaction) ? 0 : Mathf.Max(0, s.ActivationAp);

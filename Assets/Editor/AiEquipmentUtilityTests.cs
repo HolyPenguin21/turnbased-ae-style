@@ -229,6 +229,20 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AviationHost_IsPricedAsAnAirStrike_NotAGroundContact()
+        {
+            var wasp = S(8, 4, 6, 2, move: 10, ini: 2);
+            var ctx = Ctx(Enemy(2, 3, 4));
+            float plusOne = EquipmentEfficiency.AviationOffenseDelta(wasp, None, S(9, 4, 6, 2, move: 10, ini: 2), None, ctx);
+            Assert.That(plusOne, Is.GreaterThan(0f));
+            Assert.That(EquipmentEfficiency.AviationOffenseDelta(wasp, None, wasp, None, ctx), Is.Zero);
+            Assert.That(EquipmentEfficiency.AviationOffenseDelta(wasp, None, S(8, 4, 6, 4, move: 10, ini: 2), None, ctx),
+                Is.Zero, "flying range does not change a sortie's exchange");
+            Assert.That(EquipmentEfficiency.AviationOffenseDelta(wasp, None, S(7, 4, 6, 2, move: 10, ini: 2), None, ctx),
+                Is.LessThan(0f), "a lost Attack point is a signed loss");
+        }
+
+        [Test]
         public void HeroDoesNotBecomeAFighter()
         {
             var hero = new EfficiencyContext { IsHero = true, ArmyAttack = 0f, Targets = new[] { Enemy(1, 3, 4) } };

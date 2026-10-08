@@ -1499,14 +1499,17 @@ namespace Game.Ai.V2
             {
                 if (aviation)
                 {
-                    // Aviation hosts never use the ground contact model: the legacy linear table is kept as
-                    // an explicit PROXY (no carrier saturation) until AviationCombatEstimator prices stats.
+                    // Aviation hosts never use the ground contact model: Attack and damage abilities are priced as
+                    // an air strike (kernel exchange, no return fire); Defense/HP/speed/AP stay on the legacy
+                    // linear table, explicitly a PROXY (AA fire is not modelled).
                     ctx.Carriers = null;
                     EfficiencyBreakdown legacy = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
                     float perE = AiConfigV2.equipCardValuePerE;
-                    combat = legacy.Combat * perE * perU;
+                    float strike = EquipmentEfficiency.AviationOffenseDelta(b, hostAbilities, a, predicted.Abilities, ctx)
+                        * ctx.OffenseMult;
+                    combat = (strike + legacy.Defense * perE) * perU;
                     tactical = legacy.Tactical * perE * perU;
-                    breakdown = "proxy(aviation) " + legacy;
+                    breakdown = $"proxy(aviation) air-strike={strike:0.###} " + legacy;
                 }
                 else
                 {
