@@ -656,10 +656,10 @@ namespace Game.Ai.V2
                     }
                     continue;
                 }
-                // Shape AND duty: a hero-led army that is the only operator of a served facility /
-                // selected preparation site takes no remote build (staying on the target is fine).
+                // Shape only: BuildEconomy runs before CompleteDevelopmentPreparation writes
+                // OperatorDutyBlocksDeparture, so the duty is judged by Demand / Provisioning, which
+                // read the completed snapshot (and the live world) on the same witnessed routes.
                 if (!army.IsMobileEconomyBuilder
-                    || (army.OperatorDutyBlocksDeparture && !army.Hex.Equals(target))
                     || (projectedArmy == null && !liveById.ContainsKey(army.ArmyId)))
                     continue;
                 // maxMovement hard-blocks any hex this army could never enter in one step (see
