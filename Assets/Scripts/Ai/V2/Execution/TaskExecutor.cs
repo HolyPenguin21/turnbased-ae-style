@@ -343,7 +343,9 @@ namespace Game.Ai.V2
             {
                 if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army,
                         snapshot == null ? null : ActorCommitments.FromIntents(
-                            MissionIntentRegistry.GetOrCreate(player).All, snapshot, null)) > 0)
+                            MissionIntentRegistry.GetOrCreate(player).All, snapshot, null),
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(
+                            player, AiHandRegistry.Peek(player), ctx)) > 0)
                     WorldDeltaLifecycle.RecordExecutionMutation(result, true);
             }
 
