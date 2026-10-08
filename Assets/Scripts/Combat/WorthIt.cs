@@ -150,16 +150,30 @@ namespace Game.Combat
                 hash = hash * 31 + (p.IsHero ? 1 : 0);
                 hash = hash * 31 + p.FateMax;
                 hash = hash * 31 + (p.IsSummoned ? 1 : 0);
-                foreach (UnitTypeTag tag in p.TypeTags.OrderBy(t => (int)t))
-                    hash = hash * 31 + (int)tag;
-                foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
-                {
-                    if (ability == null) continue;
-                    foreach (char ch in ability)
-                        hash = hash * 31 + ch;
-                    hash = hash * 31 + 7;
-                }
+                // Empty/singleton collections are already sorted. Avoid allocating LINQ sort
+                // iterators for the common case without changing the seed's ordering rule.
+                if (p.TypeTags.Count == 1)
+                    hash = hash * 31 + (int)p.TypeTags[0];
+                else if (p.TypeTags.Count > 1)
+                    foreach (UnitTypeTag tag in p.TypeTags.OrderBy(t => (int)t))
+                        hash = hash * 31 + (int)tag;
+                if (p.Abilities.Count == 1)
+                    hash = AccumulateAbilityHash(hash, p.Abilities[0]);
+                else if (p.Abilities.Count > 1)
+                    foreach (string ability in p.Abilities.OrderBy(a => a, System.StringComparer.Ordinal))
+                        hash = AccumulateAbilityHash(hash, ability);
                 return hash;
+            }
+        }
+
+        private static int AccumulateAbilityHash(int hash, string ability)
+        {
+            if (ability == null) return hash;
+            unchecked
+            {
+                foreach (char ch in ability)
+                    hash = hash * 31 + ch;
+                return hash * 31 + 7;
             }
         }
 
@@ -279,22 +293,29 @@ namespace Game.Combat
                 return list;
             foreach (DefenderProfile p in profiles)
             {
-                float hp = Mathf.Max(1f, p.HitPoints);
-                list.Add(new BattleUnit
-                {
-                    Attack = p.Attack,
-                    Defense = p.Defense + extraDefense,
-                    Abilities = p.Abilities,
-                    TypeTags = p.TypeTags,
-                    Initiative = p.IsHero ? p.Initiative : p.Initiative + initiativeBonus,
-                    Hp = hp,
-                    MaxHp = Mathf.Max(hp, p.MaxHitPoints),
-                    IsHero = p.IsHero,
-                    HeroFate = p.FateMax,
-                    IsSummoned = p.IsSummoned,
-                });
+                list.Add(ToBattleUnit(p, extraDefense, initiativeBonus));
             }
             return list;
+        }
+
+        // Both key construction and miss computation use this exact conversion. A cache hit
+        // needs its values, not a temporary list containing them.
+        private static BattleUnit ToBattleUnit(DefenderProfile p, float extraDefense, int initiativeBonus)
+        {
+            float hp = Mathf.Max(1f, p.HitPoints);
+            return new BattleUnit
+            {
+                Attack = p.Attack,
+                Defense = p.Defense + extraDefense,
+                Abilities = p.Abilities,
+                TypeTags = p.TypeTags,
+                Initiative = p.IsHero ? p.Initiative : p.Initiative + initiativeBonus,
+                Hp = hp,
+                MaxHp = Mathf.Max(hp, p.MaxHitPoints),
+                IsHero = p.IsHero,
+                HeroFate = p.FateMax,
+                IsSummoned = p.IsSummoned,
+            };
         }
 
         // Attacker BattleUnits built straight off the real ArmyData roster rather than through
@@ -712,13 +733,12 @@ namespace Game.Combat
             if (!defenderUnits.Any(p => p.IsGroundCombatant))
                 return new BattleEstimate(1f, 1f, 0f);
 
-            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
-            if (!baseline.Any(u => !u.IsHero))
+            if (!attackerUnits.Any(p => !p.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
             int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus,
                 attackerCommander, defenderCommander);
-            return EstimateCore(baseline, defenderUnits, hexDefenseBonus, seed,
+            return EstimateCore(attackerUnits, defenderUnits, hexDefenseBonus, seed,
                 attackerCommander, defenderCommander, magnitudes);
         }
 
@@ -907,20 +927,36 @@ namespace Game.Combat
             AbilityMagnitudes? magnitudes)
         {
             AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
-            // Converted once; every trial fights a fresh copy (same values the per-trial conversion
-            // produced).
-            List<BattleUnit> defenderTemplate =
-                ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
             return CachedEstimate(1, seed, m,
                 buf =>
                 {
                     AppendKey(buf, attackerCommander);
                     AppendKey(buf, baseline);
                     AppendKey(buf, defenderCommander);
-                    AppendKey(buf, defenderTemplate);
+                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
                 },
-                () => SimulateSingle(baseline, defenderTemplate, seed, attackerCommander,
+                () => SimulateSingle(baseline,
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), seed, attackerCommander,
                     defenderCommander, m));
+        }
+
+        private static BattleEstimate EstimateCore(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed,
+            SideCommander attackerCommander, SideCommander defenderCommander,
+            AbilityMagnitudes? magnitudes)
+        {
+            AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
+            return CachedEstimate(1, seed, m,
+                buf =>
+                {
+                    AppendKey(buf, attackerCommander);
+                    AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative);
+                    AppendKey(buf, defenderCommander);
+                    AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+                },
+                () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative),
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), seed,
+                    attackerCommander, defenderCommander, m));
         }
 
         private static BattleEstimate SimulateSingle(List<BattleUnit> baseline,

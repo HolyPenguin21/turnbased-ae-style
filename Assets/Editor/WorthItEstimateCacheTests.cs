@@ -122,6 +122,203 @@ namespace Game.EditorTests
 
         // ---- Behaviour ----
 
+        private static System.Func<int, int, AbilityMagnitudes, System.Action<List<int>>,
+            System.Func<WorthIt.BattleEstimate>, WorthIt.BattleEstimate> CacheEntryPoint() =>
+            (System.Func<int, int, AbilityMagnitudes, System.Action<List<int>>,
+                System.Func<WorthIt.BattleEstimate>, WorthIt.BattleEstimate>)System.Delegate.CreateDelegate(
+                    typeof(System.Func<int, int, AbilityMagnitudes, System.Action<List<int>>,
+                        System.Func<WorthIt.BattleEstimate>, WorthIt.BattleEstimate>),
+                    typeof(WorthIt).GetMethod("CachedEstimate", BindingFlags.NonPublic | BindingFlags.Static));
+
+        [Test]
+        public void CachedKeyLookup_RepeatedHitDoesNotAllocate()
+        {
+            var estimate = CacheEntryPoint();
+            System.Action<List<int>> key = b => { for (int i = 0; i < 256; i++) b.Add(i); };
+            int computes = 0;
+            System.Func<WorthIt.BattleEstimate> compute = () => {
+                computes++; return new WorthIt.BattleEstimate(0.75f, 0.5f, 0.25f);
+            };
+            var bytes = AiPowerOptimizationTests.AllocatedBytes();
+            WorthIt.BeginEstimateCacheScope();
+            estimate(1, 123, AbilityMagnitudes.Default, key, compute);
+            estimate(1, 123, AbilityMagnitudes.Default, key, compute);
+            long before = bytes();
+            for (int i = 0; i < 100; i++)
+                estimate(1, 123, AbilityMagnitudes.Default, key, compute);
+            long allocated = bytes() - before;
+            TestContext.WriteLine($"100 cached key lookups allocated: {allocated}");
+            Assert.That(allocated, Is.EqualTo(0), "A hit must borrow the lookup buffer, not copy its key");
+            Assert.That(computes, Is.EqualTo(1));
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Hits, Is.EqualTo(101));
+        }
+
+        [Test]
+        public void CachedKeyLookup_HashCollisionAndBufferGrowthKeepEntriesDistinct()
+        {
+            var estimate = CacheEntryPoint();
+            // These two suffixes have the same 31-polynomial hash: 0*31+31 == 1*31+0.
+            System.Action<List<int>> first = b => { b.Add(0); b.Add(31); };
+            System.Action<List<int>> collision = b => { b.Add(1); b.Add(0); };
+            System.Action<List<int>> large = b => { for (int i = 0; i < 1024; i++) b.Add(i); };
+            int computes = 0;
+            System.Func<WorthIt.BattleEstimate> compute = () => {
+                computes++; return new WorthIt.BattleEstimate(computes / 4f, 0, 0);
+            };
+            WorthIt.BeginEstimateCacheScope();
+            Assert.That(estimate(1, 123, AbilityMagnitudes.Default, first, compute).WinChance, Is.EqualTo(0.25f));
+            Assert.That(estimate(1, 123, AbilityMagnitudes.Default, collision, compute).WinChance, Is.EqualTo(0.5f));
+            estimate(1, 123, AbilityMagnitudes.Default, large, compute);
+            Assert.That(estimate(1, 123, AbilityMagnitudes.Default, first, compute).WinChance, Is.EqualTo(0.25f));
+            Assert.That(estimate(1, 123, AbilityMagnitudes.Default, collision, compute).WinChance, Is.EqualTo(0.5f));
+            Assert.That(computes, Is.EqualTo(3));
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Entries, Is.EqualTo(3));
+        }
+
+        [Test]
+        public void CachedRosterHit_DoesNotRebuildSimulationLists()
+        {
+            var attackers = Enumerable.Repeat(Unit(3, 1, 4), 32).ToArray();
+            var defenders = Enumerable.Repeat(Unit(2, 1, 4), 32).ToArray();
+            var bytes = AiPowerOptimizationTests.AllocatedBytes();
+            WorthIt.BeginEstimateCacheScope();
+            WorthIt.Estimate(attackers, defenders, 0);
+            WorthIt.Estimate(attackers, defenders, 0);
+            long before = bytes();
+            WorthIt.Estimate(attackers, defenders, 0);
+            long allocated = bytes() - before;
+            TestContext.WriteLine($"cached 32-vs-32 roster allocated: {allocated}");
+            Assert.That(allocated, Is.LessThan(12 * 1024),
+                "Only miss computation needs converted BattleUnit lists");
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Misses, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EndScope_ReturnsCompletedStatsButLeavesNoActiveStats()
+        {
+            WorthIt.BeginEstimateCacheScope();
+            WorthIt.Estimate(Attackers(), Defenders(), 0);
+            WorthIt.Estimate(Attackers(), Defenders(), 0);
+            var stats = WorthIt.EndEstimateCacheScope();
+            Assert.That(stats.Hits, Is.EqualTo(1));
+            Assert.That(stats.Misses, Is.EqualTo(1));
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Hits, Is.Zero);
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Misses, Is.Zero);
+            Assert.That(WorthIt.EstimateCacheActive, Is.False);
+        }
+
+        private static System.IDisposable OpenOwnedScope()
+        {
+            var open = typeof(WorthIt).GetMethod("OpenEstimateCacheScope", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(open, Is.Not.Null, "AI turns need an owned scope that closes when their iterator is disposed");
+            return (System.IDisposable)open.Invoke(null, null);
+        }
+
+        private static System.Collections.IEnumerator SuspendedEstimate()
+        {
+            using (OpenOwnedScope())
+            {
+                WorthIt.Estimate(Attackers(), Defenders(), 0);
+                yield return null;
+                throw new System.InvalidOperationException("test turn failure");
+            }
+        }
+
+        [Test]
+        [TestCase(true)]
+        [TestCase(false)]
+        public void OwnedScope_ClosesOnIteratorDisposalOrException(bool dispose)
+        {
+            var turn = SuspendedEstimate();
+            Assert.That(turn.MoveNext(), Is.True);
+            Assert.That(WorthIt.EstimateCacheActive, Is.True);
+            if (dispose) ((System.IDisposable)turn).Dispose();
+            else Assert.Throws<System.InvalidOperationException>(() => turn.MoveNext());
+            Assert.That(WorthIt.EstimateCacheActive, Is.False);
+            Assert.That(WorthIt.CurrentEstimateCacheStats.Entries, Is.Zero);
+        }
+
+        [Test]
+        public void OwnedScope_DisposingOldOwnerCannotCloseNewTurn()
+        {
+            var previous = OpenOwnedScope();
+            var current = OpenOwnedScope();
+            previous.Dispose();
+            Assert.That(WorthIt.EstimateCacheActive, Is.True);
+            current.Dispose();
+            Assert.That(WorthIt.EstimateCacheActive, Is.False);
+        }
+
+        private static System.Collections.IEnumerator NestedEstimate(System.Action disposed)
+        {
+            try { yield return FailingEstimate(); }
+            finally { disposed(); }
+        }
+
+        private static System.Collections.IEnumerator FailingEstimate()
+        {
+            WorthIt.Estimate(Attackers(), Defenders(), 0);
+            yield return null;
+            throw new System.InvalidOperationException("nested test failure");
+        }
+
+        private sealed class ScheduledWait : UnityEngine.CustomYieldInstruction
+        {
+            internal int Polls;
+            public override bool keepWaiting { get { Polls++; return false; } }
+        }
+
+        private static System.Collections.IEnumerator SuccessfulEstimate(object instruction)
+        {
+            WorthIt.Estimate(Attackers(), Defenders(), 0);
+            WorthIt.Estimate(Attackers(), Defenders(), 0);
+            yield return instruction;
+        }
+
+        [Test]
+        public void CachedTurnRunner_PreservesEngineInstructionAndReportsCompletedStats()
+        {
+            var method = typeof(Game.Ai.AiTurnController).GetMethod("RunEstimateCached",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null);
+            var wait = new ScheduledWait();
+            WorthIt.EstimateCacheStats stats = default;
+            int completed = 0;
+            System.Action<WorthIt.EstimateCacheStats> report = s => { stats = s; completed++; };
+            var runner = (System.Collections.IEnumerator)method.Invoke(null,
+                new object[] { SuccessfulEstimate(wait), report });
+            Assert.That(runner.MoveNext(), Is.True);
+            Assert.That(runner.Current, Is.SameAs(wait));
+            Assert.That(wait.Polls, Is.Zero, "Unity must retain scheduling of custom yield instructions");
+            Assert.That(runner.MoveNext(), Is.False);
+            Assert.That(completed, Is.EqualTo(1));
+            Assert.That(stats.Hits, Is.EqualTo(1));
+            Assert.That(stats.Misses, Is.EqualTo(1));
+            Assert.That(WorthIt.EstimateCacheActive, Is.False);
+        }
+
+        [Test]
+        [TestCase(true)]
+        [TestCase(false)]
+        public void CachedTurnRunner_ClosesNestedPipelineOnDisposalOrFailure(bool dispose)
+        {
+            var method = typeof(Game.Ai.AiTurnController).GetMethod("RunEstimateCached",
+                BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.That(method, Is.Not.Null);
+            int disposed = 0, completed = 0;
+            System.Action<WorthIt.EstimateCacheStats> report = _ => completed++;
+            var runner = (System.Collections.IEnumerator)method.Invoke(null,
+                new object[] { NestedEstimate(() => disposed++), report });
+            Assert.That(runner.MoveNext(), Is.True);
+            Assert.That(runner.Current, Is.Null, "The actual runner must advance nested iterators itself");
+            Assert.That(WorthIt.EstimateCacheActive, Is.True);
+            if (dispose) ((System.IDisposable)runner).Dispose();
+            else Assert.Throws<System.InvalidOperationException>(() => runner.MoveNext());
+            Assert.That(WorthIt.EstimateCacheActive, Is.False);
+            Assert.That(disposed, Is.EqualTo(1));
+            Assert.That(completed, Is.Zero, "A cancelled/failed turn must not report successful completion");
+        }
+
         [Test]
         public void SingleEstimate_ReusesTrialCollections()
         {

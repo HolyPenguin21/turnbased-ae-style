@@ -73,6 +73,7 @@ namespace Game.Combat
         private static readonly Dictionary<string, int> EstimateAbilityIds =
             new Dictionary<string, int>(StringComparer.Ordinal);
         private static readonly List<int> EstimateKeyBuffer = new List<int>(256);
+        private static int[] EstimateLookupBuffer = new int[256];
         private static bool _estimateCacheActive;
         private static EstimateCacheStats _estimateCacheStats;
 
@@ -99,12 +100,31 @@ namespace Game.Combat
             _estimateCacheActive = true;
         }
 
+        // Iterator-owned lifetime. An old/stopped owner must not close a newer turn's scope.
+        internal static EstimateCacheScopeLease OpenEstimateCacheScope()
+        {
+            BeginEstimateCacheScope();
+            return new EstimateCacheScopeLease(EstimateCacheScopeId);
+        }
+
+        internal readonly struct EstimateCacheScopeLease : IDisposable
+        {
+            private readonly int _scopeId;
+            internal EstimateCacheScopeLease(int scopeId) => _scopeId = scopeId;
+            public void Dispose()
+            {
+                if (_estimateCacheActive && EstimateCacheScopeId == _scopeId)
+                    EndEstimateCacheScope();
+            }
+        }
+
         public static EstimateCacheStats EndEstimateCacheScope()
         {
             EstimateCacheStats stats = CurrentEstimateCacheStats;
             EstimateCacheEntries.Clear();
             _estimateCacheActive = false;
             EstimateCacheScopeId++;
+            _estimateCacheStats = default;
             return stats;
         }
 
@@ -126,7 +146,12 @@ namespace Game.Combat
             buf.Add(MaxSimulatedRounds);
             AppendKey(buf, magnitudes);
             appendKey(buf);
-            var key = new EstimateCacheKey(buf.ToArray());
+            // Borrow only for this synchronous lookup. The dictionary never retains the mutable
+            // buffer: a miss snapshots it before compute (which may perform another estimate).
+            if (EstimateLookupBuffer.Length < buf.Count)
+                Array.Resize(ref EstimateLookupBuffer, Math.Max(buf.Count, EstimateLookupBuffer.Length * 2));
+            buf.CopyTo(EstimateLookupBuffer);
+            var key = new EstimateCacheKey(EstimateLookupBuffer, buf.Count);
 
             if (EstimateCacheEntries.TryGetValue(key, out BattleEstimate cached))
             {
@@ -135,6 +160,7 @@ namespace Game.Combat
             }
 
             _estimateCacheStats.Misses++;
+            key = new EstimateCacheKey(buf.ToArray(), buf.Count);
             long start = System.Diagnostics.Stopwatch.GetTimestamp();
             BattleEstimate result;
             using (new Game.Core.ProfileScope("Combat/WorthIt.Simulate"))
@@ -169,26 +195,40 @@ namespace Game.Combat
         {
             buf.Add(-1000 - units.Count);
             foreach (BattleUnit u in units)
-            {
-                buf.Add(BitConverter.SingleToInt32Bits(u.Attack));
-                buf.Add(BitConverter.SingleToInt32Bits(u.Defense));
-                buf.Add(u.Initiative);
-                buf.Add(BitConverter.SingleToInt32Bits(u.Hp));
-                buf.Add(BitConverter.SingleToInt32Bits(u.MaxHp));
-                buf.Add(u.IsHero ? 1 : 0);
-                buf.Add(u.HeroFate);
-                buf.Add(u.IsSummoned ? 1 : 0);
-                int abilities = u.Abilities?.Count ?? -1;
-                buf.Add(abilities);
-                for (int i = 0; i < abilities; i++)
-                    buf.Add(AbilityId(u.Abilities[i]));
-                int tags = u.TypeTags?.Count ?? -1;
-                buf.Add(tags);
-                for (int i = 0; i < tags; i++)
-                    buf.Add((int)u.TypeTags[i]);
-            }
+                AppendKey(buf, u);
         }
 
+        private static void AppendKey(List<int> buf, IReadOnlyCollection<DefenderProfile> profiles,
+            float defenseBonus, int initiativeBonus)
+        {
+            buf.Add(-1000 - profiles.Count);
+            if (profiles is IReadOnlyList<DefenderProfile> indexed)
+                for (int i = 0; i < indexed.Count; i++)
+                    AppendKey(buf, ToBattleUnit(indexed[i], defenseBonus, initiativeBonus));
+            else
+                foreach (DefenderProfile p in profiles)
+                    AppendKey(buf, ToBattleUnit(p, defenseBonus, initiativeBonus));
+        }
+
+        private static void AppendKey(List<int> buf, BattleUnit u)
+        {
+            buf.Add(BitConverter.SingleToInt32Bits(u.Attack));
+            buf.Add(BitConverter.SingleToInt32Bits(u.Defense));
+            buf.Add(u.Initiative);
+            buf.Add(BitConverter.SingleToInt32Bits(u.Hp));
+            buf.Add(BitConverter.SingleToInt32Bits(u.MaxHp));
+            buf.Add(u.IsHero ? 1 : 0);
+            buf.Add(u.HeroFate);
+            buf.Add(u.IsSummoned ? 1 : 0);
+            int abilities = u.Abilities?.Count ?? -1;
+            buf.Add(abilities);
+            for (int i = 0; i < abilities; i++)
+                buf.Add(AbilityId(u.Abilities[i]));
+            int tags = u.TypeTags?.Count ?? -1;
+            buf.Add(tags);
+            for (int i = 0; i < tags; i++)
+                buf.Add((int)u.TypeTags[i]);
+        }
         private static int AbilityId(string ability)
         {
             if (ability == null)
@@ -201,27 +241,28 @@ namespace Game.Combat
         private readonly struct EstimateCacheKey : IEquatable<EstimateCacheKey>
         {
             private readonly int[] _data;
+            private readonly int _count;
             private readonly int _hash;
 
-            public EstimateCacheKey(int[] data)
+            public EstimateCacheKey(int[] data, int count)
             {
                 _data = data;
+                _count = count;
                 unchecked
                 {
                     int h = 17;
-                    foreach (int v in data)
-                        h = h * 31 + v;
+                    for (int i = 0; i < count; i++)
+                        h = h * 31 + data[i];
                     _hash = h;
                 }
             }
 
             public bool Equals(EstimateCacheKey other)
             {
-                if (_hash != other._hash || _data.Length != other._data.Length)
+                if (_hash != other._hash || _count != other._count)
                     return false;
-                for (int i = 0; i < _data.Length; i++)
-                    if (_data[i] != other._data[i])
-                        return false;
+                for (int i = 0; i < _count; i++)
+                    if (_data[i] != other._data[i]) return false;
                 return true;
             }
 
