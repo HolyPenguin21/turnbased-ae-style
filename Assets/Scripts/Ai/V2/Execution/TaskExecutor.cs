@@ -336,6 +336,17 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // One departure rule for every ground operation: a hero the own facility needs stays in
+            // the local garrison when it is legally and freely possible (Housekeeping's twin rule).
+            if (pm.Kind == MissionKind.Raid || pm.Kind == MissionKind.ActiveDefence
+                || pm.Kind == MissionKind.Attack)
+            {
+                if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army,
+                        snapshot == null ? null : ActorCommitments.FromIntents(
+                            MissionIntentRegistry.GetOrCreate(player).All, snapshot, null)) > 0)
+                    WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            }
+
             if (pm.Kind == MissionKind.Raid)
             {
                 if (singleStepOnly)
@@ -517,7 +528,9 @@ namespace Game.Ai.V2
                 if (garrison == null || pinned.Tier == ProvisioningManager.GarrisonExtractionTier.None
                     || !ReferenceEquals(pinned.Hero, pm.DevelopmentTarget.Hero)
                     || !garrison.Members.Contains(pinned.Hero)
-                    || !AiArmyRoles.CanSpareGarrisonMember(player, garrison, pinned.Hero)
+                    || !(garrison.IsGarrison
+                        ? AiArmyRoles.CanSpareGarrisonMember(player, garrison, pinned.Hero)
+                        : AiArmyRoles.IsDetachedFieldDelivery(garrison, pinned.Hero))
                     || pinned.ApCost > pm.ClaimedAp + AiConfigV2.allocatorSliceEpsilon
                     || root == null || !root.CanSpendActionPoints(Mathf.CeilToInt(pinned.ApCost)))
                 {

@@ -389,7 +389,11 @@ namespace Game.Ai.V2
                             ResearchProductionSystem.RoleAbility(mode))
                         : AiArmyRoles.IsHeroLed(army) ? army.Members.FirstOrDefault(u =>
                             u != null && u.IsHero && !u.IsPrisoner
-                            && u.HasAbility(ResearchProductionSystem.RoleAbility(mode))) : null;
+                            && u.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                        // A second hero of a led army: detached alone, the army is not turned around.
+                        : army.Members.FirstOrDefault(u => u != null && u.IsHero && !u.IsPrisoner
+                            && u.HasAbility(ResearchProductionSystem.RoleAbility(mode))
+                            && AiArmyRoles.IsDetachedFieldDelivery(army, u));
                     if (candidate == null || candidate.Owner != player)
                         continue;
                     // Never strip a different active facility of its exact operator.
@@ -400,7 +404,7 @@ namespace Game.Ai.V2
                             && ResearchProductionSystem.ActorStillQualifies(
                                 player, candidate, army.Hex, m)))
                         continue;
-                    int route = army.IsGarrison
+                    int route = army.IsGarrison || AiArmyRoles.IsDetachedFieldDelivery(army, candidate)
                         ? SafeStepPathing.FindSafePathCost(ctx.Map, player,
                             army.Hex, hex, candidate.MoveMax)
                         : SafeStepPathing.FindSafePathCost(ctx.Map, army, hex);
@@ -508,7 +512,10 @@ namespace Game.Ai.V2
                 // A card step is valued ONLY by the shared card scorer (cardScore). The TaskScore
                 // below is the world task of walking an existing hero: its compatibility baseline
                 // is the infrastructure value, with no completion bonus or predicted output EV.
-                var score = new TaskScore(strategicRelevance: AiConfigV2.nonCombatFacilityValue
+                // nonCombatFacilityValue is a CARD-scale anchor; this slot is TaskScore, so it is
+                // read through the one currency conversion (the prices below are already TaskScore).
+                var score = new TaskScore(strategicRelevance: ActionPrice.CardScoreToTaskScore(
+                        AiConfigV2.nonCombatFacilityValue)
                         * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f),
                     cardPrice: TaskScoreEvaluator.Price(delivery.ActionAp + delivery.ActivationNow),
                     delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
@@ -546,15 +553,23 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    // As in the shared card scorer: task merit and the canonical card price are
-                    // separate terms. The delivery's net is read in card units (ActionPrice's own
-                    // conversion) only so peer steps can be ordered; it is never written back.
-                    float taskNet = score.Value - ActionPrice.ToCardScore(ActionPrice.Ap(stageAp))
-                        - StrategicCardEvaluator.StrategicResourceCostValue(cost, snap,
-                            spendable, player);
+                    // Task merit, the stage's own AP and its resource bill all in TaskScore (the
+                    // resource value is a card number, converted once). The net is read in card
+                    // units (ActionPrice's own conversion) only so peer steps can be ordered.
+                    float taskNet = score.Value - ActionPrice.ToTaskScore(ActionPrice.Ap(stageAp))
+                        - ActionPrice.CardScoreToTaskScore(StrategicCardEvaluator.StrategicResourceCostValue(
+                            cost, snap, spendable, player));
                     op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
+                    string walkFacts = hero == null ? string.Empty
+                        : $"hero={GenerationSource.StableHeroKey(hero)} from=#{sourceArmy?.Id} route={travel} "
+                          + $"benefit={score.StrategicRelevance:0.##} apNow={delivery.ActionAp + delivery.ActivationNow:0.##} "
+                          + $"recurring={delivery.RecurringActivationAp:0.##}x{delivery.EtaTurns} "
+                          + $"displaced={displaced:0.##} net={taskNet:0.##}";
                     if (!describeOnly && taskNet <= AiConfigV2.allocatorSliceEpsilon)
-                    { rejection = "current_stage_opportunity_cost"; return; }
+                    { rejection = "current_stage_opportunity_cost(" + walkFacts + ")"; return; }
+                    if (!describeOnly && hero != null)
+                        AiDebugLog.WriteDeduped($"dev-delivery:{mode}:{hex.Q},{hex.R}",
+                            $"[AI][V2][Dev] delivery {mode} @({hex.Q},{hex.R}) {walkFacts}");
                 }
                 forecasts.Add(op);
                 if (!describeOnly)
@@ -711,15 +726,17 @@ namespace Game.Ai.V2
                 : Mathf.Max(0f, AiPower.EffectiveLine(card).BasePower)
                     / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
 
-        // A field operator moves with its whole army; a garrison hero is extracted alone.
+        // A field operator moves with its whole army; a garrison hero (or a second hero of a led
+        // field army) is extracted alone.
         // Null is the selected hand/local/generated operator, with no delivery investment.
         internal static (float ActionAp, float ActivationNow, float RecurringActivationAp, int EtaTurns)
             OperatorDeliveryFacts(ArmyData army, UnitData hero, int route)
         {
             if (army == null || hero == null) return default;
-            int activation = army.IsGarrison ? hero.ActivationApCost : army.ActivationApCost;
-            int movement = army.IsGarrison ? hero.MoveMax : army.MaxMovement;
-            return (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f,
+            bool alone = army.IsGarrison || AiArmyRoles.IsDetachedFieldDelivery(army, hero);
+            int activation = alone ? hero.ActivationApCost : army.ActivationApCost;
+            int movement = alone ? hero.MoveMax : army.MaxMovement;
+            return (alone ? ArmyActions.CreateArmyApCost : 0f,
                 army.HasActivatedThisTurn ? 0f : activation, activation,
                 Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, movement))));
         }

@@ -151,6 +151,17 @@ namespace Game.Ai
             return army.Members.Count(m => m.IsHero) == 1 && !AbilityParams.ArmyHasAnyRecce(army);
         }
 
+        // A free field army with another commander lends one of its non-commander heroes to a
+        // Development delivery: the hero is detached (CreateArmy/Transfer, like a garrison hero)
+        // and the army stays whole. The single-hero army keeps IsHeroLed (whole army moves).
+        public static bool IsDetachedFieldDelivery(ArmyData army, UnitData hero) =>
+            army != null && hero != null && !army.IsGarrison && !army.IsPrison
+            && !AviationRules.IsAirfield(army) && !AviationRules.IsAirArmy(army)
+            && hero.IsHero && !hero.IsPrisoner && army.Members.Contains(hero)
+            && army.Members.Count(m => m != null && m.IsHero) >= 2
+            && army.Commander != null && !ReferenceEquals(army.Commander, hero)
+            && army.CanLeaveWithoutOvercrowding(hero);
+
         // Any hero-led army at all — bare, Recce-carrying, or already escorted, the only thing
         // that matters is "exactly one hero". Broader than IsHeroLedCombatArmy (excludes Recce)
         // and IsSoloRecce (excludes non-Recce escorts) on purpose: AiEconomyPlanner.

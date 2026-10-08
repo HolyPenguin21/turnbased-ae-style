@@ -161,19 +161,27 @@ namespace Game.Ai.V2
             // 0.75 ATK-F03 — an Attack preparation host sheds the heroes that only take a fighter
             // slot (its contract's MayReleaseExcessHeroes): each goes, zero-AP, to a free local
             // container that legally takes it — the garrison first (OrderedDestinations), never
-            // another claimed receiver. The best commander and every operator stay.
+            // another claimed receiver. The best commander stays; a Research/Production operator
+            // goes only to the local garrison (it stays on its facility's hex, so the site keeps
+            // its operator — the live twin is LocalOperatorRelease via HousekeepingExecutor).
             foreach (int srcId in armyIds)
             {
                 ReorgContainer src = state.Meta[srcId];
                 if (!src.MayReleaseExcessHeroes)
                     continue;
-                foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext))
+                foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext,
+                             includeOperators: true))
                     foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                     {
                         if (state.Meta[dstId].IsMissionReceiver)
                             continue;
+                        if (hero.IsDevelopmentOperator && !state.Meta[dstId].IsGarrison)
+                            continue;
                         VState released = TryMoveOne(state, srcId, dstId, hero,
-                            "release a hero that only takes a fighter slot of the preparation host");
+                            hero.IsDevelopmentOperator
+                                ? "keep a Research/Production operator at its facility's garrison"
+                                : "release a hero that only takes a fighter slot of the preparation host",
+                            allowDevelopmentOperator: hero.IsDevelopmentOperator);
                         if (released != null)
                             yield return released;
                     }
@@ -483,14 +491,15 @@ namespace Game.Ai.V2
         // evaluation's best legal leader (HeroRoleEvaluator, the BestCommander the reorder
         // promotes first; the old commander becomes releasable after that zero-AP reorder).
         private static List<ReorgUnit> ExcessHeroes(List<ReorgUnit> units, ReorgContainer meta,
-            IReadOnlyList<WorthIt.DefendingArmy> context)
+            IReadOnlyList<WorthIt.DefendingArmy> context, bool includeOperators = false)
         {
             if (units == null || units.Count(u => u != null && u.IsHero) < 2)
                 return new List<ReorgUnit>();
             ReorgUnit current = units.First(u => u != null && u.IsHero);
             ReorgUnit lead = BestCommander(units, meta.IsGarrison, context);
             return units.Where(u => u != null && u.IsHero && !ReferenceEquals(u, lead)
-                    && !ReferenceEquals(u, current) && !u.IsDevelopmentOperator && !u.IsCommitted)
+                    && !ReferenceEquals(u, current) && (includeOperators || !u.IsDevelopmentOperator)
+                    && !u.IsCommitted)
                 .OrderBy(u => u.Key).ToList();
         }
 

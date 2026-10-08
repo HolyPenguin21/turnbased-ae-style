@@ -76,7 +76,12 @@ namespace Game.Ai.V2
             // as the DESIRED (not only Maximum) envelope before lower-priority work
             // spends it. Provisioning resolves the real Shell/Host/Create price and
             // releases the difference through the existing allocator claim path.
-            float upperBound = actor?.IsGarrison == true
+            // A second hero of a led field army is detached like a garrison hero (container price).
+            bool detached = actor != null && !actor.IsGarrison && target.Hero != null
+                && AiArmyRoles.IsDetachedFieldDelivery(
+                    ArmyRegistry.AllForOwner(target.Hero.Owner).FirstOrDefault(a => a != null
+                        && a.Id == actor.ArmyId), target.Hero);
+            float upperBound = actor?.IsGarrison == true || detached
                 ? ArmyActions.CreateArmyApCost : activation;
             float desired = upperBound;
             var m = new MissionProposal

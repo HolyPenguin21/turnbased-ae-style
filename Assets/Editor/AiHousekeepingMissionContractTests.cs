@@ -160,6 +160,48 @@ namespace Game.EditorTests
             Assert.That(plan.ExpectedMembership[2].Count, Is.EqualTo(5));
         }
 
+        private static ReorgUnit Operator(int command = 3)
+        {
+            ReorgUnit u = Hero(0f, command);
+            u.IsDevelopmentOperator = true;
+            u.HeroRole = HeroOperationalRole.SupportOperator;
+            return u;
+        }
+
+        // 2026-10-08 — Halden T19-T21: a fallback support operator rode out with the host although
+        // the army had its own commander. It stays at its facility's hex: in the local garrison.
+        [Test]
+        public void PreparationHost_LeavesItsFacilityOperatorInTheLocalGarrison()
+        {
+            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
+            ReorgUnit op = Operator();
+            ReorgUnit lead = Hero(0f, command: 7);
+            ReorgContainer host = Mission(2, receives: true, movementFloor: -1,
+                lead, op, Body(6f), Body(6f));
+            host.MayReleaseExcessHeroes = true;
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.Transfers.Any(t => t.FromArmyId == 2 && t.ToArmyId == 1
+                    && t.UnitKey == op.Key), Is.True, plan.DebugSummary());
+            Assert.That(plan.ExpectedMembership[2], Does.Contain(lead.Key));
+        }
+
+        [Test]
+        public void PreparationHost_NeverReleasesTheOperatorWhoIsItsOnlyCommanderOrToAFieldArmy()
+        {
+            ReorgContainer garrison = Garrison(1, Body(8f), Body(8f));
+            ReorgUnit solo = Operator();
+            ReorgContainer soloHost = Mission(2, receives: true, movementFloor: -1, solo, Body(6f));
+            soloHost.MayReleaseExcessHeroes = true;
+            Assert.That(Plan(garrison, soloHost).Transfers.Any(t => t.FromArmyId == 2), Is.False);
+
+            ReorgContainer host = Mission(4, receives: true, movementFloor: -1,
+                Hero(0f, command: 7), Operator(), Body(6f));
+            host.MayReleaseExcessHeroes = true;
+            ReorgContainer free = Free(5, Body(8f));
+            Assert.That(Plan(host, free).Transfers.Any(t => t.FromArmyId == 4 && t.ToArmyId == 5), Is.False,
+                "an operator is never released to a field container: it must stay at its facility");
+        }
+
         private static ReorgUnit Keyed(ReorgUnit u, string key) { u.StrikeKey = key; return u; }
 
         // 2026-10-01 — a full preparation host swaps a body its target roster does not need for

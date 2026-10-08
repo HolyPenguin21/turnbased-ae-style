@@ -219,6 +219,10 @@ namespace Game.Ai.V2
                 && receiver == null && giver.MayReleaseBody(a, released);
             if (giver != null && !heroRelease && !bodyRelease)
             { why = "source is mission-claimed"; return false; }
+            // A facility operator of a protected host may only stay home: the one local-garrison rule.
+            if (giver != null && heroRelease && LocalOperatorRelease.IsSoleOperator(player, a.Hex, released)
+                && !LocalOperatorRelease.MayLeaveForLocalGarrison(player, a, released, b, out why))
+                return false;
             if (receiver != null && (!inboundOnly || !receiver.MayReceive))
             { why = $"destination mission contract {receiver.Label} admits no inbound"; return false; }
             return true;

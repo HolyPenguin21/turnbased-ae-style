@@ -182,6 +182,12 @@ namespace Game.Ai.V2
                 return false;
 
             ReorgContainer localGarrison = Garrison;
+            // A claimed preparation host whose commander is not the operator may hand it to the local garrison (zero AP); an operator-led host is the commander-choice pass's business.
+            if (localGarrison != null && localGarrison.CanReceive
+                && Containers.Any(c => c.MayReleaseExcessHeroes && c.Units.FirstOrDefault(u => u != null && u.IsHero)
+                        is ReorgUnit lead && !lead.IsDevelopmentOperator
+                    && c.Units.Any(u => u != null && u.IsHero && u.IsDevelopmentOperator && !ReferenceEquals(u, lead))))
+                return true;
             if (localGarrison != null && localGarrison.CanReceive
                 && Containers.Any(c => !c.IsGarrison && c.IsMutableGround
                     && c.Units.Any(u => u != null && (u.IsDevelopmentOperator || u.IsGarrisonHero))))
