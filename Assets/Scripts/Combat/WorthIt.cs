@@ -351,7 +351,8 @@ namespace Game.Combat
         // (Scorcher). Positions don't exist in this model, so "adjacent" is approximated as
         // "random other body". Only runs for a Splash/Scorcher actor.
         private static void ApplyRosterSplash(List<BattleUnit> enemyList, int primaryTargetIndex,
-            BattleUnit actor, int primaryDamage, System.Random rng, AbilityMagnitudes magnitudes)
+            BattleUnit actor, int primaryDamage, System.Random rng, AbilityMagnitudes magnitudes,
+            List<int> others)
         {
             bool splash = actor.HasAbility(UnitAbilities.Splash);
             bool scorcher = actor.HasAbility(UnitAbilities.Scorcher);
@@ -361,7 +362,7 @@ namespace Game.Combat
             if (half <= 0)
                 return;
 
-            var others = new List<int>();
+            others.Clear();
             for (int i = 0; i < enemyList.Count; i++)
                 if (i != primaryTargetIndex && enemyList[i].Hp > 0f)
                     others.Add(i);
@@ -458,23 +459,50 @@ namespace Game.Combat
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
         // wiped the attackers), or 0 (mutual wipe, or neither side finished the other off in time —
         // a draw, which every readout counts as half a win).
+        // Estimate-local workspace: never shared across estimates or exposed through their cache.
+        // Every battle/round clears it; it changes allocations, not simulated inputs or RNG order.
+        private sealed class SimulationScratch
+        {
+            internal readonly List<(bool isAttacker, int index)> Order;
+            internal readonly HashSet<(bool isAttacker, int index)> Acted = new HashSet<(bool, int)>();
+            internal readonly HashSet<(bool isAttacker, int index)> Suppressed = new HashSet<(bool, int)>();
+            internal readonly List<int> LivingTargets;
+            internal readonly List<int> SecondaryTargets;
+            internal readonly System.Comparison<(bool isAttacker, int index)> ByInitiativeDescending;
+            private List<BattleUnit> _attackers, _defenders;
+
+            internal SimulationScratch(int attackers, int defenders)
+            {
+                Order = new List<(bool, int)>(attackers + defenders);
+                LivingTargets = new List<int>(System.Math.Max(attackers, defenders));
+                SecondaryTargets = new List<int>(System.Math.Max(attackers, defenders));
+                ByInitiativeDescending = (a, b) =>
+                {
+                    int ai = a.isAttacker ? _attackers[a.index].Initiative : _defenders[a.index].Initiative;
+                    int bi = b.isAttacker ? _attackers[b.index].Initiative : _defenders[b.index].Initiative;
+                    return bi.CompareTo(ai);
+                };
+            }
+
+            internal void Reset(List<BattleUnit> attackers, List<BattleUnit> defenders)
+            {
+                _attackers = attackers; _defenders = defenders;
+                Order.Clear(); Acted.Clear(); Suppressed.Clear();
+                LivingTargets.Clear(); SecondaryTargets.Clear();
+            }
+        }
+
         private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
             System.Random rng, int attackerFate = 0, int defenderFate = 0,
-            AbilityMagnitudes? magnitudesOverride = null)
+            AbilityMagnitudes? magnitudesOverride = null, SimulationScratch scratch = null)
         {
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
-            // Per-battle scratch collections, cleared each round/turn instead of re-allocated
-            // (same contents, same order, same RNG draws — only the garbage is gone).
-            var order = new List<(bool isAttacker, int index)>(attackers.Count + defenders.Count);
-            var acted = new HashSet<(bool isAttacker, int index)>();
-            var suppressed = new HashSet<(bool isAttacker, int index)>();
-            var livingTargets = new List<int>(System.Math.Max(attackers.Count, defenders.Count));
-            System.Comparison<(bool isAttacker, int index)> byInitiativeDescending = (a, b) =>
-            {
-                int ai = a.isAttacker ? attackers[a.index].Initiative : defenders[a.index].Initiative;
-                int bi = b.isAttacker ? attackers[b.index].Initiative : defenders[b.index].Initiative;
-                return bi.CompareTo(ai);
-            };
+            scratch = scratch ?? new SimulationScratch(attackers.Count, defenders.Count);
+            scratch.Reset(attackers, defenders);
+            var order = scratch.Order;
+            var acted = scratch.Acted;
+            var suppressed = scratch.Suppressed;
+            var livingTargets = scratch.LivingTargets;
             for (int round = 0; round < MaxSimulatedRounds && AnyCombatantAlive(attackers) && AnyCombatantAlive(defenders); round++)
             {
                 order.Clear();
@@ -489,7 +517,7 @@ namespace Game.Combat
                     int j = rng.Next(i + 1);
                     (order[i], order[j]) = (order[j], order[i]);
                 }
-                order.Sort(byInitiativeDescending);
+                order.Sort(scratch.ByInitiativeDescending);
 
                 acted.Clear();
                 suppressed.Clear();
@@ -563,7 +591,8 @@ namespace Game.Combat
                     // "neighbours" is approximated as random OTHER living enemies. No-op for an
                     // actor with neither ability, so every existing trial is unchanged.
                     if (exchange.Damage > 0)
-                        ApplyRosterSplash(enemyList, targetIndex, actor, exchange.Damage, rng, magnitudes);
+                        ApplyRosterSplash(enemyList, targetIndex, actor, exchange.Damage, rng, magnitudes,
+                            scratch.SecondaryTargets);
 
                     acted.Add(turn);
                 }
@@ -804,10 +833,17 @@ namespace Game.Combat
             float startHp = baseline.Where(u => !u.IsHero).Sum(u => u.Hp);
             int wins = 0, draws = 0, criticalOnWin = 0;
             float survivingRatioSum = 0f;
+            var attackers = new List<BattleUnit>(baseline.Count);
+            var defenders = new List<BattleUnit>();
+            var entryStats = new List<BattleUnit>(baseline.Count);
+            var survivors = new List<BattleUnit>(baseline.Count);
+            var survivorStats = new List<BattleUnit>(baseline.Count);
+            var scratch = new SimulationScratch(baseline.Count,
+                defenderTemplates.Count > 0 ? defenderTemplates.Max(d => d.Count) : 0);
             for (int t = 0; t < MonteCarloTrials; t++)
             {
-                var attackers = new List<BattleUnit>(baseline);
-                var entryStats = new List<BattleUnit>(baseline);
+                attackers.Clear(); attackers.AddRange(baseline);
+                entryStats.Clear(); entryStats.AddRange(baseline);
                 int result = 1;
                 for (int ai = 0; ai < order.Count; ai++)
                 {
@@ -815,15 +851,14 @@ namespace Game.Combat
                     int commanderIndex = FirstLivingHeroIndex(attackers);
                     int refreshedAttackerFate = ai == 0 ? attackerCommander.Fate
                         : commanderIndex >= 0 ? attackers[commanderIndex].HeroFate : 0;
-                    result = SimulateOneBattle(attackers,
-                        new List<BattleUnit>(defenderTemplates[ai]), rng,
-                        refreshedAttackerFate, a.Commander.Fate, magnitudes);
+                    defenders.Clear(); defenders.AddRange(defenderTemplates[ai]);
+                    result = SimulateOneBattle(attackers, defenders, rng,
+                        refreshedAttackerFate, a.Commander.Fate, magnitudes, scratch);
                     if (result <= 0)
                         break;
                     // Wounds carry into the next battle; in-battle stat changes (Berserk) do not —
                     // the game reverts them when a battle ends (BattleScreenUI.RevertBerserkStacks).
-                    var survivors = new List<BattleUnit>(attackers.Count);
-                    var survivorStats = new List<BattleUnit>(attackers.Count);
+                    survivors.Clear(); survivorStats.Clear();
                     for (int i = 0; i < attackers.Count; i++)
                     {
                         if (attackers[i].Hp <= 0f || attackers[i].IsSummoned)
@@ -834,15 +869,16 @@ namespace Game.Combat
                         survivors.Add(u);
                         survivorStats.Add(entryStats[i]);
                     }
-                    attackers = survivors;
-                    entryStats = survivorStats;
+                    // Swap buffers, keeping the old lists for the next battle/trial.
+                    var oldAttackers = attackers; attackers = survivors; survivors = oldAttackers;
+                    var oldStats = entryStats; entryStats = survivorStats; survivorStats = oldStats;
                     if (ai + 1 < order.Count)
                     {
                         int nextCommanderIndex = FirstLivingHeroIndex(attackers);
                         int nextCommanderInitiative = nextCommanderIndex >= 0
                             ? attackers[nextCommanderIndex].Initiative : 0;
                         AppendFreshBattleSummons(attackers, nextCommanderInitiative);
-                        entryStats = new List<BattleUnit>(attackers);
+                        entryStats.Clear(); entryStats.AddRange(attackers);
                     }
                 }
                 if (result > 0)
@@ -894,12 +930,15 @@ namespace Game.Combat
 
             int wins = 0, draws = 0, criticalOnWin = 0;
             float survivingRatioSum = 0f;
+            var attackers = new List<BattleUnit>(baseline.Count);
+            var defenders = new List<BattleUnit>(defenderTemplate.Count);
+            var scratch = new SimulationScratch(baseline.Count, defenderTemplate.Count);
             for (int i = 0; i < MonteCarloTrials; i++)
             {
-                var attackers = new List<BattleUnit>(baseline);
-                int result = SimulateOneBattle(attackers,
-                    new List<BattleUnit>(defenderTemplate), rng,
-                    attackerCommander.Fate, defenderCommander.Fate, magnitudes);
+                attackers.Clear(); attackers.AddRange(baseline);
+                defenders.Clear(); defenders.AddRange(defenderTemplate);
+                int result = SimulateOneBattle(attackers, defenders, rng,
+                    attackerCommander.Fate, defenderCommander.Fate, magnitudes, scratch);
                 if (result > 0)
                 {
                     wins++;

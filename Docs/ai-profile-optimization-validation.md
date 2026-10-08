@@ -1,0 +1,608 @@
+# Проверка оптимизации ИИ — 08.10.2026
+
+Исходная ревизия: `9db7b8e289ffabb7f6b6d7c22cc1d78fdd900bf7`.
+Ветка реализации: `fix/ai-profile-hotspots`. Отчёт фиксирует проверки перед интеграцией в `master`.
+
+## Изменения
+
+- `AiPower`: маска тегов вместо временного HashSet; накопленные показатели выбранного состава; одинаковые командиры разделяют подбор; второй и третий вложенные потолки переиспользуют подбор при неизменном пуле бойцов. Сохранены исходный порядок, выбор первого при равенстве, double-аккумуляция LINQ Sum и поддержка неизвестных значений enum.
+- `WorthIt`: рабочие списки и наборы переиспользуются между 25 испытаниями одного расчёта. Каждое испытание восстанавливает начальные армии; каждый бой очищает scratch. В последовательных боях сохранены перенос ран, сброс Berserk, обновление командования и Fate. Рабочие коллекции не сохраняются в кеше.
+- `WarmEstimates`: бюджет проверяется между оценками отдельных командиров. Все вызовы RefreshOperationalFrame в основном pipeline предваряются прогревом; повторный допуск осей ожидается как корутина. Прогрев завершён до выбора целей и выделения ресурсов.
+
+## Полученные результаты
+
+| Проверка | Исходный код | Новый код |
+|---|---:|---:|
+| Память на 100 оценок состава | 28 000 байт | 0 байт |
+| Чтения кандидатов: 40 бойцов, 12 одинаковых командиров | 3499 | 474 |
+| Память на один короткий расчёт боя | 48 648 байт | 21 320 байт |
+| Общий прогон, прошли | 1210 | 1214 |
+| Общий прогон, не прошли | 560 | 556 |
+
+Все 9 новых проверок прошли. Сопоставление полного прогона с исходной ревизией: ни один ранее проходивший тест не перестал проходить.
+
+Точно совпали сила и идентифицированные составы 500 случайных пулов, вложенные потолки, дробные мощности и неизвестные теги. Побитовый контроль всех трёх результатов 30 одиночных и 30 последовательных боёв совпал с результатами, записанными ДО изменения игрового кода. Проверен прогрев после смены состава: новые данные приводят к промахам при прогреве, затем Analyze читает готовые свежие результаты.
+
+Инварианты резервирования: 7/7. Банк ресурсов хода: 25/25. WorldDelta: 30/30. Изоляция сессий: 12/12. Повторный допуск агрессии: 6/6.
+
+Банк и правила стоимости/резервирования не менялись. Новые yield находятся после завершённых команд или перед выбором следующего действия. Симуляционные кеши по-прежнему используют полные ключи внутри прежней области хода. Memo подбора армий существует только внутри одного вызова и не переживает изменения состояния.
+
+Независимый read-only review не выявил замечаний; проверены все переходы корутин, очистка буферов, RNG, округление и идентичность командиров.
+
+## Границы проверки
+
+Unity 6000.5.4f1 отсутствует. Измерения сделаны под Mono 6.8, а не в редакторе Unity. Миллисекунды и FPS в игре пока не измерены.
+
+Проверочная сборка: прямой Roslyn 4.11 из .NET SDK 8.0.415, те же reference DLL и EngineStubs/TestRunStubs проекта. Штатный dotnet CLI в контейнере завершался ошибкой чтения Process.StartTime, поэтому компилятор запускался напрямую. В неадаптированной compile-проверке исходного и нового кода одинаковые 28 ошибок старых Unity reference DLL/заглушек; новых ошибок нет.
+
+Для запуска тестов только в временной копии применены одинаковые адаптации к обеим ревизиям: совместимость SingleToInt32Bits с net472; недостающие Log10/SmoothDamp в Mathf-заглушке; старые overload FindObjectsByType; проверки CLR-null вместо UnityEngine.Object-null при отсутствующем каталоге призыва и карте. В исходном прогреве временная копия использовала нулевой таймер для теста с нулевым бюджетом. Эти изменения не внесены в игровой код или Tools.
+
+Полный прогон остаётся красным: многие тесты требуют нативный Unity, сцены или не загруженные в sparse checkout карточные ассеты. Ниже перечислены ВСЕ непрошедшие тесты текущего прогона. Они не являются новыми регрессиями этой задачи.
+
+## Все непрошедшие тесты
+
+- `Game.EditorTests.AiActiveDefenceTests.Continuity_InterceptWithoutObjective_RetiresWithoutReturn` — Error
+- `Game.EditorTests.AiActiveDefenceTests.Continuity_StartedReturn_ContinuesAfterThreatVanishes_AndRetiresOnArrival` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.CommanderUpgradePreservesGarrisonHeroExclusion(False)` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.CommanderUpgradePreservesGarrisonHeroExclusion(True)` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.ExtractedExecutorsKeepMissingMoverOutcomeInBothExecutionModes(False)` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.ExtractedExecutorsKeepMissingMoverOutcomeInBothExecutionModes(True)` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.PreparationDemandKeepsReadinessSupportTimingAndBoundedDeliveryDistinct(70.0f,False,False,"preparation_host_not_on_own_base")` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.PreparationDemandKeepsReadinessSupportTimingAndBoundedDeliveryDistinct(70.0f,True,True,"existing_supports_en_route")` — Error
+- `Game.EditorTests.AiAggressionOwnershipRegressionTests.PreparationDemandKeepsReadinessSupportTimingAndBoundedDeliveryDistinct(81.0f,False,True,"preparation_host_clears_power")` — Error
+- `Game.EditorTests.AiAggressionRaidTests.Enumerate_MinBaseValueGate_StillAppliedToEveryAcceptedObjective` — Error
+- `Game.EditorTests.AiAggressionRaidTests.RaidValue_UsesSignedNearestHomeProximity_ForNeutralAndEvent` — Failed
+- `Game.EditorTests.AiArmyCapacityParityTests.FreshArmyPreflightRejectsZeroCommandBeforeCreateArmyCanSpendAp` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.Enumeration_UsesHeldCardOnlyAndPricesDirectOrFullRosterExchange(False)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.Enumeration_UsesHeldCardOnlyAndPricesDirectOrFullRosterExchange(True)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.Followup_ProtectsOnlyAddedActivationWhileBankProtectsAssault` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.FundingProjection_PreservesOtherOwnersCompletionApWithoutWritingBank` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.FundingProjection_RequiresPrimaryAndOtherOperationTogether(4,False,3)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.FundingProjection_RequiresPrimaryAndOtherOperationTogether(6,True,0)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.Housekeeping_ProtectsStartedAttackButCanStillBuildPreparation(False)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.Housekeeping_ProtectsStartedAttackButCanStillBuildPreparation(True)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.OperationContinuationHold_NeverExceedsWhatCommittedLedgerRowsLeave(0,3.0f)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.OperationContinuationHold_NeverExceedsWhatCommittedLedgerRowsLeave(3,3.0f)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.OperationContinuationHold_NeverExceedsWhatCommittedLedgerRowsLeave(4,0.0f)` — Error
+- `Game.EditorTests.AiAttackBaseRefitTests.OperationContinuationHold_NeverExceedsWhatCommittedLedgerRowsLeave(6,0.0f)` — Error
+- `Game.EditorTests.AiAttackHandoffParityTests.GatherProjection_MatchesTheLivePlan` — Error
+- `Game.EditorTests.AiAttackHandoffParityTests.RendezvousHandoff_StillNeedsTodaysActivationCharge` — Error
+- `Game.EditorTests.AiAttackLaneTests.ActorCommitments_ClaimsAttackPrimaryAndBoundSupport(Assault)` — Error
+- `Game.EditorTests.AiAttackLaneTests.ActorCommitments_ClaimsAttackPrimaryAndBoundSupport(RecoveryReturn)` — Error
+- `Game.EditorTests.AiAttackLaneTests.ActorCommitments_ClaimsAttackPrimaryAndBoundSupport(Reinforcement)` — Error
+- `Game.EditorTests.AiAttackLaneTests.ActorCommitments_ClaimsAttackPrimaryAndBoundSupport(SupportReturn)` — Error
+- `Game.EditorTests.AiAttackLaneTests.AppendAttack_FreezesTheOperationsOwnStrikeMarkerIntoTheLeg` — Error
+- `Game.EditorTests.AiAttackLaneTests.AppendAttack_ProducesOneProposalNamingTheAssignedPrimaryAndTheSite` — Error
+- `Game.EditorTests.AiAttackLaneTests.AppendAttack_ReinforcementWithAFreeArmy_ProposesAnUnpinnedLeg` — Error
+- `Game.EditorTests.AiAttackLaneTests.CommittedAssault_FreshIntelNeverCreatesASupportArmyDemand` — Failed
+- `Game.EditorTests.AiAttackLaneTests.CommittedAssault_LostSupportIsReplacedByAnotherExistingOne` — Error
+- `Game.EditorTests.AiAttackLaneTests.CommittedAssault_SupportTooFarBehindIsRejectedAndTheAssaultContinues` — Error
+- `Game.EditorTests.AiAttackLaneTests.CommittedAssault_UsefulSupportIsInterceptedAheadOnThePrimarysRoute` — Error
+- `Game.EditorTests.AiAttackLaneTests.FreshAssault_WaitsForTheDynamicForceThreshold(0.81f,True)` — Error
+- `Game.EditorTests.AiAttackLaneTests.LiveAttack_BlocksSecondFistEvenAfterPrimarySpentMovement(Assault)` — Error
+- `Game.EditorTests.AiAttackLaneTests.LiveAttack_BlocksSecondFistEvenAfterPrimarySpentMovement(Gather)` — Error
+- `Game.EditorTests.AiAttackLaneTests.LiveAttack_BlocksSecondFistEvenAfterPrimarySpentMovement(Reinforcement)` — Error
+- `Game.EditorTests.AiAttackLaneTests.LostAttackSupport_WeakPrimaryStaysRequestableForTheCurrentPass` — Error
+- `Game.EditorTests.AiAttackLaneTests.PhaseMachine_FollowsWhetherThePrimaryStillClearsTheSite` — Error
+- `Game.EditorTests.AiAttackLaneTests.Rendezvous_IsAlwaysOnThePrimarysRouteAndNeverTheTarget` — Error
+- `Game.EditorTests.AiAttackLaneTests.UnboundAttackDelivery_CountsOnlyPowerAddedToItsNamedFist` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.ActiveDefenceThreatSeverity_DoesNotFeedAggressionRadarDesire` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.AttackTaskScore_DoesNotFeedAggressionRadarDesire` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.Radar_HomeThreatReserveDoesNotDampAggression` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.Radar_ReconRefreshRisesForALiveAttackTargetNeverObserved` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.Radar_SanctionedCitadelAloneKeepsTheAggressionAxisWarm` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.RaidTaskScore_DoesNotFeedAggressionRadarDesire` — Error
+- `Game.EditorTests.AiAttackObjectiveTests.Siege_DoesNotDampAggressionRadar_OffenceCarriesCitadelThreatRisk` — Error
+- `Game.EditorTests.AiAviationMissionRegressionTests.Casualty_DoesNotPublishFullLandingCompletion` — Error
+- `Game.EditorTests.AiAviationMissionRegressionTests.FullLanding_IsACompletionFact_AndBoardingClearsItForTheNextSortie` — Error
+- `Game.EditorTests.AiAviationMissionRegressionTests.PartialLanding_StillHasAnAirborneObligation` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.AviationPurchase_CombatOnlyTaskCreatesValuedCandidate_WithoutCreatingAGoal` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.CombatCoverage_UsesJointLandingCapacity_WithoutPublishingClaims` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.CombatProjection_ActualRouteRejectsPlane_AndAdmitsMultiTurnHelicopter` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.CombatProjection_SpentPlaneDoesNotCountAsCurrentTurnService` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.EndOfTurn_LandsOnlyWhatFits_AndPassingThroughLandsNothing` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.EventGuard_IsNeverAStrikeTarget_ButAnOrdinaryArmyOnTheHexIs` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.FreeAirfieldCapacity_IsOneRule_ForStoredAndStandingWings` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.GroundActivation_KeepsPerTurnSemantics` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.HeadlessStrike_KeepsUnspentHeroFate` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.HoldProof_AllowsTheHelicopterToStayOneNight_ThenForcesItHome` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.HumanEndOfTurn_MultipleWingsCannotRefuelBeyondCapacity` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.HumanEndOfTurn_RefuelsWithoutChangingWingMembership` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.InFlightReservation_ProtectsDomainCapacity_AndArrivalCountsOnce` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.InvalidReservation_DoesNotHoldSlots_AndClearReleasesClaims` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.Landing_ReturnsAircraftToTheAirfield_KeepsTheShell_AndRepairsNothing` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.Launch_IsChargedOnce_AndContinuationIsFreeOnLaterTurnsWithZeroResources` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.RejectedLaunch_ChargesNothing` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.RejectedUnloadAndBoard_ChangesNeitherRosterNorActivationNorBank(False)` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.RejectedUnloadAndBoard_ChangesNeitherRosterNorActivationNorBank(True)` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.RepeatedStrikes_ReallyDamageTheTarget_OncePerAircraftPerTurn` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.ReservedLastSlot_RejectsTransfer_AndRetargetingReleasesIt` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.ShellSwap_DoesNotGiveAFreeNewSortieAfterLanding` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.StoredAircraftJoiningAPaidWing_OwesOnlyItsOwnShare_AndTransferChargesNothing` — Error
+- `Game.EditorTests.AiAviationSortieCycleTests.UnloadAndBoard_CommitsBothRosters_WithoutRestoringAircraftState` — Error
+- `Game.EditorTests.AiCollectorRouteAdmissionTests.CollectorPreflight_MustNotClaimDeliveryWithoutWorldAndRoute` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.BaseCapture_RewritesKnownOwnerAndInvalidatesRouteBlocker` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.FinalPostBattleWrite_PersistsForLosingObserverAfterVisionDrops` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.FormerOwner_RemembersObservedBaseCaptureAfterBuildingVisionDrops` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.PostBattleDestruction_RemovesSightingAndInvalidatesRouteCache` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.PostBattleHpWrite_RefreshesStrategicKnowledgeButNotRouteBlockers` — Error
+- `Game.EditorTests.AiCombatCacheLifecycleTests.PreBattleVisibleContact_IsWrittenAndReadableFromHonestMemory` — Error
+- `Game.EditorTests.AiDeploymentBuildingParityTests.MissingOrEmptyAbilityNeverAuthorizesGroundDeployment` — Error
+- `Game.EditorTests.AiDeploymentBuildingParityTests.RequiredAbilityMustBeOnOwnBuildingAtExactDestination` — Error
+- `Game.EditorTests.AiDeploymentRootIdentityTests.RootRemovedFromRegistryCannotPayForDirectDeployment` — Error
+- `Game.EditorTests.AiDeploymentRootIdentityTests.SameOwnerAlternateRootCannotPayForDirectDeployment` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.ConsumedEnergyScarcityChangesFinalScoreWithoutChangingChainCost` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.CreationFeasibilityUsesOnlyCurrentStageAndHonorsAnotherOwnersApHold` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.EnumeratedRecipientsKeepTheFourthFallbackForTheSharedPortfolio(Equipment)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.EnumeratedRecipientsKeepTheFourthFallbackForTheSharedPortfolio(Mutator)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.MintedEquipmentAttachesOnLaterTurnToReevaluatedRecipient` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.PendingEquipmentSurvivesTurnChangeAndInvalidatesAdmissionOnHandMutation` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.PendingMintedEquipmentPreventsAnotherChallengeForTheSameUsefulSlot` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.PendingWrongSlotOrUselessEquipmentDoesNotBlockUsefulProduction(Equipment,Attack)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.PendingWrongSlotOrUselessEquipmentDoesNotBlockUsefulProduction(Mutator,Fate)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.PortfolioUsesARecipientFallbackInsteadOfDiscardingAnUpgrade` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.ReadyOutputSelectionDoesNotRequireTodaysAttachmentBudget(Equipment)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.ReadyOutputSelectionDoesNotRequireTodaysAttachmentBudget(Mutator)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.RecipientEnumerationRefreshesGainAndSlotLegalityAfterAnAttachment(Equipment)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.RecipientEnumerationRefreshesGainAndSlotLegalityAfterAnAttachment(Mutator)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.StandaloneAttachmentUsesActualInstanceCostDuringEnumerationAndExecution(False)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.StandaloneAttachmentUsesActualInstanceCostDuringEnumerationAndExecution(True)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.StandaloneHandAttachmentKeepsAllRecipientsAndRefreshesSecondSlot(False)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.StandaloneHandAttachmentKeepsAllRecipientsAndRefreshesSecondSlot(True)` — Error
+- `Game.EditorTests.AiDevelopmentDecisionPathTests.ZeroTechCannotChangeReadyEnergyMaterialsDecisionPath` — Error
+- `Game.EditorTests.AiDevelopmentDiversityTests.AdmissionFingerprint_ChangesWithDeckSize` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.AbsentPreparationFactsDoNotInventACapability` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.DevelopmentDesireNeverExceedsTheNeedItAmplifies` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.PreparationDesireIgnoresIrrelevantGlobalSurplusAndNeedsNoRecipient(0.0f,0.0f)` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.PreparationDesireIgnoresIrrelevantGlobalSurplusAndNeedsNoRecipient(0.3f,0.3f)` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.PreparationDesireIgnoresIrrelevantGlobalSurplusAndNeedsNoRecipient(1.0f,1.0f)` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.ProductionNeverCreatesANeed_NoMilitaryWitnessMeansNoDevelopment` — Error
+- `Game.EditorTests.AiDevelopmentRadarResourceGateTests.ReadyOfferingBypassesUnrelatedFourResourceInvestmentGate` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.ActorAndResourcesTogether_DoNotSuppressDevelopmentReadmission` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.AttachmentOccupancyInvalidatesEvenWithoutHandMutation` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.DevelopmentOperatorArrival_ChangesFingerprint` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.OperatorAvailabilityChangeWithoutMovement_ChangesFingerprint` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.RaidReturnMovement_DoesNotReadmitDevelopment_ButActorStillInvalidatesOperations` — Error
+- `Game.EditorTests.AiDevelopmentReadmissionTests.ResourcesOrHandChange_ChangesFingerprint` — Error
+- `Game.EditorTests.AiEconomyContinuityAuditTests.B3_SuspendedReturnCollector_IsResumedByResolveActive` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ActiveEconomyBuildIntent_ProtectsResourcesWithoutRepeatedDemand` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.BaseExpansion_NegativeNetSiteNeverAdmittedByElapsedTurns` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.BaseExpansion_PositiveNetSiteAdmittedWithoutWaiting` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.BaseExpansion_WaitDoesNotInflateTaskValueOrMissionAdmission` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.DeferredEconomyAlternative_DoesNotEraseCompletionReservation` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.DeferredEconomyReservation_ReplacesAlternativeAsOneOperation` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyActorSelection_UsesSuitableFieldArmyAndSkipsUnsafeSolo` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyLightening_DoesNotRunOutsideOwnBaseOrCitadel` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyLightening_FullGarrisonLeavesBothRostersUntouched` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyLightening_PreservesRosterOwnedByDurableMission` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyLightening_TransfersBodiesPreservesHeroAndRecalculatesAp` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyLightening_UnreachableTargetPreservesEscort` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmyPreparation_AddsMinimumEscortAndMatchesProjectedActivation` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyArmySuitability_AllowsSafeSoloButRequiresCentralEscort` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyBaseDemand_StrategicResourceCorridorBeatsBuilderConvenience` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyBuilderSelection_ActiveEconomyCommitmentWinsContinuity` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyBuilderSelection_PrefersLowerFullAssignmentCostAndPropagatesId` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyBuilderSelection_ReturnBuilderActorEligibleForFreshOpportunity` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyContinuity_DoesNotRequestSecondHeroForSameOwnedTarget` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_CommittedExtractionKeepsBuildDemandWhenSurplusDips` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_ExcessivePaybackSiteIsRejected` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_ExtractionCannotStarveBaseCategory` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_FieldHeroKeepsInfrastructureDemand` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_GarrisonHeroBuildsOnlyAtItsOwnHex` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_IdleStrongHeroHasNoCombatPowerOpportunityCost` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_ImmediateHandBottleneckBeatsConvenientDeckResource` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_NoMobileBuilderRequestsExistingHeroCapability` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_OrdinaryBaseDoesNotSatisfyExtraction` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_ProfitableSiteDoesNotRequireRelativeDeficit` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_ProtectedExtractionCanBeatHigherYieldExposedPeer` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_RejectsSurplusEvenWhenOpponentProducesMore` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDemand_SelectsValueBeforeCoordinates` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDesire_IsLowWhenIncomeAndRunwayAreSufficient` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDesire_IsPositiveForRealDeficit` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyDesire_NoActionableSiteAppliesLatentDampInsteadOfZero` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyExtraction_StrategicSiteValueIsIndependentOfBuilderDelivery` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyMission_CompetesByDeliveredValueRatherThanRawSiteMerit` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyMission_MultiTurnTravelFundsOnlyCurrentActivationStage` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyMission_ReachableTargetFundsCompletionAndBuildResources` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.EconomyResourceReserve_OneTurnHorizonAppliesBeforeDurableIntentExists` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ExtractionDemand_OneFacilitySlotFundsOnlyOneResourceType` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBaseBuilder_TakesAGarrisonBodyWhenTheBaseCanLendOne` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_CachedBuilderDecisionCannotBeOverwrittenByItsConsumer` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_DeliveryCountsOnlyThePinnedRecipientAndDoesNotClaimABuild` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_DoesNotRecruitAProtectedFistOrPrepareAwayFromHome` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_GarrisonComparesTheOneBodyThatCanActuallyLeave` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_GarrisonHeroMustHaveRoomForItsExtractedEscort(1,False)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_GarrisonHeroMustHaveRoomForItsExtractedEscort(2,True)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_RejectsSlowBodiesAndUsesOnlyItsOwnBuildReservation` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.FoundBasePreparation_UsesExistingSoloHeroAndStopsAfterRosterBecomesReady` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.GarrisonBuilderAssessment_IsFrozenPerSnapshotAndRecomputedForNewSnapshot` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.PhaseAEconomyHeroHandoff_CreatesSoftTargetSpecificCommitment` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.PhaseBSurplus_ExcludesEconomyMissionOwnedArmy` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverClaimedThisPass_PreservesCommitment` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverHasNoSafeRoute_TerminatesCommitment(BuildExtraction)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverHasNoSafeRoute_TerminatesCommitment(FoundBase)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverOutOfMovementThisTurn_PreservesCommitment` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverUnclaimed_ClearsSelectionUnlikeClaimedTwin` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_DurableMoverVanishesBetweenPlanningAndProvisioning_TerminatesCommitment` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ProvisionEconomy_LoanedBuilderRouteFailure_RestoresRegisteredDonorOwnership` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_ActorGone_IntentRetired` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_ArrivedAtProtectedShelter_CompletesAndResumesDonor` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_LostShelterFailure_WaitsForFreshResolve(False)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_LostShelterFailure_WaitsForFreshResolve(True)` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_OutOfMovementThisTurn_PreservesRecoveryUnconditionally` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_SafeRouteHomeCurrentlyBlocked_PreservesRecoveryUnconditionally` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_ShelterLostButAlternativeExists_Retargets` — Error
+- `Game.EditorTests.AiEconomyDecisionTests.ReturnBuilder_ShelterLostNoAlternative_IntentRetiredAndDonorResumed` — Error
+- `Game.EditorTests.AiEconomyMissionAdmissionTests.CommittedBuilder_SpentTravelIsDeferredButArrivalAndRefillAreAdmitted` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.CollectorLostHomeAtStallLimit_RetargetsBeforeCapabilityRetirement` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.LostHome_RetargetsReachableAlternativeAndRekeys(ReturnBuilder)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.LostHome_RetargetsReachableAlternativeAndRekeys(ReturnCollector)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.LostLastReachableHome_Retires(ReturnBuilder)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.LostLastReachableHome_Retires(ReturnCollector)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.Materialization_AppliesDemandPinnedRosterRegardlessOfLivePowerTie` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.MultiTurnStage_FundsPreparationAndTravelWithoutBuildResources` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.OwnedHome_TemporaryRouteBlockKeepsExistingReturn(ReturnBuilder)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.OwnedHome_TemporaryRouteBlockKeepsExistingReturn(ReturnCollector)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.Provisioning_UsesMovementAfterPinnedUnload(0)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.Provisioning_UsesMovementAfterPinnedUnload(1)` — Error
+- `Game.EditorTests.AiEconomyOwnershipTests.Reinforcement_RemainingMovementControlsCompletionStage` — Error
+- `Game.EditorTests.AiEconomyReservationLifecycleTests.CompletionBecomesUnexecutable_DowngradesOnlyItsOwnApAndPreservesPhysicalHold` — Error
+- `Game.EditorTests.AiEconomyReservationLifecycleTests.TessekT10_ReachingSitePromotesDeferredDeliveryToCompletionAp` — Error
+- `Game.EditorTests.AiEconomyReservationLifecycleTests.TessekT9_ActiveDeliveryProtectsPersistentResourcesButNotFutureBuildAp` — Error
+- `Game.EditorTests.AiEconomyReservationLifecycleTests.TessekT9_ProvisionedCompletionSurvivesARepeatedDeferredRequest` — Error
+- `Game.EditorTests.AiGarrisonHeroTests.AttackForceMeasures_CountRaidArmies_LeaveOutScoutMissionArmies_OnBothSides` — Error
+- `Game.EditorTests.AiGarrisonHeroTests.CatalogHeroes_ThatGrantApResearchOrAssemble_CarryTheSupportTag` — Failed
+- `Game.EditorTests.AiGarrisonHeroTests.FieldStrikePotential_CountsBusyArmiesButNotScoutsAirOrTheGarrisonFloor` — Error
+- `Game.EditorTests.AiGarrisonHeroTests.FullHeroLessHost_TakesALoneHeroForItsCapacity` — Error
+- `Game.EditorTests.AiGarrisonHeroTests.GarrisonHero_IsOnlyTheFallbackCommander` — Error
+- `Game.EditorTests.AiGarrisonHeroTests.LoneHeroArmy_IsADonorForAPreparationOnly` — Error
+- `Game.EditorTests.AiGenerationSourceIdentityTests.ForecastDescribesUnaffordableSourceWithoutOpeningItsWindow` — Error
+- `Game.EditorTests.AiHandCapacityParityTests.OrdinaryRewardOrReturnedCardCannotOverflowFullHand` — Error
+- `Game.EditorTests.AiHandCapacityParityTests.PrepaidProductionCanOverflowButOrdinaryGrantsStayBlocked` — Error
+- `Game.EditorTests.AiHandCapacityParityTests.ZeroCapacityRejectsOrdinaryCardsButPreservesPrepaidOutput` — Error
+- `Game.EditorTests.AiIdleCardPressureTests.HandStampsAcquiredTurnAndAgeReadsOffTheCard` — Error
+- `Game.EditorTests.AiIncomeRootParityTests.BuildingWithoutOwnerRootDoesNotConsumeYieldBeforeAnotherCollectorsArmy` — Error
+- `Game.EditorTests.AiIncomeRootParityTests.PlayerWithoutRootCannotReceiveProduceIncome` — Error
+- `Game.EditorTests.AiIncomeSingleOwnerTests.BuildingTakesFirstSliceThenOwnArmyTakesOnlyRemainder` — Error
+- `Game.EditorTests.AiIncomeSingleOwnerTests.ContestedArmyCollectsNothingButOwnBuildingStillCollectsBeforeAndAfterContact` — Error
+- `Game.EditorTests.AiIncomeSingleOwnerTests.ProduceProjectionMatchesRoundGrantAndExcludesPrisoners` — Error
+- `Game.EditorTests.AiIncomeSingleOwnerTests.UnregisteredBuildingCannotConsumeRegisteredCollectorsLastUnit` — Error
+- `Game.EditorTests.AiIndependentDevelopmentTests.UpgradePlanPricesTheWholeChallengeAndAttachmentExactlyOnce` — Error
+- `Game.EditorTests.AiProductionScoreAlignmentTests.DevelopmentStepBeatsAWeakerUnitAndYieldsToAStrongerOneWithoutAHardPriority` — Error
+- `Game.EditorTests.AiProductionScoreAlignmentTests.MaterializationValue_ConvertsPowerToCardUnitsAndChargesCanonicalPlanCosts` — Error
+- `Game.EditorTests.AiProductionScoreAlignmentTests.MaterializationValue_RewardsOnlyMarginalStrength` — Error
+- `Game.EditorTests.AiProductionScoreAlignmentTests.OnlyTheRadarWeightFlipsTheWinnerAndIsAppliedExactlyOnce` — Error
+- `Game.EditorTests.AiProductionScoreAlignmentTests.ZeroDevelopmentRadarAndNonPositiveStepCannotWinByTheRadar` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.BothFirstStepsExistWithoutSpecificProductOrRecipient` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.BoundIncomingOperatorPreventsDuplicatePreparationForSameSiteAndRole` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.CardStepsAreRankedByTheirCardScoreAndCarryNoWorldTaskScore` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.FacilityCanComeFirstWithQualifiedOperatorOnlyInDeck` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.FreeOperatorCanComeFirstWhenFacilityIsUnaffordableOrStillInDeck(False)` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.FreeOperatorCanComeFirstWhenFacilityIsUnaffordableOrStillInDeck(True)` — Error
+- `Game.EditorTests.AiProductionStagedPreparationTests.PreparedOperatorFinishesDeliveryButDoesNotAuthorizeProductionBeforeFacility` — Error
+- `Game.EditorTests.AiRadarAdmissionRegressionTests.CrossLane_ChangingRadarStillChangesSharedApCompetition` — Error
+- `Game.EditorTests.AiRadarAdmissionRegressionTests.EconomyLane_ChangingRadarDoesNotReverseTheSameTwoTasks` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.AggressionPeers_UseOneRadarScaleAndRetainTaskScoreOrder` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.Allocator_DeterministicTieBreakOnEqualEffectiveValue` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.Allocator_GlobalComparisonSurfacesTheHigherValueSameLaneCandidate` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.Allocator_ZeroEffectiveValueNeverFallsBackToBaseValue` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.Allocator_ZeroWeightTaskStillFundableFromResidualBudget` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.AlmostZeroWeight_1v99_MatchesLinearProjection` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.EqualWeights_50vs50_ScalesBothByTwoKeepingThreeToOneRatio` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.EvenRadar_PreservesOriginalRatio` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.HighWeight_KeepsScalingPastTheOldQuarterCeiling` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.MissingAxis_IsNeutralButExplicitZeroWeightIsNot` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.MultiAxisContribution_EqualContributions_BlendsTheirScalesEvenly` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.PhaseAArbitration_WeightsOnlyTheCompetitivePriority` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.PhaseA_ColdNewDemandDefersButActiveEconomyAndRaidSupportDoNot` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.ProportionalCompensation_25vs75_TurnsThirtyTenIntoThirtyThirty` — Error
+- `Game.EditorTests.AiRadarProportionalRegressionTests.ZeroWeight_ScalesToExactlyZero_NoFloor` — Error
+- `Game.EditorTests.AiRaidConfidenceTests.KnownFixedEventGuard_NoEnemyContact_DoesNotGetPhantomStalenessPenalty` — Failed
+- `Game.EditorTests.AiRaidIntentStateTests.Assault_CompletedEvent_DegradedPrimary_ReturnsWithoutChaining` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.Assault_DegradedPrimary_IsStillRetired` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.CombatPhases_DegradedPrimary_DoNotGetReturnEligibility(Reinforcement)` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.CombatPhases_DegradedPrimary_DoNotGetReturnEligibility(SupportReturn)` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.Return_DegradedPrimary_RemainsActiveAndClaimed` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.Return_MissingOrEmptyPrimary_IsRetired(False)` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.Return_MissingOrEmptyPrimary_IsRetired(True)` — Error
+- `Game.EditorTests.AiRaidIntentStateTests.StartedRaid_UnboundPrimary_IsRetired` — Error
+- `Game.EditorTests.AiReconAirLifecycleTests.SortieRoute_UsesLiveEnduranceAndProvesLanding(0,4,False,0)` — Error
+- `Game.EditorTests.AiReconAirLifecycleTests.SortieRoute_UsesLiveEnduranceAndProvesLanding(1,4,True,2)` — Error
+- `Game.EditorTests.AiReconAirLifecycleTests.SortieRoute_UsesLiveEnduranceAndProvesLanding(2,6,True,3)` — Error
+- `Game.EditorTests.AiReconAirLifecycleTests.StationaryStrike_PaysOnlyAnUnpaidLaunchAndNeedsNoMovement` — Error
+- `Game.EditorTests.AiReconAttackObservationTests.AttackNeedOnAKnownHostileSite_BecomesARefreshObjective` — Error
+- `Game.EditorTests.AiReconAttackObservationTests.VantageRefresh_ExecutesFromAHexWithinVisionOfTheSite` — Error
+- `Game.EditorTests.AiReconAuditBugTests.AirSweep_WithoutAirCandidate_IsNoExecutableStep_NotAGroundCapabilityShortage` — Error
+- `Game.EditorTests.AiReconAuditBugTests.BoundActorThatIsNoLongerAScout_IsUnbound` — Error
+- `Game.EditorTests.AiReconAuditBugTests.BoundScout_StaysBound` — Error
+- `Game.EditorTests.AiReconAuditBugTests.DurableIncumbent_StillRecoversItsOwnActor` — Error
+- `Game.EditorTests.AiReconAuditBugTests.PhaseACommittedAp_DoesNotCountAnAirMoverTwice` — Error
+- `Game.EditorTests.AiReconAuditBugTests.PlanningWitness_CannotReleaseAnotherIntentsDurableActor` — Error
+- `Game.EditorTests.AiReconContinuityPayloadTests.OffListExposedExplore_ClaimsOnlyAStealthCapableScout` — Error
+- `Game.EditorTests.AiReconDetectorRiskTests.AdjacentGarrison_DetectsButDoesNotExpose` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.ActivatedScout_MultiTurnExploreStillPaysFutureActivationsInScore` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.ContinuingScout_BaseValuePricesTheSamePreferredActorAsRequirements` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.ContinuingScout_PricesOwnedActor_NotCheapestUnrelatedScout` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.NewScout_RemainsUnboundAndCanPriceCheaperActor` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.SpentIncumbent_ProposalIsInternallyConsistentAndAdmissionDoesNotHideTheConflict` — Error
+- `Game.EditorTests.AiReconIncumbentCostTests.SpentIncumbent_WitnessFollowsTheActorThePriceWasActuallyComputedAgainst` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.ReturnPlannerAndDirector_AgreeAfterLandingChanges(0)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.ReturnPlannerAndDirector_AgreeAfterLandingChanges(1)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.ReturnPlannerAndDirector_AgreeAfterLandingChanges(2)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.ReturnPlannerAndDirector_AgreeAfterLandingChanges(3)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.TravelEstimate_PairCostAndVantageRankingAgree(0,0,4,1)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.TravelEstimate_PairCostAndVantageRankingAgree(0,4,4,2)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.TravelEstimate_PairCostAndVantageRankingAgree(1,8,4,3)` — Error
+- `Game.EditorTests.AiReconRuleOwnershipTests.TravelEstimate_PairCostAndVantageRankingAgree(4,4,4,1)` — Error
+- `Game.EditorTests.AiReconStealthAdmissionTests.ActiveBattleCannotSpendReservedStealthOrCreatePatrol` — Error
+- `Game.EditorTests.AiReconStealthAdmissionTests.ReconfiguredNonSoloScoutCannotSpendReservedStealthOrCreatePatrol` — Error
+- `Game.EditorTests.AiReconTrimEligibilityTests.ContinuingIncumbent_CanKeepItsOwnUntrimmedClaim` — Error
+- `Game.EditorTests.AiReconTrimEligibilityTests.TrimmedScout_CannotReplaceSpentMoverOfAnotherIncumbent` — Error
+- `Game.EditorTests.AiReconTrimEligibilityTests.UnfundedLiveIncumbent_SurvivesFreshCandidateBeam_WithoutPromotion` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.AviationLandingCapacity_CountsStoredLandedAndIncomingAircraft` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.AviationPlacement_NoObjectivesAddsNoArtificialForwardBonus` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.AviationRebaseCandidate_UsesRealRouteCapacityAndCurrentReconObjective` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.AviationRecovery_PrefersForwardBaseAndReplansAfterOwnershipLoss` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.BaseOwnershipTransfer_UpdatesBaseAndAirfieldViewsForBothOwners` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.CapturedSecondaryBase_StabilizesOnTheBaseFloorNotTheCitadelFloor` — Error
+- `Game.EditorTests.AiSecondaryBaseStrategicNodeTests.Housekeeping_PackagesEligibleLocalSingletonButProtectsCommittedActor` — Error
+- `Game.EditorTests.AiStrategicSpendabilityApTests.AttackGather_ReservesOnlyLiveWalkingSupportAndReleasesAtSettlement` — Error
+- `Game.EditorTests.AiStrategicSpendabilityApTests.HardOperationContinuation_ProtectsItsNextStepFromCardPlay` — Error
+- `Game.EditorTests.AiStrategicSpendabilityApTests.MaterializationGuard_UsesSpendableApAndReleasesItWhenReservationEnds` — Error
+- `Game.EditorTests.AiStrategicSpendabilityApTests.PreparationHostOnOwnFacilityStillReservesApToReachAnActualBase` — Error
+- `Game.EditorTests.AiTaskScoreBaseIncomeRegressionTests.ExtractionFacilitiesAreEligibleForLosslessBaseMerge` — Error
+- `Game.EditorTests.AiUnifiedTaskScoreTests.EconomyIncumbent_RejectsOtherBuildersScoreAndRequirements` — Error
+- `Game.EditorTests.AiUnifiedTaskScoreTests.RaidIncumbent_PricesPinnedPrimary_NotTheCheaperFreeArmy` — Error
+- `Game.EditorTests.AiUnifiedTaskScoreTests.ReconDelivery_FoldsRealPerTurnActivationApAtSharedRate` — Error
+- `Game.EditorTests.AiV2EconomyRaidAirIntegrationTests.MobileCollection_IsProposedWithoutInfrastructureDemand` — Error
+- `Game.EditorTests.AiV2EconomyRaidAirIntegrationTests.MobileCollection_SelectsBestCollectorByCanonicalTaskScore` — Error
+- `Game.EditorTests.AiV2GroundDeploymentContainerTests.GroundCardPreflightRejectsAirfieldAndAirRosterWithoutSpending` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.HiddenRemovalPreservesHonestHistoricalContact` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.LateMoveCannotReRegisterRemovedArmyOrChangeDeathHex` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.LiveMoveStillCommitsIndexBeforeRelocationEvent` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.OwnerScopedReserveReleaseLeavesOtherTaskClaimsIntact` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.RemovalPublishesBothHexesOnlyAfterFinalConsistentState` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.SortieRemovalIsScopedToLostArmyAndIdempotent` — Error
+- `Game.EditorTests.ArmyRemovalRegistryTests.VisibleRemovalInvalidatesMemoryAndItsRouteVersion` — Error
+- `Game.EditorTests.AttachmentCompatibilityTextTests.DuplicatesAndMissingFieldsDoNotCreateExtraCommasOrEmptyLines` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.AircraftReturnPreservesBothSlotsWithoutReattachingOrPayment` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(False,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(False,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(True,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DeployCarriesBothSlotsIntoArmyOrGarrison(True,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DevelopmentPortfolioProtectsAnotherOwnersHoldAcrossRecipientAlternatives` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DevelopmentRecomputesMarginalValueAfterAnAttachmentInTheOtherSlot` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.DevelopmentRetainsRecipientAlternativesAndRefreshesBothSlots` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.HandAndLiveTransactionsAllowBothSlotsAndRejectOnlyTheOccupiedOne` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.HandCardRebindDuringAttachmentPreviewKeepsNewHostNameAndArt(Equipment)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.HandCardRebindDuringAttachmentPreviewKeepsNewHostNameAndArt(Mutator)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.LiveMutatorPublishesVisibilityAndContentThroughExistingRefreshPath` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.RepairAfterMaximumClampClearsOnlyHitPointConsumption` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,False,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,False,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,True,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Equipment,True,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,False,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,False,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,True,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.SameTransactionChargesInstanceCostsOnce(Mutator,True,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentDoesNotPayForARecipientRemovedAfterPlanning(Equipment)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentDoesNotPayForARecipientRemovedAfterPlanning(Mutator)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,ActionPoints,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,Tech,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Equipment,Tech,True)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,ActionPoints,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,Tech,False)` — Error
+- `Game.EditorTests.AttachmentLifecycleTests.StandaloneAttachmentRechecksOtherOwnersHoldBeforePayment(Mutator,Tech,True)` — Error
+- `Game.EditorTests.BattleFastResolveTests.ClosingAutomaticChallenge_RestoresHumanDecisionRouting` — Error
+- `Game.EditorTests.BattleFastResolveTests.FastHumanFateDuel_UsesTheExistingAllAiDecisionPath(CaptureKill)` — Error
+- `Game.EditorTests.BattleFastResolveTests.FastHumanFateDuel_UsesTheExistingAllAiDecisionPath(GroundCombat)` — Error
+- `Game.EditorTests.CardActionHoverTextTests.EquipmentPreviewCannotRedisplaySkillsOverActionButtons` — Error
+- `Game.EditorTests.CardActionHoverTextTests.HoverWithoutActionsLeavesTextVisible` — Error
+- `Game.EditorTests.CardActionHoverTextTests.RestorePreservesOriginallyHiddenElements(False,False)` — Error
+- `Game.EditorTests.CardActionHoverTextTests.RestorePreservesOriginallyHiddenElements(False,True)` — Error
+- `Game.EditorTests.CardActionHoverTextTests.RestorePreservesOriginallyHiddenElements(True,False)` — Error
+- `Game.EditorTests.CardActionHoverTextTests.VisibleActionsHideTitleAndSkillsAndExitRestoresAliases` — Error
+- `Game.EditorTests.CombatSystemAlignmentTests.BaseDefense_AppliesOnlyToBaseOwnersDefendingArmy` — Error
+- `Game.EditorTests.CombatSystemAlignmentTests.CaptureKillSequence_RetreatsOnlyAfterLastHeroOfArmy` — Error
+- `Game.EditorTests.GameMenuAvailabilityTests.AiTurnKeepsGearVisibleButBlocksOpening` — Error
+- `Game.EditorTests.GameMenuAvailabilityTests.HumanTurnRestoresAvailabilityAfterAi` — Error
+- `Game.EditorTests.GameMenuAvailabilityTests.NoCurrentPlayerCannotOpenMenu` — Error
+- `Game.EditorTests.HexObjectLayoutTests.BuildingKeepsCentreAndEveryOwnerHasADistinctLowerSlot(2)` — Error
+- `Game.EditorTests.HexObjectLayoutTests.BuildingKeepsCentreAndEveryOwnerHasADistinctLowerSlot(3)` — Error
+- `Game.EditorTests.HexObjectLayoutTests.BuildingKeepsCentreAndEveryOwnerHasADistinctLowerSlot(4)` — Error
+- `Game.EditorTests.HexObjectLayoutTests.EmptyHexUsesADifferentLayoutFromBuildingHex` — Error
+- `Game.EditorTests.HexObjectLayoutTests.FullyHiddenEnemyOnAVisibleHexDoesNotMoveTheOwnMarker` — Error
+- `Game.EditorTests.HexObjectLayoutTests.ReorderingRegistryEntriesDoesNotSwapOwnerSlots` — Error
+- `Game.EditorTests.HexObjectLayoutTests.SingleOwnerPreservesExistingPosition(False,0.0f,0.0f)` — Error
+- `Game.EditorTests.HexObjectLayoutTests.SingleOwnerPreservesExistingPosition(True,0.25f,-0.25f)` — Error
+- `Game.EditorTests.HexObjectLayoutTests.UnconfirmedBuildingDoesNotOffsetAnArmy` — Error
+- `Game.EditorTests.HexObjectLayoutTests.UnseenEnemyDoesNotContributeALayoutSlot` — Error
+- `Game.EditorTests.HexPathfinderTurnsTests.AvoidsWastingAPointBeforeACostTwoHex` — Error
+- `Game.EditorTests.HexPathfinderTurnsTests.ImpassableForThisMoverIsRoutedAround` — Error
+- `Game.EditorTests.HexPathfinderTurnsTests.NeverNeedsMoreTurnsThanTheCheapestRoute` — Error
+- `Game.EditorTests.MapObjectVisualTests.ContainsScreenPoint_ShrinksWithOrthographicZoom` — Error
+- `Game.EditorTests.MutatorContentTests.AllTwentyEnforceBioHostKindLimitsAndEconomy` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("adrenal-surge","MoveMax:1,Initiative:1,Defense:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("chameleon-tissue","MoveMax:-1","Stealth4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("dermal-plating","Defense:1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("enhanced-senses","Initiative:1,MoveMax:-1","r1s4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("fortunate-genome","Fate:1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("ghost-genome","","Stealth4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hunter-genome","","r1s4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hunter-glands","Defense:-1","r1s4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("hyper-regeneration","HitPoints:1,MoveMax:-1","Regeneration")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("metabolic-overdrive","MoveMax:1,Defense:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("neural-accelerator","Initiative:1,ActivationApCost:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("pain-suppression","HitPoints:2,MoveMax:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("predator-reflexes","Initiative:1,Defense:1,MoveMax:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("rapid-synapse","Defense:-1","RapidReaction")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reactive-marrow","HitPoints:2","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reflex-genome","","RapidReaction")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("regenerative-culture","","Regeneration")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("reinforced-skeleton","Defense:1,HitPoints:1,Initiative:-1","")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("survivor-strain","Defense:1,MoveMax:-1","Regeneration")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredEffectsMatchDesignAndApplyToRealHost("wanderer-strain","MoveMax:1,Defense:-1","r1s4")` — Error
+- `Game.EditorTests.MutatorContentTests.AuthoredOrganicHeroesAcceptGenomeAndMechanicalHeroesRejectIt` — Error
+- `Game.EditorTests.MutatorContentTests.FormatterShowsHostKindHiddenStatsAndCompleteResearchDescription` — Error
+- `Game.EditorTests.MutatorContentTests.NeuralAcceleratorRespectsZeroActivationFloor(0)` — Error
+- `Game.EditorTests.MutatorContentTests.NeuralAcceleratorRespectsZeroActivationFloor(1)` — Error
+- `Game.EditorTests.MutatorContentTests.RealProductionEquipmentAndMutatorCoexistInEitherOrder(False)` — Error
+- `Game.EditorTests.MutatorContentTests.RealProductionEquipmentAndMutatorCoexistInEitherOrder(True)` — Error
+- `Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("enhanced-senses")` — Error
+- `Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("hunter-genome")` — Error
+- `Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("hunter-glands")` — Error
+- `Game.EditorTests.MutatorContentTests.RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth("wanderer-strain")` — Error
+- `Game.EditorTests.MutatorContentTests.ResearchHasOnlyTwentySharedMutatorsAndProductionContainsPhysicalEquipment` — Error
+- `Game.EditorTests.MutatorContentTests.UnityImportsActualDefinitionsAndResolvesAllPlayableFactions` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AntiAirAttachmentProvidesRadiusAndARealEntryReaction("AA Launcher")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AntiAirAttachmentProvidesRadiusAndARealEntryReaction("AA Mount")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Ceramic Vest","CeramicArmor")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Double Barrel","CriticalDamage")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Flame Projector","Scorcher")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Grenade Launcher","Splash")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Incendiary Rifle","Pyrokinetic")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Rail Rifle","Hyperkinetic")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredAbilitiesReachCombatState("Shock Rifle","ShockAttack")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Ceramic Vest")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Heavy MG")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredEquipmentCreatesANewCombatCacheEntryAndRepeatReadsIt("Mortar Rack")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.AuthoredProjectionMatchesLiveApplyAndDoesNotMutateTheDefinition()` — Invalid
+- `Game.EditorTests.ProductionEquipmentContentTests.CatalogContainsAllPhysicalEquipmentAndNoResearchMutators` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.EquipmentAndMutatorCoexistInBothInstallationOrders(False)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.EquipmentAndMutatorCoexistInBothInstallationOrders(True)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("AA Mount")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Dozer Blade")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Flame Projector")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Mortar Rack")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Rail Cannon")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.GroundConversionsRejectEveryAuthoredAircraftAndAcceptVehicleOrMecha("Siege Ram")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.HeavyMgOverridesAttackAndEvaluatorPreservesTheSignedDelta(3,True)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.HeavyMgOverridesAttackAndEvaluatorPreservesTheSignedDelta(7,False)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Mobility Harness")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryAddonsPreserveExistingWeaponAndUtilityAbilities("Optical Scope")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryWeaponsAcceptMechanicalInfantryAndDoNotSpreadToHeroes("Marksman Rifle")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryWeaponsAcceptMechanicalInfantryAndDoNotSpreadToHeroes("Mobility Harness")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryWeaponsAcceptMechanicalInfantryAndDoNotSpreadToHeroes("Optical Scope")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.InfantryWeaponsAcceptMechanicalInfantryAndDoNotSpreadToHeroes("Shotgun")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.MintedEquipmentPaysNoSecondResourceStakeAndReservesOnlyItsPlayAp()` — Invalid
+- `Game.EditorTests.ProductionEquipmentContentTests.NuclearEngineKeepsAircraftCompatibility` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Assault Conversion Kit",5,4,10,6,1)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Assault Rifle Kit",6,3,10,6,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Ballistic Shield",5,4,10,6,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Dozer Blade",6,4,10,6,1)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Flame Projector",5,3,10,6,1)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Heavy MG",5,3,10,6,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Marksman Rifle",4,3,10,6,3)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Mobility Harness",5,3,10,7,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Mortar Rack",4,3,10,6,3)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Optical Scope",5,3,10,6,3)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Plasma Gun",8,3,10,6,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Portable Mortar",5,3,10,5,3)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Reactive Armor",5,5,10,5,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Recoil Cannon",7,3,10,5,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Reinforced Chassis",5,3,12,5,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Shotgun",6,3,10,6,1)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Siege Ram",5,3,10,5,1)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.RepresentativeAuthoredEffects("Turbocharger",5,2,10,8,2)` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.TwinSmgUsesCanonicalCriticalMultiplierAndRetainsItsMeleeTradeoff` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.UnityCatalogResolvesFortyTwoCardsWithBothSpriteReferencesForAllFactions` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Dozer Blade")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Heavy MG")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Marksman Rifle")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Plasma Cannon")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Plasma Gun")` — Error
+- `Game.EditorTests.ProductionEquipmentContentTests.WeaponReplacementClearsOldWeaponEffectsButKeepsNonWeaponAbilities("Shotgun")` — Error
+- `Game.EditorTests.ResearchProductionAttemptTransactionTests.AlternateSameOwnerRootCannotFundAttempt` — Error
+- `Game.EditorTests.ResearchProductionAttemptTransactionTests.RemovedCatalogOfferRejectsBeforePayment` — Error
+- `Game.EditorTests.ResearchProductionAttemptTransactionTests.ResearchAttemptRevalidatesRevealsAndPaysAsOneCommit` — Error
+- `Game.EditorTests.ResearchProductionAttemptTransactionTests.UnaffordableAttemptDoesNotPartiallyRevealOrPay` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.AviationCannotHuntOnContact(False)` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.AviationCannotHuntOnContact(True)` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.FriendlyArmyCannotHuntOnContact` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HeroDoesNotContactAnotherSoloHero` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HeroDoesNotExposeUnseenCombatantBehindVisibleHero` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HeroSelectsVisibleEnemyOrNeutralHunter(False)` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HeroSelectsVisibleEnemyOrNeutralHunter(True)` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HeroSkipsSoloHeroToFindActualHunter` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.HiddenEnemyCannotHuntOnContact` — Error
+- `Game.EditorTests.SoloHeroContactSelectionTests.MultipleHuntersUseStableSelectionWithoutHeroBattleEstimate` — Error
+- `Game.EditorTests.StealthBuildingContactTests.AviationRevealDoesNotTakeOver(False)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.AviationRevealDoesNotTakeOver(True)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.FirstVisibleMemberActsWhileOtherMembersStayHidden` — Error
+- `Game.EditorTests.StealthBuildingContactTests.OwnBuildingSurvivesReveal` — Error
+- `Game.EditorTests.StealthBuildingContactTests.PersonalDetectionDoesNotMakeHiddenResidentAct` — Error
+- `Game.EditorTests.StealthBuildingContactTests.RemovedUnitDoesNotAttackBuilding` — Error
+- `Game.EditorTests.StealthBuildingContactTests.RepeatedExitDoesNotDestroyReplacementBuilding` — Error
+- `Game.EditorTests.StealthBuildingContactTests.ResidentRevealResolvesUndefendedBuilding(False,False)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.ResidentRevealResolvesUndefendedBuilding(False,True)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.ResidentRevealResolvesUndefendedBuilding(True,False)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.ResidentRevealResolvesUndefendedBuilding(True,True)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.RevealUpdatesBuildingMemoryAndRouteRevisionBeforeFormerOwnerLosesVision(False)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.RevealUpdatesBuildingMemoryAndRouteRevisionBeforeFormerOwnerLosesVision(True)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.UnregisteredArmyDoesNotTakeOverOnReveal` — Error
+- `Game.EditorTests.StealthBuildingContactTests.VisibleGuardPreventsTakeoverOnReveal(False)` — Error
+- `Game.EditorTests.StealthBuildingContactTests.VisibleGuardPreventsTakeoverOnReveal(True)` — Error
+- `Game.EditorTests.StealthEntryTransactionTests.AlternateSameOwnerRootCannotPayForEntry` — Error
+- `Game.EditorTests.StealthEntryTransactionTests.InsufficientApLeavesBothAccountAndStealthStateUntouched` — Error
+- `Game.EditorTests.StealthEntryTransactionTests.PreserveApPreventsEntryThatWouldStrandImmediateFollowup` — Error
+- `Game.EditorTests.StealthEntryTransactionTests.SuccessfulEntryDebitsExactlyOnceAndHidesUnit` — Error
+- `Game.EditorTests.StealthEntryTransactionTests.VoluntaryExitRemainsFree` — Error
+- `Game.EditorTests.TerrainComplexTests.AirCostDoesNotReuseGroundRouteCache` — Error
+- `Game.EditorTests.TerrainComplexTests.AnimatedPartsStaySynchronousWithoutChangingMapRevision` — Error
+- `Game.EditorTests.TerrainComplexTests.AnimationClockLoopsSevenFramesAndSupportsPhaseOffset` — Error
+- `Game.EditorTests.TerrainComplexTests.AuthoredComplexesKeepBothBiomesConnectedAtEverySize` — Error
+- `Game.EditorTests.TerrainComplexTests.AuthoredFootprintIsTranslatedWithoutRotation` — Error
+- `Game.EditorTests.TerrainComplexTests.CenterBandKeepsEveryCellInsideItAndOffTheEdgeMargin` — Error
+- `Game.EditorTests.TerrainComplexTests.CloseGroundPassRestoresSiegeAndDefenderPin` — Error
+- `Game.EditorTests.TerrainComplexTests.ComplexThatCutsNarrowBridgeIsRejected` — Error
+- `Game.EditorTests.TerrainComplexTests.ComplexTotalIsSplitByTemplateShares` — Error
+- `Game.EditorTests.TerrainComplexTests.CurrentGroundContactAcrossSnakeIsNotSiegeButAirIs` — Error
+- `Game.EditorTests.TerrainComplexTests.DisabledComplexesAreExcludedBeforeAllocationInBothBiomes` — Error
+- `Game.EditorTests.TerrainComplexTests.DisabledTemplateRemainsStructurallyValidButCannotBePlaced` — Error
+- `Game.EditorTests.TerrainComplexTests.EmptyAndOversizedFootprintsRemainInvalid` — Error
+- `Game.EditorTests.TerrainComplexTests.ExclusiveGroupKeepsExactlyOneAlternativeAtEvenOdds` — Error
+- `Game.EditorTests.TerrainComplexTests.ForbiddenDestinationCannotBeExemptedByThreatBlocker` — Error
+- `Game.EditorTests.TerrainComplexTests.ForwardAndReverseGroundFieldsExcludeObstacles` — Error
+- `Game.EditorTests.TerrainComplexTests.GroundCannotEnterButAirCan` — Error
+- `Game.EditorTests.TerrainComplexTests.GroundPathDetoursButAirPathRemainsFlat` — Error
+- `Game.EditorTests.TerrainComplexTests.GroundRetreatFailsWhenEveryNeighborIsImpassable` — Error
+- `Game.EditorTests.TerrainComplexTests.GroundRouteCacheInvalidatesWhenTerrainChanges` — Error
+- `Game.EditorTests.TerrainComplexTests.HistoricalContactMayAdvanceAndUnreachableOriginDoesNotRemoveRisk` — Error
+- `Game.EditorTests.TerrainComplexTests.ImpassableComplexesNeverTouchEachOther` — Error
+- `Game.EditorTests.TerrainComplexTests.ImpassableTerrainProducesNoResourcesEvenWithBonus` — Error
+- `Game.EditorTests.TerrainComplexTests.InvalidDisconnectedOrDuplicateShapesRejected` — Error
+- `Game.EditorTests.TerrainComplexTests.LakeDoesNotKeepHomeGapOrShoreInformationAlive` — Error
+- `Game.EditorTests.TerrainComplexTests.MissingComplexListsResolveToEmptyForBothBiomes` — Error
+- `Game.EditorTests.TerrainComplexTests.MovementFactsSurviveReconHistoryAndChangeThreatRefreshKey` — Error
+- `Game.EditorTests.TerrainComplexTests.OldTerrainIncludingMountainsRemainsPassable` — Error
+- `Game.EditorTests.TerrainComplexTests.OutOfMapPairRejectedAtomically` — Error
+- `Game.EditorTests.TerrainComplexTests.OverlapRejectsWholeComplex` — Error
+- `Game.EditorTests.TerrainComplexTests.PairAcceptedAndValidationDoesNotMutateData` — Error
+- `Game.EditorTests.TerrainComplexTests.ProtectedTerrainIsNotOverwritten` — Error
+- `Game.EditorTests.TerrainComplexTests.PublishedLayoutRejectsDataOnlyTerrainMutation` — Error
+- `Game.EditorTests.TerrainComplexTests.ReservedCellRejectsWholeComplex` — Error
+- `Game.EditorTests.TerrainComplexTests.ScoutEstimatorDoesNotReplaceUnreachableRouteWithStraightDistance` — Error
+- `Game.EditorTests.TerrainComplexTests.SingleHexAcceptedWithoutChangingAssignment` — Error
+- `Game.EditorTests.TerrainComplexTests.SingleHexBubbleAnimationUsesOneMaterialAndLoops` — Error
+- `Game.EditorTests.TerrainComplexTests.SingleHexStillRejectsProtectedCellsAndBrokenConnectivity` — Error
+- `Game.EditorTests.TerrainComplexTests.StaleMovementRouteDoesNotSpendMovementOrEnterObstacle` — Error
+- `Game.EditorTests.TerrainComplexTests.TerrainMutationBumpsRevisionIncludingMutatedSharedEntry` — Error
+- `Game.EditorTests.TerrainComplexTests.UnequalAnimationSequencesRejected` — Error
+- `Game.EditorTests.TerrainComplexTests.WallMakesGroundTargetUnreachable` — Error
+- `Game.EditorTests.TerrainComplexTests.ZeroComplexCountPlacesNoComplexes` — Error
+- `Game.EditorTests.UnitDetailFormatterTests.DetailNamesBothAttachmentsAndKeepsHeroStatConvention(False)` — Error
+- `Game.EditorTests.UnitDetailFormatterTests.DetailNamesBothAttachmentsAndKeepsHeroStatConvention(True)` — Error
+- `Game.EditorTests.VisibleHexMutationNotificationTests.FacilityPlacementRefreshesVisibleBuildingSlotsWithoutVisionChange` — Error
+- `Game.EditorTests.VisibleHexMutationNotificationTests.RepairOnVisibleHexRefreshesObservedHpWithoutRevealingOthers` — Error
+- `Game.EditorTests.VisibleHexMutationNotificationTests.TransferWithinVisibleHexPublishesFinalRosterOnce` — Error
+- `Game.EditorTests.WorthItEstimateCacheTests.NothingIsCachedOutsideAScope` — Failed
+
+## Оставшаяся проверка в Unity
+
+1. Собрать проект в Unity 6000.5.4f1 и запустить полный EditMode набор.
+2. Повторить обе исходные профилировочные ситуации при одинаковом состоянии игры.
+3. Сравнить время NestedPotentials, число/память симуляций и максимальное время кадра повторной оценки.
+4. Проверить паузу наблюдателя и продолжение ИИ после Phase A, движения, восстановления авиации и Phase B.
+
+Один отдельный Monte Carlo расчёт остаётся синхронным: бюджет ограничивает пакет между расчётами, а не длительность одного расчёта. Если одна оценка сама превышает бюджет, потребуется отдельный следующий этап оптимизации.
