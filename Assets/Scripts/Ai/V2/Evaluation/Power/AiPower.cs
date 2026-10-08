@@ -322,21 +322,42 @@ namespace Game.Ai.V2
             if (units == null || units.Count == 0)
                 return 0f;
 
-            var distinctTags = new HashSet<UnitTypeTag>();
+            ulong tagMask = 0;
+            HashSet<UnitTypeTag> overflowTags = null;
             bool hasFront = false, hasReach = false;
-            foreach (PowerUnit pu in units)
+            void Add(PowerUnit pu)
             {
                 // Bodies only: a hero never fights, so its tags are no type coverage and it is
                 // neither front nor reach.
-                if (pu.IsHero) continue;
-                foreach (UnitTypeTag t in pu.Tags)
-                    if (t != UnitTypeTag.Hero)
-                        distinctTags.Add(t);
+                if (pu.IsHero) return;
+                for (int i = 0; i < pu.Tags.Count; i++)
+                {
+                    UnitTypeTag t = pu.Tags[i];
+                    if (t == UnitTypeTag.Hero) continue;
+                    if ((uint)t < 64) tagMask |= 1UL << (int)t;
+                    else (overflowTags ?? (overflowTags = new HashSet<UnitTypeTag>())).Add(t);
+                }
                 if (pu.Range <= 1) hasFront = true;
                 else hasReach = true;
             }
+            // Arrays/lists are the hot path. Indexing avoids boxing their enumerators too.
+            if (units is IReadOnlyList<PowerUnit> indexed)
+                for (int i = 0; i < indexed.Count; i++) Add(indexed[i]);
+            else
+                foreach (PowerUnit pu in units) Add(pu);
+            return CompositionQuality(CountTags(tagMask) + (overflowTags?.Count ?? 0), hasFront, hasReach);
+        }
 
-            float typeCoverage = Mathf.Clamp01(distinctTags.Count / (float)Mathf.Max(1, AiConfigV2.compoTypeCoverageTarget));
+        private static int CountTags(ulong mask)
+        {
+            int count = 0;
+            while (mask != 0) { mask &= mask - 1; count++; }
+            return count;
+        }
+
+        private static float CompositionQuality(int tagCount, bool hasFront, bool hasReach)
+        {
+            float typeCoverage = Mathf.Clamp01(tagCount / (float)Mathf.Max(1, AiConfigV2.compoTypeCoverageTarget));
             float rangeBalance = (hasFront && hasReach) ? 1f : (hasFront || hasReach) ? 0.5f : 0f;
 
             // A hero shapes an army only through its slots (ToPowerUnit): its presence is not a
@@ -413,8 +434,8 @@ namespace Game.Ai.V2
         // composition multiplier, so an all-one-type stack naturally pulls in a different type /
         // skill once that bump beats the raw-power delta of yet another same-type unit. One hero
         // max; `cap` slots total. Not a true knapsack (that candidate loop is per-slot greedy),
-        // but it is an informational comparison scalar, not a battle plan. O(cap^2 * n), run once
-        // per AI turn.
+        // but it is an informational comparison scalar, not a battle plan. The compact candidate
+        // evaluation is O(cap * n * tags), reused for equal commander capacities per calculation.
         public static List<PowerUnit> ComposeStack(IReadOnlyList<PowerUnit> pool, int cap,
             PowerUnit? commander = null) =>
             ComposeStackOf(pool, u => u, cap, commander.HasValue, commander.GetValueOrDefault());
@@ -434,6 +455,10 @@ namespace Game.Ai.V2
 
             var remaining = new List<T>(pool);
             bool heroTaken = hasCommander;
+            double raw = hasCommander ? pickUnits[0].BasePower : 0;
+            ulong tags = 0;
+            bool front = false, reach = false, compact = true;
+            if (hasCommander) AddComposition(pickUnits[0], ref tags, ref front, ref reach, ref compact);
             while (pick.Count < cap && remaining.Count > 0)
             {
                 int bestIdx = -1;
@@ -443,9 +468,24 @@ namespace Game.Ai.V2
                     PowerUnit candidate = unitOf(remaining[i]);
                     if (candidate.IsHero && heroTaken)
                         continue;
-                    pickUnits.Add(candidate);
-                    float score = EffectiveArmyPower(pickUnits);
-                    pickUnits.RemoveAt(pickUnits.Count - 1);
+                    ulong trialTags = tags;
+                    bool trialFront = front, trialReach = reach, trialCompact = compact;
+                    AddComposition(candidate, ref trialTags, ref trialFront, ref trialReach, ref trialCompact);
+                    float score;
+                    if (trialCompact)
+                    {
+                        // Enumerable.Sum(float) accumulates in double, then casts once. Keep that
+                        // order: rounding at every added body can change greedy ties.
+                        float trialRaw = (float)(raw + candidate.BasePower);
+                        float quality = CompositionQuality(CountTags(trialTags), trialFront, trialReach);
+                        score = trialRaw * (AiConfigV2.compoFloor + (1f - AiConfigV2.compoFloor) * quality);
+                    }
+                    else
+                    {
+                        pickUnits.Add(candidate);
+                        score = EffectiveArmyPower(pickUnits);
+                        pickUnits.RemoveAt(pickUnits.Count - 1);
+                    }
                     if (score > bestScore)
                     {
                         bestScore = score;
@@ -459,9 +499,26 @@ namespace Game.Ai.V2
                     heroTaken = true;
                 pick.Add(remaining[bestIdx]);
                 pickUnits.Add(chosen);
+                raw += chosen.BasePower;
+                AddComposition(chosen, ref tags, ref front, ref reach, ref compact);
                 remaining.RemoveAt(bestIdx);
             }
             return pick;
+        }
+
+        private static void AddComposition(PowerUnit unit, ref ulong tags, ref bool front,
+            ref bool reach, ref bool compact)
+        {
+            if (unit.IsHero) return;
+            for (int i = 0; i < unit.Tags.Count; i++)
+            {
+                UnitTypeTag t = unit.Tags[i];
+                if (t == UnitTypeTag.Hero) continue;
+                if ((uint)t < 64) tags |= 1UL << (int)t;
+                else compact = false;
+            }
+            front |= unit.Range <= 1;
+            reach |= unit.Range > 1;
         }
 
         // Strongest single stack assemblable from `available`, capped at `cap` slots (the best
@@ -482,6 +539,11 @@ namespace Game.Ai.V2
         // roster (commander first when a hero leads it) that reaches it.
         public static float PeakStackOf<T>(IReadOnlyList<T> pool, System.Func<T, PowerUnit> unitOf,
             out List<T> roster)
+            => PeakStackOf(pool, unitOf, out roster, null);
+
+        // Memo is local to one body pool. No state survives a snapshot or unit/card mutation.
+        private static float PeakStackOf<T>(IReadOnlyList<T> pool, System.Func<T, PowerUnit> unitOf,
+            out List<T> roster, Dictionary<(int Capacity, float Power), (float Power, List<T> Roster)> memo)
         {
             roster = new List<T>();
             if (pool == null) return 0f;
@@ -490,12 +552,25 @@ namespace Game.Ai.V2
             List<T> bodies = pool.Where(u => !unitOf(u).IsHero).ToList();
             roster = ComposeStackOf(bodies, unitOf, 2);
             float best = EffectiveArmyPower(roster.Select(unitOf).ToList());
+            var seen = new HashSet<(int Capacity, float Power)>();
             foreach (T hero in pool.Where(u => unitOf(u).IsHero))
             {
-                int capacity = unitOf(hero).CommandRating;
+                PowerUnit commander = unitOf(hero);
+                int capacity = commander.CommandRating;
                 if (capacity < 1) continue;
-                List<T> candidate = ComposeStackOf(bodies, unitOf, capacity, true, hero);
-                float power = EffectiveArmyPower(candidate.Select(unitOf).ToList());
+                var key = (capacity, commander.BasePower);
+                if (!seen.Add(key)) continue;
+                // BasePower matters for callers constructing synthetic PowerUnits; canonical
+                // heroes have zero power. Hero tags/range never enter composition quality.
+                (float Power, List<T> Roster) cached;
+                if (memo == null || !memo.TryGetValue(key, out cached))
+                {
+                    List<T> picked = ComposeStackOf(bodies, unitOf, capacity, true, hero);
+                    cached = (EffectiveArmyPower(picked.Select(unitOf).ToList()), picked);
+                    if (memo != null) memo[key] = cached;
+                }
+                List<T> candidate = cached.Roster;
+                float power = cached.Power;
                 if (power > best)
                 {
                     best = power;
@@ -553,10 +628,15 @@ namespace Game.Ai.V2
             full.AddRange(cardHeroes ?? System.Array.Empty<T>());
 
             float field = PeakStackOf(map ?? System.Array.Empty<T>(), unitOf, out List<T> fieldRoster);
-            float unitsRaw = PeakStackOf(withBodies, unitOf, out List<T> unitsRoster);
+            var memo = new Dictionary<(int Capacity, float Power), (float Power, List<T> Roster)>();
+            float unitsRaw = PeakStackOf(withBodies, unitOf, out List<T> unitsRoster, memo);
             float units = Mathf.Max(field, unitsRaw);
             if (unitsRaw <= field) unitsRoster = fieldRoster;
-            float totalRaw = PeakStackOf(full, unitOf, out List<T> totalRoster);
+            // Only share when full adds exclusively commanders. Preserve the public method's
+            // behavior even for a caller supplying a body in the cardHeroes list.
+            if (cardHeroes != null && cardHeroes.Any(h => !unitOf(h).IsHero)) memo = null;
+            // full normally adds only commanders: bodies and their order are withBodies'.
+            float totalRaw = PeakStackOf(full, unitOf, out List<T> totalRoster, memo);
             float total = Mathf.Max(units, totalRaw);
             peakRoster = totalRaw <= units ? unitsRoster : totalRoster;
             return new ForcePotentials(field, units, total);

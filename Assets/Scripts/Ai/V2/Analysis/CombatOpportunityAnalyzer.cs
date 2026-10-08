@@ -296,7 +296,8 @@ namespace Game.Ai.V2
         // per-turn estimate cache (WorthIt.EstimateCache) holds every result when Analyze runs and
         // Analyze itself is untouched and returns exactly what it always returned. Results are
         // discarded here; the only effect is cache entries. Yields a frame whenever
-        // `budgetSeconds` of wall clock has passed since the last one, between targets.
+        // `budgetSeconds` of wall clock has passed since the last one, between estimates (including
+        // commanders of ONE target). Also used before mid-turn operational refreshes.
         // No-op outside an estimate-cache scope (nothing would be remembered).
         // KEEP IN STEP with Analyze: a changed argument there only costs a cache miss, never a wrong answer.
         internal static System.Collections.IEnumerator WarmEstimates(WorldSnapshot snap, float budgetSeconds = 0.008f)
@@ -311,15 +312,9 @@ namespace Game.Ai.V2
                 ?? new List<WorthIt.DefenderProfile>();
             WorthIt.SideCommander readyCommander = bestReadyArmy?.Commander ?? default;
 
-            float lastYield = UnityEngine.Time.realtimeSinceStartup;
-            void Warm(IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander,
-                float hexBonus)
-            {
-                WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders,
-                    hexBonus, readyCommander, commander);
-                BestAssembly(commanders, assemblableBodies,
-                    new[] { new WorthIt.DefendingArmy(defenders, commander, hexBonus) }, hexBonus);
-            }
+            long lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
+            bool BudgetExpired() => (System.Diagnostics.Stopwatch.GetTimestamp() - lastYield)
+                / (double)System.Diagnostics.Stopwatch.Frequency >= budgetSeconds;
             IReadOnlyList<WorthIt.DefenderProfile> None() =>
                 System.Array.Empty<WorthIt.DefenderProfile>();
 
@@ -338,13 +333,40 @@ namespace Game.Ai.V2
 
             foreach (var target in targets)
             {
-                if (UnityEngine.Time.realtimeSinceStartup - lastYield >= budgetSeconds)
+                if (BudgetExpired())
                 {
                     yield return null;
-                    lastYield = UnityEngine.Time.realtimeSinceStartup;
+                    lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
                 }
                 using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
-                    Warm(target.Defenders, target.Commander, target.HexBonus);
+                    WorthIt.WinChance(readyRoster,
+                        (IReadOnlyCollection<WorthIt.DefenderProfile>)target.Defenders,
+                        target.HexBonus, readyCommander, target.Commander);
+                var opposition = new[] { new WorthIt.DefendingArmy(target.Defenders,
+                    target.Commander, target.HexBonus) };
+                if (commanders.Count == 0)
+                {
+                    if (BudgetExpired())
+                    {
+                        yield return null;
+                        lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
+                    }
+                    using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
+                        HeroRoleEvaluator.ProjectCommand(NoHeroStackCapacity + 1, 0, default,
+                            assemblableBodies, opposition, target.HexBonus);
+                }
+                else
+                    foreach (HeroRoleEvaluator.HeroProfile hero in commanders)
+                    {
+                        if (BudgetExpired())
+                        {
+                            yield return null;
+                            lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
+                        }
+                        using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
+                            HeroRoleEvaluator.ProjectCommand(hero.CommandRating, 0, hero.Commander,
+                                assemblableBodies, opposition, target.HexBonus);
+                    }
             }
         }
 

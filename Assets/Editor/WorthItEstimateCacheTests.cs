@@ -89,6 +89,56 @@ namespace Game.EditorTests
         // ---- Behaviour ----
 
         [Test]
+        public void SingleEstimate_ReusesTrialCollections()
+        {
+            var attackers = new[] { Unit(2, 0, 1), Unit(2, 0, 1) };
+            var defenders = new[] { Unit(2, 0, 1), Unit(2, 0, 1) };
+            var bytes = AiPowerOptimizationTests.AllocatedBytes();
+            WorthIt.Estimate(attackers, defenders, 0);
+            long before = bytes();
+            WorthIt.Estimate(attackers, defenders, 0);
+            long allocated = bytes() - before;
+            TestContext.WriteLine($"single estimate allocated: {allocated}");
+            // The original implementation uses 48,648 bytes here under Mono. Dice arrays are
+            // still allocated by the shared combat kernel; this guards removal of trial lists.
+            Assert.That(allocated, Is.LessThan(24 * 1024),
+                "Trial scratch must be reused across all 25 virtual battles");
+        }
+
+        [Test]
+        public void SimulationResults_MatchRecordedBaseline()
+        {
+            var text = new System.Text.StringBuilder();
+            string[] abilities = { UnitAbilities.Berserk, UnitAbilities.ShockAttack,
+                UnitAbilities.CeramicArmor, UnitAbilities.Splash, UnitAbilities.Scorcher,
+                UnitAbilities.Regeneration, UnitAbilities.CriticalDamage };
+            for (int i = 0; i < 30; i++)
+            {
+                var attackers = new[] { Unit(2 + i % 4, i % 3, 3 + i % 5, 1 + i % 3,
+                    abilities[i % abilities.Length]), Unit(3, 1, 4, 2) };
+                var defenders = new[] { Unit(2, 1 + i % 3, 4, 2,
+                    abilities[(i + 2) % abilities.Length]), Unit(3, 2, 3, 1) };
+                var commander = new WorthIt.SideCommander(i % 3, i % 4);
+                var enemyCommander = new WorthIt.SideCommander(i % 2, i % 3);
+                var single = WorthIt.Estimate(attackers, defenders, i % 2, commander, enemyCommander);
+                var sequence = WorthIt.EstimateSequential(attackers, commander, new[] {
+                    new WorthIt.DefendingArmy(defenders, enemyCommander, i % 2),
+                    new WorthIt.DefendingArmy(new[] { Unit(2, 1, 3) }, default, 0),
+                }, 0);
+                foreach (var result in new[] { single, sequence })
+                    foreach (float value in new[] { result.WinChance, result.ExpectedSurvivingHpRatioOnWin,
+                        result.CriticalAfterBattleChance })
+                        text.Append(System.BitConverter.ToString(System.BitConverter.GetBytes(value))).Append('|');
+            }
+            using (var hash = System.Security.Cryptography.SHA256.Create())
+            {
+                string actual = System.BitConverter.ToString(hash.ComputeHash(
+                    System.Text.Encoding.UTF8.GetBytes(text.ToString()))).Replace("-", "");
+                Assert.That(actual, Is.EqualTo("1EFAECD28958C4B4475EBAE17624222809C4BF396342B0E8597A05DF539FDAA4"));
+            }
+        }
+
+        [Test]
         [TestCase(EquipmentStat.Defense)]
         [TestCase(EquipmentStat.HitPoints)]
         [TestCase(EquipmentStat.Initiative)]
