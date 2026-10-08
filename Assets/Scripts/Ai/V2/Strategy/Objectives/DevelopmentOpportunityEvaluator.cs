@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                     // The same canonical investment scorer proves force/placement need. Only
                     // Materialization may actually choose and execute a deployable output.
                     DevelopmentOpportunity future = PrepareDeployable(card, mode, hex, source.Hero,
-                        1f, 0f, snap, inv, occupied, player, root, hand, ctx);
+                        1f, snap, inv, occupied, player, root, hand, ctx);
                     if (future != null)
                     {
                         future.WorldTaskScore = BuildDevelopmentScore(future.SuccessChance
@@ -562,15 +562,6 @@ namespace Game.Ai.V2
                 : Mathf.Max(0f, AiPower.EffectiveLine(card).BasePower)
                     / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
 
-        // The complete H/E/M/T a PREPARE chain consumes: facility + operator + output.
-        private static ResourceCost SumCost(params ResourceCost[] costs) => new ResourceCost
-        {
-            human = costs.Sum(c => c?.Get(ResourceType.Human) ?? 0),
-            energy = costs.Sum(c => c?.Get(ResourceType.Energy) ?? 0),
-            materials = costs.Sum(c => c?.Get(ResourceType.Materials) ?? 0),
-            tech = costs.Sum(c => c?.Get(ResourceType.Tech) ?? 0),
-        };
-
         // A field operator moves with its whole army; a garrison hero is extracted alone.
         // Null is the selected hand/local/generated operator, with no delivery investment.
         internal static (float ActionAp, float ActivationNow, float RecurringActivationAp, int EtaTurns)
@@ -603,7 +594,7 @@ namespace Game.Ai.V2
         // projected plan to value the future investment; never an executable source.
         private static DevelopmentOpportunity PrepareDeployable(CardDefinition card,
             ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float operatorChance,
-            float preparationCost, WorldSnapshot snap, CapabilityInventory inv,
+            WorldSnapshot snap, CapabilityInventory inv,
             ActorCommitments occupied, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx)
         {
@@ -625,7 +616,7 @@ namespace Game.Ai.V2
                 Mode = mode, FacilityHex = hex, Card = card, ProducesEquipment = false,
                 SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
                 ExpectedGain = futureValue * operatorChance,
-                Ev = futureValue * operatorChance - preparationCost,
+                Ev = futureValue * operatorChance,
                 RecipientLabel = (card.isAviation ? "aviation:" : "deployable:") + card.displayName,
             };
         }
