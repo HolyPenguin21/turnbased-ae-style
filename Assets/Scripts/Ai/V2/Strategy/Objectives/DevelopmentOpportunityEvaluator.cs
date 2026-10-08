@@ -805,6 +805,9 @@ namespace Game.Ai.V2
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
             private readonly RecipientEvaluationMemo _outer;
             private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts = new();
+            // Pending-hand coverage depends only on the recipient and the slot being produced
+            // (snapshot, inventory and hand are fixed for one Enumerate); negatives are cached too.
+            private readonly Dictionary<(object, object), bool> _pending = new();
             public RecipientEvaluationMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
 
@@ -820,6 +823,17 @@ namespace Game.Ai.V2
                 RecipientVerdict verdict)
             {
                 if (s_current != null) s_current._verdicts[(equipment, recipient, future)] = verdict;
+            }
+
+            public static bool TryGetPending(object recipient, object slot, out bool covers)
+            {
+                covers = false;
+                return s_current != null && s_current._pending.TryGetValue((recipient, slot), out covers);
+            }
+
+            public static void StorePending(object recipient, object slot, bool covers)
+            {
+                if (s_current != null) s_current._pending[(recipient, slot)] = covers;
             }
         }
 
@@ -841,6 +855,7 @@ namespace Game.Ai.V2
 
             int handChecked = 0, mapChecked = 0, noNeed = 0;
             string lastReject = null;
+            RecipientVerdict? lastNoNeed = null;
             float powerUnit = AiConfigV2.combatPowerPerBodyEstimate;
             // Memoised only for the standard (no explicit attachment card) call.
             bool memoised = attachmentCard == null;
@@ -891,10 +906,18 @@ namespace Game.Ai.V2
                     bool noNeed = StrategicCardEvaluator.EquipmentUpgradeValue(probe) <= 0f;
                     // A real card in hand is the pending stage. Reuse it before manufacturing more
                     // for its useful recipient slot; ordinary hand attachment enumeration stays live.
-                    bool covers;
-                    using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
-                        covers = !noNeed && futureAttachment
-                            && PendingEquipmentCovers(probe, hand, snap, inv);
+                    bool covers = false;
+                    if (!noNeed && futureAttachment)
+                    {
+                        // Boxed slot is the memo key; recipient identity separates CardData from UnitData.
+                        object slot = equipment.attachmentSlot;
+                        if (!memoised || !RecipientEvaluationMemo.TryGetPending(recipient, slot, out covers))
+                        {
+                            using (new Game.Core.ProfileScope("AI/Dev.PendingCovers"))
+                                covers = PendingEquipmentCovers(probe, hand, snap, inv);
+                            if (memoised) RecipientEvaluationMemo.StorePending(recipient, slot, covers);
+                        }
+                    }
                     verdict = new RecipientVerdict(true, null, gain, purpose, noNeed, covers);
                 }
                 if (memoised) RecipientEvaluationMemo.Store(equipment, recipient, futureAttachment, verdict);
@@ -904,10 +927,12 @@ namespace Game.Ai.V2
             void Consider(RecipientVerdict v, DevRecipientKind kind, CardData card, UnitData unit,
                 int? armyId, string label)
             {
+                // The explanation is formatted only for an accepted opportunity and for the
+                // no-need reject kept in the empty-result diagnostic.
+                if (v.NoNeed) { noNeed++; lastReject = null; lastNoNeed = v; return; }
+                if (v.PendingCovers) { lastReject = "use_pending_equipment_first"; lastNoNeed = null; return; }
                 string explain = "purpose=" + v.Purpose + " slot=" + equipment.attachmentSlot + " "
                     + v.Gain.Detail;
-                if (v.NoNeed) { noNeed++; lastReject = explain; return; }
-                if (v.PendingCovers) { lastReject = "use_pending_equipment_first"; return; }
                 result.Add(new DevelopmentOpportunity
                 {
                     Mode = mode, FacilityHex = facilityHex, Card = equipment, ProducesEquipment = true,
@@ -928,7 +953,7 @@ namespace Game.Ai.V2
                     handChecked++;
                     RecipientVerdict v = Evaluate(c, c, null);
                     if (!v.Legal)
-                    { lastReject = v.Why; continue; }
+                    { lastReject = v.Why; lastNoNeed = null; continue; }
                     Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
                 }
 
@@ -941,13 +966,16 @@ namespace Game.Ai.V2
                     mapChecked++;
                     RecipientVerdict v = Evaluate(u, null, u);
                     if (!v.Legal)
-                    { lastReject = v.Why; continue; }
+                    { lastReject = v.Why; lastNoNeed = null; continue; }
                     Consider(v, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
                         null, u, army.Id,
                         $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}");
                 }
             }
 
+            if (result.Count == 0 && lastNoNeed.HasValue)
+                lastReject = "purpose=" + lastNoNeed.Value.Purpose + " slot=" + equipment.attachmentSlot + " "
+                    + lastNoNeed.Value.Gain.Detail;
             if (result.Count == 0)
                 diag = $"hand {handChecked}, map {mapChecked}, no-need {noNeed}"
                     + (lastReject != null ? $", last reject \"{lastReject}\"" : "");

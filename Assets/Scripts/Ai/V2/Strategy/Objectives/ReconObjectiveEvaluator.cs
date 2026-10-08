@@ -451,8 +451,7 @@ namespace Game.Ai.V2
             int count = 1;
 
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
-            var onMap = mk?.AllHexes as HashSet<HexCoord>
-                ?? (mk?.AllHexes != null ? new HashSet<HexCoord>(mk.AllHexes) : null);
+            var onMap = mk?.OnMapSet();
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {
                 if (onMap != null && onMap.Contains(n) == false) continue;
