@@ -176,8 +176,8 @@ namespace Game.EditorTests
             int level = _base.Level;
             var kinds = Admitted().Select(o => o.PreparationKind).ToList();
             Facts(); Admitted(); Admitted();
-            Assert.That(kinds, Does.Contain(DevelopmentPreparationKind.Operator));
-            Assert.That(kinds, Does.Contain(DevelopmentPreparationKind.CapacityUnlock));
+            Assert.That(kinds, Has.Member(DevelopmentPreparationKind.Operator));
+            Assert.That(kinds, Has.Member(DevelopmentPreparationKind.CapacityUnlock));
             Assert.That(Bank(), Is.EqualTo(before));
             Assert.That(_base.Level, Is.EqualTo(level));
             Assert.That(StrategicResourceReservationLedger.Rows(_player, _ctx.TurnNumber), Is.Empty,
@@ -202,8 +202,8 @@ namespace Game.EditorTests
         {
             _base.Level = 2;   // slot 2 is open
             var kinds = Admitted().Select(o => o.PreparationKind).ToList();
-            Assert.That(kinds, Does.Contain(DevelopmentPreparationKind.Facility));
-            Assert.That(kinds, Does.Not.Contain(DevelopmentPreparationKind.CapacityUnlock));
+            Assert.That(kinds, Has.Member(DevelopmentPreparationKind.Facility));
+            Assert.That(kinds, Has.No.Member(DevelopmentPreparationKind.CapacityUnlock));
         }
 
         [Test]
@@ -263,7 +263,7 @@ namespace Game.EditorTests
             Assert.That(_base.Resistance, Is.EqualTo(resistanceBefore + 1));
             Assert.That(_base.FacilitySlots, Is.EqualTo(slotsBefore), "filled slots keep their indices and content");
             Assert.That(_hand.Hand.Count, Is.EqualTo(cardsInHand));
-            Assert.That(_hand.Hand, Does.Contain(_facility), "the same card instance waits in hand");
+            Assert.That(_hand.Hand, Has.Member(_facility), "the same card instance waits in hand");
             BaseUpgradeTier tier = _config.baseUpgradeTiers[0];
             int[] after = Bank();
             Assert.That(before[0] - after[0], Is.EqualTo(tier.apCost));
@@ -295,7 +295,7 @@ namespace Game.EditorTests
             Assert.That(beforePlacement[3] - afterPlacement[3], Is.EqualTo(_facility.EffectivePlayResourceCost.materials));
             Assert.That(placed.StateVersionAfter, Is.EqualTo(version + 2), "the placement is its own mutation");
             Assert.That(_base.FacilitySlots[2], Is.Not.Null);
-            Assert.That(_hand.Hand, Does.Not.Contain(_facility));
+            Assert.That(_hand.Hand, Has.No.Member(_facility));
         }
 
         // ---- B16 / B17 stale plans ------------------------------------------------------------------------
@@ -526,7 +526,7 @@ namespace Game.EditorTests
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic
                 | System.Reflection.BindingFlags.Public);
             Assert.That(m.GetParameters().Select(p => p.ParameterType),
-                Does.Not.Contain(typeof(CardData)));
+                Has.No.Member(typeof(CardData)));
         }
     }
 }
