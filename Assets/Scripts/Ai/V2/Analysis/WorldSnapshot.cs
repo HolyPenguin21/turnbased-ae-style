@@ -129,6 +129,13 @@ namespace Game.Ai.V2
         public bool HasPreparationStep;
         public bool ResearchPreparationViable;
         public bool ProductionPreparationViable;
+        // The base where each mode's preparation currently stands (DevelopmentOpportunityEvaluator.
+        // SelectedPreparationSite, derived from the world, never stored): its operator is a duty
+        // there. Null while nothing is prepared or a facility of the mode already exists.
+        public HexCoord? ResearchPreparationSite;
+        public HexCoord? ProductionPreparationSite;
+        public HexCoord? PreparationSiteFor(ResearchProductionMode mode) =>
+            mode == ResearchProductionMode.Research ? ResearchPreparationSite : ProductionPreparationSite;
     }
 
     // --- Four stockpiled resources as one value. Index order matches ResourceType.
@@ -301,6 +308,11 @@ namespace Game.Ai.V2
         // Frozen from the canonical AiArmyRoles.IsHeroLed predicate. Economy consumers add only
         // target/intent/route context; they never re-derive the structural actor shape.
         public bool IsMobileEconomyBuilder;
+        // Written once per snapshot by WorldAnalysis.CompleteDevelopmentPreparation from
+        // AiArmyRoles.DepartureStripsOperator: moving this whole army off its hex would take the
+        // last qualified operator of a served facility / selected preparation site. IsMobileEconomyBuilder
+        // is only the SHAPE; a new remote assignment must also respect this duty. Default false.
+        public bool OperatorDutyBlocksDeparture;
         // ARCH-02 §29/§59 — frozen at scan time from the live ArmyData so downstream layers
         // (GroundCombatActorEligibility, CombatOpportunityAnalyzer, CapabilityInventory) read one snapshot
         // fact instead of re-deriving it from live ArmyRegistry state. Own armies only: a raid

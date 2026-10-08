@@ -108,6 +108,12 @@ namespace Game.Ai.V2
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
+                // Live re-check of the duty Demand saw in the snapshot: the roster outside `a` is
+                // read now, before any binding or composition mutation.
+                if (!a.Hex.Equals(target.TargetHex) && AiArmyRoles.DepartureStripsOperator(player, a,
+                        session.Snapshot?.Development == null ? null
+                            : (System.Func<ResearchProductionMode, HexCoord?>)session.Snapshot.Development.PreparationSiteFor))
+                    return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
                         out List<UnitData> unload, out List<UnitData> reinforcement))

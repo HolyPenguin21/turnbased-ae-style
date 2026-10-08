@@ -399,6 +399,7 @@ namespace Game.Ai.V2
             }
             return IsEconomyHeroDemand(demand)
                 ? army.IsMobileEconomyBuilder
+                    && !(army.OperatorDutyBlocksDeparture && !army.Hex.Equals(demand.TargetHex ?? army.Hex))
                 : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
         }
 

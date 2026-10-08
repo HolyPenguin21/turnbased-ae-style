@@ -1203,6 +1203,8 @@ namespace Game.Ai.V2
             }
             else if (!army.IsMobileEconomyBuilder)
                 return "not_mobile_economy_builder";
+            else if (army.OperatorDutyBlocksDeparture && !route.IsOnTarget)
+                return "operator_leaves_served_facility";
 
             MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
             // Project owner, 2026-10-02: a strong field army belongs to defence/offence, not to
@@ -1702,7 +1704,8 @@ namespace Game.Ai.V2
             return witnessed.Any(route => route.TravelCost < int.MaxValue
                 && (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(army =>
                     army != null && army.ArmyId == route.ArmyId
-                    && (army.IsMobileEconomyBuilder
+                    && ((army.IsMobileEconomyBuilder
+                            && !(army.OperatorDutyBlocksDeparture && !route.IsOnTarget))
                         || (route.IsOnTarget && army.IsGarrison && army.HasHero))));
         }
 

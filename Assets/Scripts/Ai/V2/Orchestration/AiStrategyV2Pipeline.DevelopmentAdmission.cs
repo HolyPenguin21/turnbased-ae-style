@@ -261,6 +261,7 @@ namespace Game.Ai.V2
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
                 + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
                 + $"|operatorClaims={MissionIntentRegistry.Peek(snapshot?.Observer)?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
+                + $"|prepSite={rd?.ResearchPreparationSite}:{rd?.ProductionPreparationSite}"
                 + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"

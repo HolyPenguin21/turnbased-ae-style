@@ -182,6 +182,91 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // Structural (resource/AP-free) reasons a base cannot be prepared for `mode`, or null. Also
+        // yields the hand facility cards and, for a full Base, the capacity tier the step would buy.
+        // The one owner of these clauses: AddPreparation and SelectedPreparationSite both read it.
+        private static string StructuralPreparationBlock(ResearchProductionMode mode, HexCoord hex,
+            bool facilityReady, WorldSnapshot snap, PlayerSetupData player, AiHandData hand,
+            AiTurnContext ctx, out List<CardData> facilityCards, out BaseUpgradeTier capacityTier)
+        {
+            facilityCards = new List<CardData>();
+            capacityTier = null;
+            if (BattleInitiator.FindEnemyAt(hex, player) != null)
+                return "reason=enemy_on_site";
+            if (!IsPreparationSite(player, hex)) return "reason=no_own_base";
+            if (ctx.ResearchProductionCatalog.ResolveFor(mode, player.Faction).Count == 0)
+                return "reason=no_mode_catalog";
+            // A built facility of this mode elsewhere is reused, never duplicated.
+            if (!facilityReady && snap.Development.Facilities.Any(f => f.Mode == mode))
+                return "reason=mode_facility_exists_elsewhere";
+            if (!facilityReady)
+                facilityCards = hand.Hand
+                    .Where(c => c?.Definition?.cardType == CardType.Facility
+                        && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
+                    .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                    .ToList();
+            bool futureFacility = facilityReady || facilityCards.Count > 0 || snap.Self.Deck?.Any(d =>
+                d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
+                    ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
+            if (!futureFacility)
+                return "reason=no_facility_path";
+            // Every unlocked slot of this Base is taken: the next Base tier is a stand-alone step of its
+            // own (CapacityUnlock), priced and paid for itself; the Facility placement it makes possible is a
+            // later action evaluated on the refreshed world. StrategicMaintenancePolicy owns which tier
+            // opens a slot. No unlockable tier left -> the site cannot host it.
+            if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            {
+                capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
+                    BuildingRegistry.FindAt(hex), ctx);
+                if (capacityTier == null)
+                    return "reason=no_facility_slot";
+            }
+            return null;
+        }
+
+        // THE preparation site of `mode` while no facility of the mode exists, derived from the live
+        // world (no stored assignment): 1) a delivery already walking a qualified hero to a viable
+        // base; 2) the first viable own base, in (Q,R) order, that already holds a qualified operator.
+        // Null: nothing is prepared yet, every viable base stays an alternative. A base that loses its
+        // structural path (enemy, no card/slot/catalog) or its hero stops being selected in the same
+        // pass, so the choice never outlives its reason; AP/resource shortage never enters.
+        internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode, WorldSnapshot snap,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
+                || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
+                return null;
+            bool Viable(HexCoord hex)
+            {
+                BuildingData b = BuildingRegistry.FindAt(hex);
+                return b != null && b.Owner == player
+                    && !b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                    && StructuralPreparationBlock(mode, hex, false, snap, player, hand, ctx,
+                        out _, out _) == null;
+            }
+            string role = ResearchProductionSystem.RoleAbility(mode);
+            if (activeIntents != null)
+                foreach (MissionIntent i in activeIntents
+                    .Where(x => x?.Status == IntentStatus.Active && x.Development != null
+                        && x.Development.Mode == mode)
+                    .OrderBy(x => x.Development.FacilityHex.Q).ThenBy(x => x.Development.FacilityHex.R))
+                {
+                    UnitData hero = i.Development.Hero;
+                    if (hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
+                        && hero.HasAbility(role)
+                        && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                            && a.Members.Contains(hero))
+                        && Viable(i.Development.FacilityHex))
+                        return i.Development.FacilityHex;
+                }
+            foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
+                if (ResearchProductionSystem.FindActor(player, hex, mode) != null && Viable(hex))
+                    return hex;
+            return null;
+        }
+
         // READY — one opportunity per affordable Equipment offering at this staffed facility.
         private static string AddReady(List<DevelopmentOpportunity> result,
             List<DevelopmentOpportunity> forecasts, IReadOnlyList<GenerationStep> sources,
@@ -272,36 +357,18 @@ namespace Game.Ai.V2
             bool describeOnly = false)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Dev.AddPreparation");
-            if (BattleInitiator.FindEnemyAt(hex, player) != null)
-                return "reason=enemy_on_site";
-            if (!IsPreparationSite(player, hex)) return "reason=no_own_base";
-            if (ctx.ResearchProductionCatalog.ResolveFor(mode, player.Faction).Count == 0)
-                return "reason=no_mode_catalog";
-            // A built facility of this mode elsewhere is reused, never duplicated.
-            if (!facilityReady && snap.Development.Facilities.Any(f => f.Mode == mode))
-                return "reason=mode_facility_exists_elsewhere";
-            List<CardData> facilityCards = facilityReady ? new List<CardData>() : hand.Hand
-                .Where(c => c?.Definition?.cardType == CardType.Facility
-                    && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
-                .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
-                    + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
-                .ToList();
-            bool futureFacility = facilityReady || facilityCards.Count > 0 || snap.Self.Deck?.Any(d =>
-                d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
-                    ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
-            if (!futureFacility)
-                return "reason=no_facility_path";
-            // Every unlocked slot of this Base is taken: the next Base tier is a stand-alone step of its
-            // own (CapacityUnlock), priced and paid for itself; the Facility placement it makes possible is a
-            // later action evaluated on the refreshed world. StrategicMaintenancePolicy owns which tier
-            // opens a slot. No unlockable tier left -> the site cannot host it.
-            BaseUpgradeTier capacityTier = null;
-            if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            string blocked = StructuralPreparationBlock(mode, hex, facilityReady, snap, player, hand, ctx,
+                out List<CardData> facilityCards, out BaseUpgradeTier capacityTier);
+            if (blocked != null)
+                return blocked;
+            // ONE preparation site per mode: a base that already holds a qualified operator (or has
+            // one on the way) keeps being prepared; every other base yields to it, so a completed
+            // delivery is never sold again as a fresh capability opening on a second base.
+            if (!facilityReady)
             {
-                capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
-                    BuildingRegistry.FindAt(hex), ctx);
-                if (capacityTier == null)
-                    return "reason=no_facility_slot";
+                HexCoord? chosen = SelectedPreparationSite(mode, snap, player, hand, ctx, activeIntents);
+                if (chosen.HasValue && !chosen.Value.Equals(hex))
+                    return $"reason=preparation_site_selected=({chosen.Value.Q},{chosen.Value.R})";
             }
             System.Func<ResourceType, float> spendable = t => StrategicSpendability.SpendableAmount(player, root, ctx, t);
             // Peer hand facilities are ranked by the one card score of today's step (placement),
@@ -403,6 +470,10 @@ namespace Game.Ai.V2
                                 ResearchProductionSystem.FacilityAbility(m))
                             && ResearchProductionSystem.ActorStillQualifies(
                                 player, candidate, army.Hex, m)))
+                        continue;
+                    // Nor the sole operator of a preparation site selected for another mode.
+                    if (AiArmyRoles.FacilityNeedsHero(player, army, candidate,
+                            otherMode => SelectedPreparationSite(otherMode, snap, player, hand, ctx, activeIntents)))
                         continue;
                     int route = army.IsGarrison || AiArmyRoles.IsDetachedFieldDelivery(army, candidate)
                         ? SafeStepPathing.FindSafePathCost(ctx.Map, player,

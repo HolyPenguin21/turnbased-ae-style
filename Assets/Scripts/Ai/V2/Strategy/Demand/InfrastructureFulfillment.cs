@@ -379,7 +379,8 @@ namespace Game.Ai.V2
                     && demand.EconomyPreferredBuilderArmyId == route.ArmyId;
                 ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
                     && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir
-                    && (a.IsMobileEconomyBuilder
+                    && ((a.IsMobileEconomyBuilder
+                            && !(a.OperatorDutyBlocksDeparture && !route.IsOnTarget))
                         || (a.IsGarrison && (chosenGarrisonBuilder
                             || a.Hex.Equals(demand.TargetHex ?? a.Hex)))));
                 if (actor == null)

@@ -764,6 +764,20 @@ namespace Game.Ai.V2
                 }
                 yield break;
             }
+            // Stale-plan check at the departure itself (no replacement, no new mission): a build
+            // walk may not take the last operator off a served facility. Facility duty only here —
+            // the preparation site is Provisioning's snapshot fact and was checked at binding.
+            if ((target.Kind == EconomyTaskKind.BuildExtraction || target.Kind == EconomyTaskKind.FoundBase)
+                && AiArmyRoles.DepartureStripsOperator(player, army))
+            {
+                AiDebugLog.WriteDeduped($"economy-operator-duty:{army.Id}",
+                    $"[AI][V2][Economy] builder #{army.Id} stays at ({army.Hex.Q},{army.Hex.R}): "
+                    + "departure would take the last operator of a served facility");
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                result.FinalHex = army.Hex;
+                yield break;
+            }
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
                 target.TargetHex, $"economy — {target.Kind}");
             HexCoord after = result.FinalHex;
