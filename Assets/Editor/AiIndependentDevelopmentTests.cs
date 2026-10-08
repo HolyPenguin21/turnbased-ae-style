@@ -44,6 +44,24 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void OnlyANonCommanderHeroOfALedFieldArmyIsDetachedForDelivery()
+        {
+            var player = new PlayerSetupData();
+            var lead = new UnitData { Owner = player, IsHero = true, Name = "lead" };
+            var support = new UnitData { Owner = player, IsHero = true, Name = "support" };
+            var army = new ArmyData { Owner = player };
+            army.Members.Add(lead); army.Members.Add(support); army.Members.Add(new UnitData { Owner = player });
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(army, support), Is.True);
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(army, lead), Is.False, "the commander stays");
+            var single = new ArmyData { Owner = player };
+            single.Members.Add(lead);
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(single, lead), Is.False,
+                "a one-hero army still moves whole (IsHeroLed)");
+            army.IsGarrison = true;
+            Assert.That(AiArmyRoles.IsDetachedFieldDelivery(army, support), Is.False, "garrisons use extraction");
+        }
+
+        [Test]
         public void PreparationSupportPathRequiresTheSameQualifiedRole()
         {
             var snapshot = new WorldSnapshot { Development = new DevelopmentReadiness
@@ -393,6 +411,43 @@ namespace Game.EditorTests
             Assert.That(steps, Has.Count.EqualTo(1));
             Assert.That(steps[0].PreparationKind, Is.EqualTo(DevelopmentPreparationKind.Operator));
             Assert.That(ResearchProductionSystem.IsEligible(_player, Site, ResearchProductionMode.Production, out _), Is.False);
+        }
+
+        // 2026-10-08 — the walk of an existing hero is a TaskScore: the card-scale facility value
+        // (nonCombatFacilityValue) must be read through the one conversion, or the 2 AP container
+        // alone (2 TaskScore) always outweighs it (1.1) and the delivery is never admitted.
+        [Test]
+        public void RemoteOperatorDeliveryIsValuedOnTheTaskScoreScale()
+        {
+            var farHex = new HexCoord(Site.Q + 1, Site.R);
+            var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
+            _base.FacilitySlots[0] = facility;
+            _hand.RemoveCard(_operator); _hand.RemoveCard(_facility);
+            var hero = new UnitData { Owner = _player, IsHero = true, Name = "remote" };
+            hero.Abilities.Add(UnitAbilities.Assembler);
+            var far = new ArmyData { Owner = _player, Hex = farHex, IsGarrison = true };
+            far.Members.Add(hero); far.Members.Add(new UnitData { Owner = _player });
+            ArmyRegistry.Register(far);
+            var mapObject = new GameObject("TestHexMap");
+            try
+            {
+                var map = mapObject.AddComponent<HexMap>();
+                var data = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>
+                {
+                    [Site] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 },
+                    [farHex] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 },
+                };
+                map.SetData(10, 1f, data);
+                _ctx.Map = map;
+                DevelopmentOpportunity step = Admitted().SingleOrDefault(o => o.IsPreparation);
+                Assert.That(step, Is.Not.Null, "A free operator one hex away is a worthwhile delivery");
+                Assert.That(step.PreparationExistingHero, Is.SameAs(hero));
+                float benefit = ActionPrice.CardScoreToTaskScore(AiConfigV2.nonCombatFacilityValue);
+                Assert.That(step.WorldTaskScore.Value, Is.LessThan(benefit),
+                    "the delivery's net is its benefit minus a real price");
+                Assert.That(step.WorldTaskScore.Value, Is.GreaterThan(0f));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(mapObject); }
         }
 
         [Test]

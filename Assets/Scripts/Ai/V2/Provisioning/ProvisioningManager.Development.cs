@@ -75,7 +75,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "Development actor contested or already claimed"));
 
-            bool extract = army.IsGarrison;
+            bool extract = army.IsGarrison || AiArmyRoles.IsDetachedFieldDelivery(army, target.Hero);
             if (!extract && (!AiArmyRoles.IsHeroLed(army)
                     || army.Members.Count(u => ReferenceEquals(u, target.Hero)) != 1))
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(

@@ -83,6 +83,11 @@ namespace Game.Ai.V2
         {
             UnitData sparable = exactDevelopmentHero == null
                 ? AiArmyRoles.BestSparableEconomyHero(player, garrison)
+                // Development detaches a second hero of a free field army (the same Shell -> Host
+                // -> Create ladder); the source is then not a garrison.
+                : !garrison.IsGarrison
+                    ? (AiArmyRoles.IsDetachedFieldDelivery(garrison, exactDevelopmentHero)
+                        ? exactDevelopmentHero : null)
                 : exactDevelopmentMode.HasValue
                     ? AiArmyRoles.BestSparableDevelopmentHero(player, garrison,
                         ResearchProductionSystem.RoleAbility(exactDevelopmentMode.Value))
