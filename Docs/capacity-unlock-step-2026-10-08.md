@@ -55,3 +55,8 @@
 * Реентри в том же ходу опирается на существующий типизированный пайплайн (Publish `Infrastructure|Capability` → Development reentry с fingerprint); без игрового прогона это не подтверждено.
 * При высокой scarcity ресурсов score ступени может стать ≤ ε и шаг законно не допускается (это оценка, не запрет); третья ступень (6 AP, 4/4/4/4) на нейтральной шкале убыточна.
 * B08/B09/B12/B18–B24, R06–R18 и C-матрица покрыты только частично или логикой общих владельцев; отдельных тестов на них нет.
+
+## Правки по ревью (2026-10-08)
+1. **Повторный допуск после первого Phase A.** Базовый fingerprint Development брался уже после улучшения, поэтому сигнал улучшения отклонялся как `settled_state_unchanged`, а новый Facility demand не рассматривался до Phase B. Phase A теперь считает `CapacityUnlocks` (`StrategicPhaseResult`); если шаг был, Pipeline перед типизированными операционными админами сбрасывает базу fingerprint Development и сразу вызывает существующий `ReenterStrategicAxes` (`Infrastructure | Capability`). Остаток AP, таким образом, видит установку площадки раньше миссий и Phase B. Повторный допуск из реентри/Phase B работал и раньше (базовый fingerprint там старше мутации).
+2. **Один контракт проверки в обеих фазах.** `DevelopmentOpportunityEvaluator.ConfirmCapacityUnlock` — вся живая проверка (база, уровень, tier, закрытый слот, witness, окно, путь оператора и отсутствие площадки режима в другом месте через `PreparationFacts`); её вызывают `BuildCapacityUnlockCandidate` (Phase A) и `Revalidate` Phase B.
+3. **Тип здания в игровом методе.** `InfrastructureActions.CanUpgradeBase` требует `IsBase` и `HasTieredUnlock`: добывающая постройка не улучшается ни из UI, ни из AI.

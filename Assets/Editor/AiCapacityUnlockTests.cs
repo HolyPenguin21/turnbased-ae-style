@@ -468,6 +468,50 @@ namespace Game.EditorTests
                 "only a Development CapacityUnlock is fully priced; the rest keep utility - AP and the marginal resource cost");
         }
 
+        [Test]
+        public void PhaseBRunsTheSameLiveConfirmationAsPhaseA()
+        {
+            CapacityStep();
+            StrategicSpendCandidate Candidate() => StrategicMaintenancePolicy
+                .EnumerateCandidates(_player, _root, _hand, _ctx, _snapshot).Single(c => c.FullyPriced);
+
+            // The operator path disappears after the candidate was built: no payment.
+            StrategicSpendCandidate noOperator = Candidate();
+            _hand.RemoveCard(_operator);
+            int[] before = Bank();
+            Assert.That(noOperator.Execute(_player, _root, _ctx, out bool changed, out _), Is.False);
+            Assert.That(changed, Is.False);
+            Assert.That(Bank(), Is.EqualTo(before));
+            Assert.That(_base.Level, Is.EqualTo(1));
+            _hand.AddCard(_operator);
+
+            // A facility of the same mode is built elsewhere in the meantime: the old rule still holds.
+            StrategicSpendCandidate elsewhere = Candidate();
+            _snapshot.Development.Facilities = new[]
+            {
+                new DevelopmentFacility { Hex = new HexCoord(5, 5), Mode = ResearchProductionMode.Production },
+            };
+            Assert.That(elsewhere.Execute(_player, _root, _ctx, out _, out _), Is.False);
+            Assert.That(Bank(), Is.EqualTo(before));
+            Assert.That(_base.Level, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void GameplayMethodRefusesBuildingsThatHaveNoLevels()
+        {
+            var site = new HexCoord(93, -18);
+            var resourceSite = new BuildingData { Owner = _player, Hex = site, IsBase = false, HasTieredUnlock = false };
+            BuildingRegistry.Register(site, resourceSite);
+            int[] before = Bank();
+            Assert.That(InfrastructureActions.CanUpgradeBase(resourceSite, _config.baseUpgradeTiers, null, out _, out _), Is.False);
+            Assert.That(InfrastructureActions.TryUpgradeBase(resourceSite, _config.baseUpgradeTiers).Ok, Is.False);
+            Assert.That(resourceSite.Level, Is.EqualTo(1));
+            Assert.That(Bank(), Is.EqualTo(before));
+            var notTiered = new BuildingData { Owner = _player, Hex = new HexCoord(94, -18), IsBase = true, HasTieredUnlock = false };
+            BuildingRegistry.Register(notTiered.Hex, notTiered);
+            Assert.That(InfrastructureActions.TryUpgradeBase(notTiered, _config.baseUpgradeTiers).Ok, Is.False);
+        }
+
         // ---- trace invariants --------------------------------------------------------------------------------------
         [Test]
         public void IndependentStampSeesTheLevelChangeThatCountsCannot()
@@ -516,6 +560,17 @@ namespace Game.EditorTests
             Assert.That(third, Is.LessThan(second));
             Assert.That(third, Is.LessThan(0f), "a tier dearer than the structural value is a signed loss");
             Assert.That(DevelopmentPreparationScorer.CapacityUnlock(null, snap, null, null), Is.EqualTo(float.NegativeInfinity));
+        }
+
+        [Test]
+        public void UnlockCounterReachesTheAggregateThatDrivesTheReadmission()
+        {
+            var first = new StrategicPhaseResult { CapacityUnlocks = 1 };
+            var total = new StrategicPhaseResult();
+            total.Accumulate(first);
+            total.Accumulate(new StrategicPhaseResult { CapacityUnlocks = 2 });
+            Assert.That(total.CapacityUnlocks, Is.EqualTo(3));
+            Assert.That(total.InfrastructureBuilt, Is.Zero, "an unlock is not a built facility");
         }
 
         [Test]

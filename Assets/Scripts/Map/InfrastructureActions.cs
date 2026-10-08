@@ -253,6 +253,9 @@ namespace Game.Map
             reason = null;
             if (building == null || building.Owner == null || !ReferenceEquals(BuildingRegistry.FindAt(building.Hex), building))
             { reason = "base is not registered at its hex"; return false; }
+            // Only a tiered Base/Citadel has levels; a hero-built resource site is never upgraded.
+            if (!building.IsBase || !building.HasTieredUnlock)
+            { reason = "building has no upgrade levels"; return false; }
             if (expectedLevel.HasValue && building.Level != expectedLevel.Value)
             { reason = $"base level changed ({building.Level} != {expectedLevel.Value})"; return false; }
             int tierIndex = building.Level - 1;

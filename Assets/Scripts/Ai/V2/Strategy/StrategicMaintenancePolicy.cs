@@ -227,27 +227,22 @@ namespace Game.Ai.V2
             {
                 BuildingData building = BuildingRegistry.FindAt(op.FacilityHex);
                 BaseUpgradeTier planned = op.PreparationCapacityTier;
-                int expectedLevel = op.PreparationExpectedLevel;
-                CardData witnessCard = op.PreparationFacilityCard;
                 if (building == null || building.Owner != player || !building.IsBase)
                     continue;
                 yield return new CapacityUpgrade
                 {
                     Building = building,
                     Tier = planned,
-                    Facility = witnessCard,
+                    Facility = op.PreparationFacilityCard,
                     FacilityUtility = op.PreparationCardScore.Value,
                     FacilityBreakdown = op.Explain,
                     FullyPriced = true,
-                    // Live re-check right before payment: same Base, level, tier and a still-closed slot,
-                    // the witness card still in hand and the investment window still open.
-                    Revalidate = () => building.Owner == player && building.IsBase
-                        && building.Level == expectedLevel
-                        && building.FindFirstAvailableFacilitySlot() < 0
-                        && ReferenceEquals(CapacityUnlockTierAt(building, ctx), planned)
-                        && hand.Hand.Contains(witnessCard)
-                        && Game.Combat.BattleInitiator.FindEnemyAt(building.Hex, player) == null
-                        && DevelopmentInvestmentGate.IsOpenFor(player, ctx.TurnNumber, planned.cost),
+                    // Live re-check right before payment: the SAME confirmation Phase A runs (base, level, tier,
+                    // closed slot, witness card, window, operator path, no facility of the mode elsewhere).
+                    Revalidate = () => DevelopmentOpportunityEvaluator.ConfirmCapacityUnlock(
+                            op, snap, player, root, hand, ctx, intents, out BuildingData confirmed,
+                            out BaseUpgradeTier confirmedTier)
+                        && ReferenceEquals(confirmed, building) && ReferenceEquals(confirmedTier, planned),
                 };
             }
             bool NeedsDevelopment(CardData card) => card?.Definition?.grantedAbilities != null

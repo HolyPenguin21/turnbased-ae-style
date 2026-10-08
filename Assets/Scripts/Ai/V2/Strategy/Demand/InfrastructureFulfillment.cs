@@ -844,35 +844,14 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents)
         {
             DevelopmentOpportunity plan = demand.DevOpportunity;
-            if (plan?.PreparationCapacityTier == null || plan.PreparationFacilityCard == null
-                || !demand.TargetHex.HasValue || !demand.DevelopmentOperatorMode.HasValue
-                || hand?.Hand == null || !hand.Hand.Contains(plan.PreparationFacilityCard))
+            if (plan == null || !demand.TargetHex.HasValue || !demand.DevelopmentOperatorMode.HasValue
+                || !plan.FacilityHex.Equals(demand.TargetHex.Value) || plan.Mode != demand.DevelopmentOperatorMode.Value
+                || !DevelopmentOpportunityEvaluator.ConfirmCapacityUnlock(plan, snap, player, root, hand, ctx,
+                    activeIntents, out BuildingData b, out BaseUpgradeTier tier))
                 return null;
-            HexCoord hex = demand.TargetHex.Value;
-            ResearchProductionMode mode = demand.DevelopmentOperatorMode.Value;
-            BuildingData b = BuildingRegistry.FindAt(hex);
-            if (b == null || b.Owner != player || !b.IsBase || !b.HasTieredUnlock
-                || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null
-                || b.FindFirstAvailableFacilitySlot() >= 0          // a slot is already open: nothing to buy
-                || b.Level != plan.PreparationExpectedLevel)
-                return null;
-            BaseUpgradeTier tier = StrategicMaintenancePolicy.CapacityUnlockTierAt(b, ctx);
-            if (!ReferenceEquals(tier, plan.PreparationCapacityTier))
-                return null;
+            HexCoord hex = plan.FacilityHex;
+            ResearchProductionMode mode = plan.Mode;
             CardDefinition witness = plan.PreparationFacilityCard.Definition;
-            if (witness?.cardType != CardType.Facility
-                || witness.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) != true)
-                return null;
-            if (!DevelopmentInvestmentGate.IsOpenFor(player, ctx.TurnNumber, tier.cost))
-                return null;
-            bool stillStructural = DevelopmentOpportunityEvaluator.PreparationFacts(
-                    snap, player, root, hand, ctx, activeIntents)
-                .Any(f => f.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
-                    && f.Mode == mode && f.FacilityHex.Equals(hex)
-                    && ReferenceEquals(f.PreparationFacilityCard, plan.PreparationFacilityCard)
-                    && ReferenceEquals(f.PreparationCapacityTier, tier));
-            if (!stillStructural)
-                return null;
             float score = DevelopmentPreparationScorer.CapacityUnlock(tier, snap,
                 t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
             if (score <= AiConfigV2.allocatorSliceEpsilon)
