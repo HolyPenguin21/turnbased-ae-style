@@ -70,7 +70,8 @@ namespace Game.Ai.V2
                 pinnedArmyId: target.ForceCommitted || target.IsIntermediateAssault ? target.PrimaryArmyId : null,
                 minimumArmyPower: target.ForceCommitted ? 0f
                     : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
-                allowSameHexAssembly: !target.IsIntermediateAssault);
+                allowSameHexAssembly: !target.IsIntermediateAssault,
+                requireCoverage: GroundCombatAdmissionPolicy.AssaultCoverage(proposal));
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -82,7 +83,8 @@ namespace Game.Ai.V2
         private static List<int> EnumerateEligible(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
             float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null,
-            float minimumArmyPower = 0f, bool allowSameHexAssembly = true) =>
+            float minimumArmyPower = 0f, bool allowSameHexAssembly = true,
+            bool? requireCoverage = null) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
@@ -93,6 +95,7 @@ namespace Game.Ai.V2
                 AllowSameHexAssembly = allowSameHexAssembly,
                 PreferredPrimaryArmyId = pinnedArmyId,
                 PinToPreferred = pinnedArmyId.HasValue,
+                RequireCoverage = requireCoverage,
             });
 
         // A started Hard operation is not a fresh admission decision. Its PreferredMover already

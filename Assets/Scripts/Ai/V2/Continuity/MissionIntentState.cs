@@ -47,6 +47,24 @@ namespace Game.Ai.V2
             _intents.Remove(k);
         }
 
+        // Withdrawn Attack targets: the witness that stops an immediate identical restart
+        // (AttackRetreatWitness). Survives the retirement of the intent that wrote it.
+        private readonly Dictionary<AttackTargetRef, AttackRetreatWitness> _retreatWitnesses =
+            new Dictionary<AttackTargetRef, AttackRetreatWitness>();
+        internal bool TryGetRetreatWitness(AttackTargetRef target, out AttackRetreatWitness witness) =>
+            _retreatWitnesses.TryGetValue(target, out witness);
+        internal void PutRetreatWitness(AttackRetreatWitness witness)
+        {
+            if (witness != null && witness.Target.HasValue)
+                _retreatWitnesses[witness.Target] = witness;
+        }
+        internal void ClearRetreatWitness(AttackTargetRef target) => _retreatWitnesses.Remove(target);
+        internal int RetreatWitnessCount => _retreatWitnesses.Count;
+        internal string RetreatWitnessDigest() => _retreatWitnesses.Count == 0 ? "-"
+            : string.Join(";", _retreatWitnesses.Values
+                .OrderBy(w => w.Target.Hex.Q).ThenBy(w => w.Target.Hex.R)
+                .Select(w => $"{w.Target.Hex.Q},{w.Target.Hex.R}:{w.EnemyArmyId}:{w.EnemyFingerprint}:{w.OwnFingerprint}"));
+
         internal EconomyLifecycleState Economy { get; } = new EconomyLifecycleState();
         internal DevelopmentLifecycleState Development { get; } = new DevelopmentLifecycleState();
         // Same per-player/turn scope the session exposes; detached states use their own identity.

@@ -141,6 +141,18 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 2026-10-08 — a marching army meets a relevant, significant hostile army it cannot
+            // beat: the attack ends and the army walks home. Checked before anything else may
+            // re-plan the march, only while the army is actually marching (an operation already
+            // withdrawing is not re-triggered: the edge is idempotent).
+            if (a.AssaultStarted && (a.Phase == AttackMissionPhase.Assault
+                    || a.Phase == AttackMissionPhase.Reinforcement) && a.PrimaryArmyId.HasValue)
+            {
+                RetreatOutcome retreat = TryTacticalRetreat(player, snap, intent, a);
+                if (retreat == RetreatOutcome.Retire)
+                    return false;
+            }
+
             ResolveGatherReturns(snap, player, intent, a);
             ResolveAttackAirSupport(snap, player, intent, a, unavailableArmyIds);
 
@@ -291,6 +303,64 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} phase -> RecoveryReturn "
                 + $"({recovery.Value.Q},{recovery.Value.R}); operation no longer viable");
             return true;
+        }
+
+        private enum RetreatOutcome { NotTriggered, Withdrawing, Retire }
+
+        // The one edge from a marching Attack to a protected walk home because of a hostile army.
+        // Uses the SAME pure decision the planner and the executor use (no second estimator). The
+        // return keeps the army's lease (RecoveryReturn is the existing leg); the local and support
+        // bindings of the offensive come off, the witness that stops an identical restart is
+        // written, and the operation ends on arrival (ResolveAttackIntent's RecoveryReturn branch).
+        private static RetreatOutcome TryTacticalRetreat(PlayerSetupData player, WorldSnapshot snap,
+            MissionIntent intent, AttackIntent a)
+        {
+            ArmySnapshot primary = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            if (primary == null || !primary.IsStructuralRaidActor)
+                return RetreatOutcome.NotTriggered;
+            // lastLocalTurn = this turn: the mandatory path-contact rule only, no voluntary search
+            AttackLocalAction local = AttackTacticalOpportunity.Decide(snap, primary, a.Target,
+                snap.TurnNumber, intermediateBaseAvailable: false, adObjectives: null);
+            if (local.Kind != AttackLocalActionKind.Retreat)
+                return RetreatOutcome.NotTriggered;
+
+            HexCoord? home = AiReturnBasePolicy.SelectReturnBase(snap, player, a.PrimaryArmyId);
+            if (!home.HasValue)
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Retreat] {intent.IntentKey} retired — hostile army "
+                    + $"#{local.EnemyArmyId} cannot be beaten (win {local.WinChance:0.00}) and the army "
+                    + "has no own base to withdraw to; claims released");
+                return RetreatOutcome.Retire;
+            }
+            a.Phase = AttackMissionPhase.RecoveryReturn;
+            a.RecoveryBaseHex = home;
+            a.TacticalRetreat = true;
+            a.IntermediateTarget = AttackTargetRef.None;
+            a.RendezvousHex = null;
+            a.ReinforcementRequestedTurn = -1;
+            // A support still walking to the primary has handed nothing over: it is simply free
+            // again. Donors already walking home keep doing so (GatherReturns).
+            a.SupportArmyId = null;
+            a.SupportReturnHex = null;
+            a.GatherSupportArmyIds.Clear();
+            intent.StallTurns = 0;
+            MissionIntentRegistry.GetOrCreate(player).PutRetreatWitness(new AttackRetreatWitness
+            {
+                Target = a.Target,
+                OwnArmyId = primary.ArmyId,
+                EnemyArmyId = local.EnemyArmyId,
+                EnemyHex = local.Hex,
+                EnemyFingerprint = local.ContactFingerprint,
+                OwnFingerprint = AttackRetreatWitness.OwnFingerprintOf(primary),
+                Turn = snap.TurnNumber,
+                Reason = local.Reason,
+            });
+            AiDebugLog.Write($"[AI][V2][Attack][Retreat] {intent.IntentKey} phase -> RecoveryReturn "
+                + $"({home.Value.Q},{home.Value.R}); relevant hostile army #{local.EnemyArmyId} "
+                + $"({local.EnemyName}) at ({local.Hex.Q},{local.Hex.R}) win={local.WinChance:0.00} "
+                + $"< {GroundCombatAdmissionPolicy.AttackLocalWinChanceGate:0.00}; witness recorded");
+            return RetreatOutcome.Withdrawing;
         }
 
         // 2026-10-04 — a COMMITTED Assault (AssaultStarted: the fist began its march on the target).

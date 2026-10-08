@@ -46,6 +46,9 @@ namespace Game.Ai.V2
         // The win-chance gate this plan was admitted at (set where the plan is built against a
         // gate): any later re-check of the same plan asks the same question, never a stricter one.
         public float WinChanceGate;
+        // The coverage rule the plan was admitted under (null: the gate's default,
+        // GroundCombatAdmissionPolicy.RequiresCoverage). A re-check asks the same question.
+        public bool? RequireCoverage;
 
         public static GroundCombatAssemblyPlan Infeasible(string reason) =>
             new GroundCombatAssemblyPlan { Feasible = false, Reason = reason };
@@ -121,12 +124,33 @@ namespace Game.Ai.V2
         internal static bool RequiresCoverage(float gate) =>
             gate > AttackCoverageGate || AiConfigV2.attackRequiresDefenderCoverage;
 
+        // 2026-10-08 — the win chance and the coverage rule are two independent facts of an Attack
+        // fight. A voluntary fight against a field army keeps coverage (every known defender must
+        // be damageable by at least one of our bodies); an optional intermediate Base needs the
+        // chance only; the main Base / Citadel needs neither. `explicitCoverage` (null: the gate's
+        // default) is what a caller passes when its action kind, not the gate value, decides.
+        internal static bool RequiresCoverage(float gate, bool? explicitCoverage) =>
+            explicitCoverage ?? RequiresCoverage(gate);
+
+        // Attack's voluntary local fight (field-army intercept, army on the path).
+        internal static float AttackLocalWinChanceGate => AiConfigV2.attackLocalMinWinChance;
+        internal const bool AttackLocalArmyRequiresCoverage = true;
+        // Optional intermediate Base: same chance, no coverage (the Base is taken, not duelled).
+        internal static float AttackIntermediateBaseWinChanceGate => AiConfigV2.attackLocalMinWinChance;
+        internal const bool AttackIntermediateBaseRequiresCoverage = false;
+
+        // The coverage rule of the assigned assault (null: the gate's default).
+        internal static bool? AssaultCoverage(MissionProposal proposal) =>
+            proposal != null && proposal.Kind == MissionKind.Attack
+                && proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
+                ? AttackIntermediateBaseRequiresCoverage : (bool?)null;
+
         // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
             proposal != null && proposal.Kind == MissionKind.Attack
                 ? proposal.Target is AttackMissionTarget attack && attack.IsIntermediateAssault
-                    ? FreshStartWinChanceGate : AttackCoverageGate
+                    ? AttackIntermediateBaseWinChanceGate : AttackCoverageGate
             : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
                 && proposal.PreferredMoverArmyId == actorId);
@@ -178,6 +202,10 @@ namespace Game.Ai.V2
         // Attack fresh admission only. The shared assembly kernel compares the actual legal
         // projected roster; Raid and ActiveDefence leave this at zero.
         public float MinimumArmyPower;
+        // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
+        // ACTION, not its gate value, decides (an optional intermediate Base at 0.40 needs none).
+        // Honoured by the already-formed-army checks; same-hex assembly keeps the gate's default.
+        public bool? RequireCoverage;
     }
 
     public static partial class GroundCombatAssemblyPlanner
@@ -214,7 +242,7 @@ namespace Game.Ai.V2
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
                     snap, opposition, a.ArmyId, request.WinChanceGate,
-                    request.DefenderHexDefenseBonus);
+                    request.DefenderHexDefenseBonus, request.RequireCoverage);
                 if (exact.Feasible && (request.MinimumArmyPower <= 0f
                     || exact.ProjectedPower > request.MinimumArmyPower))
                     return exact;
@@ -258,7 +286,8 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(snap, opposition,
-                    a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus);
+                    a.ArmyId, request.WinChanceGate, request.DefenderHexDefenseBonus,
+                    request.RequireCoverage);
                 if (exact.Feasible && (request.MinimumArmyPower <= 0f
                     || exact.ProjectedPower > request.MinimumArmyPower))
                     ids.Add(a.ArmyId);
@@ -344,7 +373,7 @@ namespace Game.Ai.V2
 
         internal static GroundCombatAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId, float minWinChance,
-            float defenderHexDefenseBonus = 0f)
+            float defenderHexDefenseBonus = 0f, bool? requireCoverage = null)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
@@ -357,7 +386,7 @@ namespace Game.Ai.V2
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
             if (!GroundCombatFeasibility.Clears(roster, a.Commander, opposition, minWinChance,
-                    defenderHexDefenseBonus, out float win, out bool cover))
+                    defenderHexDefenseBonus, out float win, out bool cover, requireCoverage))
                 return GroundCombatAssemblyPlan.Infeasible(
                     $"raid actor #{armyId} does not clear the assigned-actor raid estimator "
                     + $"(win {win:0.00} < {minWinChance:0.00} or coverage missing)");
@@ -371,6 +400,7 @@ namespace Game.Ai.V2
                 CoversAllDefenders = cover,
                 ProjectedPower = a.EffectiveArmyPower,
                 WinChanceGate = minWinChance,
+                RequireCoverage = requireCoverage,
             };
         }
 

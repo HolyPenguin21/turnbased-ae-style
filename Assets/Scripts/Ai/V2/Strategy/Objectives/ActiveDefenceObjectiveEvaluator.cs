@@ -134,7 +134,7 @@ namespace Game.Ai.V2
                 // 2026-10-01 (user decision) — by roster strength, not by skills: a scout or a
                 // lone weak body is not worth an army's AP.
                 float enemyPower = chosen.Contact.Army.EffectiveArmyPower;
-                if (enemyPower < AiConfigV2.activeDefenceMinEnemyPower)
+                if (!IsSignificantHostilePower(enemyPower))
                 {
                     AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
                         $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
@@ -165,6 +165,12 @@ namespace Game.Ai.V2
             return result.OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.Target.EnemyArmyId).ToList();
         }
+
+        // THE significance bar of a hostile contact (2026-10-01: by roster strength, not by skills —
+        // a scout or a lone weak body is not worth an army's AP). Attack's local fight and its
+        // retreat rule read the same bar instead of inventing a second importance model.
+        internal static bool IsSignificantHostilePower(float effectiveArmyPower) =>
+            effectiveArmyPower >= AiConfigV2.activeDefenceMinEnemyPower;
 
         // An enemy standing on a structure this player remembers as someone else's is never an
         // intercept. A fight there could capture/destroy the building; Attack owns only hostile

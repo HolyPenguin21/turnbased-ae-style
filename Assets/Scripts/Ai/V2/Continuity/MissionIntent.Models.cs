@@ -421,6 +421,11 @@ namespace Game.Ai.V2
         // one per Attack per turn, so the operation can never degenerate into a hunt. A plain
         // turn-local marker on the intent is enough; no separate registry (§17).
         public int LastOpportunisticStrikeTurn = -1;
+        // 2026-10-08 — the RecoveryReturn of this operation was ordered by a relevant, unwinnable
+        // hostile army (AttackTacticalOpportunity.Decide -> Retreat), not by a failed plan. It is
+        // mandatory work: the return keeps its activation protected (StrategicSpendability) and
+        // is not withheld as an ordinary lifecycle return (LifecycleReturnPolicy).
+        public bool TacticalRetreat;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
     }

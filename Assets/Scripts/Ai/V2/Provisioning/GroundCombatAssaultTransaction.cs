@@ -691,6 +691,7 @@ namespace Game.Ai.V2
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
+                    RequireCoverage = GroundCombatAdmissionPolicy.AssaultCoverage(proposal),
                     AllowSameHexAssembly = !(proposal.Target is AttackMissionTarget local && local.IsIntermediateAssault),
                     MinimumArmyPower = proposal.Target is AttackMissionTarget attackTarget
                         && !attackTarget.ForceCommitted
@@ -862,7 +863,7 @@ namespace Game.Ai.V2
                 if (!GroundCombatFeasibility.Clears(projectedProfiles,
                         WorthIt.SideCommander.Of(projectedUnits), opposition,
                         plan.WinChanceGate, r.DefenderHexDefenseBonus,
-                        out float projectedWin, out _))
+                        out float projectedWin, out _, plan.RequireCoverage))
                     return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.AssemblyInfeasible(
                             "planned same-hex roster no longer clears the shared WorthIt estimator")));
@@ -883,8 +884,14 @@ namespace Game.Ai.V2
             // call. Reachability too: a recruit slower than the host lowers the whole army's shared
             // movement (ArmyData.ComputeCurrentMovement), so the first step must be re-asked with
             // the projected movement rather than the host's own.
+            // An Attack march on its MAIN target is judged on terrain alone here: a contact on the
+            // path (army, guard, building) is the fight policy's decision at execution, so it must
+            // not make the funded step "unexecutable". Everything else keeps the Combat profile.
+            SafeRouteProfile firstStepProfile = lane == "attack"
+                && !(m.Target is AttackMissionTarget routeTarget && routeTarget.IsIntermediateAssault)
+                    ? SafeRouteProfile.Attack : SafeRouteProfile.Combat;
             if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits,
-                    SafeRouteProfile.Combat) == null)
+                    firstStepProfile) == null)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.NoExecutableStep(
                         $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward {lane} target "

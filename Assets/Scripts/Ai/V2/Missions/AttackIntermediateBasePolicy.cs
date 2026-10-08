@@ -38,7 +38,8 @@ namespace Game.Ai.V2
                 float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, objective.Hex);
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                     snap, objective.Opposition, actor.ArmyId,
-                    GroundCombatAdmissionPolicy.FreshStartWinChanceGate, bonus);
+                    GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate, bonus,
+                    GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage);
                 if (!plan.Feasible)
                     continue;
                 // Keep an actually started detour stable, but re-prove knowledge, routes and
@@ -81,20 +82,16 @@ namespace Game.Ai.V2
             && (direct == int.MaxValue || onward < direct
                 && (long)contact + onward - direct <= maxMove);
 
-        // Frozen, honest Combat route: known armies and event guards block transit, the chosen
-        // endpoint is exempt. No cache or live opponent registry is introduced by this policy.
+        // The optional Base's route is the ONE Combat route (SafeStepPathing): remembered armies and
+        // event guards block transit, the chosen endpoint is exempt, terrain above MaxMovement is
+        // impassable. No private blocker list of its own (it used to differ from the executor's
+        // route). A snapshot without a map (synthetic fixture) falls back to a straight line.
         internal static HexPath Route(WorldSnapshot snap, ArmySnapshot actor, HexCoord from, HexCoord to)
         {
             if (snap.Map is null)
                 return AiV2Util.StraightLine(from, to);
-            var blocked = new HashSet<HexCoord>((snap.Known?.EnemySightings
-                ?? Array.Empty<AiMapMemory.KnownEnemySighting>()).Select(s => s.Hex));
-            foreach (var s in snap.Known?.NeutralSightings ?? Array.Empty<AiMapMemory.KnownEnemySighting>())
-                blocked.Add(s.Hex);
-            foreach (var h in snap.Known?.EventGuardHexes ?? Array.Empty<HexCoord>()) blocked.Add(h);
-            bool Block(HexCoord h) => !h.Equals(to) && !h.Equals(from) && blocked.Contains(h)
-                || snap.Map.TryGetTerrainAt(h, out var terrain) && terrain.moveCost > actor.MaxMovement;
-            return HexPathfinder.FindPath(snap.Map, from, to, blockHex: Block);
+            return SafeStepPathing.FindSafePath(snap.Map, actor.Owner, from, to, actor.MaxMovement,
+                SafeRouteProfile.Combat);
         }
 
         private static int CompareIdentity(AttackTargetRef a, AttackTargetRef b)

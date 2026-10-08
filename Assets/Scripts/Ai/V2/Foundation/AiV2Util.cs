@@ -55,25 +55,28 @@ namespace Game.Ai.V2
 
         // Route cost for a snapshot actor. Geometric distances are suitable for vision/risk,
         // never as a replacement for an unreachable route on a real map.
+        // `terrainOnly` — the offensive army's geometric route (SafeRouteProfile.Attack): only a hex
+        // whose entry exceeds the mover's maximum movement is impassable; buildings and scout
+        // danger are contacts for the fight policy, not a missing route.
         internal static int TravelCost(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
-            bool arrivesHidden = false, int? maxMovement = null)
+            bool arrivesHidden = false, int? maxMovement = null, bool terrainOnly = false)
         {
             if (actor == null) return int.MaxValue;
             // Synthetic analysis fixtures have no map; live Scan always supplies it.
             if (snap?.Map == null) return HexGridMath.Distance(actor.Hex, target);
-            return TravelRoute(snap, actor, target, arrivesHidden, maxMovement)?.TotalCost ?? int.MaxValue;
+            return TravelRoute(snap, actor, target, arrivesHidden, maxMovement, terrainOnly)?.TotalCost ?? int.MaxValue;
         }
 
         // The route TravelCost measures (start hex first), or null when there is none. Without a
         // map (synthetic fixtures) a straight hex line stands in, one cost point per hex.
         internal static HexPath TravelRoute(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
-            bool arrivesHidden = false, int? maxMovement = null)
+            bool arrivesHidden = false, int? maxMovement = null, bool terrainOnly = false)
         {
             if (actor == null) return null;
             if (snap?.Map == null) return StraightLine(actor.Hex, target);
             int budget = maxMovement ?? actor.MaxMovement;
             bool Block(HexCoord h) => !actor.IsAir &&
-                ((!h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true)
+                ((!terrainOnly && !h.Equals(target) && snap.MapKnowledge?.IsBlockedForScout(h, arrivesHidden) == true)
                 || (snap.Map.TryGetTerrainAt(h, out var entry) && entry.moveCost > budget));
             return HexPathfinder.FindPath(snap.Map, actor.Hex, target, blockHex: Block,
                 flatCost: actor.IsAir);

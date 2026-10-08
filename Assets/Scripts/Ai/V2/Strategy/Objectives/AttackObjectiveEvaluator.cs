@@ -112,6 +112,10 @@ namespace Game.Ai.V2
         // other field of this leg instead of reaching into intent state mid-step. 0 (the struct
         // default) means "never": turn numbering starts at 1.
         public int OpportunisticStrikeTurn;
+        // 2026-10-08 — the ONE local decision of this step (AttackTacticalOpportunity.Decide),
+        // frozen at planning, BEFORE funding. Execution only verifies it still holds; it never
+        // re-picks another enemy. Plain facts — the operation's owner of the army is the intent.
+        internal AttackLocalAction Local;
         // T01 — every leg of a mobilization preparation carries it (AttackIntent.Preparation);
         // PreparationStep names the host-side step, None for an ordinary support leg.
         public bool Preparation;

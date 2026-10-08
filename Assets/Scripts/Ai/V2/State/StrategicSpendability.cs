@@ -157,7 +157,8 @@ namespace Game.Ai.V2
             foreach (MissionIntent intent in intents)
             {
                 if (intent == null || intent.Status != IntentStatus.Active
-                    || intent.Funding != CommitmentTier.Hard || intent.IsLifecycleLeg)
+                    || intent.Funding != CommitmentTier.Hard
+                    || intent.IsLifecycleLeg && intent.Attack?.TacticalRetreat != true)
                     continue;
                 foreach (int id in OperationLegMovers(intent, player))
                     movers.Add(id);
@@ -218,6 +219,12 @@ namespace Game.Ai.V2
             {
                 AttackIntent a = intent.Attack;
                 if (a.Phase == AttackMissionPhase.Assault && a.PrimaryArmyId.HasValue)
+                    yield return a.PrimaryArmyId.Value;
+                // 2026-10-08 — a withdrawal ordered by a hostile army is mandatory, not optional
+                // lifecycle work: its activation is held like any marching leg until the army has
+                // moved (and the hold is gone once it is home: the intent retires).
+                else if (a.Phase == AttackMissionPhase.RecoveryReturn && a.TacticalRetreat
+                    && a.PrimaryArmyId.HasValue)
                     yield return a.PrimaryArmyId.Value;
                 else if (a.Phase == AttackMissionPhase.Gather)
                 {

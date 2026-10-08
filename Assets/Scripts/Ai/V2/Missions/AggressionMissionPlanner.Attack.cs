@@ -102,6 +102,35 @@ namespace Game.Ai.V2
                     excluded.Remove(pinnedActor.Value);
 
                 AttackObjective intermediate = AttackIntermediateBasePolicy.Select(snap, incumbent?.Attack, objectives);
+
+                // 2026-10-08 — the ONE local decision of a marching army, taken here, before
+                // funding (AttackTacticalOpportunity.Decide). It is frozen into the leg below and
+                // only verified at execution. Priority: relevant unwinnable hostile army (the
+                // attack goes home, Continuity moves the phase) > main target reachable now >
+                // ActiveDefence objective > intermediate Base > other significant army > march.
+                AttackLocalAction local = AttackLocalAction.Continue();
+                ArmySnapshot marching = incumbent?.Attack?.Phase == AttackMissionPhase.Assault
+                    && incumbent.Attack.OperationStarted && pinnedActor.HasValue
+                        ? snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == pinnedActor.Value)
+                        : null;
+                if (marching != null && marching.IsStructuralRaidActor)
+                {
+                    local = AttackTacticalOpportunity.Decide(snap, marching, objective.Target,
+                        incumbent.Attack.LastOpportunisticStrikeTurn, intermediate != null,
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snap));
+                    if (local.Kind == AttackLocalActionKind.Retreat)
+                    {
+                        AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat",
+                            $"[AI][V2][Attack][Local] decision=RETREAT target={objective.Target.DiagnosticLabel} "
+                            + $"enemy=#{local.EnemyArmyId} at ({local.Hex.Q},{local.Hex.R}) win={F(local.WinChance)} "
+                            + $"reason={local.Reason}; no assault step proposed, Continuity withdraws the army");
+                        assaultWhy[incumbent.IntentKey] = "attack_retreat_hostile_contact";
+                        continue;
+                    }
+                    // A higher-priority action replaces the optional Base for this pass.
+                    if (local.Kind != AttackLocalActionKind.IntermediateBase)
+                        intermediate = null;
+                }
                 AttackObjective assaultObjective = intermediate ?? objective;
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = assaultObjective.Opposition;
                 // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
@@ -114,8 +143,11 @@ namespace Game.Ai.V2
                     {
                         Opposition = opposition,
                         WinChanceGate = intermediate != null
-                            ? GroundCombatAdmissionPolicy.FreshStartWinChanceGate
+                            ? GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate
                             : GroundCombatAdmissionPolicy.AttackCoverageGate,
+                        RequireCoverage = intermediate != null
+                            ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
+                            : (bool?)null,
                         AllowSameHexAssembly = intermediate == null,
                         MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
@@ -155,13 +187,51 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // A march that has not started yet meets the same mandatory rule: it is simply not
+                // proposed while a relevant hostile army on its path is unwinnable (nothing is
+                // withdrawn - nothing was sent). Voluntary targets never apply to a fresh march.
+                if (marching == null && actor.IsStructuralRaidActor)
+                {
+                    // lastLocalTurn = this turn: only the mandatory evaluation runs, no voluntary search
+                    AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, actor, objective.Target,
+                        snap.TurnNumber, false, null);
+                    if (fresh.Kind == AttackLocalActionKind.Retreat)
+                    {
+                        AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat-fresh",
+                            $"[AI][V2][Attack][Local] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                            + $"actor=#{actor.ArmyId} enemy=#{fresh.EnemyArmyId} win={F(fresh.WinChance)} "
+                            + "reason=hostile_contact_below_threshold; not started, nothing proposed");
+                        if (incumbent != null)
+                            assaultWhy[incumbent.IntentKey] = "attack_assault_hostile_contact_on_path";
+                        continue;
+                    }
+                }
+
+                // 2026-10-08 — an operation that withdrew from an unwinnable hostile army does not
+                // march out again against the same unchanged obstacle. Only a real change of the
+                // fight (our roster / equipment / HP, the enemy's visible state, the enemy gone)
+                // that the shared estimator confirms lifts it: a new turn number, AP or a timer
+                // is not a reason. A march already under way is governed by Continuity's edge.
+                if ((incumbent == null || incumbent.Attack?.AssaultStarted != true)
+                    && AttackRetreatWitness.Blocks(MissionIntentRegistry.GetOrCreate(snap.Observer), snap,
+                        objective.Target, actor, out string witnessWhy))
+                {
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#witness",
+                        $"[AI][V2][Attack][Retreat] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                        + $"actor=#{actor.ArmyId} reason=withdrew_from_unchanged_obstacle:{witnessWhy}");
+                    if (incumbent != null)
+                        assaultWhy[incumbent.IntentKey] = "attack_assault_waiting_for_changed_odds";
+                    continue;
+                }
+
                 // Price and time the force this plan will ACTUALLY field, through the same
                 // projections Raid and ActiveDefence use — never a host-only figure.
                 int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
                     ?? actor.MaxMovement;
                 int distance = intermediate != null
                     ? AttackIntermediateBasePolicy.Route(snap, actor, actor.Hex, assaultObjective.Hex)?.TotalCost ?? int.MaxValue
-                    : AiV2Util.TravelCost(snap, actor, assaultObjective.Hex, maxMovement: projectedMove);
+                    : AiV2Util.TravelCost(snap, actor, assaultObjective.Hex, maxMovement: projectedMove,
+                        terrainOnly: true);
                 if (distance == int.MaxValue)
                 {
                     if (incumbent != null)
@@ -194,6 +264,7 @@ namespace Game.Ai.V2
                     // marker, which is exactly right: it has taken no strike yet.
                     OpportunisticStrikeTurn =
                         incumbent?.Attack?.LastOpportunisticStrikeTurn ?? 0,
+                    Local = intermediate != null ? default : local,
                 };
                 float ap = actor.HasActivatedThisTurn ? 0f
                     : projectedAp ?? actor.ActivationApCost;
@@ -243,6 +314,18 @@ namespace Game.Ai.V2
                         + "reason=current_host_clears_observed_base_on_route");
                 (incumbent == null ? freshCandidates : proposals).Add(proposal);
                 attackProposed = true;
+                // The army serves an ActiveDefence objective itself: AD proposes no competing
+                // ground answer to that contact (air support is a separate execution and stays).
+                // Only a Hard incumbent is protected from losing its funding, so only it may
+                // displace the independent answer.
+                if (incumbent != null)
+                    TryServeActiveDefence(snap, proposals, proposal, incumbent, local);
+                if (local.IsLocalFight)
+                    AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#local",
+                        $"[AI][V2][Attack][Local] decision={local.Kind} target={objective.Target.DiagnosticLabel} "
+                        + $"actor=#{actor.ArmyId} enemy=#{local.EnemyArmyId} at ({local.Hex.Q},{local.Hex.R}) "
+                        + $"cost={local.ContactCost} win={F(local.WinChance)} cover={(local.CoversAllDefenders ? 1 : 0)} "
+                        + $"ad={(local.ServesActiveDefence ? 1 : 0)} reason={local.Reason}");
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel,
                     $"[AI][V2][Attack][Admission] decision=PROPOSE target={objective.Target.DiagnosticLabel} "
                     + $"actor={actor.ArmyId} score={F(score.Value)} eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
@@ -258,6 +341,41 @@ namespace Game.Ai.V2
                 attackProposed);
 
             RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
+        }
+
+        // An independent (non-durable) ActiveDefence ground Intercept of `enemyArmyId` is removed
+        // from this pass: the marching Attack army answers that contact itself, so the two lanes
+        // never send two ground owners at one enemy. The Attack army's own claim is untouched.
+        // The displacement is conditional on the Attack step really being fundable: a Hard
+        // incumbent only (the allocator protects it), and never while this very step is cooling
+        // down after a rejected attempt - then the independent answer stays and the threat is
+        // not left without any handler.
+        internal static bool TryServeActiveDefence(WorldSnapshot snap, List<MissionProposal> proposals,
+            MissionProposal attackProposal, MissionIntent incumbent, AttackLocalAction local)
+        {
+            if (incumbent == null || local.Kind != AttackLocalActionKind.Intercept || !local.ServesActiveDefence
+                || incumbent.Funding != CommitmentTier.Hard || attackProposal == null
+                || !attackProposal.PreferredMoverArmyId.HasValue)
+                return false;
+            AiAllocatorState state = AiAllocatorStateRegistry.Peek(snap?.Observer);
+            if (state != null && state.OnCooldown(StableMissionKey.For(attackProposal), snap.TurnNumber))
+                return false;
+            return WithdrawIndependentActiveDefenceIntercept(proposals, local.EnemyArmyId,
+                attackProposal.PreferredMoverArmyId.Value) > 0;
+        }
+
+        private static int WithdrawIndependentActiveDefenceIntercept(List<MissionProposal> proposals,
+            int enemyArmyId, int attackActorId)
+        {
+            int removed = proposals.RemoveAll(p => p != null && p.Kind == MissionKind.ActiveDefence
+                && !p.FromDurableIntent
+                && p.Target is ActiveDefenceMissionTarget t && t.Phase == ActiveDefencePhase.Intercept
+                && t.EnemyArmyId == enemyArmyId && t.PrimaryArmyId != attackActorId);
+            if (removed > 0)
+                AiDebugLog.WriteDeduped($"atk-ad-handler-{enemyArmyId}",
+                    $"[AI][V2][Attack][Local] ActiveDefence ground intercept of enemy #{enemyArmyId} "
+                    + $"withdrawn ({removed}): served by marching Attack army #{attackActorId}");
+            return removed;
         }
 
         // Missions owns the reason a live Gather / Assault intent has no executable proposal this

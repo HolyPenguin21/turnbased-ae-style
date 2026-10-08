@@ -621,6 +621,59 @@ namespace Game.EditorTests
                 Object.DestroyImmediate(rootObject);
             }
         }
+        // 2026-10-08: a withdrawal ordered by a hostile army is mandatory work. Its activation is
+        // held like any marching leg; an ordinary RecoveryReturn (lifecycle work) holds nothing.
+        // Once the army is home the intent retires and the hold is gone.
+        [TestCase(true, 3f)] [TestCase(false, 0f)]
+        public void TacticalRetreat_ProtectsItsActivation_OrdinaryRecoveryDoesNot(bool tactical, float expected)
+        {
+            var player = new PlayerSetupData();
+            var red = new PlayerSetupData { ColorIndex = 2 };
+            var rootObject = new GameObject("tactical-retreat-hold-test");
+            try
+            {
+                var root = rootObject.AddComponent<PlayerRoot>();
+                root.ActionPoints = 6;
+                var army = new ArmyData { Owner = player, Hex = new HexCoord(1, 0) };
+                army.Members.Add(new UnitData { Owner = player, ActivationApCost = 3, MoveMax = 2, MoveCurrent = 2 });
+                ArmyRegistry.Register(army);
+                var attack = new AttackIntent
+                {
+                    Target = AttackTargetRef.For(new HexCoord(6, 0), red, AttackTargetKind.Citadel),
+                    Phase = AttackMissionPhase.RecoveryReturn, PrimaryArmyId = army.Id,
+                    OperationStarted = true, AssaultStarted = true, TacticalRetreat = tactical,
+                    RecoveryBaseHex = new HexCoord(0, 0),
+                };
+                var intent = new MissionIntent
+                {
+                    IntentKey = MissionIntentKey.ForAttack(attack.Target), Kind = MissionKind.Attack,
+                    Status = IntentStatus.Active, Funding = CommitmentTier.Hard, Objective = attack,
+                };
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                var ctx = new AiTurnContext { TurnNumber = 7 };
+
+                Assert.That(StrategicSpendability.OperationContinuationHold(player, root, ctx), Is.EqualTo(expected));
+                Assert.That(root.ActionPoints, Is.EqualTo(6), "a hold is a claim, never a debit");
+
+                // the tactical return is also exempt from the "first Phase B round" deferral of ordinary returns
+                var proposal = new MissionProposal
+                {
+                    Kind = MissionKind.Attack,
+                    Target = new AttackMissionTarget
+                    {
+                        Phase = AttackMissionPhase.RecoveryReturn, Target = attack.Target,
+                        PrimaryArmyId = army.Id, DestinationHex = new HexCoord(0, 0),
+                    },
+                };
+                Assert.That(LifecycleReturnPolicy.IsDeferrableReturn(proposal,
+                    new List<MissionIntent> { intent }), Is.EqualTo(!tactical));
+
+                MissionIntentRegistry.GetOrCreate(player).Remove(intent.IntentKey);
+                Assert.That(StrategicSpendability.OperationContinuationHold(player, root, ctx), Is.Zero,
+                    "arrival retires the operation: no hold survives it");
+            }
+            finally { Object.DestroyImmediate(rootObject); }
+        }
     }
 }
 #endif

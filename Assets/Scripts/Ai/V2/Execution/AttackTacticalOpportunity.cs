@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -10,222 +11,449 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // The one chosen side strike, or None. A pure VALUE: the selector below decides nothing about
-    // the operation's identity and writes nothing anywhere — the caller either walks this waypoint
-    // for exactly one step or ignores it.
-    internal readonly struct AttackTacticalStrike
+    // What the marching Attack army does about the field around it THIS step, besides marching on
+    // its main target. A pure VALUE: deciding it writes nothing anywhere — the mission layer
+    // freezes it into the funded leg (AttackMissionTarget.Local), the executor only verifies that
+    // it still holds, and Continuity reads Retreat as the one trigger that sends the army home.
+    internal enum AttackLocalActionKind
     {
-        internal readonly bool HasValue;
+        // March on the main target. Any contact on the way is passed or avoided, not hunted.
+        Continue = 0,
+        // Fight one known field army reachable with the movement left this turn.
+        Intercept = 1,
+        // Take an optional intermediate Base (AttackIntermediateBasePolicy) before going on.
+        IntermediateBase = 2,
+        // A relevant, significant hostile army the army cannot beat: the attack goes home.
+        Retreat = 3,
+    }
+
+    internal readonly struct AttackLocalAction
+    {
+        internal readonly AttackLocalActionKind Kind;
+        // Intercept / Retreat: the contact hex. Continue with FightsPathContact: the contact on the path.
         internal readonly HexCoord Hex;
         internal readonly int EnemyArmyId;
         internal readonly string EnemyName;
-        internal readonly float EnemyRawStrength;
-        internal readonly float ProjectedWinChance;
-        // Route economics this pick was accepted on (§15), kept for the log line and the §18
-        // ordering: cost to contact, extra cost the detour adds over the direct route, and the
-        // cost still left from the contact hex to the main target.
+        // Real route cost to the contact (not hex distance, not MaxMovement).
         internal readonly int ContactCost;
-        internal readonly int DetourCost;
-        internal readonly int OnwardCost;
+        // The shared estimator's chance against EVERYTHING that stands on the contact hex.
+        internal readonly float WinChance;
+        internal readonly bool CoversAllDefenders;
+        // The intercepted army is a live ActiveDefence objective: Attack serves it, AD proposes no
+        // competing ground answer.
+        internal readonly bool ServesActiveDefence;
+        // Continue only: a contact on the path that clears the voluntary-fight bar is fought on the
+        // way (the step into it carries combat authority).
+        internal readonly bool FightsPathContact;
+        // Why this was chosen / rejected — a log and test fact, never parsed.
+        internal readonly string Reason;
+        // Retreat: the observed combat inputs of the contact (AttackTacticalOpportunity.CombatFingerprint).
+        internal readonly int ContactFingerprint;
+        internal readonly float EnemyPower;
 
-        internal AttackTacticalStrike(HexCoord hex, int enemyArmyId, string enemyName,
-            float enemyRawStrength, float projectedWinChance,
-            int contactCost, int detourCost, int onwardCost)
+        internal bool IsLocalFight => Kind == AttackLocalActionKind.Intercept || FightsPathContact;
+
+        internal AttackLocalAction(AttackLocalActionKind kind, HexCoord hex, int enemyArmyId,
+            string enemyName, int contactCost, float winChance, bool covers, string reason,
+            bool servesActiveDefence = false, bool fightsPathContact = false,
+            int contactFingerprint = 0, float enemyPower = 0f)
         {
-            HasValue = true;
+            Kind = kind;
             Hex = hex;
             EnemyArmyId = enemyArmyId;
             EnemyName = enemyName;
-            EnemyRawStrength = enemyRawStrength;
-            ProjectedWinChance = projectedWinChance;
             ContactCost = contactCost;
-            DetourCost = detourCost;
-            OnwardCost = onwardCost;
+            WinChance = winChance;
+            CoversAllDefenders = covers;
+            Reason = reason;
+            ServesActiveDefence = servesActiveDefence;
+            FightsPathContact = fightsPathContact;
+            ContactFingerprint = contactFingerprint;
+            EnemyPower = enemyPower;
         }
 
-        internal static AttackTacticalStrike None => default;
+        internal static AttackLocalAction Continue(string reason = null) =>
+            new AttackLocalAction(AttackLocalActionKind.Continue, default, 0, null, 0, 0f, false, reason);
     }
 
     // ===========================================================================================
-    //  ATK §9-§18 — OPPORTUNISTIC ENEMY KILL INSIDE AN ATTACK STEP.
+    //  ATTACK LOCAL ACTION — ONE ONE-DAY DECISION FOR A MARCHING ATTACK ARMY (2026-10-08).
     //
-    //  An Attack army marching on its target structure may destroy a weak enemy FIELD army it passes, if
-    //  that fight practically does not delay the main operation. What this is NOT, spelled out
-    //  because every one of these would be a different feature:
+    //  An Attack army that has begun its march keeps its main Base / Citadel as the operation
+    //  identity (AttackIntent.Target never changes here) and decides, from honest knowledge only,
+    //  what to do about the field around it. Priority, strongest first:
     //
-    //    §9/§10  not a MissionIntent, not a MissionProposal, not a retarget. AttackIntent.Target
-    //            stays the same Base before and after the strike; nothing here can write it.
-    //    §13     not a second combat estimator. Safety is the existing shared
-    //            WorthIt/GroundCombatFeasibility owner, at the same fresh-start gate a new fight
-    //            has to clear anywhere else in the codebase.
-    //    §14     not a capability shortage. A candidate that is too strong is IGNORED; a secondary
-    //            tactical opportunity may never raise Production/Reinforcement Demand, and this
-    //            file structurally cannot — it produces no proposal and no requirement, only a
-    //            waypoint for the step that is already funded and already moving.
-    //    §12     not an importance model. CompositionQuality, ability synergies, Hero skills,
-    //            equipment effects and AiPower.EffectiveArmyPower are all deliberately unused;
-    //            significance is the crude raw Attack+Defense scalar of combat bodies only.
+    //    0. Retreat   a relevant, significant hostile army on the path that it cannot beat
+    //                 (estimator chance below AiConfigV2.attackLocalMinWinChance) — the attack ends
+    //                 and the army walks home (Continuity: RecoveryReturn).
+    //    1. Continue  the main target is reachable with the movement left now: go there.
+    //    2. Intercept an ActiveDefence objective, reachable now, that clears the bar.
+    //    3. IntermediateBase  an optional, observed, winnable Base on the way (planner-provided).
+    //    4. Intercept any other significant known field army, reachable now, that clears the bar.
+    //    5. Continue  march on.
     //
-    //  It lives beside AttackExecutor because §9 makes it a tactical decision of the CURRENT step,
-    //  re-taken from a fresh world every step, and not a planning-tier or continuity-tier concept.
+    //  The bar for a voluntary fight is chance >= 0.40 AND coverage (every known defender can be
+    //  damaged by at least one of our bodies) — through the one shared GroundCombatFeasibility,
+    //  against the WHOLE package on the contact hex with its hex bonus. Reachability is the real
+    //  route cost against the movement left (never hex distance, never MaxMovement). A hunt is
+    //  structurally impossible: a contact that needs more than today's movement is not chosen, and
+    //  one voluntary fight per turn (the marker Continuity stamps on the intent).
+    //
+    //  Not a second estimator, not a mission, not a demand: it produces a value, never a proposal.
     // ===========================================================================================
     internal static class AttackTacticalOpportunity
     {
-        // `turn` is the game turn; `target` is the frozen Attack leg, whose OpportunisticStrikeTurn
-        // carries the §17 once-per-turn marker Continuity stamped on the durable intent.
-        internal static AttackTacticalStrike Select(PlayerSetupData player, HexMap map,
-            WorldSnapshot snap, ArmyData army, AttackMissionTarget target, int turn)
+        // The fog-honest "is this hex in sight right now" read. A sighting stamped with the current
+        // turn is NOT proof the army is still there (it may have left after an earlier step of the
+        // same turn); a voluntary fight and a retreat both need the contact to be in view now.
+        // A seam so tests can state their own view.
+        internal static System.Func<PlayerSetupData, HexCoord, bool> HexVisibleNow =
+            (player, hex) => VisionSystem.IsVisible(player, hex);
+
+        // `main` is the operation's Base/Citadel. `lastLocalTurn` is the once-per-turn marker of
+        // voluntary fights. `intermediateBaseAvailable` is the mission layer's already-proven
+        // optional Base (AttackIntermediateBasePolicy.Select). `adObjectives` are the live
+        // ActiveDefence objectives of this snapshot (null: none).
+        internal static AttackLocalAction Decide(WorldSnapshot snap, ArmySnapshot army,
+            AttackTargetRef main, int lastLocalTurn, bool intermediateBaseAvailable,
+            IReadOnlyList<ActiveDefenceObjective> adObjectives)
         {
-            if (player == null || map == null || snap?.Known == null || army == null
-                || army.Members == null || army.Members.Count == 0)
-                return AttackTacticalStrike.None;
-            // Only the assault leg may divert. A reinforcement convoy, a walking-home primary and a
-            // returning support container have no business hunting anything.
-            if (target.Phase != AttackMissionPhase.Assault || !target.Target.HasValue)
-                return AttackTacticalStrike.None;
-
-            // §17 — at most ONE opportunistic strike per Attack per game turn, so the operation can
-            // never degenerate into a hunt. The marker is turn-local state on the durable
-            // AttackIntent, frozen into this leg by the mission layer; a struct default of 0 can
-            // never match a real turn, which starts at 1.
-            if (target.OpportunisticStrikeTurn == turn)
-                return AttackTacticalStrike.None;
-
-            HexCoord mainTarget = target.Target.Hex;
+            if (snap?.Known == null || army == null || army.Owner == null
+                || !main.HasValue || army.Members == null || army.Members.Count == 0)
+                return AttackLocalAction.Continue("no_state");
+            PlayerSetupData player = army.Owner;
+            HexMap map = snap.Map;
+            int turn = snap.TurnNumber;
             int currentMovement = army.CurrentMovement;
-            if (currentMovement <= 0)
-                return AttackTacticalStrike.None;
-
-            // §12 — our own side of the crude raw scalar: non-hero, non-aviation combat bodies.
-            var ownBodies = new List<UnitData>();
-            float ownRaw = 0f;
-            foreach (UnitData u in army.Members)
-            {
-                if (!AiArmyRoles.IsGroundCombatBody(u))
-                    continue;
-                ownBodies.Add(u);
-                ownRaw += u.Attack + u.Defense;
-            }
-            if (ownBodies.Count == 0)
-                return AttackTacticalStrike.None;
-
-            int directCost = SafeStepPathing.FindSafePathCost(map, army, mainTarget);
-            if (directCost == int.MaxValue)
-                // No honest route to the main objective at all — the assault step itself will fail
-                // over this; a side fight cannot be judged "on the way" to nowhere.
-                return AttackTacticalStrike.None;
-
             int maxMovement = Mathf.Max(1, army.MaxMovement);
-            float significanceFloor = SignificanceFloor(ownRaw);
+            HexCoord mainHex = main.Hex;
 
-            // §13 — safety is the shared estimator over the army that will actually fight: its whole
-            // roster (WorthIt keeps only ground combatants itself), never the §12 significance subset.
-            List<WorthIt.DefenderProfile> attackers = BuildAttackerProfiles(army.Members);
-            AttackTacticalStrike best = AttackTacticalStrike.None;
+            List<WorthIt.DefenderProfile> attackers = army.Members.ToList();
+            if (!attackers.Any(AiArmyRoles.IsGroundCombatBody))
+                return AttackLocalAction.Continue("no_ground_body");
 
+            // Geometric route to the main target: terrain alone (SafeRouteProfile.Attack). A hex
+            // that costs more than MaxMovement to enter is impassable; a short current MP is only
+            // waiting. Contacts are judged below, they do not make the route "not exist".
+            HexPath route = RouteOf(snap, player, army.Hex, mainHex, maxMovement, SafeRouteProfile.Attack);
+            if (route?.Hexes == null || route.Hexes.Count < 2)
+                return AttackLocalAction.Continue("main_unreachable_terrain");
+
+            // ---- mandatory: a relevant contact on the path ------------------------------------
+            // Independent of the voluntary-fight limit: a winnable contact is fought on the way, an
+            // unwinnable significant hostile army ends the attack, anything else is bypassed.
+            // Relevant = on the nearest path and within the movement window of today and one full
+            // turn more — never a far, arbitrary army.
+            int window = currentMovement + maxMovement;
+            AttackLocalAction pathFight = default;
+            bool hasPathFight = false;
+            bool pathContactBypassed = false;
+            int cumulative = 0;
+            for (int i = 1; i < route.Hexes.Count; i++)
+            {
+                HexCoord h = route.Hexes[i];
+                cumulative += StepCost(map, h);
+                if (cumulative > window || h.Equals(mainHex))
+                    break;
+                List<AiMapMemory.KnownEnemySighting> bodies = ObservedBodiesOn(snap, player, h);
+                if (bodies.Count == 0)
+                    continue;
+                List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, h);
+                float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, map, h);
+                bool fightable = GroundCombatFeasibility.Clears(attackers, army.Commander, opposition,
+                    GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out float win, out bool cover,
+                    GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage);
+                AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player, bodies);
+                if (!fightable)
+                {
+                    if (army0.HasValue && win < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate
+                        && IsSignificantHostile(army0.Value, opposition))
+                    {
+                        AiMapMemory.KnownEnemySighting e = army0.Value;
+                        return new AttackLocalAction(AttackLocalActionKind.Retreat, h, e.ArmyId, e.Name,
+                            cumulative, win, cover, "hostile_contact_below_threshold",
+                            contactFingerprint: CombatFingerprint(WorthIt.UnitsOf(opposition)),
+                            enemyPower: AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), bonus));
+                    }
+                    // Not a retreat: a neutral / insignificant contact, or one the estimator likes
+                    // but we cannot cover. The two stay distinct in the log.
+                    pathContactBypassed = true;
+                    AiDebugLog.WriteDeduped($"atk-path-{main.DiagnosticLabel}-{h.Q},{h.R}-{cover}",
+                        $"[AI][V2][Attack][Contact] decision=BYPASS target={main.DiagnosticLabel} "
+                        + $"at ({h.Q},{h.R}) win={F(win)} cover={(cover ? 1 : 0)} reason="
+                        + (win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate && !cover
+                            ? "no_coverage" : "below_threshold"));
+                    continue;
+                }
+                AiMapMemory.KnownEnemySighting lead = bodies[0];
+                pathFight = new AttackLocalAction(AttackLocalActionKind.Continue, h, lead.ArmyId, lead.Name,
+                    cumulative, win, cover, "fight_contact_on_path", fightsPathContact: true);
+                hasPathFight = true;
+                break;
+            }
+
+            // ---- 1. the main target is reachable with today's movement ------------------------
+            int mainCost = route.TotalCost;
+            bool reachableNow = mainCost <= currentMovement;
+            if (hasPathFight)
+                return pathFight;
+            if (pathContactBypassed)
+            {
+                // The straight path is spoiled by a contact we will not fight: reachability is that
+                // of the route that goes around it (Combat profile blocks every remembered army).
+                int around = RouteOf(snap, player, army.Hex, mainHex, maxMovement,
+                    SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
+                reachableNow = around != int.MaxValue && around <= currentMovement;
+            }
+            if (reachableNow)
+                return AttackLocalAction.Continue("main_target_reachable_now");
+
+            // ---- voluntary fights: one per turn ------------------------------------------------
+            if (lastLocalTurn == turn || currentMovement <= 0)
+                return AttackLocalAction.Continue(lastLocalTurn == turn ? "local_fight_spent_this_turn" : "no_movement");
+
+            List<AttackLocalAction> candidates = InterceptCandidates(snap, army, attackers, mainHex,
+                currentMovement, maxMovement, adObjectives);
+            AttackLocalAction adBest = candidates.FirstOrDefault(c => c.ServesActiveDefence);
+            if (adBest.Kind == AttackLocalActionKind.Intercept)
+                return adBest;
+            if (intermediateBaseAvailable)
+                return new AttackLocalAction(AttackLocalActionKind.IntermediateBase, default, 0, null, 0, 0f,
+                    false, "intermediate_base_available");
+            AttackLocalAction ordinary = candidates.FirstOrDefault();
+            return ordinary.Kind == AttackLocalActionKind.Intercept
+                ? ordinary : AttackLocalAction.Continue("no_local_target");
+        }
+
+        // The execution-side check of a frozen decision. The frozen choice is never replaced by a
+        // different enemy: an Intercept holds only while the SAME army is still the chosen one;
+        // otherwise the step is skipped and the mission layer re-plans. Anything the world newly
+        // makes mandatory (a Retreat, a winnable contact on the path) is taken from `now`.
+        internal static AttackLocalAction ForExecution(AttackLocalAction frozen, AttackLocalAction now,
+            out string rejection)
+        {
+            rejection = null;
+            if (now.Kind == AttackLocalActionKind.Retreat)
+            {
+                rejection = "hostile_contact_now_unwinnable";
+                return now;
+            }
+            if (frozen.Kind == AttackLocalActionKind.Intercept)
+            {
+                if (now.Kind == AttackLocalActionKind.Intercept && now.EnemyArmyId == frozen.EnemyArmyId)
+                    return now;
+                rejection = "chosen_contact_no_longer_valid";
+                return frozen;
+            }
+            // A step planned as a plain march never jumps to a voluntary target after funding.
+            if (now.Kind == AttackLocalActionKind.Intercept || now.Kind == AttackLocalActionKind.IntermediateBase)
+                return AttackLocalAction.Continue("voluntary_target_not_funded");
+            return now;
+        }
+
+        // ---- candidates ---------------------------------------------------------------------------
+
+        private static List<AttackLocalAction> InterceptCandidates(WorldSnapshot snap, ArmySnapshot army,
+            List<WorthIt.DefenderProfile> attackers, HexCoord mainHex, int currentMovement,
+            int maxMovement, IReadOnlyList<ActiveDefenceObjective> adObjectives)
+        {
+            var found = new List<AttackLocalAction>();
+            PlayerSetupData player = army.Owner;
             foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings
                 ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)
                     System.Array.Empty<AiMapMemory.KnownEnemySighting>())
             {
-                if (!Eligible(player, map, snap, army, target, s, mainTarget, currentMovement,
-                        maxMovement, directCost, significanceFloor, ownRaw, attackers,
-                        out AttackTacticalStrike candidate))
+                if (s.Owner == null || s.Owner == player || s.Owner.IsNeutral || s.Owner.IsEliminated
+                    || s.IsGarrison || s.IsAir)
                     continue;
-                if (Prefer(candidate, best))
-                    best = candidate;
+                if (s.MemberCount <= 0 || s.Defenders == null || s.Defenders.Count == 0)
+                    continue;
+                if (s.Hex.Equals(army.Hex) || s.Hex.Equals(mainHex))
+                    continue;
+                if (!ObservedNow(snap, player, s))
+                    continue;
+                // A fight on a known foreign structure could destroy it: that is Attack's own
+                // target business, never a side fight.
+                if (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, s.Hex))
+                    continue;
+                // An ActiveDefence Intercept already answering this army owns it.
+                if (UnderActiveDefenceResponse(player, s.ArmyId))
+                    continue;
+                int adIndex = IndexOfObjective(adObjectives, s.ArmyId);
+                List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, s.Hex);
+                float power = AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), 0f);
+                if (adIndex < 0 && !ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
+                        AiPower.EffectiveArmyPowerFromProfiles(s.Defenders, 0f)))
+                    continue;
+                // Real route cost to the contact (the contact hex itself is the exempt endpoint),
+                // against the movement left: more than that is a multi-day chase.
+                int contactCost = RouteOf(snap, player, army.Hex, s.Hex, maxMovement,
+                    SafeRouteProfile.Combat)?.TotalCost ?? int.MaxValue;
+                if (contactCost == int.MaxValue || contactCost > currentMovement)
+                    continue;
+                float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, s.Hex);
+                if (!GroundCombatFeasibility.Clears(attackers, army.Commander, opposition,
+                        GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out float win,
+                        out bool cover, GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage))
+                {
+                    AiDebugLog.WriteDeduped($"atk-int-{army.ArmyId}-{s.ArmyId}-{cover}",
+                        $"[AI][V2][Attack][Local] decision=IGNORE enemy=#{s.ArmyId} at ({s.Hex.Q},{s.Hex.R}) "
+                        + $"win={F(win)} cover={(cover ? 1 : 0)} reason="
+                        + (win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate
+                            ? "cannot_cover_defenders" : "win_chance_too_low"));
+                    continue;
+                }
+                found.Add(new AttackLocalAction(AttackLocalActionKind.Intercept, s.Hex, s.ArmyId, s.Name,
+                    contactCost, win, cover, adIndex >= 0 ? "serves_active_defence" : "ordinary_intercept",
+                    servesActiveDefence: adIndex >= 0, enemyPower: power));
             }
+            found.Sort((a, b) => Compare(a, b, adObjectives));
+            return found;
+        }
 
-            if (best.HasValue)
-                AiDebugLog.Write($"[AI][V2][Attack][Tactical] decision=STRIKE "
-                    + $"target={target.Target.DiagnosticLabel} enemy=#{best.EnemyArmyId} "
-                    + $"({best.EnemyName}) at ({best.Hex.Q},{best.Hex.R}) raw={F(best.EnemyRawStrength)} "
-                    + $"ownRaw={F(ownRaw)} win={F(best.ProjectedWinChance)} contact={best.ContactCost} "
-                    + $"detour={best.DetourCost} onward={best.OnwardCost} mp={currentMovement}");
+        // Several equally valid targets: ActiveDefence's own significance order first, then the
+        // observed strength of the package, then the cheaper contact, then the stable ArmyId.
+        // Never random, never dependent on the order sightings were enumerated.
+        internal static int Compare(AttackLocalAction a, AttackLocalAction b,
+            IReadOnlyList<ActiveDefenceObjective> adObjectives)
+        {
+            int c = b.ServesActiveDefence.CompareTo(a.ServesActiveDefence);
+            if (c != 0) return c;
+            if (a.ServesActiveDefence)
+            {
+                c = IndexOfObjective(adObjectives, a.EnemyArmyId).CompareTo(IndexOfObjective(adObjectives, b.EnemyArmyId));
+                if (c != 0) return c;
+            }
+            c = b.EnemyPower.CompareTo(a.EnemyPower);
+            if (c != 0) return c;
+            c = a.ContactCost.CompareTo(b.ContactCost);
+            if (c != 0) return c;
+            return a.EnemyArmyId.CompareTo(b.EnemyArmyId);
+        }
+
+        private static int IndexOfObjective(IReadOnlyList<ActiveDefenceObjective> objectives, int enemyArmyId)
+        {
+            if (objectives == null)
+                return -1;
+            for (int i = 0; i < objectives.Count; i++)
+                if (objectives[i]?.Target.EnemyArmyId == enemyArmyId)
+                    return i;
+            return -1;
+        }
+
+        // ---- knowledge ----------------------------------------------------------------------------
+
+        // The sighting is current: stamped this turn AND its hex is in view right now.
+        private static bool ObservedNow(WorldSnapshot snap, PlayerSetupData player,
+            AiMapMemory.KnownEnemySighting s) =>
+            s.SeenTurn >= snap.TurnNumber && HexVisibleNow(player, s.Hex);
+
+        // Every hostile body standing on `hex` that this player honestly sees right now: players'
+        // armies and garrisons, roaming neutrals. (Event guards ride along in OppositionOn.)
+        private static List<AiMapMemory.KnownEnemySighting> ObservedBodiesOn(WorldSnapshot snap,
+            PlayerSetupData player, HexCoord hex)
+        {
+            var bodies = new List<AiMapMemory.KnownEnemySighting>();
+            foreach (AiMapMemory.KnownEnemySighting s in (snap.Known.EnemySightings
+                ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .OrderBy(x => x.ArmyId))
+                if (s.Hex.Equals(hex) && s.Owner != player && s.Defenders != null && s.Defenders.Count > 0
+                    && ObservedNow(snap, player, s))
+                    bodies.Add(s);
+            if (bodies.Count == 0 && HexVisibleNow(player, hex) && snap.Known.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                    if (g.Hex.Equals(hex) && g.Defenders != null && g.Defenders.Count > 0)
+                    {
+                        bodies.Add(new AiMapMemory.KnownEnemySighting(hex, null, g.Name ?? "guard",
+                            g.Defenders.Count, 0f, 0f, g.Defenders, seenTurn: snap.TurnNumber, armyId: 0));
+                        break;
+                    }
+            return bodies;
+        }
+
+        // The whole fight on that hex, as the game resolves it: every known army there, its own
+        // battle with its own commander and its own hex bonus (WorthIt.EstimateSequential), plus
+        // the event guard standing on it. NOT a single enemy picked out of the stack.
+        internal static List<WorthIt.DefendingArmy> OppositionOn(WorldSnapshot snap, HexCoord hex)
+        {
+            var result = new List<WorthIt.DefendingArmy>();
+            if (snap?.Known == null)
+                return result;
+            if (snap.Known.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                    if (g.Hex.Equals(hex) && g.Defenders != null && g.Defenders.Count > 0)
+                    {
+                        result.Add(new WorthIt.DefendingArmy(g.Defenders, g.Commander,
+                            AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, defendingOwner: null)));
+                        break;
+                    }
+            foreach (AiMapMemory.KnownEnemySighting s in (snap.Known.EnemySightings
+                ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .OrderBy(x => x.ArmyId))
+                if (s.Hex.Equals(hex) && s.Owner != snap.Observer && s.Defenders != null && s.Defenders.Count > 0)
+                    result.Add(new WorthIt.DefendingArmy(s.Defenders, s.Commander,
+                        AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner), s.ArmyId));
+            return result;
+        }
+
+        // The enemy PLAYER's mobile army among the bodies on a hex (a building-bound garrison and a
+        // neutral are not "a hostile army" for the retreat rule), strongest roster first.
+        private static AiMapMemory.KnownEnemySighting? HostileFieldArmyOn(PlayerSetupData player,
+            List<AiMapMemory.KnownEnemySighting> bodies)
+        {
+            AiMapMemory.KnownEnemySighting? best = null;
+            foreach (AiMapMemory.KnownEnemySighting s in bodies)
+            {
+                if (s.Owner == null || s.Owner == player || s.Owner.IsNeutral || s.Owner.IsEliminated
+                    || s.IsGarrison || s.IsAir)
+                    continue;
+                if (!best.HasValue || s.MemberCount > best.Value.MemberCount
+                    || s.MemberCount == best.Value.MemberCount && s.ArmyId < best.Value.ArmyId)
+                    best = s;
+            }
             return best;
         }
 
-        // ---- §11 eligibility -------------------------------------------------------------------
+        // ActiveDefence's own significance bar for a hostile contact, on the whole stack there.
+        private static bool IsSignificantHostile(AiMapMemory.KnownEnemySighting army,
+            List<WorthIt.DefendingArmy> opposition) =>
+            ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
+                AiPower.EffectiveArmyPowerFromProfiles(army.Defenders, 0f));
 
-        // Every condition of §11 in the order the spec lists them. A single failed condition means
-        // IGNORE — there is deliberately no partial credit and no scoring inside this gate.
-        private static bool Eligible(PlayerSetupData player, HexMap map, WorldSnapshot snap,
-            ArmyData army, AttackMissionTarget target, AiMapMemory.KnownEnemySighting s,
-            HexCoord mainTarget, int currentMovement, int maxMovement, int directCost,
-            float significanceFloor, float ownRaw, List<WorthIt.DefenderProfile> attackers,
-            out AttackTacticalStrike candidate)
+        // The inputs of the fight that decide who wins, folded into one number: roster, HP, armour
+        // and initiative per body. Two reads of the same contact in the same state agree; any
+        // visible change (a wounded body, a new one, equipment) changes it.
+        internal static int CombatFingerprint(IReadOnlyList<WorthIt.DefenderProfile> roster)
         {
-            candidate = AttackTacticalStrike.None;
-
-            // enemy player, not Neutral, not ourselves, not an eliminated leftover
-            if (s.Owner == null || s.Owner == player || s.Owner.IsNeutral || s.Owner.IsEliminated)
-                return false;
-            // a real body with a known roster — the fight has to be estimable at all
-            if (s.MemberCount <= 0 || s.Defenders == null || s.Defenders.Count == 0)
-                return false;
-            // honestly observed THIS turn. A remembered last-known position is fine for strategy
-            // but not for committing a marching army to a detour it cannot verify.
-            if (s.SeenTurn < snap.TurnNumber)
-                return false;
-            if (s.Hex.Equals(army.Hex))
-                return false;
-            // not standing on the main objective — that is the assault, not a side strike (§11)
-            if (s.Hex.Equals(mainTarget))
-                return false;
-            // Not standing on ANY known foreign structure, including an extraction-only site.
-            // Winning there could destroy the building even though extraction is not an Attack
-            // objective; a tactical detour must never decide to do that (§11/§26).
-            if (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, s.Hex))
-                return false;
-            // not already the objective of a live ActiveDefence response (§11): that lane owns the
-            // answer to this army, and Attack must not race it for the same kill.
-            if (UnderActiveDefenceResponse(player, s.ArmyId))
-                return false;
-
-            // §12 — significance, on the crude raw scalar and nothing else.
-            float enemyRaw = RawCombatBodyStrength(s.Defenders);
-            if (enemyRaw < significanceFloor)
-                return Reject(s, target, "not_significant", enemyRaw);
-            // weaker than the Attack army, on the same scalar
-            if (enemyRaw >= ownRaw)
-                return Reject(s, target, "not_weaker", enemyRaw);
-
-            // §15 — route economics on real safe-route costs, before the estimator is paid for.
-            int contactCost = SafeStepPathing.FindSafePathCost(map, army, s.Hex);
-            if (contactCost == int.MaxValue)
-                return Reject(s, target, "unreachable", enemyRaw);
-            // After the contact there must still BE an operation to continue: a real onward route
-            // from the contact hex to the main target, with a real next step on it.
-            HexPath onward = SafeStepPathing.FindSafePath(map, player, s.Hex, mainTarget, maxMovement);
-            if (onward?.Hexes == null || onward.Hexes.Count < 2)
-                return Reject(s, target, "no_route_onward", enemyRaw);
-            int onwardCost = onward.TotalCost;
-            if (!RouteEconomicsAllowDetour(directCost, contactCost, onwardCost,
-                    currentMovement, maxMovement, StepCost(map, onward.Hexes[1]),
-                    out string routeReason))
-                return Reject(s, target, routeReason, enemyRaw);
-
-            // §13 — safety LAST, through the one shared estimator, at the same fresh-start gate any
-            // new fight has to clear. The defender's own hex bonus is a real property of the fight
-            // and comes from the one fog-honest owner.
-            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, map, s.Hex);
-            if (!GroundCombatFeasibility.Clears(attackers, WorthIt.SideCommander.Of(army.Commander),
-                    new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander) },
-                    GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus,
-                    out float win, out bool cover))
-                return Reject(s, target, cover ? "win_chance_too_low" : "cannot_cover_defenders",
-                    enemyRaw);
-
-            candidate = new AttackTacticalStrike(s.Hex, s.ArmyId, s.Name, enemyRaw, win,
-                contactCost, contactCost + onwardCost - directCost, onwardCost);
-            return true;
+            unchecked
+            {
+                int hash = 17;
+                if (roster == null)
+                    return hash;
+                // Order-free: the same stack listed in a different order is the same fight.
+                int sum = 0, xor = 0;
+                for (int i = 0; i < roster.Count; i++)
+                {
+                    WorthIt.DefenderProfile p = roster[i];
+                    int h = (int)System.Math.Round(p.Attack * 10f) * 31
+                        + (int)System.Math.Round(p.Defense * 10f) * 131
+                        + (int)System.Math.Round(p.HitPoints * 10f) * 1031
+                        + p.Initiative * 10007 + (p.HasCeramicArmor ? 7 : 0) + (p.IsHero ? 13 : 0)
+                        + (p.Abilities?.Count ?? 0) * 100003;
+                    sum += h;
+                    xor ^= h * 397;
+                }
+                hash = hash * 31 + roster.Count;
+                hash = hash * 31 + sum;
+                return hash * 31 + xor;
+            }
         }
 
-        // §12 — the raw-scalar bar a candidate must clear to be an army "worth attention": a real
-        // share of our own raw strength, but never below an absolute floor that keeps a single
-        // scrap unit from pulling a whole campaign off its axis.
-        internal static float SignificanceFloor(float ownRaw) => Mathf.Max(
-            AiConfigV2.attackTacticalOpportunityMinRawStrength,
-            ownRaw * AiConfigV2.attackTacticalOpportunityMinStrengthShare);
+        // ---- the old strike's pure helpers that other tools still read -----------------------------
 
         internal static float RawCombatBodyStrength(
             IReadOnlyList<WorthIt.DefenderProfile> roster)
@@ -239,84 +467,7 @@ namespace Game.Ai.V2
             return raw;
         }
 
-        // ---- §15 route economics ---------------------------------------------------------------
-
-        // The WHOLE "is this really on the way" answer, as pure arithmetic over real safe-route
-        // costs, so it can be read — and exercised by the acceptance harness — without a world:
-        //
-        //   A = the army's hex, E = the candidate, B = the main Base/Citadel target
-        //   directCost  = cost(A -> B)      contactCost  = cost(A -> E)
-        //   onwardCost  = cost(E -> B)      nextStepCost = entry cost of the first hex of E -> B
-        //
-        // Three independent conditions, all from §15:
-        //   1. ETA(A -> E -> B) <= ETA(A -> B) — the detour costs the operation no extra turn.
-        //   2. contactCost < currentMovement, STRICTLY — contact is reachable this turn AND some
-        //      movement budget is left afterwards. `<=` would authorise a strike that consumes the
-        //      turn entirely, which is precisely the delay this gate exists to prevent.
-        //   3. that leftover budget actually pays for the first onward step, so a legal
-        //      continuation toward B exists rather than merely a route on paper.
-        internal static bool RouteEconomicsAllowDetour(int directCost, int contactCost,
-            int onwardCost, int currentMovement, int maxMovement, int nextStepCost,
-            out string reason)
-        {
-            reason = null;
-            if (directCost == int.MaxValue || contactCost == int.MaxValue
-                || onwardCost == int.MaxValue)
-            {
-                reason = "unreachable";
-                return false;
-            }
-            if (contactCost >= currentMovement)
-            {
-                reason = "not_reachable_this_turn";
-                return false;
-            }
-            int move = Mathf.Max(1, maxMovement);
-            if (AiV2Util.CeilDiv(contactCost + onwardCost, move)
-                > AiV2Util.CeilDiv(directCost, move))
-            {
-                reason = "delays_operation";
-                return false;
-            }
-            if (currentMovement - contactCost < Mathf.Max(1, nextStepCost))
-            {
-                reason = "no_affordable_next_step";
-                return false;
-            }
-            return true;
-        }
-
-        // ---- §18 preference --------------------------------------------------------------------
-
-        // Prefer the STRONGEST significant army that is still safe to destroy — the point of the
-        // strike is to remove a noticeable slice of the enemy's field force as cheaply as possible,
-        // so picking the weakest would be the wrong answer. Every later key is a tie-break, and the
-        // last one is the stable ArmyId so the choice never depends on memory enumeration order.
-        internal static bool Prefer(AttackTacticalStrike a, AttackTacticalStrike b)
-        {
-            if (!b.HasValue)
-                return true;
-            int c = b.EnemyRawStrength.CompareTo(a.EnemyRawStrength);
-            if (c != 0) return c < 0;
-            c = a.DetourCost.CompareTo(b.DetourCost);
-            if (c != 0) return c < 0;
-            c = a.ContactCost.CompareTo(b.ContactCost);
-            if (c != 0) return c < 0;
-            c = a.OnwardCost.CompareTo(b.OnwardCost);
-            if (c != 0) return c < 0;
-            return a.EnemyArmyId < b.EnemyArmyId;
-        }
-
         // ---- internals -------------------------------------------------------------------------
-
-        private static List<WorthIt.DefenderProfile> BuildAttackerProfiles(IReadOnlyList<UnitData> bodies)
-        {
-            var profiles = new List<WorthIt.DefenderProfile>(bodies.Count);
-            for (int i = 0; i < bodies.Count; i++)
-                if (bodies[i] != null)
-                    profiles.Add(WorthIt.FromLiveUnit(bodies[i]));
-            return profiles;
-        }
 
         // §11 "urgent ActiveDefence target", read off the one intent store rather than re-deriving
         // a second urgency model: an ActiveDefence intent exists at all only for a real threat to a
@@ -332,23 +483,23 @@ namespace Game.Ai.V2
         }
 
         // What entering `step` actually charges a ground mover — the same per-hex terrain read the
-        // movement owner itself applies (AiTurnController.FindAffordableStep). Aviation's flat
-        // charge is irrelevant here: an Attack primary is a ground force by construction (§79) and
-        // the non-aviation filter on its own bodies already guarantees it.
+        // movement owner itself applies (AiTurnController.FindAffordableStep).
         private static int StepCost(HexMap map, HexCoord step)
         {
+            if (map == null)
+                return 1;
             map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
             return entry != null ? Mathf.Max(1, entry.moveCost) : 1;
         }
 
-        private static bool Reject(AiMapMemory.KnownEnemySighting s, AttackMissionTarget target,
-            string reason, float enemyRaw)
-        {
-            AiDebugLog.WriteDeduped($"atk-tac-{target.Target.DiagnosticLabel}-{s.ArmyId}-{reason}",
-                $"[AI][V2][Attack][Tactical] decision=IGNORE target={target.Target.DiagnosticLabel} "
-                + $"enemy=#{s.ArmyId} at ({s.Hex.Q},{s.Hex.R}) raw={F(enemyRaw)} reason={reason}");
-            return false;
-        }
+        // The ground route the decision reasons on. A snapshot without a map (the synthetic analysis
+        // fixtures; the live Scan always supplies one) falls back to a straight line, one cost
+        // point per hex, exactly as AiV2Util.TravelRoute and AttackIntermediateBasePolicy.Route do.
+        private static HexPath RouteOf(WorldSnapshot snap, PlayerSetupData player, HexCoord from,
+            HexCoord to, int maxMovement, SafeRouteProfile profile) =>
+            snap.Map == null
+                ? AiV2Util.StraightLine(from, to)
+                : SafeStepPathing.FindSafePath(snap.Map, player, from, to, maxMovement, profile);
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }

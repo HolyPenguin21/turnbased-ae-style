@@ -38,6 +38,40 @@ namespace Game.EditorTests
         private static string[] Sorted(IEnumerable<string> names) =>
             names.OrderBy(n => n, System.StringComparer.Ordinal).ToArray();
 
+        // ---- 2026-10-08: the cached estimate is policy-free; the verdict is applied outside it ----
+
+        [Test]
+        public void OneEstimateServesTwoThresholds_EachWithItsOwnVerdict()
+        {
+            var strong = new List<WorthIt.DefenderProfile> { Unit(30, 10, 60), Unit(30, 10, 60), Unit(30, 10, 60) };
+            var weak = new[] { new WorthIt.DefendingArmy(Defenders(), default) };
+            WorthIt.BeginEstimateCacheScope();
+            bool atLocal = Game.Ai.V2.GroundCombatFeasibility.Clears(strong, default, weak, 0.40f, 0f,
+                out float w1, out _, true);
+            bool atFresh = Game.Ai.V2.GroundCombatFeasibility.Clears(strong, default, weak, 0.80f, 0f,
+                out float w2, out _, true);
+            WorthIt.EstimateCacheStats stats = WorthIt.EndEstimateCacheScope();
+            Assert.That(w2, Is.EqualTo(w1), "the same simulation answered both");
+            Assert.That(stats.Hits, Is.GreaterThanOrEqualTo(1), "second threshold is a cache hit, not a re-simulation");
+            Assert.That(atLocal, Is.EqualTo(w1 >= 0.40f));
+            Assert.That(atFresh, Is.EqualTo(w2 >= 0.80f));
+        }
+
+        [Test]
+        public void AWoundedOwnBody_IsACacheMiss_NotAStaleHit()
+        {
+            var healthy = new List<WorthIt.DefenderProfile> { Unit(3, 2, 10), Unit(3, 2, 10) };
+            var wounded = new List<WorthIt.DefenderProfile> { Unit(3, 2, 10), Unit(3, 2, 4) };
+            var opp = new[] { new WorthIt.DefendingArmy(Defenders(), default) };
+            WorthIt.BeginEstimateCacheScope();
+            WorthIt.EstimateSequential(healthy, default, opp, 0f);
+            WorthIt.EstimateSequential(healthy, default, opp, 0f);
+            WorthIt.EstimateSequential(wounded, default, opp, 0f);
+            WorthIt.EstimateCacheStats stats = WorthIt.EndEstimateCacheScope();
+            Assert.That(stats.Hits, Is.EqualTo(1));
+            Assert.That(stats.Misses, Is.EqualTo(2));
+        }
+
         // ---- Key completeness guards ----
 
         [Test]
