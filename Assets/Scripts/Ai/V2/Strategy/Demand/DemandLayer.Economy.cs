@@ -793,6 +793,7 @@ namespace Game.Ai.V2
             HexCoord target, EconomyBuilderRouteSnapshot route, ArmySnapshot army,
             float buildApCost, bool includeReturn, bool? requiresFoundingGarrison = null)
         {
+            if (!route.IsOnTarget) army = army?.EconomyDeparture ?? army;
             bool founding = requiresFoundingGarrison ?? !includeReturn;
             if (snap == null)
                 return Compute();
@@ -1179,7 +1180,7 @@ namespace Game.Ai.V2
                 ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
                     a => a != null && a.ArmyId == route.ArmyId);
                 if (CandidateRejection(snap, target, route, army, activeIntents, commitments) == null)
-                    yield return (route, army);
+                    yield return (route, !route.IsOnTarget ? army.EconomyDeparture ?? army : army);
             }
         }
 
@@ -1201,7 +1202,8 @@ namespace Game.Ai.V2
                 if (!route.RequiresGarrisonExtraction && !(route.IsOnTarget && army.HasHero))
                     return "garrison_without_extraction_route";
             }
-            else if (!army.IsMobileEconomyBuilder)
+            else if (!army.IsMobileEconomyBuilder
+                && (route.IsOnTarget || army.EconomyDeparture?.IsMobileEconomyBuilder != true))
                 return "not_mobile_economy_builder";
             else if (army.OperatorDutyBlocksDeparture && !route.IsOnTarget)
                 return "operator_leaves_served_facility";
@@ -1704,7 +1706,8 @@ namespace Game.Ai.V2
             return witnessed.Any(route => route.TravelCost < int.MaxValue
                 && (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(army =>
                     army != null && army.ArmyId == route.ArmyId
-                    && ((army.IsMobileEconomyBuilder
+                    && (((army.IsMobileEconomyBuilder
+                            || (!route.IsOnTarget && army.EconomyDeparture?.IsMobileEconomyBuilder == true))
                             && !(army.OperatorDutyBlocksDeparture && !route.IsOnTarget))
                         || (route.IsOnTarget && army.IsGarrison && army.HasHero))));
         }

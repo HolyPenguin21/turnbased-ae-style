@@ -22,8 +22,15 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        private static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player) =>
-            army != null && army.Owner == player && AiArmyRoles.IsHeroLed(army);
+        internal static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player,
+            ActorCommitments commitments = null,
+            Func<ResearchProductionMode, HexCoord?> preparationSite = null,
+            bool departureNeeded = true) =>
+            army != null && army.Owner == player
+                && (AiArmyRoles.IsHeroLed(army)
+                    || (departureNeeded && LocalOperatorRelease.CanKeepOperatorsHome(player, army,
+                        commitments, preparationSite, out _, out ArmyData departure)
+                        && AiArmyRoles.IsHeroLed(departure)));
 
         internal static bool IsEligibleEconomyRecoveryActor(
             MissionProposal mission, ArmySnapshot actor)
@@ -96,13 +103,14 @@ namespace Game.Ai.V2
                     // never trusting a hero identity carried across from an earlier phase.
                     ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
-                    UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g);
+                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx);
+                    UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g, site);
                     if (sparable == null) return "no_sparable_hero";
                     if (session.ClaimedArmyIds.Contains(g.Id)) return "claimed_this_pass";
                     // A garrison's facility operators are never sparable (CanSpareGarrisonMember); the
                     // selected preparation site's operator is protected by the same live duty rule.
                     if (AiArmyRoles.FacilityNeedsHero(player, g, sparable,
-                            DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx)))
+                            site, new[] { sparable }))
                         return "operator_leaves_served_facility";
                     if (!g.Hex.Equals(target.TargetHex)
                         && SafeStepPathing.FindSafePathCost(ctx.Map, player, g.Hex,
@@ -112,7 +120,9 @@ namespace Game.Ai.V2
                 }
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
-                if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
+                if (!IsMobileEconomyHero(a, player, actorCommitments,
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx),
+                        !a.Hex.Equals(target.TargetHex))) return "not_mobile_economy_hero";
                 // Live re-check of the duty Demand saw in the snapshot (roster outside `a`, selected
                 // preparation site, free garrison, no AP): before any binding or composition mutation.
                 if (!a.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
@@ -120,7 +130,7 @@ namespace Game.Ai.V2
                     return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
-                        out List<UnitData> unload, out List<UnitData> reinforcement))
+                        out List<UnitData> unload, out List<UnitData> reinforcement, ctx, actorCommitments))
                     return "stale_preparation_witness";
                 IReadOnlyList<UnitData> staying = DevelopmentOpportunityEvaluator
                     .OperatorsStayingHome(player, a, hand, ctx);
@@ -145,7 +155,8 @@ namespace Game.Ai.V2
                 if (g == null)
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
-                    player, g, actorCommitments, session, root, ecoApEnvelopeRemaining);
+                    player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
+                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx));
                 if (plan.Tier == GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
                     // positive value is the cheapest tier's real cost, rejected purely for
@@ -435,7 +446,9 @@ namespace Game.Ai.V2
             // exactly as it always has, no extra admission pass spent on a step that would mutate
             // nothing.
             bool preparationPending = directPrep.Donor != null
-                || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0;
+                || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0
+                || (!hero.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
+                    .OperatorsStayingHome(player, hero, hand, ctx).Count > 0);
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {

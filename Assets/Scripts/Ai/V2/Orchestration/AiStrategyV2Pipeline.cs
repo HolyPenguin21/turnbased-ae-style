@@ -324,6 +324,13 @@ namespace Game.Ai.V2
                         .Select(a => $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}"
                             // A served facility's / selected site's operator duty decides builder admissibility.
                             + $":duty{(a.OperatorDutyBlocksDeparture ? 1 : 0)}"
+                            // Availability and prices can change when a legal zero-AP release
+                            // becomes possible, even though the real army's roster is unchanged.
+                            + (a.EconomyDeparture != null
+                                ? $":eco{a.EconomyDeparture.MemberCount}:{a.EconomyDeparture.Capacity}"
+                                    + $":{a.EconomyDeparture.CurrentMovement}:{a.EconomyDeparture.MaxMovement}"
+                                    + $":{a.EconomyDeparture.ActivationApCost}:{a.EconomyDeparture.EffectiveArmyPower:0.###}"
+                                : ":eco0")
                             + (economyArmyIds.Contains(a.ArmyId)
                                 ? $":{a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.ActivationApCost}"
                                 : string.Empty)));

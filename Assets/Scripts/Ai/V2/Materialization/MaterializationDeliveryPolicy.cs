@@ -398,7 +398,8 @@ namespace Game.Ai.V2
                     && army.CollectionCapacity.Get(demand.EconomyResourceType.Value) > 0f;
             }
             return IsEconomyHeroDemand(demand)
-                ? army.IsMobileEconomyBuilder
+                ? (army.IsMobileEconomyBuilder || (!army.Hex.Equals(demand.TargetHex ?? army.Hex)
+                        && army.EconomyDeparture?.IsMobileEconomyBuilder == true))
                     && !(army.OperatorDutyBlocksDeparture && !army.Hex.Equals(demand.TargetHex ?? army.Hex))
                 : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
         }

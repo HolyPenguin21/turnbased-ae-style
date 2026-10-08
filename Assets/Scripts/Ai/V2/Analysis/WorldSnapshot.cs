@@ -184,6 +184,9 @@ namespace Game.Ai.V2
 
     public sealed class ArmySnapshot
     {
+        // Economy-only view after the existing zero-AP local operator release. Other axes keep
+        // the real roster; null means no legal single-commander departure was projected.
+        public ArmySnapshot EconomyDeparture;
         public int ArmyId;
         public PlayerSetupData Owner;
         public HexCoord Hex;

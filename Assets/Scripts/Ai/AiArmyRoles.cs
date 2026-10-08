@@ -260,9 +260,11 @@ namespace Game.Ai
         // `army`? A duty is an own facility of the mode on the hex, or (preparationSite) the hex the
         // player's preparation has selected for that mode. False when another qualified hero stays
         // on the hex OUTSIDE `army` (an operator inside the leaving army is not a kept operator).
+        // A single-member extraction supplies its actual departing set instead of the whole army.
         // THE one answer for Housekeeping's release, Economy's builder admissibility and Provisioning.
         public static bool FacilityNeedsHero(PlayerSetupData player, ArmyData army, UnitData hero,
-            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null,
+            IReadOnlyCollection<UnitData> departingMembers = null)
         {
             if (player == null || army == null || hero == null)
                 return false;
@@ -278,7 +280,7 @@ namespace Game.Ai
                     || !hero.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
                     continue;
                 if (!ResearchProductionSystem.FindActors(player, army.Hex, mode)
-                        .Any(a => a != hero && !army.Members.Contains(a)))
+                        .Any(a => a != hero && !(departingMembers ?? army.Members).Contains(a)))
                     return true;
             }
             return false;
@@ -483,8 +485,9 @@ namespace Game.Ai
         // Production operator, read from the same ResearchProductionSystem.FindActors source
         // ArmyReorgAnalyzer.MarkDevelopmentOperators already uses, so this never proposes pulling the
         // one hero a local facility depends on.
-        public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison) =>
-            BestSparableHero(player, garrison, null);
+        public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
+            BestSparableHero(player, garrison, null, preparationSite);
 
         // Development and Economy use the SAME garrison protection and extraction eligibility.
         // The role filter only narrows the candidates; it cannot bypass the source's active
@@ -494,7 +497,7 @@ namespace Game.Ai
             string.IsNullOrEmpty(requiredRole) ? null : BestSparableHero(player, garrison, requiredRole);
 
         private static UnitData BestSparableHero(PlayerSetupData player, ArmyData garrison,
-            string requiredRole)
+            string requiredRole, System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             if (player == null || garrison == null || !garrison.IsGarrison)
                 return null;
@@ -503,7 +506,9 @@ namespace Game.Ai
             return garrison.Members
                 .Where(u => u != null && u.IsHero
                     && (requiredRole == null || u.HasAbility(requiredRole))
-                    && CanSpareGarrisonMember(player, garrison, u))
+                    && CanSpareGarrisonMember(player, garrison, u)
+                    && (requiredRole != null || !FacilityNeedsHero(player, garrison, u,
+                        preparationSite, new[] { u })))
                 // A garrison hero leaves for Economy only when no other hero qualifies; Development
                 // (a required role) asks for exactly those heroes.
                 .OrderBy(u => requiredRole == null && IsGarrisonHero(u))

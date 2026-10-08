@@ -279,7 +279,7 @@ namespace Game.Ai.V2
             // Resolve/MissionRevalidator/anything else below ever sees the synthetic id, and is ALSO
             // a terminal step of its own — see the helper's own comment for why this never falls
             // through to movement in the same call.
-            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
+            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
             {
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
@@ -346,7 +346,7 @@ namespace Game.Ai.V2
                             MissionIntentRegistry.GetOrCreate(player).All, snapshot, null),
                         DevelopmentOpportunityEvaluator.LivePreparationSite(
                             player, AiHandRegistry.Peek(player), ctx)) > 0)
-                    WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+                    result.StateVersionAfter = WorldDeltaLifecycle.Current;
             }
 
             if (pm.Kind == MissionKind.Raid)
@@ -514,7 +514,7 @@ namespace Game.Ai.V2
         // place, so the NEXT admission pass sees an ordinary, already-real mover.
         private static bool TryHandleDeferredEconomyMaterialization(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            int apBefore)
+            int apBefore, WorldSnapshot snapshot)
         {
             // This door also covers a DIRECT-army Economy mission (hero already real) whose
             // composition change and/or donor-loan suspend Provisioning left pinned but unapplied
@@ -562,7 +562,7 @@ namespace Game.Ai.V2
                 || (pm.EconomyExtractionGarrisonArmyId < 0 && !pm.EconomyPreparationPending))
                 return false;
 
-            bool materialized = ApplyEconomyPreparation(player, root, ctx, pm, result, apBefore);
+            bool materialized = ApplyEconomyPreparation(player, root, ctx, pm, result, apBefore, snapshot);
             result.StartHex = pm.ExecutionHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (!materialized)
@@ -588,14 +588,20 @@ namespace Game.Ai.V2
         // already computed and pinned the FULL decision (ProvisioningManager.PlanEconomyCompletion,
         // against a read-only preview for the extraction case, the real live hero for the direct
         // case); this only APPLIES the pinned hero extraction (if any) and cheaply re-validates the
-        // two facts that can shift within the same batch pass (AP, resource spendability — never
-        // composition/donor/route).
+        // facts that can shift within the same batch pass (operator duty, AP and spendability —
+        // never choosing a replacement composition/donor/route).
         private static bool ApplyEconomyPreparation(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot)
         {
             ProvisioningManager.EconomyCompletionPlan prep = pm.EconomyExtractionPreparation;
             if (!prep.Feasible)
                 return false;   // defensive only — Provisioning only ever defers a feasible plan
+
+            var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
+                player, AiHandRegistry.Peek(player), ctx);
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
 
             ArmyData materialized;
             bool extractionNeeded = pm.EconomyExtractionGarrisonArmyId >= 0;
@@ -611,6 +617,17 @@ namespace Game.Ai.V2
                 ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
                 if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
                     return false;
+                // Revalidate the pinned hero, not a replacement chosen under weaker constraints.
+                // A prepared site can become selected after binding, before this mutation step.
+                if (plan.Hero == null || !garrison.Members.Contains(plan.Hero)
+                    || !AiArmyRoles.CanSpareGarrisonMember(player, garrison, plan.Hero)
+                    || AiArmyRoles.FacilityNeedsHero(player, garrison, plan.Hero,
+                        site, new[] { plan.Hero }))
+                {
+                    result.ActualActorArmyId = garrison.Id;
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    return false;
+                }
                 materialized = ProvisioningManager.ApplyGarrisonExtraction(
                     player, garrison, plan, ctx);
                 if (materialized == null)
@@ -638,7 +655,7 @@ namespace Game.Ai.V2
                 // take a served operator it cannot leave home (nothing is mutated or spent).
                 if (!materialized.Hex.Equals(pm.EconomyTarget.TargetHex)
                     && DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(player, materialized,
-                        AiHandRegistry.Peek(player), ctx, null))
+                        commitments, site))
                 {
                     AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: "
                         + "builder carries a served operator that cannot stay home — nothing mutated");
@@ -670,6 +687,27 @@ namespace Game.Ai.V2
                 result.ActualActorArmyId = materialized.Id;
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
+            }
+
+            // The funded AP/escort witness describes the departing roster. Commit its zero-AP
+            // operator release before composition and before repricing that roster's activation.
+            if (!materialized.Hex.Equals(pm.EconomyTarget.TargetHex)
+                && AiArmyRoles.DepartureStripsOperator(player, materialized, site))
+            {
+                int released = LocalOperatorRelease.ReleaseBeforeDeparture(
+                    player, ctx, materialized, commitments, site);
+                if (released > 0)
+                {
+                    result.StateVersionAfter = WorldDeltaLifecycle.Current;
+                    result.EconomyPrepared = true;
+                }
+                if (AiArmyRoles.DepartureStripsOperator(player, materialized, site)
+                    || !AiArmyRoles.IsHeroLed(materialized))
+                {
+                    result.ActualActorArmyId = materialized.Id;
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    return false;
+                }
             }
 
             int preparedMembers = ProvisioningManager.ApplyEconomyArmyLightening(
@@ -804,7 +842,7 @@ namespace Game.Ai.V2
                         yield break;
                     }
                     if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army, commitments, site) > 0)
-                        WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+                        result.StateVersionAfter = WorldDeltaLifecycle.Current;
                     if (AiArmyRoles.DepartureStripsOperator(player, army, site))
                     {
                         result.StopReason = ExecutionStopReason.TargetInvalidated;

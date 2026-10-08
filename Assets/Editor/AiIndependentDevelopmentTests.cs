@@ -564,6 +564,131 @@ namespace Game.EditorTests
             Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, null, null, out string why), Is.True, why);
             Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, field, null, null), Is.False,
                 "the operator can be left in the free local garrison: the remaining army is a valid builder");
+            Assert.That(AiArmyRoles.IsHeroLed(field), Is.False, "the live multi-hero rule is unchanged");
+            Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, null, null,
+                out why, out ArmyData departure), Is.True, why);
+            Assert.That(departure.Commander, Is.SameAs(lead));
+            Assert.That(departure.Members, Is.EquivalentTo(new[] { lead }));
+            Assert.That(field.Members.Count, Is.EqualTo(2), "planning never changes the real roster");
+            Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player), Is.True,
+                "Provisioning admits the legal departing roster, not the original two-hero shape");
+            Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player, departureNeeded: false), Is.False);
+            var facts = WorldAnalysis.ToArmySnapshot(field, _player, true, 0);
+            facts.EconomyDeparture = WorldAnalysis.ToArmySnapshot(departure, _player, true, 0);
+            facts.EconomyDeparture.ArmyId = field.Id;
+            _snapshot.Self.Armies = new[] { facts };
+            var route = new EconomyBuilderRouteSnapshot { ArmyId = field.Id, TravelCost = 1,
+                MaxMovement = 1, CurrentMovement = 1, RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>() };
+            Assert.That(DemandLayer.EconomyBuilderCandidateRejection(_snapshot, new HexCoord(92, -17),
+                new[] { route }, field.Id, Array.Empty<MissionIntent>(), null),
+                Is.EqualTo("ranking_rejected (suitability or loan gate)"), "the structural Demand gate passes");
+            var choice = DemandLayer.AssessEconomyArmy(_snapshot, new HexCoord(92, -17), route,
+                facts, 0f, false, requiresFoundingGarrison: false);
+            Assert.That(choice.Army, Is.SameAs(facts.EconomyDeparture),
+                "AP, commander and escort assessment use the departing roster");
+            int apBefore = _root.ActionPoints;
+            Assert.That(LocalOperatorRelease.ReleaseBeforeDeparture(_player, _ctx, field, null), Is.EqualTo(1));
+            Assert.That(field.Commander, Is.SameAs(lead));
+            Assert.That(AiArmyRoles.IsHeroLed(field), Is.True);
+            Assert.That(_garrison.Members, Does.Contain(op));
+            Assert.That(_root.ActionPoints, Is.EqualTo(apBefore));
+        }
+
+        [Test]
+        public void SingleGarrisonExtractionCountsAnotherOperatorInTheSameGarrisonAsStaying()
+        {
+            var fast = new UnitData { Owner = _player, IsHero = true, Name = "A", CommandRating = 12 };
+            var backup = new UnitData { Owner = _player, IsHero = true, Name = "B", CommandRating = 12 };
+            fast.Abilities.Add(UnitAbilities.Assembler); backup.Abilities.Add(UnitAbilities.Assembler);
+            _garrison.Members.Add(fast); _garrison.Members.Add(backup);
+            for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
+                _garrison.Members.Add(new UnitData { Owner = _player });
+            Func<ResearchProductionMode, HexCoord?> site = mode =>
+                mode == ResearchProductionMode.Production ? Site : (HexCoord?)null;
+            Assert.That(AiArmyRoles.FacilityNeedsHero(_player, _garrison, fast, site), Is.True);
+            Assert.That(AiArmyRoles.FacilityNeedsHero(_player, _garrison, fast, site, new[] { fast }), Is.False);
+            Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.Not.Null,
+                "the remaining operator protects preparation without rejecting the entire garrison");
+            _garrison.Members.Remove(backup);
+            Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.Null);
+            var free = new UnitData { Owner = _player, IsHero = true, Name = "free", CommandRating = 12 };
+            _garrison.Members.Add(free);
+            Assert.That(AiArmyRoles.BestSparableEconomyHero(_player, _garrison, site), Is.SameAs(free),
+                "a blocked operator is filtered before ranking; another legal hero remains available");
+        }
+
+        [TestCase("claimed")]
+        [TestCase("activation")]
+        [TestCase("full")]
+        public void EconomyDepartureProjectionCannotBypassLocalGarrisonConstraints(string obstacle)
+        {
+            var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
+            _base.FacilitySlots[0] = facility;
+            var op = new UnitData { Owner = _player, IsHero = true, Name = "op", CommandRating = 5 };
+            op.Abilities.Add(UnitAbilities.Assembler);
+            var lead = new UnitData { Owner = _player, IsHero = true, Name = "lead", CommandRating = 3 };
+            var field = new ArmyData { Owner = _player, Hex = Site };
+            field.Members.Add(lead); field.Members.Add(op); ArmyRegistry.Register(field);
+            var commitments = new ActorCommitments();
+            if (obstacle == "claimed") commitments.Claim(_garrison.Id);
+            if (obstacle == "activation") _garrison.MarkActivated();
+            if (obstacle == "full")
+                for (int i = 0; i < 5; i++) _garrison.Members.Add(new UnitData { Owner = _player });
+            Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, commitments, null,
+                out _, out _), Is.False);
+            Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player, commitments), Is.False);
+            Assert.That(field.Members.Count, Is.EqualTo(2));
+            Assert.That(_root.ActionPoints, Is.EqualTo(20));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DeferredEconomyExtractionRechecksPinnedOperatorBeforeAnyMutation(bool facilityBuilt)
+        {
+            AiHandRegistry.Clear();
+            try
+            {
+                var op = new UnitData { Owner = _player, IsHero = true, Name = "pinned", CommandRating = 12 };
+                op.Abilities.Add(UnitAbilities.Assembler); _garrison.Members.Add(op);
+                for (int i = 0; i < AiConfig.secureBaseMinNonHeroUnits; i++)
+                    _garrison.Members.Add(new UnitData { Owner = _player });
+                Assert.That(AiArmyRoles.CanSpareGarrisonMember(_player, _garrison, op), Is.True);
+                var plan = ProvisioningManager.GarrisonExtractionCandidate.Yes(
+                    ProvisioningManager.GarrisonExtractionTier.Create, op, null, ArmyActions.CreateArmyApCost);
+                // Duty appears AFTER binding: either a ready facility or its selected preparation site.
+                if (facilityBuilt)
+                {
+                    var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production);
+                    _base.FacilitySlots[0] = facility;
+                }
+                else
+                {
+                    AiHandRegistry.GetOrCreate(_player, null, 0).AddCard(_facility);
+                    Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+                        ResearchProductionMode.Production, _player, AiHandRegistry.Peek(_player), _ctx), Is.EqualTo(Site));
+                }
+                var pm = new ProvisionedMission { Kind = MissionKind.Economy,
+                    EconomyExtractionGarrisonArmyId = _garrison.Id, EconomyExtractionPlan = plan,
+                    EconomyTarget = new EconomyMissionTarget { Kind = EconomyTaskKind.BuildExtraction,
+                        TargetHex = new HexCoord(92, -17) },
+                    EconomyExtractionPreparation = ProvisioningManager.EconomyCompletionPlan.Yes(null, null,
+                        new List<UnitData>(), new List<UnitData>(), true, true, null, 0f, null) };
+                var result = new ExecutionResult();
+                int apBefore = _root.ActionPoints;
+                int armiesBefore = ArmyRegistry.AllForOwner(_player).Count();
+                int versionBefore = WorldDeltaLifecycle.Current;
+                var apply = typeof(TaskExecutor).GetMethod("ApplyEconomyPreparation",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                Assert.That(apply.Invoke(null, new object[] { _player, _root, _ctx, pm, result,
+                    apBefore, _snapshot }), Is.EqualTo(false));
+                Assert.That(result.StopReason, Is.EqualTo(ExecutionStopReason.TargetInvalidated));
+                Assert.That(result.ActualActorArmyId, Is.EqualTo(_garrison.Id));
+                Assert.That(_garrison.Members, Does.Contain(op));
+                Assert.That(ArmyRegistry.AllForOwner(_player).Count(), Is.EqualTo(armiesBefore));
+                Assert.That(_root.ActionPoints, Is.EqualTo(apBefore));
+                Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(versionBefore));
+            }
+            finally { AiHandRegistry.Clear(); }
         }
 
         [Test]
