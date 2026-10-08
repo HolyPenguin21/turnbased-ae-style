@@ -1488,6 +1488,7 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
+            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex);
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -1538,6 +1539,27 @@ namespace Game.Ai.V2
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " " + breakdown + $" combat={combat:0.###} tactical={tactical:0.###}");
+        }
+
+        // Known facts only: the mission's target hex gives the route the host's army will really walk
+        // (AiV2Util.TravelCost — the same route the mission planners price), the army's activation AP is
+        // the sum of its members, and the map-knowledge owner supplies the unexplored fraction. Anything
+        // not known stays at the context default (speed proxy, 0.5 dark, no detection relevance).
+        private static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
+            UnitData hostUnit, HexCoord? targetHex)
+        {
+            if (snap?.MapKnowledge != null)
+                ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
+            if (army?.Members == null || hostUnit == null || !targetHex.HasValue || army.Hex.Equals(targetHex.Value))
+                return;
+            ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
+            int cost = actor != null ? AiV2Util.TravelCost(snap, actor, targetHex.Value, terrainOnly: true)
+                : HexGridMath.Distance(army.Hex, targetHex.Value);
+            if (cost <= 0 || cost == int.MaxValue)
+                return;
+            ctx.RouteLength = cost;
+            ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
+                army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
         }
 
         // Read existing assignments only. An upgrade does not create a role or move an actor.

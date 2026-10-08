@@ -60,7 +60,7 @@ namespace Game.Ai.V2
         public int HostCommanderInitiative, EnemyCommanderInitiative;
         public float ExpectedActivations = AiConfigV2.equipExpectedActivations;
         public int RouteLength;                   // 0: no known route (speed uses the proxy)
-        public float ArmyActivationAp;            // aggregate AP of one army activation on that route
+        public float OtherArmyActivationAp;       // activation AP of the army's OTHER members (army AP = sum of members)
         public int OtherRecceRadius, OtherSpotStrength, OtherAntiAirCarriers;  // the host's own army
         public float UsefulDarkFraction = AiConfigV2.equipUsefulDarkDefault;
         public float DetectionRelevance;          // 0 unless a hidden target is actually known

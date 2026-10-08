@@ -79,19 +79,22 @@ namespace Game.Ai.V2
                 }
             }
 
-            // ---- activation AP --------------------------------------------------------------------
+            // ---- activation AP and speed ------------------------------------------------------------
             int apBefore = EffectiveAp(before, beforeAbilities), apAfter = EffectiveAp(after, afterAbilities);
             int vBefore = Mathf.Min(before.Move, ctx.OtherSpeedMin), vAfter = Mathf.Min(after.Move, ctx.OtherSpeedMin);
-            float activations = ctx.ExpectedActivations;
-            float move;
-            if (ctx.RouteLength > 0 && ctx.ArmyActivationAp > 0f)
+            float ap, move;
+            if (ctx.RouteLength > 0)
             {
+                // A known route: ONE change of the army's total cost of walking it. The army pays the SUM of its
+                // members' activation AP once per step; the speed share and the per-step AP share are split so
+                // that Move + (route part of) AP equals exactly (O+apB)*stepsB - (O+apA)*stepsA.
                 int stepsBefore = Mathf.CeilToInt(ctx.RouteLength / (float)Mathf.Max(1, vBefore));
                 int stepsAfter = Mathf.CeilToInt(ctx.RouteLength / (float)Mathf.Max(1, vAfter));
-                move = SignedCard(ctx.ArmyActivationAp * (stepsBefore - stepsAfter));
-                // The route's activations are already priced through the path: only the load beyond it is AP saving.
-                if (stepsBefore != stepsAfter)
-                    activations = Mathf.Max(0f, activations - stepsBefore);
+                float others = Mathf.Max(0f, ctx.OtherArmyActivationAp);
+                move = SignedCard((others + apBefore) * (stepsBefore - stepsAfter));
+                // The rest of the expected load (beyond the route's own activations) is the usual AP saving.
+                float remaining = Mathf.Max(0f, ctx.ExpectedActivations - stepsBefore);
+                ap = SignedCard(stepsAfter * (apBefore - apAfter) + remaining * (apBefore - apAfter));
             }
             else
             {
@@ -100,8 +103,8 @@ namespace Game.Ai.V2
                 // Proxy: equipCardValuePerE (card per E) x equipMoveFactor (move share of E), NOT a new AP price.
                 move = AiConfigV2.equipCardValuePerE * AiConfigV2.equipMoveFactor * eRef * (vAfter - vBefore)
                     * (3f / Mathf.Max(1, vBefore));
+                ap = SignedCard(ctx.ExpectedActivations * (apBefore - apAfter));
             }
-            float ap = SignedCard(activations * (apBefore - apAfter));
 
             // ---- vision / detection (the host's own army saturates at its local maximum) --------------
             int radiusBefore = Mathf.Max(ctx.OtherRecceRadius, AbilityParams.GetBestRecceRadius(beforeAbilities));

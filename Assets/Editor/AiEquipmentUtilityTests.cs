@@ -136,12 +136,17 @@ namespace Game.EditorTests
         [Test]
         public void KnownRoute_ReplacesTheProxy_AndIsNotCountedTwice()
         {
-            var route = new EfficiencyContext { OtherSpeedMin = 3, RouteLength = 6, ArmyActivationAp = 4f };
-            var br = U(S(3, 2, 4, 2, move: 2), S(3, 2, 4, 2, move: 3), route);
-            Assert.That(br.Move, Is.EqualTo(0.6f).Within(1e-5f), "ceil(6/2)-ceil(6/3)=1 activation x 4 AP x 0.15");
-            // Speed and AP together: the route already covers the load, so UAP adds nothing on top.
+            // Army of three: this host (AP 1) + others paying 3 AP, slowest other member Move 3, route 6.
+            var route = new EfficiencyContext { OtherSpeedMin = 3, RouteLength = 6, OtherArmyActivationAp = 3f };
+            var speed = U(S(3, 2, 4, 2, move: 2), S(3, 2, 4, 2, move: 3), route);
+            Assert.That(speed.Move, Is.EqualTo(0.6f).Within(1e-5f), "ceil(6/2)-ceil(6/3)=1 step x army AP 4 x 0.15");
+            // Speed and AP together: one change of the total cost (4 AP x 3 steps -> 3 AP x 2 steps = 6 AP).
             var both = U(S(3, 2, 4, 2, move: 2), S(3, 2, 4, 2, move: 3, ap: 0), route);
-            Assert.That(both.Ap, Is.Zero);
+            Assert.That(both.Move + both.Ap, Is.EqualTo(0.15f * 6f).Within(1e-4f));
+            // AP alone on a route: every step is cheaper by the saved AP.
+            var apOnly = U(S(3, 2, 4, 2, move: 3), S(3, 2, 4, 2, move: 3, ap: 0), route);
+            Assert.That(apOnly.Move, Is.Zero);
+            Assert.That(apOnly.Ap, Is.EqualTo(0.15f * 2f).Within(1e-4f), "2 route steps x 1 AP; the load beyond the route is 0");
         }
 
         [Test]
