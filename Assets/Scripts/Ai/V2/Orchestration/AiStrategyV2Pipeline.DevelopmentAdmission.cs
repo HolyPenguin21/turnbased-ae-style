@@ -294,7 +294,7 @@ namespace Game.Ai.V2
                     : string.Join(",", d.Abilities.Where(x => x != null)
                         .OrderBy(x => x, System.StringComparer.Ordinal));
                 rows.Add($"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
-                    + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/"
+                    + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/r{d.Range}/"
                     + $"[{tags}]/[{abilities}]");
             }
             rows.Sort(System.StringComparer.Ordinal);

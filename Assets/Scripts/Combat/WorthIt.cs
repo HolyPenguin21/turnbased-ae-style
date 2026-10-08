@@ -91,7 +91,8 @@ namespace Game.Combat
             new DefenderProfile(card.defenseRating,
                 card.grantedAbilities != null && card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
                 card.unitTypeTags, card.attack, card.hitPoints, card.initiative,
-                card.grantedAbilities, card.hitPoints, isGroundCombatant: true, isSummoned: true);
+                card.grantedAbilities, card.hitPoints, isGroundCombatant: true, isSummoned: true,
+                range: card.range);
 
         // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
         // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is
@@ -629,7 +630,8 @@ namespace Game.Combat
         public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
-                unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax, unit.IsSummoned);
+                unit.HitPointsMax, unit.IsGroundCombatant, unit.IsHero, unit.FateMax, unit.IsSummoned,
+                unit.Range);
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -1020,12 +1022,18 @@ namespace Game.Combat
             public readonly bool IsHero;
             public readonly int FateMax;
             public readonly bool IsSummoned;
+            // Attack range in hexes when the producer knows it; -1 = unknown. The combat simulation never
+            // reads it (WorthIt fights on a fixed geometry); equipment valuation reads it to tell whether the
+            // enemy can ANSWER at a contact distance. Unknown is treated as "answers at any distance".
+            public readonly int Range;
 
             public DefenderProfile(float defense, bool hasCeramicArmor, IReadOnlyList<UnitTypeTag> typeTags = null,
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
                 IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
-                bool isGroundCombatant = true, bool isHero = false, int fateMax = 0, bool isSummoned = false)
+                bool isGroundCombatant = true, bool isHero = false, int fateMax = 0, bool isSummoned = false,
+                int range = -1)
             {
+                Range = range;
                 IsGroundCombatant = isGroundCombatant;
                 IsSummoned = isSummoned;
                 IsHero = isHero;

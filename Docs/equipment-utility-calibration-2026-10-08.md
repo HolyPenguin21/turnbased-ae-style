@@ -29,11 +29,11 @@ U = 1.10·ΔC + U_AP + U_move + U_vision + U_detection + U_stealth + U_fate + U_
 Учтено: порядок по инициативе (с командирской, равенство 50/50), ShockAttack подавляет ответ, Berserk усиливает ответ после попадания и
 сбрасывается между контактами, Regeneration лечит 1 HP в конце хода только живого носителя, Splash/Scorcher — вторичный урон по
 соседям (`SecondaryDamage`), дальность — доля геометрии (0.24/0.32/0.28/0.16) или известная дистанция. Полезный урон ограничен HP цели.
-`C = 3.66 · Σ P(alive)·урон/HP цели`, усреднение по профилям. Профили берутся с весом копий из `EquipmentTargets` (состав, без скрытых
+`C = 3.63 · Σ P(alive)·урон/HP цели`, усреднение по профилям. Профили берутся с весом копий из `EquipmentTargets` (состав, без скрытых
 координат); без состава — каталожный prior A3/D2/HP4/I1. Авиация исключается из наземного C.
 
 Калибровка масштаба: на якорях Iron Concord отношение контрольного C к «сырой» модели 3.48 / 3.68 / 3.83 (Light/Medium/Heavy), среднее
-3.66 → `equipCombatBodyScale`. 1.10 = `equipCombatCardScale` по ТЗ.
+3.63 → `equipCombatBodyScale` (с учётом дальности ответа цели). 1.10 = `equipCombatCardScale` по ТЗ.
 
 ### Остальные компоненты
 | Компонент | Формула |
@@ -72,20 +72,70 @@ U «ссылка из ТЗ (после) → реализация»:
 
 | Продукт | Scout | Medium | Heavy | Light | Flamer | AT |
 |---|---|---|---|---|---|---|
-| Assault Rifle | 0.480→0.430 | 0.596→0.537 | 0.671→0.590 | | | |
-| Heavy MG | 1.635→1.399 | 1.233→1.086 | 0.671→0.590 | | | |
-| Ballistic Shield | 0.041→0.065 | 0.054→0.074 | 0.021→0.042 | | | |
-| Mobility Harness | 0.096→0.096 | 0.112→0.113 | 0.129→0.129 | | | |
-| Neural Accelerator | 0.284→0.311 | 0.297→0.323 | 0.173→0.220 | | | |
-| Regenerative Culture | 0.030→0.057 | 0.034→0.062 | 0.038→0.071 | | | |
-| Ceramic Vest | | | | 0.142→0.216 | 0.062→0.069 | 0.193→0.301 |
-| Twin SMG | | | | 0.145→0.080 | 0.367→0.072 | −0.515→−0.389 |
-| Optical Scope | | | | 0.561→0.476 | 1.888→1.987 | 1.138→0.914 |
-| Reactive Marrow | | | | 0.114→0.150 | 0.059→0.054 | 0.159→0.231 |
-| Survivor Strain | | | | 0.002→0.073 | −0.059→−0.044 | 0.021→0.145 |
+| Dermal Plating | Mut | 20 | -0.024 …   0.171 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Reactive Marrow | Mut | 20 | 0.000 …   0.223 | AT Infantry | Rad Brute | 1 / 0 |
+| Reinforced Skeleton | Mut | 20 | -0.023 …   0.262 | AT Infantry | Rad Brute | 0 / 5 |
+| Pain Suppression | Mut | 20 | -0.130 …   0.099 | AT Infantry | Ash Drifter | 0 / 45 |
+| Regenerative Culture | Mut | 20 | 0.000 …   0.152 | Light Infantry | Rad Brute | 3 / 0 |
+| Hyper-Regeneration | Mut | 20 | -0.130 …   0.109 | AT Infantry | Ash Drifter | 0 / 46 |
+| Survivor Strain | Mut | 20 | -0.146 …   0.131 | AT Infantry | Heavy Infantry | 0 / 46 |
+| Adrenal Surge | Mut | 20 | 0.038 …   0.252 | Light Infantry | Heavy Infantry | 0 / 0 |
+| Metabolic Overdrive | Mut | 20 | -0.102 …   0.160 | Hooded | AT Infantry | 0 / 6 |
+| Predator Reflexes | Mut | 20 | -0.213 …   0.180 | AT Infantry | Heavy Infantry | 0 / 46 |
+| Neural Accelerator | Mut | 20 | 0.010 …   0.451 | AT Infantry | Hooded | 0 / 0 |
+| Rapid Synapse | Mut | 20 | 0.000 …   0.254 | Rad Brute | AT Infantry | 3 / 1 |
+| Hunter Glands | Mut | 20 | -0.145 …   0.109 | Rad Brute | AT Infantry | 6 / 12 |
+| Enhanced Senses | Mut | 20 | -0.151 …   0.182 | AT Infantry | Hooded | 0 / 29 |
+| Wanderer Strain | Mut | 20 | -0.022 …   0.227 | Rad Brute | AT Infantry | 0 / 1 |
+| Chameleon Tissue | Mut | 20 | -0.160 …  -0.035 | Trapper | Hooded | 0 / 60 |
+| Fortunate Genome | Mut | 16 | 0.150 …   0.150 | Dorian Kesh | Dorian Kesh | 0 / 0 |
+| Ghost Genome | Mut | 16 | 0.000 …   0.041 | Dorian Kesh | Lira Sable | 6 / 0 |
+| Hunter Genome | Mut | 16 | 0.000 …   0.080 | Dorian Kesh | Lira Sable | 6 / 0 |
+| Reflex Genome | Mut | 16 | 0.000 …   0.225 | Dorian Kesh | Nadia Thorne | 3 / 0 |
+| Flamer | Eq | 19 | -2.443 …   1.510 | Rad Brute | HI Ash Walker | 0 / 17 |
+| AT Launcher | Eq | 19 | -0.678 …   2.168 | Rad Brute | HI Ash Walker | 0 / 3 |
+| Claws | Eq | 19 | -2.395 …   0.462 | Rad Brute | HI Ash Walker | 0 / 41 |
+| Heavy MG | Eq | 19 | -0.789 …   2.542 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Plasma Gun | Eq | 19 | 1.005 …   4.409 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Ballistic Shield | Eq | 19 | -0.024 …   0.171 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Ceramic Vest | Eq | 19 | -0.055 …   0.285 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Assault Rifle Kit | Eq | 19 | 0.148 …   1.405 | HI Ash Walker | Tech Scrapper | 0 / 0 |
+| Marksman Rifle | Eq | 19 | -0.391 …   2.927 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Optical Scope | Eq | 19 | 0.259 …   2.550 | Flamer | Tech Scrapper | 0 / 0 |
+| Mobility Harness | Eq | 19 | 0.080 …   0.160 | Hooded | Scrapper | 0 / 0 |
+| Shotgun | Eq | 19 | -2.148 …   1.172 | Shard Wanderer | HI Ash Walker | 0 / 11 |
+| Grenade Launcher | Eq | 19 | 0.000 …   2.940 | Rad Brute | HI Ash Walker | 3 / 0 |
+| Shock Rifle | Eq | 19 | -1.487 …   1.319 | Rad Brute | HI Ash Walker | 0 / 6 |
+| Incendiary Rifle | Eq | 19 | -1.495 …   2.524 | Rad Brute | HI Ash Walker | 11 / 4 |
+| Rail Rifle | Eq | 19 | -1.413 …   1.459 | Rad Brute | HI Ash Walker | 3 / 3 |
+| Twin SMG | Eq | 19 | -1.723 …   1.032 | Flamer | HI Ash Walker | 0 / 10 |
+| Portable Mortar | Eq | 19 | 0.314 …   3.334 | Heavy Infantry | Tech Scrapper | 0 / 0 |
+| Recoil Cannon | Eq | 19 | 0.376 …   3.743 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| AA Launcher | Eq | 19 | 0.010 …   0.069 | Flamer | Scout | 0 / 0 |
+| Armor Plate | Eq | 43 | 0.000 …   0.243 | Artillery Tank | Medium Tank | 11 / 0 |
+| Reinforced Chassis | Eq | 43 | -0.231 …   0.512 | Scrap Mortar | Ash Howitzer | 0 / 88 |
+| Servo Actuators | Eq | 43 | 0.051 …   0.295 | Ash Howitzer | Skimmer | 0 / 0 |
+| Ceramic Plating | Eq | 43 | 0.000 …   0.515 | Scrap Mortar | Medium Tank | 16 / 0 |
+| Reactive Armor | Eq | 43 | -0.243 …   0.319 | Scrap Mortar | Ash Howitzer | 0 / 88 |
+| Nuclear Engine | Eq | 22 | 0.051 …   0.295 | Ash Howitzer | Skimmer | 0 / 0 |
+| Turbocharger | Eq | 21 | -0.011 …   0.462 | Ash Howitzer | Artillery Tank | 0 / 2 |
+| Artillery Cannon | Eq | 15 | -6.787 …   1.806 | Heavy Tank | Ash Howitzer | 0 / 6 |
+| AT VH Launcher | Eq | 15 | -9.403 …   1.126 | Heavy Tank | Ash Howitzer | 0 / 12 |
+| Double Barrel | Eq | 15 | 0.780 …  11.096 | Artillery Tank | Scav Carrier | 0 / 0 |
+| Plasma Cannon | Eq | 15 | -9.073 …   3.737 | RC Vehicle | Ash Howitzer | 0 / 6 |
+| Autocannon | Eq | 21 | -9.563 …   2.359 | BS Grave Engine | Ash Howitzer | 0 / 18 |
+| HE Cannon | Eq | 21 | -6.550 …   3.886 | BS Grave Engine | Ash Howitzer | 3 / 10 |
+| Flame Projector | Eq | 21 | -12.435 …   1.212 | BS Grave Engine | Ash Howitzer | 3 / 50 |
+| Rail Cannon | Eq | 21 | -9.403 …   4.006 | Bastion Frame | Ash Howitzer | 0 / 9 |
+| Shock Projector | Eq | 21 | 0.000 …   0.401 | Scrap Mortar | RC Vehicle | 16 / 0 |
+| AA Mount | Eq | 21 | 0.000 …   0.190 | Artillery Tank | Crawler | 3 / 0 |
+| Dozer Blade | Eq | 21 | -12.147 …   0.306 | Bastion Frame | Ash Howitzer | 0 / 54 |
+| Siege Ram | Eq | 21 | -12.072 …   0.583 | BS Grave Engine | Ash Howitzer | 0 / 54 |
+| Spiked Ram | Eq | 21 | -12.130 …   0.306 | Bastion Frame | Ash Howitzer | 0 / 54 |
+| Mortar Rack | Eq | 21 | -2.822 …   4.096 | Heavy Tank | Ash Howitzer | 0 / 9 |
+| Assault Conversion Kit | Eq | 21 | -12.355 …   0.013 | BS Grave Engine | Ash Howitzer | 3 / 54 |
 
-Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объяснены правилами, не подгонкой: нет учёта дальности ответа цели (в `DefenderProfile`
-нет Range), вторичный сосед считается копией основной цели, Regeneration по среднему полю даёт ~2× к контрольной. Цены/Chance/S-колонки
+Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объяснены правилами, не подгонкой: дальность ответа цели теперь учтена (`DefenderProfile.Range`), вторичный сосед считается копией основной цели, Regeneration по среднему полю даёт ~2× к контрольной. Цены/Chance/S-колонки
 референса здесь не воспроизводились (общая арифметика S не менялась и покрыта существующими тестами цепочек).
 
 ## 5. Производительность
@@ -109,6 +159,10 @@ Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объ
 * Покрытие карты для Vision — `MapKnowledge.ExplorableUnknownFrac` при наличии снимка. `DetectionRelevance` остаётся 0: существующий владелец разведки (`ScoutCapabilityContext.FromReconObjective`) сам никогда не объявляет скрытую цель (`DetectionRelevant=false`), а ТЗ запрещает выдумывать её.
 * `EquipmentReserve` в `WorldAnalysis.Self` (без снапшота) оставлен на линейной оценке AiPower: это резервная мера силы в собственных единицах потребителя, без знаний о противнике.
 * Тест-прогон не воспроизводит Приложение А по ценам/Chance/S и не содержит сравнения с наймом (S-таблицы).
+
+## 7a. Дополнения 2026-10-08 (после ревью владельца)
+* **Дальность ответа цели.** В `WorthIt.DefenderProfile` добавлено поле `Range` (-1 = неизвестно; параметр конструктора в конце, остальные вызовы не менялись). Источники передают дальность: живой юнит (`FromLiveUnit`), карта (`ProfileFromCard`, `AiPower.ToDefenderProfile`), охрана события и память (`AiMapMemory`, `HexEventGuardEstimate`), копии после экипировки/авиаудара. Симуляция боя поле не читает (в списке «не участвует в ключе кеша» `WorthIt.EstimateCache`); оценка Equipment читает его: на дистанции d хост бьёт, если его Range ≥ d, цель отвечает, если её Range ≥ d (неизвестная отвечает везде). Дистанции — доли 0.24/0.32/0.28/0.16 либо одна известная; обмен считается один раз, дистанции его только включают. `DefenderFingerprint` (допуск Development) учитывает Range. Масштаб `equipCombatBodyScale` пересчитан по якорям: 3.66 → 3.63.
+* **Fate героя по роли.** Командирский Fate считается, если герой не Researcher/Assembler либо стоит во главе полевой (не гарнизонной) армии с бойцами; операторский (`equipOperatorFateValue`) — всегда для оператора. Раньше герой-оператор получал оба вклада всегда.
 
 ## 8. Полный каталог (62 продукта, локальный раннер)
 Источник: `ResearchProductionCatalog.asset` (62 уникальных `cardKey`), каталоги трёх фракций и Neutral. Хосты — все Unit/Hero, прошедшие
@@ -183,8 +237,4 @@ NaN/Infinity — 0, исключений — 0. Отрицательные зн�
 | Mortar Rack | Eq | 21 | -3.166 …   4.130 | Heavy Tank | Ash Howitzer | 0 / 9 |
 | Assault Conversion Kit | Eq | 21 | -12.437 …   0.014 | BS Grave Engine | Ash Howitzer | 3 / 54 |
 
-Наблюдения: порядки величин совпадают с референсом Приложения В (например Plasma Gun 0.99…4.45 против 2.03…5.11; Dozer Blade −12.2…0.31 против −10.1…0.35;
-Mobility Harness 0.080…0.160 — точно). Выше референса оборонительные предметы на бронированных носителях (Ceramic Plating макс 1.00 против 0.47,
-Armor Plate 0.48 против 0.23): модель не знает дальности ответа цели, поэтому защита платит чуть больше. Hero-карты (Genome) оцениваются только на героях;
-Fortunate Genome даёт 0.150 за счёт командирского Fate (не за операторский — тот 0 без подтверждённых выпусков). AA Launcher/Mount положительны (0.01–0.19), потому что в
-составе колод есть воздушные цели; без них было бы 0.
+Наблюдения (после учёта дальности ответа цели): порядки величин совпадают с референсом Приложения В: Plasma Gun 1.01…4.41 (референс 2.03…5.11), Dozer Blade −12.1…0.31 (−10.1…0.35), Mobility Harness 0.080…0.160 — точно. Оборонительные предметы вернулись к референсу: Ceramic Plating макс 0.52 (0.47), Armor Plate 0.24 (0.23), Reactive Armor 0.32 (0.28), Ballistic Shield −0.02…0.17 (−0.03…0.10). Hero-карты (Genome) оцениваются только на героях. AA Launcher/Mount положительны, потому что в составе колод есть воздушные цели; без них было бы 0.

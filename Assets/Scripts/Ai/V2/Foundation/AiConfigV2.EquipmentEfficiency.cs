@@ -66,8 +66,8 @@ namespace Game.Ai.V2
         // CARD-SCORE units over a three-owner-turn reserve horizon (see Docs/equipment-utility-calibration-2026-10-08.md).
         public const float equipCombatCardScale = 1.10f;      // card score per unit of C (mean CombatBody / C of the anchors)
         // C = body scale x (sum over contacts of P(alive) x damage dealt / target HP). The scale makes the
-        // bounded contact model agree with the reference C of the Iron Concord anchors (ratios 3.48..3.83).
-        public const float equipCombatBodyScale = 3.66f;
+        // bounded contact model agree with the reference C of the Iron Concord anchors (ratios 3.46..3.81, the enemy answering only inside its own Range).
+        public const float equipCombatBodyScale = 3.63f;
         public const int equipContactCount = 3;               // owner-turn contacts of the reserve horizon
         // Share of unknown-geometry exchanges at Chebyshev distance 1/2/3/4 (reference, not measured).
         public const float equipDistanceShare1 = 0.24f, equipDistanceShare2 = 0.32f,

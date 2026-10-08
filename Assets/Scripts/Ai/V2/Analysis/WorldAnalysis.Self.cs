@@ -522,7 +522,7 @@ namespace Game.Ai.V2
             WorthIt.DefenderProfile current = WorthIt.FromLiveUnit(unit);
             var full = new WorthIt.DefenderProfile(current.Defense, current.HasCeramicArmor,
                 current.TypeTags, current.Attack, current.MaxHitPoints, current.Initiative,
-                current.Abilities, current.MaxHitPoints);
+                current.Abilities, current.MaxHitPoints, range: current.Range);
             bool initialized = isOwn && unit.RepairResourceCost != null;
             if (isOwn && unit.HitPointsCurrent < unit.HitPointsMax && !initialized)
                 AiDebugLog.WriteDeduped($"repair-cost:{unit.RuntimeId}",

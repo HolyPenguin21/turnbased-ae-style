@@ -276,7 +276,7 @@ namespace Game.Combat
                 float meanDefense = defenseSum[i] / survivalCount[i];
                 expectedDefenders.Add(new WorthIt.DefenderProfile(meanDefense, o.HasCeramicArmor, o.TypeTags,
                     meanAttack, meanHp, o.Initiative, o.Abilities, o.MaxHitPoints, o.IsGroundCombatant,
-                    o.IsHero, o.FateMax, o.IsSummoned));
+                    o.IsHero, o.FateMax, o.IsSummoned, o.Range));
                 survivorIndices.Add(i);
                 survivingFates.Add(Mathf.RoundToInt(fateSum[i] / survivalCount[i]));
                 expectedDefense += meanDefense;

@@ -1019,7 +1019,7 @@ namespace Game.Ai
                     var defenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                         g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
                         g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
-                        g.card.grantedAbilities), g.count)).ToList();
+                        g.card.grantedAbilities, range: g.card.range), g.count)).ToList();
                     eventGuards[hex] = new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName,
                         HexEventGuardEstimate.GuardCommander(eventEntry), HexEventGuardEstimate.RewardTier(eventEntry));
                 }

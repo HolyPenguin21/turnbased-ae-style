@@ -60,6 +60,10 @@ namespace Game.Ai.V2
         public int HostCommanderInitiative, EnemyCommanderInitiative;
         public float ExpectedActivations = AiConfigV2.equipExpectedActivations;
         public int RouteLength;                   // 0: no known route (speed uses the proxy)
+        // A hero is valued as a COMMANDER (battle Fate) only when it stands at the head of a field army with
+        // fighters, or is not a Research/Production operator at all. An operator in a garrison is valued as an
+        // operator; both roles count only for a hero that really holds both.
+        public bool CommandsFieldArmy = true;
         public float OtherArmyActivationAp;       // activation AP of the army's OTHER members (army AP = sum of members)
         public int OtherRecceRadius, OtherSpotStrength, OtherAntiAirCarriers;  // the host's own army
         public float UsefulDarkFraction = AiConfigV2.equipUsefulDarkDefault;

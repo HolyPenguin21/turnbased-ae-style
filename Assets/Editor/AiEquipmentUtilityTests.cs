@@ -23,6 +23,9 @@ namespace Game.EditorTests
         private static WorthIt.DefenderProfile Enemy(int d, int a, int hp, int ini = 1,
             params UnitTypeTag[] tags) => new WorthIt.DefenderProfile(d, false, tags, a, hp, ini);
 
+        private static WorthIt.DefenderProfile EnemyR(int range, int d, int a, int hp, int ini = 1) =>
+            new WorthIt.DefenderProfile(d, false, null, a, hp, ini, range: range);
+
         private static EfficiencyContext Ctx(params WorthIt.DefenderProfile[] targets) =>
             new EfficiencyContext { Targets = targets, HostTags = new[] { UnitTypeTag.Infantry } };
 
@@ -246,6 +249,54 @@ namespace Game.EditorTests
                 Is.Zero, "flying range does not change a sortie's exchange");
             Assert.That(EquipmentEfficiency.AviationOffenseDelta(wasp, None, S(7, 4, 6, 2, move: 10, ini: 2), None, ctx),
                 Is.LessThan(0f), "a lost Attack point is a signed loss");
+        }
+
+        [Test]
+        public void EnemyAnswersOnlyInsideItsOwnRange()
+        {
+            var shortEnemy = EnemyR(1, 2, 4, 4);
+            var d2 = Ctx(shortEnemy); d2.KnownDistance = 2;
+            var d1 = Ctx(shortEnemy); d1.KnownDistance = 1;
+            // +Defense: at distance 2 a range-1 enemy cannot answer a range-2 host, so armour buys nothing...
+            Assert.That(U(Medium, S(3, 3, 4, 2), d2).Combat, Is.Zero);
+            // ...while at distance 1 it answers and the armour pays.
+            Assert.That(U(Medium, S(3, 3, 4, 2), d1).Combat, Is.GreaterThan(0f));
+            // An enemy of unknown Range keeps the old behaviour: it answers everywhere.
+            var unknown = Ctx(Enemy(2, 4, 4)); unknown.KnownDistance = 2;
+            Assert.That(U(Medium, S(3, 3, 4, 2), unknown).Combat, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void OutRangingTheEnemyIsWorthMoreThanTradingBlows()
+        {
+            var shortEnemy = EnemyR(1, 2, 4, 4);
+            var d2 = Ctx(shortEnemy); d2.KnownDistance = 2;
+            var unknownCtx = Ctx(Enemy(2, 4, 4)); unknownCtx.KnownDistance = 2;
+            // +1 Attack for a range-2 host: against a short-ranged enemy at distance 2 every hit is free.
+            float freeHits = U(Medium, S(4, 2, 4, 2), d2).Combat;
+            float traded = U(Medium, S(4, 2, 4, 2), unknownCtx).Combat;
+            Assert.That(freeHits, Is.GreaterThan(0f));
+            Assert.That(freeHits, Is.Not.EqualTo(traded).Within(1e-4f));
+        }
+
+        [Test]
+        public void HeroFateIsValuedByRole()
+        {
+            var operatorAb = new[] { UnitAbilities.Researcher };
+            float perPoint = AiConfigV2.equipHeroFateFactor * 4f * AiConfigV2.equipCardValuePerE;   // ArmyAttack 4
+            EfficiencyContext Hero(bool commandsField) => new EfficiencyContext
+                { IsHero = true, ArmyAttack = 4f, CommandsFieldArmy = commandsField };
+            // A garrison operator: operator value only, no battle-commander value.
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), Hero(false), operatorAb).Fate,
+                Is.EqualTo(AiConfigV2.equipOperatorFateValue).Within(1e-5f));
+            // An operator that really leads a field army with fighters holds both roles.
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), Hero(true), operatorAb).Fate,
+                Is.EqualTo(AiConfigV2.equipOperatorFateValue + perPoint).Within(1e-5f));
+            // An ordinary hero is a commander only.
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), Hero(false), None).Fate,
+                Is.EqualTo(perPoint).Within(1e-5f));
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), Hero(true), None).Fate,
+                Is.EqualTo(perPoint).Within(1e-5f));
         }
 
         [Test]

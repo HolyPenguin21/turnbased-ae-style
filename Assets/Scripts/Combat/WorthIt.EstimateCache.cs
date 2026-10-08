@@ -53,6 +53,7 @@ namespace Game.Combat
         {
             "HasCeramicArmor",   // CanDamage only; the simulation reads CeramicArmor from Abilities
             "IsGroundCombatant", // TacticalTargetsOf filter, applied before conversion
+            "Range",             // read only by equipment valuation (can the enemy answer at distance d)
         };
         // Parameter list guarded by the same test. Scratch is NOT an input: Reset clears it before
         // every battle and binds it to the supplied armies; it only owns reusable working storage.
