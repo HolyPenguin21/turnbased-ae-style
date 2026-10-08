@@ -231,6 +231,12 @@ namespace Game.Ai.V2
             GlobalForceGrowth = globalGrow;
             GlobalSynergy = globalSyn;
         }
+
+        // The same contribution with its local RoleFit removed (every other axis untouched).
+        public EffectContribution WithoutRoleFit() => new EffectContribution(
+            0f, ImmediateTempo, ThreatResponse, CapabilityGap, ForceGrowth, Synergy,
+            GlobalRoleFit, GlobalImmediateTempo, GlobalThreatResponse, GlobalCapabilityGap,
+            GlobalForceGrowth, GlobalSynergy);
     }
 
     // A set of IntendedRoles a force element covers. Replaces the ad-hoc Has* bools on ArmySnapshot
@@ -663,6 +669,8 @@ namespace Game.Ai.V2
         // The ONLY ability-name table for strategic scoring. One row per mechanic. BaseFit for
         // AntiAir/AntiArmor is threatResponseValueWeight so ThreatResponse-field parity with the old
         // ThreatResponseValue holds.
+        internal const string DevelopmentOperatorSkillKey = "DevelopmentOperatorSkill";
+
         private static readonly Dictionary<string, StrategicEffect[]> ByAbility =
             new Dictionary<string, StrategicEffect[]>
             {
@@ -697,15 +705,23 @@ namespace Game.Ai.V2
                         globalResource: GlobalResourceKind.ActionPoints,
                         globalYieldPerTurn: UnitAbilities.ApBonusActionPointsPerSource),
                 },
+                // Researcher / Assembler — the ONE fixed value of the Research/Production operator
+                // ability, for a Unit OR a Hero, in the Development role every Development use
+                // (Phase A demand, Phase B surplus) scores under. The game tag Support is not its
+                // source. Unique + shared key: a hero carrying both abilities is paid once for the
+                // same deployment. The evaluator keeps it only while a compatible preparation or
+                // facility path exists (StrategicCardEvaluator.HasDevelopmentRolePath).
                 [UnitAbilities.Researcher] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
+                    new StrategicEffect(IntendedRole.Development, AiConfigV2.developmentOperatorSkillValue,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: DevelopmentOperatorSkillKey),
                 },
                 [UnitAbilities.Assembler] = new[]
                 {
-                    new StrategicEffect(IntendedRole.Support, AiConfigV2.heroSupportFitValue,
-                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: true),
+                    new StrategicEffect(IntendedRole.Development, AiConfigV2.developmentOperatorSkillValue,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: DevelopmentOperatorSkillKey),
                 },
                 // §3.5 EXTENSIBILITY ACCEPTANCE — CriticalDamage ("successful attack deals x2") was
                 // NOT represented in strategic scoring before. Wiring it end-to-end took exactly
@@ -1134,7 +1150,7 @@ namespace Game.Ai.V2
                 .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
             if (targets.Count == 0 && referenceTargets != null) targets.AddRange(referenceTargets.Take(16));
             var effects = Resolve(abilities?.Distinct(), 0).Where(e => !e.PrimaryExchange
-                && !(e.Context == StrategicEffectContext.Flat && e.Role == IntendedRole.Support)
+                && !(e.Context == StrategicEffectContext.Flat && e.StackingKey == DevelopmentOperatorSkillKey)
                 && (!hero || e.Scope == EffectScope.PlayerGlobal)
                 && (includeGlobal || e.Scope != EffectScope.PlayerGlobal)).ToList();
             foreach (var group in effects.Select((e, index) => (e, index)).GroupBy(x => x.e.StackingKey ?? "effect:" + x.index))

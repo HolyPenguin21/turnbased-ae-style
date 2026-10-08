@@ -19,7 +19,7 @@ namespace Game.Ai.V2
     //  The window is judged PER SPEND and only on the resources that spend consumes: an empty Tech
     //  stock never blocks an Energy+Materials Equipment. A spend with no H/E/M/T cost is not a
     //  resource sink at all and is always open — its AP competition with the main deck is settled
-    //  by Phase A running Development infrastructure after card arbitration.
+    //  in Phase A's one card arbitration (intrinsic card score x the Development Radar scale).
     //
     //  One writer: DemandLayer.Generate records the turn's fact once, from the turn-start snapshot
     //  (before this turn's own spending). Every spender reads the same answer: facility

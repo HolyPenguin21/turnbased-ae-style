@@ -113,6 +113,84 @@ namespace Game.Ai.V2
             public System.Func<BuildingPlayResult> Execute;
         }
 
+        // What Phase A's arbiter reads before choosing between this build lane and the materialization
+        // portfolio: the intrinsic card score of the exact action TryFulfill would run NOW and
+        // whether every admission gate (shared AP pool, spendable resources, live affordability)
+        // passes. Pure: nothing is reserved, spent or mutated here.
+        internal readonly struct InfraProposal
+        {
+            public readonly bool Admissible;
+            public readonly float Score;
+            public readonly string Reason;
+            public InfraProposal(bool admissible, float score, string reason)
+            { Admissible = admissible; Score = score; Reason = reason; }
+        }
+
+        internal static InfraProposal Propose(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            PhaseAApBudget apBudget, MaterializationReservation reservation = null,
+            IReadOnlyList<MissionIntent> activeIntents = null, ActorCommitments commitments = null)
+        {
+            if (demand == null || ctx == null || root == null || player == null)
+                return new InfraProposal(false, 0f, "missing args");
+            InfraCandidate cand = BuildCandidate(snap, player, root, hand, ctx, demand, apBudget,
+                reservation, activeIntents, commitments);
+            if (cand == null)
+                return new InfraProposal(false, 0f,
+                    $"{demand.Capability}: no legal authoritative build available now");
+            string refusal = AdmissionRefusal(player, root, ctx, demand, cand, apBudget);
+            return refusal != null ? new InfraProposal(false, cand.DecisionScore, refusal)
+                : new InfraProposal(true, cand.DecisionScore, cand.Explain);
+        }
+
+        private static InfraCandidate BuildCandidate(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            PhaseAApBudget apBudget, MaterializationReservation reservation,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments) =>
+            demand.Capability == CapabilityKind.EconomicInfrastructure
+                ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
+                : demand.Capability == CapabilityKind.EconomicExpansionBase
+                    ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
+                        reservation, activeIntents, commitments)
+                : demand.Capability == CapabilityKind.DevelopmentInfrastructure
+                    ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
+                    : demand.Capability == CapabilityKind.DevelopmentOperator
+                        ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
+                            demand, reservation)
+                        : demand.Capability == CapabilityKind.GlobalResourceFacility
+                            ? BuildGlobalResourceFacilityCandidate(snap, player, root, hand, ctx, demand)
+                            : null;
+
+        // The budget admission BEFORE any gameplay mutation (spec §1): null = admitted.
+        private static string AdmissionRefusal(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, AxisDemand demand, InfraCandidate cand, PhaseAApBudget apBudget)
+        {
+            SpendAuthority authority = SpendAuthorityFor(demand);
+            // Radar already affected demand value/priority; this admission reads the ONE
+            // unreserved AP pool.
+            if (apBudget != null)
+            {
+                float axisRoom = apBudget.UnreservedBalance();
+                if (cand.ApCost > axisRoom + AiConfigV2.allocatorSliceEpsilon)
+                    return $"shared AP pool {axisRoom:0.##} < {DesireAxes.Abbrev(demand.RequestingAxis)} demand cost {cand.ApCost:0.##}";
+            }
+            // Respect the same strategic + legacy persistent-resource reservations as every
+            // materialization path. Raw gameplay affordability is still rechecked below.
+            // SpendAuthorityFor: an Economy build here (or a global source put into play) completes
+            // NOW and outranks other builds' deferred holds; DEV infrastructure has no Economy
+            // authority and keeps respecting them like any other card spend.
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost, authority))
+                return $"{demand.Capability}: reserved resources cannot cover {cand.Explain}";
+            // Live gameplay affordability (the executor re-checks; this keeps the demand open
+            // cleanly rather than letting a doomed transaction run).
+            float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx, authority);
+            if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
+                || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
+                || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
+                return $"{demand.Capability}: live AP/resources cannot cover {cand.Explain}";
+            return null;
+        }
+
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             PhaseAApBudget apBudget, MaterializationReservation reservation = null,
@@ -121,52 +199,15 @@ namespace Game.Ai.V2
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");
 
-            InfraCandidate cand =
-                demand.Capability == CapabilityKind.EconomicInfrastructure
-                    ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
-                    : demand.Capability == CapabilityKind.EconomicExpansionBase
-                        ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
-                            reservation, activeIntents, commitments)
-                    : demand.Capability == CapabilityKind.DevelopmentInfrastructure
-                        ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
-                        : demand.Capability == CapabilityKind.DevelopmentOperator
-                            ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
-                                demand, reservation)
-                            : demand.Capability == CapabilityKind.GlobalResourceFacility
-                                ? BuildGlobalResourceFacilityCandidate(snap, player, root, hand, ctx, demand)
-                                : null;
+            InfraCandidate cand = BuildCandidate(snap, player, root, hand, ctx, demand, apBudget,
+                reservation, activeIntents, commitments);
             if (cand == null)
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
             SpendAuthority authority = SpendAuthorityFor(demand);
             string economyOwner = authority.Owner;
-
-            // --- budget admission BEFORE any gameplay mutation (spec §1). Radar already affected
-            //     demand value/priority; this admission reads the ONE unreserved AP pool. ---
-            if (apBudget != null)
-            {
-                float axisRoom = apBudget.UnreservedBalance();
-                if (cand.ApCost > axisRoom + AiConfigV2.allocatorSliceEpsilon)
-                    return InfraFulfillResult.No(
-                        $"shared AP pool {axisRoom:0.##} < {DesireAxes.Abbrev(demand.RequestingAxis)} demand cost {cand.ApCost:0.##}");
-            }
-            // Respect the same strategic + legacy persistent-resource reservations as every
-            // materialization path. Raw gameplay affordability is still rechecked below.
-            // SpendAuthorityFor: an Economy build here (or a global source put into play) completes
-            // NOW and outranks other builds' deferred holds; DEV infrastructure has no Economy
-            // authority and keeps respecting them like any other card spend.
-            bool resourcesFit = StrategicSpendability.FitsSpendableResources(
-                player, root, ctx, cand.ResCost, authority);
-            if (!resourcesFit)
-                return InfraFulfillResult.No($"{demand.Capability}: reserved resources cannot cover {cand.Explain}");
-
-            // --- live gameplay affordability (the executor re-checks; this keeps the demand open
-            //     cleanly rather than letting a doomed transaction run) ---
-            float spendableAp = StrategicSpendability.SpendableAp(
-                player, root, ctx, authority);
-            if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
-                || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
-                || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
-                return InfraFulfillResult.No($"{demand.Capability}: live AP/resources cannot cover {cand.Explain}");
+            string refusal = AdmissionRefusal(player, root, ctx, demand, cand, apBudget);
+            if (refusal != null)
+                return InfraFulfillResult.No(refusal);
 
             // A promised operator from the catalog is not yet a card in hand. Mint it via
             // the existing gameplay Challenge as ONE atomic stage. Phase A owns retry/AP
@@ -813,11 +854,13 @@ namespace Game.Ai.V2
                         rejected.Add($"{at}:spendable_resources");
                         continue;
                     }
-                    StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
-                        NonCombatRole.Facility, card, snap, inv, hand, bestEquipmentUpgrade: 0f,
-                        actualApCost: stageAp, actualResourceCost: stageCost,
-                        spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
-                        player: player);
+                    float score = DevelopmentPreparationScorer.Facility(card, stageAp, stageCost, snap, inv,
+                        hand, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                    if (score <= AiConfigV2.allocatorSliceEpsilon)
+                    {
+                        rejected.Add($"{at}:not_worth_playing({score:0.00})");
+                        continue;
+                    }
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
                     BuildingData buildingToUpgrade = upgradeBase;
@@ -826,7 +869,7 @@ namespace Game.Ai.V2
                     {
                         ApCost = stageAp,
                         ResCost = stageCost,
-                        DecisionScore = use.NetScore,
+                        DecisionScore = score,
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
                         Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})"
@@ -998,14 +1041,11 @@ namespace Game.Ai.V2
                             player, root, ctx, card.EffectivePlayResourceCost))
                         continue;
 
-                    MaterializationPlan valuationPlan = MaterializationPlanFactory.MakeExistingPlan(
-                        MaterializationChainKind.Direct, demand, card, ordinal, null, -1, placement,
-                        abilities);
-                    StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreForDemand(
-                        valuationPlan, demand, valuationPlan.ExpectedTraits, inv,
-                        card.Definition.moveMax, hasCompetingHeroDemand: false, snap,
-                        spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
-                        player: player);
+                    float score = DevelopmentPreparationScorer.HandOperator(card, ordinal, fac.Hex, fac.Mode,
+                        garrison, snap, inv,
+                        t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                    if (score <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
 
                     HexCoord at = fac.Hex;
                     CardData selectedCard = card;
@@ -1014,7 +1054,7 @@ namespace Game.Ai.V2
                     {
                         ApCost = selectedCard.EffectivePlayApCost,
                         ResCost = selectedCard.EffectivePlayResourceCost,
-                        DecisionScore = use.NetScore,
+                        DecisionScore = score,
                         HandOrdinal = ordinal,
                         TargetHex = at,
                         Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
@@ -1067,12 +1107,19 @@ namespace Game.Ai.V2
                     && g.CardDef == proposed.CardDef);
             if (live == null || live.SuccessChance <= 0f)
                 return null;
+            // The same card score as the hand operator, for the card this Challenge would mint:
+            // benefit contingent on success, the Challenge paid in full.
+            float generatedScore = DevelopmentPreparationScorer.GeneratedOperator(live,
+                demand.TargetHex.Value, demand.DevelopmentOperatorMode.Value, destinationGarrison,
+                snap, inv, t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+            if (generatedScore <= AiConfigV2.allocatorSliceEpsilon)
+                return null;
             return new InfraCandidate
             {
                 Generation = live,
                 ApCost = ResearchProductionSystem.AttemptApCost(live.CardDef),
                 ResCost = live.GenerationResourceCost,
-                DecisionScore = demand.Value, TargetHex = demand.TargetHex.Value,
+                DecisionScore = generatedScore, TargetHex = demand.TargetHex.Value,
                 Explain = $"generate operator {live.CardDef.displayName} at "
                     + $"({live.FacilityHex.Q},{live.FacilityHex.R}) for "
                     + $"({demand.TargetHex.Value.Q},{demand.TargetHex.Value.R})",

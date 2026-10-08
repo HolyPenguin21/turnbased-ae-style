@@ -288,8 +288,10 @@ namespace Game.Ai.V2
             // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
             //     demands are fulfilled by BuildingPlayExecutor through the authoritative gameplay
             //     API, NOT the Unit/Hero materialization chain below. The requesting axis labels
-            //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
-            //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
+            //     value/telemetry; AP comes from the shared pool. Economy builds are handled here
+            //     once, then blocked so the generic loop does not emit a spurious "no feasible chain"
+            //     for a capability it can't match. A positive-Radar Development step is not run here:
+            //     it competes in the loop below on its card score (arbitratedInfrastructure).
             // Establish the existing single Economy hold BEFORE infrastructure can spend it.
             var economyBuildObligations = anyProtectedActiveEconomyBuild
                 ? new List<AxisDemand>()
@@ -336,29 +338,30 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber);
             }
 
-            // Residual infrastructure runs only after card arbitration, on the AP and resources the
-            // cards left: zero-weight uncommitted infrastructure, and EVERY Development facility /
-            // operator request — Laboratory/Factory are a late sink that must never take AP the
-            // main deck's demand chains could use. Active committed Economy builds keep their
-            // original early admission and resource/card protection.
+            // Zero-weight uncommitted infrastructure is a residual: it runs only after card
+            // arbitration, on the AP and resources the cards left. Active committed Economy builds
+            // keep their original early admission and resource/card protection.
             var zeroRadarInfrastructure = states
                 .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
                     && !IsCommittedEconomyBuild(activeIntents, state.Demand)
                     && RadarValueScale.For(radar, state.Demand.RequestingAxis) <= 0f)
                 .ToList();
-            var developmentInfrastructure = states
-                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
-                    && state.Demand.RequestingAxis == DesireAxis.Development
-                    && !zeroRadarInfrastructure.Contains(state))
-                .ToList();
-            var residualInfrastructure = zeroRadarInfrastructure
-                .Concat(developmentInfrastructure).ToList();
+            var residualInfrastructure = zeroRadarInfrastructure;
             foreach (DemandState deferred in residualInfrastructure)
                 deferred.Blocked = true;
             if (zeroRadarInfrastructure.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
-            if (developmentInfrastructure.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {developmentInfrastructure.Count} Development request(s) until after card arbitration");
+            // A Development facility / operator step is an ordinary card action with a positive
+            // Radar weight: it is NOT a late sink. Each pass of the loop below ranks its intrinsic
+            // card score x its own Radar scale against the best materialization chain, so the
+            // better of the two acts first and the other is re-judged on the refreshed world.
+            var arbitratedInfrastructure = states
+                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
+                    && state.Demand.RequestingAxis == DesireAxis.Development
+                    && !zeroRadarInfrastructure.Contains(state))
+                .ToHashSet();
+            if (arbitratedInfrastructure.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.A infra — {arbitratedInfrastructure.Count} Development request(s) compete in card arbitration");
 
             // A global-source demand (AxisDemand.EconomySourceCard) is about the card being in
             // play, not about who played it: a carrier Hero that another demand already fielded
@@ -479,7 +482,41 @@ namespace Game.Ai.V2
 
             FulfillInfrastructure(states.Where(state =>
                 InfrastructureFulfillment.Handles(state.Demand.Capability)
-                && !residualInfrastructure.Contains(state)));
+                && !residualInfrastructure.Contains(state)
+                && !arbitratedInfrastructure.Contains(state)));
+
+            // The best admissible infrastructure step right now, as (state, intrinsic card score).
+            // A step that cannot act in this pass (no legal build, AP pool, reserved or live
+            // resources) is closed exactly as the single-shot build lane closed it; nothing is
+            // reserved or mutated by looking.
+            (DemandState state, float score)? BestArbitratedInfrastructure()
+            {
+                (DemandState state, float score)? best = null;
+                float bestWeighted = float.NegativeInfinity;
+                foreach (DemandState candidate in arbitratedInfrastructure
+                    .Where(s => !s.Blocked && s.Remaining > 0f)
+                    .OrderBy(s => s.Ordinal).ToList())
+                {
+                    InfrastructureFulfillment.InfraProposal proposal = InfrastructureFulfillment.Propose(
+                        snap, player, root, hand, ctx, candidate.Demand, apBudget,
+                        result.Reservation, activeIntents, commitments);
+                    if (!proposal.Admissible || proposal.Score <= AiConfigV2.allocatorSliceEpsilon)
+                    {
+                        candidate.Blocked = true;
+                        AiDebugLog.WriteDedupedWithId(candidate.Demand.TraceId,
+                            $"[AI][V2]   strat.A infra — {candidate.Demand}: not built ({proposal.Reason})");
+                        continue;
+                    }
+                    float weighted = MaterializationPortfolioSolver.InfrastructureArbitrationScore(
+                        proposal.Score, candidate.Demand.RequestingAxis, radar);
+                    if (weighted > bestWeighted)
+                    {
+                        bestWeighted = weighted;
+                        best = (candidate, proposal.Score);
+                    }
+                }
+                return best;
+            }
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
@@ -488,9 +525,19 @@ namespace Game.Ai.V2
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {
                 CloseSourceDemandsAlreadyInPlay();
-                List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f).ToList();
+                List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f
+                    && !arbitratedInfrastructure.Contains(s)).ToList();
+                // Infrastructure competing in the same arbitration is judged on the live world each
+                // pass; with no materialization demand left it simply has no card rival.
                 if (active.Count == 0)
                 {
+                    var onlyInfra = BestArbitratedInfrastructure();
+                    if (onlyInfra.HasValue)
+                    {
+                        chainAttempts++;
+                        FulfillInfrastructure(new[] { onlyInfra.Value.state });
+                        continue;
+                    }
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
                         apBudget, commitments, result.Reservation, witnessedUsefulApDemand))
                         continue;
@@ -621,6 +668,27 @@ namespace Game.Ai.V2
                         : new Dictionary<DemandState, DemandCandidate>();
 
                 var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
+
+                // ONE comparison of weighted scores: the best jointly feasible materialization
+                // chain (DecisionScore x Radar scale) against the best admissible Development
+                // infrastructure step (intrinsic card score x the same Radar scale). No lane has a
+                // hard priority; the winner acts and the next pass re-judges both on the new world.
+                var infraBid = BestArbitratedInfrastructure();
+                if (infraBid.HasValue)
+                {
+                    float infraWeighted = MaterializationPortfolioSolver.InfrastructureArbitrationScore(
+                        infraBid.Value.score, infraBid.Value.state.Demand.RequestingAxis, radar);
+                    float bestCard = feasible.Count == 0 ? float.NegativeInfinity
+                        : feasible.Max(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar));
+                    if (infraWeighted > bestCard)
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.A arbitration — {infraBid.Value.state.Demand} "
+                            + $"wins {F(infraWeighted)} over best chain {(feasible.Count == 0 ? "none" : F(bestCard))}");
+                        chainAttempts++;
+                        FulfillInfrastructure(new[] { infraBid.Value.state });
+                        continue;
+                    }
+                }
 
                 if (feasible.Count == 0)
                 {
@@ -844,7 +912,7 @@ namespace Game.Ai.V2
                     + $", {plan.StableKey})");
             }
 
-            // Recheck real AP and protected resources before residual infrastructure.
+            // Recheck real AP and protected resources before zero-weight residual infrastructure.
             FulfillInfrastructure(residualInfrastructure);
 
             result.Reservation.UnresolvedDemands.Clear();

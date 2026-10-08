@@ -20,8 +20,10 @@ namespace Game.Ai.V2
     // uses structural evidence in hand/map/deck, never predicted future output value.
     // A staffed facility selects actual outputs through the canonical card/recipient scorers.
     // Today's resource-window and spendable-bank gates apply only to today's step.
-    // WorldTaskScore is intrinsic task merit; PreparationRank additionally prices this step for
-    // ordering prerequisites only. The card executor still charges the actual play once.
+    // A card step (facility, hand/generated operator) carries PreparationCardScore: the ONE
+    // intrinsic score of StrategicCardEvaluator (DevelopmentPreparationScorer), already net of the
+    // current price, which Phase A's arbiter ranks; admission needs it positive. Only the walk of an
+    // existing hero is a world task on WorldTaskScore. PreparationRank only orders peer steps.
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
     public enum DevelopmentPreparationKind { Facility, Operator }
 
@@ -37,7 +39,14 @@ namespace Game.Ai.V2
         public GenerationStep Generation;
         // PREPARE only: the resources this step consumes; null for a walking hero.
         public ResourceCost StageResourceCost;
+        // Ordering key between peer prerequisite steps, never added to a final score. A card step
+        // (facility, hand operator, generated operator) ranks by PreparationCardScore; a walk of an
+        // existing hero ranks by its TaskScore, read in card units through ActionPrice.
         internal float PreparationRank;
+        // PREPARE card step only: StrategicCardEvaluator's intrinsic NetScore of exactly this
+        // action (benefit - current price) from DevelopmentPreparationScorer, the same number the
+        // Phase A arbiter ranks. null for an existing hero's delivery (a world task).
+        public float? PreparationCardScore;
         // PREPARE facility stage only: the Base tier bought with the facility because every
         // unlocked slot of FacilityHex is taken (already inside StageResourceCost).
         public BaseUpgradeTier PreparationCapacityTier;
@@ -263,13 +272,13 @@ namespace Game.Ai.V2
             // A built facility of this mode elsewhere is reused, never duplicated.
             if (!facilityReady && snap.Development.Facilities.Any(f => f.Mode == mode))
                 return "reason=mode_facility_exists_elsewhere";
-            CardData facility = facilityReady ? null : hand.Hand
+            List<CardData> facilityCards = facilityReady ? new List<CardData>() : hand.Hand
                 .Where(c => c?.Definition?.cardType == CardType.Facility
                     && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
                 .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
-                .FirstOrDefault();
-            bool futureFacility = facilityReady || facility != null || snap.Self.Deck?.Any(d =>
+                .ToList();
+            bool futureFacility = facilityReady || facilityCards.Count > 0 || snap.Self.Deck?.Any(d =>
                 d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
                     ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
             if (!futureFacility)
@@ -285,6 +294,30 @@ namespace Game.Ai.V2
                 if (capacityTier == null)
                     return "reason=no_facility_slot";
             }
+            System.Func<ResourceType, float> spendable = t => StrategicSpendability.SpendableAmount(player, root, ctx, t);
+            // Peer hand facilities are ranked by the one card score of today's step (placement +
+            // the capacity upgrade needed now), not by the cheapest bill: a weak cheap card must
+            // not hide a better one from the arbiter. Desire facts keep the structural order.
+            CardData facility = facilityCards.FirstOrDefault();
+            float facilityScore = 0f;
+            if (!describeOnly && facilityCards.Count > 1)
+            {
+                facility = null;
+                facilityScore = float.NegativeInfinity;
+                foreach (CardData candidate in facilityCards)
+                {
+                    float s = DevelopmentPreparationScorer.Facility(candidate,
+                        candidate.EffectivePlayApCost + (capacityTier?.apCost ?? 0),
+                        StrategicCardEvaluator.AddResourceCosts(candidate.EffectivePlayResourceCost, capacityTier?.cost),
+                        snap, inv, hand, spendable, player);
+                    if (s > facilityScore) { facility = candidate; facilityScore = s; }
+                }
+            }
+            else if (!describeOnly && facility != null)
+                facilityScore = DevelopmentPreparationScorer.Facility(facility,
+                    facility.EffectivePlayApCost + (capacityTier?.apCost ?? 0),
+                    StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost, capacityTier?.cost),
+                    snap, inv, hand, spendable, player);
             ArmyData garrison = ArmyRegistry.AllAt(hex)
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
             bool operatorInTransit = activeIntents?.Any(i => i?.Status == IntentStatus.Active
@@ -296,18 +329,35 @@ namespace Game.Ai.V2
                     && a.Members.Contains(i.Development.Hero))) == true;
             DevelopmentLifecycleState lifecycle = MissionIntentRegistry.Peek(player)?.Development;
             CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
-            CardData operatorCard = actor != null || operatorInTransit ? null : hand.Hand
-                .Where(c => c?.Definition?.cardType == CardType.Hero
-                    && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)
-                        .Contains(ResearchProductionSystem.RoleAbility(mode))
-                    && (lifecycle?.CanUseGeneratedOperatorAt(c, hex, mode, snap.TurnNumber) ?? true)
-                    && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
-                        CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _,
-                        resourceForecast: true))
-                .OrderBy(c => ReferenceEquals(c, pendingOperator) ? 0 : 1)
-                .ThenBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
-                    + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
-                .FirstOrDefault();
+            CardData operatorCard = null;
+            float operatorScore = 0f;
+            if (actor == null && !operatorInTransit && garrison != null)
+            {
+                // Peer hand operators compete as the hero cards they are: the one card score of
+                // deploying each into this garrison, then the cheaper bill. A pending generated
+                // card keeps its claim first.
+                var eligible = hand.Hand
+                    .Select((c, ordinal) => (card: c, ordinal))
+                    .Where(x => x.card?.Definition?.cardType == CardType.Hero
+                        && MaterializationChainMatching.EffectiveAbilities(x.card.Definition, x.card.Equipment, x.card.Mutator)
+                            .Contains(ResearchProductionSystem.RoleAbility(mode))
+                        && (lifecycle?.CanUseGeneratedOperatorAt(x.card, hex, mode, snap.TurnNumber) ?? true)
+                        && CardPlayExecutor.Preflight(player, root, hand, ctx,
+                            CardPlayPlan.Into(x.card, hex, DeploymentKind.Garrison, garrison), out _,
+                            resourceForecast: true))
+                    .Select(x => (x.card, score: describeOnly ? 0f
+                        : DevelopmentPreparationScorer.HandOperator(x.card, x.ordinal, hex, mode, garrison,
+                            snap, inv, spendable, player)))
+                    .ToList();
+                var best = eligible
+                    .OrderBy(x => ReferenceEquals(x.card, pendingOperator) ? 0 : 1)
+                    .ThenByDescending(x => x.score)
+                    .ThenBy(x => ActionPrice.ToCardScore(x.card.EffectivePlayApCost)
+                        + StrategicCardEvaluator.StrategicResourceCostValue(x.card.EffectivePlayResourceCost, snap))
+                    .Select(x => ((CardData card, float score)?)x)
+                    .FirstOrDefault();
+                if (best.HasValue) { operatorCard = best.Value.card; operatorScore = best.Value.score; }
+            }
             UnitData remote = null;
             ArmyData remoteArmy = null;
             int remoteTravel = int.MaxValue;
@@ -370,6 +420,7 @@ namespace Game.Ai.V2
                 }
             }
             GenerationStep generatedOperator = null;
+            float generatedScore = 0f;
             // Do not start a factory on the fantasy of a future Hero. A real, staffed,
             // currently eligible OTHER facility must already offer the exact qualified
             // Hero card. Source eligibility, authored identity and resources belong to
@@ -380,7 +431,9 @@ namespace Game.Ai.V2
                 if (generatedOperatorSources == null)
                     generatedOperatorSources = GenerationSource.Enumerate(player, root, ctx, hand,
                         claimedUseKeys: null, triedCardKeys: null, resourceForecast: true);
-                generatedOperator = generatedOperatorSources
+                // Peer Challenges rank by the card score of the operator each would mint (benefit
+                // x success chance - the Challenge paid in full), then the cheaper bill.
+                var witnesses = generatedOperatorSources
                     .Where(g => IsGeneratedOperatorCandidate(g, mode)
                         && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
                         && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
@@ -388,11 +441,20 @@ namespace Game.Ai.V2
                             && source.Owner == player && !source.IsPrison
                             && source.Members.Contains(g.Hero)
                             && !occupied.IsArmyClaimed(source.Id)))
-                    .OrderBy(g => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(g.CardDef))
+                    .Select(g => (step: g, score: describeOnly ? 0f
+                        : DevelopmentPreparationScorer.GeneratedOperator(g, hex, mode, garrison, snap, inv,
+                            spendable, player)))
+                    .OrderByDescending(x => x.score)
+                    .ThenBy(x => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(x.step.CardDef))
                         + StrategicCardEvaluator.StrategicResourceCostValue(
-                            g.GenerationResourceCost, snap))
-                    .ThenBy(g => g.CardKey, System.StringComparer.Ordinal)
-                    .FirstOrDefault();
+                            x.step.GenerationResourceCost, snap))
+                    .ThenBy(x => x.step.CardKey, System.StringComparer.Ordinal)
+                    .ToList();
+                if (witnesses.Count > 0)
+                {
+                    generatedOperator = witnesses[0].step;
+                    generatedScore = witnesses[0].score;
+                }
             }
             // Facility stage only: the qualified Hero may still be in the remaining deck. Building
             // the facility now and drawing its operator on a later turn is a normal staged plan;
@@ -418,21 +480,27 @@ namespace Game.Ai.V2
             // and actor opportunity cost are evaluated; completed components are sunk facts.
             int candidates = 0, admitted = 0;
             string rejection = "no_current_component";
+            // cardScore - the intrinsic card score of this exact step (null: a walk of an existing
+            // hero, a world task priced in TaskScore).
             void Add(DevelopmentPreparationKind kind, ResourceCost cost, CardData card,
-                GenerationStep generated, UnitData hero, ArmyData sourceArmy, int travel)
+                GenerationStep generated, UnitData hero, ArmyData sourceArmy, int travel,
+                float? cardScore = null)
             {
                 candidates++;
                 var delivery = hero != null ? OperatorDeliveryFacts(sourceArmy, hero, travel) : default;
                 float displaced = hero != null && sourceArmy != null
                     ? MissionIntent.DisplacementValueOf(activeIntents, sourceArmy.Id) : 0f;
-                // Compatibility baseline: the existing infrastructure value, no completion bonus
-                // or predicted output EV. Card AP/resources remain in the canonical card scorer.
+                // A card step is valued ONLY by the shared card scorer (cardScore). The TaskScore
+                // below is the world task of walking an existing hero: its compatibility baseline
+                // is the infrastructure value, with no completion bonus or predicted output EV.
                 var score = new TaskScore(strategicRelevance: AiConfigV2.nonCombatFacilityValue
                         * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f),
                     cardPrice: TaskScoreEvaluator.Price(delivery.ActionAp + delivery.ActivationNow),
                     delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                         delivery.RecurringActivationAp, delivery.EtaTurns)),
                     moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(displaced));
+                if (cardScore.HasValue)
+                    score = default;
                 var op = new DevelopmentOpportunity
                 {
                     Mode = mode, FacilityHex = hex, PreparationKind = kind,
@@ -442,20 +510,34 @@ namespace Game.Ai.V2
                     PreparationOperatorCard = kind == DevelopmentPreparationKind.Operator ? card : null,
                     PreparationOperatorGeneration = generated, PreparationExistingHero = hero,
                     PreparationSourceArmyId = sourceArmy?.Id, PreparationTravelCost = travel,
+                    PreparationCardScore = cardScore,
                     Explain = $"{mode} @({hex.Q},{hex.R}) prepare {kind} "
                         + $"facility={(facilityReady ? 1 : 0)} operator={(actor != null ? 1 : 0)} "
-                        + $"stageCost={cost} task={score.Value:0.##}",
+                        + $"stageCost={cost} "
+                        + (cardScore.HasValue ? $"card={cardScore.Value:0.##}" : $"task={score.Value:0.##}"),
                 };
                 int stageAp = card?.EffectivePlayApCost ?? (generated == null ? 0
                     : ResearchProductionSystem.AttemptApCost(generated.CardDef));
                 if (kind == DevelopmentPreparationKind.Facility) stageAp += capacityTier?.apCost ?? 0;
-                // As in the shared card scorer: task merit and the canonical card price
-                // are separate terms. This rank is never written back into WorldTaskScore.
-                op.PreparationRank = score.Value - ActionPrice.ToCardScore(ActionPrice.Ap(stageAp))
-                    - StrategicCardEvaluator.StrategicResourceCostValue(cost, snap,
-                        t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
-                if (!describeOnly && op.PreparationRank <= AiConfigV2.allocatorSliceEpsilon)
-                { rejection = "current_stage_opportunity_cost"; return; }
+                if (cardScore.HasValue)
+                {
+                    // Already net of the one canonical price: the number the Phase A arbiter ranks.
+                    op.PreparationRank = cardScore.Value;
+                    if (!describeOnly && cardScore.Value <= AiConfigV2.allocatorSliceEpsilon)
+                    { rejection = "current_stage_not_worth_playing"; return; }
+                }
+                else
+                {
+                    // As in the shared card scorer: task merit and the canonical card price are
+                    // separate terms. The delivery's net is read in card units (ActionPrice's own
+                    // conversion) only so peer steps can be ordered; it is never written back.
+                    float taskNet = score.Value - ActionPrice.ToCardScore(ActionPrice.Ap(stageAp))
+                        - StrategicCardEvaluator.StrategicResourceCostValue(cost, snap,
+                            spendable, player);
+                    op.PreparationRank = ActionPrice.ToCardScore(ActionPrice.FromTaskScore(taskNet));
+                    if (!describeOnly && taskNet <= AiConfigV2.allocatorSliceEpsilon)
+                    { rejection = "current_stage_opportunity_cost"; return; }
+                }
                 forecasts.Add(op);
                 if (!describeOnly)
                 {
@@ -475,17 +557,17 @@ namespace Game.Ai.V2
             if (!facilityReady && facility != null)
                 Add(DevelopmentPreparationKind.Facility,
                     StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost, capacityTier?.cost),
-                    facility, null, null, null, 0);
+                    facility, null, null, null, 0, facilityScore);
             if (actor == null && !operatorInTransit)
             {
                 if (operatorCard != null)
                     Add(DevelopmentPreparationKind.Operator, operatorCard.EffectivePlayResourceCost,
-                        operatorCard, null, null, null, 0);
+                        operatorCard, null, null, null, 0, operatorScore);
                 else if (remote != null)
                     Add(DevelopmentPreparationKind.Operator, null, null, null, remote, remoteArmy, remoteTravel);
                 else if (generatedOperator != null)
                     Add(DevelopmentPreparationKind.Operator, generatedOperator.GenerationResourceCost,
-                        null, generatedOperator, null, null, 0);
+                        null, generatedOperator, null, null, 0, generatedScore);
             }
             return $"components={candidates} admitted={admitted}"
                 + (admitted == 0 ? $" reason={rejection}" : "");

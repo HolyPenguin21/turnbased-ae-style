@@ -7,6 +7,7 @@ using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
+using Game.Map;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -341,6 +342,244 @@ namespace Game.EditorTests
             Assert.That(primary.Equipment, Is.Null);
         }
 
+        // ---- Unified Research/Production preparation scoring (operator = a hero card; the site =
+        // infrastructure; the fixed Researcher/Assembler value comes from the ability only).
+        private static readonly HexCoord PrepSite = new HexCoord(3, -1);
+
+        private static WorldSnapshot PrepSnapshot(bool researchPath, bool productionPath,
+            float economicSecurity = 0.5f) => new WorldSnapshot
+        {
+            TurnNumber = 3,
+            Self = new SelfSnapshot
+            {
+                Stockpile = new ResourceBundle { Human = 10f, Energy = 10f, Materials = 10f, Tech = 10f },
+                PerTurnIncome = new ResourceBundle { Human = 1f, Energy = 1f, Materials = 1f, Tech = 1f },
+                Hand = Array.Empty<CardData>(), Deck = Array.Empty<CardDefinition>(),
+                Armies = Array.Empty<ArmySnapshot>(),
+            },
+            Development = new DevelopmentReadiness
+            {
+                ResearchPreparationViable = researchPath, ProductionPreparationViable = productionPath,
+            },
+            Economy = new EconomyStanding
+            {
+                PerType = Array.Empty<EconomyResourceStanding>(), EconomicSecurity = economicSecurity,
+            },
+        };
+
+        private static CardDefinition PrepHero(string[] abilities, bool supportTag = false) => new CardDefinition
+        {
+            cardType = CardType.Hero, authoredKey = "prep-hero", commandRating = 0,
+            grantedAbilities = abilities.ToList(),
+            unitTypeTags = supportTag ? new System.Collections.Generic.List<UnitTypeTag> { UnitTypeTag.Support }
+                : new System.Collections.Generic.List<UnitTypeTag>(),
+        };
+
+        private static (StrategicCardUseCandidate demand, StrategicCardUseCandidate surplus) ScoreOperatorBothPhases(
+            CardDefinition def, ResearchProductionMode mode, WorldSnapshot snap)
+        {
+            var card = new CardData(def);
+            var garrison = new ArmyData { IsGarrison = true, Hex = PrepSite };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Development, Capability = CapabilityKind.DevelopmentOperator,
+                DesiredAmount = 1, TargetHex = PrepSite, DevelopmentOperatorMode = mode,
+            };
+            var abilities = MaterializationChainMatching.EffectiveAbilities(def, null, null);
+            MaterializationPlan plan = MaterializationPlanFactory.MakeExistingPlan(
+                MaterializationChainKind.Direct, demand, card, 0, null, -1,
+                new PlacementOption(PrepSite, DeploymentKind.Garrison, garrison), abilities);
+            var inv = new CapabilityInventory { AvailableHeroes = 3 };   // no scarce-hero floor
+            return (
+                StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits, inv, def.moveMax,
+                    false, snap),
+                StrategicCardEvaluator.ScoreSurplus(plan, inv, false, true, null, abilities, snap));
+        }
+
+        [TestCase(ResearchProductionMode.Production, "Assembler")]
+        [TestCase(ResearchProductionMode.Research, "Researcher")]
+        public void OperatorFixedSkillIsTheSameAbilityValueInBothPhasesAndOnlyFromTheAbility(
+            ResearchProductionMode mode, string ability)
+        {
+            WorldSnapshot snap = PrepSnapshot(true, true);
+            var plain = ScoreOperatorBothPhases(PrepHero(new string[0]), mode, snap);
+            var skilled = ScoreOperatorBothPhases(PrepHero(new[] { ability }), mode, snap);
+            Assert.That(skilled.demand.IntendedRole, Is.EqualTo(IntendedRole.Development));
+            Assert.That(skilled.demand.Breakdown.RoleFit - plain.demand.Breakdown.RoleFit,
+                Is.EqualTo(AiConfigV2.developmentOperatorSkillValue).Within(0.0001f),
+                "Phase A pays the Assembler/Researcher ability exactly once, at the one coefficient");
+            Assert.That(skilled.surplus.IntendedRole, Is.EqualTo(IntendedRole.Development));
+            Assert.That(skilled.surplus.Breakdown.RoleFit - plain.surplus.Breakdown.RoleFit,
+                Is.EqualTo(AiConfigV2.developmentOperatorSkillValue).Within(0.0001f),
+                "Phase B pays the SAME value for the same deployment: no 1.1 infrastructure overwrite");
+            Assert.That(skilled.demand.Breakdown.ResourceEfficiency,
+                Is.EqualTo(plain.demand.Breakdown.ResourceEfficiency).Within(0.0001f),
+                "The ability changes the benefit, never the current price");
+            Assert.That(skilled.surplus.Breakdown.ResourceEfficiency,
+                Is.EqualTo(skilled.demand.Breakdown.ResourceEfficiency).Within(0.0001f),
+                "Both phases charge the same current price for the same card and place");
+        }
+
+        [Test]
+        public void SupportTagAloneEarnsNoProductionValueButTheSkillWithoutTheTagDoes()
+        {
+            WorldSnapshot snap = PrepSnapshot(true, true);
+            var plain = ScoreOperatorBothPhases(PrepHero(new string[0]), ResearchProductionMode.Production, snap);
+            var tagged = ScoreOperatorBothPhases(PrepHero(new string[0], supportTag: true),
+                ResearchProductionMode.Production, snap);
+            Assert.That(tagged.surplus.Breakdown.RoleFit, Is.EqualTo(plain.surplus.Breakdown.RoleFit).Within(0.0001f));
+            Assert.That(tagged.surplus.IntendedRole, Is.Not.EqualTo(IntendedRole.Development));
+            var skilledUntagged = ScoreOperatorBothPhases(PrepHero(new[] { UnitAbilities.Assembler }, supportTag: false),
+                ResearchProductionMode.Production, snap);
+            Assert.That(skilledUntagged.surplus.Breakdown.RoleFit,
+                Is.GreaterThan(plain.surplus.Breakdown.RoleFit + 0.29f));
+        }
+
+        [Test]
+        public void HeroCarryingBothOperatorSkillsIsPaidForTheDeploymentOnce()
+        {
+            WorldSnapshot snap = PrepSnapshot(true, true);
+            var one = ScoreOperatorBothPhases(PrepHero(new[] { UnitAbilities.Assembler }),
+                ResearchProductionMode.Production, snap);
+            var both = ScoreOperatorBothPhases(PrepHero(new[] { UnitAbilities.Assembler, UnitAbilities.Researcher }),
+                ResearchProductionMode.Production, snap);
+            Assert.That(both.demand.Breakdown.RoleFit, Is.EqualTo(one.demand.Breakdown.RoleFit).Within(0.0001f));
+            Assert.That(both.surplus.Breakdown.RoleFit, Is.EqualTo(one.surplus.Breakdown.RoleFit).Within(0.0001f));
+        }
+
+        [Test]
+        public void NoCompatiblePreparationPathInventsNoDevelopmentUse()
+        {
+            var noPath = ScoreOperatorBothPhases(PrepHero(new[] { UnitAbilities.Assembler }),
+                ResearchProductionMode.Production, PrepSnapshot(researchPath: true, productionPath: false));
+            var plain = ScoreOperatorBothPhases(PrepHero(new string[0]),
+                ResearchProductionMode.Production, PrepSnapshot(researchPath: true, productionPath: false));
+            Assert.That(noPath.surplus.Breakdown.RoleFit, Is.EqualTo(plain.surplus.Breakdown.RoleFit).Within(0.0001f),
+                "A Production operator with only a Research path has no Development use in Phase B");
+            Assert.That(noPath.surplus.IntendedRole, Is.Not.EqualTo(IntendedRole.Development));
+        }
+
+        [Test]
+        public void ResearchProductionSiteIgnoresEconomicInsecurityWhileOtherFacilitiesKeepIt()
+        {
+            var factory = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "f",
+                grantedAbilities = new System.Collections.Generic.List<string> { UnitAbilities.Production },
+            });
+            var other = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "other",
+                grantedAbilities = new System.Collections.Generic.List<string>(),
+            });
+            float Site(CardData c, float security) => StrategicCardEvaluator.ScoreNonCombat(
+                NonCombatRole.Facility, c, PrepSnapshot(true, true, security), null, null, 0f).NetScore;
+            Assert.That(Site(factory, 0.05f), Is.EqualTo(Site(factory, 0.95f)).Within(0.0001f),
+                "A Laboratory/Factory earns no income: economic security must not change its intrinsic value");
+            Assert.That(Site(factory, 0.5f), Is.EqualTo(AiConfigV2.nonCombatFacilityValue).Within(0.0001f),
+                "Its intrinsic value is the single infrastructure value, minus a free play's price");
+            Assert.That(Site(other, 0.05f), Is.GreaterThan(Site(other, 0.95f)),
+                "A non-Development facility keeps its existing insecurity-scaled value");
+        }
+
+        // ---- Phase A arbitration: a Development step competes with chains on ONE weighted score.
+        private static float ChainBid(float decision, DesireAxis axis, Radar radar) =>
+            MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(
+                new DemandState { Demand = new AxisDemand { RequestingAxis = axis } },
+                new DemandCandidate(new MaterializationPlan(), 0f, decision, 0f, decision)), radar);
+
+        private static Radar Weights(float development, float aggression)
+        {
+            var radar = new Radar();
+            foreach (DesireAxis a in DesireAxes.All) radar.Weight[a] = 0f;
+            radar.Weight[DesireAxis.Development] = development;
+            radar.Weight[DesireAxis.Aggression] = aggression;
+            return radar;
+        }
+
+        [Test]
+        public void DevelopmentStepBeatsAWeakerUnitAndYieldsToAStrongerOneWithoutAHardPriority()
+        {
+            Radar even = Radar.Even();
+            float step = MaterializationPortfolioSolver.InfrastructureArbitrationScore(0.5f, DesireAxis.Development, even);
+            Assert.That(step, Is.GreaterThan(ChainBid(0.3f, DesireAxis.Aggression, even)),
+                "A feasible, better Development step is not parked behind a worse unit");
+            Assert.That(step, Is.LessThan(ChainBid(0.8f, DesireAxis.Aggression, even)),
+                "A better unit is not displaced by the Development step either: no reverse hard priority");
+        }
+
+        [Test]
+        public void OnlyTheRadarWeightFlipsTheWinnerAndIsAppliedExactlyOnce()
+        {
+            Radar unitHeavy = Weights(development: 0.1f, aggression: 0.4f);
+            Radar developmentHeavy = Weights(development: 0.4f, aggression: 0.1f);
+            float intrinsicStep = 0.5f, intrinsicUnit = 0.5f;
+            Assert.That(MaterializationPortfolioSolver.InfrastructureArbitrationScore(intrinsicStep, DesireAxis.Development, unitHeavy),
+                Is.LessThan(ChainBid(intrinsicUnit, DesireAxis.Aggression, unitHeavy)));
+            Assert.That(MaterializationPortfolioSolver.InfrastructureArbitrationScore(intrinsicStep, DesireAxis.Development, developmentHeavy),
+                Is.GreaterThan(ChainBid(intrinsicUnit, DesireAxis.Aggression, developmentHeavy)));
+            Assert.That(
+                MaterializationPortfolioSolver.InfrastructureArbitrationScore(intrinsicStep, DesireAxis.Development, developmentHeavy)
+                / MaterializationPortfolioSolver.InfrastructureArbitrationScore(intrinsicStep, DesireAxis.Development, unitHeavy),
+                Is.EqualTo(0.4f / 0.1f).Within(0.001f),
+                "The radar enters the final comparison once, linearly: no second multiplication or added desire");
+        }
+
+        [Test]
+        public void ZeroDevelopmentRadarAndNonPositiveStepCannotWinByTheRadar()
+        {
+            Radar zero = Weights(development: 0f, aggression: 0.5f);
+            Assert.That(MaterializationPortfolioSolver.InfrastructureArbitrationScore(5f, DesireAxis.Development, zero), Is.Zero);
+            Assert.That(MaterializationPortfolioSolver.InfrastructureArbitrationScore(-0.2f, DesireAxis.Development, Weights(1f, 0f)),
+                Is.LessThan(0f), "A radar weight never turns a negative action into a positive one");
+        }
+
+        [Test]
+        public void GeneratedOperatorStepKeepsTheChallengeUndiscountedAndExcludesTheLaterDeployment()
+        {
+            WorldSnapshot snap = PrepSnapshot(true, true);
+            CardDefinition def = PrepHero(new[] { UnitAbilities.Assembler });
+            def.apCost = 2; def.activationApCost = 1; def.resourceCost = new ResourceCost(human: 1);
+            var garrison = new ArmyData { IsGarrison = true, Hex = PrepSite };
+            var inv = new CapabilityInventory { AvailableHeroes = 3 };
+            float Score(float chance) => DevelopmentPreparationScorer.GeneratedOperator(
+                new GenerationStep { CardDef = def, SuccessChance = chance, CardKey = "k", UseKey = "u" },
+                PrepSite, ResearchProductionMode.Production, garrison, snap, inv, null, null);
+
+            float expectedChallenge = ActionPrice.ToCardScore(2f)
+                + StrategicCardEvaluator.StrategicResourceCostValue(def.resourceCost, snap)
+                + AiConfigV2.stratChainGenerationStepPenalty;
+            Assert.That(Score(0f), Is.EqualTo(-expectedChallenge).Within(0.0001f),
+                "A failed Challenge keeps the full payment and none of the benefit; the minted card's later activation AP is not part of this step");
+            Assert.That(Score(1f), Is.GreaterThan(Score(0.5f)));
+            Assert.That(Score(0.5f), Is.GreaterThan(Score(0f)),
+                "The operator's benefit is contingent on success; the payment is not discounted");
+        }
+
+        [Test]
+        public void PreparationStepsAreAdmittedOnlyWhileTheirCardScoreIsPositive()
+        {
+            WorldSnapshot snap = PrepSnapshot(true, true);
+            var garrison = new ArmyData { IsGarrison = true, Hex = PrepSite };
+            var inv = new CapabilityInventory { AvailableHeroes = 3 };
+            CardDefinition cheap = PrepHero(new[] { UnitAbilities.Assembler });
+            CardDefinition dear = PrepHero(new[] { UnitAbilities.Assembler });
+            dear.apCost = 30;
+            Assert.That(DevelopmentPreparationScorer.HandOperator(new CardData(cheap), 0, PrepSite,
+                ResearchProductionMode.Production, garrison, snap, inv, null, null), Is.GreaterThan(0f));
+            Assert.That(DevelopmentPreparationScorer.HandOperator(new CardData(dear), 0, PrepSite,
+                ResearchProductionMode.Production, garrison, snap, inv, null, null), Is.LessThan(0f));
+            var factory = new CardData(new CardDefinition
+            {
+                cardType = CardType.Facility, authoredKey = "f",
+                grantedAbilities = new System.Collections.Generic.List<string> { UnitAbilities.Production },
+            });
+            Assert.That(DevelopmentPreparationScorer.Facility(factory, 2, new ResourceCost(materials: 1),
+                snap, inv, null, null, null), Is.GreaterThan(0f));
+            Assert.That(DevelopmentPreparationScorer.Facility(factory, 30, new ResourceCost(materials: 1),
+                snap, inv, null, null, null), Is.LessThan(0f),
+                "Capacity upgrade + placement are priced as today's step, so an unpayable-in-value stage is not played");
+        }
     }
 }
 #endif

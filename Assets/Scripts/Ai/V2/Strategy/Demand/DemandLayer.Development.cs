@@ -6,7 +6,8 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // DevelopmentDemands — Laboratory / Factory capability shortages.
-    // Research/Production is a late resource sink that strengthens units already on the map. WHEN
+    // Research/Production strengthens units already on the map; its facility and operator steps
+    // are ordinary card actions that compete in Phase A's single arbitration. WHEN
     // it may spend is DevelopmentInvestmentGate; WHAT is worth doing is
     // DevelopmentOpportunityEvaluator.Enumerate (the one admission). This file only turns that
     // admitted list into AxisDemands — it never re-admits with a predicate of its own.
@@ -28,7 +29,9 @@ namespace Game.Ai.V2
             List<DevelopmentOpportunity> opportunities = DevelopmentOpportunityEvaluator.Enumerate(
                 s, player, root, hand, ctx, activeIntents);
 
-            // One prerequisite per pass; the next settled pass sees the completed stage.
+            // One prerequisite per pass (the best peer step by PreparationRank: the card score of
+            // a card step, a walked hero's net read in card units); the next settled pass sees the
+            // completed stage. Phase A then ranks this step against every other card action.
             DevelopmentOpportunity preparation = opportunities.Where(o => o.IsPreparation)
                 .OrderByDescending(o => o.PreparationRank).ThenBy(o => (int)o.Mode)
                 .ThenBy(o => o.FacilityHex.Q).ThenBy(o => o.FacilityHex.R)
@@ -44,9 +47,13 @@ namespace Game.Ai.V2
                     TargetHex = preparation.FacilityHex,
                     DevelopmentOperatorMode = preparation.Mode,
                     DevOpportunity = preparation,
-                    // The prerequisite is a world task: it competes on its TaskScore.
-                    WorldTaskScore = preparation.WorldTaskScore,
-                    Value = preparation.WorldTaskScore.Value,
+                    // A card step (facility, hand/generated operator) is a card action: its Value
+                    // is its intrinsic card score and it carries NO world TaskScore, so no second
+                    // urgency or fixed infrastructure value can be added to it. Only the walk of an
+                    // existing hero is a world task, competing on its TaskScore.
+                    WorldTaskScore = preparation.PreparationCardScore.HasValue
+                        ? default : preparation.WorldTaskScore,
+                    Value = preparation.PreparationCardScore ?? preparation.WorldTaskScore.Value,
                     Explain = "prepare " + preparation.Explain,
                 };
             }

@@ -396,6 +396,20 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void CardStepsAreRankedByTheirCardScoreAndCarryNoWorldTaskScore()
+        {
+            _hand.RemoveCard(_facility); _snapshot.Self.Deck = new[] { _facility.Definition };
+            DevelopmentOpportunity step = Admitted().Single();
+            Assert.That(step.PreparationKind, Is.EqualTo(DevelopmentPreparationKind.Operator));
+            Assert.That(step.PreparationCardScore, Is.Not.Null.And.GreaterThan(0f),
+                "A hand operator is admitted on its positive card score");
+            Assert.That(step.PreparationRank, Is.EqualTo(step.PreparationCardScore.Value).Within(0.0001f),
+                "The rank is the card score itself, not another bonus on top of it");
+            Assert.That(step.WorldTaskScore.Value, Is.Zero,
+                "No fixed infrastructure TaskScore rides along with a card step");
+        }
+
+        [Test]
         public void FacilityCanComeFirstWithQualifiedOperatorOnlyInDeck()
         {
             _hand.RemoveCard(_operator); _snapshot.Self.Deck = new[] { _operator.Definition };

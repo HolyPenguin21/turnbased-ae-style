@@ -368,6 +368,7 @@ namespace Game.Ai.V2
             // ResourceGain — the SAME rule as ScoreSurplusRole: ResourceGainRoleFit is the one value
             // of a permanent PlayerGlobal source, so ec.RoleFit/ec.GlobalRoleFit would price that
             // fact twice; and a PlayerGlobal effect has no target hex to fit.
+            ec = WithoutUnavailableDevelopmentSkill(role, ec, snap, pabil, demand);
             bd.RoleFit = role == IntendedRole.ResourceGain
                 ? roleFitCore
                 : fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
@@ -485,21 +486,8 @@ namespace Game.Ai.V2
             // adding both double-counts it under this one role's Total. Other roles scoring the SAME
             // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
             // before — this exclusion is scoped to the ResourceGain role only, not the ability.
+            ec = WithoutUnavailableDevelopmentSkill(role, ec, snap, projected, null);
             bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
-            // A compatible preparation path gives an operator value before a facility is built.
-            // This is snapshot evidence for the same role, not a hypothetical future generator.
-            if (role == IntendedRole.Support)
-            {
-                float supportEco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
-                bool supportHasFacility = HasDevelopmentRolePath(snap, projected);
-                bd.RoleFit = supportHasFacility
-                    ? AiConfigV2.nonCombatFacilityValue + (1f - supportEco) * AiConfigV2.nonCombatEconomyRunwayBonus
-                    : 0f;
-                bd.EffectDetail = JoinDetail(bd.EffectDetail,
-                    $"support preparationPath viable={supportHasFacility} "
-                    + $"eco={supportEco.ToString("0.00", CultureInfo.InvariantCulture)} "
-                    + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}");
-            }
             // ImmediateTempo/NextTurnPotential stay at their default (0) in Phase B: every Phase-B
             // candidate is already immediately playable, so a "now vs later" axis adds nothing
             // RoleFit/ThreatCounterValue do not already carry. They are live in Phase A's
@@ -521,7 +509,8 @@ namespace Game.Ai.V2
             // HeroLeadershipFit.combatPart inside RoleFitCore, so ForceGrowthValue would
             // double-count it.
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
-                || role == IntendedRole.ResourceGain || role == IntendedRole.Support || hero
+                || role == IntendedRole.ResourceGain || role == IntendedRole.Support
+                || role == IntendedRole.Development || hero
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             // EquipmentUpgrade already prices this exact delta in RoleFitCore.
@@ -602,6 +591,10 @@ namespace Game.Ai.V2
                 case IntendedRole.MobileCombat:
                 case IntendedRole.AntiArmor:
                 case IntendedRole.AntiAir:
+                case IntendedRole.Development:
+                    // Development: the operator card's own utility at its deployment place (a
+                    // hero's Command capacity of the chosen garrison, a unit's body) is the same
+                    // calculation every role uses; its ability value is the registry row.
                     return SurplusCombatReadinessUtility(plan)
                         + HeroLeadershipFit(plan, hero, ectx, projectedLegalFillers, out heroCmdDetail);
                 case IntendedRole.Hold:
@@ -684,9 +677,12 @@ namespace Game.Ai.V2
                     role = FacilityRole(def);
                     // A PlayerGlobal-source Facility takes ResourceGainRoleFit below — the one
                     // value a Hero/Unit carrier of the same effect gets.
+                    // Research/Production sites earn no income, so economic insecurity adds
+                    // nothing to them: their intrinsic value is the infrastructure value alone.
                     bd.RoleFit = role == IntendedRole.ResourceGain ? 0f
                         : AiConfigV2.nonCombatFacilityValue
-                          + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
+                          + (role == IntendedRole.Development ? 0f
+                              : (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus);
                     break;
                 default:
                     role = IntendedRole.EquipmentUpgrade;
@@ -1762,7 +1758,7 @@ namespace Game.Ai.V2
             // UNIVERSAL uses — a scarce hero playing any of them is not "misuse". Support is the
             // one genuinely NARROW specialisation, so it is the only role that pays the scarce-hero
             // floor.
-            if (hero && role == IntendedRole.Support
+            if (hero && (role == IntendedRole.Support || role == IntendedRole.Development)
                 && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
                 cost += AiConfigV2.stratChainHeroScarcityPenalty;
             if (role != IntendedRole.Scout
@@ -1786,6 +1782,20 @@ namespace Game.Ai.V2
 
         private static bool GrantAddsStealth(EquipmentGrant grant) =>
             grant?.addAbilities != null && grant.addAbilities.Any(a => AbilityParams.TryGetStealthLevel(a, out _));
+
+        // The registry's fixed Researcher/Assembler value is a Development-role fact that only
+        // counts while a compatible preparation/facility path exists: no path -> no Development use
+        // is invented, while every other effect of the same card stays. A Development operator
+        // demand is itself the proof of its (site, mode) path.
+        private static EffectContribution WithoutUnavailableDevelopmentSkill(IntendedRole role,
+            EffectContribution ec, WorldSnapshot snap, IReadOnlyList<string> abilities, AxisDemand demand)
+        {
+            if (role != IntendedRole.Development
+                || demand?.Capability == CapabilityKind.DevelopmentOperator
+                || HasDevelopmentRolePath(snap, abilities))
+                return ec;
+            return ec.WithoutRoleFit();
+        }
 
         internal static bool HasDevelopmentRolePath(WorldSnapshot snap, IReadOnlyList<string> abilities) =>
             abilities != null && ((abilities.Contains(UnitAbilities.Researcher)

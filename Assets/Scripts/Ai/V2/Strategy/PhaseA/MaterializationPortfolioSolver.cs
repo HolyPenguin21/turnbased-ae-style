@@ -40,6 +40,13 @@ namespace Game.Ai.V2
         internal static float ArbitrationScore(PhaseACandidate c, Radar radar = null) =>
             WeightedDecisionScore(c.State, c.Cand, radar);
 
+        // The Development facility / operator step is a card action like any other: its INTRINSIC
+        // card score (no urgency, no second world-task value) scaled by its own axis weight, the
+        // SAME coefficient and the same single application as a chain's ArbitrationScore.
+        internal static float InfrastructureArbitrationScore(float intrinsicCardScore, DesireAxis axis,
+            Radar radar = null) =>
+            intrinsicCardScore * RadarValueScale.For(radar ?? Radar.Even(), axis);
+
         private static float WeightedDecisionScore(DemandState state, DemandCandidate candidate, Radar radar) =>
             candidate.DecisionScore * RadarValueScale.For(radar ?? Radar.Even(), state.Demand.RequestingAxis);
 

@@ -243,14 +243,14 @@
         // clamped to cap. A weak hero scores low; there is NO flat hero bonus.
         public const float heroLeadershipFitNorm = 8f;
         public const float heroLeadershipFitCap = 1.20f;
-        public const float heroSupportFitValue = 0.30f;   // a Researcher/Assembler hero evaluated for the Support role
+        public const float developmentOperatorSkillValue = 0.30f; // the one fixed value of a Researcher/Assembler ability (registry row, Development role); the game tag Support is not its source
         // HoldValue (spec §3) parts, used by EquipmentRoleDelta's lost-role penalty.
         public const float holdUniqueRoleValue = 0.40f;    // a rare stealth body / a support hero while a combat leader is already fielded
         public const float holdScarcityValue = 0.25f;      // reused by EquipmentRoleDelta's lost-Scout-role penalty (see that function)
         public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
         // review-r4 P1 ARCH — StrategicEffectRegistry tunables (ability -> strategic value). AntiAir
         // / AntiArmor reuse capabilityGapValue, Support reuses surplusRecurringApIncomeBonus /
-        // heroSupportFitValue (parity with the old inline SupportRoleFit); only these two are new.
+        // developmentOperatorSkillValue (parity with the old inline SupportRoleFit); only these two are new.
         public const float effectMobileBaseFit = 0.20f;    // a fast non-recce body's MobileCombat role-fit floor
         public const float effectCriticalDamageFit = 0.35f;// §3.5 acceptance row — a CriticalDamage (x2-on-hit) body's CombatBody role-fit bonus
         public const float effectSplashFit = 0.30f;        // Splash — CombatBody AoE fit (scaled by TargetDensity x magP)
