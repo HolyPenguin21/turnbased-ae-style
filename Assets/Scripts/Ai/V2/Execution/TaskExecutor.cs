@@ -392,7 +392,7 @@ namespace Game.Ai.V2
 
             if (pm.Kind == MissionKind.Economy)
             {
-                yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
+                yield return RunEconomyStep(player, root, ctx, pm, result, apBefore, snapshot);
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
                 CompleteResult(result, root);
@@ -632,6 +632,18 @@ namespace Game.Ai.V2
                 materialized = Resolve(player, pm.MoverArmyId);
                 if (materialized == null)
                     return false;
+                // Before ANY composition mutation: the pinned plan is stale when the walk would now
+                // take a served operator it cannot leave home (nothing is mutated or spent).
+                if (!materialized.Hex.Equals(pm.EconomyTarget.TargetHex)
+                    && DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(player, materialized,
+                        AiHandRegistry.Peek(player), ctx, null))
+                {
+                    AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: "
+                        + "builder carries a served operator that cannot stay home — nothing mutated");
+                    result.ActualActorArmyId = materialized.Id;
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    return false;
+                }
             }
 
             float eps = AiConfigV2.allocatorSliceEpsilon;
@@ -717,7 +729,8 @@ namespace Game.Ai.V2
         }
 
         private static IEnumerator RunEconomyStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot = null)
         {
             ArmyData army = Resolve(player, pm.MoverArmyId);
             if (army == null || army.Owner != player)
@@ -764,19 +777,40 @@ namespace Game.Ai.V2
                 }
                 yield break;
             }
-            // Stale-plan check at the departure itself (no replacement, no new mission): a build
-            // walk may not take the last operator off a served facility. Facility duty only here —
-            // the preparation site is Provisioning's snapshot fact and was checked at binding.
-            if ((target.Kind == EconomyTaskKind.BuildExtraction || target.Kind == EconomyTaskKind.FoundBase)
-                && AiArmyRoles.DepartureStripsOperator(player, army))
+            // The departure itself, read live (the same owners as admission and binding): a build
+            // walk leaves the operator of a served facility / selected preparation site at home when
+            // that is legal and free (LocalOperatorRelease), otherwise it does not start — the
+            // existing stale-plan refusal, no replacement and no new mission; the caller releases the
+            // funding exactly once and Continuity retires the builder through ResolveActive.
+            if (target.Kind == EconomyTaskKind.BuildExtraction || target.Kind == EconomyTaskKind.FoundBase)
             {
-                AiDebugLog.WriteDeduped($"economy-operator-duty:{army.Id}",
-                    $"[AI][V2][Economy] builder #{army.Id} stays at ({army.Hex.Q},{army.Hex.R}): "
-                    + "departure would take the last operator of a served facility");
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                result.FinalHex = army.Hex;
-                yield break;
+                AiHandData hand = AiHandRegistry.Peek(player);
+                System.Func<ResearchProductionMode, HexCoord?> site =
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx);
+                if (AiArmyRoles.DepartureStripsOperator(player, army, site))
+                {
+                    ActorCommitments commitments = snapshot == null ? null : ActorCommitments.FromIntents(
+                        MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
+                    if (!LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out string why))
+                    {
+                        AiDebugLog.WriteDeduped($"economy-operator-duty:{army.Id}",
+                            $"[AI][V2][Economy] builder #{army.Id} stays at ({army.Hex.Q},{army.Hex.R}): "
+                            + $"departure would take a served operator ({why})");
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        result.FinalHex = army.Hex;
+                        yield break;
+                    }
+                    if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army, commitments, site) > 0)
+                        WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+                    if (AiArmyRoles.DepartureStripsOperator(player, army, site))
+                    {
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        result.FinalHex = army.Hex;
+                        yield break;
+                    }
+                }
             }
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
                 target.TargetHex, $"economy — {target.Kind}");

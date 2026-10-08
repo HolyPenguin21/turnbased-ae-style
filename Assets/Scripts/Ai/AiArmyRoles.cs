@@ -284,6 +284,27 @@ namespace Game.Ai
             return false;
         }
 
+        // `unit` is an operator of an own facility on `hex`, or (preparationSite) of the preparation
+        // site the player has selected there for a mode it qualifies for.
+        public static bool IsDutyOperator(PlayerSetupData player, HexCoord hex, UnitData unit,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
+        {
+            if (IsFacilityOperator(player, hex, unit))
+                return true;
+            if (preparationSite == null || player == null || unit == null || !unit.IsHero)
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            if (building == null || building.Owner != player)
+                return false;
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+                if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
+                    && preparationSite(mode) is HexCoord site && site.Equals(hex)
+                    && unit.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                    return true;
+            return false;
+        }
+
         // The whole field army moving off its hex would leave a served duty without its operator.
         // A shape fact apart from IsHeroLed: whether this army MAY take a new remote assignment.
         public static bool DepartureStripsOperator(PlayerSetupData player, ArmyData army,

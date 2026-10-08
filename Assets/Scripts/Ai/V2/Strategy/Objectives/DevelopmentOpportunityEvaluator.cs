@@ -186,7 +186,8 @@ namespace Game.Ai.V2
         // yields the hand facility cards and, for a full Base, the capacity tier the step would buy.
         // The one owner of these clauses: AddPreparation and SelectedPreparationSite both read it.
         private static string StructuralPreparationBlock(ResearchProductionMode mode, HexCoord hex,
-            bool facilityReady, WorldSnapshot snap, PlayerSetupData player, AiHandData hand,
+            bool facilityReady, bool facilityOfModeExists, IReadOnlyList<CardDefinition> deck,
+            PlayerSetupData player, AiHandData hand,
             AiTurnContext ctx, out List<CardData> facilityCards, out BaseUpgradeTier capacityTier)
         {
             facilityCards = new List<CardData>();
@@ -197,16 +198,14 @@ namespace Game.Ai.V2
             if (ctx.ResearchProductionCatalog.ResolveFor(mode, player.Faction).Count == 0)
                 return "reason=no_mode_catalog";
             // A built facility of this mode elsewhere is reused, never duplicated.
-            if (!facilityReady && snap.Development.Facilities.Any(f => f.Mode == mode))
+            if (!facilityReady && facilityOfModeExists)
                 return "reason=mode_facility_exists_elsewhere";
             if (!facilityReady)
                 facilityCards = hand.Hand
                     .Where(c => c?.Definition?.cardType == CardType.Facility
                         && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
-                    .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
-                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                     .ToList();
-            bool futureFacility = facilityReady || facilityCards.Count > 0 || snap.Self.Deck?.Any(d =>
+            bool futureFacility = facilityReady || facilityCards.Count > 0 || deck?.Any(d =>
                 d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
                     ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
             if (!futureFacility)
@@ -233,18 +232,62 @@ namespace Game.Ai.V2
         // pass, so the choice never outlives its reason; AP/resource shortage never enters.
         internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode, WorldSnapshot snap,
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents) =>
+            SelectedPreparationSite(mode, player, hand, ctx, activeIntents, snap?.Self?.Deck,
+                snap?.Self?.BaseHexes);
+
+        // The same rule read from the LIVE world (hand, deck, registries, standing intents): the one
+        // answer for Provisioning and Execution re-checks, never a stale snapshot.
+        internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx)
         {
-            if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
+            if (player == null) return null;
+            return SelectedPreparationSite(mode, player, hand, ctx,
+                MissionIntentRegistry.Peek(player)?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                hand?.RemainingDeck,
+                BuildingRegistry.AllBuildings().Where(b => b != null && b.Owner == player && b.IsBase)
+                    .Select(b => b.Hex).ToList());
+        }
+
+        // Live duty test shared by every layer that moves an operator-bearing field army: the army
+        // takes the last qualified operator of a served facility / the selected preparation site away
+        // and the operator cannot legally stay home (LocalOperatorRelease.CanKeepOperatorsHome).
+        internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments) =>
+            OperatorDutyBlocksDeparture(player, army, commitments, LivePreparationSite(player, hand, ctx));
+
+        internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
+            ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> site) =>
+            AiArmyRoles.DepartureStripsOperator(player, army, site)
+            && !LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out _);
+
+        internal static System.Func<ResearchProductionMode, HexCoord?> LivePreparationSite(
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx) =>
+            mode => SelectedPreparationSite(mode, player, hand, ctx);
+
+        // The operators the departing `army` leaves in the local garrison (empty when none is needed).
+        internal static IReadOnlyList<UnitData> OperatorsStayingHome(PlayerSetupData player,
+            ArmyData army, AiHandData hand, AiTurnContext ctx) =>
+            player == null || army == null || army.IsGarrison ? System.Array.Empty<UnitData>()
+                : LocalOperatorRelease.OperatorsNeededHome(player, army, LivePreparationSite(player, hand, ctx));
+
+        private static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<CardDefinition> deck,
+            IEnumerable<HexCoord> baseHexes)
+        {
+            if (baseHexes == null || player == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return null;
+            bool facilityOfModeExists = BuildingRegistry.AllBuildings().Any(b => b != null
+                && b.Owner == player && b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
             bool Viable(HexCoord hex)
             {
                 BuildingData b = BuildingRegistry.FindAt(hex);
                 return b != null && b.Owner == player
                     && !b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    && StructuralPreparationBlock(mode, hex, false, snap, player, hand, ctx,
-                        out _, out _) == null;
+                    && StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
+                        hand, ctx, out _, out _) == null;
             }
             string role = ResearchProductionSystem.RoleAbility(mode);
             if (activeIntents != null)
@@ -261,7 +304,7 @@ namespace Game.Ai.V2
                         && Viable(i.Development.FacilityHex))
                         return i.Development.FacilityHex;
                 }
-            foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
+            foreach (HexCoord hex in baseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
                 if (ResearchProductionSystem.FindActor(player, hex, mode) != null && Viable(hex))
                     return hex;
             return null;
@@ -357,10 +400,15 @@ namespace Game.Ai.V2
             bool describeOnly = false)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Dev.AddPreparation");
-            string blocked = StructuralPreparationBlock(mode, hex, facilityReady, snap, player, hand, ctx,
+            string blocked = StructuralPreparationBlock(mode, hex, facilityReady,
+                snap.Development.Facilities.Any(f => f.Mode == mode), snap.Self.Deck, player, hand, ctx,
                 out List<CardData> facilityCards, out BaseUpgradeTier capacityTier);
             if (blocked != null)
                 return blocked;
+            facilityCards = facilityCards
+                .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
+                    + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                .ToList();
             // ONE preparation site per mode: a base that already holds a qualified operator (or has
             // one on the way) keeps being prepared; every other base yields to it, so a completed
             // delivery is never sold again as a fresh capability opening on a second base.

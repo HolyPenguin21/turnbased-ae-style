@@ -498,6 +498,19 @@ namespace Game.Ai.V2
                     + $"target={(targetValidBuild ? 1 : 0)}");
                 return;
             }
+            // A STRUCTURAL invalidation, unlike a short AP or a stale step: the builder stands on a hex
+            // whose served operator it would take away and cannot leave home. FoundBase and
+            // BuildExtraction share this branch; the outbound envelope is released, the intent retired
+            // (no cooldown: the project itself is not at fault) and Demand no longer offers this actor.
+            if (actor.OperatorDutyBlocksDeparture && !actor.Hex.Equals(ei.TargetHex))
+            {
+                MissionLeaseBook.ReleaseByOwner(player, snap.TurnNumber,
+                    EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                AiDebugLog.Write($"[AI][V2][Economy] retire {intent.IntentKey} actor=#{actor.ArmyId} "
+                    + "reason=operator_leaves_served_facility");
+                return;
+            }
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes = ei.Kind == EconomyTaskKind.FoundBase
                 ? snap.Economy.BaseOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)).BuilderRoutes
                 : snap.Economy.ExtractionOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)

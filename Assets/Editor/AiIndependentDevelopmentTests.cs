@@ -533,6 +533,22 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void SoleCommanderOperatorCannotStayHomeSoTheWholeDepartureIsBlocked()
+        {
+            var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production); _base.FacilitySlots[0] = facility;
+            var op = new UnitData { Owner = _player, IsHero = true, Name = "op" }; op.Abilities.Add(UnitAbilities.Assembler);
+            var field = new ArmyData { Owner = _player, Hex = Site };
+            field.Members.Add(op); ArmyRegistry.Register(field);
+            Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, null, null, out string why), Is.False);
+            Assert.That(why, Does.Contain("only legal commander"));
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, field, null, null), Is.True,
+                "no second legal commander: Economy must not take the only operator away");
+            field.Hex = new HexCoord(5, 5);
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, field, null, null), Is.False,
+                "away from the served hex nothing is blocked");
+        }
+
+        [Test]
         public void BoundIncomingOperatorPreventsDuplicatePreparationForSameSiteAndRole()
         {
             var hero = new UnitData { Owner = _player, IsHero = true }; hero.Abilities.Add(UnitAbilities.Assembler);
