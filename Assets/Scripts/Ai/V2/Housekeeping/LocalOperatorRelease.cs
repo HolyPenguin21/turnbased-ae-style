@@ -110,21 +110,42 @@ namespace Game.Ai.V2
         internal static bool CanKeepOperatorsHome(PlayerSetupData player, ArmyData army,
             ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> preparationSite,
             out string why)
+            => CanKeepOperatorsHome(player, army, commitments, preparationSite, out why, out _);
+
+        // The same dry run also supplies the actual departing roster to Economy. This preview
+        // never enters the registry, changes a live member, or consumes an army identity.
+        internal static bool CanKeepOperatorsHome(PlayerSetupData player, ArmyData army,
+            ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> preparationSite,
+            out string why, out ArmyData departure)
         {
             why = null;
+            departure = army;
             if (player == null || army == null || army.IsGarrison || army.IsPrison || army.Owner != player)
                 return true;
             List<UnitData> operators = DutyOperators(player, army, preparationSite);
             if (operators.Count == 0)
                 return true;
             ArmyData garrison = LocalGarrison(player, army);
+            departure = ArmyData.CreateVisualSnapshot();
+            departure.Owner = army.Owner;
+            departure.Hex = army.Hex;
+            departure.IsAirArmy = army.IsAirArmy;
+            departure.IsAirfield = army.IsAirfield;
+            departure.Members.AddRange(army.Members);
+            if (army.HasActivatedThisTurn) departure.MarkActivated();
             var joining = new List<UnitData>();
             foreach (UnitData hero in operators)
             {
-                why = KeepHomeObstacle(player, army, hero, garrison, commitments, joining,
-                    preparationSite, out _);
+                why = KeepHomeObstacle(player, departure, hero, garrison, commitments, joining,
+                    preparationSite, out UnitData newLead);
                 if (why != null)
                     return false;
+                if (newLead != null && !departure.TryReorderCommander(newLead, out why))
+                    return false;
+                if (!MayLeaveForLocalGarrison(player, departure, hero, garrison, out why, preparationSite)
+                    || !departure.CanLeaveWithoutOvercrowding(hero))
+                { why = why ?? "army would overcrowd"; return false; }
+                departure.Members.Remove(hero);
                 joining.Add(hero);
             }
             return true;

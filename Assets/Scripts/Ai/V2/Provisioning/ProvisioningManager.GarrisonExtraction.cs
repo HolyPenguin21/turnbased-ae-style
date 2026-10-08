@@ -79,10 +79,11 @@ namespace Game.Ai.V2
             PlayerSetupData player, ArmyData garrison, ActorCommitments commitments,
             ProvisioningSession session, PlayerRoot root, float ecoApEnvelopeRemaining,
             UnitData exactDevelopmentHero = null,
-            ResearchProductionMode? exactDevelopmentMode = null)
+            ResearchProductionMode? exactDevelopmentMode = null,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             UnitData sparable = exactDevelopmentHero == null
-                ? AiArmyRoles.BestSparableEconomyHero(player, garrison)
+                ? AiArmyRoles.BestSparableEconomyHero(player, garrison, preparationSite)
                 // Development detaches a second hero of a free field army (the same Shell -> Host
                 // -> Create ladder); the source is then not a garrison.
                 : !garrison.IsGarrison

@@ -90,7 +90,8 @@ namespace Game.Ai.V2
                 && DemandLayer.EconomyDonorStructurallyEligible(i));
             if (!MaterializeEconomyRoster(player, hero, builderChoice,
                     out ArmyData garrison, out List<UnitData> lighteningPlan,
-                    out List<UnitData> reinforcementPlan))
+                    out List<UnitData> reinforcementPlan, ctx,
+                    ActorCommitments.FromIntents(standingIntents, snapshot, null)))
                 return EconomyCompletionPlan.No(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{identityArmyId} preparation witness is stale"));
             // Operators the departure leaves in the local garrison (zero AP, same gate as Execution)
@@ -157,7 +158,8 @@ namespace Game.Ai.V2
         // invalidates the witness; it never triggers a second roster optimizer here.
         internal static bool MaterializeEconomyRoster(PlayerSetupData player, ArmyData builder,
             DemandLayer.EconomyBuilderChoice choice, out ArmyData garrison,
-            out List<UnitData> unload, out List<UnitData> reinforcement)
+            out List<UnitData> unload, out List<UnitData> reinforcement,
+            AiTurnContext ctx = null, ActorCommitments commitments = null)
         {
             garrison = null;
             unload = new List<UnitData>();
@@ -184,8 +186,21 @@ namespace Game.Ai.V2
                 && !AiArmyRoles.CanSpareGarrisonMembers(player, garrison, reinforcement)) return false;
             if ((unload.Count > 0 || reinforcement.Count > 0) && choice.Army.EconomyRosterProtected)
                 return false;
-            return (unload.Count == 0 || ArmyActions.CanTransferMembers(unload, builder, garrison, out _))
-                && (reinforcement.Count == 0 || ArmyActions.CanTransferMembers(reinforcement, garrison, builder, out _));
+            ArmyData departing = builder;
+            ArmyData receiving = garrison;
+            if (!choice.Route.IsOnTarget && LocalOperatorRelease.OperatorsNeededHome(player, builder,
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx)).Count > 0)
+            {
+                if (!LocalOperatorRelease.CanKeepOperatorsHome(player, builder, commitments,
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx),
+                        out _, out departing)) return false;
+                receiving = ArmyData.CreateVisualSnapshot();
+                receiving.Owner = garrison.Owner; receiving.Hex = garrison.Hex; receiving.IsGarrison = true;
+                receiving.Members.AddRange(garrison.Members);
+                receiving.Members.AddRange(builder.Members.Where(u => !departing.Members.Contains(u)));
+            }
+            return (unload.Count == 0 || ArmyActions.CanTransferMembers(unload, departing, receiving, out _))
+                && (reinforcement.Count == 0 || ArmyActions.CanTransferMembers(reinforcement, receiving, departing, out _));
         }
 
         private static bool RosterMatches(ArmySnapshot snapshot, IReadOnlyList<UnitData> bodies) =>

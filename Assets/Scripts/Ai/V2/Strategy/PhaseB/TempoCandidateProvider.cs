@@ -290,7 +290,8 @@ namespace Game.Ai.V2
         {
             if (snap?.Self == null || deck == null || deck.Count == 0)
                 return 0f;
-            if (snap.Self.Armies != null && snap.Self.Armies.Any(a => a != null && a.IsMobileEconomyBuilder))
+            if (snap.Self.Armies != null && snap.Self.Armies.Any(a => a != null
+                    && (a.IsMobileEconomyBuilder || a.EconomyDeparture?.IsMobileEconomyBuilder == true)))
                 return 0f;
             IReadOnlyList<CardData> hand = snap.Self.Hand;
             if (hand == null || hand.Any(c => c?.Definition?.cardType == CardType.Hero))

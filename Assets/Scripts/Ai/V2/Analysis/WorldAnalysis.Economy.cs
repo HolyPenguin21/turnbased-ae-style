@@ -27,6 +27,28 @@ namespace Game.Ai.V2
             var eco = new EconomyStanding();
             var perType = new List<EconomyResourceStanding>();
 
+            // Price only the roster that can actually depart. Preparation-site selection is
+            // structural and does not depend on the Economy standings being built here.
+            var preparationSite = DevelopmentOpportunityEvaluator.LivePreparationSite(
+                player, AiHandRegistry.Peek(player), ctx);
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All, snap, null);
+            foreach (ArmySnapshot actor in snap.Self.Armies.Where(a => a != null
+                         && !a.IsGarrison && !a.IsPrison && !a.IsAir && !a.IsAirfield
+                         && !a.IsMobileEconomyBuilder))
+            {
+                ArmyData live = AiV2Util.ResolveArmy(player, actor.ArmyId);
+                if (!LocalOperatorRelease.CanKeepOperatorsHome(player, live, commitments,
+                        preparationSite, out _, out ArmyData departure)
+                    || ReferenceEquals(live, departure) || !AiArmyRoles.IsHeroLed(departure))
+                    continue;
+                ArmySnapshot projected = ToArmySnapshot(departure, player, true, 0);
+                projected.ArmyId = actor.ArmyId;
+                projected.EconomyRosterProtected = actor.EconomyRosterProtected;
+                projected.ActivationCoveredUnitRuntimeIds = actor.ActivationCoveredUnitRuntimeIds;
+                actor.EconomyDeparture = projected;
+            }
+
             List<PlayerSetupData> others = (GameSession.Players ?? new List<PlayerSetupData>())
                 .Where(p => p != null && p != player && !p.IsNeutral && !p.IsEliminated)
                 .ToList();
@@ -570,19 +592,23 @@ namespace Game.Ai.V2
             IEnumerable<ArmySnapshot> candidates = projectedArmy != null
                 ? new[] { projectedArmy } : snap.Self.Armies;
             foreach (ArmySnapshot army in candidates
-                         .Where(a => a != null).OrderBy(a => a.ArmyId))
+                         .Where(a => a != null)
+                         .Select(a => !a.Hex.Equals(target) ? a.EconomyDeparture ?? a : a)
+                         .OrderBy(a => a.ArmyId))
             {
                 if (army.IsGarrison)
                 {
                     if (!liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
                         continue;
-                    UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison);
+                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
+                        player, AiHandRegistry.Peek(player), ctx);
+                    UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison, site);
                     if (sparableHero == null)
                         continue;
                     ProvisioningManager.GarrisonExtractionCandidate extraction =
                         ProvisioningManager.ResolveGarrisonExtractionCandidate(player, liveGarrison,
                             commitments: null, session: null, root: null,
-                            ecoApEnvelopeRemaining: float.MaxValue);
+                            ecoApEnvelopeRemaining: float.MaxValue, preparationSite: site);
                     if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
                         continue;
                     if (army.Hex.Equals(target))
