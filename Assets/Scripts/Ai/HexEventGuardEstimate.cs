@@ -26,7 +26,8 @@ namespace Game.Ai
             var guardMembers = entry.ResolvedGuardMembers.Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
             var guardDefenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                 g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor), g.card.unitTypeTags,
-                g.card.attack, g.card.hitPoints, g.card.initiative, g.card.grantedAbilities), g.count)).ToList();
+                g.card.attack, g.card.hitPoints, g.card.initiative, g.card.grantedAbilities,
+                range: g.card.range), g.count)).ToList();
 
             // Win chance over 50% AND able to scratch every defender. A guard with no fighting body
             // is a trivial win for the roster estimator (nothing to fight).

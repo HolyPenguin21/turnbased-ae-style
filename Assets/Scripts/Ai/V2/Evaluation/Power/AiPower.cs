@@ -242,7 +242,8 @@ namespace Game.Ai.V2
                 c.hitPoints,
                 c.initiative,
                 c.grantedAbilities,
-                isGroundCombatant: c.cardType != CardType.Hero);
+                isGroundCombatant: c.cardType != CardType.Hero,
+                range: c.range);
 
         // Frozen card attachments use the same canonical projection as hand UI and deployment.
         public static WorthIt.DefenderProfile ToDefenderProfile(CardDefinition c,
@@ -254,7 +255,8 @@ namespace Game.Ai.V2
                 state.Abilities.Contains(UnitAbilities.CeramicArmor), c.unitTypeTags,
                 state.Stats[EquipmentStat.Attack], state.Stats[EquipmentStat.HitPoints],
                 state.Stats[EquipmentStat.Initiative], state.Abilities,
-                isGroundCombatant: c.cardType != CardType.Hero);
+                isGroundCombatant: c.cardType != CardType.Hero,
+                range: state.Stats[EquipmentStat.Range]);
         }
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a

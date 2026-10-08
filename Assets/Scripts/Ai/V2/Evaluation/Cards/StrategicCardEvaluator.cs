@@ -1463,11 +1463,13 @@ namespace Game.Ai.V2
                 ctx.SplashTargets = Mathf.Min(2f, ctx.SecondaryNeighbors);
                 ctx.EnemyCommanderInitiative = Mathf.RoundToInt((float)opposition.Average(o => o.Commander.Initiative));
             }
-            if (isHero && army?.Members != null)
+            if (isHero)
             {
-                var fighters = army.Members.Where(m => m != null && !m.IsHero).ToList();
-                if (fighters.Count > 0)
+                var fighters = army?.Members?.Where(m => m != null && !m.IsHero).ToList();
+                if (fighters != null && fighters.Count > 0)
                     ctx.ArmyAttack = (float)fighters.Average(m => m.Attack);
+                // A garrison is not a field army: its hero is not a battle commander.
+                ctx.CommandsFieldArmy = army != null && !army.IsGarrison && fighters != null && fighters.Count > 0;
             }
             if (army?.Members != null)
             {

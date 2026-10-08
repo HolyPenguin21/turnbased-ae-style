@@ -281,13 +281,15 @@ namespace Game.Ai.V2
                 [EquipmentStat.HitPoints] = Mathf.RoundToInt(p.HitPoints),
                 [EquipmentStat.Initiative] = p.Initiative,
             };
+            if (p.Range >= 0) stats[EquipmentStat.Range] = p.Range;
             PredictedEquipmentState pred = EquipmentSystem.Predict(g, stats, p.Abilities);
             int S(EquipmentStat s) => pred.Stats != null && pred.Stats.TryGetValue(s, out int v) ? v : stats[s];
             IReadOnlyList<string> abilities = pred.Abilities ?? EquipmentSystem.EffectiveAbilities(p.Abilities, g);
             return new WorthIt.DefenderProfile(S(EquipmentStat.Defense),
                 abilities.Contains(UnitAbilities.CeramicArmor), p.TypeTags, S(EquipmentStat.Attack),
                 S(EquipmentStat.HitPoints), S(EquipmentStat.Initiative), abilities, p.MaxHitPoints,
-                p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned);
+                p.IsGroundCombatant, p.IsHero, p.FateMax, p.IsSummoned,
+                p.Range >= 0 ? S(EquipmentStat.Range) : -1);
         }
 
         // Frame-spreading pre-pass for Analyze (2026-10-07: one synchronous Analyze was a 50 ms frame,
