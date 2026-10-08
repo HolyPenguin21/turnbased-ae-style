@@ -1050,6 +1050,17 @@ namespace Game.Ai.V2
 
                 }
 
+                // A stand-alone Base level bought by the first Phase A opened a slot AFTER the admission
+                // baselines above were taken: its Facility demand was generated on the refreshed world but
+                // never judged, and an equal fingerprint would keep rejecting it as "settled". Forget the
+                // Development baseline and admit it now, before missions or Phase B spend what is left.
+                if (phaseA.CapacityUnlocks > 0 && demandAxes.Contains(DesireAxis.Development))
+                {
+                    lastStrategicAdmissionFingerprint.Remove(DesireAxis.Development);
+                    yield return ReenterStrategicAxes(
+                        StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
+                        new HashSet<DesireAxis> { DesireAxis.Development });
+                }
                 yield return RunTypedAdmissions();
                 // Also reconcile on bounded/no-progress exits where no additional typed
                 // admission occurs: Phase B must see AP that no actor can spend on a build.

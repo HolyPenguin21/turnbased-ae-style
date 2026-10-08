@@ -596,6 +596,50 @@ namespace Game.Ai.V2
                 + (admitted == 0 ? $" reason={rejection}" : "");
         }
 
+        // THE live confirmation of an admitted CapacityUnlock plan, shared by Phase A and Phase B: everything
+        // the admission assumed is re-derived from the live world immediately before payment. A mismatch is
+        // a stale plan (nothing is re-targeted at another base, tier or card). The structural witnesses
+        // (operator path, catalog, no facility of the mode elsewhere) are re-read from PreparationFacts,
+        // the one owner of that rule.
+        internal static bool ConfirmCapacityUnlock(DevelopmentOpportunity plan, WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents, out BuildingData building, out BaseUpgradeTier tier)
+        {
+            building = null;
+            tier = null;
+            if (plan?.PreparationKind != DevelopmentPreparationKind.CapacityUnlock
+                || plan.PreparationCapacityTier == null || plan.PreparationFacilityCard == null
+                || hand?.Hand == null || !hand.Hand.Contains(plan.PreparationFacilityCard))
+                return false;
+            HexCoord hex = plan.FacilityHex;
+            ResearchProductionMode mode = plan.Mode;
+            BuildingData b = BuildingRegistry.FindAt(hex);
+            if (b == null || b.Owner != player || !b.IsBase || !b.HasTieredUnlock
+                || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null
+                || b.FindFirstAvailableFacilitySlot() >= 0          // a slot is already open: nothing to buy
+                || b.Level != plan.PreparationExpectedLevel)
+                return false;
+            BaseUpgradeTier next = StrategicMaintenancePolicy.CapacityUnlockTierAt(b, ctx);
+            if (!ReferenceEquals(next, plan.PreparationCapacityTier))
+                return false;
+            CardDefinition witness = plan.PreparationFacilityCard.Definition;
+            if (witness?.cardType != CardType.Facility
+                || witness.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) != true)
+                return false;
+            if (!DevelopmentInvestmentGate.IsOpenFor(player, ctx.TurnNumber, next.cost))
+                return false;
+            bool stillStructural = PreparationFacts(snap, player, root, hand, ctx, activeIntents)
+                .Any(f => f.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
+                    && f.Mode == mode && f.FacilityHex.Equals(hex)
+                    && ReferenceEquals(f.PreparationFacilityCard, plan.PreparationFacilityCard)
+                    && ReferenceEquals(f.PreparationCapacityTier, next));
+            if (!stillStructural)
+                return false;
+            building = b;
+            tier = next;
+            return true;
+        }
+
         // Structural facts for desire, using the SAME prerequisite enumeration as execution.
         // No resource-window or today's affordability veto; no output/recipient pricing.
         internal static List<DevelopmentOpportunity> PreparationFacts(WorldSnapshot snap,

@@ -26,6 +26,9 @@ namespace Game.Ai.V2
         public int EquipmentAssignmentsSucceeded;
         public int InfrastructureAttempts;
         public int InfrastructureBuilt;
+        // Stand-alone Base levels bought by Development CapacityUnlock: a settled admission baseline taken
+        // after such a step no longer describes the world its Facility demand must be judged on.
+        public int CapacityUnlocks;
         public int CapabilityDeliveries;   // operational capability actually delivered to a demand
 
         public MaterializationReservation Reservation;
@@ -47,6 +50,7 @@ namespace Game.Ai.V2
             EquipmentAssignmentsSucceeded += other.EquipmentAssignmentsSucceeded;
             InfrastructureAttempts += other.InfrastructureAttempts;
             InfrastructureBuilt += other.InfrastructureBuilt;
+            CapacityUnlocks += other.CapacityUnlocks;
             CapabilityDeliveries += other.CapabilityDeliveries;
             if (other.Reservation != null)
                 Reservation = other.Reservation;
@@ -462,7 +466,10 @@ namespace Game.Ai.V2
                         // refreshed world (typed Infrastructure|Capability re-admission), never a counted
                         // card play or facility build.
                         if (infra.CapacityUnlocked)
+                        {
                             istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
+                            result.CapacityUnlocks++;
+                        }
                         AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
                             + $"{(infra.Built ? "built" : infra.CapacityUnlocked ? "capacity unlocked" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
