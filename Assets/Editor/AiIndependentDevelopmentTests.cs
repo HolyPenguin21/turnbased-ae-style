@@ -548,6 +548,24 @@ namespace Game.EditorTests
                 "away from the served hex nothing is blocked");
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void OperatorWithASecondLegalCommanderMayStayHomeSoEconomyCanUseTheArmy(bool operatorLeads)
+        {
+            var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production); _base.FacilitySlots[0] = facility;
+            var op = new UnitData { Owner = _player, IsHero = true, Name = "op", CommandRating = 5 };
+            op.Abilities.Add(UnitAbilities.Assembler);
+            var lead = new UnitData { Owner = _player, IsHero = true, Name = "lead", CommandRating = 3 };
+            var field = new ArmyData { Owner = _player, Hex = Site };
+            if (operatorLeads) { field.Members.Add(op); field.Members.Add(lead); }
+            else { field.Members.Add(lead); field.Members.Add(op); }
+            ArmyRegistry.Register(field);
+            Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.True);
+            Assert.That(LocalOperatorRelease.CanKeepOperatorsHome(_player, field, null, null, out string why), Is.True, why);
+            Assert.That(DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(_player, field, null, null), Is.False,
+                "the operator can be left in the free local garrison: the remaining army is a valid builder");
+        }
+
         [Test]
         public void BoundIncomingOperatorPreventsDuplicatePreparationForSameSiteAndRole()
         {
