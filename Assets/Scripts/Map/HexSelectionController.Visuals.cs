@@ -41,6 +41,10 @@ namespace Game.Map
         // marker they last observed until that hex enters their vision again.
         private readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>> _rememberedBuildingVisuals =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>>();
+        // Which live marker each remembered building clone was instantiated from (see
+        // UpdateRememberedBuildingVisual).
+        private readonly Dictionary<MapObjectVisual, MapObjectVisual> _rememberedBuildingSources =
+            new Dictionary<MapObjectVisual, MapObjectVisual>();
         private sealed class RememberedArmyVisual
         {
             public HexCoord Hex;
@@ -285,7 +289,19 @@ namespace Game.Map
                 visuals = new Dictionary<HexCoord, MapObjectVisual>();
                 _rememberedBuildingVisuals[viewer] = visuals;
             }
-            if (!visuals.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
+            visuals.TryGetValue(hex, out MapObjectVisual snapshot);
+            // CopyAppearanceFrom only copies renderers the clone already has. A building that
+            // replaces another on the same hex (a Base founded over a resource facility) is a
+            // different prefab — copying onto the old clone leaves the new art (flag, accent)
+            // missing, so the ghost kept showing the facility. Re-clone from the new marker.
+            if (snapshot != null && _rememberedBuildingSources.TryGetValue(snapshot, out MapObjectVisual clonedFrom)
+                && clonedFrom != source)
+            {
+                _rememberedBuildingSources.Remove(snapshot);
+                Destroy(snapshot.gameObject);
+                snapshot = null;
+            }
+            if (snapshot == null)
             {
                 using (new Game.Core.ProfileScope("Map/Instantiate.RememberedBuilding"))
                     snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
@@ -296,6 +312,7 @@ namespace Game.Map
                     flag.enabled = false;
                 visuals[hex] = snapshot;
             }
+            _rememberedBuildingSources[snapshot] = source;
             snapshot.transform.rotation = source.transform.rotation;
             snapshot.transform.localScale = source.transform.localScale;
             snapshot.CopyAppearanceFrom(source);
@@ -313,6 +330,7 @@ namespace Game.Map
             visuals.Remove(hex);
             if (snapshot != null)
             {
+                _rememberedBuildingSources.Remove(snapshot);
                 snapshot.SetVisible(false);
                 Destroy(snapshot.gameObject);
             }
