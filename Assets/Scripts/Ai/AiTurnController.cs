@@ -250,11 +250,14 @@ namespace Game.Ai
             // and the capacity-capped hand. The legacy V1 turn body that used to follow this point
             // is deleted in ARCH-01 01D; nothing routes to it any more.
             // WorthIt's exact Monte Carlo memo lives for this one AI turn (see
-            // WorthIt.EstimateCache.cs). Begin always starts empty, so a stopped coroutine that
-            // never reaches End cannot leak entries into a later turn.
-            Game.Combat.WorthIt.BeginEstimateCacheScope();
-            yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
-            Game.Combat.WorthIt.EstimateCacheStats battleStats = Game.Combat.WorthIt.EndEstimateCacheScope();
+            // WorthIt.EstimateCache.cs). Advance nested pipeline iterators inside the cache
+            // owner, so their exceptions also pass through its cleanup.
+            Game.Combat.WorthIt.EstimateCacheStats battleStats = default;
+            IEnumerator cachedTurn = RunEstimateCached(Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx),
+                stats => battleStats = stats);
+            using ((IDisposable)cachedTurn)
+                while (cachedTurn.MoveNext())
+                    yield return cachedTurn.Current;
             AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
                 + $"entries={battleStats.Entries}");
@@ -263,6 +266,47 @@ namespace Game.Ai
             yield return ctx.WaitAtObserverActionBoundary();
             onDone?.Invoke();
             yield break;
+        }
+
+        internal static IEnumerator RunEstimateCached(IEnumerator turn,
+            Action<Game.Combat.WorthIt.EstimateCacheStats> completed)
+        {
+            using (Game.Combat.WorthIt.OpenEstimateCacheScope())
+            {
+                var pending = new Stack<IEnumerator>();
+                pending.Push(turn);
+                try
+                {
+                    while (pending.Count > 0)
+                    {
+                        IEnumerator active = pending.Peek();
+                        if (!active.MoveNext())
+                        {
+                            pending.Pop();
+                            (active as IDisposable)?.Dispose();
+                            continue;
+                        }
+                        object instruction = active.Current;
+                        // Unity owns yield instructions and their scheduling (e.g. WaitUntil's
+                        // after-Update polling). Only authored nested iterators are advanced here.
+                        if (instruction is IEnumerator nested && !(instruction is CustomYieldInstruction))
+                            pending.Push(nested);
+                        else
+                            yield return instruction;
+                    }
+                    completed?.Invoke(Game.Combat.WorthIt.CurrentEstimateCacheStats);
+                }
+                finally
+                {
+                    // Close every suspended iterator, even if one cleanup itself throws.
+                    Exception cleanupFailure = null;
+                    while (pending.Count > 0)
+                        try { (pending.Pop() as IDisposable)?.Dispose(); }
+                        catch (Exception e) { cleanupFailure = cleanupFailure ?? e; }
+                    if (cleanupFailure != null)
+                        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(cleanupFailure).Throw();
+                }
+            }
         }
 
         // One authorization gate for every deliberate AI ground move outcome. The caller supplies
