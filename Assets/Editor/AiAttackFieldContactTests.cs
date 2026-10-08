@@ -49,6 +49,7 @@ namespace Game.EditorTests
             AttackTacticalOpportunity.HexVisibleNow = _savedVisibility;
             ArmyRegistry.Clear();
             MissionIntentRegistry.Clear();
+            AiAllocatorStateRegistry.Clear();
         }
 
         // ---- the one-day voluntary fight -------------------------------------------------------
@@ -386,6 +387,77 @@ namespace Game.EditorTests
             snap.Known.EnemySightings = Array.Empty<AiMapMemory.KnownEnemySighting>();
             Assert.That(AttackRetreatWitness.Blocks(state, snap, Main, weak, out _), Is.False);
             Assert.That(state.TryGetRetreatWitness(Main, out _), Is.False);
+        }
+
+        // ---- ActiveDefence served by the marching army: one owner, no lost answer ---------------
+
+        private static MissionProposal AdProposal(int enemy, ActiveDefencePhase phase, int actor, bool durable = false) =>
+            new MissionProposal
+            {
+                Kind = MissionKind.ActiveDefence, FromDurableIntent = durable, PreferredMoverArmyId = actor,
+                Target = new ActiveDefenceMissionTarget { Phase = phase, EnemyArmyId = enemy, PrimaryArmyId = actor },
+            };
+
+        private static MissionProposal AttackProposal() => new MissionProposal
+        {
+            Kind = MissionKind.Attack, PreferredMoverArmyId = 7, FromDurableIntent = true,
+            DurableFundingTier = CommitmentTier.Hard,
+            Target = new AttackMissionTarget { Phase = AttackMissionPhase.Assault, Target = Main, PrimaryArmyId = 7 },
+        };
+
+        private static AttackLocalAction ServingAd(int enemy) => new AttackLocalAction(
+            AttackLocalActionKind.Intercept, new HexCoord(0, 2), enemy, "e", 2, 0.9f, true, "serves_active_defence",
+            servesActiveDefence: true);
+
+        [Test]
+        public void ServingActiveDefence_WithdrawsOnlyTheIndependentGroundIntercept_OfThatEnemy()
+        {
+            WorldSnapshot snap = Snap(Army(7, Origin, Strong()));
+            MissionIntent hard = Intent(Marching());
+            var independent = AdProposal(4, ActiveDefencePhase.Intercept, 11);
+            var air = AdProposal(4, ActiveDefencePhase.AirSupport, 12);
+            var otherEnemy = AdProposal(9, ActiveDefencePhase.Intercept, 13);
+            var durable = AdProposal(4, ActiveDefencePhase.Intercept, 14, durable: true);
+            var proposals = new List<MissionProposal> { independent, air, otherEnemy, durable };
+            Assert.That(AggressionMissionLayer.TryServeActiveDefence(snap, proposals, AttackProposal(), hard, ServingAd(4)), Is.True);
+            Assert.That(proposals, Is.EquivalentTo(new[] { air, otherEnemy, durable }),
+                "air support, another enemy's answer and an incumbent AD operation all stay");
+        }
+
+        [Test]
+        public void ServingActiveDefence_LeavesTheIndependentAnswer_WhenTheAttackStepCannotBeRelied()
+        {
+            WorldSnapshot snap = Snap(Army(7, Origin, Strong()));
+            var independent = AdProposal(4, ActiveDefencePhase.Intercept, 11);
+            // not a protected Hard operation
+            MissionIntent soft = Intent(Marching()); soft.Funding = CommitmentTier.Soft;
+            var list = new List<MissionProposal> { independent };
+            Assert.That(AggressionMissionLayer.TryServeActiveDefence(snap, list, AttackProposal(), soft, ServingAd(4)), Is.False);
+            // a Hard step whose attempt was just rejected and is cooling down: the threat keeps its handler
+            MissionProposal attack = AttackProposal();
+            AiAllocatorStateRegistry.GetOrCreate(Us).StartCooldown(StableMissionKey.For(attack), 6, 8, "rejected");
+            Assert.That(AggressionMissionLayer.TryServeActiveDefence(snap, list, attack, Intent(Marching()), ServingAd(4)), Is.False);
+            // an ordinary (non-AD) intercept never displaces anything
+            var ordinary = new AttackLocalAction(AttackLocalActionKind.Intercept, new HexCoord(0, 2), 4, "e", 2, 0.9f, true, "x");
+            AiAllocatorStateRegistry.Clear();
+            Assert.That(AggressionMissionLayer.TryServeActiveDefence(snap, list, AttackProposal(), Intent(Marching()), ordinary), Is.False);
+            Assert.That(list, Is.EquivalentTo(new[] { independent }));
+        }
+
+        [Test]
+        public void CompletedLocalFight_KeepsTheOperationTargetAndTheArmyClaim()
+        {
+            ArmySnapshot us = Army(7, Origin, Strong());
+            WorldSnapshot snap = Snap(us);
+            AttackIntent attack = Marching();
+            attack.LastOpportunisticStrikeTurn = snap.TurnNumber; // the fight was spent this turn
+            MissionIntent intent = Intent(attack);
+            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent, attack, new HashSet<int>(), out _), Is.True);
+            Assert.That(attack.Target, Is.EqualTo(Main));
+            Assert.That(attack.PrimaryArmyId, Is.EqualTo(7));
+            Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+            Assert.That(intent.Status, Is.EqualTo(IntentStatus.Active));
+            // the claim is derived from this very Active intent (ActorCommitments), so it survives with it
         }
 
         // ---- fixtures -----------------------------------------------------------------------------

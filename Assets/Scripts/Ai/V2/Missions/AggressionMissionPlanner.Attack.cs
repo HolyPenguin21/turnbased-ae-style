@@ -317,9 +317,8 @@ namespace Game.Ai.V2
                 // ground answer to that contact (air support is a separate execution and stays).
                 // Only a Hard incumbent is protected from losing its funding, so only it may
                 // displace the independent answer.
-                if (incumbent != null && local.Kind == AttackLocalActionKind.Intercept
-                    && local.ServesActiveDefence && incumbent.Funding == CommitmentTier.Hard)
-                    WithdrawIndependentActiveDefenceIntercept(proposals, local.EnemyArmyId, actor.ArmyId);
+                if (incumbent != null)
+                    TryServeActiveDefence(snap, proposals, proposal, incumbent, local);
                 if (local.IsLocalFight)
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#local",
                         $"[AI][V2][Attack][Local] decision={local.Kind} target={objective.Target.DiagnosticLabel} "
@@ -346,7 +345,25 @@ namespace Game.Ai.V2
         // An independent (non-durable) ActiveDefence ground Intercept of `enemyArmyId` is removed
         // from this pass: the marching Attack army answers that contact itself, so the two lanes
         // never send two ground owners at one enemy. The Attack army's own claim is untouched.
-        private static void WithdrawIndependentActiveDefenceIntercept(List<MissionProposal> proposals,
+        // The displacement is conditional on the Attack step really being fundable: a Hard
+        // incumbent only (the allocator protects it), and never while this very step is cooling
+        // down after a rejected attempt - then the independent answer stays and the threat is
+        // not left without any handler.
+        internal static bool TryServeActiveDefence(WorldSnapshot snap, List<MissionProposal> proposals,
+            MissionProposal attackProposal, MissionIntent incumbent, AttackLocalAction local)
+        {
+            if (incumbent == null || local.Kind != AttackLocalActionKind.Intercept || !local.ServesActiveDefence
+                || incumbent.Funding != CommitmentTier.Hard || attackProposal == null
+                || !attackProposal.PreferredMoverArmyId.HasValue)
+                return false;
+            AiAllocatorState state = AiAllocatorStateRegistry.Peek(snap?.Observer);
+            if (state != null && state.OnCooldown(StableMissionKey.For(attackProposal), snap.TurnNumber))
+                return false;
+            return WithdrawIndependentActiveDefenceIntercept(proposals, local.EnemyArmyId,
+                attackProposal.PreferredMoverArmyId.Value) > 0;
+        }
+
+        private static int WithdrawIndependentActiveDefenceIntercept(List<MissionProposal> proposals,
             int enemyArmyId, int attackActorId)
         {
             int removed = proposals.RemoveAll(p => p != null && p.Kind == MissionKind.ActiveDefence
@@ -357,6 +374,7 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteDeduped($"atk-ad-handler-{enemyArmyId}",
                     $"[AI][V2][Attack][Local] ActiveDefence ground intercept of enemy #{enemyArmyId} "
                     + $"withdrawn ({removed}): served by marching Attack army #{attackActorId}");
+            return removed;
         }
 
         // Missions owns the reason a live Gather / Assault intent has no executable proposal this
