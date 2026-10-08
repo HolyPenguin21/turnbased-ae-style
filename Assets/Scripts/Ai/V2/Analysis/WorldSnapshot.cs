@@ -697,6 +697,22 @@ namespace Game.Ai.V2
         // candidates from this instead of re-reading the map.
         public IReadOnlyList<HexCoord> AllHexes;
 
+        // Membership view of AllHexes, built once per snapshot instead of once per queried focus.
+        // Rebuilt if AllHexes is ever reassigned; AllHexes keeps its order for other consumers.
+        private HashSet<HexCoord> _onMapSet;
+        private IReadOnlyList<HexCoord> _onMapSource;
+        public ISet<HexCoord> OnMapSet()
+        {
+            if (AllHexes == null) return null;
+            if (AllHexes is HashSet<HexCoord> direct) return direct;
+            if (_onMapSet == null || !ReferenceEquals(_onMapSource, AllHexes))
+            {
+                _onMapSet = new HashSet<HexCoord>(AllHexes);
+                _onMapSource = AllHexes;
+            }
+            return _onMapSet;
+        }
+
         // The subset of AllHexes a ground scout must never be routed ONTO regardless of stealth:
         // an active scout-danger cooldown (off-map is implicit). Enemy PROXIMITY is deliberately
         // NOT here (it only annotates). Spec §19 — arrival outcomes are NO LONGER folded in here:

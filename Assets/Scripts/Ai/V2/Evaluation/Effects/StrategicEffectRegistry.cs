@@ -1142,13 +1142,15 @@ namespace Game.Ai.V2
             IReadOnlyList<string> abilities, IReadOnlyList<UnitTypeTag> tags,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmyData army, bool hero, WorldSnapshot snap,
             bool includeGlobal = true, MaterializationPlan deployment = null,
-            IReadOnlyList<WorthIt.DefenderProfile> referenceTargets = null, int hpSpent = 0)
+            IReadOnlyList<WorthIt.DefenderProfile> referenceTargets = null, int hpSpent = 0,
+            AttachmentTargetSet prepared = null)
         {
             var ctx = new EffectEvaluationContext(snap, deployment);
             float total = 0;
-            var targets = opposition.SelectMany(a => a.Units).Where(p => !p.IsHero)
-                .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
-            if (targets.Count == 0 && referenceTargets != null) targets.AddRange(referenceTargets.Take(16));
+            // The opposition-derived selections depend on neither stats nor abilities; a caller
+            // pricing many pairs against one opposition passes them prepared once.
+            AttachmentTargetSet set = prepared ?? new AttachmentTargetSet(opposition, referenceTargets);
+            List<WorthIt.DefenderProfile> targets = set.Targets;
             var effects = Resolve(abilities?.Distinct(), 0).Where(e => !e.PrimaryExchange
                 && !(e.Context == StrategicEffectContext.Flat && e.StackingKey == DevelopmentOperatorSkillKey)
                 && (!hero || e.Scope == EffectScope.PlayerGlobal)
@@ -1169,13 +1171,8 @@ namespace Game.Ai.V2
                     // A primary must land meaningful damage and secondary slots must remain.
                     value = 0;
                     int battles = 0;
-                    foreach (var battle in opposition.OrderBy(a => string.Join(";", a.Units.Select(AttachmentProfileKey)
-                        .OrderBy(k => k, System.StringComparer.Ordinal)), System.StringComparer.Ordinal).Take(16))
+                    foreach (var bodies in set.Battles)
                     {
-                        var bodies = battle.Units.Where(p => !p.IsHero && p.IsGroundCombatant
-                            && !p.TypeTags.Contains(UnitTypeTag.Aircraft))
-                            .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
-                        if (bodies.Count == 0) continue;
                         float battleValue = 0;
                         foreach (var target in bodies)
                         {
@@ -1259,6 +1256,43 @@ namespace Game.Ai.V2
                 total += EffectEvaluationContext.StackedTotal(e.Stacking, value, group.Count());
             }
             return total;
+        }
+
+        // The ordinal-sorted, capped target and battle selections AttachmentValue reads from an
+        // opposition. Targets are built eagerly; the TargetDensity battles only when first read.
+        internal sealed class AttachmentTargetSet
+        {
+            private readonly IReadOnlyList<WorthIt.DefendingArmy> _opposition;
+            private List<List<WorthIt.DefenderProfile>> _battles;
+            public readonly List<WorthIt.DefenderProfile> Targets;
+
+            public AttachmentTargetSet(IReadOnlyList<WorthIt.DefendingArmy> opposition,
+                IReadOnlyList<WorthIt.DefenderProfile> referenceTargets)
+            {
+                _opposition = opposition;
+                Targets = opposition.SelectMany(a => a.Units).Where(p => !p.IsHero)
+                    .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
+                if (Targets.Count == 0 && referenceTargets != null) Targets.AddRange(referenceTargets.Take(16));
+            }
+
+            // Non-empty ground bodies of the first 16 battles, in the original order.
+            public List<List<WorthIt.DefenderProfile>> Battles
+            {
+                get
+                {
+                    if (_battles != null) return _battles;
+                    _battles = new List<List<WorthIt.DefenderProfile>>();
+                    foreach (var battle in _opposition.OrderBy(a => string.Join(";", a.Units.Select(AttachmentProfileKey)
+                        .OrderBy(k => k, System.StringComparer.Ordinal)), System.StringComparer.Ordinal).Take(16))
+                    {
+                        var bodies = battle.Units.Where(p => !p.IsHero && p.IsGroundCombatant
+                            && !p.TypeTags.Contains(UnitTypeTag.Aircraft))
+                            .OrderBy(AttachmentProfileKey, System.StringComparer.Ordinal).Take(16).ToList();
+                        if (bodies.Count > 0) _battles.Add(bodies);
+                    }
+                    return _battles;
+                }
+            }
         }
 
         private static string AttachmentProfileKey(WorthIt.DefenderProfile p) =>

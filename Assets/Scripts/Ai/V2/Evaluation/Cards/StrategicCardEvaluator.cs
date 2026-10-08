@@ -1501,22 +1501,36 @@ namespace Game.Ai.V2
             List<string> unpricedBefore = hostAbilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             List<string> unpricedAfter = predicted.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             if (unpricedBefore.Count > 0 || unpricedAfter.Count > 0)
+            {
+                var attachmentTargets = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets);
                 tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
-                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent)
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets)
                     - StrategicEffectRegistry.AttachmentValue(before, unpricedBefore, hostTags, opposition, army,
-                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent);
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets);
+            }
 
-            using var __effDetail = new Game.Core.ProfileScope("AI/Equip.EffDetail");
-            string detail = "stats=" + string.Join(",", before.OrderBy(k => k.Key)
+            // The text is formatted only when something reads it. `before`, the predicted state and
+            // the ability lists are built fresh per call and never mutated afterwards, so the
+            // deferred string equals the eager one.
+            return new EquipmentDelta(combat, tactical, () => "stats=" + string.Join(",", before.OrderBy(k => k.Key)
                     .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
-                + " " + delta + $" combat={combat:0.###} tactical={tactical:0.###}";
-            return new EquipmentDelta(combat, tactical, detail);
+                + " " + delta + $" combat={combat:0.###} tactical={tactical:0.###}");
         }
 
         // Read existing assignments only. An upgrade does not create a role or move an actor.
         internal static MissionIntent EquipmentPurpose(WorldSnapshot snap, CardData card, UnitData unit)
+        {
+            object host = unit != null ? unit : (object)card;
+            if (host != null && EquipmentTargetMemo.TryGetPurpose(snap, host, out MissionIntent cached))
+                return cached;
+            MissionIntent found = FindEquipmentPurpose(snap, card, unit);
+            if (host != null) EquipmentTargetMemo.StorePurpose(snap, host, found);
+            return found;
+        }
+
+        private static MissionIntent FindEquipmentPurpose(WorldSnapshot snap, CardData card, UnitData unit)
         {
             ArmyData army = unit != null ? ArmyRegistry.FindArmyContaining(unit) : null;
             string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
@@ -1543,6 +1557,15 @@ namespace Game.Ai.V2
         }
 
         private static List<WorthIt.DefendingArmy> EquipmentOpposition(WorldSnapshot snap, MissionIntent purpose)
+        {
+            if (EquipmentTargetMemo.TryGetOpposition(snap, purpose, out var cached))
+                return cached;
+            List<WorthIt.DefendingArmy> built = BuildEquipmentOpposition(snap, purpose);
+            EquipmentTargetMemo.StoreOpposition(snap, purpose, built);
+            return built;
+        }
+
+        private static List<WorthIt.DefendingArmy> BuildEquipmentOpposition(WorldSnapshot snap, MissionIntent purpose)
         {
             var scoped = new List<WorthIt.DefendingArmy>();
             // A target's location comes only from Known, never hidden TrueWorld coordinates.
@@ -1574,6 +1597,52 @@ namespace Game.Ai.V2
             // Own units already carrying a saturating ability family: the roster does not change inside
             // one Enumerate, so each family is counted once.
             private readonly Dictionary<(PlayerSetupData, string), int> _carriers = new();
+
+            // Opposition and the owning purpose depend only on snapshot + mission / recipient inside
+            // one Enumerate. Consumers treat the cached list as read-only.
+            private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefendingArmy>> _opposition = new();
+            private readonly Dictionary<(WorldSnapshot, object), MissionIntent> _purposes = new();
+
+            internal static bool TryGetOpposition(WorldSnapshot snap, MissionIntent purpose,
+                out List<WorthIt.DefendingArmy> opposition)
+            {
+                opposition = null;
+                return s_current != null && s_current._opposition.TryGetValue((snap, purpose), out opposition);
+            }
+
+            internal static void StoreOpposition(WorldSnapshot snap, MissionIntent purpose,
+                List<WorthIt.DefendingArmy> opposition)
+            {
+                if (s_current != null) s_current._opposition[(snap, purpose)] = opposition;
+            }
+
+            // Sorted target / battle selections of one opposition: shared by the before and after
+            // pricing and, inside a scope, by every pair against the same snapshot + purpose.
+            private readonly Dictionary<(WorldSnapshot, MissionIntent), StrategicEffectRegistry.AttachmentTargetSet>
+                _attachmentSets = new();
+
+            internal static StrategicEffectRegistry.AttachmentTargetSet AttachmentTargets(WorldSnapshot snap,
+                MissionIntent purpose, List<WorthIt.DefendingArmy> opposition,
+                IReadOnlyList<WorthIt.DefenderProfile> referenceTargets)
+            {
+                if (s_current == null)
+                    return new StrategicEffectRegistry.AttachmentTargetSet(opposition, referenceTargets);
+                if (!s_current._attachmentSets.TryGetValue((snap, purpose), out var set))
+                    s_current._attachmentSets[(snap, purpose)] = set =
+                        new StrategicEffectRegistry.AttachmentTargetSet(opposition, referenceTargets);
+                return set;
+            }
+
+            internal static bool TryGetPurpose(WorldSnapshot snap, object host, out MissionIntent purpose)
+            {
+                purpose = null;
+                return s_current != null && s_current._purposes.TryGetValue((snap, host), out purpose);
+            }
+
+            internal static void StorePurpose(WorldSnapshot snap, object host, MissionIntent purpose)
+            {
+                if (s_current != null) s_current._purposes[(snap, host)] = purpose;
+            }
 
             public EquipmentTargetMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
@@ -1669,13 +1738,37 @@ namespace Game.Ai.V2
         }
 
 
+        private sealed class LazyText
+        {
+            private System.Func<string> _make;
+            private string _value;
+            public LazyText(System.Func<string> make) { _make = make; }
+            public string Value
+            {
+                get
+                {
+                    if (_make != null)
+                    {
+                        using var __detail = new Game.Core.ProfileScope("AI/Equip.EffDetail");
+                        _value = _make();
+                        _make = null;
+                    }
+                    return _value;
+                }
+            }
+        }
+
         internal readonly struct EquipmentDelta
         {
             public readonly float Combat;
             public readonly float Tactical;
-            public readonly string Detail;
+            private readonly string _detail;
+            private readonly LazyText _lazy;
             public EquipmentDelta(float combat, float tactical, string detail = null)
-            { Combat = combat; Tactical = tactical; Detail = detail; }
+            { Combat = combat; Tactical = tactical; _detail = detail; _lazy = null; }
+            public EquipmentDelta(float combat, float tactical, System.Func<string> detail)
+            { Combat = combat; Tactical = tactical; _detail = null; _lazy = new LazyText(detail); }
+            public string Detail => _lazy != null ? _lazy.Value : _detail;
             public float Total => Combat + Tactical;
         }
 

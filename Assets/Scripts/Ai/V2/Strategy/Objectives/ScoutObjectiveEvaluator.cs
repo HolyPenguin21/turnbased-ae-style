@@ -98,7 +98,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            var onMap = mk.OnMapSet();
             if (!onMap.Contains(focus))
                 return false;
             if (mk.VisitedHexSet != null && mk.VisitedHexSet.Contains(focus))
@@ -115,7 +115,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            var onMap = mk.OnMapSet();
             if (!onMap.Contains(focus))
                 return false;
             return !mk.IsBlockedForScout(focus, stealthCapable: false);
@@ -129,7 +129,7 @@ namespace Game.Ai.V2
             MapKnowledgeSnapshot mk = snap?.MapKnowledge;
             if (mk?.AllHexes == null)
                 return false;
-            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            var onMap = mk.OnMapSet();
             return onMap.Contains(focus) && !mk.IsBlockedForScout(focus, stealthCapable: true);
         }
 
@@ -139,7 +139,7 @@ namespace Game.Ai.V2
                 return 0;
 
             MapKnowledgeSnapshot mk = snap.MapKnowledge;
-            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            var onMap = mk.OnMapSet();
             int fresh = 0;
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {
