@@ -487,7 +487,10 @@ namespace Game.Ai.V2
             // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
             // before — this exclusion is scoped to the ResourceGain role only, not the ability.
             ec = WithoutUnavailableDevelopmentSkill(role, ec, snap, projected, null);
-            bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
+            // The Support role (an ApBonus carrier's registry role) has never priced the card's
+            // PlayerGlobal value itself - ResourceGain and the other roles do; it stays at its core fit.
+            bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain || role == IntendedRole.Support
+                ? 0f : ec.RoleFit + ec.GlobalRoleFit);
             // ImmediateTempo/NextTurnPotential stay at their default (0) in Phase B: every Phase-B
             // candidate is already immediately playable, so a "now vs later" axis adds nothing
             // RoleFit/ThreatCounterValue do not already carry. They are live in Phase A's
