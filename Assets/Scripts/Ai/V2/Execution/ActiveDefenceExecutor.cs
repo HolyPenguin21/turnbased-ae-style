@@ -220,7 +220,9 @@ namespace Game.Ai.V2
             result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
-                + $"actor={pm?.MoverArmyId} steps={result.StepsMoved} stop={result.StopReason}");
+                + $"actor={pm?.MoverArmyId} purpose={pm?.ActiveDefenceTarget.ReturnPurpose} "
+                + $"destination={pm?.ActiveDefenceTarget.ReturnHex} steps={result.StepsMoved} "
+                + $"apBefore={apBefore} apSpent={result.ApSpent} apAfter={root?.ActionPoints} stop={result.StopReason}");
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>

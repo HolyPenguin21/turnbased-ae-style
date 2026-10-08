@@ -1,5 +1,7 @@
 #if UNITY_INCLUDE_TESTS
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Combat;
@@ -297,7 +299,7 @@ namespace Game.EditorTests
         // Case 7 — a withdrawal that already started finishes, even though the threat that
         // triggered it is gone; it retires on arrival.
         [Test]
-        public void Continuity_StartedReturn_ContinuesAfterThreatVanishes_AndRetiresOnArrival()
+        public void Continuity_SafeWithdrawalWithoutCurrentDanger_ReleasesWithoutArrival()
         {
             var player = new PlayerSetupData { Nickname = "DefenceLifecycle7" };
             var citadel = new HexCoord(0, 0);
@@ -310,7 +312,7 @@ namespace Game.EditorTests
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player,
                     LifecycleWorld(player, new HexCoord(3, 0)));
-                Assert.That(active, Does.Contain(withdrawal), "the walk continues without the threat");
+                Assert.That(active, Is.Empty, "a safe current position does not justify further activation");
 
                 active = MissionContinuityLayer.ResolveActive(player, LifecycleWorld(player, citadel));
                 Assert.That(active, Is.Empty);
@@ -347,6 +349,498 @@ namespace Game.EditorTests
                 Assert.That(state.All, Is.Empty);
             }
             finally { MissionIntentRegistry.Clear(); }
+        }
+
+        // ActiveDefence asset / ownership / timing regressions. All inputs below are honest
+        // snapshots; no evaluator reads hidden enemy state or mutates the fixtures.
+        private static readonly HexCoord Home = new HexCoord(3, 1);
+        private static readonly HexCoord Secondary = new HexCoord(-1, 0);
+
+        private static ArmySnapshot DefenceActor(PlayerSetupData owner, int id, HexCoord hex,
+            float attack = 7f, float defence = 7f, float hp = 10f, bool garrison = false) =>
+            new ArmySnapshot { Owner = owner, ArmyId = id, Hex = hex, MemberCount = 1,
+                IsStructuralRaidActor = !garrison, IsGarrison = garrison,
+                CurrentMovement = 3, MaxMovement = 3, ActivationApCost = 2,
+                EffectiveArmyPower = attack + defence + hp,
+                ReachableOwnBaseHexes = new[] { Home, Secondary },
+                Members = new[] { new WorthIt.DefenderProfile(defence, false, null, attack, hp, 3) } };
+
+        private static WorldSnapshot AssetWorld(params ArmySnapshot[] actors)
+        {
+            var owner = actors.FirstOrDefault()?.Owner ?? new PlayerSetupData();
+            var enemy = new PlayerSetupData { Nickname = "hostile" };
+            var contact = new EnemyContactSnapshot { Position = new HexCoord(-4, 0),
+                LastObservedTurn = 8, Confidence = 1f, Knowledge = ContactKnowledge.Exact,
+                Army = DefenceActor(enemy, 99, new HexCoord(-4, 0), 8f, 8f, 18f) };
+            return new WorldSnapshot { Observer = owner, TurnNumber = 8,
+                Self = new SelfSnapshot { Citadel = Home, BaseHexes = new[] { Home, Secondary }, Armies = actors },
+                Known = new KnownSnapshot { EnemySightings = new[] {
+                    new AiMapMemory.KnownEnemySighting(contact.Position.Value, enemy, "hostile", 1,
+                        8f, 8f, contact.Army.Members, false, 0, 0, 8, 99) } },
+                Threat = new ThreatModel { Contacts = new[] { contact }, Threats = new[] {
+                    new AssetThreatSnapshot { Contact = contact, CanDamage = true, EnemyEta = 2,
+                        AttackWinChance = 1f, PotentialDamage = 1f, Severity = 1f, Confidence = 1f,
+                        Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base, Hex = Secondary, Value = 10f } } } } };
+        }
+
+        private static ActiveDefenceObjective AssetObjective(WorldSnapshot snap) =>
+            ActiveDefenceObjectiveEvaluator.Enumerate(snap).Single();
+
+        [Test]
+        public void FacilityOnly_CreatesNeitherObjectiveReserveNorDemand()
+        {
+            WorldSnapshot snap = AssetWorld();
+            snap.Threat.Threats[0].Asset.Kind = AssetKind.Facility;
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty);
+            Assert.That(ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats), Is.Zero);
+            Assert.That(AggressionDemandEvaluator.BuildActiveDefenceDemands(snap, null,
+                Array.Empty<MissionIntent>(), new ActorCommitments(), snap.Observer, out _), Is.Empty);
+        }
+
+        [Test]
+        public void FacilityAndSeveralBases_FilterBeforeRankingAndDeduplicateEnemy()
+        {
+            WorldSnapshot snap = AssetWorld();
+            AssetThreatSnapshot baseThreat = snap.Threat.Threats[0];
+            float reserve = ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats);
+            snap.Threat.Threats = new[] { baseThreat,
+                new AssetThreatSnapshot { Contact = baseThreat.Contact, Severity = 100f, PotentialDamage = 1f,
+                    Asset = new StrategicAssetSnapshot { Kind = AssetKind.Facility, Hex = Home, Value = 1000f } },
+                new AssetThreatSnapshot { Contact = baseThreat.Contact, Severity = 0.1f, PotentialDamage = 0.1f,
+                    Asset = new StrategicAssetSnapshot { Kind = AssetKind.Citadel, Hex = Home, Value = 1f } } };
+            Assert.That(AssetObjective(snap).Target.ProtectedAssetHex, Is.EqualTo(Secondary));
+            Assert.That(ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats), Is.EqualTo(reserve));
+            snap.Self.BaseHexes = Array.Empty<HexCoord>();
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty, "remembered ownership is insufficient");
+        }
+
+        [TestCase(0, 3, 0, true)]
+        [TestCase(0, 0, 1, true)]
+        [TestCase(-8, 3, 2, false)]
+        public void ReinforcementTiming_UsesCurrentMpAndConservativeTurnOrder(int q, int mp, int eta, bool timely)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(q, 0));
+            actor.CurrentMovement = mp;
+            WorldSnapshot snap = AssetWorld(actor);
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary), Is.EqualTo(eta));
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, actor, Secondary, 2, out _), Is.EqualTo(timely));
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snap, actor, Secondary, eta, out _), Is.False);
+        }
+
+        [Test]
+        public void UnreachableAndUnknownEta_DoNotInventReadinessOrImmediateAttack()
+        {
+            ArmySnapshot actor = DefenceActor(new PlayerSetupData(), 7, new HexCoord(0, 0));
+            WorldSnapshot snap = AssetWorld(actor);
+            actor.ReachableOwnBaseHexes = Array.Empty<HexCoord>();
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary), Is.EqualTo(int.MaxValue));
+            snap.Threat.Threats[0].EnemyEta = null;
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+            Assert.That(response.Reason, Is.EqualTo("enemy_eta_unknown"));
+            Assert.That(response.Movers, Is.Empty);
+        }
+
+        [Test]
+        public void SufficientCurrentGarrison_PreventsAnyAdditionalMovement()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 1, Secondary, 50, 50, 50, true),
+                DefenceActor(owner, 2, new HexCoord(0, 0)));
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+            Assert.That(response.Reason, Is.EqualTo("asset_holds"));
+            Assert.That(response.Movers, Is.Empty);
+        }
+
+        [TestCase(9f, 12f, 1)]
+        [TestCase(7f, 14f, 2)]
+        public void Regroup_UsesOnlySufficientRosterAndTheThreatenedSecondaryBase(float attack, float hp, int needed)
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 1, Secondary, attack, 7, hp),
+                DefenceActor(owner, 2, new HexCoord(0, 0), attack, 7, hp), DefenceActor(owner, 3, new HexCoord(0, 1), attack, 7, hp),
+                DefenceActor(owner, 4, Home, attack, 7, hp));
+            ActiveDefenceObjective objective = AssetObjective(snap);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            Assert.That(response.RegroupHex, Is.EqualTo(Secondary));
+            Assert.That(response.Movers.Count, Is.EqualTo(needed));
+            Assert.That(response.HoldWinChance, Is.GreaterThanOrEqualTo(AiConfigV2.activeDefenceHoldWinChance));
+            foreach (ArmySnapshot chosen in response.Movers)
+            {
+                var without = response.Movers.Where(a => a != chosen).ToArray();
+                Assert.That(ActiveDefenceObjectiveEvaluator.HoldChanceAtAsset(snap, objective, Secondary,
+                    without, response.Opposition), Is.LessThan(AiConfigV2.activeDefenceHoldWinChance));
+            }
+        }
+
+        [Test]
+        public void CitadelRegroup_UsesTheCitadelItselfAndAdjacentHexIsNotArrival()
+        {
+            var owner = new PlayerSetupData();
+            var standing = DefenceActor(owner, 1, Home, 9, 7, 12);
+            var mover = DefenceActor(owner, 2, new HexCoord(2, 1), 9, 7, 12);
+            WorldSnapshot snap = AssetWorld(standing, mover);
+            snap.Threat.Threats[0].Asset.Kind = AssetKind.Citadel;
+            snap.Threat.Threats[0].Asset.Hex = Home;
+            var response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            Assert.That(response.RegroupHex, Is.EqualTo(Home));
+            var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 2, Home);
+            intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            intent.ActiveDefence.ProtectedAssetKind = AssetKind.Citadel;
+            intent.ActiveDefence.ProtectedAssetHex = Home;
+            var state = MissionIntentRegistry.GetOrCreate(owner);
+            state.Put(intent);
+            try
+            {
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent));
+                mover.Hex = Home;
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void PowerWithoutViableRoster_IsShortageAndDoesNotEvacuateSafeArmies()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0), 0, 0, 1);
+            actor.EffectiveArmyPower = 10000f;
+            WorldSnapshot snap = AssetWorld(actor);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.Movers, Is.Empty);
+        }
+
+        [TestCase(AttackMissionPhase.Gather)]
+        [TestCase(AttackMissionPhase.Assault)]
+        public void ClaimedAttackOnBase_IsNeitherDefenderNorUnavailableCapableExcuse(AttackMissionPhase phase)
+        {
+            var owner = new PlayerSetupData();
+            var live = new Game.Map.ArmyData { Owner = owner, Hex = Secondary };
+            live.Members.Add(new Game.Units.UnitData { Owner = owner, Attack = 50, Defense = 50,
+                HitPointsCurrent = 50, HitPointsMax = 50, MoveMax = 3, MoveCurrent = 3 });
+            Game.Map.ArmyRegistry.Register(live);
+            ArmySnapshot actor = DefenceActor(owner, live.Id, Secondary, 50, 50, 50);
+            WorldSnapshot snap = AssetWorld(actor);
+            var attack = new MissionIntent { Kind = MissionKind.Attack, Status = IntentStatus.Active,
+                Objective = new AttackIntent { PrimaryArmyId = live.Id, Phase = phase } };
+            attack.IntentKey = MissionIntentKey.For(attack);
+            var commitments = ActorCommitments.FromIntents(new[] { attack }, snap, null);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap),
+                commitments.ClaimedArmyIdSet, null, null, new[] { attack });
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.Reason, Is.Not.Contains("capable_actor_unavailable"));
+            Assert.That(response.HoldWinChance, Is.Zero);
+            Assert.That(response.AvailablePower, Is.Zero);
+            Assert.That(attack.Attack.Phase, Is.EqualTo(phase));
+            Game.Map.ArmyRegistry.Clear();
+            Assert.That(commitments.IsArmyClaimed(live.Id), Is.True);
+        }
+
+        [Test]
+        public void AvailableFutureAttackHost_StillCompetesAndReleasedClaimIsReevaluated()
+        {
+            ArmySnapshot actor = DefenceActor(new PlayerSetupData(), 7, new HexCoord(0, 0), 50, 50, 50);
+            WorldSnapshot snap = AssetWorld(actor);
+            ActiveDefenceObjective objective = AssetObjective(snap);
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, new HashSet<int> { 7 }, null, null).Kind,
+                Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, new HashSet<int>(), null, null).Kind,
+                Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+        }
+
+        [Test]
+        public void RegroupContinuity_ReleasesOnLostThreatOrLostBase()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 7, new HexCoord(0, 0)));
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Secondary);
+            intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            intent.ActiveDefence.ProtectedAssetKind = AssetKind.Base;
+            intent.ActiveDefence.ProtectedAssetHex = Secondary;
+            var state = MissionIntentRegistry.GetOrCreate(owner);
+            try
+            {
+                state.Put(intent);
+                snap.Threat.Threats = Array.Empty<AssetThreatSnapshot>();
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+                Assert.That(ActorCommitments.FromIntents(state.All, snap, null).IsArmyClaimed(7), Is.False);
+                state.Put(intent);
+                snap.Self.BaseHexes = new[] { Home };
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+                Assert.That(state.All, Is.Empty);
+                Assert.That(snap.Self.Armies[0].Hex, Is.EqualTo(new HexCoord(0, 0)), "cancellation never moves the army back");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void SafeWithdrawal_RechecksCurrentPositionAndRetiresOnArrival()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0), 1, 1, 1);
+            WorldSnapshot snap = AssetWorld(actor);
+            AssetThreatSnapshot danger = snap.Threat.Threats[0];
+            danger.Asset = new StrategicAssetSnapshot { Kind = AssetKind.Army, Hex = actor.Hex };
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Return, 42, 7, Home);
+            var state = MissionIntentRegistry.GetOrCreate(owner);
+            try
+            {
+                state.Put(intent);
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent), "a DIFFERENT current threat can justify withdrawal");
+                snap.Threat.Threats = Array.Empty<AssetThreatSnapshot>();
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+                state.Put(intent);
+                actor.Hex = Home;
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void SnapshotAndPlayerIsolation_NoDefenceResponseCacheNeedsReset()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(-8, 0), 0, 0, 1);
+            WorldSnapshot snap = AssetWorld(actor);
+            ActiveDefenceObjective objective = AssetObjective(snap);
+            int eta = ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary);
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary), Is.EqualTo(eta));
+            WorldSnapshot moved = AssetWorld(DefenceActor(owner, 7, new HexCoord(0, 0), 0, 0, 1));
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(moved, moved.Self.Armies[0], Secondary), Is.Zero);
+            moved.Self.Armies[0].CurrentMovement = 0;
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(moved, moved.Self.Armies[0], Secondary), Is.EqualTo(1));
+            moved.Threat.Threats[0].EnemyEta = 1;
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(moved, moved.Self.Armies[0], Secondary,
+                AssetObjective(moved).Target.EnemyEta, out _), Is.False);
+            WorldSnapshot otherPlayer = AssetWorld();
+            Assert.That(ReferenceEquals(snap.Observer, otherPlayer.Observer), Is.False);
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary), Is.EqualTo(eta));
+            otherPlayer.Known.EnemySightings = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(otherPlayer), Is.Empty);
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void CancellationAndRekey_ReleaseOnlyTheirOwnLeaseAndPreserveEconomySaving()
+        {
+            var owner = new PlayerSetupData();
+            using var turn = AiTurnSession.Begin(owner, null, null, null, 8);
+            WorldSnapshot snap = AssetWorld(DefenceActor(owner, 7, new HexCoord(0, 0)));
+            var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Secondary);
+            intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            intent.ActiveDefence.ProtectedAssetKind = AssetKind.Base;
+            intent.ActiveDefence.ProtectedAssetHex = Secondary;
+            var oldKey = intent.IntentKey;
+            turn.PersistentState.Put(intent);
+            var lease = turn.Leases.For(oldKey);
+            lease.Claim(7);
+            var economyKey = MissionIntentKey.ForEconomy(EconomyTaskKind.FoundBase, 0, Home);
+            var economy = turn.Leases.For(economyKey);
+            economy.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 4f);
+            intent.ActiveDefence.ReturnHex = Home;
+            intent.IntentKey = MissionIntentKey.For(intent);
+            turn.PersistentState.Remove(oldKey);
+            turn.PersistentState.Put(intent);
+            Assert.That(turn.Leases.For(oldKey).ActorClaims, Is.Empty);
+            Assert.That(turn.Leases.For(intent.IntentKey).ActorClaims, Is.EqualTo(new[] { 7 }));
+            Assert.That(economy.ResourceClaims.Single().Amount, Is.EqualTo(4f));
+            snap.Threat.Threats = Array.Empty<AssetThreatSnapshot>();
+            Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Is.Empty);
+            Assert.That(turn.Leases.IsClaimed(7), Is.False);
+            Assert.That(turn.Leases.For(intent.IntentKey).ResourceClaims, Is.Empty);
+            Assert.That(economy.ResourceClaims.Single().Amount, Is.EqualTo(4f));
+            turn.Leases.Retire(economyKey);
+            StrategicResourceReservationLedger.AssertClearAtTurnEnd(owner, 8);
+            Assert.That(ReservationInvariants.Violations(owner, 8), Is.Empty);
+        }
+
+        [TestCase(false, 5, 2, true)]
+        [TestCase(true, 5, 0, true)]
+        [TestCase(false, 1, 2, false)]
+        public void ReturnApEnvelope_UsesOneCurrentActivationAndNeverFutureOrPhysicalCosts(
+            bool activated, int physicalAp, int expectedCost, bool funded)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            actor.HasActivatedThisTurn = activated;
+            WorldSnapshot snap = AssetWorld(actor);
+            snap.Self.ActionPoints = physicalAp;
+            var requirements = GroundCombatLegs.PinnedLegRequirements(actor, Home, out _);
+            var mission = new MissionProposal { Kind = MissionKind.ActiveDefence,
+                BaseValue = 10f, LocalAdmissionScore = 10f, Requirements = requirements,
+                Target = new ActiveDefenceMissionTarget { Phase = ActiveDefencePhase.Return,
+                    ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset,
+                    PrimaryArmyId = 7, ReturnHex = Home } };
+            mission.Axes.Value[DesireAxis.Aggression] = 1f;
+            var radar = Radar.Even();
+            foreach (DesireAxis a in DesireAxes.All) radar.Weight[a] = a == DesireAxis.Aggression ? 1f : 0f;
+            try
+            {
+                TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, radar,
+                    new List<MissionProposal> { mission }, new List<Commitment>(), owner).Pack();
+                Assert.That(requirements.ApMinimum, Is.EqualTo(expectedCost));
+                Assert.That(requirements.HumanMinimum + requirements.EnergyMinimum
+                    + requirements.MaterialsMinimum + requirements.TechMinimum, Is.Zero);
+                Assert.That(allocation.Funded.Count > 0, Is.EqualTo(funded));
+                Assert.That(allocation.Unused.Ap, Is.GreaterThanOrEqualTo(0f));
+                if (funded)
+                {
+                    Assert.That(allocation.Funded.Single().Tentative.Ap, Is.EqualTo(expectedCost));
+                    Assert.That(allocation.Funded.Single().PhysicalDraw.AnyPhysical, Is.False);
+                }
+            }
+            finally { AiAllocatorStateRegistry.Clear(); }
+        }
+
+        [Test]
+        public void AdmissionFingerprint_TracksReturnPurposeDestinationAssetAndPathingVersion()
+        {
+            WorldSnapshot snap = AssetWorld();
+            var state = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Secondary);
+            state.Put(intent);
+            try
+            {
+                string first = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+                string purpose = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                Assert.That(purpose, Is.Not.EqualTo(first));
+                intent.ActiveDefence.ProtectedAssetHex = Secondary;
+                string asset = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                Assert.That(asset, Is.Not.EqualTo(purpose));
+                intent.ActiveDefence.ReturnHex = Home;
+                string destination = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                Assert.That(destination, Is.Not.EqualTo(asset));
+                snap.MapPathingVersion++;
+                Assert.That(Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer), Is.Not.EqualTo(destination));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void RegroupRoute_ReevaluatesActualTerrainAndPreservesTheCombatProfile()
+        {
+            var go = new UnityEngine.GameObject("active-defence-route");
+            Game.Map.HexMap map = go.AddComponent<Game.Map.HexMap>();
+            ArmySnapshot actor = DefenceActor(new PlayerSetupData(), 7, new HexCoord(0, 0));
+            WorldSnapshot snap = AssetWorld(actor);
+            snap.Map = map;
+            var home = new HexCoord(3, 0);
+            var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            for (int q = 0; q <= 3; q++) terrain[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 2 };
+            map.SetData(4, 1f, terrain);
+            try
+            {
+                AiMapMemory.MarkScoutDanger(snap.Observer, new HexCoord(1, 0), 0, 99);
+                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, home), Is.EqualTo(2),
+                    "Combat transit ignores scout danger but packs 2-MP steps into a 3-MP turn");
+                terrain[new HexCoord(2, 0)].moveCost = 4;
+                map.SetData(4, 1f, terrain);
+                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, home), Is.EqualTo(int.MaxValue));
+                terrain[new HexCoord(2, 0)].moveCost = 1;
+                map.SetData(4, 1f, terrain);
+                Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, home), Is.EqualTo(1));
+            }
+            finally { AiMapMemory.Clear(); UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void RegroupKeepsOnlyNecessaryLeg_ThenReleasesWhenAnotherDefenderArrives()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot standing = DefenceActor(owner, 1, Secondary, 9, 7, 12);
+            ArmySnapshot mover = DefenceActor(owner, 2, new HexCoord(0, 0), 9, 7, 12);
+            WorldSnapshot snap = AssetWorld(standing, mover, DefenceActor(owner, 3, new HexCoord(0, 1), 9, 7, 12));
+            using var turn = AiTurnSession.Begin(owner, null, null, null, 8);
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Return, 99, 2, Secondary);
+            intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            intent.ActiveDefence.ProtectedAssetHex = Secondary;
+            intent.ActiveDefence.ProtectedAssetKind = AssetKind.Base;
+            turn.PersistentState.Put(intent);
+            turn.RefreshActors(turn.PersistentState.All.ToList(), snap, null);
+            Assert.That(turn.Leases.IsClaimed(2), Is.True);
+            intent.Status = IntentStatus.Suspended;
+            intent.Suspended = SuspendReason.PoolExhausted;
+            for (int i = 0; i < 3; i++)
+            {
+                Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent));
+                Assert.That(intent.Status, Is.EqualTo(IntentStatus.Active));
+                Assert.That(intent.ActiveDefence.ReturnHex, Is.EqualTo(Secondary), "identical facts never reverse the destination");
+                Assert.That(turn.PersistentState.Count, Is.EqualTo(1));
+            }
+            WorldSnapshot reinforced = AssetWorld(standing, mover,
+                DefenceActor(owner, 3, Secondary, 9, 7, 12));
+            Assert.That(MissionContinuityLayer.ResolveActive(owner, reinforced), Is.Empty);
+            Assert.That(turn.Leases.IsClaimed(2), Is.False);
+            Assert.That(mover.Hex, Is.EqualTo(new HexCoord(0, 0)));
+        }
+
+        [Test]
+        public void WithdrawalLostHome_RekeysOnceWithoutKeepingOldActorOrResourceOwner()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0), 1, 1, 1);
+            WorldSnapshot snap = AssetWorld(actor);
+            snap.Self.BaseHexes = new[] { Secondary };
+            snap.Threat.Threats[0].Asset = new StrategicAssetSnapshot { Kind = AssetKind.Army, Hex = actor.Hex };
+            using var turn = AiTurnSession.Begin(owner, null, null, null, 8);
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Return, 42, 7, Home);
+            MissionIntentKey old = intent.IntentKey;
+            turn.PersistentState.Put(intent);
+            turn.Leases.For(old).Claim(7);
+            Assert.That(MissionContinuityLayer.ResolveActive(owner, snap), Does.Contain(intent));
+            Assert.That(intent.ActiveDefence.ReturnHex, Is.EqualTo(Secondary));
+            Assert.That(turn.PersistentState.TryGet(old, out _), Is.False);
+            Assert.That(turn.Leases.For(old).ActorClaims, Is.Empty);
+            Assert.That(turn.Leases.For(intent.IntentKey).ActorClaims, Is.EqualTo(new[] { 7 }));
+            Assert.That(turn.PersistentState.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ForceNeedCache_NewSnapshotsChangeDefensiveNeedWithoutMutatingOldResult()
+        {
+            WorldSnapshot first = AssetWorld();
+            ForceNeed before = ForceNeedModel.JustifiedForceNeed(first);
+            Assert.That(before.Defensive, Is.GreaterThan(0));
+            Assert.That(ForceNeedModel.JustifiedForceNeed(first).Defensive, Is.EqualTo(before.Defensive));
+            WorldSnapshot facility = AssetWorld();
+            facility.Threat.Threats[0].Asset.Kind = AssetKind.Facility;
+            Assert.That(ForceNeedModel.JustifiedForceNeed(facility).Defensive, Is.Zero);
+            WorldSnapshot strong = AssetWorld();
+            strong.Self.TotalPower = 10000f;
+            Assert.That(ForceNeedModel.JustifiedForceNeed(strong).Defensive, Is.Zero);
+            Assert.That(ForceNeedModel.JustifiedForceNeed(first).Defensive, Is.EqualTo(before.Defensive));
+            Assert.That(ReferenceEquals(first.Observer, facility.Observer), Is.False);
+        }
+
+        [Test]
+        public void MaterializedDefenderMustReachTheOwnedAssetBeforeDeadline()
+        {
+            var card = new Game.Cards.CardDefinition();
+            {
+                card.cardType = Game.Cards.CardType.Unit;
+                card.moveMax = 2;
+                WorldSnapshot snap = AssetWorld();
+                var demand = new AxisDemand { Capability = CapabilityKind.FieldCombatPower,
+                    ConsumerMissionKind = MissionKind.ActiveDefence,
+                    DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
+                    TargetHex = Secondary, ActiveDefenceEnemyEta = 1 };
+                var plan = new MaterializationPlan { GeneratedBaseDef = card,
+                    Deploy = new PlacementOption(Home, DeploymentKind.NewArmy, null) };
+                Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, demand, snap, snap.Observer), Is.False);
+                plan.Deploy = new PlacementOption(Secondary, DeploymentKind.NewArmy, null);
+                Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, demand, snap, snap.Observer), Is.True);
+                snap.Self.BaseHexes = new[] { Home };
+                Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, demand, snap, snap.Observer), Is.False);
+                demand.ConsumerMissionKind = MissionKind.Raid;
+                Assert.That(MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, demand, snap, snap.Observer), Is.True,
+                    "Raid keeps its existing independent-field delivery contract");
+            }
         }
 
         private static MissionIntent DefenceIntent(ActiveDefencePhase phase, int enemyId,

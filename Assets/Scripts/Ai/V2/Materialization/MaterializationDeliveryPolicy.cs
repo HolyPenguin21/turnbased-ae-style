@@ -307,6 +307,28 @@ namespace Game.Ai.V2
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             $"committed_actor_adds_no_free_field_power#{p.Deploy.Army.Id}");
                     CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                    if (demand.ConsumerMissionKind == MissionKind.ActiveDefence)
+                    {
+                        if (!demand.TargetHex.HasValue || !demand.ActiveDefenceEnemyEta.HasValue
+                            || !ActiveDefenceObjectiveEvaluator.IsDefendableAsset(snapshot,
+                                AssetKind.Base, demand.TargetHex))
+                            return DeliveryAssessment.No(DeliveryFailureReason.MissingTarget,
+                                "active_defence_asset_or_deadline_lost");
+                        ArmySnapshot recipient = p.Deploy.Army == null ? null
+                            : snapshot.Self.Armies.FirstOrDefault(a => a.ArmyId == p.Deploy.Army.Id);
+                        int move = CapabilityQualityEvaluator.ProjectedMoveMax(p);
+                        var projected = new ArmySnapshot
+                        {
+                            Owner = player, Hex = p.Deploy.Hex,
+                            MaxMovement = recipient?.MemberCount > 0 ? Mathf.Min(move, recipient.MaxMovement) : move,
+                            CurrentMovement = recipient?.MemberCount > 0 ? Mathf.Min(move, recipient.CurrentMovement) : move,
+                            ReachableOwnBaseHexes = snapshot.Self.BaseHexes,
+                        };
+                        if (!ActiveDefenceObjectiveEvaluator.CanArriveBeforeThreat(snapshot, projected,
+                                demand.TargetHex.Value, demand.ActiveDefenceEnemyEta, out _))
+                            return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                                "reinforcement_too_late_or_unreachable");
+                    }
                     bool hero = d != null && d.cardType == CardType.Hero;
                     if (!hero)
                         return DeliveryAssessment.Ok;

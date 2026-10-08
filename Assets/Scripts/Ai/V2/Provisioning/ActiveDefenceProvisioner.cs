@@ -145,9 +145,29 @@ namespace Game.Ai.V2
             if (actor.Hex.Equals(target.ReturnHex.Value))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                     "active defence responder is already home"));
-            if (session.ClaimedArmyIds.Contains(actor.Id))
+            if (session.ExcludedForGroundCombat(funded.Mission).Contains(actor.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "active defence return actor is claimed"));
+            WorldSnapshot snap = session.Snapshot;
+            if (snap?.Self?.BaseHexes?.Contains(target.ReturnHex.Value) != true)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "protected_base_lost"));
+            if (target.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset)
+            {
+                IReadOnlyList<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+                ActiveDefenceObjective objective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap,
+                    target.EnemyArmyId);
+                var committed = ActorCommitments.FromIntents(intents, snap, null).ClaimedArmyIdSet;
+                committed.UnionWith(session.ExcludedForGroundCombat(funded.Mission));
+                ActiveDefenceResponse response = objective == null
+                    || !objective.Target.ProtectedAssetHex.Equals(target.ReturnHex.Value) ? null
+                    : ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, committed,
+                        ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(intents), null, intents);
+                if (response?.Kind != ActiveDefenceResponseKind.Regroup
+                    || !response.ReinforcementArmyIds.Contains(actor.Id))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "regroup_no_longer_needed"));
+            }
             if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value,
                     profile: SafeRouteProfile.Combat) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(

@@ -270,6 +270,106 @@ namespace Game.EditorTests
             Assert.That(_root.ActionPoints, Is.EqualTo(20));
         }
 
+        private (WorldSnapshot snapshot, MissionProposal proposal) DefenceReturnFixture(ArmyData army,
+            ActiveDefenceReturnPurpose purpose)
+        {
+            var enemy = new PlayerSetupData { Nickname = "known-threat" };
+            var enemyBody = new Game.Combat.WorthIt.DefenderProfile(8, false, null, 8, 18, 3);
+            var contact = new EnemyContactSnapshot { Position = new HexCoord(-3, 0),
+                Knowledge = ContactKnowledge.Exact, Confidence = 1f, LastObservedTurn = 1,
+                Army = new ArmySnapshot { ArmyId = 999, Owner = enemy, MemberCount = 1,
+                    EffectiveArmyPower = 34f, Members = new[] { enemyBody } } };
+            army.Members[0].Attack = 9;
+            army.Members[0].Defense = 7;
+            army.Members[0].HitPointsCurrent = army.Members[0].HitPointsMax = 12;
+            army.Members[0].Initiative = 3;
+            var actor = new ArmySnapshot { ArmyId = army.Id, Owner = _owner, Hex = army.Hex,
+                IsStructuralRaidActor = true, MemberCount = 1, ActivationApCost = army.ActivationApCost,
+                HasActivatedThisTurn = army.HasActivatedThisTurn, EffectiveArmyPower = 28f,
+                CurrentMovement = army.CurrentMovement, MaxMovement = army.MaxMovement,
+                ReachableOwnBaseHexes = new[] { _last },
+                Members = new[] { new Game.Combat.WorthIt.DefenderProfile(7, false, null, 9, 12, 3) } };
+            var snap = new WorldSnapshot { Observer = _owner, TurnNumber = 1, Map = _map,
+                Self = new SelfSnapshot { ActionPoints = _root.ActionPoints, BaseHexes = new[] { _last },
+                    Citadel = _last, Armies = new[] { actor, new ArmySnapshot { ArmyId = -20,
+                        Owner = _owner, Hex = _last, IsGarrison = true, MemberCount = 1,
+                        Members = actor.Members, EffectiveArmyPower = 28f } } },
+                Known = new KnownSnapshot { EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(
+                    contact.Position.Value, enemy, "known", 1, 8, 8, new[] { enemyBody }, false, 0, 0, 1, 999) } },
+                Threat = new ThreatModel { Contacts = new[] { contact }, Threats = new[] {
+                    new AssetThreatSnapshot { Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base,
+                        Hex = _last, Value = 10f }, Contact = contact, CanDamage = true, EnemyEta = 1,
+                        PotentialDamage = 1f, Confidence = 1f, Severity = 1f, AttackWinChance = 1f } } } };
+            var target = ActiveDefenceObjectiveEvaluator.Enumerate(snap).Single().Target;
+            target.Phase = ActiveDefencePhase.Return;
+            target.ReturnPurpose = purpose;
+            target.PrimaryArmyId = army.Id;
+            target.ReturnHex = _last;
+            var proposal = new MissionProposal { Kind = MissionKind.ActiveDefence, Target = target,
+                PreferredMoverArmyId = army.Id, BaseValue = 10f, LocalAdmissionScore = 10f,
+                Requirements = GroundCombatLegs.PinnedLegRequirements(actor, _last, out _) };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            return (snap, proposal);
+        }
+
+        private IEnumerator DefenceReturnBankCase(bool alreadyActivated, ActiveDefenceReturnPurpose purpose)
+        {
+            _root.ActionPoints = 5;
+            ArmyData army = Army(air: false);
+            if (alreadyActivated) army.MarkActivated();
+            var fixture = DefenceReturnFixture(army, purpose);
+            using var turn = AiTurnSession.Begin(_owner, _root, null, Context());
+            var radar = Radar.Even();
+            foreach (DesireAxis axis in DesireAxes.All) radar.Weight[axis] = axis == DesireAxis.Aggression ? 1f : 0f;
+            var allocator = ResourceAllocator.BeginTurn(fixture.snapshot, radar,
+                new List<MissionProposal> { fixture.proposal }, new List<Commitment>(), _owner);
+            FundedEntry funded = allocator.Pack().Funded.Single();
+            using var session = new ProvisioningSession(fixture.snapshot, turn);
+            ProvisioningResult provision = ActiveDefenceProvisioner.Provision(_owner, _root, Context(), session, funded);
+            Assert.That(provision.Success, Is.True);
+            allocator.RegisterProvisionSuccess(funded, provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
+            var execution = new ExecutionResult();
+            yield return ActiveDefenceExecutor.RunActiveDefence(_owner, _root, Context(), provision.Provisioned, execution, 5);
+            int spent = alreadyActivated ? 0 : army.ActivationApCost;
+            Assert.That(execution.StepsMoved, Is.EqualTo(2));
+            Assert.That(execution.ReachedGoal, Is.True);
+            Assert.That(execution.ApSpent, Is.EqualTo(spent));
+            Assert.That(_root.ActionPoints, Is.EqualTo(5 - spent));
+            Assert.That(_root.GetResource(ResourceType.Energy), Is.EqualTo(20));
+            Assert.That(provision.Provisioned.ClaimedPhysical.AnyPhysical, Is.False);
+            TestContext.WriteLine($"ActiveDefence bank purpose={purpose} activated={alreadyActivated} "
+                + $"AP-before=5 funded={funded.Tentative.Ap} actual={execution.ApSpent} AP-after={_root.ActionPoints} claims-settlement=checked-separately");
+            StrategicResourceReservationLedger.AssertClearAtTurnEnd(_owner, 1);
+            Assert.That(ReservationInvariants.Violations(_owner, 1), Is.Empty);
+        }
+
+        [UnityTest]
+        public IEnumerator ActiveDefenceRegroup_AllocatorProvisionAndTwoHexExecution_ChargesOnce() =>
+            DefenceReturnBankCase(false, ActiveDefenceReturnPurpose.RegroupForAsset);
+
+        [UnityTest]
+        public IEnumerator ActiveDefenceRegroup_ActivatedArmyDoesNotPayAgain() =>
+            DefenceReturnBankCase(true, ActiveDefenceReturnPurpose.RegroupForAsset);
+
+        [UnityTest]
+        public IEnumerator ActiveDefenceWithdrawal_UsesTheSameApOnlyMovementContract() =>
+            DefenceReturnBankCase(false, ActiveDefenceReturnPurpose.SafeWithdrawal);
+
+        [UnityTest]
+        public IEnumerator ActiveDefenceRegroup_StaleSmallEnvelopeCannotMoveForFree()
+        {
+            ArmyData army = Army(air: false);
+            var fixture = DefenceReturnFixture(army, ActiveDefenceReturnPurpose.RegroupForAsset);
+            using var session = new ProvisioningSession(fixture.snapshot);
+            var result = ActiveDefenceProvisioner.Provision(_owner, _root, Context(), session,
+                new FundedEntry { Mission = fixture.proposal, Tentative = ResourceVector.Zero });
+            Assert.That(result.Success, Is.False);
+            Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.EnvelopeTooSmall));
+            Assert.That(army.Hex, Is.EqualTo(_origin));
+            Assert.That(_root.ActionPoints, Is.EqualTo(20));
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator OrdinaryGroundOrderChargesActivationOnlyOnce()
         {

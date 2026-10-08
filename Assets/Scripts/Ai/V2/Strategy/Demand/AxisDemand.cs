@@ -76,6 +76,9 @@ namespace Game.Ai.V2
         public float Value;
         public TaskScore WorldTaskScore;
         public HexCoord? TargetHex;
+        // Only ActiveDefence field delivery: the contact's current deadline. Other consumers
+        // keep their existing delivery policy; this is not a future resource reservation.
+        public int? ActiveDefenceEnemyEta;
         public CapabilityKind Capability;
         public float DesiredAmount;
         public TraitPreference RequiredTraits;

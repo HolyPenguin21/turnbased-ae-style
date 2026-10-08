@@ -43,6 +43,7 @@ namespace Game.Ai.V2
                         ProtectedAssetValue = d.ProtectedAssetValue,
                         ThreatSeverity = d.ThreatSeverity, PrimaryArmyId = d.PrimaryArmyId,
                         ReturnHex = d.ReturnHex, EstimatedEta = eta,
+                        ReturnPurpose = d.ReturnPurpose, EnemyEta = d.EnemyEta,
                     };
                     var proposal = new MissionProposal
                     {
@@ -74,7 +75,7 @@ namespace Game.Ai.V2
                 MissionIntent incumbent = ActiveDefenceObjectiveEvaluator.IncumbentIntercept(
                     activeIntents, objective.Target.EnemyArmyId);
                 ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
-                    snap, objective, committed, withdrawing, incumbent?.ActiveDefence?.PrimaryArmyId);
+                    snap, objective, committed, withdrawing, incumbent?.ActiveDefence?.PrimaryArmyId, activeIntents);
                 if (response == null)
                     continue;
                 switch (response.Kind)
@@ -101,12 +102,12 @@ namespace Game.Ai.V2
                                 continue;
                             HexCoord? destination = response.Kind == ActiveDefenceResponseKind.Regroup
                                 ? response.RegroupHex
-                                : AiReturnBasePolicy.SelectReturnBase(snap, snap.Observer,
-                                    mover.ArmyId);
+                                : ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, mover, committed);
                             if (!destination.HasValue || mover.Hex.Equals(destination.Value))
                                 continue;
+                            pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
                             proposals.Add(BuildActiveDefenceWithdrawal(objective, mover,
-                                destination.Value, response));
+                                destination.Value, response, pendingHost.Value));
                         }
                         AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#withdraw",
                             $"[AI][V2][ActiveDefence][Admission] decision="
@@ -294,14 +295,18 @@ namespace Game.Ai.V2
         // Scored off the threat it answers — the canonical TaskScore with the walk's own price and
         // no fight — so it competes honestly with every other lane for this army's activation.
         private static MissionProposal BuildActiveDefenceWithdrawal(ActiveDefenceObjective objective,
-            ArmySnapshot mover, HexCoord destination, ActiveDefenceResponse response)
+            ArmySnapshot mover, HexCoord destination, ActiveDefenceResponse response,
+            (int armyId, float value) pendingPreparationHost)
         {
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
                 mover, destination, out int eta);
             TaskScore score = ActiveDefenceObjectiveEvaluator.WithResponse(objective, mover,
-                0f, eta);
+                response.HoldWinChance, eta, moverOpportunityCost:
+                    mover.ArmyId == pendingPreparationHost.armyId ? pendingPreparationHost.value : 0f);
             ActiveDefenceMissionTarget target = objective.Target;
             target.Phase = ActiveDefencePhase.Return;
+            target.ReturnPurpose = response.Kind == ActiveDefenceResponseKind.Regroup
+                ? ActiveDefenceReturnPurpose.RegroupForAsset : ActiveDefenceReturnPurpose.SafeWithdrawal;
             target.PrimaryArmyId = mover.ArmyId;
             target.ReturnHex = destination;
             target.EstimatedEta = eta;

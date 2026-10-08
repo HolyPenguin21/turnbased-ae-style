@@ -12,8 +12,8 @@ namespace Game.Ai.V2
     //    Intercept — kept while its honest objective and its capable actor both exist; a victory,
     //                a vanished threat or a lost / no longer capable actor ends it, and the next
     //                global replan decides afresh.
-    //    Return    — one army's withdrawal (regroup at the Citadel, or retreat home): kept until
-    //                it arrives, whatever became of the threat that started it.
+    //    Return    — a necessary reinforcement of this own asset, or a safe withdrawal:
+    //                re-evaluated against the corresponding current need before every step.
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
@@ -51,24 +51,56 @@ namespace Game.Ai.V2
 
             if (defence.Phase == ActiveDefencePhase.Return)
             {
-                // The same walk-home rule every lifecycle leg uses: a destination that was lost or
-                // became unreachable is re-picked, never walked to.
-                HexCoord? home = AiReturnBasePolicy.KeepOrReselectHome(snap, player, defence.PrimaryArmyId,
-                    defence.ReturnHex, out bool reselected);
-                if (!home.HasValue || actor.Hex.Equals(home.Value))
+                if (actor.Hex.Equals(defence.ReturnHex)) return false;
+                IReadOnlyList<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+                HashSet<int> committed = ActorCommitments.FromIntents(intents, snap, null).ClaimedArmyIdSet;
+                if (defence.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset)
                 {
-                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=ARRIVED "
-                        + $"actor={actor.ArmyId} claim released");
-                    return false;
+                    if (!ActiveDefenceObjectiveEvaluator.IsDefendableAsset(snap,
+                            defence.ProtectedAssetKind, defence.ProtectedAssetHex))
+                    {
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END actor={actor.ArmyId} reason=protected_base_lost");
+                        return false;
+                    }
+                    ActiveDefenceObjective regroupObjective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+                    // A different threatened asset requires a NEW global decision, not a silent
+                    // retarget of an old Hard leg.
+                    ActiveDefenceResponse response = regroupObjective == null
+                        || !regroupObjective.Target.ProtectedAssetHex.Equals(defence.ProtectedAssetHex) ? null
+                        : ActiveDefenceObjectiveEvaluator.AssessResponse(snap, regroupObjective, committed,
+                            ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(intents), null, intents);
+                    if (response?.Kind != ActiveDefenceResponseKind.Regroup
+                        || !response.ReinforcementArmyIds.Contains(actor.ArmyId))
+                    {
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END actor={actor.ArmyId} "
+                            + $"reason={(regroupObjective == null ? "threat_no_longer_listed" : "regroup_no_longer_needed")}");
+                        return false;
+                    }
+                    if (!defence.ReturnHex.HasValue || !defence.ReturnHex.Value.Equals(defence.ProtectedAssetHex)) return false;
+                    defence.EnemyEta = regroupObjective.Target.EnemyEta;
+                    defence.LastKnownHex = regroupObjective.Target.LastKnownHex;
+                    defence.LastObservedTurn = regroupObjective.Target.LastObservedTurn;
+                    defence.Confidence = regroupObjective.Target.Confidence;
+                    defence.ThreatSeverity = regroupObjective.Target.ThreatSeverity;
                 }
-                if (reselected)
+                else
                 {
-                    MissionIntentKey oldKey = intent.IntentKey;
-                    defence.ReturnHex = home;
-                    intent.IntentKey = MissionIntentKey.For(intent);
-                    intent.StallTurns = 0;
-                    if (!oldKey.Equals(intent.IntentKey))
-                        rekeys.Add((oldKey, intent));
+                    if (!ActiveDefenceObjectiveEvaluator.NeedsSafeWithdrawal(snap, actor))
+                    {
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END actor={actor.ArmyId} reason=safe_withdrawal_released");
+                        return false;
+                    }
+                    committed.Remove(actor.ArmyId);
+                    HexCoord? home = ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, actor, committed, defence.ReturnHex);
+                    if (!home.HasValue || actor.Hex.Equals(home.Value)) return false;
+                    if (!home.Equals(defence.ReturnHex))
+                    {
+                        MissionIntentKey oldKey = intent.IntentKey;
+                        defence.ReturnHex = home;
+                        intent.IntentKey = MissionIntentKey.For(intent);
+                        intent.StallTurns = 0;
+                        if (!oldKey.Equals(intent.IntentKey)) rekeys.Add((oldKey, intent));
+                    }
                 }
                 ResumeTransientSuspension(intent);
                 return true;
@@ -113,6 +145,7 @@ namespace Game.Ai.V2
             defence.ProtectedAssetValue = current.ProtectedAssetValue;
             defence.ThreatSeverity = current.ThreatSeverity;
             defence.EstimatedEta = current.EstimatedEta;
+            defence.EnemyEta = current.EnemyEta;
             ResumeTransientSuspension(intent);
             return true;
         }
@@ -175,7 +208,8 @@ namespace Game.Ai.V2
                 // The AirSupport mover is the wing: it is kept apart from the ground actor slot.
                 PrimaryArmyId = t.Phase == ActiveDefencePhase.AirSupport ? null
                     : o.MoverArmyId ?? t.PrimaryArmyId,
-                ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
+                ReturnHex = t.ReturnHex, ReturnPurpose = t.ReturnPurpose, EnemyEta = t.EnemyEta,
+                ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
                 AirSupportArmyId = t.Phase == ActiveDefencePhase.AirSupport
                     ? o.MoverArmyId ?? t.AirSupportArmyId : null,

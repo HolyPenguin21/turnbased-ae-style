@@ -11,17 +11,22 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // Intercept — one capable army (or a same-hex assembly around it) meets the enemy.
-    // Return — one army withdraws: to the Citadel to regroup when the defensive power exists but is
-    // spread over several field armies, or to its own base when the power does not exist at all.
+    // Return — one army reinforces the threatened own base, or withdraws from a dangerous
+    // field position to a safe own base. ReturnPurpose controls their distinct lifecycles.
     // AirSupport — a free wing strikes the same threat in parallel with whatever the ground answer
     // is (Intercept, Regroup, Shortage or no ground responder at all). A technical assignment of
     // the same ActiveDefence objective, with its own intent and key; appended so the numeric values
     // of Intercept/Return never change.
-    public enum ActiveDefencePhase { Intercept, Return, AirSupport }
+    public enum ActiveDefencePhase { Intercept = 0, Return = 1, AirSupport = 2 }
+
+    // Zero preserves old payloads as withdrawals; new regroup legs always opt in explicitly.
+    public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1 }
 
     public struct ActiveDefenceMissionTarget
     {
         public ActiveDefencePhase Phase;
+        public ActiveDefenceReturnPurpose ReturnPurpose;
+        public int? EnemyEta;
         public int EnemyArmyId;
         public HexCoord LastKnownHex;
         public int LastObservedTurn;
@@ -46,8 +51,8 @@ namespace Game.Ai.V2
     {
         Intercept,  // a concrete army / same-hex assembly clears the combat gate now
         Defer,      // a capable force exists but cannot act this pass (spent MP, claimed, pinned)
-        Regroup,    // enough usable power, but spread over field armies: they gather at the Citadel
-        Shortage,   // not enough usable power (or regroup exhausted): withdraw home and buy power
+        Regroup,    // sufficient timely reinforcements gather on the threatened own asset
+        Shortage,   // no viable timely defence; only endangered armies may withdraw
     }
 
     public sealed class ActiveDefenceResponse
@@ -65,7 +70,9 @@ namespace Game.Ai.V2
         // Regroup / Shortage: usable field armies that still have to walk; each gets its own
         // one-actor Return leg. Armies already withdrawing are never listed again.
         public readonly List<ArmySnapshot> Movers = new List<ArmySnapshot>();
-        // Regroup only: the canonical Citadel hex.
+        // Includes already bound regroup legs, so Continuity can retain only necessary actors.
+        public readonly HashSet<int> ReinforcementArmyIds = new HashSet<int>();
+        // Regroup only: the exact currently owned protected asset hex.
         public HexCoord? RegroupHex;
         public string Reason;
         // The defence estimate with the roles the fight really has (our armies DEFEND the asset,
@@ -104,7 +111,8 @@ namespace Game.Ai.V2
                 ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
 
             foreach (IGrouping<int, AssetThreatSnapshot> group in threats
-                .Where(t => IsHonestPositionedHostile(t)
+                .Where(t => IsDefendableAsset(snap, t?.Asset?.Kind, t?.Asset?.Hex)
+                    && IsHonestPositionedHostile(t)
                     && interceptableIds.Contains(t.Contact.Army.ArmyId))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
@@ -154,6 +162,7 @@ namespace Game.Ai.V2
                     ProtectedAssetValue = chosen.Asset.Value,
                     ThreatSeverity = chosen.Severity,
                     EstimatedEta = chosen.EnemyEta.GetValueOrDefault(),
+                    EnemyEta = chosen.EnemyEta,
                 };
                 result.Add(new ActiveDefenceObjective { Target = target, TaskScore = score });
                 AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
@@ -219,73 +228,198 @@ namespace Game.Ai.V2
                 && i.ActiveDefence?.Phase == ActiveDefencePhase.Intercept
                 && i.ActiveDefence.EnemyArmyId == enemyArmyId);
 
-        // THE ActiveDefence response decision (Mission planner and Demand read the same answer):
-        //  1. a concrete army or same-hex assembly clears the gate  -> Intercept;
-        //  2. a capable army exists but cannot act this pass (spent MP, owned by another operation,
-        //     or this objective's pinned incumbent still waiting)    -> Defer (no retreat, no buy);
-        //  3. the usable field armies together reach RequiredPower   -> Regroup at the Citadel,
-        //     where the existing same-hex owners (GroundCombatAssemblyPlanner, Housekeeping) form
-        //     the force; once every usable army already stands there the regroup is exhausted;
-        //  4. otherwise (or regroup exhausted)                        -> Shortage: withdraw home,
-        //     Demand publishes FieldCombatPower.
-        // `committed` — armies other operations own; `withdrawing` — armies already on an
-        // ActiveDefence Return leg: they count as usable power but are never proposed again, and
-        // never pulled off their withdrawal into an intercept. Usable power is summed over
-        // GroundCombatActorEligibility's structural set through GroundCombatFeasibility.
+        // One snapshot decision shared by Planner, Demand and regroup Continuity. Claims may
+        // only be opened for this exact defence's own regroup legs, never for a withdrawal or
+        // a different operation. A present garrison is assessed BEFORE proposing any movement.
         internal static ActiveDefenceResponse AssessResponse(WorldSnapshot snap,
             ActiveDefenceObjective objective, ISet<int> committed, ICollection<int> withdrawing,
-            int? pinnedActor)
+            int? pinnedActor, IEnumerable<MissionIntent> activeIntents = null)
         {
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = objective == null ? null
-                : Opposition(snap, objective.Target.EnemyArmyId);
-            if (opposition == null || snap?.Self?.Armies == null)
+            if (objective == null || !IsDefendableAsset(snap, objective.Target.ProtectedAssetKind,
+                    objective.Target.ProtectedAssetHex) || snap?.Self?.Armies == null)
                 return null;
-            // An enemy standing on a known foreign structure is the Attack owner's site, never a
-            // defence response (see OnKnownForeignStructure): no intercept, no withdrawal, no buy.
-            if (OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = Opposition(snap, objective.Target.EnemyArmyId);
+            if (opposition == null || OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
                 return null;
+            HexCoord asset = objective.Target.ProtectedAssetHex;
+            var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            var ownRegroup = new HashSet<int>((activeIntents ?? Enumerable.Empty<MissionIntent>())
+                .Where(i => i != null && (i.Status == IntentStatus.Active
+                    || (i.Status == IntentStatus.Suspended
+                        && (i.Suspended == SuspendReason.PoolExhausted
+                            || i.Suspended == SuspendReason.CapabilityUnavailable)))
+                    && i.ActiveDefence?.Phase == ActiveDefencePhase.Return
+                    && i.ActiveDefence.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset
+                    && i.ActiveDefence.EnemyArmyId == objective.Target.EnemyArmyId
+                    && i.ActiveDefence.ProtectedAssetHex.Equals(asset)
+                    && i.ActiveDefence.ReturnHex.HasValue && i.ActiveDefence.ReturnHex.Value.Equals(asset) && i.ActiveDefence.PrimaryArmyId.HasValue)
+                .Select(i => i.ActiveDefence.PrimaryArmyId.Value));
+            // Read other owners through the canonical commitment factory, including Economy,
+            // Raid, Attack supports and other ActiveDefence operations.
+            var otherOwners = ActorCommitments.FromIntents(
+                (activeIntents ?? Enumerable.Empty<MissionIntent>()).Where(i =>
+                    i?.ActiveDefence?.Phase != ActiveDefencePhase.Return
+                    || i.ActiveDefence.ReturnPurpose != ActiveDefenceReturnPurpose.RegroupForAsset
+                    || i.ActiveDefence.EnemyArmyId != objective.Target.EnemyArmyId
+                    || !i.ActiveDefence.ProtectedAssetHex.Equals(asset)), snap, null);
+            ownRegroup.ExceptWith(otherOwners.ClaimedArmyIds);
+            unavailable.ExceptWith(ownRegroup);
             var response = new ActiveDefenceResponse { Opposition = opposition };
-
-            if (TryDirectResponse(snap, opposition, committed, withdrawing, pinnedActor, response))
-                return response;
-
-            // 2026-10-01 — a regroup / withdrawal is for an imminent threat only (Halden/Cassia
-            // T14-T18: 16 activations walking armies home for 15-power contacts several turns out).
-            if (objective.Target.EstimatedEta > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+            response.HoldWinChance = HoldChanceAtAsset(snap, objective, null, null, opposition, unavailable);
+            if (response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance)
             {
                 response.Kind = ActiveDefenceResponseKind.Defer;
-                response.Reason = $"threat_not_imminent eta={objective.Target.EstimatedEta}";
-                return response;
+                response.Reason = "asset_holds";
+                return TraceResponse(snap, objective, response, committed);
             }
+            if (TryDirectResponse(snap, objective, opposition, committed, withdrawing, pinnedActor, response))
+                return TraceResponse(snap, objective, response, committed);
+            // Unknown ETA is uncertainty, never an immediate retreat order. Strategic reserve
+            // still sees the honest contact through ForceNeedModel.
+            if (!objective.Target.EnemyEta.HasValue
+                || objective.Target.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+            {
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = !objective.Target.EnemyEta.HasValue ? "enemy_eta_unknown" : "threat_not_imminent";
+                return TraceResponse(snap, objective, response, committed);
+            }
+            List<ArmySnapshot> usable = BuildDefencePool(snap, unavailable, null);
+            List<ArmySnapshot> timely = usable.Where(a => a.Hex.Equals(asset)
+                || (!IsPinnedStrongholdDefender(snap, a, unavailable)
+                    && CanArriveBeforeThreat(snap, a, asset, objective.Target.EnemyEta, out _))).ToList();
+            response.RequiredPower = GroundCombatFeasibility.RequiredPower(WorthIt.UnitsOf(opposition), 0f);
+            response.AvailablePower = GroundCombatFeasibility.AggregatePower(timely)
+                + snap.Self.Armies.Where(a => a != null && a.IsGarrison && a.Hex.Equals(asset))
+                    .Sum(a => Mathf.Max(0f, a.EffectiveArmyPower));
+            response.StrongestPower = timely.Count == 0 ? 0f : timely.Max(a => Mathf.Max(0f, a.EffectiveArmyPower));
+            var selected = new List<ArmySnapshot>();
+            foreach (ArmySnapshot a in timely.Where(a => !a.Hex.Equals(asset))
+                .OrderBy(a => ArrivalEta(snap, a, asset))
+                .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
+                .ThenByDescending(a => a.EffectiveArmyPower).ThenBy(a => a.ArmyId))
+            {
+                selected.Add(a);
+                float chance = HoldChanceAtAsset(snap, objective, asset, selected, opposition, unavailable);
+                // Zero sampled wins for one body do not prove it contributes nothing: several
+                // individually losing defenders can wear down the same attacking roster.
+                response.HoldWinChance = chance;
+                if (chance < AiConfigV2.activeDefenceHoldWinChance) continue;
+                // Remove any redundant earlier pick under the same simulator, without a global
+                // subset search. Stable order and deterministic estimates keep identical plans stable.
+                for (int i = selected.Count - 1; i >= 0; i--)
+                {
+                    var without = selected.Where((_, index) => index != i).ToList();
+                    float smaller = HoldChanceAtAsset(snap, objective, asset, without, opposition, unavailable);
+                    if (smaller < AiConfigV2.activeDefenceHoldWinChance) continue;
+                    selected.RemoveAt(i);
+                    response.HoldWinChance = smaller;
+                }
+                response.Kind = ActiveDefenceResponseKind.Regroup;
+                response.RegroupHex = asset;
+                response.Reason = "regroup_sufficient";
+                response.ReinforcementArmyIds.UnionWith(selected.Select(m => m.ArmyId));
+                response.Movers.AddRange(selected.Where(m => withdrawing == null || !withdrawing.Contains(m.ArmyId)));
+                return TraceResponse(snap, objective, response, committed);
+            }
+            response.Kind = ActiveDefenceResponseKind.Shortage;
+            response.Reason = "insufficient_defence_power";
+            // A shortage at one base is not authority to evacuate every free field army.
+            response.Movers.AddRange(usable.Where(a => (withdrawing == null || !withdrawing.Contains(a.ArmyId))
+                && !snap.Self.BaseHexes.Contains(a.Hex) && NeedsSafeWithdrawal(snap, a)));
+            return TraceResponse(snap, objective, response, committed);
+        }
 
-            List<ArmySnapshot> usable = BuildDefencePool(snap, committed, withdrawing);
-            response.RequiredPower = GroundCombatFeasibility.RequiredPower(
-                WorthIt.UnitsOf(opposition), 0f);
-            response.AvailablePower = GroundCombatFeasibility.AggregatePower(usable);
-            response.StrongestPower = usable.Count == 0 ? 0f
-                : usable.Max(a => Mathf.Max(0f, a.EffectiveArmyPower));
-            IEnumerable<ArmySnapshot> walkers = usable.Where(a =>
-                withdrawing == null || !withdrawing.Contains(a.ArmyId));
-
-            // The regroup point is the canonical Citadel, and only while it is still an own base.
-            // Only armies that stand there or have a route to it can join the regroup: power that
-            // can never arrive would keep the regroup from ever being exhausted.
-            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
-            HexCoord? citadel = RegroupPoint(snap);
-            List<ArmySnapshot> gatherable = !citadel.HasValue ? new List<ArmySnapshot>()
-                : usable.Where(a => a.Hex.Equals(citadel.Value)
-                    || a.ReachableOwnBaseHexes?.Contains(citadel.Value) == true).ToList();
-
-            // Project owner, 2026-10-02: the "usable power >= the enemy's power" sum above answers a
-            // field battle on neutral ground. A fist that comes for a Base or a Citadel fights our
-            // garrison and our regrouped armies ON that hex — as the defender, with the structure's
-            // defence, one battle per defending army (WorthIt.EstimateSequential with the roles
-            // swapped). Playtest: Vex held 21 (garrison) + 20 + 25 at its citadel against a 66-power
-            // fist and the symmetric sum judged "75 needed, 45 available" without the garrison or
-            // the structure defence.
-            response.HoldWinChance = HoldChanceAtAsset(snap, objective, citadel, gatherable, opposition);
-            ClassifyFallback(snap, response, citadel, gatherable, walkers, bases);
+        private static ActiveDefenceResponse TraceResponse(WorldSnapshot snap, ActiveDefenceObjective objective,
+            ActiveDefenceResponse response, ISet<int> committed)
+        {
+            var t = objective.Target;
+            string free = string.Join(",", snap.Self.Armies.Where(a => GroundCombatActorEligibility.IsStructuralActor(a)
+                && (committed == null || !committed.Contains(a.ArmyId))).OrderBy(a => a.ArmyId)
+                .Select(a => $"{a.ArmyId}:mp{a.CurrentMovement}/{a.MaxMovement}:ap{(a.HasActivatedThisTurn ? 0 : a.ActivationApCost)}"));
+            string selected = string.Join(",", response.ReinforcementArmyIds.OrderBy(id => id).Select(id =>
+            {
+                ArmySnapshot actor = snap.Self.Armies.First(a => a.ArmyId == id);
+                return $"{id}:eta{ArrivalEta(snap, actor, t.ProtectedAssetHex)}";
+            }));
+            AiDebugLog.WriteDeduped($"defence-response:{snap.Observer?.Nickname}:{snap.TurnNumber}:{t.EnemyArmyId}",
+                $"[AI][V2][ActiveDefence][Response] turn={snap.TurnNumber} player={snap.Observer?.Nickname} "
+                + $"enemy={t.EnemyArmyId} asset={t.ProtectedAssetKind}@{t.ProtectedAssetHex} "
+                + $"enemyEta={t.EnemyEta?.ToString() ?? "unknown"} hold={response.HoldWinChance:0.00} "
+                + $"free=[{free}] committed=[{string.Join(",", (committed ?? new HashSet<int>()).OrderBy(id => id))}] "
+                + $"selected=[{selected}] destination={response.RegroupHex} decision={response.Kind} reason={response.Reason}");
             return response;
+        }
+
+        internal static bool IsDefendableAsset(WorldSnapshot snap, AssetKind? kind, HexCoord? hex) =>
+            (kind == AssetKind.Citadel || kind == AssetKind.Base) && hex.HasValue
+            && snap?.Self?.BaseHexes?.Contains(hex.Value) == true;
+
+        // Same Combat route profile as GroundCombatLegStep.Transit. ETA=0 means arrival THIS
+        // own turn; future equal ETA is unsafe because the enemy can act before our next turn.
+        // Pack actual entering-hex costs into MP budgets: total cost division underestimates
+        // routes whose terrain steps cannot consume the last MP of each turn.
+        internal static int ArrivalEta(WorldSnapshot snap, ArmySnapshot actor, HexCoord destination)
+        {
+            if (actor == null) return int.MaxValue;
+            if (actor.Hex.Equals(destination)) return 0;
+            if (actor.MaxMovement <= 0) return int.MaxValue;
+            HexPath route;
+            if (ReferenceEquals(snap?.Map, null))
+            {
+                if (actor.ReachableOwnBaseHexes?.Contains(destination) != true) return int.MaxValue;
+                route = AiV2Util.StraightLine(actor.Hex, destination);
+            }
+            else
+                route = SafeStepPathing.FindSafePath(snap.Map, snap.Observer, actor.Hex,
+                    destination, actor.MaxMovement, SafeRouteProfile.Combat);
+            if (route == null) return int.MaxValue;
+            int turns = 0, remaining = Math.Max(0, actor.CurrentMovement);
+            for (int i = 1; i < route.Hexes.Count; i++)
+            {
+                int cost = 1;
+                if (!ReferenceEquals(snap?.Map, null) && snap.Map.TryGetTerrainAt(route.Hexes[i], out var entry))
+                    cost = Math.Max(1, entry.moveCost);
+                if (cost > actor.MaxMovement) return int.MaxValue;
+                if (cost > remaining) { turns++; remaining = actor.MaxMovement; }
+                remaining -= cost;
+            }
+            return turns;
+        }
+
+        internal static bool CanArriveBeforeThreat(WorldSnapshot snap, ArmySnapshot actor,
+            HexCoord destination, int? enemyEta, out int eta)
+        {
+            eta = ArrivalEta(snap, actor, destination);
+            return eta != int.MaxValue && enemyEta.HasValue && eta < enemyEta.Value;
+        }
+
+        internal static bool NeedsSafeWithdrawal(WorldSnapshot snap, ArmySnapshot actor) =>
+            actor != null && (snap?.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Any(t =>
+                IsHonestPositionedHostile(t) && t.Asset.Kind == AssetKind.Army
+                && t.Asset.Hex.Equals(actor.Hex) && t.CanDamage && t.EnemyEta.HasValue
+                && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta
+                && t.AttackWinChance > 1f - AiConfigV2.activeDefenceHoldWinChance);
+
+        // Keep the global base ranking, constrained only for this lane to a reachable safe home.
+        internal static HexCoord? SafeWithdrawalBase(WorldSnapshot snap, ArmySnapshot actor,
+            ISet<int> committed, HexCoord? current = null)
+        {
+            HexCoord? preferred = current ?? AiReturnBasePolicy.SelectReturnBase(snap, snap.Observer, actor.ArmyId);
+            foreach (HexCoord h in (snap.Self.BaseHexes ?? Array.Empty<HexCoord>())
+                .OrderBy(h => preferred.HasValue && h.Equals(preferred.Value) ? 0 : 1)
+                .ThenBy(h => ArrivalEta(snap, actor, h)).ThenBy(h => h.Q).ThenBy(h => h.R))
+            {
+                if (ArrivalEta(snap, actor, h) == int.MaxValue) continue;
+                bool unsafeBase = (snap.Threat?.Threats ?? Array.Empty<AssetThreatSnapshot>()).Any(t =>
+                    IsHonestPositionedHostile(t) && t.Asset.Hex.Equals(h) && t.CanDamage
+                    && t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta
+                    && HoldChanceAtAsset(snap, new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
+                        { ProtectedAssetHex = h, ProtectedAssetKind = t.Asset.Kind } }, h,
+                        new[] { actor }, Opposition(snap, t.Contact.Army.ArmyId), committed)
+                        < AiConfigV2.activeDefenceHoldWinChance);
+                if (!unsafeBase) return h;
+            }
+            return null;
         }
 
         // The chance the defence holds the threatened Base / Citadel: the enemy fist ATTACKS, the
@@ -294,13 +428,13 @@ namespace Game.Ai.V2
         // other asset (a facility is not held by standing on it) or when no defender exists.
         internal static float HoldChanceAtAsset(WorldSnapshot snap, ActiveDefenceObjective objective,
             HexCoord? regroupHex, IReadOnlyList<ArmySnapshot> gatherable,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> committed = null)
         {
             if (snap?.Self?.Armies == null || objective == null || opposition == null
                 || opposition.Count == 0 || snap.Observer == null)
                 return -1f;
             AssetKind kind = objective.Target.ProtectedAssetKind;
-            if (kind != AssetKind.Citadel && kind != AssetKind.Base)
+            if (!IsDefendableAsset(snap, kind, objective.Target.ProtectedAssetHex))
                 return -1f;
             HexCoord hex = objective.Target.ProtectedAssetHex;
             // Snapshot-pure: the structure's own defence as remembered (terrain is not in this read, so
@@ -323,7 +457,8 @@ namespace Game.Ai.V2
                 defenders.Add(new WorthIt.DefendingArmy(a.Members, a.Commander, bonus));
             }
             foreach (ArmySnapshot a in snap.Self.Armies)
-                if (a != null && a.Hex.Equals(hex))
+                if (a != null && a.Hex.Equals(hex)
+                    && (a.IsGarrison || committed == null || !committed.Contains(a.ArmyId)))
                     Add(a);
             if (regroupHex.HasValue && regroupHex.Value.Equals(hex) && gatherable != null)
                 foreach (ArmySnapshot a in gatherable)
@@ -389,7 +524,8 @@ namespace Game.Ai.V2
         // of the operation it would leave for can outweigh (Ysolde T9, 2026-09-28: the Citadel's
         // only defender left to intercept another enemy and the Citadel fell unopposed). Staying
         // still fights the arriving enemy, on the hex with its defence bonus.
-        internal static bool IsPinnedStrongholdDefender(WorldSnapshot snap, ArmySnapshot army)
+        internal static bool IsPinnedStrongholdDefender(WorldSnapshot snap, ArmySnapshot army,
+            ISet<int> unavailable = null)
         {
             if (army == null || army.IsAir || army.IsAirfield || army.IsPrison
                 || army.EffectiveArmyPower <= AiConfigV2.allocatorSliceEpsilon
@@ -399,6 +535,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot other in snap.Self.Armies)
                 // A dedicated scout passing through is not a defender that keeps the hex held.
                 if (other != null && other.ArmyId != army.ArmyId && other.Hex.Equals(army.Hex)
+                    && (other.IsGarrison || unavailable == null || !unavailable.Contains(other.ArmyId))
                     && !other.IsAir && !other.IsAirfield && !other.IsPrison && !other.IsSoloRecce
                     && other.EffectiveArmyPower > AiConfigV2.allocatorSliceEpsilon)
                     return false;
@@ -440,13 +577,16 @@ namespace Game.Ai.V2
                 ownTerritoryProximity: TaskScoreEvaluator.ActiveDefenceProximity(homeDistance));
         }
 
-        private static bool TryDirectResponse(WorldSnapshot snap,
+        private static bool TryDirectResponse(WorldSnapshot snap, ActiveDefenceObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> committed,
             ICollection<int> withdrawing, int? pinnedActor, ActiveDefenceResponse response)
         {
             var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
             if (withdrawing != null) planExcluded.UnionWith(withdrawing);
             if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            foreach (ArmySnapshot a in snap.Self.Armies.Where(GroundCombatActorEligibility.IsStructuralActor))
+                if (!CanInterceptBeforeThreat(snap, a, objective)
+                    || IsPinnedStrongholdDefender(snap, a, committed)) planExcluded.Add(a.ArmyId);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
@@ -464,7 +604,7 @@ namespace Game.Ai.V2
                 response.Reason = "direct_response";
                 return true;
             }
-            if (pinnedActor.HasValue)
+            if (pinnedActor.HasValue && !planExcluded.Contains(pinnedActor.Value))
             {
                 // Continuity already re-tested the incumbent's capability this pass; failing the
                 // ready plan here only means it cannot move right now.
@@ -474,11 +614,14 @@ namespace Game.Ai.V2
             }
 
             // Capable but temporarily unavailable: one physical army clears the gate on its own
-            // once its MP returns or its current operation releases it. Buying or retreating
+            // once its MP returns before the deadline. Other operations remain excluded. Buying or retreating
             // against that would be phantom.
             float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
             ArmySnapshot capable = snap.Self.Armies.FirstOrDefault(a => GroundCombatActorEligibility.IsStructuralActor(a)
+                && (committed == null || !committed.Contains(a.ArmyId))
+                && !IsPinnedStrongholdDefender(snap, a, committed)
                 && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
+                && CanInterceptBeforeThreat(snap, a, objective)
                 && GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
                     a.ArmyId, freshGate).Feasible);
             if (capable != null)
@@ -495,60 +638,23 @@ namespace Game.Ai.V2
             ISet<int> committed, ICollection<int> withdrawing)
         {
             var powerExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
-            if (withdrawing != null) powerExcluded.ExceptWith(withdrawing);
+            // Only exact own regroup legs are removed from committed by AssessResponse.
             return GroundCombatActorEligibility.EligibleArmies(snap,
                 powerExcluded, requireMovementNow: false);
         }
 
-        internal static HexCoord? RegroupPoint(WorldSnapshot snap)
+        private static bool CanInterceptBeforeThreat(WorldSnapshot snap, ArmySnapshot actor,
+            ActiveDefenceObjective objective)
         {
-            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
-            HexCoord? citadel = snap.Observer == null ? (HexCoord?)null
-                : AiTurnController.GarrisonHexFor(snap.Observer);
-            if (citadel.HasValue && !bases.Contains(citadel.Value))
-                citadel = null;
-            return citadel;
-        }
-
-        private static void ClassifyFallback(WorldSnapshot snap, ActiveDefenceResponse response,
-            HexCoord? citadel, List<ArmySnapshot> gatherable, IEnumerable<ArmySnapshot> walkers,
-            IEnumerable<HexCoord> bases)
-        {
-            bool holds = response.HoldWinChance >= AiConfigV2.activeDefenceHoldWinChance;
-            if (holds || GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
-                >= response.RequiredPower)
+            // Intercept's target is not an own base, so use the same route witness directly.
+            if (ReferenceEquals(snap?.Map, null))
             {
-                if (gatherable.Any(a => !a.Hex.Equals(citadel.Value)))
-                {
-                    response.Kind = ActiveDefenceResponseKind.Regroup;
-                    response.RegroupHex = citadel;
-                    response.Movers.AddRange(walkers.Where(a => gatherable.Contains(a)
-                        && !a.Hex.Equals(citadel.Value)));
-                    response.Reason = holds ? "regroup_holds" : "regroup_required";
-                    return;
-                }
-                if (holds)
-                {
-                    // Everything that can gather already stands at the asset and the defence holds:
-                    // neither a retreat nor a purchase is justified.
-                    response.Kind = ActiveDefenceResponseKind.Defer;
-                    response.Reason = $"asset_holds win={response.HoldWinChance:0.00}";
-                    return;
-                }
-                // Every army that can gather already stands in the Citadel and the same-hex
-                // assembly still misses the gate: the gap is composition, not distribution.
-                response.Kind = ActiveDefenceResponseKind.Shortage;
-                response.Reason = "regroup_exhausted";
-                return;
+                int cost = AiV2Util.TravelCost(snap, actor, objective.Target.LastKnownHex);
+                int eta = actor.Hex.Equals(objective.Target.LastKnownHex) ? 0 : AiV2Util.TurnsToCover(actor, cost) - 1;
+                return objective.Target.EnemyEta.HasValue && eta < objective.Target.EnemyEta.Value;
             }
-
-            response.Kind = ActiveDefenceResponseKind.Shortage;
-            response.Movers.AddRange(walkers.Where(a => !bases.Contains(a.Hex)));
-            response.Reason = !citadel.HasValue && response.AvailablePower
-                    + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower
-                ? "no_regroup_point" : "insufficient_power";
-            return;
+            return CanArriveBeforeThreat(snap, actor, objective.Target.LastKnownHex,
+                objective.Target.EnemyEta, out _);
         }
     }
 }
-

@@ -320,6 +320,8 @@ namespace Game.Ai.V2
     public sealed class ActiveDefenceIntent : IGroundCombatOperation
     {
         public ActiveDefencePhase Phase;
+        public ActiveDefenceReturnPurpose ReturnPurpose;
+        public int? EnemyEta;
         public int EnemyArmyId;
         public HexCoord LastKnownHex;
         public int LastObservedTurn;

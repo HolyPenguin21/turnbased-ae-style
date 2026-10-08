@@ -1,0 +1,314 @@
+{
+  "baseSha": "5cc271837bb7b474ca7e171633fa3c96affe407a",
+  "branch": "fix/active-defence-asset-regroup",
+  "runtime": "Roslyn/.NET 8 diagnostic reflection harness, NOT Unity Test Runner",
+  "baseline": {
+    "total": 1882,
+    "passed": 1379
+  },
+  "current": {
+    "total": 1909,
+    "passed": 1405
+  },
+  "regressionsOfBaselinePassingTests": [],
+  "activeDefenceTests": [
+    {
+      "id": "AiActiveDefenceTests.LastDefenderOfStrongholdWithEnemyOneTurnAway_IsPinned()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.StableIdentity_UsesEnemyArmyIdIncludingZero_NotMovingHex()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReturnIdentity_IsPerMoverAndDestination_NotPerThreat()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefenceIntent_HoldsNoSupportArmy()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefenceScore_UsesCanonicalSlotsWithoutSeverityMultiplier()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefence_RemainsInAggressionLane()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefenceValue_IsIndependentOfMilitaryPotentialRealization()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefence_SkipsContactBelowMinimumPower()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefence_FarPursuitIsPenalizedNotForbidden()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ActiveDefenceIntercept_IsNotBorrowableByAttackGather()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.Continuity_InterceptWithoutObjective_RetiresWithoutReturn()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.Continuity_SafeWithdrawalWithoutCurrentDanger_ReleasesWithoutArrival()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.Reconcile_CompletedIntercept_RemovesTheIntent()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.FacilityOnly_CreatesNeitherObjectiveReserveNorDemand()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.FacilityAndSeveralBases_FilterBeforeRankingAndDeduplicateEnemy()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReinforcementTiming_UsesCurrentMpAndConservativeTurnOrder(0,3,0,True)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReinforcementTiming_UsesCurrentMpAndConservativeTurnOrder(0,0,1,True)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReinforcementTiming_UsesCurrentMpAndConservativeTurnOrder(-8,3,2,False)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.UnreachableAndUnknownEta_DoNotInventReadinessOrImmediateAttack()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.SufficientCurrentGarrison_PreventsAnyAdditionalMovement()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.Regroup_UsesOnlySufficientRosterAndTheThreatenedSecondaryBase(9,12,1)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.Regroup_UsesOnlySufficientRosterAndTheThreatenedSecondaryBase(7,14,2)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.CitadelRegroup_UsesTheCitadelItselfAndAdjacentHexIsNotArrival()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.PowerWithoutViableRoster_IsShortageAndDoesNotEvacuateSafeArmies()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ClaimedAttackOnBase_IsNeitherDefenderNorUnavailableCapableExcuse(Gather)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ClaimedAttackOnBase_IsNeitherDefenderNorUnavailableCapableExcuse(Assault)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.AvailableFutureAttackHost_StillCompetesAndReleasedClaimIsReevaluated()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.RegroupContinuity_ReleasesOnLostThreatOrLostBase()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.SafeWithdrawal_RechecksCurrentPositionAndRetiresOnArrival()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.SnapshotAndPlayerIsolation_NoDefenceResponseCacheNeedsReset()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.CancellationAndRekey_ReleaseOnlyTheirOwnLeaseAndPreserveEconomySaving()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReturnApEnvelope_UsesOneCurrentActivationAndNeverFutureOrPhysicalCosts(False,5,2,True)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReturnApEnvelope_UsesOneCurrentActivationAndNeverFutureOrPhysicalCosts(True,5,0,True)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ReturnApEnvelope_UsesOneCurrentActivationAndNeverFutureOrPhysicalCosts(False,1,2,False)",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.AdmissionFingerprint_TracksReturnPurposeDestinationAssetAndPathingVersion()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.RegroupRoute_ReevaluatesActualTerrainAndPreservesTheCombatProfile()",
+      "passed": false,
+      "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n   at UnityEngine.GameObject..ctor(String name)\n   at Game.EditorTests.AiActiveDefenceTests.RegroupRoute_ReevaluatesActualTerrainAndPreservesTheCombatProfile()\n   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)\n   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)"
+    },
+    {
+      "id": "AiActiveDefenceTests.RegroupKeepsOnlyNecessaryLeg_ThenReleasesWhenAnotherDefenderArrives()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.WithdrawalLostHome_RekeysOnceWithoutKeepingOldActorOrResourceOwner()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.ForceNeedCache_NewSnapshotsChangeDefensiveNeedWithoutMutatingOldResult()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.MaterializedDefenderMustReachTheOwnedAssetBeforeDeadline()",
+      "passed": true,
+      "error": null
+    }
+  ],
+  "relatedSuiteResults": {
+    "AiCombatCacheLifecycleTests": {
+      "total": 6,
+      "passed": 4,
+      "failures": [
+        {
+          "id": "AiCombatCacheLifecycleTests.BaseCapture_RewritesKnownOwnerAndInvalidatesRouteBlocker()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiCombatCacheLifecycleTests.FormerOwner_RemembersObservedBaseCaptureAfterBuildingVisionDrops()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        }
+      ]
+    },
+    "AiRouteCacheIsolationTests": {
+      "total": 6,
+      "passed": 4,
+      "failures": [
+        {
+          "id": "AiRouteCacheIsolationTests.OneEndpoint_ReturnsADifferentHonestRoutePerProfile_InAnyCallOrder()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiRouteCacheIsolationTests.AttackProfile_EntryCostAboveMaxMovementIsImpassable_ButLowCurrentMovementIsNot()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        }
+      ]
+    },
+    "AiWorldDeltaTests": {
+      "total": 30,
+      "passed": 30,
+      "failures": []
+    },
+    "AiTurnSessionIsolationTests": {
+      "total": 12,
+      "passed": 12,
+      "failures": []
+    },
+    "AiPersistentStateSeparationTests": {
+      "total": 3,
+      "passed": 3,
+      "failures": []
+    },
+    "AiAggressionOwnershipRegressionTests": {
+      "total": 22,
+      "passed": 20,
+      "failures": [
+        {
+          "id": "AiAggressionOwnershipRegressionTests.ExtractedExecutorsKeepMissingMoverOutcomeInBothExecutionModes(False)",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiAggressionOwnershipRegressionTests.ExtractedExecutorsKeepMissingMoverOutcomeInBothExecutionModes(True)",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        }
+      ]
+    },
+    "AiSecondaryBaseStrategicNodeTests": {
+      "total": 34,
+      "passed": 29,
+      "failures": [
+        {
+          "id": "AiSecondaryBaseStrategicNodeTests.AviationPlacement_NoObjectivesAddsNoArtificialForwardBonus()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiSecondaryBaseStrategicNodeTests.AviationRebaseCandidate_UsesRealRouteCapacityAndCurrentReconObjective()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiSecondaryBaseStrategicNodeTests.AviationRecovery_PrefersForwardBaseAndReplansAfterOwnershipLoss()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiSecondaryBaseStrategicNodeTests.Housekeeping_PackagesEligibleLocalSingletonButProtectsCommittedActor()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        },
+        {
+          "id": "AiSecondaryBaseStrategicNodeTests.CapturedSecondaryBase_StabilizesOnTheBaseFloorNotTheCitadelFloor()",
+          "error": "System.NullReferenceException: Object reference not set to an instance of an object."
+        }
+      ]
+    }
+  },
+  "standardHarness": {
+    "baseline": {
+      "total": 1882,
+      "passed": 1182,
+      "failed": 700
+    },
+    "current": {
+      "total": 1909,
+      "passed": 1183,
+      "failed": 726
+    },
+    "limitations": "Five previously passing tests now reach native Object equality; diagnostic bridges resolve them, standard gate is not green."
+  }
+}

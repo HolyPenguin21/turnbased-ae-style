@@ -214,7 +214,7 @@ namespace Game.EditorTests
         private ActiveDefenceObjective DefenceObjective() => new ActiveDefenceObjective
         {
             Target = new ActiveDefenceMissionTarget { EnemyArmyId = 99, LastKnownHex = Away,
-                ProtectedAssetKind = AssetKind.Facility, ProtectedAssetHex = Home, EstimatedEta = 1 },
+                ProtectedAssetKind = AssetKind.Base, ProtectedAssetHex = Home, EstimatedEta = 1, EnemyEta = 1 },
         };
 
         private void SetEnemy(WorldSnapshot snap, IReadOnlyCollection<WorthIt.DefenderProfile> members)
@@ -238,9 +238,9 @@ namespace Game.EditorTests
             Assert.That(response.Kind, Is.EqualTo(expected));
         }
 
-        [TestCase(false, 100f, ActiveDefenceResponseKind.Regroup, "regroup_required")]
-        [TestCase(true, 100f, ActiveDefenceResponseKind.Shortage, "regroup_exhausted")]
-        [TestCase(false, 0f, ActiveDefenceResponseKind.Shortage, "insufficient_power")]
+        [TestCase(false, 100f, ActiveDefenceResponseKind.Shortage, "insufficient_defence_power")]
+        [TestCase(true, 100f, ActiveDefenceResponseKind.Shortage, "insufficient_defence_power")]
+        [TestCase(false, 0f, ActiveDefenceResponseKind.Shortage, "insufficient_defence_power")]
         public void DefenceFallbackKeepsDistributionAndRealShortageDistinct(bool allHome,
             float power, ActiveDefenceResponseKind expected, string reason)
         {

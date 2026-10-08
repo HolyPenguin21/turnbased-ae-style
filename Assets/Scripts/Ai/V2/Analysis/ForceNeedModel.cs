@@ -94,8 +94,7 @@ namespace Game.Ai.V2
             foreach (IGrouping<int, AssetThreatSnapshot> group in threats
                 .Where(t => t?.Contact?.Army != null
                     && t.Asset != null
-                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
-                        || t.Asset.Kind == AssetKind.Facility))
+                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
                 AssetThreatSnapshot best = group

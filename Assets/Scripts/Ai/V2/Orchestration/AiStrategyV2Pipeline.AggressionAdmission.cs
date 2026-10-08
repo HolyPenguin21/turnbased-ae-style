@@ -59,6 +59,10 @@ namespace Game.Ai.V2
                 .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"
                     + $":{i.Raid?.Target.DiagnosticLabel}"
                     + $":{i.Raid?.Phase}{i.Attack?.Phase}{i.ActiveDefence?.Phase}"
+                    + $":def={i.ActiveDefence?.ReturnPurpose}:{i.ActiveDefence?.ProtectedAssetKind}"
+                    + $":{i.ActiveDefence?.ProtectedAssetHex.Q},{i.ActiveDefence?.ProtectedAssetHex.R}"
+                    + $":dest={i.ActiveDefence?.ReturnHex?.Q},{i.ActiveDefence?.ReturnHex?.R}"
+                    + $":eta={i.ActiveDefence?.EnemyEta}"
                     + $":{i.Raid?.SupportArmyId}{i.Attack?.SupportArmyId}"
                     + $":local={i.Attack?.IntermediateTarget.DiagnosticLabel}:{i.Attack?.LastOpportunisticStrikeTurn}"
                     // A bound support wing changes which task targets still want aviation.
@@ -93,7 +97,7 @@ namespace Game.Ai.V2
             string bases = string.Join(";", (self.BaseHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
                 .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
             return $"axis={DesireAxis.Aggression}"
-                + $"|know={snapshot.KnowledgeVersion}"
+                + $"|know={snapshot.KnowledgeVersion}|path={snapshot.MapPathingVersion}"
                 + $"|peak={self.TotalMilitaryPotential.ToString("0.##", inv)}"
                 + $"|atkPeak={self.AttackPeak.ToString("0.##", inv)}"
                 + $"|reserve={(self.Reserve.Units + self.Reserve.Hero).ToString("0.##", inv)}"

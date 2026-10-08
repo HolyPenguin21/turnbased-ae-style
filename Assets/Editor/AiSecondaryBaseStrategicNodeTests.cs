@@ -185,7 +185,7 @@ namespace Game.EditorTests
             var actor = new ArmySnapshot
             {
                 ArmyId = 7, Owner = owner, IsStructuralRaidActor = true,
-                EffectiveArmyPower = 30f, MemberCount = 2, CurrentMovement = 4,
+                EffectiveArmyPower = 30f, MemberCount = 2, CurrentMovement = 4, MaxMovement = 4,
                 Members = new[] { default(WorthIt.DefenderProfile), default(WorthIt.DefenderProfile) },
             };
             WorldSnapshot snap = DefenceSnapshot(owner, Contact(28, 10f), new[] { actor });
@@ -198,7 +198,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ActiveDefenceShortage_DoesNotBuyForMoverContention()
+        public void ActiveDefenceShortage_CommittedCapableArmyDoesNotHideDeficit()
         {
             var owner = new PlayerSetupData();
             EnemyContactSnapshot enemy = Contact(28, 10f);
@@ -216,7 +216,7 @@ namespace Game.EditorTests
                 snap, new[] { DefenceObjective(28, new HexCoord(-2, 3)) },
                 System.Array.Empty<MissionIntent>(), commitments, owner, out _);
 
-            Assert.That(demands, Is.Empty);
+            Assert.That(demands, Has.Count.EqualTo(1));
         }
 
         [Test]
@@ -227,14 +227,16 @@ namespace Game.EditorTests
             var actor = new ArmySnapshot
             {
                 ArmyId = 7, Owner = owner, IsStructuralRaidActor = true,
-                EffectiveArmyPower = 20f, MemberCount = 1, CurrentMovement = 0,
+                EffectiveArmyPower = 20f, MemberCount = 1, CurrentMovement = 0, MaxMovement = 3,
                 HasActivatedThisTurn = true,
                 Members = System.Array.Empty<WorthIt.DefenderProfile>(),
             };
             WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[] { actor });
 
+            ActiveDefenceObjective objective = DefenceObjective(28, new HexCoord(-2, 3));
+            objective.Target.EnemyEta = 4;
             IReadOnlyList<AxisDemand> demands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
-                snap, new[] { DefenceObjective(28, new HexCoord(-2, 3)) },
+                snap, new[] { objective },
                 System.Array.Empty<MissionIntent>(), new ActorCommitments(), owner, out _);
 
             Assert.That(demands, Is.Empty);
@@ -242,10 +244,9 @@ namespace Game.EditorTests
 
         // ---- ActiveDefence response: intercept / regroup / shortage --------------------------
 
-        // Case 2 — enough power, but only spread over several field armies: they regroup at the
-        // Citadel (one independent Return each) and nothing is bought.
+        // AD-05: snapshot power cannot substitute for a viable defending roster.
         [Test]
-        public void ActiveDefence_DistributedSufficientPower_RegroupsAtCitadelWithoutDemand()
+        public void ActiveDefence_DistributedPowerWithoutViability_IsShortage()
         {
             PlayerSetupData owner = DefenceOwner();
             EnemyContactSnapshot enemy = StrongContact(28);
@@ -264,17 +265,15 @@ namespace Game.EditorTests
                 snap, new[] { objective }, System.Array.Empty<MissionIntent>(),
                 new ActorCommitments(), owner, out _);
 
-            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
-            Assert.That(response.RegroupHex, Is.EqualTo(new HexCoord(0, 0)),
-                "the regroup point is the canonical Citadel");
-            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EquivalentTo(new[] { 5, 8, 11 }));
-            Assert.That(demands, Is.Empty, "spatial distribution is not a capability shortage");
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.RegroupHex, Is.Null, "power alone cannot establish a holding roster");
+            Assert.That(response.Movers, Is.Empty, "safe positions do not require retreat");
+            Assert.That(demands, Has.Count.EqualTo(1));
         }
 
-        // An army already walking its Return is counted as power but never re-proposed, and never
-        // pulled into an intercept mid-walk.
+        // A withdrawal only contributes to defence when its explicit purpose and asset match.
         [Test]
-        public void ActiveDefence_WithdrawingArmyCountsAsPowerButIsNotReassigned()
+        public void ActiveDefence_WithdrawalWithoutMatchingDefenceDoesNotCountAsReinforcement()
         {
             PlayerSetupData owner = DefenceOwner();
             EnemyContactSnapshot enemy = StrongContact(28);
@@ -289,15 +288,14 @@ namespace Game.EditorTests
                 snap, DefenceObjective(28, new HexCoord(-2, 3)),
                 committed: new HashSet<int> { 5 }, withdrawing: new HashSet<int> { 5 }, null);
 
-            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup),
-                "#5's power still counts while it walks to the Citadel");
-            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EqualTo(new[] { 8 }));
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.AvailablePower, Is.EqualTo(required * 0.6f).Within(0.01f));
+            Assert.That(response.Movers, Is.Empty);
         }
 
-        // Case 3 — real shortage: field armies withdraw to their own bases and FieldCombatPower
-        // is published; an army already standing on an own base does not move.
+        // A real shortage creates demand, but safe field positions do not justify activation.
         [Test]
-        public void ActiveDefence_InsufficientPower_RetreatsHomeAndCreatesDemand()
+        public void ActiveDefence_InsufficientPowerLeavesSafeFieldArmyAndCreatesDemand()
         {
             PlayerSetupData owner = DefenceOwner();
             EnemyContactSnapshot enemy = StrongContact(28);
@@ -316,8 +314,7 @@ namespace Game.EditorTests
                 new ActorCommitments(), owner, out _);
 
             Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
-            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EqualTo(new[] { 5 }),
-                "#8 already stands on its own base (-2,3)");
+            Assert.That(response.Movers, Is.Empty, "neither army has a current personal threat");
             Assert.That(demands, Has.Count.EqualTo(1));
             Assert.That(demands[0].Capability, Is.EqualTo(CapabilityKind.FieldCombatPower));
             Assert.That(demands[0].DesiredAmount,
@@ -347,7 +344,7 @@ namespace Game.EditorTests
                 new ActorCommitments(), owner, out _);
 
             Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
-            Assert.That(response.Reason, Is.EqualTo("regroup_exhausted"));
+            Assert.That(response.Reason, Is.EqualTo("insufficient_defence_power"));
             Assert.That(response.Movers, Is.Empty);
             Assert.That(demands, Has.Count.EqualTo(1));
         }
@@ -355,7 +352,7 @@ namespace Game.EditorTests
         // No regroup at a Citadel that is no longer ours, and power that has no route to the
         // Citadel cannot make a regroup "sufficient".
         [Test]
-        public void ActiveDefence_RegroupNeedsAnOwnedReachableCitadel()
+        public void ActiveDefence_TargetBaseMustRemainOwnedAndReachable()
         {
             PlayerSetupData owner = DefenceOwner();
             EnemyContactSnapshot enemy = StrongContact(28);
@@ -377,12 +374,10 @@ namespace Game.EditorTests
             Assert.That(noRoute.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
                 "an empty reachability set means no safe route, not unknown reachability");
 
-            snap.Self.BaseHexes = new[] { new HexCoord(-2, 3) };
+            snap.Self.BaseHexes = new[] { new HexCoord(0, 0) };
             ActiveDefenceResponse lost = ActiveDefenceObjectiveEvaluator.AssessResponse(
                 snap, objective, new HashSet<int>(), new HashSet<int>(), null);
-            Assert.That(lost.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
-            Assert.That(lost.Reason, Is.EqualTo("no_regroup_point"));
-            Assert.That(lost.RegroupHex, Is.Null);
+            Assert.That(lost, Is.Null, "the target base is no longer ours");
         }
 
         [Test]
@@ -921,6 +916,7 @@ namespace Game.EditorTests
                     LastKnownHex = new HexCoord(4, 4),
                     ProtectedAssetHex = assetHex,
                     ProtectedAssetKind = AssetKind.Base,
+                    EnemyEta = 2,
                 },
                 TaskScore = new TaskScore(strategicRelevance: 10f),
             };

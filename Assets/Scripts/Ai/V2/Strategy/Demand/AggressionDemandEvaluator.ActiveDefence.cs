@@ -14,7 +14,7 @@ namespace Game.Ai.V2
         // Mission planner acts on); this method only translates a proven capability SHORTAGE into
         // the FieldCombatPower contract Phase A already materializes. A direct response, a
         // capable force that is merely unavailable this pass, and enough power that only has to
-        // regroup at the Citadel are never production.
+        // regroup on the threatened asset are never production.
         internal static IReadOnlyList<AxisDemand> BuildActiveDefenceDemands(WorldSnapshot snap,
             IReadOnlyList<ActiveDefenceObjective> objectives,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
@@ -36,7 +36,7 @@ namespace Game.Ai.V2
                 int? pinnedActor = ActiveDefenceObjectiveEvaluator.IncumbentIntercept(
                     activeIntents, objective.Target.EnemyArmyId)?.ActiveDefence?.PrimaryArmyId;
                 ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
-                    snap, objective, commitments?.ClaimedArmyIdSet, withdrawing, pinnedActor);
+                    snap, objective, commitments?.ClaimedArmyIdSet, withdrawing, pinnedActor, activeIntents);
                 if (response == null)
                     continue;
                 string label = $"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
@@ -60,6 +60,11 @@ namespace Game.Ai.V2
                 // A real capability shortage, sized by the one ground-combat requirement owner:
                 // the missing total, or — when the total is already there but no formation of it
                 // clears (regroup exhausted) — what the strongest force it joins still lacks.
+                if (objective.Target.EnemyEta.HasValue && objective.Target.EnemyEta.Value <= 0)
+                {
+                    diag.Add($"{label} decision=DEFER reason=reinforcement_too_late");
+                    continue;
+                }
                 float required = response.RequiredPower;
                 float available = response.AvailablePower;
                 float deficit = Mathf.Max(1f, available + AiConfigV2.allocatorSliceEpsilon < required
@@ -80,6 +85,7 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.None,
                     MinimumFollowupAp = 0f,
                     TargetHex = objective.Target.ProtectedAssetHex,
+                    ActiveDefenceEnemyEta = objective.Target.EnemyEta,
                     WorldTaskScore = objective.TaskScore,
                     Value = objective.TaskScore.Value,
                     Explain = $"ActiveDefence enemy #{objective.Target.EnemyArmyId} threatening "
