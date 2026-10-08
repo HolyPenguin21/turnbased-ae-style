@@ -319,8 +319,9 @@ namespace Game.Ai.V2
                 && x.ArmyId == a.PrimaryArmyId.Value);
             if (primary == null || !primary.IsStructuralRaidActor)
                 return RetreatOutcome.NotTriggered;
+            // lastLocalTurn = this turn: the mandatory path-contact rule only, no voluntary search
             AttackLocalAction local = AttackTacticalOpportunity.Decide(snap, primary, a.Target,
-                a.LastOpportunisticStrikeTurn, intermediateBaseAvailable: false, adObjectives: null);
+                snap.TurnNumber, intermediateBaseAvailable: false, adObjectives: null);
             if (local.Kind != AttackLocalActionKind.Retreat)
                 return RetreatOutcome.NotTriggered;
 

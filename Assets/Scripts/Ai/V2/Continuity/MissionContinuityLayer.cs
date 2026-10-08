@@ -935,6 +935,12 @@ namespace Game.Ai.V2
             // Attack owns its full lifecycle (target validity, live primary, Gather/Reinforcement/
             // RecoveryReturn) and a gather plus a long march legitimately outlives the generic age
             // cap; only a real stall ends it here.
+            // A withdrawal ordered by a hostile army is never dropped mid-route after two quiet
+            // turns (the army would be freed in the middle of the field): it waits for movement /
+            // AP like any marching leg, bounded only by a generous multiple of the ordinary stall.
+            if (i.Kind == MissionKind.Attack && i.Attack?.TacticalRetreat == true
+                && i.Attack.Phase == AttackMissionPhase.RecoveryReturn)
+                return i.StallTurns >= AiConfigV2.commitmentStallTurns * AiConfigV2.tacticalRetreatStallMultiplier;
             if (i.Kind == MissionKind.Scout || i.Kind == MissionKind.Attack)
                 return i.StallTurns >= AiConfigV2.commitmentStallTurns;
             // Economy audit B10 — an Economy obligation that advances every turn (a long walk to

@@ -352,7 +352,9 @@ namespace Game.Ai.V2
                     strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
                     if (rejection != null)
                     {
-                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        // Waiting + replan, NOT a failure: a stale local choice must not put the
+                        // shared Assault key (the main march) on a rejection cooldown.
+                        result.StopReason = ExecutionStopReason.MoveRejected;
                         result.NeedsReplan = true;
                         AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
                             + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "

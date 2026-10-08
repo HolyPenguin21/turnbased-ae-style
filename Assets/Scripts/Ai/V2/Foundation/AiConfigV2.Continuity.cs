@@ -27,6 +27,8 @@ namespace Game.Ai.V2
         // Consecutive turns an intent may make NO forward progress (no step, no stealth entry, no
         // productive stop) before it is retired and its key put on the allocator reject cooldown.
         public const int commitmentStallTurns = 2;
+        // A tactical Attack retreat (hostile army) tolerates this many times the ordinary idle stall.
+        public const int tacticalRetreatStallMultiplier = 4;
 
     }
 }

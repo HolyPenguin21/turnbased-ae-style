@@ -192,8 +192,9 @@ namespace Game.Ai.V2
                 // withdrawn - nothing was sent). Voluntary targets never apply to a fresh march.
                 if (marching == null && actor.IsStructuralRaidActor)
                 {
+                    // lastLocalTurn = this turn: only the mandatory evaluation runs, no voluntary search
                     AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, actor, objective.Target,
-                        incumbent?.Attack?.LastOpportunisticStrikeTurn ?? -1, false, null);
+                        snap.TurnNumber, false, null);
                     if (fresh.Kind == AttackLocalActionKind.Retreat)
                     {
                         AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat-fresh",

@@ -486,6 +486,22 @@ namespace Game.EditorTests
             Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(start + 1), "the child receipt already covers the aggregate");
         }
 
+        [TestCase(true, true)] [TestCase(false, false)]
+        public void IdleTacticalRetreat_IsNotReapedAfterTwoQuietTurns_OrdinaryRecoveryIs(bool tactical, bool survives)
+        {
+            AttackIntent attack = Marching();
+            attack.Phase = AttackMissionPhase.RecoveryReturn;
+            attack.RecoveryBaseHex = Home;
+            attack.TacticalRetreat = tactical;
+            MissionIntent intent = Intent(attack);
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(Us);
+            state.Put(intent);
+            for (int turn = 7; turn <= 9; turn++)
+                MissionContinuityLayer.ReconcileAfterTurn(Us, turn, new List<MissionStepResult>());
+            Assert.That(state.TryGet(intent.IntentKey, out _), Is.EqualTo(survives),
+                "a withdrawal ordered by a hostile army keeps its army out of the field-idle reaper");
+        }
+
         // ---- fixtures -----------------------------------------------------------------------------
 
         private AttackLocalAction Decide(ArmySnapshot us, params AiMapMemory.KnownEnemySighting[] enemies) =>
