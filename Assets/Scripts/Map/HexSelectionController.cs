@@ -185,7 +185,7 @@ namespace Game.Map
         private void OnTurnStateChangedForVisibility()
         {
             PlayerSetupData viewer = VisionSystem.CurrentViewer;
-            if (viewer != null && viewer.IsHuman && turnController != null && turnController.CurrentPlayer == viewer)
+            if (HumanVisualMemory.Tracks(viewer) && turnController != null && turnController.CurrentPlayer == viewer)
                 RememberCurrentlyVisibleContent(viewer);
             RefreshAllVisibility();
         }
@@ -206,7 +206,7 @@ namespace Game.Map
         // currently drawn.
         private void OnVisibilityChanged(PlayerSetupData player)
         {
-            if (player != null && player.IsHuman)
+            if (HumanVisualMemory.Tracks(player))
                 RememberCurrentlyVisibleContent(player);
             if (player == VisionSystem.CurrentViewer)
                 RefreshAllVisibility();
@@ -217,7 +217,7 @@ namespace Game.Map
         // a full visibility rebuild to every subscriber.
         private void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
-            if (player != null && player.IsHuman)
+            if (HumanVisualMemory.Tracks(player))
                 RememberCurrentlyVisibleContent(player);
             if (player == VisionSystem.CurrentViewer)
                 RefreshAllVisibility();
@@ -228,7 +228,7 @@ namespace Game.Map
         private void OnStealthChanged()
         {
             PlayerSetupData viewer = VisionSystem.CurrentViewer;
-            if (viewer != null && viewer.IsHuman)
+            if (HumanVisualMemory.Tracks(viewer))
                 RememberCurrentlyVisibleContent(viewer);
             RefreshAllVisibility();
         }
@@ -243,7 +243,7 @@ namespace Game.Map
             bool startsInCurrentView = false;
             foreach (PlayerSetupData viewer in GameSession.Players)
             {
-                if (viewer == null || !viewer.IsHuman || viewer == army.Owner)
+                if (!HumanVisualMemory.Tracks(viewer) || viewer == army.Owner)
                     continue;
                 bool observed = VisionSystem.IsVisible(viewer, from) || VisionSystem.IsVisible(viewer, to);
                 if (!observed)
@@ -298,7 +298,7 @@ namespace Game.Map
                 // VisualStateChanged fires before the registry change recomputes away a
                 // building's own vision. Anyone still present in this old visible set really
                 // witnessed the transition and should remember the resulting state immediately.
-                if (viewer == null || !viewer.IsHuman || !VisionSystem.IsVisible(viewer, hex))
+                if (!HumanVisualMemory.Tracks(viewer) || !VisionSystem.IsVisible(viewer, hex))
                     continue;
                 bool exists = building != null && building.Visual != null;
                 HumanVisualMemory.ObserveBuilding(viewer, hex, exists);

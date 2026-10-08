@@ -529,6 +529,7 @@ namespace Game.Turns
             _aiObserverMatch = GameSession.Players != null
                 && GameSession.Players.Count > 0
                 && GameSession.FindHumanPlayer() == null;
+            HumanVisualMemory.ObserverMatch = _aiObserverMatch;
             _aiObserverPauseRequested = false;
             _aiObserverPauseEngaged = false;
             ConfigureAiObserverPauseButton();

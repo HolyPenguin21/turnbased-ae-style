@@ -6,7 +6,7 @@ using Game.Units;
 
 namespace Game.Map
 {
-    // Player-facing fog memory only. This deliberately does not feed AI decisions; AiMapMemory
+    // Player-facing fog memory only (humans, and every player in an AI-vs-AI observer match). This deliberately does not feed AI decisions; AiMapMemory
     // remains the sole source for those. A moving enemy is stored as an immutable last-observed
     // position/roster until the observing human's own next turn ends; stationary buildings
     // remain known until the same hex is observed again and found empty.
@@ -32,6 +32,16 @@ namespace Game.Map
             new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
         private static readonly HashSet<HexCoord> EmptyHexes = new HashSet<HexCoord>();
 
+        // True for a match with no human at all (AI-vs-AI observer): every player can then be the
+        // map viewer in turn (VisionSystem.CurrentViewer), so each of them keeps the same
+        // last-seen memory a human does. Set by GameTurnController.BeginGame.
+        public static bool ObserverMatch { get; set; }
+
+        public static bool Tracks(PlayerSetupData viewer)
+        {
+            return viewer != null && !viewer.IsNeutral && (viewer.IsHuman || ObserverMatch);
+        }
+
         public static void Clear()
         {
             ArmySightings.Clear();
@@ -40,7 +50,7 @@ namespace Game.Map
 
         public static void ObserveArmy(PlayerSetupData viewer, ArmyData army, HexCoord observedHex)
         {
-            if (viewer == null || !viewer.IsHuman || army == null)
+            if (!Tracks(viewer) || army == null)
                 return;
             if (!ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
             {
@@ -53,14 +63,14 @@ namespace Game.Map
         public static bool TryGetArmySighting(PlayerSetupData viewer, int armyId, out ArmySighting sighting)
         {
             sighting = null;
-            return viewer != null && viewer.IsHuman
+            return Tracks(viewer)
                 && ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings)
                 && sightings.TryGetValue(armyId, out sighting);
         }
 
         public static void ReconcileVisibleHex(PlayerSetupData viewer, HexCoord hex, IEnumerable<int> armyIdsPresent)
         {
-            if (viewer == null || !viewer.IsHuman
+            if (!Tracks(viewer)
                 || !ArmySightings.TryGetValue(viewer, out Dictionary<int, ArmySighting> sightings))
                 return;
 
@@ -165,7 +175,7 @@ namespace Game.Map
 
         public static void ObserveBuilding(PlayerSetupData viewer, HexCoord hex, bool exists)
         {
-            if (viewer == null || !viewer.IsHuman)
+            if (!Tracks(viewer))
                 return;
             if (!KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings))
             {
@@ -183,14 +193,14 @@ namespace Game.Map
 
         public static bool IsBuildingKnown(PlayerSetupData viewer, HexCoord hex)
         {
-            return viewer != null && viewer.IsHuman
+            return Tracks(viewer)
                 && KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings)
                 && buildings.Contains(hex);
         }
 
         public static IEnumerable<HexCoord> BuildingsKnownBy(PlayerSetupData viewer)
         {
-            return viewer != null && viewer.IsHuman
+            return Tracks(viewer)
                 && KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings)
                 ? buildings
                 : EmptyHexes;

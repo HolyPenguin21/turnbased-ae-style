@@ -17,12 +17,17 @@ namespace Game.EditorTests
         public void SetUp()
         {
             HumanVisualMemory.Clear();
+            HumanVisualMemory.ObserverMatch = false;
             _viewer = new PlayerSetupData { IsHuman = true, Nickname = "Viewer" };
             _enemy = new PlayerSetupData { Nickname = "Enemy" };
         }
 
         [TearDown]
-        public void TearDown() => HumanVisualMemory.Clear();
+        public void TearDown()
+        {
+            HumanVisualMemory.Clear();
+            HumanVisualMemory.ObserverMatch = false;
+        }
 
         [Test]
         public void ObserveArmy_PreservesBothObservedAttachmentsWithoutTrackingSlotChanges()
@@ -107,6 +112,46 @@ namespace Game.EditorTests
             HumanVisualMemory.ReconcileVisibleHex(_viewer, lastSeen, System.Array.Empty<int>());
 
             Assert.That(HumanVisualMemory.TryGetArmySighting(_viewer, live.Id, out _), Is.False);
+        }
+
+        [Test]
+        public void AiViewer_RemembersNothingOutsideAnObserverMatch()
+        {
+            var ai = new PlayerSetupData { Nickname = "Ai viewer" };
+            var live = new ArmyData { Owner = _enemy };
+            HumanVisualMemory.ObserveArmy(ai, live, new HexCoord(3, 0));
+            HumanVisualMemory.ObserveBuilding(ai, new HexCoord(2, 0), true);
+
+            Assert.That(HumanVisualMemory.TryGetArmySighting(ai, live.Id, out _), Is.False);
+            Assert.That(HumanVisualMemory.IsBuildingKnown(ai, new HexCoord(2, 0)), Is.False);
+        }
+
+        [Test]
+        public void ObserverMatch_GivesEveryAiViewerItsOwnArmyAndBuildingMemory()
+        {
+            HumanVisualMemory.ObserverMatch = true;
+            var aiA = new PlayerSetupData { Nickname = "Ai A" };
+            var aiB = new PlayerSetupData { Nickname = "Ai B" };
+            var live = new ArmyData { Owner = _enemy };
+            live.Members.Add(new UnitData { Name = "Scout", Owner = _enemy });
+            HumanVisualMemory.ObserveArmy(aiA, live, new HexCoord(3, 0));
+            HumanVisualMemory.ObserveBuilding(aiA, new HexCoord(2, 0), true);
+
+            Assert.That(HumanVisualMemory.TryGetArmySighting(aiA, live.Id, out var sighting), Is.True);
+            Assert.That(sighting.Hex, Is.EqualTo(new HexCoord(3, 0)));
+            Assert.That(HumanVisualMemory.IsBuildingKnown(aiA, new HexCoord(2, 0)), Is.True);
+            Assert.That(HumanVisualMemory.TryGetArmySighting(aiB, live.Id, out _), Is.False);
+            Assert.That(HumanVisualMemory.IsBuildingKnown(aiB, new HexCoord(2, 0)), Is.False);
+        }
+
+        [Test]
+        public void ObserverMatch_NeutralPlayerNeverGetsMemory()
+        {
+            HumanVisualMemory.ObserverMatch = true;
+            var neutral = new PlayerSetupData { Nickname = "Neutral", IsNeutral = true };
+            HumanVisualMemory.ObserveBuilding(neutral, new HexCoord(2, 0), true);
+
+            Assert.That(HumanVisualMemory.IsBuildingKnown(neutral, new HexCoord(2, 0)), Is.False);
         }
     }
 }
