@@ -255,7 +255,7 @@
 | Формула E, веса бонусов, плоские бонусы, насыщение, контекст миссий | `Evaluation/Cards/EquipmentEfficiency.cs`, константы `Foundation/AiConfigV2.EquipmentEfficiency.cs` |
 | Подключение (операционные решения со снимком мира) | `StrategicCardEvaluator.ScoreEquipmentByEfficiency` (старая оценка обмена ударами удалена; без снимка остаётся прежняя оценка силы резерва) |
 | Доли целей (Armored/Bio/Air), Splash-соседи, Fate оператора, скорость армии | собираются в `ScoreEquipmentByEfficiency` из известных врагов, армии и фабрик |
-| Множитель запаса (колода+рука), штраф за повтор | `DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier`, `DevelopmentDiversity.RepeatFactor` |
+| Штраф за повтор (множитель запаса удалён 2026-10-08) | `DevelopmentDiversity.RepeatFactor` |
 | AP прикрепления по шансу успеха | `StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade` |
 
 Не реализовано: исполнитель Stealth для героев и строителей (оценка Stealth у хоста, не являющегося скаутом, держится на 25% до появления исполнителя); числа миссий и множителя запаса подбираются по тестам.

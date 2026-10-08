@@ -60,14 +60,5 @@ namespace Game.Ai.V2
         public const float equipScoutSkillMult = 1.5f;
         // Offense mult grows with the target hex's known defence bonus (Attack / Raid).
         public const float equipHexDefenseOffensePerPoint = 0.1f;
-
-        // ---- supply: how scarce units are (Development production only) ---------------------------------
-        // fraction = (cards in deck + hand) / equipSupplyReferenceCards. Production competes with a
-        // plain unit at one third; with a full deck a unit is always the better buy.
-        public const float equipSupplyReferenceCards = 35f;
-        public const float equipSupplyFullFraction = 2f / 3f;   // at/above: multiplier 1
-        public const float equipSupplyMidFraction = 1f / 3f;
-        public const float equipSupplyMidMultiplier = 11f;
-        public const float equipSupplyEmptyMultiplier = 15f;
     }
 }

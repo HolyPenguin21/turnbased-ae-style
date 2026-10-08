@@ -160,17 +160,24 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void SupplyMultiplier_FollowsTheDeckPlusHandCurve()
+        public void OwnUtility_DoesNotDependOnDeckPlusHandSize()
         {
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(35), Is.EqualTo(1f));
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(24), Is.EqualTo(1f),
-                "above two thirds a unit is the better buy");
-            int third = (int)System.Math.Round(AiConfigV2.equipSupplyReferenceCards * AiConfigV2.equipSupplyMidFraction);
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(third),
-                Is.EqualTo(AiConfigV2.equipSupplyMidMultiplier).Within(0.7f), "about x11 at one third");
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(0), Is.EqualTo(AiConfigV2.equipSupplyEmptyMultiplier));
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(18),
-                Is.GreaterThan(EquipmentEfficiency.SupplyMultiplier(24)));
+            // Deck + hand 35 / 24 / 12 / 0: the pair, host and context are the same, so the item's own
+            // utility is the same. (Supply no longer scales it; only alternatives and gates may differ.)
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit, attack = 2, defenseRating = 1, hitPoints = 4,
+            });
+            var item = new CardDefinition { cardType = CardType.Equipment };
+            item.equipment = new EquipmentGrant();
+            float baseline = StrategicCardEvaluator.EquipmentDeltaParts(item, host.Definition).Total;
+            foreach (int cards in new[] { 35, 24, 12, 0 })
+            {
+                var snap = new WorldSnapshot { Self = new SelfSnapshot {
+                    Deck = new CardDefinition[cards], Hand = new CardData[0] } };
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(item, host, snap).Total,
+                    Is.EqualTo(baseline).Within(1e-5f), $"cards left {cards}");
+            }
         }
     }
 }

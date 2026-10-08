@@ -83,20 +83,6 @@ namespace Game.Ai.V2
         // ---- price of E / supply ---------------------------------------------------------------------
         internal static float ToCardValue(float efficiency) => efficiency * AiConfigV2.equipCardValuePerE;
 
-        // Production multiplier on the price of E by how few cards are left (deck + hand): x1 while
-        // units are plentiful, rising to the mid point at one third and on to the empty-deck value.
-        internal static float SupplyMultiplier(int cardsLeft)
-        {
-            float f = Mathf.Max(0f, cardsLeft) / Mathf.Max(1f, AiConfigV2.equipSupplyReferenceCards);
-            float full = AiConfigV2.equipSupplyFullFraction, mid = AiConfigV2.equipSupplyMidFraction;
-            if (f >= full)
-                return 1f;
-            if (f >= mid)
-                return Mathf.Lerp(1f, AiConfigV2.equipSupplyMidMultiplier, (full - f) / (full - mid));
-            return Mathf.Lerp(AiConfigV2.equipSupplyMidMultiplier, AiConfigV2.equipSupplyEmptyMultiplier,
-                (mid - f) / mid);
-        }
-
         // ---- the table -----------------------------------------------------------------------------------
         internal static EfficiencyBreakdown Delta(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
             EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)

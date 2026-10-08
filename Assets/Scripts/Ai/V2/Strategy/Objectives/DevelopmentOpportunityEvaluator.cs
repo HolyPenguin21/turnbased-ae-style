@@ -661,17 +661,6 @@ namespace Game.Ai.V2
             string.Concat(ResourceBundle.All.Where(types.Contains)
                 .Select(DevelopmentInvestmentGate.Abbrev));
 
-        // How much a produced item beats a plain unit by how few cards are left (deck + hand): x1 while
-        // units are plentiful (a unit is the better buy), rising as the deck runs out
-        // (EquipmentEfficiency.SupplyMultiplier). A snapshot without Self counts as a full deck.
-        internal static float ProductionSupplyMultiplier(WorldSnapshot snap)
-        {
-            if (snap?.Self == null)
-                return 1f;
-            return EquipmentEfficiency.SupplyMultiplier(
-                (snap.Self.Deck?.Count ?? 0) + (snap.Self.Hand?.Count ?? 0));
-        }
-
         // Non-equipment outputs already have ONE canonical materialization/scoring path. Use a
         // projected plan to value the future investment; never an executable source.
         private static DevelopmentOpportunity PrepareDeployable(CardDefinition card,
@@ -862,18 +851,14 @@ namespace Game.Ai.V2
 
             // Production context of a real generation source (READY, and its materialization
             // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
-            // the plan Phase A rebuilds all see one value: units run short (supply) and a card made
-            // lately is damped (diversity). Previews (no source) and hand cards keep their own rules.
+            // the plan Phase A rebuilds all see one value: a card made lately is damped (diversity).
+            // The deck-size "supply" multiplier is gone: it never belonged to the item's own utility.
+            // Previews (no source) and hand cards keep their own rules.
             float productionScale = 1f;
             string productionNote = string.Empty;
             if (generation != null)
-            {
-                float supply = ProductionSupplyMultiplier(snap);
                 productionScale = DevelopmentDiversity.RepeatFactor(player, snap?.TurnNumber ?? 0,
-                    equipment, out productionNote) * supply;
-                if (!Mathf.Approximately(productionScale, 1f))
-                    productionNote += $"supply x{supply:0.#} ";
-            }
+                    equipment, out productionNote);
 
             RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit)
             {
