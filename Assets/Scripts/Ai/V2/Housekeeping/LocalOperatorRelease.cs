@@ -22,7 +22,8 @@ namespace Game.Ai.V2
         // The hero may leave `from` for the local `garrison`: an operator of a facility on this hex,
         // never the army's commander (the army keeps a legal leader), the garrison is own, same hex.
         internal static bool MayLeaveForLocalGarrison(PlayerSetupData player, ArmyData from,
-            UnitData hero, ArmyData garrison, out string why)
+            UnitData hero, ArmyData garrison, out string why,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             why = null;
             if (player == null || from == null || hero == null || garrison == null)
@@ -32,7 +33,7 @@ namespace Game.Ai.V2
             { why = "no own local garrison"; return false; }
             if (hero.Owner != player || !hero.IsHero || hero.IsPrisoner || !from.Members.Contains(hero))
             { why = "hero not a free member"; return false; }
-            if (!AiArmyRoles.IsFacilityOperator(player, from.Hex, hero))
+            if (!AiArmyRoles.IsDutyOperator(player, from.Hex, hero, preparationSite))
             { why = "not an operator of a facility on this hex"; return false; }
             UnitData commander = from.Commander;
             if (commander == null || ReferenceEquals(commander, hero) || commander.IsPrisoner)
@@ -56,63 +57,114 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // The heroes whose departure with `army` would leave a served duty without an operator.
+        private static List<UnitData> DutyOperators(PlayerSetupData player, ArmyData army,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite) =>
+            army.Members
+                .Where(m => m != null && m.IsHero
+                    && AiArmyRoles.FacilityNeedsHero(player, army, m, preparationSite))
+                .ToList();
+
+        internal static IReadOnlyList<UnitData> OperatorsNeededHome(PlayerSetupData player, ArmyData army,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite) =>
+            DutyOperators(player, army, preparationSite);
+
+        private static ArmyData LocalGarrison(PlayerSetupData player, ArmyData army) =>
+            ArmyRegistry.AllAt(army.Hex)
+                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+
+        // THE gate of one operator staying home, shared by the departure step and every planner that
+        // must know beforehand whether the step will succeed: null when the hero may be left in the
+        // local garrison for free and the army keeps a legal commander and its capacity, otherwise the
+        // reason. `alsoJoining` are operators already planned into the same garrison.
+        private static string KeepHomeObstacle(PlayerSetupData player, ArmyData army, UnitData hero,
+            ArmyData garrison, ActorCommitments commitments, IReadOnlyCollection<UnitData> alsoJoining,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite, out UnitData newLead)
+        {
+            newLead = null;
+            bool leads = ReferenceEquals(hero, army.Commander);
+            if (leads)
+            {
+                newLead = BestOtherCommander(army, hero, player, preparationSite);
+                if (newLead == null) return "operator is the army's only legal commander";
+            }
+            string why = null;
+            if (garrison == null) return "no local garrison";
+            if (commitments != null && commitments.IsArmyClaimed(garrison.Id)) return "garrison is claimed";
+            if (!leads && !MayLeaveForLocalGarrison(player, army, hero, garrison, out why, preparationSite))
+                return why;
+            if (hero.ActivationApCost > 0 && garrison.RequiresActivationCharge(hero))
+                return "transfer would spend AP";
+            var joined = new List<UnitData>(garrison.Members);
+            if (alsoJoining != null) joined.AddRange(alsoJoining);
+            joined.Add(hero);
+            if (ArmyData.ComputeCapacity(joined, true) < joined.Count)
+                return "garrison full";
+            if (!leads && !army.CanLeaveWithoutOvercrowding(hero)) return "army would overcrowd";
+            return null;
+        }
+
+        // Dry run of ReleaseBeforeDeparture for ALL operators the army would take away: true when
+        // every one of them can stay home. Demand, Provisioning and the departure itself read this
+        // one answer, so a plan is never funded for a departure that Execution would refuse.
+        internal static bool CanKeepOperatorsHome(PlayerSetupData player, ArmyData army,
+            ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> preparationSite,
+            out string why)
+        {
+            why = null;
+            if (player == null || army == null || army.IsGarrison || army.IsPrison || army.Owner != player)
+                return true;
+            List<UnitData> operators = DutyOperators(player, army, preparationSite);
+            if (operators.Count == 0)
+                return true;
+            ArmyData garrison = LocalGarrison(player, army);
+            var joining = new List<UnitData>();
+            foreach (UnitData hero in operators)
+            {
+                why = KeepHomeObstacle(player, army, hero, garrison, commitments, joining,
+                    preparationSite, out _);
+                if (why != null)
+                    return false;
+                joining.Add(hero);
+            }
+            return true;
+        }
+
         // Before a ground operation moves `army` away from its base: every operator the facility
         // needs is left in the local garrison when that is legal and costs no AP. Where it is not
         // (sole commander, full garrison, activation charge, claimed garrison) the departure goes
         // on unchanged — the fallback commander stays legal — and the fact is logged. Returns the
-        // number of heroes left at home.
+        // number of heroes left at home. (Economy refuses such a departure itself, see
+        // MissionRevalidator / OperatorDutyBlocksDeparture.)
         internal static int ReleaseBeforeDeparture(PlayerSetupData player, AiTurnContext ctx,
-            ArmyData army, ActorCommitments commitments)
+            ArmyData army, ActorCommitments commitments,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             if (player == null || army == null || army.IsGarrison || army.IsPrison
                 || army.Owner != player || !army.Members.Any(m => m != null && m.IsHero))
                 return 0;
-            List<UnitData> operators = army.Members
-                .Where(m => m != null && m.IsHero && AiArmyRoles.IsFacilityOperator(player, army.Hex, m)
-                    && AiArmyRoles.FacilityNeedsHero(player, army, m))
-                .ToList();
+            List<UnitData> operators = DutyOperators(player, army, preparationSite);
             if (operators.Count == 0)
                 return 0;
-            ArmyData garrison = ArmyRegistry.AllAt(army.Hex)
-                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+            ArmyData garrison = LocalGarrison(player, army);
             int released = 0;
             foreach (UnitData hero in operators)
             {
-                string why = null;
-                UnitData newLead = null;
-                // The operator leads the army: another hero of the army takes command first (the same
-                // zero-AP reorder Housekeeping uses) when the army keeps its capacity under it.
+                string why = KeepHomeObstacle(player, army, hero, garrison, commitments, null,
+                    preparationSite, out UnitData newLead);
+                if (why != null) { Log(hero, army, why); continue; }
                 bool leads = ReferenceEquals(hero, army.Commander);
-                if (leads)
-                {
-                    newLead = BestOtherCommander(army, hero, player);
-                    if (newLead == null) { Log(hero, army, "operator is the army's only legal commander"); continue; }
-                }
-                if (garrison == null) why = "no local garrison";
-                else if (commitments != null && commitments.IsArmyClaimed(garrison.Id)) why = "garrison is claimed";
-                else if (!leads && !MayLeaveForLocalGarrison(player, army, hero, garrison, out why)) { }
-                else if (hero.ActivationApCost > 0 && garrison.RequiresActivationCharge(hero))
-                    why = "transfer would spend AP";
-                else if (ArmyData.ComputeCapacity(new List<UnitData>(garrison.Members) { hero }, true)
-                         < garrison.Members.Count + 1)
-                    why = "garrison full";
-                else if (!leads && !army.CanLeaveWithoutOvercrowding(hero)) why = "army would overcrowd";
-                else
-                {
-                    if (leads && !army.TryReorderCommander(newLead, out why)) { Log(hero, army, why); continue; }
-                    if (leads && (!MayLeaveForLocalGarrison(player, army, hero, garrison, out why)
-                                  || !army.CanLeaveWithoutOvercrowding(hero)))
-                    { Log(hero, army, why ?? "army would overcrowd"); continue; }
-                    if (!ArmyActions.TransferMember(hero, army, garrison, ctx?.HexSelection, out why))
-                    { Log(hero, army, why); continue; }
-                    WorldDeltaLifecycle.CommitMutation();
-                    released++;
-                    AiDebugLog.Write($"[AI][V2][OperatorRelease] {hero.Name} left army #{army.Id} for garrison "
-                        + $"#{garrison.Id} at ({army.Hex.Q},{army.Hex.R}) before departure; commander="
-                        + $"{army.Commander?.Name}{(leads ? " (reordered)" : "")} ap=0");
-                    continue;
-                }
-                Log(hero, army, why);
+                if (leads && !army.TryReorderCommander(newLead, out why)) { Log(hero, army, why); continue; }
+                if (leads && (!MayLeaveForLocalGarrison(player, army, hero, garrison, out why, preparationSite)
+                              || !army.CanLeaveWithoutOvercrowding(hero)))
+                { Log(hero, army, why ?? "army would overcrowd"); continue; }
+                if (!ArmyActions.TransferMember(hero, army, garrison, ctx?.HexSelection, out why))
+                { Log(hero, army, why); continue; }
+                WorldDeltaLifecycle.CommitMutation();
+                released++;
+                AiDebugLog.Write($"[AI][V2][OperatorRelease] {hero.Name} left army #{army.Id} for garrison "
+                    + $"#{garrison.Id} at ({army.Hex.Q},{army.Hex.R}) before departure; commander="
+                    + $"{army.Commander?.Name}{(leads ? " (reordered)" : "")} ap=0");
             }
             return released;
         }
@@ -123,11 +175,12 @@ namespace Game.Ai.V2
 
         // The hero that takes command when `operatorHero` leaves: a non-operator, non-support hero
         // under whom the whole current roster still fits, best combat leadership first.
-        private static UnitData BestOtherCommander(ArmyData army, UnitData operatorHero, PlayerSetupData player)
+        private static UnitData BestOtherCommander(ArmyData army, UnitData operatorHero, PlayerSetupData player,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
             return army.Members
                 .Where(u => u != null && u.IsHero && !u.IsPrisoner && !ReferenceEquals(u, operatorHero)
-                    && !AiArmyRoles.IsFacilityOperator(player, army.Hex, u))
+                    && !AiArmyRoles.IsDutyOperator(player, army.Hex, u, preparationSite))
                 .Where(u => ArmyData.ComputeCapacity(
                     new[] { u }.Concat(army.Members.Where(m => !ReferenceEquals(m, u))), false)
                     >= army.Members.Count - 1)

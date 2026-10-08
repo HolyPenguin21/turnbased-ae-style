@@ -187,14 +187,21 @@ namespace Game.Ai.V2
                 ResearchProductionMode.Research, snap, player, hand, ctx, intents);
             snap.Development.ProductionPreparationSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
                 ResearchProductionMode.Production, snap, player, hand, ctx, intents);
-            // Operator duty of every own field army, against the live roster outside it.
+            // Operator duty of every own field army, against the live roster outside it: set when the
+            // army would take a served operator away AND cannot leave it home for free (the one rule
+            // Provisioning and Execution re-read live).
             if (snap.Self?.Armies != null)
+            {
+                ActorCommitments commitments = ActorCommitments.FromIntents(
+                    (IReadOnlyList<MissionIntent>)intents ?? new List<MissionIntent>(), snap, null);
                 foreach (ArmySnapshot army in snap.Self.Armies)
                 {
                     if (army == null || army.IsGarrison || army.IsPrison) continue;
-                    army.OperatorDutyBlocksDeparture = AiArmyRoles.DepartureStripsOperator(player,
-                        AiV2Util.ResolveArmy(player, army.ArmyId), snap.Development.PreparationSiteFor);
+                    army.OperatorDutyBlocksDeparture = DevelopmentOpportunityEvaluator.OperatorDutyBlocksDeparture(
+                        player, AiV2Util.ResolveArmy(player, army.ArmyId), commitments,
+                        snap.Development.PreparationSiteFor);
                 }
+            }
         }
 
         // READY generation options have already passed ResearchProductionSystem affordability and

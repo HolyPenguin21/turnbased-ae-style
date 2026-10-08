@@ -93,7 +93,12 @@ namespace Game.Ai.V2
                     out List<UnitData> reinforcementPlan))
                 return EconomyCompletionPlan.No(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{identityArmyId} preparation witness is stale"));
-            List<UnitData> projectedMembers = hero.Members.Where(u => !lighteningPlan.Contains(u))
+            // Operators the departure leaves in the local garrison (zero AP, same gate as Execution)
+            // are not part of the walking roster.
+            IReadOnlyList<UnitData> staying = hero.Hex.Equals(target.TargetHex)
+                ? System.Array.Empty<UnitData>()
+                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx);
+            List<UnitData> projectedMembers = hero.Members.Where(u => !lighteningPlan.Contains(u) && !staying.Contains(u))
                 .Concat(reinforcementPlan).ToList();
             int projectedMovement = ArmyData.ComputeCurrentMovement(projectedMembers);
             int projectedMaxMovement = ArmyData.ComputeMaxMovement(projectedMembers);
@@ -128,7 +133,8 @@ namespace Game.Ai.V2
             bool completionThisTurn = distance <= projectedMovement;
             ResourceCost stageCost = completionThisTurn ? target.BuildResourceCost : null;
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
-                target.MinimumFollowupAp, lighteningPlan, reinforcementPlan,
+                target.MinimumFollowupAp, staying.Count == 0 ? lighteningPlan
+                    : lighteningPlan.Concat(staying).ToList(), reinforcementPlan,
                 garrison, travelNeeded, completionThisTurn);
             if (realAp > apEnvelope + eps)
                 return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(realAp,

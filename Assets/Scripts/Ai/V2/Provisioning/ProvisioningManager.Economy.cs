@@ -99,6 +99,11 @@ namespace Game.Ai.V2
                     UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g);
                     if (sparable == null) return "no_sparable_hero";
                     if (session.ClaimedArmyIds.Contains(g.Id)) return "claimed_this_pass";
+                    // A garrison's facility operators are never sparable (CanSpareGarrisonMember); the
+                    // selected preparation site's operator is protected by the same live duty rule.
+                    if (AiArmyRoles.FacilityNeedsHero(player, g, sparable,
+                            DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx)))
+                        return "operator_leaves_served_facility";
                     if (!g.Hex.Equals(target.TargetHex)
                         && SafeStepPathing.FindSafePathCost(ctx.Map, player, g.Hex,
                             target.TargetHex, sparable.MoveMax) == int.MaxValue)
@@ -108,17 +113,18 @@ namespace Game.Ai.V2
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
-                // Live re-check of the duty Demand saw in the snapshot: the roster outside `a` is
-                // read now, before any binding or composition mutation.
-                if (!a.Hex.Equals(target.TargetHex) && AiArmyRoles.DepartureStripsOperator(player, a,
-                        session.Snapshot?.Development == null ? null
-                            : (System.Func<ResearchProductionMode, HexCoord?>)session.Snapshot.Development.PreparationSiteFor))
+                // Live re-check of the duty Demand saw in the snapshot (roster outside `a`, selected
+                // preparation site, free garrison, no AP): before any binding or composition mutation.
+                if (!a.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
+                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments))
                     return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
                         out List<UnitData> unload, out List<UnitData> reinforcement))
                     return "stale_preparation_witness";
-                List<UnitData> projected = a.Members.Where(u => !unload.Contains(u))
+                IReadOnlyList<UnitData> staying = DevelopmentOpportunityEvaluator
+                    .OperatorsStayingHome(player, a, hand, ctx);
+                List<UnitData> projected = a.Members.Where(u => !unload.Contains(u) && !staying.Contains(u))
                     .Concat(reinforcement).ToList();
                 if (!a.Hex.Equals(target.TargetHex)
                     && !SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, a,
