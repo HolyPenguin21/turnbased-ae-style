@@ -227,6 +227,7 @@ namespace Game.Ai.V2
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout); re-reading the same continuity owner
                 // here keeps stale pre-build actor claims from executing.
+                yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                 OperationalFrame phaseAFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                 reconObjectives = phaseAFrame.Recon;
                 aggressionObjectives = phaseAFrame.Aggression;
@@ -436,13 +437,15 @@ namespace Game.Ai.V2
                 // admits them together with its own. `flush` admits waiting axes with no new
                 // trigger once nothing is pending (loop top); `force` admits them even while an
                 // obligation is still pending (the loop is over and will not settle it).
-                bool ReenterStrategicAxes(StrategicInvalidationReason reasons,
+                bool reentryStateChanged = false;
+                IEnumerator ReenterStrategicAxes(StrategicInvalidationReason reasons,
                     HashSet<DesireAxis> dirtyAxes, bool flush = false, bool force = false)
                 {
+                    reentryStateChanged = false;
                     bool triggered = reasons != StrategicInvalidationReason.None
                         && dirtyAxes != null && dirtyAxes.Count > 0;
                     if (!triggered && !((flush || force) && deferredAdmission.HasAxes))
-                        return false;
+                        yield break;
                     if (AviationObligations.Pending(player, ctx))
                     {
                         if (!force)
@@ -453,7 +456,7 @@ namespace Game.Ai.V2
                                 AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
                                     + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
                             }
-                            return false;
+                            yield break;
                         }
                         AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
                             + "loop — admitting the deferred axes anyway");
@@ -476,8 +479,9 @@ namespace Game.Ai.V2
                         return unchanged;
                     });
                     if (dirtyAxes.Count == 0)
-                        return false;
+                        yield break;
 
+                    yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                     OperationalFrame reenterFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                     reconObjectives = reenterFrame.Recon;
                     aggressionObjectives = reenterFrame.Aggression;
@@ -519,6 +523,7 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
+                        yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                         OperationalFrame followupFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                         reconObjectives = followupFrame.Recon;
                         aggressionObjectives = followupFrame.Aggression;
@@ -544,7 +549,7 @@ namespace Game.Ai.V2
                                 ? $"unchanged count={regenerated.Count(d => d?.RequestingAxis == axis)}"
                                 : $"old=[{demandsBefore[axis]}] new=[{after}]"));
                     }
-                    return followup.StateChanged;
+                    reentryStateChanged = followup.StateChanged;
                 }
 
                 IEnumerator RunTypedAdmissions()
@@ -592,13 +597,14 @@ namespace Game.Ai.V2
                     }
                     // The last aviation obligation may have settled (or stalled) without a typed
                     // trigger: admit the axes that waited for it before this admission.
-                    ReenterStrategicAxes(StrategicInvalidationReason.None, null, flush: true);
+                    yield return ReenterStrategicAxes(StrategicInvalidationReason.None, null, flush: true);
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
                     if (!ownershipFreshAfterPhaseA)
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+                        yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                         OperationalFrame settledFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                         reconObjectives = settledFrame.Recon;
                         aggressionObjectives = settledFrame.Aggression;
@@ -707,8 +713,9 @@ namespace Game.Ai.V2
                         TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
                             out StrategicInvalidationReason rebaseStrategicReasons,
                             out HashSet<DesireAxis> rebaseDirtyAxes);
-                        bool rebaseStrategicChanged = ReenterStrategicAxes(
+                        yield return ReenterStrategicAxes(
                             rebaseStrategicReasons, rebaseDirtyAxes);
+                        bool rebaseStrategicChanged = reentryStateChanged;
                         bool rebaseProgress = rebaseMoved || rebaseStrategicChanged;
                         noProgressCycles = rebaseProgress ? 0 : noProgressCycles + 1;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} aviation-rebase "
@@ -756,8 +763,9 @@ namespace Game.Ai.V2
                         TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
                             out StrategicInvalidationReason recoveryStrategicReasons,
                             out HashSet<DesireAxis> recoveryDirtyAxes);
-                        bool recoveryStrategicChanged = ReenterStrategicAxes(
+                        yield return ReenterStrategicAxes(
                             recoveryStrategicReasons, recoveryDirtyAxes);
+                        bool recoveryStrategicChanged = reentryStateChanged;
                         // Reentry may publish another compound fact (for example, materializing a
                         // Raid reinforcement changes Actor + Capability). Route that fact through
                         // the same typed fan-out before consuming it so Economy/Development cannot
@@ -768,8 +776,9 @@ namespace Game.Ai.V2
                             out HashSet<DesireAxis> recoveryFollowupAxes);
                         recoveryOperationalReasons |= recoveryFollowupOperational;
                         recoveryStrategicReasons |= recoveryFollowupStrategic;
-                        recoveryStrategicChanged |= ReenterStrategicAxes(
+                        yield return ReenterStrategicAxes(
                             recoveryFollowupStrategic, recoveryFollowupAxes);
+                        recoveryStrategicChanged |= reentryStateChanged;
                         recoveryProgress |= recoveryStrategicChanged;
                         noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
@@ -997,8 +1006,9 @@ namespace Game.Ai.V2
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
                         out StrategicInvalidationReason strategicReasons,
                         out HashSet<DesireAxis> dirtyStrategicAxes);
-                    bool strategicChanged = ReenterStrategicAxes(
+                    yield return ReenterStrategicAxes(
                         strategicReasons, dirtyStrategicAxes);
+                    bool strategicChanged = reentryStateChanged;
                     // A follow-up Phase A action may publish a reason shared by operational and
                     // strategic families. Take one typed snapshot and acknowledge every affected
                     // recipient before the registry clears that reason.
@@ -1008,8 +1018,9 @@ namespace Game.Ai.V2
                         out HashSet<DesireAxis> followupDirtyAxes);
                     operationalReasons |= followupOperationalReasons;
                     strategicReasons |= followupStrategicReasons;
-                    strategicChanged |= ReenterStrategicAxes(
+                    yield return ReenterStrategicAxes(
                         followupStrategicReasons, followupDirtyAxes);
+                    strategicChanged |= reentryStateChanged;
                     progressed |= strategicChanged;
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
@@ -1035,7 +1046,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                         + $"{noProgressCycles}");
                 // Axes still waiting for aviation must not be lost when the loop ends first.
-                ReenterStrategicAxes(StrategicInvalidationReason.None, null, force: true);
+                yield return ReenterStrategicAxes(StrategicInvalidationReason.None, null, force: true);
 
                 }
 
@@ -1095,8 +1106,9 @@ namespace Game.Ai.V2
                         out HashSet<DesireAxis> dirtyStrategicAxes);
                     bool operationalDirty = operationalReasons != StrategicInvalidationReason.None;
                     bool strategicDirty = strategicReasons != StrategicInvalidationReason.None;
-                    bool strategicChanged = ReenterStrategicAxes(
+                    yield return ReenterStrategicAxes(
                         strategicReasons, dirtyStrategicAxes);
+                    bool strategicChanged = reentryStateChanged;
                     // Phase B reentry can itself publish a compound invalidation. Preserve its
                     // full typed fan-out before acknowledging it.
                     TakeTypedTriggers(
@@ -1109,8 +1121,9 @@ namespace Game.Ai.V2
                         != StrategicInvalidationReason.None;
                     strategicDirty |= managementFollowupStrategic
                         != StrategicInvalidationReason.None;
-                    strategicChanged |= ReenterStrategicAxes(
+                    yield return ReenterStrategicAxes(
                         managementFollowupStrategic, managementFollowupAxes);
+                    strategicChanged |= reentryStateChanged;
                     if (operationalDirty || strategicChanged)
                         noProgressCycles = 0;
 
@@ -1158,6 +1171,7 @@ namespace Game.Ai.V2
                 {
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
+                    yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                     OperationalFrame zeroRadarFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                     reconObjectives = zeroRadarFrame.Recon;
                     aggressionObjectives = zeroRadarFrame.Aggression;
@@ -1194,6 +1208,7 @@ namespace Game.Ai.V2
                                 WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
+                            yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                             OperationalFrame coldFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                             reconObjectives = coldFrame.Recon;
                             aggressionObjectives = coldFrame.Aggression;
