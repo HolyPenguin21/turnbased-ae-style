@@ -101,10 +101,89 @@ Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объ
 
 ## 7. Не сделано / ограничения
 * **Unity не запускалась**: ни EditMode, ни сценарии §14.4 (подготовка по ходам, Challenge-проигрыш, потеря площадки, rebuild Phase A…). Шаги: открыть проект в 6000.5.4f1, Test Runner → EditMode → весь набор; затем вручную оба четырёхходовых маршрута.
-* Полный проход по 62 продуктам с таблицей по каждому хосту и три стартовые колоды в Unity не выполнялись (ассеты не загружаются вне редактора); выполнен только выборочный проход на 14 продуктах × 6 хостах Iron Concord (§4).
+* Полный проход по 62 продуктам выполнен через настоящий код (`EquipmentSystem.CanAttachPreview` → `EquipmentDeltaParts` → `EquipmentUpgradeValue`) на карточных данных, считанных из `Assets/Cards/*.asset`, в локальном раннере — но **не в редакторе Unity** (см. §8).
 * Fate оператора: механизм `OperatorOutputs` есть, но владелец не заполняет его подтверждёнными выпусками — до этого значение 0 (старый флэт удалён по ТЗ).
 * Fate командира: оставлен прежний адаптер, ΔWinChance из `WorthIt` не подключён.
 * Авиационные хосты — прокси линейной таблицей; `AviationCombatEstimator` для статов не подключён.
 * Известный маршрут (`RouteLength/ArmyActivationAp`) и `DetectionRelevance` поддержаны контекстом, но вызывающий код их пока не заполняет (используются прокси / 0).
 * `EquipmentReserve` в `WorldAnalysis.Self` (без снапшота) оставлен на линейной оценке AiPower: это резервная мера силы в собственных единицах потребителя, без знаний о противнике.
 * Тест-прогон не воспроизводит Приложение А по ценам/Chance/S и не содержит сравнения с наймом (S-таблицы).
+
+## 8. Полный каталог (62 продукта, локальный раннер)
+Источник: `ResearchProductionCatalog.asset` (62 уникальных `cardKey`), каталоги трёх фракций и Neutral. Хосты — все Unit/Hero, прошедшие
+`CanAttachPreview` (всего 89 хостов в каталогах); контексты — наземный состав каждой из трёх стартовых колод (Vessels / Ashen / Iron Concord) как
+`TrueWorld.EnemyArmies`. Хост без аддитивных изменений (полное HP, нет миссии, нет армии). pairs=3939 nonfinite=0 пар «продукт × хост × колода»:
+NaN/Infinity — 0, исключений — 0. Отрицательные значения — нормальный результат (потеря дальности/способности).
+
+Колонка «0 / <0» — число пар с U≈0 и U<0 (по хостам × 3 колоды).
+
+| Продукт | Слот | Допустимых хостов | U (мин … макс) | Лучший хост | Худший хост | 0 / <0 |
+|---|---|---|---|---|---|---|
+| Dermal Plating | Mut | 20 | -0.034 …   0.181 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Reactive Marrow | Mut | 20 | 0.000 …   0.242 | AT Infantry | Rad Brute | 1 / 0 |
+| Reinforced Skeleton | Mut | 20 | -0.026 …   0.277 | AT Infantry | Heavy Infantry | 0 / 5 |
+| Pain Suppression | Mut | 20 | -0.130 …   0.119 | AT Infantry | Ash Drifter | 0 / 44 |
+| Regenerative Culture | Mut | 20 | 0.000 …   0.176 | Light Infantry | Rad Brute | 3 / 0 |
+| Hyper-Regeneration | Mut | 20 | -0.130 …   0.125 | AT Infantry | Ash Drifter | 0 / 44 |
+| Survivor Strain | Mut | 20 | -0.156 …   0.141 | AT Infantry | Heavy Infantry | 0 / 45 |
+| Adrenal Surge | Mut | 20 | 0.020 …   0.259 | Light Infantry | Heavy Infantry | 0 / 0 |
+| Metabolic Overdrive | Mut | 20 | -0.131 …   0.160 | Hooded | AT Infantry | 0 / 7 |
+| Predator Reflexes | Mut | 20 | -0.232 …   0.197 | AT Infantry | Heavy Infantry | 0 / 44 |
+| Neural Accelerator | Mut | 20 | 0.010 …   0.429 | AT Infantry | Hooded | 0 / 0 |
+| Rapid Synapse | Mut | 20 | -0.030 …   0.255 | Heavy Infantry | AT Infantry | 3 / 1 |
+| Hunter Glands | Mut | 20 | -0.175 …   0.110 | Heavy Infantry | AT Infantry | 6 / 13 |
+| Enhanced Senses | Mut | 20 | -0.151 …   0.160 | AT Infantry | Hooded | 0 / 29 |
+| Wanderer Strain | Mut | 20 | -0.051 …   0.240 | Heavy Infantry | AT Infantry | 0 / 1 |
+| Chameleon Tissue | Mut | 20 | -0.160 …  -0.035 | Trapper | Hooded | 0 / 60 |
+| Fortunate Genome | Mut | 16 | 0.150 …   0.150 | Dorian Kesh | Dorian Kesh | 0 / 0 |
+| Ghost Genome | Mut | 16 | 0.000 …   0.041 | Dorian Kesh | Lira Sable | 6 / 0 |
+| Hunter Genome | Mut | 16 | 0.000 …   0.080 | Dorian Kesh | Lira Sable | 6 / 0 |
+| Reflex Genome | Mut | 16 | 0.000 …   0.225 | Dorian Kesh | Nadia Thorne | 3 / 0 |
+| Flamer | Eq | 19 | -2.463 …   1.523 | Rad Brute | HI Ash Walker | 0 / 16 |
+| AT Launcher | Eq | 19 | -0.684 …   2.197 | Rad Brute | HI Ash Walker | 0 / 3 |
+| Claws | Eq | 19 | -2.415 …   0.465 | Rad Brute | HI Ash Walker | 0 / 41 |
+| Heavy MG | Eq | 19 | -0.796 …   2.563 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Plasma Gun | Eq | 19 | 0.986 …   4.445 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| Ballistic Shield | Eq | 19 | -0.034 …   0.181 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Ceramic Vest | Eq | 19 | -0.075 …   0.294 | AT Infantry | Heavy Infantry | 0 / 4 |
+| Assault Rifle Kit | Eq | 19 | 0.150 …   1.417 | HI Ash Walker | Tech Scrapper | 0 / 0 |
+| Marksman Rifle | Eq | 19 | -0.404 …   2.943 | Shard Wanderer | HI Ash Walker | 0 / 3 |
+| Optical Scope | Eq | 19 | 0.243 …   2.550 | Flamer | Tech Scrapper | 0 / 0 |
+| Mobility Harness | Eq | 19 | 0.080 …   0.160 | Hooded | Scrapper | 0 / 0 |
+| Shotgun | Eq | 19 | -2.170 …   1.181 | Shard Wanderer | HI Ash Walker | 0 / 11 |
+| Grenade Launcher | Eq | 19 | 0.000 …   3.011 | Rad Brute | HI Ash Walker | 3 / 0 |
+| Shock Rifle | Eq | 19 | -1.500 …   1.353 | Rad Brute | HI Ash Walker | 0 / 6 |
+| Incendiary Rifle | Eq | 19 | -1.507 …   2.576 | Rad Brute | HI Ash Walker | 11 / 4 |
+| Rail Rifle | Eq | 19 | -1.425 …   1.474 | Rad Brute | HI Ash Walker | 3 / 3 |
+| Twin SMG | Eq | 19 | -1.738 …   1.032 | Rad Brute | HI Ash Walker | 0 / 10 |
+| Portable Mortar | Eq | 19 | 0.294 …   3.505 | Heavy Infantry | Tech Scrapper | 0 / 0 |
+| Recoil Cannon | Eq | 19 | 0.373 …   3.765 | Shard Wanderer | HI Ash Walker | 0 / 0 |
+| AA Launcher | Eq | 19 | 0.010 …   0.069 | Flamer | Scout | 0 / 0 |
+| Armor Plate | Eq | 43 | 0.000 …   0.480 | Scrap Mortar | Medium Tank | 11 / 0 |
+| Reinforced Chassis | Eq | 43 | -0.180 …   0.970 | Scrap Mortar | Leviathan | 0 / 82 |
+| Servo Actuators | Eq | 43 | 0.051 …   0.295 | Ash Howitzer | Skimmer | 0 / 0 |
+| Ceramic Plating | Eq | 43 | 0.000 …   1.002 | Scrap Mortar | Medium Tank | 16 / 0 |
+| Reactive Armor | Eq | 43 | -0.202 …   0.738 | Scrap Mortar | Ash Howitzer | 0 / 85 |
+| Nuclear Engine | Eq | 22 | 0.051 …   0.295 | Ash Howitzer | Skimmer | 0 / 0 |
+| Turbocharger | Eq | 21 | -0.420 …   0.360 | Leviathan | Artillery Tank | 0 / 8 |
+| Artillery Cannon | Eq | 15 | -6.955 …   1.821 | Heavy Tank | Ash Howitzer | 0 / 6 |
+| AT VH Launcher | Eq | 15 | -9.548 …   1.135 | Heavy Tank | Ash Howitzer | 0 / 11 |
+| Double Barrel | Eq | 15 | 0.769 …  11.201 | Artillery Tank | Scav Carrier | 0 / 0 |
+| Plasma Cannon | Eq | 15 | -9.195 …   3.768 | RC Vehicle | Ash Howitzer | 0 / 6 |
+| Autocannon | Eq | 21 | -9.698 …   2.378 | BS Grave Engine | Ash Howitzer | 0 / 18 |
+| HE Cannon | Eq | 21 | -6.702 …   3.918 | BS Grave Engine | Ash Howitzer | 3 / 6 |
+| Flame Projector | Eq | 21 | -12.527 …   1.222 | BS Grave Engine | Ash Howitzer | 3 / 50 |
+| Rail Cannon | Eq | 21 | -9.548 …   4.039 | Bastion Frame | Ash Howitzer | 0 / 9 |
+| Shock Projector | Eq | 21 | 0.000 …   0.652 | Scrap Mortar | RC Vehicle | 20 / 0 |
+| AA Mount | Eq | 21 | 0.000 …   0.192 | Artillery Tank | Crawler | 3 / 0 |
+| Dozer Blade | Eq | 21 | -12.214 …   0.309 | Bastion Frame | Ash Howitzer | 0 / 54 |
+| Siege Ram | Eq | 21 | -12.224 …   0.589 | BS Grave Engine | Ash Howitzer | 0 / 54 |
+| Spiked Ram | Eq | 21 | -12.259 …   0.309 | Bastion Frame | Ash Howitzer | 0 / 54 |
+| Mortar Rack | Eq | 21 | -3.166 …   4.130 | Heavy Tank | Ash Howitzer | 0 / 9 |
+| Assault Conversion Kit | Eq | 21 | -12.437 …   0.014 | BS Grave Engine | Ash Howitzer | 3 / 54 |
+
+Наблюдения: порядки величин совпадают с референсом Приложения В (например Plasma Gun 0.99…4.45 против 2.03…5.11; Dozer Blade −12.2…0.31 против −10.1…0.35;
+Mobility Harness 0.080…0.160 — точно). Выше референса оборонительные предметы на бронированных носителях (Ceramic Plating макс 1.00 против 0.47,
+Armor Plate 0.48 против 0.23): модель не знает дальности ответа цели, поэтому защита платит чуть больше. Hero-карты (Genome) оцениваются только на героях;
+Fortunate Genome даёт 0.150 за счёт командирского Fate (не за операторский — тот 0 без подтверждённых выпусков). AA Launcher/Mount положительны (0.01–0.19), потому что в
+составе колод есть воздушные цели; без них было бы 0.

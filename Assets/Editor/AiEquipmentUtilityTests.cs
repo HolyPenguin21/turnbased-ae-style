@@ -207,6 +207,23 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void MissionMultipliers_ActOnTheirOwnShare()
+        {
+            var enemy = Enemy(2, 3, 4);
+            var plain = Ctx(enemy);
+            var attack = Ctx(enemy); attack.OffenseMult = 2f; attack.DefenseMult = 1f;
+            float rifle = U(Medium, S(4, 2, 4, 2), plain).Combat, rifleMission = U(Medium, S(4, 2, 4, 2), attack).Combat;
+            Assert.That(rifleMission, Is.EqualTo(2f * rifle).Within(1e-4f), "pure +Attack is all offence");
+            float shield = U(Medium, S(3, 3, 4, 2), plain).Combat, shieldMission = U(Medium, S(3, 3, 4, 2), attack).Combat;
+            Assert.That(shieldMission, Is.EqualTo(shield).Within(1e-4f), "pure +Defense is all defence");
+            var regen = new[] { UnitAbilities.Regeneration };
+            var wounded = Ctx(enemy); wounded.HpSpent = 2;
+            var woundedMission = Ctx(enemy); woundedMission.HpSpent = 2; woundedMission.OffenseMult = 2f;
+            Assert.That(U(Medium, Medium, woundedMission, None, regen).Combat,
+                Is.EqualTo(U(Medium, Medium, wounded, None, regen).Combat).Within(1e-4f), "Regeneration is a defensive share");
+        }
+
+        [Test]
         public void HeroDoesNotBecomeAFighter()
         {
             var hero = new EfficiencyContext { IsHero = true, ArmyAttack = 0f, Targets = new[] { Enemy(1, 3, 4) } };

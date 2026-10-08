@@ -70,7 +70,10 @@ namespace Game.Ai.V2
                     // offense = what the new Attack/Range/Initiative/abilities change at the OLD defence.
                     var offensiveOnly = new EfficiencyStats(after.Attack, before.Defense, before.HitPoints,
                         after.Range, before.Move, after.Initiative, before.ActivationAp, before.Fate);
-                    float cMid = Contribution(offensiveOnly, afterAbilities, ctx, ground);
+                    // Defensive abilities (Regeneration, CeramicArmor) belong to the defensive share.
+                    var midAbilities = afterAbilities.Where(a => !IsDefensiveAbility(a))
+                        .Concat(beforeAbilities.Where(IsDefensiveAbility)).ToList();
+                    float cMid = Contribution(offensiveOnly, midAbilities, ctx, ground);
                     offense = scale * (cMid - cBefore) * ctx.OffenseMult;
                     defense = scale * (cAfter - cMid) * ctx.DefenseMult;
                 }
@@ -140,6 +143,9 @@ namespace Game.Ai.V2
 
             return new UtilityBreakdown(dC, offense, defense, ap, move, vision, detection, stealth, fate, antiAir);
         }
+
+        private static bool IsDefensiveAbility(string a) =>
+            a == UnitAbilities.Regeneration || a == UnitAbilities.CeramicArmor;
 
         // RapidReaction makes an activation free: the effective AP is what a turn really pays.
         private static int EffectiveAp(EfficiencyStats s, IReadOnlyCollection<string> abilities) =>
@@ -230,15 +236,17 @@ namespace Game.Ai.V2
             {
                 memo = s_contributions.GetValue(owner, _ => new Dictionary<string, float>());
                 key = ContributionKey(s, abilities, ctx);
-                if (memo.TryGetValue(key, out float cached))
-                    return cached;
+                lock (memo)
+                    if (memo.TryGetValue(key, out float cached))
+                        return cached;
             }
             float sum = 0f;
             foreach (var t in targets)
                 sum += ContactSeries(s, abilities, ctx, t);
             float value = AiConfigV2.equipCombatBodyScale * sum / targets.Count;
             if (memo != null)
-                memo[key] = value;
+                lock (memo)
+                    memo[key] = value;
             return value;
         }
 

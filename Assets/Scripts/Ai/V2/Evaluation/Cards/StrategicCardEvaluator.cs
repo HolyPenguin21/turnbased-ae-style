@@ -1481,15 +1481,6 @@ namespace Game.Ai.V2
                     if (member.HasAbility(UnitAbilities.AntiAir)) ctx.OtherAntiAirCarriers++;
                 }
             }
-            if (isHero && hostUnit != null && snap.Development?.Facilities != null)
-                foreach (DevelopmentFacility facility in snap.Development.Facilities)
-                    if (ReferenceEquals(ResearchProductionSystem.FindActor(snap.Observer, facility.Hex,
-                            facility.Mode), hostUnit))
-                    {
-                        ctx.IsFacilityOperator = true;
-                        break;
-                    }
-
             HexCoord? targetHex = purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.Hex
                 : purpose?.Raid?.Target.HasValue == true ? purpose.Raid.TargetHex : null;
             float hexBonus = targetHex.HasValue
