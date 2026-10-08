@@ -213,7 +213,7 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
-                // Supply/diversity are already inside the gain (EquipmentOpportunities, source set).
+                // Repeat damping is already inside the gain (EquipmentOpportunities, source set); there is no supply term.
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(

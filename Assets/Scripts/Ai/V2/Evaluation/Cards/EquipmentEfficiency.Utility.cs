@@ -204,15 +204,42 @@ namespace Game.Ai.V2
                 + (range >= 3 ? AiConfigV2.equipDistanceShare3 : 0f) + (range >= 4 ? AiConfigV2.equipDistanceShare4 : 0f);
         }
 
+        // Contributions are pure in (host state, context inputs, target list): one host's "before" state is
+        // read once per product, so memoise per target-list instance. The table lives exactly as long as
+        // the list (ConditionalWeakTable), so nothing outlives the snapshot / purpose scope that built it.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>
+            s_contributions = new System.Runtime.CompilerServices.ConditionalWeakTable<object, Dictionary<string, float>>();
+
+        private static string ContributionKey(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        {
+            var tags = ctx.HostTags != null ? string.Join(",", ctx.HostTags) : string.Empty;
+            return $"{s.Attack}|{s.Defense}|{s.HitPoints}|{s.Range}|{s.Initiative}|{ctx.HpSpent}|{ctx.KnownDistance}|"
+                + $"{ctx.HostCommanderInitiative}|{ctx.EnemyCommanderInitiative}|{ctx.SecondaryNeighbors}|{tags}|"
+                + string.Join(",", abilities);
+        }
+
         // Mean over the enemy profiles of the unscaled contribution, times the body scale.
         // Mean-field over contacts: expected wound carries, P(alive) multiplies every later contact.
         private static float Contribution(EfficiencyStats s, IReadOnlyCollection<string> abilities,
             EfficiencyContext ctx, IReadOnlyList<WorthIt.DefenderProfile> targets)
         {
+            Dictionary<string, float> memo = null;
+            string key = null;
+            object owner = ctx.Targets;
+            if (owner != null)
+            {
+                memo = s_contributions.GetValue(owner, _ => new Dictionary<string, float>());
+                key = ContributionKey(s, abilities, ctx);
+                if (memo.TryGetValue(key, out float cached))
+                    return cached;
+            }
             float sum = 0f;
             foreach (var t in targets)
                 sum += ContactSeries(s, abilities, ctx, t);
-            return AiConfigV2.equipCombatBodyScale * sum / targets.Count;
+            float value = AiConfigV2.equipCombatBodyScale * sum / targets.Count;
+            if (memo != null)
+                memo[key] = value;
+            return value;
         }
 
         private static float ContactSeries(EfficiencyStats s, IReadOnlyCollection<string> abilities,
@@ -265,29 +292,33 @@ namespace Game.Ai.V2
             int targetInitiative = t.Initiative + ctx.EnemyCommanderInitiative;
             float hostFirst = hostInitiative > targetInitiative ? 1f : hostInitiative == targetInitiative ? 0.5f : 0f;
 
+            // The host's own strike does not depend on the contact: price it once.
+            int attack = s.Attack, defense = s.Defense;
+            float dealtA = Strike(attack, out float killA, out float hitA);          // host acts first
+            float boosted = berserk ? Strike(attack + mags.BerserkAttackGain, out _, out _) : dealtA;
+            int lastHp = -1;
+            float tExpected = 0f, tHit = 0f, hostDies = 0f;
+
             for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
             {
                 int hostHp = Mathf.Max(1, s.HitPoints - Mathf.RoundToInt(cumulativeWound));
-                int attack = s.Attack, defense = s.Defense;
 
-                // The enemy's strike on the host.
-                float tExpected = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
-                    t.Abilities, hostTags, abilities, hostHp, out float tHit);
-                float tBelow = hostHp > 1
-                    ? BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
-                        t.Abilities, hostTags, abilities, hostHp - 1, out _)
-                    : 0f;
-                float hostDies = Mathf.Clamp01(tExpected - tBelow);
+                // The enemy's strike on the host (changes only when the carried wound changes).
+                if (hostHp != lastHp)
+                {
+                    lastHp = hostHp;
+                    tExpected = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
+                        t.Abilities, hostTags, abilities, hostHp, out tHit);
+                    float tBelow = hostHp > 1
+                        ? BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
+                            t.Abilities, hostTags, abilities, hostHp - 1, out _)
+                        : 0f;
+                    hostDies = Mathf.Clamp01(tExpected - tBelow);
+                }
 
-                float dealtA = Strike(attack, out float killA, out float hitA);          // host acts first
                 float hostRespondsAfterEnemy = 1f - (targetShock ? tHit : 0f);
                 // Berserk: a hit on the host raises its Attack for its answer within this contact.
-                float dealtB = dealtA;
-                if (berserk)
-                {
-                    float boosted = Strike(attack + mags.BerserkAttackGain, out _, out _);
-                    dealtB = tHit * boosted + (1f - tHit) * dealtA;
-                }
+                float dealtB = berserk ? tHit * boosted + (1f - tHit) * dealtA : dealtA;
 
                 // Host first: dealt; the enemy answers unless killed or suppressed.
                 float enemyAnswers = (1f - killA) * (1f - (shock ? hitA : 0f));

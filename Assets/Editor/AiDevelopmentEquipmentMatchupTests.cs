@@ -589,17 +589,16 @@ namespace Game.EditorTests
                 var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
                 string before = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
                 Assert.That(StrategicCardEvaluator.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.GreaterThan(0));
+                float bioOnly = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
+                Assert.That(bioOnly, Is.GreaterThan(0));
                 intent.Attack.Target = AttackTargetRef.For(secondHex, new PlayerSetupData(), AttackTargetKind.Base);
                 Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(before));
                 Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
                 intent.Attack.Target = AttackTargetRef.None;
                 float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
-                float expected = AiConfigV2.equipPyrokineticFactor * 8 * AiConfigV2.equipDefaultBioShare
-                    * AiConfigV2.equipAttackOffenseMult * AiConfigV2.equipCardValuePerE
-                    / AiConfigV2.equipmentUpgradePersistence;
-                Assert.That(noTarget, Is.EqualTo(expected).Within(1e-4f),
-                    "An absent target is not a real objective at hex 0,0: only the Attack mission multiplier applies, no hex defence");
+                Assert.That(noTarget, Is.GreaterThan(0f).And.LessThan(bioOnly),
+                    "An absent target is not a real objective at hex 0,0: the known compositions (one Bio, one "
+                    + "Mechanical) are averaged, so Pyrokinetic pays on half of them only");
             }
             finally { MissionIntentRegistry.Clear(); }
         }

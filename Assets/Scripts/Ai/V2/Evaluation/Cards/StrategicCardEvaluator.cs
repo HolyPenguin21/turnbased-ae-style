@@ -1521,7 +1521,8 @@ namespace Game.Ai.V2
                     UtilityBreakdown u = EquipmentEfficiency.Utility(b, hostAbilities, a, predicted.Abilities, ctx);
                     combat = u.Combat * perU;
                     tactical = u.Tactical * perU;
-                    breakdown = u.ToString();
+                    breakdown = u + " context=" + (opposition.Count > 0 ? "known-composition" : targets.Count > 0
+                        ? "reference-deck" : "catalog-prior") + $" targets={targets.Count} hpSpent={hpSpent}";
                 }
             }
 
