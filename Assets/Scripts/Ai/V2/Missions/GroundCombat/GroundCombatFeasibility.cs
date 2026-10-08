@@ -21,7 +21,8 @@ namespace Game.Ai.V2
         // (WorthIt.EstimateSequential). A single-army opposition is one ordinary battle.
         internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             WorthIt.SideCommander attackerCommander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
-            float minWinChance, float defenderHexDefenseBonus, out float win, out bool cover)
+            float minWinChance, float defenderHexDefenseBonus, out float win, out bool cover,
+            bool? requireCoverage = null)
         {
             List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
             // Perf pre-filter — see AiConfigV2.raidPowerRatioPreFilter for the calibration this
@@ -62,7 +63,7 @@ namespace Game.Ai.V2
                     defenderHexDefenseBonus).WinChance;
             // `cover` stays the honest fact for logs and CoversAllDefenders; whether it gates this
             // fight is the admission policy's answer.
-            return (cover || !GroundCombatAdmissionPolicy.RequiresCoverage(minWinChance))
+            return (cover || !GroundCombatAdmissionPolicy.RequiresCoverage(minWinChance, requireCoverage))
                 && win >= minWinChance;
         }
 

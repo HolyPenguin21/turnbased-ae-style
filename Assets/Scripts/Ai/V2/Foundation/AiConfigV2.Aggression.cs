@@ -109,6 +109,13 @@ namespace Game.Ai.V2
         // gate (GroundCombatAdmissionPolicy.AttackCoverageGate) reads it; Raid / ActiveDefence keep
         // coverage. Static, not const, so tests can exercise both rules.
         public static bool attackRequiresDefenderCoverage = false;
+        // 2026-10-08 (user decision) — the win chance a VOLUNTARY local fight of an Attack army must
+        // reach: intercepting a known field army, taking an optional intermediate Base, or fighting
+        // a contact that stands on the path. The main Base / Citadel keeps no floor
+        // (GroundCombatAdmissionPolicy.AttackCoverageGate); independent Raid / ActiveDefence keep
+        // their own 0.80 / 0.55. A relevant, significant hostile army below this chance sends the
+        // marching Attack home (AttackMissionPhase.RecoveryReturn).
+        public const float attackLocalMinWinChance = 0.40f;
         // A committed Assault meets an existing support only on the primary's own route to the
         // target (it never backtracks); the primary may hold at the meeting hex for at most this
         // many turns waiting for the support. A support that needs longer does not stop the march.

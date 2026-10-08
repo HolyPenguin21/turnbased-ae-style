@@ -42,6 +42,9 @@ namespace Game.Ai.V2
                 .Where(a => a != null && !a.IsAir)
                 .OrderBy(a => a.ArmyId)
                 .Select(a => $"{a.ArmyId}:{a.MemberCount}:{a.EffectiveArmyPower.ToString("0.##", inv)}"
+                    // The fight's own inputs: a wounded or re-equipped body changes the estimate
+                    // and the local decision even when the count and the rounded power do not.
+                    + $":cf{AttackRetreatWitness.OwnFingerprintOf(a)}"
                     + $":{(a.IsStructuralRaidActor ? "S" : "")}{(a.IsGarrison ? "G" : "")}"
                     // A pure solo scout cannot serve a ground combat leg. Its own waypoint AP/MP
                     // is not an Aggression input; force and asset-threat facts remain in the key.
@@ -61,7 +64,7 @@ namespace Game.Ai.V2
                     // A bound support wing changes which task targets still want aviation.
                     + $":air{GroundCombatLegs.HeldAirSupportArmyId(i)}"
                     + $":{i.Raid?.ReinforcementRequestedTurn}{i.Attack?.ReinforcementRequestedTurn}"
-                    + $":{(i.Attack?.Preparation == true ? "P" : "")}{(i.Attack?.AssaultStarted == true ? "A" : "")}"
+                    + $":{(i.Attack?.Preparation == true ? "P" : "")}{(i.Attack?.AssaultStarted == true ? "A" : "")}{(i.Attack?.TacticalRetreat == true ? "R" : "")}"
                     + $":sup{string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i))}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string threats = string.Join(";", (snapshot.Threat?.Contacts
@@ -103,7 +106,10 @@ namespace Game.Ai.V2
                 + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}"
-                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.TurnNumber)}";
+                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.TurnNumber)}"
+                // A withdrawn Attack target stays closed until the fight itself changes
+                // (AttackRetreatWitness): the witness is an input of admission, not a timer.
+                + $"|retreat={MissionIntentRegistry.GetOrCreate(player).RetreatWitnessDigest()}";
         }
     }
 }

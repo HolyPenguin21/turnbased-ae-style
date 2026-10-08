@@ -38,7 +38,8 @@ namespace Game.Ai.V2
                 float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, objective.Hex);
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                     snap, objective.Opposition, actor.ArmyId,
-                    GroundCombatAdmissionPolicy.FreshStartWinChanceGate, bonus);
+                    GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate, bonus,
+                    GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage);
                 if (!plan.Feasible)
                     continue;
                 // Keep an actually started detour stable, but re-prove knowledge, routes and

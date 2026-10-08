@@ -49,6 +49,9 @@ namespace Game.Ai.V2
         public bool InfrastructureChanged;
         public bool CombatChanged;
         public bool OperationStarted;
+        // Attack: why a funded step did not move although terrain allows the route (a contact it
+        // will not fight and cannot go around). Distinct from impassable terrain; log/test fact.
+        public string TacticalBlockReason;
         // Immutable execution fact consumed by Continuity. A reinforcement handoff may change the
         // RaidIntent phase before the outcome ledger reconciles it, so actor-role ownership must
         // never be inferred from the intent's already-mutated current phase.

@@ -335,22 +335,55 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // §9/§10 — the ONE tactical decision this step is allowed to take: a weak enemy field
-            // army on the way may be destroyed first. This changes only where THIS step walks; the
-            // strategic target above is untouched and no intent, proposal or demand is produced.
-            AttackTacticalStrike strike = target.IsIntermediateAssault ? AttackTacticalStrike.None
-                : AttackTacticalOpportunity.Select(player, ctx.Map,
-                    snapshot, army, target, ctx.TurnNumber);
-            HexCoord waypoint = strike.HasValue ? strike.Hex : targetHex;
+            // 2026-10-08 — the local decision was taken at planning, before funding, and frozen in
+            // `target.Local`. This step only VERIFIES it against the current snapshot: the same
+            // enemy still qualifies, or the step is skipped and the mission layer re-plans. It
+            // never switches to another enemy after funding. The strategic target above is
+            // untouched and no intent, proposal or demand is produced here.
+            AttackLocalAction strike = AttackLocalAction.Continue();
+            if (!target.IsIntermediateAssault)
+            {
+                ArmySnapshot self = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
+                if (self != null)
+                {
+                    AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
+                        target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot));
+                    strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
+                    if (rejection != null)
+                    {
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        AiDebugLog.Write($"[AI][V2][Attack][Local] {player.Nickname} #{army.Id} step skipped: "
+                            + $"{rejection} frozen={target.Local.Kind}#{target.Local.EnemyArmyId} "
+                            + $"now={now.Kind}#{now.EnemyArmyId}; no movement, world unchanged");
+                        yield break;
+                    }
+                }
+            }
+            bool intercept = strike.Kind == AttackLocalActionKind.Intercept;
+            bool fightsContact = intercept || strike.FightsPathContact;
+            HexCoord waypoint = intercept ? strike.Hex : targetHex;
 
+            // A contact the army fights on its way is crossed by the terrain-only route; every
+            // other step keeps the Combat profile, which routes around remembered armies/guards.
             HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint,
-                profile: SafeRouteProfile.Combat);
+                profile: strike.FightsPathContact ? SafeRouteProfile.Attack : SafeRouteProfile.Combat);
+            if (next.HasValue && strike.FightsPathContact && !next.Value.Equals(strike.Hex)
+                && AiMapMemory.KnownGroundArrival(player, next.Value, moverFullyHidden: false).Contact)
+                // The terrain-only step would walk into an army this step does not mean to fight.
+                next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint, profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
             {
-                // The route to the funded site is no longer executable. Planning may choose
-                // an intermediate Base on the next settled pass; Execution never re-picks it.
+                // The route to the funded site is not executable now. Terrain is fine (the funded
+                // step proved it); what stops the army is a contact it will not fight and cannot
+                // go around - a tactical block, deliberately NOT reported as impassable terrain.
                 result.StopReason = ExecutionStopReason.NoSafeStep;
                 result.NeedsReplan = true;
+                result.TacticalBlockReason = army.CurrentMovement <= 0 ? null : "contact_cannot_be_bypassed";
+                AiDebugLog.Write($"[AI][V2][Attack][Route] {player.Nickname} #{army.Id} ({army.Hex.Q},{army.Hex.R}) -> "
+                    + $"({waypoint.Q},{waypoint.R}) no executable step reason=tactical_block "
+                    + $"mp={army.CurrentMovement}/{army.MaxMovement}");
                 yield break;
             }
 
@@ -360,11 +393,11 @@ namespace Game.Ai.V2
             // already excluded a candidate standing on any known hostile structure
             // (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure), so the
             // contact step is a plain field battle.
-            AiGroundMoveAuthority authority = strike.HasValue
-                ? GroundMoveAuthorityPolicy.ForTacticalStrikeStep(next.Value, waypoint)
+            AiGroundMoveAuthority authority = fightsContact
+                ? GroundMoveAuthorityPolicy.ForTacticalStrikeStep(next.Value, intercept ? waypoint : strike.Hex)
                 : GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, targetHex);
-            var decision = AiDecision.Move(army, next.Value, strike.HasValue
-                ? $"V2 attack — tactical strike on enemy #{strike.EnemyArmyId} en route to "
+            var decision = AiDecision.Move(army, next.Value, fightsContact
+                ? $"V2 attack — {(intercept ? "intercept" : "fight on the path")} enemy #{strike.EnemyArmyId} en route to "
                     + target.Target.DiagnosticLabel
                 : $"V2 attack — assault {target.AssaultTarget.DiagnosticLabel}"
                     + (target.IsIntermediateAssault ? $" en route to {target.Target.DiagnosticLabel}" : ""), 0f, authority);
@@ -415,7 +448,7 @@ namespace Game.Ai.V2
                 // again this turn even if a second weak army shows up. Continuation is deliberately
                 // NOT asserted here: the settled-step loop takes a fresh snapshot and re-evaluates
                 // this intent, which may legitimately turn into Reinforcement or Recovery.
-                if (strike.HasValue && next.Value.Equals(waypoint))
+                if (intercept && next.Value.Equals(waypoint))
                     result.AttackOpportunisticStrike = true;
                 result.NeedsReplan |= army == null;
                 result.StopReason = army == null ? ExecutionStopReason.MoverLost : ExecutionStopReason.BattleStarted;

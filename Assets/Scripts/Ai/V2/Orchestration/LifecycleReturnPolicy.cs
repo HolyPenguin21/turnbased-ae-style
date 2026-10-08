@@ -58,7 +58,9 @@ namespace Game.Ai.V2
                 return false;
             MissionIntentKey key = MissionIntentKey.For(mission);
             MissionIntent intent = activeIntents.FirstOrDefault(i => i != null && i.IntentKey.Equals(key));
-            return intent != null && intent.IsLifecycleLeg && intent.ActiveDefence == null;
+            // A tactical retreat (ordered by a hostile army) is urgent, like an ActiveDefence return.
+            return intent != null && intent.IsLifecycleLeg && intent.ActiveDefence == null
+                && intent.Attack?.TacticalRetreat != true;
         }
     }
 }

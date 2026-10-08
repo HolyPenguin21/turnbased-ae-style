@@ -18,7 +18,12 @@ namespace Game.Ai
     //              holding a known ARMY blocks. A foreign building with nobody on it is simply
     //              crossed (arrival takes it over / destroys it by the game rule) and a scout-danger
     //              zone is a scout concern, not a fist's.
-    public enum SafeRouteProfile { Standard, Combat }
+    //   Attack   — the OFFENSIVE army's geometric route (2026-10-08): terrain alone decides. A hex
+    //              whose entry costs more than the mover's MaxMovement is impassable; anything else
+    //              (buildings, guards, remembered armies) is a CONTACT to be judged by the fight
+    //              policy, never a reason the route does not exist. Not for scouts, convoys, raids
+    //              or returning armies.
+    public enum SafeRouteProfile { Standard, Combat, Attack }
 
     public static class SafeStepPathing
     {
@@ -40,9 +45,7 @@ namespace Game.Ai
             // hidden army sets nothing off on arrival (AiMapMemory.KnownGroundArrival), so it
             // may cross known armies/structures — only danger zones remain transit blocks for it.
             bool hidden = Game.Map.StealthSystem.IsArmyFullyHidden(army);
-            HashSet<HexCoord> blockers = profile == SafeRouteProfile.Combat
-                ? (hidden ? cache.HiddenCombatBlockedHexes : cache.CombatBlockedHexes)
-                : (hidden ? cache.HiddenBlockedHexes : cache.BlockedHexes);
+            HashSet<HexCoord> blockers = BlockersFor(cache, profile, hidden);
             return AiTurnController.FindAffordableStep(map, army, targetHex,
                 SafeRouteBlocker(null, blockers, targetHex, null),
                 projectedCurrentMovement, projectedMaxMovement);
@@ -84,19 +87,21 @@ namespace Game.Ai
         // Projected legs (including Economy's return journeys) use the same blocker and
         // maxMovement policy as executed ground movement.
         public static int FindSafePathCost(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement = null)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
         {
             if (map == null || owner == null)
                 return int.MaxValue;
-            return GetRoute(map, owner, from, targetHex, maxMovement)?.TotalCost ?? int.MaxValue;
+            return GetRoute(map, owner, from, targetHex, maxMovement, profile)?.TotalCost ?? int.MaxValue;
         }
 
         public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement = null)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
         {
             if (map == null || owner == null)
                 return null;
-            HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement);
+            HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement, profile);
             // HexPath.Hexes is mutable. Never expose the cached witness to a caller that may
             // edit it and silently change subsequent paths and cost-only reads.
             return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
@@ -161,7 +166,9 @@ namespace Game.Ai
         private const int MaxCostFields = 32;
         private sealed class PlayerRouteCache
         {
-            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath> Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
+            // The profile is part of the key: one endpoint asked under two profiles has two
+            // different honest routes, whatever order the callers ask in.
+            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement, SafeRouteProfile profile), HexPath> Routes = new Dictionary<(HexCoord, HexCoord, int?, SafeRouteProfile), HexPath>();
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
             // Planning (owner-only APIs) is conservative and routes as a VISIBLE mover; only a
@@ -231,23 +238,38 @@ namespace Game.Ai
             else if (memoryVersion != cache.MemoryVersion)
             {
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner, moverFullyHidden: false);
-                if (!cache.BlockedHexes.SetEquals(current)) cache.ClearPathsAndFields();
+                HashSet<HexCoord> currentCombat = CaptureMemoryBlockers(map, owner, moverFullyHidden: false, armiesOnly: true);
+                // Routes of EVERY profile live in the same cache: a change in either visible
+                // blocker set invalidates them (a Combat route is not derived from Standard's set).
+                if (!cache.BlockedHexes.SetEquals(current) || !cache.CombatBlockedHexes.SetEquals(currentCombat))
+                    cache.ClearPathsAndFields();
                 cache.BlockedHexes = current;
                 cache.HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true);
-                cache.CombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: false, armiesOnly: true);
+                cache.CombatBlockedHexes = currentCombat;
                 cache.HiddenCombatBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true, armiesOnly: true);
                 cache.MemoryVersion = memoryVersion;
             }
             return cache;
         }
-        private static HexPath GetRoute(HexMap map, PlayerSetupData owner, HexCoord from, HexCoord targetHex, int? maxMovement)
+        private static readonly HashSet<HexCoord> NoBlockers = new HashSet<HexCoord>();
+        private static HashSet<HexCoord> BlockersFor(PlayerRouteCache cache, SafeRouteProfile profile, bool hidden)
+        {
+            switch (profile)
+            {
+                case SafeRouteProfile.Attack: return NoBlockers;
+                case SafeRouteProfile.Combat: return hidden ? cache.HiddenCombatBlockedHexes : cache.CombatBlockedHexes;
+                default: return hidden ? cache.HiddenBlockedHexes : cache.BlockedHexes;
+            }
+        }
+        private static HexPath GetRoute(HexMap map, PlayerSetupData owner, HexCoord from, HexCoord targetHex, int? maxMovement,
+            SafeRouteProfile profile = SafeRouteProfile.Standard)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Pathing.GetRoute");
             PlayerRouteCache cache = EnsureCacheState(map, owner);
-            var key = (from, targetHex, maxMovement);
+            var key = (from, targetHex, maxMovement, profile);
             if (cache.Routes.TryGetValue(key, out HexPath cached)) return cached;
             if (cache.Routes.Count >= MaxCachedRoutes) cache.Routes.Clear();
-            HexPath computed = HexPathfinder.FindPath(map, from, targetHex, blockHex: SafeRouteBlocker(map, cache.BlockedHexes, targetHex, maxMovement));
+            HexPath computed = HexPathfinder.FindPath(map, from, targetHex, blockHex: SafeRouteBlocker(map, BlockersFor(cache, profile, false), targetHex, maxMovement));
             cache.Routes[key] = computed;
             return computed;
         }

@@ -69,10 +69,13 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void IntermediateGate_IsStrictWhileMainAttackPolicyStaysUnchanged()
+        public void IntermediateGate_IsTheLocalGateWhileMainAttackPolicyStaysUnchanged()
         {
+            // 2026-10-08: an optional Base needs 0.40 and no defender coverage; Raid / ActiveDefence
+            // keep 0.80 / 0.55 (AiAttackFieldContactTests.Policy_ThresholdAndCoverageAreIndependent)
             var proposal = Proposal(local: true);
-            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(proposal, 7), Is.EqualTo(GroundCombatAdmissionPolicy.FreshStartWinChanceGate));
+            Assert.That(GroundCombatAdmissionPolicy.AssaultGate(proposal, 7), Is.EqualTo(GroundCombatAdmissionPolicy.AttackIntermediateBaseWinChanceGate));
+            Assert.That(GroundCombatAdmissionPolicy.AssaultCoverage(proposal), Is.False);
             Assert.That(GroundCombatAdmissionPolicy.AssaultGate(Proposal(local: false), 7), Is.EqualTo(GroundCombatAdmissionPolicy.AttackCoverageGate));
         }
 
