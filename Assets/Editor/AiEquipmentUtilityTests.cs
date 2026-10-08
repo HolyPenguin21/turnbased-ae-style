@@ -201,13 +201,19 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void OperatorFate_NeedsWitnessedOutputs()
+        public void OperatorFate_IsValuedPerPoint_AndWitnessedOutputsReplaceIt()
         {
-            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), new EfficiencyContext { IsHero = true, ArmyAttack = 0f }).Fate,
-                Is.Zero, "no order: no guaranteed future output");
+            var op = new[] { UnitAbilities.Researcher };
+            var ctx = new EfficiencyContext { IsHero = true, ArmyAttack = 0f };
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), ctx, op).Fate,
+                Is.EqualTo(AiConfigV2.equipOperatorFateValue).Within(1e-5f), "operator: a plain value per Fate point");
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), ctx, None).Fate,
+                Is.Zero, "a hero that operates nothing gains no operator value");
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 2), ctx, op).Fate,
+                Is.LessThan(0f), "losing Fate is a signed loss");
             var ordered = new EfficiencyContext { IsHero = true, ArmyAttack = 0f,
                 OperatorOutputs = new[] { (0.5f, 0.15f, 0.64f, 0.91f) } };
-            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), ordered).Fate,
+            Assert.That(U(S(0, 0, 6, 0, fate: 3), S(0, 0, 6, 0, fate: 4), ordered, op).Fate,
                 Is.EqualTo((0.91f - 0.64f) * (0.5f - 0.15f)).Within(1e-5f));
         }
 

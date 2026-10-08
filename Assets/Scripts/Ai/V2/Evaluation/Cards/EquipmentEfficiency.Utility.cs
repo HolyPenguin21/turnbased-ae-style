@@ -135,9 +135,13 @@ namespace Game.Ai.V2
             if (ctx.IsHero)
                 // Commander Fate keeps its owner weight (mean army Attack per Fate point), in card units.
                 fate += dFate * AiConfigV2.equipHeroFateFactor * ctx.ArmyAttack * AiConfigV2.equipCardValuePerE;
-            if (ctx.OperatorOutputs != null)
+            bool operatorHost = ctx.IsHero && (beforeAbilities.Contains(UnitAbilities.Researcher)
+                || beforeAbilities.Contains(UnitAbilities.Assembler));
+            if (ctx.OperatorOutputs != null && ctx.OperatorOutputs.Count > 0)
                 foreach (var o in ctx.OperatorOutputs)
                     fate += (o.PAfter - o.PBefore) * Mathf.Max(0f, o.Utility - o.CostIfSuccess);
+            else if (operatorHost)
+                fate += dFate * AiConfigV2.equipOperatorFateValue;   // owner-set value per Fate point
 
             // ---- anti-air reactions ---------------------------------------------------------------
             float antiAir = ctx.IsHero ? 0f

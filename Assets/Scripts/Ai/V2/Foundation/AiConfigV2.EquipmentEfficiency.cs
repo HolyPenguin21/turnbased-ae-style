@@ -83,5 +83,9 @@ namespace Game.Ai.V2
         public const float equipStealthRiskWeight = 0.9f, equipStealthRiskFloor = 0.35f;
         public const float equipStealthUseScout = 1f, equipStealthUseReserve = 0.25f;
         public const int equipEvalTargetCap = 24;             // profiles priced per pair (stride sample above)
+        // Owner decision (2026-10-08): +1 Fate of a Research/Production OPERATOR lifts every later Challenge, which
+        // makes stronger equipment possible - a plain card-score value per Fate point (old flat 1.4 E x 0.075 = 0.105,
+        // raised). Replaced by the witnessed-output formula whenever a context supplies real expected outputs.
+        public const float equipOperatorFateValue = 0.15f;
     }
 }
