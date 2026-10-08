@@ -36,6 +36,9 @@ namespace Game.Ai.V2
     internal sealed class InfraFulfillResult : IV2ActionResult
     {
         public bool Built;
+        // A paid stand-alone Base-level step (Development CapacityUnlock): a real, successful action that
+        // is NOT a facility, a played card or a new building. It never satisfies a "facility is ready" demand.
+        public bool CapacityUnlocked;
         public float ApSpent;
         public ResourceCost ResourcesSpent;   // forwarded from the BuildingPlayResult
         public bool StateChanged;
@@ -56,10 +59,11 @@ namespace Game.Ai.V2
         public static InfraFulfillResult No(string why) => new InfraFulfillResult { Detail = why };
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
-            succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
+            succeeded: Built || CapacityUnlocked, stateChanged: StateChanged, apSpent: ApSpent,
+            resourcesSpent: ResourcesSpent,
             played: CardPlayed, generated: Generated, attached: false, moved: false, created: Built,
-            needsReplan: GenerationAttempted, stateVersionAfter: StateVersionAfter,
-            failReason: Built || Generated ? null : Detail);
+            needsReplan: GenerationAttempted || CapacityUnlocked, stateVersionAfter: StateVersionAfter,
+            failReason: Built || CapacityUnlocked || Generated ? null : Detail);
     }
 
     internal static class InfrastructureFulfillment
@@ -111,6 +115,10 @@ namespace Game.Ai.V2
             public string Explain;
             public GenerationStep Generation;
             public System.Func<BuildingPlayResult> Execute;
+            // CapacityUnlock: buy exactly this Base level (re-confirmed by the gameplay primitive).
+            public BuildingData CapacityBuilding;
+            public BaseUpgradeTier CapacityTier;
+            public int CapacityExpectedLevel;
         }
 
         // What Phase A's arbiter reads before choosing between this build lane and the materialization
@@ -153,7 +161,7 @@ namespace Game.Ai.V2
                     ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
                         reservation, activeIntents, commitments)
                 : demand.Capability == CapabilityKind.DevelopmentInfrastructure
-                    ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
+                    ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand, activeIntents)
                     : demand.Capability == CapabilityKind.DevelopmentOperator
                         ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
                             demand, reservation)
@@ -249,6 +257,11 @@ namespace Game.Ai.V2
                         : generated.FailReason,
                 };
             }
+
+            // A stand-alone Base level: one payment + one mutation by the gameplay primitive, then ONE
+            // world receipt. No card is played, no facility exists yet - the placement is a later action.
+            if (cand.CapacityTier != null)
+                return ExecuteCapacityUnlock(player, root, ctx, cand);
 
             // --- authoritative transaction ---
             BuildingPlayResult r = cand.Execute();
@@ -791,12 +804,101 @@ namespace Game.Ai.V2
                 yield return h;
         }
 
+        private static InfraFulfillResult ExecuteCapacityUnlock(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, InfraCandidate cand)
+        {
+            int apBefore = root.ActionPoints;
+            // No spend authority: the payment may not reach into anyone else's hold.
+            ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(
+                player, root, ctx, "phaseA CapacityUnlock");
+            BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
+                cand.CapacityBuilding, ctx.GameConfig?.baseUpgradeTiers, cand.CapacityExpectedLevel);
+            ReservationInvariants.EndSpend(player, root, ctx, probe);
+            if (!outcome.Ok)
+            {
+                // Nothing was paid or changed: the plan is stale. The next pass re-judges the world.
+                AiDebugLog.Write($"[AI][V2]   infra — CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
+                return InfraFulfillResult.No(outcome.FailReason);
+            }
+            // ONE top-level mutation, one receipt; the placement later is its own mutation.
+            int version = WorldDeltaLifecycle.CommitMutation();
+            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
+                StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
+                hexes: new[] { cand.TargetHex });
+            return new InfraFulfillResult
+            {
+                Built = false, CapacityUnlocked = true, CardPlayed = false,
+                ApSpent = apBefore - root.ActionPoints, ResourcesSpent = outcome.ResourcesSpent,
+                StateChanged = true, StateVersionAfter = version,
+                Detail = $"{cand.Explain} -> level {outcome.LevelAfter}, facility slots {outcome.UnlockedSlotsAfter}",
+            };
+        }
+
+        // DEV CapacityUnlock - buy the next Base level so the confirmed hand Facility can be placed
+        // later. The ADMITTED opportunity is a plan; everything it assumed is re-derived from the live
+        // world here and a mismatch yields no candidate (a stale plan is never re-targeted at another
+        // base, tier or card). The structural witnesses (operator path, catalog, mode not built elsewhere)
+        // are re-read from the evaluator preparation facts, the one owner of that rule.
+        private static InfraCandidate BuildCapacityUnlockCandidate(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            DevelopmentOpportunity plan = demand.DevOpportunity;
+            if (plan?.PreparationCapacityTier == null || plan.PreparationFacilityCard == null
+                || !demand.TargetHex.HasValue || !demand.DevelopmentOperatorMode.HasValue
+                || hand?.Hand == null || !hand.Hand.Contains(plan.PreparationFacilityCard))
+                return null;
+            HexCoord hex = demand.TargetHex.Value;
+            ResearchProductionMode mode = demand.DevelopmentOperatorMode.Value;
+            BuildingData b = BuildingRegistry.FindAt(hex);
+            if (b == null || b.Owner != player || !b.IsBase || !b.HasTieredUnlock
+                || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null
+                || b.FindFirstAvailableFacilitySlot() >= 0          // a slot is already open: nothing to buy
+                || b.Level != plan.PreparationExpectedLevel)
+                return null;
+            BaseUpgradeTier tier = StrategicMaintenancePolicy.CapacityUnlockTierAt(b, ctx);
+            if (!ReferenceEquals(tier, plan.PreparationCapacityTier))
+                return null;
+            CardDefinition witness = plan.PreparationFacilityCard.Definition;
+            if (witness?.cardType != CardType.Facility
+                || witness.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) != true)
+                return null;
+            if (!DevelopmentInvestmentGate.IsOpenFor(player, ctx.TurnNumber, tier.cost))
+                return null;
+            bool stillStructural = DevelopmentOpportunityEvaluator.PreparationFacts(
+                    snap, player, root, hand, ctx, activeIntents)
+                .Any(f => f.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
+                    && f.Mode == mode && f.FacilityHex.Equals(hex)
+                    && ReferenceEquals(f.PreparationFacilityCard, plan.PreparationFacilityCard)
+                    && ReferenceEquals(f.PreparationCapacityTier, tier));
+            if (!stillStructural)
+                return null;
+            float score = DevelopmentPreparationScorer.CapacityUnlock(tier, snap,
+                t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+            if (score <= AiConfigV2.allocatorSliceEpsilon)
+                return null;
+            return new InfraCandidate
+            {
+                ApCost = tier.apCost,
+                ResCost = tier.cost,
+                DecisionScore = score,
+                TargetHex = hex,
+                CapacityBuilding = b, CapacityTier = tier, CapacityExpectedLevel = b.Level,
+                Explain = $"CapacityUnlock {b.Name}@({hex.Q},{hex.R}) level {b.Level}->{b.Level + 1} "
+                    + $"for {witness.displayName} ({mode})",
+            };
+        }
+
         // DEV — a CardType.Facility with Research/Production, into an owned Base slot.
         private static InfraCandidate BuildDevelopmentCandidate(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            IReadOnlyList<MissionIntent> activeIntents)
         {
             if (hand?.Hand == null)
                 return null;
+            // The tier and the placement are separate actions: this request is one or the other.
+            if (demand.DevOpportunity?.PreparationKind == DevelopmentPreparationKind.CapacityUnlock)
+                return BuildCapacityUnlockCandidate(snap, player, root, hand, ctx, demand, activeIntents);
             List<(CardData Card, int Ordinal)> cards = hand.Hand
                 .Select((card, ordinal) => (Card: card, Ordinal: ordinal))
                 .Where(x => x.Card?.Definition != null && x.Card.Definition.cardType == CardType.Facility
@@ -821,34 +923,16 @@ namespace Game.Ai.V2
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
                         continue;
                     string at = $"{card.Definition.displayName}@({baseHex.Q},{baseHex.R})";
-                    BuildingData upgradeBase = null;
-                    BaseUpgradeTier upgradeTier = null;
+                    // A full Base is NOT upgraded behind the placement: that is the stand-alone
+                    // CapacityUnlock step. A placement pays only the Facility's own bill.
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
                             out string placeReason))
                     {
-                        // A full Base is a preparation stage of its own: the admitted opportunity
-                        // bought its tier into the stage; re-derive it from live state here.
-                        if (placeReason == InfrastructureActions.NoFreeFacilitySlotReason
-                            && demand.DevOpportunity?.PreparationCapacityTier != null)
-                        {
-                            upgradeBase = BuildingRegistry.FindAt(baseHex);
-                            upgradeTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(upgradeBase, ctx);
-                        }
-                        if (upgradeTier == null)
-                        {
-                            rejected.Add($"{at}:{placeReason}");
-                            continue;
-                        }
-                    }
-                    ResourceCost stageCost = StrategicCardEvaluator.AddResourceCosts(
-                        card.EffectivePlayResourceCost, upgradeTier?.cost);
-                    int stageAp = card.EffectivePlayApCost + (upgradeTier?.apCost ?? 0);
-                    if (upgradeTier != null && StrategicSpendability.SpendableAp(player, root, ctx)
-                            + AiConfigV2.allocatorSliceEpsilon < stageAp)
-                    {
-                        rejected.Add($"{at}:not enough action points for upgrade+facility ({stageAp})");
+                        rejected.Add($"{at}:{placeReason}");
                         continue;
                     }
+                    ResourceCost stageCost = card.EffectivePlayResourceCost;
+                    int stageAp = card.EffectivePlayApCost;
                     if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost))
                     {
                         rejected.Add($"{at}:spendable_resources");
@@ -863,8 +947,6 @@ namespace Game.Ai.V2
                     }
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
-                    BuildingData buildingToUpgrade = upgradeBase;
-                    BaseUpgradeTier tierToBuy = upgradeTier;
                     legal.Add(new InfraCandidate
                     {
                         ApCost = stageAp,
@@ -872,10 +954,9 @@ namespace Game.Ai.V2
                         DecisionScore = score,
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
-                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})"
-                            + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : ""),
-                        Execute = () => PlaceFacilityAfterOptionalUpgrade(
-                            player, root, hand, ctx, selectedCard, selectedHex, buildingToUpgrade, tierToBuy),
+                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
+                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
+                            player, root, hand, ctx, selectedCard, selectedHex),
                     });
                 }
             }

@@ -150,7 +150,9 @@ namespace Game.Ai.V2
                     .ThenBy(c => c.ActionKey, System.StringComparer.Ordinal))
                 {
                     string block = TempoBlockReason(c, spendableAp, budget, parkedAt, player, root, ctx);
+                    // A fully priced Development CapacityUnlock already carries its resource price once.
                     float marginalResCost = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
+                        && c.Spend?.FullyPriced != true
                         ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost, player, ctx) : 0f;
                     float eff = c.Utility - marginalResCost;
                     // Diagnostics only: a card play that lost to eligibility, not to score.
