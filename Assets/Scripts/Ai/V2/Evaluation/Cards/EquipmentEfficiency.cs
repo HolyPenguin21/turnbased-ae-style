@@ -35,6 +35,20 @@ namespace Game.Ai.V2
         }
     }
 
+    // One known air army as an AA opportunity of the host (AntiAirRules.CollectEntryReactions inputs).
+    internal readonly struct AirContact
+    {
+        public readonly Game.Combat.WorthIt.DefenderProfile Air;  // its mean air body
+        public readonly int Distance;           // hexes from the host army
+        public readonly bool OwnerSeesHex;      // the host owner can see the air army hex now
+        public readonly bool ReactionUsed;      // the host already reacted / fired against it this turn
+        public readonly int EarlierReactions;   // reactions of the same army that fire before the host
+
+        public AirContact(Game.Combat.WorthIt.DefenderProfile air, int distance, bool ownerSeesHex,
+            bool reactionUsed, int earlierReactions)
+        { Air = air; Distance = distance; OwnerSeesHex = ownerSeesHex; ReactionUsed = reactionUsed; EarlierReactions = earlierReactions; }
+    }
+
     internal sealed class EfficiencyContext
     {
         public bool IsHero;
@@ -66,6 +80,14 @@ namespace Game.Ai.V2
         public bool CommandsFieldArmy = true;
         public float OtherArmyActivationAp;       // activation AP of the army's OTHER members (army AP = sum of members)
         public int OtherRecceRadius, OtherSpotStrength, OtherAntiAirCarriers;  // the host's own army
+        // Real battles (ground bodies per known enemy army) the primary target belongs to: Splash/Scorcher
+        // hit ITS neighbours. null: the neighbours are unknown and are estimated from the known composition.
+        public IReadOnlyList<IReadOnlyList<Game.Combat.WorthIt.DefenderProfile>> Battles;
+        // Concrete air armies the host could react to (known, honestly observed). null/empty: no concrete
+        // contact - the AA value is then a reserve PROXY from the known air composition, not a legal shot.
+        public IReadOnlyList<AirContact> AirContacts;
+        public int AntiAirRadius = 1;             // the host own AA radius stat (UnitData.AntiAirRadius)
+        public bool HostHidden;                   // a hidden unit takes no offensive action, an AA shot included
         public float UsefulDarkFraction = AiConfigV2.equipUsefulDarkDefault;
         public float DetectionRelevance;          // 0 unless a hidden target is actually known
         public int HideStrength = AiConfigV2.equipHideStrengthDefault;

@@ -343,7 +343,13 @@ namespace Game.EditorTests
             var mobility = Attachment(AttachmentSlot.Equipment, EquipmentStat.MoveMax, 2);
             var delta = StrategicCardEvaluator.EquipmentDeltaParts(mobility, unit);
             Assert.That(delta.Combat, Is.Zero);
-            Assert.That(delta.Tactical, Is.EqualTo(0.4f).Within(0.0001f));
+            // Speed alone (no route known): the move proxy on the hero reference line. Nothing for Fate -
+            // the spent point is neither healed nor read as a gain.
+            float eRef = EquipmentEfficiency.Base((int)System.Math.Round(AiConfigV2.equipHeroArmyAttackDefault),
+                unit.Defense, unit.HitPointsMax, 2);
+            float expected = AiConfigV2.equipCardValuePerE * AiConfigV2.equipMoveFactor * eRef * 2f
+                * (3f / unit.MoveMax) / AiConfigV2.equipmentUpgradePersistence;
+            Assert.That(delta.Tactical, Is.EqualTo(expected).Within(0.0001f));
             Assert.That(unit.Fate, Is.EqualTo(1));
         }
 

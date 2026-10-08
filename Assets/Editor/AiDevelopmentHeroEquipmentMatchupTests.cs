@@ -22,7 +22,12 @@ namespace Game.EditorTests
             genome.equipment.addAbilities.Add("Stealth4");
             var delta = StrategicCardEvaluator.EquipmentDeltaParts(genome, host);
             Assert.That(delta.Combat, Is.Zero);
-            Assert.That(delta.Tactical, Is.EqualTo(AiConfigV2.stratTraitMatchBonus * 0.5f).Within(0.0001f));
+            // The host carries r1s4, so it is a scout: Stealth is the option to move unseen, priced once
+            // through the entry AP (use 1 x (0.9 x 0.35 - the price of one AP)), in delta units.
+            float option = (AiConfigV2.equipStealthRiskWeight * AiConfigV2.equipStealthRiskFloor
+                - ActionPrice.ToCardScore(AiConfigV2.equipStealthEntryAp)) * AiConfigV2.equipStealthUseScout
+                / AiConfigV2.equipmentUpgradePersistence;
+            Assert.That(delta.Tactical, Is.EqualTo(option).Within(0.0001f));
             Assert.That(host.Mutator, Is.Null);
             var deploy = new MaterializationPlan { BaseCardInHand = host, GeneratedEquipmentDef = genome };
             Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(deploy), Is.Zero,

@@ -34,13 +34,21 @@ namespace Game.Aviation
         public static bool TryGetRadius(UnitData unit, out int radius)
         {
             radius = 0;
-            if (unit == null)
+            return unit != null && TryGetRadius(unit.Abilities, unit.AntiAirRadius, out radius);
+        }
+
+        // The same rule for a PROJECTED ability list (an attachment not yet attached): plain AA uses the
+        // unit own radius stat, AAn the suffix.
+        public static bool TryGetRadius(IEnumerable<string> abilities, int unitRadius, out int radius)
+        {
+            radius = 0;
+            if (abilities == null)
                 return false;
-            foreach (string ability in unit.Abilities)
+            foreach (string ability in abilities)
             {
                 if (ability == UnitAbilities.AntiAir)
                 {
-                    radius = unit.AntiAirRadius;
+                    radius = unitRadius;
                     return true;
                 }
                 if (!string.IsNullOrEmpty(ability) && ability.StartsWith(UnitAbilities.AntiAir)
