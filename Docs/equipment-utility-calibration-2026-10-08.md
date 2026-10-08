@@ -97,7 +97,7 @@ Hunter Glands на Scout → 0.000 (как в ТЗ). Отклонения объ
 * С патчем Unity-null (`patchrun.sh`): 1480 → 1496 passed, регрессий нет (кроме тех же двух удалённых).
 * Обновлены тесты, фиксировавшие старую таблицу: «нет противника» теперь даёт значение против каталожного prior; Regeneration зависит от
   летальности противника; Pyrokinetic без цели усредняет известные составы.
-* Новые тесты: `AiEquipmentUtilityTests` (17), `OwnUtility_DoesNotDependOnDeckPlusHandSize`.
+* Новые тесты: `AiEquipmentUtilityTests` (19), `OwnUtility_DoesNotDependOnDeckPlusHandSize`.
 
 ## 7. Не сделано / ограничения
 * **Unity не запускалась**: ни EditMode, ни сценарии §14.4 (подготовка по ходам, Challenge-проигрыш, потеря площадки, rebuild Phase A…). Шаги: открыть проект в 6000.5.4f1, Test Runner → EditMode → весь набор; затем вручную оба четырёхходовых маршрута.
