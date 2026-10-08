@@ -671,10 +671,9 @@ namespace Game.EditorTests
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 6, hitPoints: 6))).Total;
             float lethal = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 40, hitPoints: 6))).Total;
-            float expected = AiConfigV2.equipRegenerationFactor * (3 + 6)
-                * AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
-            Assert.That(weak, Is.EqualTo(expected).Within(0.0001f));
-            Assert.That(lethal, Is.EqualTo(weak).Within(0.0001f), "Between-battle healing does not read the enemy");
+            Assert.That(weak, Is.GreaterThan(0f), "A wounded survivor heals at the end of its owner's turn");
+            Assert.That(lethal, Is.LessThan(weak),
+                "Healing pays only while the carrier lives to the tick: a lethal enemy leaves little to heal");
         }
     }
 }

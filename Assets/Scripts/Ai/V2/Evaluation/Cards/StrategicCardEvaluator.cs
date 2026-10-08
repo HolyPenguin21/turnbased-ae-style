@@ -1438,15 +1438,20 @@ namespace Game.Ai.V2
                 targets = EquipmentTargetsFor(snap, purpose);
             }
 
+            bool aviation = hostTags != null && hostTags.Contains(UnitTypeTag.Aircraft);
             var ctx = new EfficiencyContext
             {
                 IsHero = isHero,
                 IncludeStealthTrait = includeStealthTrait,
                 StealthUsable = AbilityParams.AbilitiesHaveAnyRecce(predicted.Abilities)
                     || purpose?.Kind == MissionKind.Scout,
+                Targets = targets,
+                HostTags = hostTags,
+                HpSpent = hpSpent,
             };
-            if (targets.Count > 0)
+            if (targets.Count > 0 && aviation)
             {
+                // Legacy proxy inputs (aviation hosts only): shares of the known enemies.
                 var shares = EquipmentTargetMemo.Shares(targets);
                 ctx.ArmoredShare = shares.Armored;
                 ctx.BioShare = shares.Bio;
@@ -1456,6 +1461,7 @@ namespace Game.Ai.V2
             {
                 ctx.SecondaryNeighbors = Mathf.Max(0f, (float)opposition.Average(o => o.Units?.Count ?? 0) - 1f);
                 ctx.SplashTargets = Mathf.Min(2f, ctx.SecondaryNeighbors);
+                ctx.EnemyCommanderInitiative = Mathf.RoundToInt((float)opposition.Average(o => o.Commander.Initiative));
             }
             if (isHero && army?.Members != null)
             {
@@ -1463,10 +1469,18 @@ namespace Game.Ai.V2
                 if (fighters.Count > 0)
                     ctx.ArmyAttack = (float)fighters.Average(m => m.Attack);
             }
-            if (army?.Members != null && hostUnit != null)
+            if (army?.Members != null)
+            {
+                ctx.HostCommanderInitiative = WorthIt.SideCommander.Of(army.Members).Initiative;
                 foreach (UnitData member in army.Members)
-                    if (member != null && !ReferenceEquals(member, hostUnit))
-                        ctx.OtherSpeedMin = Mathf.Min(ctx.OtherSpeedMin, member.MoveMax);
+                {
+                    if (member == null || hostUnit != null && ReferenceEquals(member, hostUnit)) continue;
+                    if (hostUnit != null) ctx.OtherSpeedMin = Mathf.Min(ctx.OtherSpeedMin, member.MoveMax);
+                    ctx.OtherRecceRadius = Mathf.Max(ctx.OtherRecceRadius, AbilityParams.GetBestRecceRadius(member));
+                    ctx.OtherSpotStrength = Mathf.Max(ctx.OtherSpotStrength, AbilityParams.GetBestRecceSpotStrength(member));
+                    if (member.HasAbility(UnitAbilities.AntiAir)) ctx.OtherAntiAirCarriers++;
+                }
+            }
             if (isHero && hostUnit != null && snap.Development?.Facilities != null)
                 foreach (DevelopmentFacility facility in snap.Development.Facilities)
                     if (ReferenceEquals(ResearchProductionSystem.FindActor(snap.Observer, facility.Hex,
@@ -1475,9 +1489,6 @@ namespace Game.Ai.V2
                         ctx.IsFacilityOperator = true;
                         break;
                     }
-            AiHandData hand = AiHandRegistry.Peek(snap.Observer);
-            ctx.Carriers = family => EquipmentTargetMemo.Carriers(snap.Observer, family,
-                () => DevelopmentDiversity.Carriers(snap.Observer, hand, new[] { family }));
 
             HexCoord? targetHex = purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.Hex
                 : purpose?.Raid?.Target.HasValue == true ? purpose.Raid.TargetHex : null;
@@ -1487,12 +1498,32 @@ namespace Game.Ai.V2
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
 
-            EfficiencyBreakdown delta;
+            // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
+            // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
+            float perU = 1f / AiConfigV2.equipmentUpgradePersistence;
+            float combat, tactical;
+            string breakdown;
             using (new Game.Core.ProfileScope("AI/Equip.EffDelta"))
-                delta = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
-            float perE = AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
-            float combat = delta.Combat * perE;
-            float tactical = delta.Tactical * perE;
+            {
+                if (aviation)
+                {
+                    // Aviation hosts never use the ground contact model: the legacy linear table is kept as
+                    // an explicit PROXY (no carrier saturation) until AviationCombatEstimator prices stats.
+                    ctx.Carriers = null;
+                    EfficiencyBreakdown legacy = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
+                    float perE = AiConfigV2.equipCardValuePerE;
+                    combat = legacy.Combat * perE * perU;
+                    tactical = legacy.Tactical * perE * perU;
+                    breakdown = "proxy(aviation) " + legacy;
+                }
+                else
+                {
+                    UtilityBreakdown u = EquipmentEfficiency.Utility(b, hostAbilities, a, predicted.Abilities, ctx);
+                    combat = u.Combat * perU;
+                    tactical = u.Tactical * perU;
+                    breakdown = u.ToString();
+                }
+            }
 
             // Abilities the table does not price (global income, auras, summons, ...) keep their
             // contextual registry value, exactly as before.
@@ -1514,7 +1545,7 @@ namespace Game.Ai.V2
                     .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
-                + " " + delta + $" combat={combat:0.###} tactical={tactical:0.###}");
+                + " " + breakdown + $" combat={combat:0.###} tactical={tactical:0.###}");
         }
 
         // Read existing assignments only. An upgrade does not create a role or move an actor.

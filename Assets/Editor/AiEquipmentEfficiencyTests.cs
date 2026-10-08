@@ -7,10 +7,16 @@ namespace Game.EditorTests
 {
     internal static class AiEquipmentTestMath
     {
-        // What a plain +N Attack is worth in EquipmentDelta plumbing units (card value / persistence).
-        internal static float IntrinsicAttack(int amount) =>
-            amount * AiConfigV2.equipWeightAttack * AiConfigV2.equipCardValuePerE
-            / AiConfigV2.equipmentUpgradePersistence;
+        // The signed utility of a plain +N Attack on a host against the catalog prior (no enemy known),
+        // in EquipmentDelta plumbing units (card value / persistence).
+        internal static float IntrinsicAttack(int amount, int attack = 1, int defense = 2, int hp = 8,
+            int range = 1, int initiative = 0)
+        {
+            var before = new EfficiencyStats(attack, defense, hp, range, 3, initiative, 0, 0);
+            var after = new EfficiencyStats(attack + amount, defense, hp, range, 3, initiative, 0, 0);
+            return EquipmentEfficiency.Utility(before, new string[0], after, new string[0], new EfficiencyContext()).Combat
+                / AiConfigV2.equipmentUpgradePersistence;
+        }
     }
 
     // The bonus-weight table of docs/ai-v2-equipment-efficiency-table.md, example by example.
