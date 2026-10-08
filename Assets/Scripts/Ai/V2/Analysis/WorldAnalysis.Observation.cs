@@ -380,6 +380,9 @@ namespace Game.Ai.V2
                     // infrastructure change" is this comparison; it must cover every field a
                     // downstream consumer's fingerprint depends on.
                     + $"defense={x.Defense.ToString("R", CultureInfo.InvariantCulture)}:"
+                    // A bought Base level opens a slot without changing owner/abilities (and Defense can
+                    // gain 0): the free-slot count is the fact a Facility placement depends on.
+                    + $"freeSlots={x.FreeFacilitySlots}:"
                     + string.Join(",", (x.FacilityAbilities ?? System.Array.Empty<string>())
                         .OrderBy(v => v)));
             IEnumerable<string> development = (snapshot?.Development?.Facilities

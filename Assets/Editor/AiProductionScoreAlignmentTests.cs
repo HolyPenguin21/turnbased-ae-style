@@ -336,7 +336,7 @@ namespace Game.EditorTests
             Assert.That(moveDelta.Tactical, Is.GreaterThan(0f));
             Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(weapon, primary, snap).Combat, Is.GreaterThan(0f));
             snap.TrueWorld.EnemyArmies = Array.Empty<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(weapon, primary, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(weapon, primary, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20, initiative: 2)).Within(0.0001f),
                 "No defender or deck benchmark means no witnessed combat delta (the efficiency value stands, no fabricated threat)");
             Assert.That(primary.Attack, Is.EqualTo(1));
             Assert.That(primary.Equipment, Is.Null);

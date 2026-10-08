@@ -91,23 +91,35 @@ namespace Game.Ai.V2
         public readonly int FilledFacilitySlots;
         public readonly int ArmyMovementSum;
         public readonly V2ResourceStamp Resources;
+        // A Base level is bought without touching any of the counts above: an upgrade (or a leaked one)
+        // is only visible through these.
+        public readonly int BaseLevelSum;
+        public readonly int UnlockedFacilitySlots;
+        public readonly int BaseDefenseSum;
 
-        public V2InfraWorldStamp(int ownedBuildings, int filledSlots, int armyMovementSum, V2ResourceStamp res)
+        public V2InfraWorldStamp(int ownedBuildings, int filledSlots, int armyMovementSum, V2ResourceStamp res,
+            int baseLevelSum = 0, int unlockedFacilitySlots = 0, int baseDefenseSum = 0)
         {
             Valid = true;
             OwnedBuildings = ownedBuildings;
             FilledFacilitySlots = filledSlots;
             ArmyMovementSum = armyMovementSum;
             Resources = res;
+            BaseLevelSum = baseLevelSum;
+            UnlockedFacilitySlots = unlockedFacilitySlots;
+            BaseDefenseSum = baseDefenseSum;
         }
 
         public bool SameAs(V2InfraWorldStamp o) =>
             OwnedBuildings == o.OwnedBuildings && FilledFacilitySlots == o.FilledFacilitySlots
-            && ArmyMovementSum == o.ArmyMovementSum && Resources.SameAs(o.Resources);
+            && ArmyMovementSum == o.ArmyMovementSum && Resources.SameAs(o.Resources)
+            && BaseLevelSum == o.BaseLevelSum && UnlockedFacilitySlots == o.UnlockedFacilitySlots
+            && BaseDefenseSum == o.BaseDefenseSum;
 
         public string Diff(V2InfraWorldStamp end) =>
             $"{Resources.Transition(end.Resources)} buildings {OwnedBuildings}→{end.OwnedBuildings} "
             + $"facilitySlots {FilledFacilitySlots}→{end.FilledFacilitySlots} "
+            + $"baseLevels {BaseLevelSum}→{end.BaseLevelSum} unlockedSlots {UnlockedFacilitySlots}→{end.UnlockedFacilitySlots} "
             + $"armyMove {ArmyMovementSum}→{end.ArmyMovementSum}";
     }
 
@@ -236,18 +248,23 @@ namespace Game.Ai.V2
         public static V2InfraWorldStamp InfraStamp(PlayerSetupData player, PlayerRoot root)
         {
             if (player == null) return default;
-            int buildings = 0, slots = 0, movement = 0;
+            int buildings = 0, slots = 0, movement = 0, levels = 0, unlocked = 0;
+            float defense = 0f;
             foreach (BuildingData b in BuildingRegistry.AllBuildings())
             {
                 if (b == null || b.Owner != player) continue;
                 buildings++;
+                levels += b.Level;
+                unlocked += b.UnlockedFacilitySlots;
+                defense += b.Defense;
                 if (b.FacilitySlots != null)
                     for (int i = 0; i < b.FacilitySlots.Length; i++)
                         if (b.FacilitySlots[i] != null) slots++;
             }
             foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
                 if (a != null) movement += Mathf.Max(0, a.CurrentMovement);
-            return new V2InfraWorldStamp(buildings, slots, movement, Stamp(root));
+            return new V2InfraWorldStamp(buildings, slots, movement, Stamp(root), levels, unlocked,
+                UnityEngine.Mathf.RoundToInt(defense));
         }
 
         public static void LogState(string scopeId, V2ResourceStamp start, V2ResourceStamp end,
@@ -360,6 +377,20 @@ namespace Game.Ai.V2
                 Check("ERROR", demandTraceId, "InfrastructureRollbackLeak", detail, cf, cm, cl);
             else
                 Check("OK", demandTraceId, "InfrastructureRollbackClean", detail, cf, cm, cl);
+        }
+
+        // A paid stand-alone Base-level step is a SUCCESS of its own operation, not a leaked build: exactly
+        // one level (and the slots it opens) may change, and nothing else - no building, no filled slot.
+        public static void CheckCapacityUnlock(string demandTraceId, V2InfraWorldStamp before, V2InfraWorldStamp after,
+            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
+        {
+            if (!before.Valid || !after.Valid) return;
+            bool ok = after.BaseLevelSum == before.BaseLevelSum + 1
+                && after.OwnedBuildings == before.OwnedBuildings
+                && after.FilledFacilitySlots == before.FilledFacilitySlots
+                && after.ArmyMovementSum == before.ArmyMovementSum;
+            Check(ok ? "OK" : "ERROR", demandTraceId, ok ? "CapacityUnlockClean" : "CapacityUnlockLeak",
+                before.Diff(after), cf, cm, cl);
         }
 
         // -----------------------------------------------------------------------------------------

@@ -273,23 +273,15 @@ namespace Game.UI
                 turnController?.ShowSpawnHint($"{_currentBuilding.Name} is already fully upgraded.");
                 return;
             }
-            BaseUpgradeTier tier = gameConfig.baseUpgradeTiers[tierIndex];
-            PlayerRoot root = PlayerRootRegistry.FindFor(_currentBuilding.Owner);
-            if (root == null || !root.CanSpendActionPoints(tier.apCost) || !tier.cost.CanAfford(root))
+            // One gameplay primitive owns the legality, the payment and the Level/Defense/Resistance
+            // mutation (the AI capacity step uses the same one); the UI only reports and refreshes.
+            BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
+                _currentBuilding, gameConfig.baseUpgradeTiers);
+            if (!outcome.Ok)
             {
                 turnController?.ShowSpawnHint($"Not enough resources to upgrade {_currentBuilding.Name}.");
                 return;
             }
-
-            root.SpendActionPoints(tier.apCost);
-            tier.cost.PayFrom(root);
-            _currentBuilding.Level++;
-            _currentBuilding.Defense += tier.defenseGain;
-            _currentBuilding.Resistance += tier.resistanceGain;
-
-            // Upgrade changes UnlockedFacilitySlots/FreeFacilitySlots while the hex and
-            // its owner's vision remain unchanged. Publish the completed building state.
-            VisionSystem.NotifyContentChanged(_currentBuilding.Hex);
             RefreshTitle();
             RefreshGrid();
             ShowBaseSummary();

@@ -1207,9 +1207,7 @@ namespace Game.Ai.V2
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
                 includeStealthTrait: false, deployment: p);
-            // Hand/generated equipment carried onto a deployed body is priced at the same supply
-            // multiplier as producing and attaching it (units short => any upgrade is worth more).
-            return EquipmentUpgradeValue(delta) * DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(snap);
+            return EquipmentUpgradeValue(delta);
         }
 
         // A deployed unit inside `army` (hand Equipment played onto the map).
@@ -1440,15 +1438,20 @@ namespace Game.Ai.V2
                 targets = EquipmentTargetsFor(snap, purpose);
             }
 
+            bool aviation = hostTags != null && hostTags.Contains(UnitTypeTag.Aircraft);
             var ctx = new EfficiencyContext
             {
                 IsHero = isHero,
                 IncludeStealthTrait = includeStealthTrait,
                 StealthUsable = AbilityParams.AbilitiesHaveAnyRecce(predicted.Abilities)
                     || purpose?.Kind == MissionKind.Scout,
+                Targets = targets,
+                HostTags = hostTags,
+                HpSpent = hpSpent,
             };
-            if (targets.Count > 0)
+            if (targets.Count > 0 && aviation)
             {
+                // Legacy proxy inputs (aviation hosts only): shares of the known enemies.
                 var shares = EquipmentTargetMemo.Shares(targets);
                 ctx.ArmoredShare = shares.Armored;
                 ctx.BioShare = shares.Bio;
@@ -1458,6 +1461,7 @@ namespace Game.Ai.V2
             {
                 ctx.SecondaryNeighbors = Mathf.Max(0f, (float)opposition.Average(o => o.Units?.Count ?? 0) - 1f);
                 ctx.SplashTargets = Mathf.Min(2f, ctx.SecondaryNeighbors);
+                ctx.EnemyCommanderInitiative = Mathf.RoundToInt((float)opposition.Average(o => o.Commander.Initiative));
             }
             if (isHero && army?.Members != null)
             {
@@ -1465,22 +1469,18 @@ namespace Game.Ai.V2
                 if (fighters.Count > 0)
                     ctx.ArmyAttack = (float)fighters.Average(m => m.Attack);
             }
-            if (army?.Members != null && hostUnit != null)
+            if (army?.Members != null)
+            {
+                ctx.HostCommanderInitiative = WorthIt.SideCommander.Of(army.Members).Initiative;
                 foreach (UnitData member in army.Members)
-                    if (member != null && !ReferenceEquals(member, hostUnit))
-                        ctx.OtherSpeedMin = Mathf.Min(ctx.OtherSpeedMin, member.MoveMax);
-            if (isHero && hostUnit != null && snap.Development?.Facilities != null)
-                foreach (DevelopmentFacility facility in snap.Development.Facilities)
-                    if (ReferenceEquals(ResearchProductionSystem.FindActor(snap.Observer, facility.Hex,
-                            facility.Mode), hostUnit))
-                    {
-                        ctx.IsFacilityOperator = true;
-                        break;
-                    }
-            AiHandData hand = AiHandRegistry.Peek(snap.Observer);
-            ctx.Carriers = family => EquipmentTargetMemo.Carriers(snap.Observer, family,
-                () => DevelopmentDiversity.Carriers(snap.Observer, hand, new[] { family }));
-
+                {
+                    if (member == null || hostUnit != null && ReferenceEquals(member, hostUnit)) continue;
+                    if (hostUnit != null) ctx.OtherSpeedMin = Mathf.Min(ctx.OtherSpeedMin, member.MoveMax);
+                    ctx.OtherRecceRadius = Mathf.Max(ctx.OtherRecceRadius, AbilityParams.GetBestRecceRadius(member));
+                    ctx.OtherSpotStrength = Mathf.Max(ctx.OtherSpotStrength, AbilityParams.GetBestRecceSpotStrength(member));
+                    if (member.HasAbility(UnitAbilities.AntiAir)) ctx.OtherAntiAirCarriers++;
+                }
+            }
             HexCoord? targetHex = purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.Hex
                 : purpose?.Raid?.Target.HasValue == true ? purpose.Raid.TargetHex : null;
             float hexBonus = targetHex.HasValue
@@ -1488,13 +1488,38 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
+            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex);
 
-            EfficiencyBreakdown delta;
+            // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
+            // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
+            float perU = 1f / AiConfigV2.equipmentUpgradePersistence;
+            float combat, tactical;
+            string breakdown;
             using (new Game.Core.ProfileScope("AI/Equip.EffDelta"))
-                delta = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
-            float perE = AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
-            float combat = delta.Combat * perE;
-            float tactical = delta.Tactical * perE;
+            {
+                if (aviation)
+                {
+                    // Aviation hosts never use the ground contact model: Attack and damage abilities are priced as
+                    // an air strike (kernel exchange, no return fire); Defense/HP/speed/AP stay on the legacy
+                    // linear table, explicitly a PROXY (AA fire is not modelled).
+                    ctx.Carriers = null;
+                    EfficiencyBreakdown legacy = EquipmentEfficiency.Delta(b, hostAbilities, a, predicted.Abilities, ctx);
+                    float perE = AiConfigV2.equipCardValuePerE;
+                    float strike = EquipmentEfficiency.AviationOffenseDelta(b, hostAbilities, a, predicted.Abilities, ctx)
+                        * ctx.OffenseMult;
+                    combat = (strike + legacy.Defense * perE) * perU;
+                    tactical = legacy.Tactical * perE * perU;
+                    breakdown = $"proxy(aviation) air-strike={strike:0.###} " + legacy;
+                }
+                else
+                {
+                    UtilityBreakdown u = EquipmentEfficiency.Utility(b, hostAbilities, a, predicted.Abilities, ctx);
+                    combat = u.Combat * perU;
+                    tactical = u.Tactical * perU;
+                    breakdown = u + " context=" + (opposition.Count > 0 ? "known-composition" : targets.Count > 0
+                        ? "reference-deck" : "catalog-prior") + $" targets={targets.Count} hpSpent={hpSpent}";
+                }
+            }
 
             // Abilities the table does not price (global income, auras, summons, ...) keep their
             // contextual registry value, exactly as before.
@@ -1516,7 +1541,28 @@ namespace Game.Ai.V2
                     .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
-                + " " + delta + $" combat={combat:0.###} tactical={tactical:0.###}");
+                + " " + breakdown + $" combat={combat:0.###} tactical={tactical:0.###}");
+        }
+
+        // Known facts only: the mission's target hex gives the route the host's army will really walk
+        // (AiV2Util.TravelCost — the same route the mission planners price), the army's activation AP is
+        // the sum of its members, and the map-knowledge owner supplies the unexplored fraction. Anything
+        // not known stays at the context default (speed proxy, 0.5 dark, no detection relevance).
+        private static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
+            UnitData hostUnit, HexCoord? targetHex)
+        {
+            if (snap?.MapKnowledge != null)
+                ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
+            if (army?.Members == null || hostUnit == null || !targetHex.HasValue || army.Hex.Equals(targetHex.Value))
+                return;
+            ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
+            int cost = actor != null ? AiV2Util.TravelCost(snap, actor, targetHex.Value, terrainOnly: true)
+                : HexGridMath.Distance(army.Hex, targetHex.Value);
+            if (cost <= 0 || cost == int.MaxValue)
+                return;
+            ctx.RouteLength = cost;
+            ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
+                army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
         }
 
         // Read existing assignments only. An upgrade does not create a role or move an actor.

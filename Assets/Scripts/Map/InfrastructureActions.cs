@@ -32,6 +32,32 @@ namespace Game.Map
             new InfrastructureBuildOutcome(false, null, -1, 0, why);
     }
 
+    // Result of buying ONE Base level (InfrastructureActions.TryUpgradeBase).
+    public readonly struct BaseUpgradeOutcome
+    {
+        public readonly bool Ok;
+        public readonly BuildingData Building;
+        public readonly BaseUpgradeTier Tier;
+        public readonly int LevelBefore, LevelAfter;
+        public readonly int UnlockedSlotsAfter;
+        public readonly int ApSpent;
+        public readonly ResourceCost ResourcesSpent;
+        public readonly string FailReason;
+
+        private BaseUpgradeOutcome(bool ok, BuildingData b, BaseUpgradeTier tier, int before, int after,
+            int unlocked, int ap, ResourceCost spent, string fail)
+        {
+            Ok = ok; Building = b; Tier = tier; LevelBefore = before; LevelAfter = after;
+            UnlockedSlotsAfter = unlocked; ApSpent = ap; ResourcesSpent = spent; FailReason = fail;
+        }
+
+        internal static BaseUpgradeOutcome Success(BuildingData b, BaseUpgradeTier tier, int before, int ap) =>
+            new BaseUpgradeOutcome(true, b, tier, before, b.Level, b.UnlockedFacilitySlots, ap,
+                tier.cost ?? new ResourceCost(), null);
+        internal static BaseUpgradeOutcome Fail(string why) =>
+            new BaseUpgradeOutcome(false, null, null, 0, 0, 0, 0, null, why);
+    }
+
     // Canonical legality and atomic gameplay mutation for Base/Facility/extraction actions.
     // Changes to already-visible hex contents are published here, after the final commit.
     public static class InfrastructureActions
@@ -214,6 +240,53 @@ namespace Game.Map
                 }
             }
             hexSelection?.RestackArmiesOn(hex, null);
+        }
+
+        // ONE Base level. The next tier is the one at index Level-1; `expectedLevel` (optional) lets an
+        // AI revalidation refuse a plan made for a Base that has moved on. Raw legality only: whether
+        // the AI ought to buy it (witness, gate, bank) is decided by its own admission, never here, so
+        // the human UpgradeBase button keeps buying any legal next level.
+        public static bool CanUpgradeBase(BuildingData building, BaseUpgradeTier[] tiers, int? expectedLevel,
+            out BaseUpgradeTier tier, out string reason)
+        {
+            tier = null;
+            reason = null;
+            if (building == null || building.Owner == null || !ReferenceEquals(BuildingRegistry.FindAt(building.Hex), building))
+            { reason = "base is not registered at its hex"; return false; }
+            if (expectedLevel.HasValue && building.Level != expectedLevel.Value)
+            { reason = $"base level changed ({building.Level} != {expectedLevel.Value})"; return false; }
+            int tierIndex = building.Level - 1;
+            if (tiers == null || tierIndex < 0 || tierIndex >= tiers.Length || tiers[tierIndex] == null)
+            { reason = "no next upgrade tier"; return false; }
+            PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
+            if (root == null) { reason = "no player root"; return false; }
+            BaseUpgradeTier next = tiers[tierIndex];
+            if (!root.CanSpendActionPoints(next.apCost))
+            { reason = $"not enough action points ({next.apCost})"; return false; }
+            if (next.cost != null && !next.cost.CanAfford(root))
+            { reason = "not enough resources"; return false; }
+            tier = next;
+            return true;
+        }
+
+        // Synchronous: every check precedes the single payment + mutation, a refusal changes nothing.
+        public static BaseUpgradeOutcome TryUpgradeBase(BuildingData building, BaseUpgradeTier[] tiers,
+            int? expectedLevel = null)
+        {
+            if (!CanUpgradeBase(building, tiers, expectedLevel, out BaseUpgradeTier tier, out string reason))
+                return BaseUpgradeOutcome.Fail(reason);
+            PlayerRoot root = PlayerRootRegistry.FindFor(building.Owner);
+            int levelBefore = building.Level;
+            int apBefore = root.ActionPoints;
+            root.SpendActionPoints(tier.apCost);
+            tier.cost?.PayFrom(root);
+            building.Level++;
+            building.Defense += tier.defenseGain;
+            building.Resistance += tier.resistanceGain;
+            // Level changes UnlockedFacilitySlots while the hex and its owner's vision stay the same:
+            // publish the completed building state once.
+            VisionSystem.NotifyContentChanged(building.Hex);
+            return BaseUpgradeOutcome.Success(building, tier, levelBefore, apBefore - root.ActionPoints);
         }
 
         public static bool CanPlaceFacility(CardDefinition definition, HexCoord baseHex, PlayerSetupData owner,

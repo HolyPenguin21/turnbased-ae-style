@@ -841,11 +841,8 @@ namespace Game.Ai.V2
                 if (op.RecipientCard != null
                     ? !EquipmentSystem.CanAttach(card, op.RecipientCard, root, out _)
                     : !EquipmentSystem.CanAttach(card, op.RecipientUnit, root, out _)) continue;
-                // The same supply multiplier the item was produced under: an item worth making
-                // while units run short must also be worth its one attach AP, or the whole
-                // Research/Production chain is wasted.
-                float value = StrategicCardEvaluator.EquipmentUpgradeValue(op)
-                    * DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(snap);
+                // The item's own utility, without production context (no Challenge, repeat or supply).
+                float value = StrategicCardEvaluator.EquipmentUpgradeValue(op);
                 yield return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,

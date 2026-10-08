@@ -27,6 +27,11 @@ namespace Game.Ai.V2
 
         private readonly BuildingData _upgradeBuilding;
         private readonly BaseUpgradeTier _upgradeTier;
+        // Development CapacityUnlock: Utility is already the NET score of the whole step (its AP and
+        // resources priced once on the one table), so Phase B must not subtract the marginal resource cost again.
+        public bool FullyPriced;
+        // Development CapacityUnlock: the live re-check run immediately before payment (null = none).
+        public System.Func<bool> Revalidate;
         private readonly UnitData _repairUnit;
         private readonly HexCoord _repairHex;
 
@@ -51,8 +56,9 @@ namespace Game.Ai.V2
         {
             bool ok = _repairUnit != null
                 ? UnitRepair.TryRepair(_repairUnit, _repairHex, root, out _)
-                : StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
-                    player, root, ctx, _upgradeBuilding, _upgradeTier);
+                : (Revalidate == null || Revalidate())
+                    && StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                        player, root, ctx, _upgradeBuilding, _upgradeTier);
             stateChanged = ok;
             progressed = ok;
             return ok;
@@ -133,9 +139,13 @@ namespace Game.Ai.V2
             {
                 float upgradeApOpportunityCost = ActionPrice.ToCardScore(
                     up.Tier != null ? up.Tier.apCost : 0f);
-                float utility = up.FacilityUtility - upgradeApOpportunityCost;
+                // A Development CapacityUnlock arrives fully priced; every other upgrade is the unlocked
+                // Facility value minus its AP (Phase B prices its resources separately).
+                float utility = up.FullyPriced ? up.FacilityUtility : up.FacilityUtility - upgradeApOpportunityCost;
                 list.Add(new StrategicSpendCandidate(up.Building, up.Tier)
                 {
+                    FullyPriced = up.FullyPriced,
+                    Revalidate = up.Revalidate,
                     Label = $"capacity upgrade {up.Building.Name} -> level {up.Building.Level + 1} "
                         + $"to unlock {up.Facility.Definition?.displayName} "
                         + $"(unlock {up.FacilityUtility:0.00} - upgradeAP {upgradeApOpportunityCost:0.00}; "
@@ -188,6 +198,8 @@ namespace Game.Ai.V2
             public CardData Facility;
             public float FacilityUtility;
             public string FacilityBreakdown;
+            public bool FullyPriced;
+            public System.Func<bool> Revalidate;
         }
 
         // Enumerate every Base/Citadel where buying the next tier would unlock a Facility slot AND
@@ -203,17 +215,46 @@ namespace Game.Ai.V2
             if (bases.Count == 0)
                 yield break;
 
-            // Research/Production facilities unlock only through the SAME admitted preparation
-            // Development itself would act on (current-step window/bank/cost), never a looser predicate.
+            // Research/Production facilities unlock only through the SAME admitted CapacityUnlock step
+            // Development itself would act on (current-step window/bank/cost), never a looser predicate:
+            // the opportunity IS the candidate, with the evaluator own fully priced score.
             var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
-            List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.Enumerate(
+            foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.Enumerate(
                     snap, player, root, hand, ctx, intents)
-                .Where(op => op.IsPreparation && op.PreparationFacilityCard != null).ToList();
+                .Where(o => o.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
+                    && o.PreparationCapacityTier != null && o.PreparationFacilityCard != null
+                    && o.PreparationCardScore.HasValue))
+            {
+                BuildingData building = BuildingRegistry.FindAt(op.FacilityHex);
+                BaseUpgradeTier planned = op.PreparationCapacityTier;
+                int expectedLevel = op.PreparationExpectedLevel;
+                CardData witnessCard = op.PreparationFacilityCard;
+                if (building == null || building.Owner != player || !building.IsBase)
+                    continue;
+                yield return new CapacityUpgrade
+                {
+                    Building = building,
+                    Tier = planned,
+                    Facility = witnessCard,
+                    FacilityUtility = op.PreparationCardScore.Value,
+                    FacilityBreakdown = op.Explain,
+                    FullyPriced = true,
+                    // Live re-check right before payment: same Base, level, tier and a still-closed slot,
+                    // the witness card still in hand and the investment window still open.
+                    Revalidate = () => building.Owner == player && building.IsBase
+                        && building.Level == expectedLevel
+                        && building.FindFirstAvailableFacilitySlot() < 0
+                        && ReferenceEquals(CapacityUnlockTierAt(building, ctx), planned)
+                        && hand.Hand.Contains(witnessCard)
+                        && Game.Combat.BattleInitiator.FindEnemyAt(building.Hex, player) == null
+                        && DevelopmentInvestmentGate.IsOpenFor(player, ctx.TurnNumber, planned.cost),
+                };
+            }
             bool NeedsDevelopment(CardData card) => card?.Definition?.grantedAbilities != null
                 && (card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research))
                     || card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)));
 
-            // Evaluate every Facility card, including economy / ApBonus Facilities. A card is an
+            // Evaluate every OTHER Facility card, including economy / ApBonus Facilities. A card is an
             // upgrade consequence only when the authoritative placement check rejects it for the
             // capacity reason at every owned Base; an AP/resource/ownership failure must not be
             // disguised as a capacity dependency.
@@ -221,8 +262,7 @@ namespace Game.Ai.V2
                 .Select((card, ordinal) => new { Card = card, Ordinal = ordinal })
                 .Where(x => x.Card?.Definition != null
                     && x.Card.Definition.cardType == CardType.Facility)
-                .Where(x => !NeedsDevelopment(x.Card)
-                    || preparation.Any(op => op.PreparationFacilityCard == x.Card))
+                .Where(x => !NeedsDevelopment(x.Card))
                 .Where(x => IsBlockedOnlyByCapacity(x.Card, bases, player, hand, ctx))
                 .Select(x => new
                 {
@@ -240,25 +280,11 @@ namespace Game.Ai.V2
 
             foreach (BuildingData b in UnlockableBasesInOrder(bases))
             {
-                var bestFacility = blockedFacilities.FirstOrDefault(x => !NeedsDevelopment(x.Card)
-                    || preparation.Any(op => op.PreparationFacilityCard == x.Card
-                        && op.FacilityHex.Equals(b.Hex)));
+                var bestFacility = blockedFacilities.FirstOrDefault();
                 if (bestFacility == null)
                     continue;
                 BaseUpgradeTier tier = CapacityUnlockTierAt(b, ctx);
                 if (tier == null)
-                    continue;
-                DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
-                    ? preparation.FirstOrDefault(op => op.PreparationFacilityCard == bestFacility.Card
-                        && op.FacilityHex.Equals(b.Hex)
-                        // Today only the tier and facility are paid; no future output is priced.
-                        // A stage that already carries its tier is not charged it twice.
-                        && !ResourceBundle.All.Any(t =>
-                            (op.PreparationCapacityTier != null ? 0 : tier.cost?.Get(t) ?? 0)
-                            + (op.StageResourceCost?.Get(t) ?? 0)
-                            > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
-                    : null;
-                if (NeedsDevelopment(bestFacility.Card) && witness == null)
                     continue;
                 yield return new CapacityUpgrade
                 {
@@ -358,15 +384,15 @@ namespace Game.Ai.V2
             V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
             activity.InfrastructureAttempts++;
             int apBefore = root.ActionPoints;
-            if (b == null || tier == null || !root.CanSpendActionPoints(tier.apCost)
-                || (tier.cost != null && !tier.cost.CanAfford(root)))
+            // The payment and the mutation belong to the gameplay primitive (the human UI uses it too);
+            // the planned tier must still be the Base's next one, so a stale plan buys nothing.
+            BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;
+            if (b == null || tier == null
+                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _)
+                || !ReferenceEquals(next, tier))
                 return false;
-
-            root.SpendActionPoints(tier.apCost);
-            tier.cost?.PayFrom(root);
-            b.Level++;
-            b.Defense += tier.defenseGain;
-            b.Resistance += tier.resistanceGain;
+            if (!InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
+                return false;
 
             activity.InfrastructureBuilt++;
             AiDebugLog.Write($"[AI][V2] maintenance capacity — upgraded {b.Name} "

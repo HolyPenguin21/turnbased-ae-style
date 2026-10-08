@@ -408,7 +408,11 @@ namespace Game.Ai.V2
                         result.StateChanged = true;
                     // A failed BUILD must roll back. A paid Challenge (win or loss) is an
                     // intentional partial action and must NOT be diagnosed as a build leak.
-                    if (!infra.GenerationAttempted)
+                    // A paid stand-alone Base level is its own successful operation (separate invariant);
+                    // every other non-built outcome must still have rolled back cleanly.
+                    if (infra.CapacityUnlocked)
+                        AiV2Trace.CheckCapacityUnlock(istate.Demand.TraceId, infraBefore, infraAfter);
+                    else if (!infra.GenerationAttempted)
                         AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
                             infra.StateChanged, infraBefore, infraAfter);
                     // A compensated failure can still publish newer knowledge/version stamps.
@@ -439,7 +443,7 @@ namespace Game.Ai.V2
                     }
                     // A partial state-changing action (a paid Base capacity upgrade whose Facility
                     // placement then failed) is debited like a Challenge: its AP is really spent.
-                    if (infra.Built || infra.GenerationAttempted
+                    if (infra.Built || infra.CapacityUnlocked || infra.GenerationAttempted
                         || (infra.StateChanged && infra.ApSpent > 0f))
                     {
                         // §2.3 — the physical AP drop must match what the transaction reports.
@@ -454,8 +458,13 @@ namespace Game.Ai.V2
                                 DevelopmentOutcomeTelemetry.RecordFacilityBuilt(player, ctx.TurnNumber);
                             result.CapabilityDeliveries++;
                         }
+                        // The unlock closes ITS demand only: the later placement is a new request, judged on the
+                        // refreshed world (typed Infrastructure|Capability re-admission), never a counted
+                        // card play or facility build.
+                        if (infra.CapacityUnlocked)
+                            istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
                         AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
-                            + $"{(infra.Built ? "built" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
+                            + $"{(infra.Built ? "built" : infra.CapacityUnlocked ? "capacity unlocked" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                         if (infra.StateChanged)
                         {

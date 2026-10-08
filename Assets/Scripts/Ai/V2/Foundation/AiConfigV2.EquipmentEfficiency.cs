@@ -61,13 +61,31 @@ namespace Game.Ai.V2
         // Offense mult grows with the target hex's known defence bonus (Attack / Raid).
         public const float equipHexDefenseOffensePerPoint = 0.1f;
 
-        // ---- supply: how scarce units are (Development production only) ---------------------------------
-        // fraction = (cards in deck + hand) / equipSupplyReferenceCards. Production competes with a
-        // plain unit at one third; with a full deck a unit is always the better buy.
-        public const float equipSupplyReferenceCards = 35f;
-        public const float equipSupplyFullFraction = 2f / 3f;   // at/above: multiplier 1
-        public const float equipSupplyMidFraction = 1f / 3f;
-        public const float equipSupplyMidMultiplier = 11f;
-        public const float equipSupplyEmptyMultiplier = 15f;
+        // ---- signed utility U (2026-10-08 calibration) -------------------------------------------------
+        // U = equipCombatCardScale x dC + AP + move + vision + detection + stealth + Fate + AA, in
+        // CARD-SCORE units over a three-owner-turn reserve horizon (see Docs/equipment-utility-calibration-2026-10-08.md).
+        public const float equipCombatCardScale = 1.10f;      // card score per unit of C (mean CombatBody / C of the anchors)
+        // C = body scale x (sum over contacts of P(alive) x damage dealt / target HP). The scale makes the
+        // bounded contact model agree with the reference C of the Iron Concord anchors (ratios 3.48..3.83).
+        public const float equipCombatBodyScale = 3.66f;
+        public const int equipContactCount = 3;               // owner-turn contacts of the reserve horizon
+        // Share of unknown-geometry exchanges at Chebyshev distance 1/2/3/4 (reference, not measured).
+        public const float equipDistanceShare1 = 0.24f, equipDistanceShare2 = 0.32f,
+            equipDistanceShare3 = 0.28f, equipDistanceShare4 = 0.16f;
+        // Prior enemy profile while nothing at all is known about the opposition.
+        public const int equipPriorAttack = 3, equipPriorDefense = 2, equipPriorHitPoints = 4, equipPriorInitiative = 1;
+        public const float equipExpectedActivations = 1.5f;   // 3 turns x 0.5 share of turns the unit acts
+        public const float equipUsefulDarkDefault = 0.5f;     // unknown coverage: half the radius is new ground
+        public const float equipVisionWeight = 0.16f;         // card score per useful radius point
+        public const float equipDetectionWeight = 0.16f;      // card score per unit of P(detect) x relevance
+        public const int equipHideStrengthDefault = 4;
+        public const float equipStealthEntryAp = 1f;          // AP to enter Stealth (priced once, by ActionPrice)
+        public const float equipStealthRiskWeight = 0.9f, equipStealthRiskFloor = 0.35f;
+        public const float equipStealthUseScout = 1f, equipStealthUseReserve = 0.25f;
+        public const int equipEvalTargetCap = 24;             // profiles priced per pair (stride sample above)
+        // Owner decision (2026-10-08): +1 Fate of a Research/Production OPERATOR lifts every later Challenge, which
+        // makes stronger equipment possible - a plain card-score value per Fate point (old flat 1.4 E x 0.075 = 0.105,
+        // raised). Replaced by the witnessed-output formula whenever a context supplies real expected outputs.
+        public const float equipOperatorFateValue = 0.15f;
     }
 }

@@ -50,7 +50,24 @@ namespace Game.Ai.V2
         public bool IsFacilityOperator;
         public float OffenseMult = 1f, DefenseMult = 1f, SkillMult = 1f;
         public int OtherSpeedMin = int.MaxValue;  // slowest OTHER member of the host's army (MaxValue: alone)
-        public Func<string, int> Carriers;        // saturating family -> own units already carrying it
+        public Func<string, int> Carriers;        // saturating family -> own units already carrying it (legacy table only)
+
+        // ---- signed utility U (EquipmentEfficiency.Utility) -----------------------------------------------
+        public IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> Targets;  // enemy profiles; empty: catalog prior
+        public IReadOnlyCollection<UnitTypeTag> HostTags;
+        public int HpSpent;                       // wound already carried (never healed by the attachment)
+        public int? KnownDistance;                // a known contact distance replaces the geometry prior
+        public int HostCommanderInitiative, EnemyCommanderInitiative;
+        public float ExpectedActivations = AiConfigV2.equipExpectedActivations;
+        public int RouteLength;                   // 0: no known route (speed uses the proxy)
+        public float OtherArmyActivationAp;       // activation AP of the army's OTHER members (army AP = sum of members)
+        public int OtherRecceRadius, OtherSpotStrength, OtherAntiAirCarriers;  // the host's own army
+        public float UsefulDarkFraction = AiConfigV2.equipUsefulDarkDefault;
+        public float DetectionRelevance;          // 0 unless a hidden target is actually known
+        public int HideStrength = AiConfigV2.equipHideStrengthDefault;
+        public float StealthRisk = AiConfigV2.equipStealthRiskFloor;
+        // Witnessed expected outputs of a Fate-lifted operator: (utility, cost if success, P before, P after).
+        public IReadOnlyList<(float Utility, float CostIfSuccess, float PBefore, float PAfter)> OperatorOutputs;
     }
 
     internal readonly struct EfficiencyBreakdown
@@ -67,7 +84,7 @@ namespace Game.Ai.V2
             $"dE={Total:0.##} (off {Offense:0.##} def {Defense:0.##} skill {Skill:0.##} flat {Flat:0.##})";
     }
 
-    internal static class EquipmentEfficiency
+    internal static partial class EquipmentEfficiency
     {
         private enum Group { Offense, Defense, Skill, Flat }
 
@@ -82,20 +99,6 @@ namespace Game.Ai.V2
 
         // ---- price of E / supply ---------------------------------------------------------------------
         internal static float ToCardValue(float efficiency) => efficiency * AiConfigV2.equipCardValuePerE;
-
-        // Production multiplier on the price of E by how few cards are left (deck + hand): x1 while
-        // units are plentiful, rising to the mid point at one third and on to the empty-deck value.
-        internal static float SupplyMultiplier(int cardsLeft)
-        {
-            float f = Mathf.Max(0f, cardsLeft) / Mathf.Max(1f, AiConfigV2.equipSupplyReferenceCards);
-            float full = AiConfigV2.equipSupplyFullFraction, mid = AiConfigV2.equipSupplyMidFraction;
-            if (f >= full)
-                return 1f;
-            if (f >= mid)
-                return Mathf.Lerp(1f, AiConfigV2.equipSupplyMidMultiplier, (full - f) / (full - mid));
-            return Mathf.Lerp(AiConfigV2.equipSupplyMidMultiplier, AiConfigV2.equipSupplyEmptyMultiplier,
-                (mid - f) / mid);
-        }
 
         // ---- the table -----------------------------------------------------------------------------------
         internal static EfficiencyBreakdown Delta(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
@@ -246,22 +249,23 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // Abilities this table prices; everything else stays with StrategicEffectRegistry.
-        // The answer depends on the ability name alone, so it is computed once per name (this ran
-        // for every ability of every (equipment, recipient) pair and allocated a context each time).
-        private static readonly Dictionary<string, bool> s_priced = new Dictionary<string, bool>();
+        // Abilities the signed utility (Utility) prices; everything else stays with StrategicEffectRegistry.
+        // The answer depends on the ability name alone. Berserk, Shock and the damage modifiers are read
+        // from the combat kernel; Stealth/Recce through the option / vision / detection terms; RapidReaction
+        // through the effective activation AP; AntiAir through the legal reactions.
+        private static readonly HashSet<string> s_priced = new HashSet<string>
+        {
+            UnitAbilities.Regeneration, UnitAbilities.CeramicArmor, UnitAbilities.CriticalDamage,
+            UnitAbilities.Splash, UnitAbilities.Scorcher, UnitAbilities.Hyperkinetic, UnitAbilities.Pyrokinetic,
+            UnitAbilities.ShockAttack, UnitAbilities.AntiAir, UnitAbilities.RapidReaction, UnitAbilities.Berserk,
+        };
 
         internal static bool IsPriced(string ability)
         {
             if (ability == null)
-                return TryValue(ability, default, new EfficiencyContext(), out Group _, out float _);
-            lock (s_priced)
-            {
-                if (!s_priced.TryGetValue(ability, out bool priced))
-                    s_priced[ability] = priced = TryValue(ability, default, new EfficiencyContext(),
-                        out Group _, out float _);
-                return priced;
-            }
+                return false;
+            return s_priced.Contains(ability) || AbilityParams.TryGetStealthLevel(ability, out _)
+                || AbilityParams.AbilitiesHaveAnyRecce(new[] { ability });
         }
 
         // ---- mission context ---------------------------------------------------------------------------

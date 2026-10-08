@@ -28,6 +28,22 @@ namespace Game.Ai.V2
                 bestEquipmentUpgrade: 0f, actualApCost: stageAp, actualResourceCost: stageCost,
                 spendableResource: spendableResource, player: player).NetScore;
 
+        // The stand-alone CapacityUnlock step: opening one Facility slot of a full Base so a confirmed
+        // Research/Production Facility card can be placed on it. Fully priced (net): the structural value of
+        // preparing the confirmed site (the canonical nonCombatFacilityValue anchor, no second capacity
+        // coefficient) minus the tier's AP and resources on the one price table. The placement's own bill,
+        // any future output/recipient and the unspent card's hand pressure are not part of it - the card stays in
+        // hand and the placement is judged later as a new action by the Facility scorer above.
+        internal static float CapacityUnlock(BaseUpgradeTier tier, WorldSnapshot snap,
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player)
+        {
+            if (tier == null)
+                return float.NegativeInfinity;
+            return AiConfigV2.nonCombatFacilityValue
+                - ActionPrice.ToCardScore(ActionPrice.Ap(tier.apCost))
+                - StrategicCardEvaluator.StrategicResourceCostValue(tier.cost, snap, spendableResource, player);
+        }
+
         internal static float HandOperator(CardData card, int ordinal, HexCoord hex,
             ResearchProductionMode mode, ArmyData garrison, WorldSnapshot snap, CapabilityInventory inv,
             System.Func<ResourceType, float> spendableResource, PlayerSetupData player)

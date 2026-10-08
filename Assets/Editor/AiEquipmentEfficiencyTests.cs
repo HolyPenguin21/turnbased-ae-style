@@ -7,10 +7,16 @@ namespace Game.EditorTests
 {
     internal static class AiEquipmentTestMath
     {
-        // What a plain +N Attack is worth in EquipmentDelta plumbing units (card value / persistence).
-        internal static float IntrinsicAttack(int amount) =>
-            amount * AiConfigV2.equipWeightAttack * AiConfigV2.equipCardValuePerE
-            / AiConfigV2.equipmentUpgradePersistence;
+        // The signed utility of a plain +N Attack on a host against the catalog prior (no enemy known),
+        // in EquipmentDelta plumbing units (card value / persistence).
+        internal static float IntrinsicAttack(int amount, int attack = 1, int defense = 2, int hp = 8,
+            int range = 1, int initiative = 0)
+        {
+            var before = new EfficiencyStats(attack, defense, hp, range, 3, initiative, 0, 0);
+            var after = new EfficiencyStats(attack + amount, defense, hp, range, 3, initiative, 0, 0);
+            return EquipmentEfficiency.Utility(before, new string[0], after, new string[0], new EfficiencyContext()).Combat
+                / AiConfigV2.equipmentUpgradePersistence;
+        }
     }
 
     // The bonus-weight table of docs/ai-v2-equipment-efficiency-table.md, example by example.
@@ -160,17 +166,24 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void SupplyMultiplier_FollowsTheDeckPlusHandCurve()
+        public void OwnUtility_DoesNotDependOnDeckPlusHandSize()
         {
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(35), Is.EqualTo(1f));
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(24), Is.EqualTo(1f),
-                "above two thirds a unit is the better buy");
-            int third = (int)System.Math.Round(AiConfigV2.equipSupplyReferenceCards * AiConfigV2.equipSupplyMidFraction);
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(third),
-                Is.EqualTo(AiConfigV2.equipSupplyMidMultiplier).Within(0.7f), "about x11 at one third");
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(0), Is.EqualTo(AiConfigV2.equipSupplyEmptyMultiplier));
-            Assert.That(EquipmentEfficiency.SupplyMultiplier(18),
-                Is.GreaterThan(EquipmentEfficiency.SupplyMultiplier(24)));
+            // Deck + hand 35 / 24 / 12 / 0: the pair, host and context are the same, so the item's own
+            // utility is the same. (Supply no longer scales it; only alternatives and gates may differ.)
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit, attack = 2, defenseRating = 1, hitPoints = 4,
+            });
+            var item = new CardDefinition { cardType = CardType.Equipment };
+            item.equipment = new EquipmentGrant();
+            float baseline = StrategicCardEvaluator.EquipmentDeltaParts(item, host.Definition).Total;
+            foreach (int cards in new[] { 35, 24, 12, 0 })
+            {
+                var snap = new WorldSnapshot { Self = new SelfSnapshot {
+                    Deck = new CardDefinition[cards], Hand = new CardData[0] } };
+                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(item, host, snap).Total,
+                    Is.EqualTo(baseline).Within(1e-5f), $"cards left {cards}");
+            }
         }
     }
 }

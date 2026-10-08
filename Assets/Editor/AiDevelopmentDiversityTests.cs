@@ -62,20 +62,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ProductionSupplyMultiplier_ReadsDeckPlusHandAndTreatsNoSelfAsFull()
-        {
-            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(null), Is.EqualTo(1f));
-            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(new WorldSnapshot()), Is.EqualTo(1f));
-            var low = new WorldSnapshot { Self = new SelfSnapshot {
-                Deck = new CardDefinition[5], Hand = new Game.Cards.CardData[4] } };
-            var full = new WorldSnapshot { Self = new SelfSnapshot {
-                Deck = new CardDefinition[29], Hand = new Game.Cards.CardData[6] } };
-            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(full), Is.EqualTo(1f));
-            Assert.That(DevelopmentOpportunityEvaluator.ProductionSupplyMultiplier(low),
-                Is.GreaterThan(AiConfigV2.equipSupplyMidMultiplier * 0.9f), "9 of 35 cards: near the one-third point and beyond");
-        }
-
-        [Test]
         public void FamilyOf_GroupsStealthAndRecceAndIgnoresStatAbilities()
         {
             Assert.That(DevelopmentDiversity.FamilyOf(UnitAbilities.Stealth4), Is.EqualTo("Stealth"));

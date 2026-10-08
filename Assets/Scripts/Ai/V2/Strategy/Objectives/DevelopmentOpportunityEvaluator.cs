@@ -25,7 +25,10 @@ namespace Game.Ai.V2
     // current price, which Phase A's arbiter ranks; admission needs it positive. Only the walk of an
     // existing hero is a world task on WorldTaskScore. PreparationRank only orders peer steps.
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
-    public enum DevelopmentPreparationKind { Facility, Operator }
+    // Identities are persisted in logs/fingerprints: Facility=0, Operator=1; new kinds go last.
+    // CapacityUnlock is the stand-alone step "buy the Base's next level" for a full Base whose
+    // Research/Production Facility card waits in hand: the card is only its witness, never consumed.
+    public enum DevelopmentPreparationKind { Facility, Operator, CapacityUnlock }
 
     public sealed class DevelopmentOpportunity
     {
@@ -47,10 +50,15 @@ namespace Game.Ai.V2
         // action (benefit - current price) from DevelopmentPreparationScorer, the same number the
         // Phase A arbiter ranks. null for an existing hero's delivery (a world task).
         public float? PreparationCardScore;
-        // PREPARE facility stage only: the Base tier bought with the facility because every
-        // unlocked slot of FacilityHex is taken (already inside StageResourceCost).
+        // CapacityUnlock only: the Base tier this step buys because every unlocked slot of FacilityHex is
+        // taken (it IS the whole StageResourceCost / AP of the step; the Facility placement is a later,
+        // separately evaluated action).
         public BaseUpgradeTier PreparationCapacityTier;
+        // Facility: the card to place. CapacityUnlock: the exact hand card the opened slot will take - a
+        // structural witness, not consumed. Planning-only: its own price is the later placement's bill.
         public CardData PreparationFacilityCard;
+        // CapacityUnlock plan identity, re-confirmed immediately before payment.
+        public int PreparationExpectedLevel;
         public CardData PreparationOperatorCard;
         // Only an existing, eligible staffed source can mint an operator. The resulting card
         // goes into the hand first; deployment remains the usual DevelopmentOperator action.
@@ -213,7 +221,7 @@ namespace Game.Ai.V2
                     last = $"'{card.displayName}':no_recipient({recipient})";
                     continue;
                 }
-                // Supply/diversity are already inside the gain (EquipmentOpportunities, source set).
+                // Repeat damping is already inside the gain (EquipmentOpportunities, source set); there is no supply term.
                 best.WorldTaskScore = BuildDevelopmentScore(
                     best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
@@ -283,9 +291,10 @@ namespace Game.Ai.V2
                     ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
             if (!futureFacility)
                 return "reason=no_facility_path";
-            // Every unlocked slot of this Base is taken: the next Base tier is this site's first
-            // preparation stage, bought together with the facility (StrategicMaintenancePolicy owns
-            // which tier opens a slot). No unlockable tier left -> the site cannot host it.
+            // Every unlocked slot of this Base is taken: the next Base tier is a stand-alone step of its
+            // own (CapacityUnlock), priced and paid for itself; the Facility placement it makes possible is a
+            // later action evaluated on the refreshed world. StrategicMaintenancePolicy owns which tier
+            // opens a slot. No unlockable tier left -> the site cannot host it.
             BaseUpgradeTier capacityTier = null;
             if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
             {
@@ -295,28 +304,34 @@ namespace Game.Ai.V2
                     return "reason=no_facility_slot";
             }
             System.Func<ResourceType, float> spendable = t => StrategicSpendability.SpendableAmount(player, root, ctx, t);
-            // Peer hand facilities are ranked by the one card score of today's step (placement +
-            // the capacity upgrade needed now), not by the cheapest bill: a weak cheap card must
-            // not hide a better one from the arbiter. Desire facts keep the structural order.
+            // Peer hand facilities are ranked by the one card score of today's step (placement),
+            // not by the cheapest bill: a weak cheap card must not hide a better one from the arbiter.
+            // Desire facts keep the structural order. On a full Base the card is only the capacity
+            // step's witness (the cheapest structural card; the step's score does not depend on it).
             CardData facility = facilityCards.FirstOrDefault();
             float facilityScore = 0f;
-            if (!describeOnly && facilityCards.Count > 1)
+            if (capacityTier != null)
+            {
+                if (!describeOnly)
+                    facilityScore = DevelopmentPreparationScorer.CapacityUnlock(capacityTier, snap, spendable, player);
+            }
+            else if (!describeOnly && facilityCards.Count > 1)
             {
                 facility = null;
                 facilityScore = float.NegativeInfinity;
                 foreach (CardData candidate in facilityCards)
                 {
                     float s = DevelopmentPreparationScorer.Facility(candidate,
-                        candidate.EffectivePlayApCost + (capacityTier?.apCost ?? 0),
-                        StrategicCardEvaluator.AddResourceCosts(candidate.EffectivePlayResourceCost, capacityTier?.cost),
+                        candidate.EffectivePlayApCost,
+                        candidate.EffectivePlayResourceCost,
                         snap, inv, hand, spendable, player);
                     if (s > facilityScore) { facility = candidate; facilityScore = s; }
                 }
             }
             else if (!describeOnly && facility != null)
                 facilityScore = DevelopmentPreparationScorer.Facility(facility,
-                    facility.EffectivePlayApCost + (capacityTier?.apCost ?? 0),
-                    StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost, capacityTier?.cost),
+                    facility.EffectivePlayApCost,
+                    facility.EffectivePlayResourceCost,
                     snap, inv, hand, spendable, player);
             ArmyData garrison = ArmyRegistry.AllAt(hex)
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
@@ -505,8 +520,10 @@ namespace Game.Ai.V2
                 {
                     Mode = mode, FacilityHex = hex, PreparationKind = kind,
                     StageResourceCost = cost, WorldTaskScore = score,
-                    PreparationCapacityTier = kind == DevelopmentPreparationKind.Facility ? capacityTier : null,
-                    PreparationFacilityCard = kind == DevelopmentPreparationKind.Facility ? card : null,
+                    PreparationCapacityTier = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier : null,
+                    PreparationExpectedLevel = kind == DevelopmentPreparationKind.CapacityUnlock
+                        ? BuildingRegistry.FindAt(hex)?.Level ?? 0 : 0,
+                    PreparationFacilityCard = kind == DevelopmentPreparationKind.Operator ? null : card,
                     PreparationOperatorCard = kind == DevelopmentPreparationKind.Operator ? card : null,
                     PreparationOperatorGeneration = generated, PreparationExistingHero = hero,
                     PreparationSourceArmyId = sourceArmy?.Id, PreparationTravelCost = travel,
@@ -516,9 +533,10 @@ namespace Game.Ai.V2
                         + $"stageCost={cost} "
                         + (cardScore.HasValue ? $"card={cardScore.Value:0.##}" : $"task={score.Value:0.##}"),
                 };
-                int stageAp = card?.EffectivePlayApCost ?? (generated == null ? 0
-                    : ResearchProductionSystem.AttemptApCost(generated.CardDef));
-                if (kind == DevelopmentPreparationKind.Facility) stageAp += capacityTier?.apCost ?? 0;
+                // CapacityUnlock pays only the tier; its witness card is not played by this step.
+                int stageAp = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier?.apCost ?? 0
+                    : card?.EffectivePlayApCost ?? (generated == null ? 0
+                        : ResearchProductionSystem.AttemptApCost(generated.CardDef));
                 if (cardScore.HasValue)
                 {
                     // Already net of the one canonical price: the number the Phase A arbiter ranks.
@@ -555,9 +573,14 @@ namespace Game.Ai.V2
                 admitted++;
             }
             if (!facilityReady && facility != null)
-                Add(DevelopmentPreparationKind.Facility,
-                    StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost, capacityTier?.cost),
-                    facility, null, null, null, 0, facilityScore);
+            {
+                if (capacityTier != null)
+                    Add(DevelopmentPreparationKind.CapacityUnlock, capacityTier.cost,
+                        facility, null, null, null, 0, facilityScore);
+                else
+                    Add(DevelopmentPreparationKind.Facility, facility.EffectivePlayResourceCost,
+                        facility, null, null, null, 0, facilityScore);
+            }
             if (actor == null && !operatorInTransit)
             {
                 if (operatorCard != null)
@@ -660,17 +683,6 @@ namespace Game.Ai.V2
         private static string ResourceList(IEnumerable<ResourceType> types) =>
             string.Concat(ResourceBundle.All.Where(types.Contains)
                 .Select(DevelopmentInvestmentGate.Abbrev));
-
-        // How much a produced item beats a plain unit by how few cards are left (deck + hand): x1 while
-        // units are plentiful (a unit is the better buy), rising as the deck runs out
-        // (EquipmentEfficiency.SupplyMultiplier). A snapshot without Self counts as a full deck.
-        internal static float ProductionSupplyMultiplier(WorldSnapshot snap)
-        {
-            if (snap?.Self == null)
-                return 1f;
-            return EquipmentEfficiency.SupplyMultiplier(
-                (snap.Self.Deck?.Count ?? 0) + (snap.Self.Hand?.Count ?? 0));
-        }
 
         // Non-equipment outputs already have ONE canonical materialization/scoring path. Use a
         // projected plan to value the future investment; never an executable source.
@@ -862,18 +874,14 @@ namespace Game.Ai.V2
 
             // Production context of a real generation source (READY, and its materialization
             // re-enumeration), applied BEFORE the gain is priced so the task score, the card EV and
-            // the plan Phase A rebuilds all see one value: units run short (supply) and a card made
-            // lately is damped (diversity). Previews (no source) and hand cards keep their own rules.
+            // the plan Phase A rebuilds all see one value: a card made lately is damped (diversity).
+            // The deck-size "supply" multiplier is gone: it never belonged to the item's own utility.
+            // Previews (no source) and hand cards keep their own rules.
             float productionScale = 1f;
             string productionNote = string.Empty;
             if (generation != null)
-            {
-                float supply = ProductionSupplyMultiplier(snap);
                 productionScale = DevelopmentDiversity.RepeatFactor(player, snap?.TurnNumber ?? 0,
-                    equipment, out productionNote) * supply;
-                if (!Mathf.Approximately(productionScale, 1f))
-                    productionNote += $"supply x{supply:0.#} ";
-            }
+                    equipment, out productionNote);
 
             RecipientVerdict Evaluate(object recipient, CardData card, UnitData unit)
             {

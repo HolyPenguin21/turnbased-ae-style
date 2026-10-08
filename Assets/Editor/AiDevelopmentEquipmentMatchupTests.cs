@@ -589,17 +589,16 @@ namespace Game.EditorTests
                 var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
                 string before = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
                 Assert.That(StrategicCardEvaluator.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.GreaterThan(0));
+                float bioOnly = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
+                Assert.That(bioOnly, Is.GreaterThan(0));
                 intent.Attack.Target = AttackTargetRef.For(secondHex, new PlayerSetupData(), AttackTargetKind.Base);
                 Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(before));
                 Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
                 intent.Attack.Target = AttackTargetRef.None;
                 float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
-                float expected = AiConfigV2.equipPyrokineticFactor * 8 * AiConfigV2.equipDefaultBioShare
-                    * AiConfigV2.equipAttackOffenseMult * AiConfigV2.equipCardValuePerE
-                    / AiConfigV2.equipmentUpgradePersistence;
-                Assert.That(noTarget, Is.EqualTo(expected).Within(1e-4f),
-                    "An absent target is not a real objective at hex 0,0: only the Attack mission multiplier applies, no hex defence");
+                Assert.That(noTarget, Is.GreaterThan(0f).And.LessThan(bioOnly),
+                    "An absent target is not a real objective at hex 0,0: the known compositions (one Bio, one "
+                    + "Mechanical) are averaged, so Pyrokinetic pays on half of them only");
             }
             finally { MissionIntentRegistry.Clear(); }
         }
@@ -671,10 +670,9 @@ namespace Game.EditorTests
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 6, hitPoints: 6))).Total;
             float lethal = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 40, hitPoints: 6))).Total;
-            float expected = AiConfigV2.equipRegenerationFactor * (3 + 6)
-                * AiConfigV2.equipCardValuePerE / AiConfigV2.equipmentUpgradePersistence;
-            Assert.That(weak, Is.EqualTo(expected).Within(0.0001f));
-            Assert.That(lethal, Is.EqualTo(weak).Within(0.0001f), "Between-battle healing does not read the enemy");
+            Assert.That(weak, Is.GreaterThan(0f), "A wounded survivor heals at the end of its owner's turn");
+            Assert.That(lethal, Is.LessThan(weak),
+                "Healing pays only while the carrier lives to the tick: a lethal enemy leaves little to heal");
         }
     }
 }
