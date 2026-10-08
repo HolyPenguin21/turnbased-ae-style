@@ -71,6 +71,7 @@ namespace Game.Ai.V2
                 snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
+            CompleteDevelopmentPreparation(snap, player, root, hand, ctx);
             return snap;
         }
 
@@ -111,6 +112,7 @@ namespace Game.Ai.V2
                 snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
+            CompleteDevelopmentPreparation(snap, player, root, hand, ctx);
             return snap;
         }
 
@@ -153,6 +155,7 @@ namespace Game.Ai.V2
                 snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Threat = BuildThreat(player, ctx, snap);
 
+            CompleteDevelopmentPreparation(snap, player, root, hand, ctx);
             return snap;
         }
 
@@ -178,3 +181,4 @@ namespace Game.Ai.V2
 
     }
 }
+

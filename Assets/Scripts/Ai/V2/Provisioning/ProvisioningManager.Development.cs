@@ -35,27 +35,25 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "bound Development hero lost or no longer qualified"));
 
-            BuildingData facility = BuildingRegistry.FindAt(target.FacilityHex);
-            if (facility == null || facility.Owner != player
-                || !facility.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(target.Mode)))
+            if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "bound Development facility missing"));
+                    "bound Development preparation base missing"));
             if (BattleInitiator.FindEnemyAt(target.FacilityHex, player) != null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    "Development facility temporarily contested"));
+                    "Development preparation base temporarily contested"));
 
             ArmyData army = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null
                 && !a.IsPrison && a.Members.Contains(target.Hero));
             if (army == null || army.Owner != player)
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "bound Development hero no longer belongs to a live own army"));
-            if (ResearchProductionSystem.ActorStillQualifies(player, target.Hero,
+            if (DevelopmentOpportunityEvaluator.OperatorPreparedAt(player, target.Hero,
                     target.FacilityHex, target.Mode))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                    "exact Development hero arrived and can operate the facility"));
+                    "exact Development hero arrived at its preparation base"));
             if (army.Hex.Equals(target.FacilityHex))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "hero reached facility but cannot qualify for production"));
+                    "hero reached preparation base but is not a valid prepared operator"));
             if (mission.FromDurableIntent && mission.PreferredMoverArmyId.HasValue
                 && army.Id != mission.PreferredMoverArmyId.Value)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(

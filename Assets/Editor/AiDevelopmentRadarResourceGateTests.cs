@@ -91,7 +91,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void LatentInvestmentStillUsesBroadFourResourceSurplus()
+        public void AbsentPreparationFactsDoNotInventACapability()
         {
             var latent = new DevelopmentReadiness
             {
@@ -105,9 +105,32 @@ namespace Game.EditorTests
             RadarAssessment assessed = StrategyLayer.Evaluate(Snapshot(latent), new AiRadarState());
 
             Assert.That(latent.SurplusFraction, Is.Zero,
-                "Infrastructure investment keeps the coarse all-resource risk signal when no ready production chain exists");
+                "The shared surplus field keeps its legacy meaning; actual preparation uses separate cost-specific facts");
             Assert.That(assessed.Desires.Raw[DesireAxis.Development], Is.Zero,
-                "Zero broad investment headroom must still suppress purely latent Development");
+                "No structural prerequisite witness means no independent preparation appetite");
+        }
+
+        [TestCase(0f, 0f)]
+        [TestCase(0.3f, 0.3f)]
+        [TestCase(1f, 1f)]
+        public void PreparationDesireIgnoresIrrelevantGlobalSurplusAndNeedsNoRecipient(float broad, float step)
+        {
+            var rd = new DevelopmentReadiness
+            {
+                HasPreparationStep = true, DevPathViable = true,
+                PreparationHeadroom = step, SurplusFraction = broad, UpgradeTargetCount = 0,
+            };
+            var snapshot = Snapshot(rd, witnessedNeed: false);
+            float actual = StrategyLayer.Evaluate(snapshot, new AiRadarState()).Desires.Raw[DesireAxis.Development];
+            rd.SurplusFraction = 0f;
+            float withoutOtherResources = StrategyLayer.Evaluate(Snapshot(rd, witnessedNeed: false),
+                new AiRadarState()).Desires.Raw[DesireAxis.Development];
+            Assert.That(withoutOtherResources, Is.EqualTo(actual).Within(0.0001f));
+            float expected = Curves.Ramp(step, AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi)
+                * AiConfigV2.devLatentPotential;
+            Assert.That(actual, Is.EqualTo(expected).Within(0.0001f));
+            Assert.That(ForceNeedModel.JustifiedForceNeed(snapshot).Total, Is.Zero,
+                "Independent preparation must not fabricate combat need");
         }
 
         private static DevelopmentReadiness ReadyOffering() => new DevelopmentReadiness

@@ -331,7 +331,16 @@ namespace Game.Ai.V2
             b.DevJustifiedNeed = developmentNeed;
             b.DevNeedDetail = $"force={need}; development={developmentNeed:0.###}";
 
-            return Mathf.Min(developmentNeed, Mathf.Clamp01(surplus * developmentNeed * feasibility));
+            float outputDesire = Mathf.Min(developmentNeed, Mathf.Clamp01(surplus * developmentNeed * feasibility));
+            // Prerequisite appetite is independent of future output/recipient and military need.
+            // Reuse the existing latent feasibility; no new baseline/completion coefficient.
+            float preparationSurplus = Curves.Ramp(rd.PreparationHeadroom,
+                AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
+            float preparationDesire = rd.HasPreparationStep
+                ? preparationSurplus * AiConfigV2.devLatentPotential : 0f;
+            b.DevNeedDetail += $"; preparation={preparationDesire:0.###}"
+                + $" headroom={rd.PreparationHeadroom:0.###} hasStep={rd.HasPreparationStep}";
+            return Mathf.Max(outputDesire, preparationDesire);
         }
 
         // Spec §4 — RefreshPressure is a composite: a baseline, whole-map strategic IntelAge,
@@ -543,3 +552,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

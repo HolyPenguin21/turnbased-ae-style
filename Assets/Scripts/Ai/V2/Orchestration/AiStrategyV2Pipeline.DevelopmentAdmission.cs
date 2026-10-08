@@ -27,7 +27,7 @@ namespace Game.Ai.V2
     //   * actor occupancy (which heroes are free to travel to a facility);
     //   * the composition of every known threat EquipmentDeltaParts evaluates against;
     //   * ForceNeedModel.JustifiedForceNeed (asset threats, edge, idle-stock surplus) — the need
-    //     every minted-output score and the deck-operator facility stage are weighted by.
+    //     every minted-output score is weighted by. Preparation has independent structural facts.
     public static partial class Pipeline
     {
         // AP retains both the exact pool and the known offering affordability thresholds:
@@ -188,7 +188,9 @@ namespace Game.Ai.V2
                     // buy a capacity tier (StrategicMaintenancePolicy.CapacityUnlockTierAt).
                     BuildingData b = BuildingRegistry.FindAt(h);
                     return b == null ? $"{h.Q},{h.R}"
-                        : $"{h.Q},{h.R}:{b.Level}:{(b.FindFirstAvailableFacilitySlot() >= 0 ? 1 : 0)}";
+                        : $"{h.Q},{h.R}:{b.Level}:{(b.FindFirstAvailableFacilitySlot() >= 0 ? 1 : 0)}"
+                            + $":own={b.Owner == snapshot?.Observer}:base={b.IsBase}"
+                            + $":contested={Game.Combat.BattleInitiator.FindEnemyAt(h, snapshot?.Observer) != null}";
                 }));
             // Actor occupancy: preparation builds ActorCommitments over ALL intents, so each kind
             // contributes only the inputs that produce a claim — never intent identity.
@@ -245,7 +247,9 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<Game.Cards.CardDefinition>()).Where(d => d != null)
                 .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
                         .OrderBy(x => x.Key).Select(x => $"{x.Key}={x.Value}"))
-                    + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>()))
+                    + ":" + string.Join(",", d.unitTypeTags ?? new List<Game.Cards.UnitTypeTag>())
+                    + ":" + string.Join(",", MaterializationChainMatching.EffectiveAbilities(d, null)
+                        .OrderBy(x => x, System.StringComparer.Ordinal)))
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
@@ -256,12 +260,13 @@ namespace Game.Ai.V2
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
                 + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
+                + $"|operatorClaims={MissionIntentRegistry.Peek(snapshot?.Observer)?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
                 + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
                 + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"
                 + $"{(rd?.AssemblerCardInHand == true ? 1 : 0)}:"
-                + $"{(rd?.DevPathViable == true ? 1 : 0)}:{rd?.UpgradeTargetCount ?? 0}:"
+                + $"{(rd?.DevPathViable == true ? 1 : 0)}:prep={(rd?.HasPreparationStep == true ? 1 : 0)}:{rd?.PreparationHeadroom ?? 0f}:modes={rd?.ResearchPreparationViable}:{rd?.ProductionPreparationViable}:targets={rd?.UpgradeTargetCount ?? 0}:"
                 + $"{(rd?.BestSuccessChance ?? 0f):0.###}";
         }
 
@@ -300,3 +305,4 @@ namespace Game.Ai.V2
             => $"/cmd:{commander.Present}:{commander.Initiative}:{commander.Fate}";
     }
 }
+

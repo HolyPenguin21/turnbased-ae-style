@@ -8,10 +8,9 @@ namespace Game.Ai.V2
     internal static partial class MissionContinuityLayer
     {
         internal static bool IsDevelopmentStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
-            ProvisionedMission pm) => Game.Cards.ResearchProductionSystem.ActorStillQualifies(player,
+            ProvisionedMission pm) => DevelopmentOpportunityEvaluator.OperatorPreparedAt(player,
                 pm.DevelopmentTarget.Hero, pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode)
-                && Game.Cards.ResearchProductionSystem.IsEligible(player,
-                    pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, out _);
+                && Game.Combat.BattleInitiator.FindEnemyAt(pm.DevelopmentTarget.FacilityHex, player) == null;
 
         internal static void ClassifyDevelopmentStep(ExecutionResult e, MissionStepResult o)
         {
@@ -74,19 +73,16 @@ namespace Game.Ai.V2
             ArmyData actual = d?.Hero == null ? null : ArmyRegistry.AllForOwner(player)
                 .FirstOrDefault(a => a != null && !a.IsPrison
                     && a.Members.Contains(d.Hero));
-            BuildingData building = d == null ? null : BuildingRegistry.FindAt(d.FacilityHex);
             bool valid = d != null && actual != null && d.Hero.Owner == player
                 && !d.Hero.IsPrisoner && d.Hero.IsHero
                 && d.Hero.HasAbility(ResearchProductionSystem.RoleAbility(d.Mode))
                 && string.Equals(d.HeroKey, GenerationSource.StableHeroKey(d.Hero),
                     System.StringComparison.Ordinal)
-                && building != null && building.Owner == player
-                && building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(d.Mode))
+                && DevelopmentOpportunityEvaluator.IsPreparationSite(player, d.FacilityHex)
                 && (intent.PreferredMoverArmyId == actual.Id
                     || !intent.PreferredMoverArmyId.HasValue);
-            bool arrived = valid && ResearchProductionSystem.ActorStillQualifies(
-                player, d.Hero, d.FacilityHex, d.Mode)
-                && ResearchProductionSystem.IsEligible(player, d.FacilityHex, d.Mode, out _);
+            bool arrived = valid && DevelopmentOpportunityEvaluator.OperatorPreparedAt(player, d.Hero, d.FacilityHex, d.Mode)
+                && Game.Combat.BattleInitiator.FindEnemyAt(d.FacilityHex, player) == null;
             if (!valid || arrived || ShouldReap(intent, snap?.TurnNumber ?? 0))
             {
                 dead.Add(intent.IntentKey);
@@ -112,3 +108,4 @@ namespace Game.Ai.V2
 
     }
 }
+

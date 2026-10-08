@@ -169,6 +169,22 @@ namespace Game.Ai.V2
             return rd;
         }
 
+        private static void CompleteDevelopmentPreparation(WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (snap?.Development == null) return;
+            var intents = MissionIntentRegistry.Peek(player)?.All
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            var steps = DevelopmentOpportunityEvaluator.PreparationFacts(snap, player, root, hand, ctx, intents);
+            snap.Development.HasPreparationStep = steps.Count > 0;
+            snap.Development.ResearchPreparationViable = steps.Any(o => o.Mode == ResearchProductionMode.Research);
+            snap.Development.ProductionPreparationViable = steps.Any(o => o.Mode == ResearchProductionMode.Production);
+            snap.Development.PreparationHeadroom = steps.Count == 0 ? 0f : steps.Max(o =>
+                DevelopmentOpportunityEvaluator.StepResourceHeadroom(
+                    snap.Development.InvestmentSurplusByType, o.StageResourceCost));
+            snap.Development.DevPathViable |= steps.Count > 0;
+        }
+
         // READY generation options have already passed ResearchProductionSystem affordability and
         // StrategicSpendability for every resource they actually consume in GenerationSource.
         // Applying the four-resource investment minimum again would make an unrelated empty

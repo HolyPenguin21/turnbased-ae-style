@@ -783,10 +783,9 @@ namespace Game.Ai.V2
             if (result.StopReason != ExecutionStopReason.MoverLost
                 && result.StopReason != ExecutionStopReason.BattleStarted
                 && result.StopReason != ExecutionStopReason.HexEventStarted
-                && ResearchProductionSystem.ActorStillQualifies(player, target.Hero,
+                && DevelopmentOpportunityEvaluator.OperatorPreparedAt(player, target.Hero,
                     target.FacilityHex, target.Mode)
-                && ResearchProductionSystem.IsEligible(player, target.FacilityHex,
-                    target.Mode, out _))
+                && BattleInitiator.FindEnemyAt(target.FacilityHex, player) == null)
             {
                 result.ReachedGoal = true;
                 result.DevelopmentDeliveryReady = true;
@@ -794,7 +793,7 @@ namespace Game.Ai.V2
                 result.NeedsReplan = false;
                 result.FinalHex = target.FacilityHex;
                 AiDebugLog.Write($"[AI][V2][Development] arrived hero={target.HeroKey} "
-                    + $"@({target.FacilityHex.Q},{target.FacilityHex.R}); production readmit");
+                    + $"@({target.FacilityHex.Q},{target.FacilityHex.R}); preparation readmit");
             }
         }
 
@@ -897,4 +896,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

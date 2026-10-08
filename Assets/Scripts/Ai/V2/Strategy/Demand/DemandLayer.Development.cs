@@ -29,16 +29,17 @@ namespace Game.Ai.V2
                 s, player, root, hand, ctx, activeIntents);
 
             // One prerequisite per pass; the next settled pass sees the completed stage.
-            DevelopmentOpportunity preparation = opportunities.FirstOrDefault(o => o.IsPreparation);
+            DevelopmentOpportunity preparation = opportunities.Where(o => o.IsPreparation)
+                .OrderByDescending(o => o.PreparationRank).ThenBy(o => (int)o.Mode)
+                .ThenBy(o => o.FacilityHex.Q).ThenBy(o => o.FacilityHex.R)
+                .ThenBy(o => o.PreparationKind).FirstOrDefault();
             if (preparation != null)
             {
-                bool facilityReady = s.Development?.Facilities?.Any(f => f.Mode == preparation.Mode
-                    && f.Hex.Equals(preparation.FacilityHex)) == true;
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Development,
-                    Capability = facilityReady ? CapabilityKind.DevelopmentOperator
-                        : CapabilityKind.DevelopmentInfrastructure,
+                    Capability = preparation.PreparationKind == DevelopmentPreparationKind.Operator
+                        ? CapabilityKind.DevelopmentOperator : CapabilityKind.DevelopmentInfrastructure,
                     DesiredAmount = 1,
                     TargetHex = preparation.FacilityHex,
                     DevelopmentOperatorMode = preparation.Mode,

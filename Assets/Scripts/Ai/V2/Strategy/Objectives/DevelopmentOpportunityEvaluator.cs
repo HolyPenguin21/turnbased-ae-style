@@ -14,53 +14,30 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  DEVELOPMENT OPPORTUNITY EVALUATOR
     // ===========================================================================================
-    //  The ONE enumeration of Research/Production (Laboratory / Factory) opportunities. Laboratory
-    //  and Factory are a late resource sink that strengthens the units the main deck already put
-    //  on the map, so every opportunity must be inside DevelopmentInvestmentGate's window for the
-    //  resources ITS OWN chain consumes (a READY Challenge: the card; a PREPARE: facility +
-    //  operator + output). An unrelated empty resource never blocks it.
-    //
-    //  Each (mode, own base) site is in exactly one stage:
-    //    READY    — facility built and staffed: every affordable Equipment offering, bound to its
-    //               best legal recipient for admission; Phase A retains live recipient alternatives.
-    //               The operational card decision belongs to
-    //               StrategicCardEvaluator + the Phase-A portfolio (a built, staffed facility is sunk;
-    //               no second investment-EV veto). Unit/Hero outputs of a ready facility are
-    //               materialization chains (MaterializationChainEnumerator), not upgrades.
-    //    PREPARE  — facility card in hand and/or operator missing: every catalog output (Equipment,
-    //               Unit/Hero, Aviation) projected through the canonical scorers. Preparation
-    //               carries no GenerationStep and never mints.
-    //  Two currencies, each for its own decision — a PREPARE must pass both:
-    //    Ev       — card currency: is the card chain worth its cards (output card score -
-    //               Challenge - facility/operator cards, priced by StrategicCardEvaluator, the only
-    //               place a chain is charged for cost). The facility/operator investment is spread
-    //               over devFacilityExpectedUses outputs: one output carries only its share.
-    //               Also read by the capacity-upgrade look-ahead.
-    //    WorldTaskScore — world-task currency (TaskScore): what the demand/mission competes with
-    //               in the allocator next to Raid, Recon and Economy. Intrinsic ForceAmplification
-    //               (the need-weighted force the output adds) plus the execution of the world task
-    //               itself — the existing operator hero's walk (CreateArmy AP, activation, recurring
-    //               AP) and the task it abandons. Card plays are NOT priced here: their chains price
-    //               them. Never a conversion of Ev.
-    //  Equipment value is StrategicCardEvaluator.EquipmentUpgradeValue — the ONE value of an
-    //  equipment upgrade (predicted delta x known-threat matchup x persistence). A minted
-    //  Unit/Hero/Aviation is worth its force only in the share ForceNeedModel.JustifiedForceNeed
-    //  says Attack/Defence cannot meet (Production amplifies a need, it never creates one).
-    // ===========================================================================================
+    // One admission for preparation and ready production. A prerequisite opens a capability:
+    // only its own current cost, delivery and displacement are evaluated. Missing facility and
+    // operator are peer alternatives; neither pins a future product or recipient. Preparation
+    // uses structural evidence in hand/map/deck, never predicted future output value.
+    // A staffed facility selects actual outputs through the canonical card/recipient scorers.
+    // Today's resource-window and spendable-bank gates apply only to today's step.
+    // WorldTaskScore is intrinsic task merit; PreparationRank additionally prices this step for
+    // ordering prerequisites only. The card executor still charges the actual play once.
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
+    public enum DevelopmentPreparationKind { Facility, Operator }
 
     public sealed class DevelopmentOpportunity
     {
         public ResearchProductionMode Mode;
+        public DevelopmentPreparationKind? PreparationKind;
         public HexCoord FacilityHex;
         public CardDefinition Card;
         public bool ProducesEquipment;
         public float SuccessChance;
         // READY only: the exact facility/operator source. null => a PREPARE opportunity.
         public GenerationStep Generation;
-        // PREPARE only: the H/E/M/T THIS pass's stage consumes (facility, else operator; null for a
-        // walking hero). The one staged-funding fact — later stages fit projected income instead.
+        // PREPARE only: the resources this step consumes; null for a walking hero.
         public ResourceCost StageResourceCost;
+        internal float PreparationRank;
         // PREPARE facility stage only: the Base tier bought with the facility because every
         // unlocked slot of FacilityHex is taken (already inside StageResourceCost).
         public BaseUpgradeTier PreparationCapacityTier;
@@ -88,8 +65,7 @@ namespace Game.Ai.V2
         // Equipment only: the tactical share of ExpectedGain (Move/Range/AP/Command/roles, AiPower
         // units) — the part StrategicCardEvaluator.EquipmentUpgradeValue never matchup-gates.
         public float TacticalGain;
-        // PREPARE only: card-currency investment EV (output card score - Challenge -
-        // prerequisites). Card-level decisions only; never a world-task value.
+        // Legacy preview helper result; not used to admit or rank prerequisite steps.
         public float Ev;
         // The canonical world-task value of this opportunity (see the header).
         public TaskScore WorldTaskScore;
@@ -99,9 +75,8 @@ namespace Game.Ai.V2
         // Forecast-only cost beyond cards already counted in hand/deck. Never a spend authority.
         internal ResourceCost ForecastExtraCost;
         internal int ForecastUses = 1;
-        public bool IsPreparation => Generation == null;
+        public bool IsPreparation => PreparationKind.HasValue;
 
-        internal DevelopmentOpportunity Clone() => (DevelopmentOpportunity)MemberwiseClone();
     }
 
     public static class DevelopmentOpportunityEvaluator
@@ -162,16 +137,16 @@ namespace Game.Ai.V2
             }
 
             // One best useful action, not the sum of a catalog or mutually exclusive recipients.
-            DevelopmentOpportunity forecast = forecasts.OrderByDescending(o => o.BaseValue)
+            DevelopmentOpportunity forecast = forecasts.OrderByDescending(o => o.IsPreparation ? o.PreparationRank : o.BaseValue)
                 .ThenBy(o => o.Card?.authoredKey, System.StringComparer.Ordinal).FirstOrDefault();
             if (forecast != null)
             {
                 int uses = Mathf.Max(1, Mathf.Min(AiConfigV2.devFacilityExpectedUses,
-                    forecast.ProducesEquipment ? forecast.ForecastUses
+                    forecast.IsPreparation ? 1 : forecast.ProducesEquipment ? forecast.ForecastUses
                         : AiConfigV2.devFacilityExpectedUses));
                 var cost = new ResourceBundle();
                 foreach (ResourceType t in ResourceBundle.All)
-                    cost.Add(t, Mathf.Max(0, forecast.Card.resourceCost?.Get(t) ?? 0) * uses
+                    cost.Add(t, Mathf.Max(0, (forecast.IsPreparation ? forecast.StageResourceCost : forecast.Card?.resourceCost)?.Get(t) ?? 0) * uses
                         + Mathf.Max(0, forecast.ForecastExtraCost?.Get(t) ?? 0));
                 ResourceStarvationRegistry.ReplaceOperationalForecast(player, snap.TurnNumber,
                     "development", new Dictionary<string, ResourceBundle> { ["development"] = cost });
@@ -184,7 +159,7 @@ namespace Game.Ai.V2
                 .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).ToList();
             foreach (DevelopmentOpportunity op in result)
                 AiDebugLog.WriteDeduped(
-                    $"op:{op.Mode}:{op.FacilityHex.Q},{op.FacilityHex.R}:{op.Card?.authoredKey}",
+                    $"op:{op.Mode}:{op.FacilityHex.Q},{op.FacilityHex.R}:{op.PreparationKind}:{op.Card?.authoredKey}",
                     $"[AI][V2][Dev]   {(op.IsPreparation ? "prepare" : "ready")} "
                     + $"{op.Explain} base {op.BaseValue:0.0}");
             return result;
@@ -276,11 +251,15 @@ namespace Game.Ai.V2
             ResearchProductionMode mode, HexCoord hex, bool facilityReady, UnitData actor,
             WorldSnapshot snap, CapabilityInventory inv, ActorCommitments occupied,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents, ref List<GenerationStep> generatedOperatorSources)
+            IReadOnlyList<MissionIntent> activeIntents, ref List<GenerationStep> generatedOperatorSources,
+            bool describeOnly = false)
         {
             using var __scope = new Game.Core.ProfileScope("AI/Dev.AddPreparation");
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
                 return "reason=enemy_on_site";
+            if (!IsPreparationSite(player, hex)) return "reason=no_own_base";
+            if (ctx.ResearchProductionCatalog.ResolveFor(mode, player.Faction).Count == 0)
+                return "reason=no_mode_catalog";
             // A built facility of this mode elsewhere is reused, never duplicated.
             if (!facilityReady && snap.Development.Facilities.Any(f => f.Mode == mode))
                 return "reason=mode_facility_exists_elsewhere";
@@ -290,13 +269,16 @@ namespace Game.Ai.V2
                 .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
-            if (!facilityReady && facility == null)
-                return "reason=no_facility_card";
+            bool futureFacility = facilityReady || facility != null || snap.Self.Deck?.Any(d =>
+                d?.cardType == CardType.Facility && d.grantedAbilities?.Contains(
+                    ResearchProductionSystem.FacilityAbility(mode)) == true) == true;
+            if (!futureFacility)
+                return "reason=no_facility_path";
             // Every unlocked slot of this Base is taken: the next Base tier is this site's first
             // preparation stage, bought together with the facility (StrategicMaintenancePolicy owns
             // which tier opens a slot). No unlockable tier left -> the site cannot host it.
             BaseUpgradeTier capacityTier = null;
-            if (facility != null && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
             {
                 capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
                     BuildingRegistry.FindAt(hex), ctx);
@@ -305,21 +287,32 @@ namespace Game.Ai.V2
             }
             ArmyData garrison = ArmyRegistry.AllAt(hex)
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
-            CardData operatorCard = actor != null ? null : hand.Hand
+            bool operatorInTransit = activeIntents?.Any(i => i?.Status == IntentStatus.Active
+                && i.Development != null && i.Development.Mode == mode
+                && i.Development.FacilityHex.Equals(hex) && i.Development.Hero?.Owner == player
+                && !i.Development.Hero.IsPrisoner
+                && i.Development.Hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
+                && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                    && a.Members.Contains(i.Development.Hero))) == true;
+            DevelopmentLifecycleState lifecycle = MissionIntentRegistry.Peek(player)?.Development;
+            CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
+            CardData operatorCard = actor != null || operatorInTransit ? null : hand.Hand
                 .Where(c => c?.Definition?.cardType == CardType.Hero
                     && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment, c.Mutator)
                         .Contains(ResearchProductionSystem.RoleAbility(mode))
+                    && (lifecycle?.CanUseGeneratedOperatorAt(c, hex, mode, snap.TurnNumber) ?? true)
                     && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
                         CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _,
                         resourceForecast: true))
-                .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
+                .OrderBy(c => ReferenceEquals(c, pendingOperator) ? 0 : 1)
+                .ThenBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
             UnitData remote = null;
             ArmyData remoteArmy = null;
             int remoteTravel = int.MaxValue;
             float remoteCost = float.PositiveInfinity;
-            if (actor == null && ctx.Map != null)
+            if (actor == null && !operatorInTransit && ctx.Map != null)
             {
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
                 {
@@ -381,7 +374,7 @@ namespace Game.Ai.V2
             // currently eligible OTHER facility must already offer the exact qualified
             // Hero card. Source eligibility, authored identity and resources belong to
             // GenerationSource; this evaluator only picks the cheapest legal witness.
-            if (actor == null && operatorCard == null && remote == null
+            if (actor == null && !operatorInTransit && operatorCard == null && remote == null
                 && garrison != null && PlacementRules.CanDepositIntoGarrison(garrison))
             {
                 if (generatedOperatorSources == null)
@@ -407,7 +400,7 @@ namespace Game.Ai.V2
             // One deck promise at a time: while any facility already waits for its operator, a
             // second facility must not be built on the same future draw.
             CardDefinition deckOperator = null;
-            if (!facilityReady && actor == null && operatorCard == null && remote == null
+            if (actor == null && !operatorInTransit && operatorCard == null && remote == null
                 && generatedOperator == null && !snap.Development.AnyOperatorlessFacility)
                 deckOperator = snap.Self.Deck?
                     .Where(d => d != null && d.cardType == CardType.Hero
@@ -416,166 +409,137 @@ namespace Game.Ai.V2
                     .OrderBy(d => StrategicCardEvaluator.StrategicResourceCostValue(d.resourceCost, snap))
                     .ThenBy(d => d.authoredKey, System.StringComparer.Ordinal)
                     .FirstOrDefault();
-            if (actor == null && operatorCard == null && remote == null && generatedOperator == null
+            if (actor == null && !operatorInTransit && operatorCard == null && remote == null && generatedOperator == null
                 && deckOperator == null)
                 return "reason=no_operator";
 
-            UnitData projectedActor = actor ?? remote;
-            if (projectedActor == null)
+            // Preparation opens a capability; it does not commit to a future catalog output.
+            // Both components are alternatives at the first step. Only the selected action's bill
+            // and actor opportunity cost are evaluated; completed components are sunk facts.
+            int candidates = 0, admitted = 0;
+            string rejection = "no_current_component";
+            void Add(DevelopmentPreparationKind kind, ResourceCost cost, CardData card,
+                GenerationStep generated, UnitData hero, ArmyData sourceArmy, int travel)
             {
-                CardDefinition operatorDefinition = operatorCard?.Definition
-                    ?? generatedOperator?.CardDef ?? deckOperator;
-                CardDefinition operatorEquipment = operatorCard?.Equipment;
-                var operatorState = EquipmentSystem.Project(operatorDefinition, operatorEquipment, operatorCard?.Mutator);
-                int fate = operatorState.Stats[EquipmentStat.Fate];
-                // Unregistered preview used only for the canonical probability calculation,
-                // never as a generation/execution actor.
-                projectedActor = new UnitData { Fate = Mathf.Max(0, fate), IsHero = true,
-                    Owner = player, OriginatingCard = operatorDefinition,
-                    Equipment = operatorEquipment, Mutator = operatorCard?.Mutator };
-                projectedActor.Abilities.UnionWith(MaterializationChainMatching.EffectiveAbilities(
-                    operatorDefinition, operatorEquipment, operatorCard?.Mutator));
-            }
-            float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
-                .Sum(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
-                    + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
-                + (remote != null ? remoteCost : 0f);
-            float operatorChance = 1f;
-            if (generatedOperator != null)
-            {
-                // Challenge is paid even on loss; deploy AP only on a won roll. Its
-                // resource stake belongs to the source Challenge and is charged ONCE.
-                var mintedPreview = new CardData(generatedOperator.CardDef)
-                    { ResearchProductionCreated = true };
-                preparationCost += ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(
-                        generatedOperator.CardDef)
-                    + generatedOperator.SuccessChance * CardCostRules.PlayAp(mintedPreview))
-                    + StrategicCardEvaluator.StrategicResourceCostValue(
-                        generatedOperator.GenerationResourceCost, snap);
-                operatorChance = Mathf.Clamp01(generatedOperator.SuccessChance);
-            }
-            if (deckOperator != null)
-            {
-                // Its card is paid on the later operator stage; drawing it is not certain.
-                preparationCost += ActionPrice.ToCardScore(new CardData(deckOperator).EffectivePlayApCost)
-                    + StrategicCardEvaluator.StrategicResourceCostValue(deckOperator.resourceCost, snap);
-                operatorChance = AiConfigV2.devDeckOperatorConfidence;
-            }
-
-            // Staged funding: only THIS pass's stage (facility, else the operator) is paid from
-            // today's spendable stock and judged by the investment window; the rest of the chain
-            // (operator, output) must fit today's stock plus devChainFundingHorizonTurns of income.
-            // Demand emits one stage per pass and each stage's executor re-checks its own cost.
-            ResourceCost operatorResourceCost = operatorCard?.EffectivePlayResourceCost
-                ?? generatedOperator?.GenerationResourceCost ?? deckOperator?.resourceCost;
-            // The tier is a one-time investment like the facility, priced once (the same price the
-            // global-source upgrade path charges).
-            preparationCost += StrategicMaintenancePolicy.CapacityTierPrice(capacityTier, snap);
-            ResourceCost stageCost = facility != null
-                ? StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost,
-                    capacityTier?.cost)
-                : actor == null && remote == null ? operatorResourceCost : null;
-            List<ResourceType> stageShort = ResourceBundle.All.Where(t => (stageCost?.Get(t) ?? 0)
-                > StrategicSpendability.SpendableAmount(player, root, ctx, t)).ToList();
-            List<ResourceType> stageClosed = DevelopmentInvestmentGate.ClosedResources(
-                player, snap.TurnNumber, stageCost);
-            // Derive all walk facts from the selected witness AFTER hand-vs-map selection.
-            // Discarded map candidates must contribute neither delivery nor displacement.
-            var chosenDelivery = OperatorDeliveryFacts(remoteArmy, remote, remoteTravel);
-            float operatorDisplaced = remoteArmy != null
-                ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmy.Id) : 0f;
-            ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
-            // The facility and its operator are a one-time investment the site then reuses for
-            // every later Challenge; one output carries only its share of that investment.
-            float preparationShare = preparationCost / Mathf.Max(1, AiConfigV2.devFacilityExpectedUses);
-
-            int outputs = 0, admitted = 0;
-            float bestValue = float.NegativeInfinity, bestEv = float.NegativeInfinity;
-            string bestRejected = null;
-            var unaffordable = new HashSet<ResourceType>();
-            foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
-                ctx.ResearchProductionCatalog, mode, player.Faction))
-            {
-                if (card == null || (!card.isAviation
-                    && card.cardType != CardType.Equipment
-                    && card.cardType != CardType.Unit && card.cardType != CardType.Hero))
-                    continue;
-                outputs++;
-                ResourceCost chainCost = SumCost(facility?.EffectivePlayResourceCost,
-                    operatorResourceCost, card.resourceCost, capacityTier?.cost);
-                List<ResourceType> shortfall = ResourceBundle.All.Where(t => chainCost.Get(t)
-                    > StrategicSpendability.SpendableAmount(player, root, ctx, t)
-                        + AiConfigV2.devChainFundingHorizonTurns
-                            * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t))).ToList();
-                DevelopmentOpportunity op = card.isAviation
-                        || card.cardType == CardType.Unit || card.cardType == CardType.Hero
-                    ? PrepareDeployable(card, mode, hex, projectedActor, operatorChance,
-                        preparationShare, snap, inv, occupied, player, root, hand, ctx)
-                    : PrepareEquipment(card, mode, hex, projectedActor, operatorChance,
-                        preparationShare, snap, inv, player, root, hand, ctx);
-                if (op == null)
-                    continue;
-                // Every output term is conditional on first winning a generated operator.
-                float outputChance = operatorChance * Mathf.Clamp01(op.SuccessChance);
-                float amplificationBodies = op.ProducesEquipment
-                    ? outputChance * StrategicCardEvaluator.EquipmentUpgradeValue(op)
-                    : outputChance * forceNeed.Total * ForceBodies(card);
-                op.WorldTaskScore = BuildDevelopmentScore(amplificationBodies,
-                    chosenDelivery.ActionAp, chosenDelivery.ActivationNow,
-                    chosenDelivery.RecurringActivationAp, chosenDelivery.EtaTurns, operatorDisplaced);
-                if (op.BaseValue > bestValue)
+                candidates++;
+                var delivery = hero != null ? OperatorDeliveryFacts(sourceArmy, hero, travel) : default;
+                float displaced = hero != null && sourceArmy != null
+                    ? MissionIntent.DisplacementValueOf(activeIntents, sourceArmy.Id) : 0f;
+                // Compatibility baseline: the existing infrastructure value, no completion bonus
+                // or predicted output EV. Card AP/resources remain in the canonical card scorer.
+                var score = new TaskScore(strategicRelevance: AiConfigV2.nonCombatFacilityValue
+                        * (generated != null ? Mathf.Clamp01(generated.SuccessChance) : 1f),
+                    cardPrice: TaskScoreEvaluator.Price(delivery.ActionAp + delivery.ActivationNow),
+                    delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                        delivery.RecurringActivationAp, delivery.EtaTurns)),
+                    moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(displaced));
+                var op = new DevelopmentOpportunity
                 {
-                    bestValue = op.BaseValue;
-                    bestEv = op.Ev;
-                    bestRejected = card.displayName;
-                }
-                // Card chain worth its cards (card currency) AND a positive world task.
-                if (op.Ev <= AiConfigV2.devEvMargin
-                    || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-                // Resource/window rejection comes AFTER useful-output proof. Hand/deck already
-                // include facility/operator cards; only capacity and a minted operator are extra.
-                op.ForecastExtraCost = SumCost(capacityTier?.cost,
-                    generatedOperator?.GenerationResourceCost);
+                    Mode = mode, FacilityHex = hex, PreparationKind = kind,
+                    StageResourceCost = cost, WorldTaskScore = score,
+                    PreparationCapacityTier = kind == DevelopmentPreparationKind.Facility ? capacityTier : null,
+                    PreparationFacilityCard = kind == DevelopmentPreparationKind.Facility ? card : null,
+                    PreparationOperatorCard = kind == DevelopmentPreparationKind.Operator ? card : null,
+                    PreparationOperatorGeneration = generated, PreparationExistingHero = hero,
+                    PreparationSourceArmyId = sourceArmy?.Id, PreparationTravelCost = travel,
+                    Explain = $"{mode} @({hex.Q},{hex.R}) prepare {kind} "
+                        + $"facility={(facilityReady ? 1 : 0)} operator={(actor != null ? 1 : 0)} "
+                        + $"stageCost={cost} task={score.Value:0.##}",
+                };
+                int stageAp = card?.EffectivePlayApCost ?? (generated == null ? 0
+                    : ResearchProductionSystem.AttemptApCost(generated.CardDef));
+                if (kind == DevelopmentPreparationKind.Facility) stageAp += capacityTier?.apCost ?? 0;
+                // As in the shared card scorer: task merit and the canonical card price
+                // are separate terms. This rank is never written back into WorldTaskScore.
+                op.PreparationRank = score.Value - ActionPrice.ToCardScore(ActionPrice.Ap(stageAp))
+                    - StrategicCardEvaluator.StrategicResourceCostValue(cost, snap,
+                        t => StrategicSpendability.SpendableAmount(player, root, ctx, t), player);
+                if (!describeOnly && op.PreparationRank <= AiConfigV2.allocatorSliceEpsilon)
+                { rejection = "current_stage_opportunity_cost"; return; }
                 forecasts.Add(op);
-                if (stageShort.Count > 0 || stageClosed.Count > 0 || shortfall.Count > 0)
+                if (!describeOnly)
                 {
-                    unaffordable.UnionWith(shortfall);
-                    continue;
+                    List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
+                        player, snap.TurnNumber, cost);
+                    if (closed.Count > 0)
+                    { rejection = $"window_closed({ResourceList(closed)})"; return; }
+                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cost))
+                    { rejection = "current_stage_resources_unavailable"; return; }
+                    if (hero == null && StrategicSpendability.SpendableAp(player, root, ctx)
+                            + AiConfigV2.allocatorSliceEpsilon < stageAp)
+                    { rejection = "current_stage_ap_unavailable"; return; }
                 }
-                op.StageResourceCost = stageCost;
-                op.PreparationCapacityTier = capacityTier;
-                op.PreparationFacilityCard = facility;
-                op.PreparationOperatorCard = operatorCard;
-                op.PreparationOperatorGeneration = generatedOperator;
-                op.PreparationExistingHero = remote;
-                op.PreparationSourceArmyId = remoteArmy?.Id;
-                op.PreparationTravelCost = remote != null ? remoteTravel : 0;
-                op.Explain = $"{mode} @({hex.Q},{hex.R}) for {card.displayName} -> "
-                    + $"{op.RecipientLabel}; task={op.BaseValue:0.##} "
-                    + $"amplify={op.WorldTaskScore.ForceAmplification:0.##} "
-                    + $"price={op.WorldTaskScore.CardPrice:0.##} delivery={op.WorldTaskScore.Delivery:0.##} "
-                    + $"moverOpp={op.WorldTaskScore.MoverOpportunityCost:0.##} {forceNeed}; "
-                    + op.Explain + "; "
-                    + $"card EV={op.Ev:0.##}";
                 result.Add(op);
                 admitted++;
             }
-            string need = $"need[{(capacityTier != null ? "upgrade " : "")}{(facility != null ? "facility" : "")}"
-                + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : deckOperator != null ? " hero-deck" : " hero-generate") : "")}]";
-            return $"{need} outputs={outputs} admitted={admitted}"
-                + (admitted == 0
-                    ? (stageShort.Count > 0
-                        ? $" reason=stage_unaffordable({ResourceList(stageShort)})"
-                        : stageClosed.Count > 0
-                            ? $" reason=window_closed({ResourceList(stageClosed)})"
-                            : bestRejected != null
-                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##} ev={bestEv:0.##} prepShare={preparationShare:0.##})"
-                        : unaffordable.Count > 0
-                            ? $" reason=chain_unaffordable({ResourceList(unaffordable)})"
-                            : " reason=no_valuable_output")
-                    : "");
+            if (!facilityReady && facility != null)
+                Add(DevelopmentPreparationKind.Facility,
+                    StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost, capacityTier?.cost),
+                    facility, null, null, null, 0);
+            if (actor == null && !operatorInTransit)
+            {
+                if (operatorCard != null)
+                    Add(DevelopmentPreparationKind.Operator, operatorCard.EffectivePlayResourceCost,
+                        operatorCard, null, null, null, 0);
+                else if (remote != null)
+                    Add(DevelopmentPreparationKind.Operator, null, null, null, remote, remoteArmy, remoteTravel);
+                else if (generatedOperator != null)
+                    Add(DevelopmentPreparationKind.Operator, generatedOperator.GenerationResourceCost,
+                        null, generatedOperator, null, null, 0);
+            }
+            return $"components={candidates} admitted={admitted}"
+                + (admitted == 0 ? $" reason={rejection}" : "");
         }
+
+        // Structural facts for desire, using the SAME prerequisite enumeration as execution.
+        // No resource-window or today's affordability veto; no output/recipient pricing.
+        internal static List<DevelopmentOpportunity> PreparationFacts(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var result = new List<DevelopmentOpportunity>();
+            if (snap?.Self?.BaseHexes == null || snap.Development == null || hand?.Hand == null
+                || player == null || root == null || ctx?.ResearchProductionCatalog == null)
+                return result;
+            var forecasts = new List<DevelopmentOpportunity>();
+            ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
+            List<GenerationStep> sources = null;
+            foreach (ResearchProductionMode mode in Modes)
+            foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
+            {
+                BuildingData b = BuildingRegistry.FindAt(hex);
+                if (b == null || b.Owner != player) continue;
+                bool ready = b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
+                UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
+                if (ready && actor != null) continue;
+                AddPreparation(result, forecasts, mode, hex, ready, actor, snap, null, occupied,
+                    player, root, hand, ctx, activeIntents, ref sources, describeOnly: true);
+            }
+            return result;
+        }
+
+        internal static float StepResourceHeadroom(ResourceBundle surplus, ResourceCost cost)
+        {
+            float headroom = 1f;
+            foreach (ResourceType t in ResourceBundle.All)
+                if ((cost?.Get(t) ?? 0) > 0) headroom = Mathf.Min(headroom, surplus.Get(t));
+            return Mathf.Clamp01(headroom);
+        }
+
+        // A prepared operator can stand on its own base before a facility exists. This is NOT
+        // permission to generate: ResearchProductionSystem keeps the staffed-source contract.
+        internal static bool IsPreparationSite(Game.Players.PlayerSetupData player, HexCoord hex)
+        {
+            BuildingData b = BuildingRegistry.FindAt(hex);
+            return b != null && b.Owner == player && b.IsBase;
+        }
+
+        internal static bool OperatorPreparedAt(PlayerSetupData player, UnitData hero, HexCoord hex,
+            ResearchProductionMode mode) => IsPreparationSite(player, hex)
+                && hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
+                && hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
+                && ArmyRegistry.AllAt(hex).Any(a => a.Owner == player && !a.IsPrison
+                    && a.Members.Contains(hero));
 
         // Development's ONE world-task score assembly point. Every argument is a raw fact;
         // conversion to score units happens here through TaskScoreEvaluator. Execution slots
@@ -624,35 +588,6 @@ namespace Game.Ai.V2
             string.Concat(ResourceBundle.All.Where(types.Contains)
                 .Select(DevelopmentInvestmentGate.Abbrev));
 
-        private static DevelopmentOpportunity PrepareEquipment(CardDefinition card,
-            ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float operatorChance,
-            float preparationCost, WorldSnapshot snap, CapabilityInventory inv,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
-        {
-            if (card.equipment == null)
-                return null;
-            using var __scope = new Game.Core.ProfileScope("AI/Dev.PrepareEquipment");
-            // The projected output (best recipient + its priced value) depends on the card and the
-            // operator's success chance, never on the site: one settled Enumerate prices it once
-            // per (mode, card, chance) and every site re-uses a copy with its own hex and cost.
-            float chance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card);
-            float output;
-            DevelopmentOpportunity op;
-            if (RecipientEvaluationMemo.TryGetPreview(mode, card, chance, out var cachedOp, out output))
-                op = cachedOp?.Clone();
-            else
-            {
-                op = PriceEquipmentPreview(card, mode, hex, projectedActor, chance, snap, inv,
-                    player, root, hand, ctx, out output);
-                RecipientEvaluationMemo.StorePreview(mode, card, chance, op?.Clone(), output);
-            }
-            if (op == null)
-                return null;
-            op.FacilityHex = hex;
-            op.Ev = operatorChance * output - preparationCost;
-            return op;
-        }
-
         // How much a produced item beats a plain unit by how few cards are left (deck + hand): x1 while
         // units are plentiful (a unit is the better buy), rising as the deck runs out
         // (EquipmentEfficiency.SupplyMultiplier). A snapshot without Self counts as a full deck.
@@ -662,43 +597,6 @@ namespace Game.Ai.V2
                 return 1f;
             return EquipmentEfficiency.SupplyMultiplier(
                 (snap.Self.Deck?.Count ?? 0) + (snap.Self.Hand?.Count ?? 0));
-        }
-
-        private static DevelopmentOpportunity PriceEquipmentPreview(CardDefinition card,
-            ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float chance,
-            WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, out float output)
-        {
-            output = 0f;
-            DevelopmentOpportunity op = BestEquipmentOpportunity(mode, hex, card, chance, null,
-                snap, inv, player, root, hand, out _);
-            if (op == null)
-                return null;
-            // The staffed site will price this output at the supply multiplier of the day it makes
-            // it; the investment is judged at today's multiplier (units still plentiful => x1).
-            float supply = ProductionSupplyMultiplier(snap);
-            if (!Mathf.Approximately(supply, 1f))
-            {
-                op.ExpectedGain *= supply;
-                op.TacticalGain *= supply;
-            }
-            // The future output is priced exactly as the staffed facility will price it: the SAME
-            // plan shape and StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade (equipment value
-            // minus its Challenge + attach cost). The preview source is never executed. Every
-            // Challenge-side term is conditional on first winning a generated operator.
-            var preview = new GenerationStep
-            {
-                Mode = mode, FacilityHex = hex, Hero = projectedActor, CardDef = card,
-                ProducesEquipment = true, SuccessChance = op.SuccessChance,
-                UseKey = "investment-preview", CardKey = "investment-preview:" + card.authoredKey,
-            };
-            MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
-                op, preview, DesireAxis.Development);
-            if (plan == null)
-                return null;
-            output = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
-                op, plan, snap, player, root, ctx);
-            return float.IsNaN(output) || float.IsNegativeInfinity(output) ? null : op;
         }
 
         // Non-equipment outputs already have ONE canonical materialization/scoring path. Use a
@@ -783,8 +681,7 @@ namespace Game.Ai.V2
                     opt: option, projected: abilities);
                 plan.FinalCapability = capability;
                 // This includes actual mint/deploy AP and H/E/M/T costs, Challenge chance,
-                // card effects, alternative role and hold. The investment cost is added ONCE
-                // by AddPreparation after this score; it is not included in this plan.
+                // card effects, alternative role and hold. Prerequisite actions are sunk here.
                 StrategicCardUseCandidate score = StrategicCardEvaluator.ScoreSurplus(
                     plan, inv, recce, card.cardType == CardType.Hero, hand, abilities, snap,
                     spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
@@ -835,9 +732,6 @@ namespace Game.Ai.V2
             [System.ThreadStatic] private static RecipientEvaluationMemo s_current;
             private readonly RecipientEvaluationMemo _outer;
             private readonly Dictionary<(CardDefinition, object, bool), RecipientVerdict> _verdicts = new();
-            private readonly Dictionary<(ResearchProductionMode, CardDefinition, float),
-                (DevelopmentOpportunity Op, float Output)> _previews = new();
-
             public RecipientEvaluationMemo() { _outer = s_current; s_current = this; }
             public void Dispose() => s_current = _outer;
 
@@ -847,23 +741,6 @@ namespace Game.Ai.V2
                 verdict = default;
                 return s_current != null
                     && s_current._verdicts.TryGetValue((equipment, recipient, future), out verdict);
-            }
-
-            public static bool TryGetPreview(ResearchProductionMode mode, CardDefinition card,
-                float chance, out DevelopmentOpportunity op, out float output)
-            {
-                op = null; output = 0f;
-                if (s_current == null
-                    || !s_current._previews.TryGetValue((mode, card, chance), out var hit))
-                    return false;
-                op = hit.Op; output = hit.Output;
-                return true;
-            }
-
-            public static void StorePreview(ResearchProductionMode mode, CardDefinition card,
-                float chance, DevelopmentOpportunity op, float output)
-            {
-                if (s_current != null) s_current._previews[(mode, card, chance)] = (op, output);
             }
 
             public static void Store(CardDefinition equipment, object recipient, bool future,
@@ -1044,3 +921,4 @@ namespace Game.Ai.V2
             : $"hand:{GenerationSource.StableCardKey(op?.RecipientCard)}";
     }
 }
+

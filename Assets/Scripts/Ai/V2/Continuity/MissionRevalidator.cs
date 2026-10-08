@@ -50,22 +50,18 @@ namespace Game.Ai.V2
                     || target.Hero.Owner != player || target.Hero.IsPrisoner
                     || !target.Hero.HasAbility(ResearchProductionSystem.RoleAbility(target.Mode)))
                     return MissionValidity.StaleMoverLost;
-                BuildingData building = BuildingRegistry.FindAt(target.FacilityHex);
-                if (building == null || building.Owner != player
-                    || !building.HasFacilityWithAbility(
-                        ResearchProductionSystem.FacilityAbility(target.Mode)))
+                if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, target.FacilityHex))
                     return MissionValidity.StaleTargetInvalidated;
-                // Only this exact Hero completing the actual gameplay eligibility is success.
+                // Only this exact Hero arriving at its owned preparation base is success.
                 // A different operator at the site may justify retiring an unnecessary mission,
                 // but must never silently substitute for the bound actor.
-                if (ResearchProductionSystem.ActorStillQualifies(
+                if (DevelopmentOpportunityEvaluator.OperatorPreparedAt(
                         player, target.Hero, target.FacilityHex, target.Mode)
-                    && ResearchProductionSystem.IsEligible(player,
-                        target.FacilityHex, target.Mode, out _))
+                    && Game.Combat.BattleInitiator.FindEnemyAt(target.FacilityHex, player) == null)
                     return MissionValidity.StaleGoalMet;
-                if (mover.Hex.Equals(target.FacilityHex))
-                    return MissionValidity.StaleTargetInvalidated;
                 if (Game.Combat.BattleInitiator.FindEnemyAt(target.FacilityHex, player) != null)
+                    return MissionValidity.StaleUnaffordable; // transient site blockage
+                if (mover.Hex.Equals(target.FacilityHex))
                     return MissionValidity.StaleTargetInvalidated;
                 if (root != null && !mover.HasActivatedThisTurn
                     && root.ActionPoints < mover.ActivationApCost)
@@ -252,3 +248,4 @@ namespace Game.Ai.V2
             r != null && r.StepsMoved == 0 && r.ApSpent <= Mathf.Epsilon;
     }
 }
+
