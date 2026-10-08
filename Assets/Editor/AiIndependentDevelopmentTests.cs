@@ -492,6 +492,47 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void CompletedPreparationKeepsOneSitePerModeAndNeverPullsTheOperatorToASecondBase()
+        {
+            var second = new HexCoord(92, -17);
+            var secondBase = new BuildingData { Owner = _player, Hex = second, IsBase = true };
+            secondBase.Abilities.Add(UnitAbilities.Barracks); BuildingRegistry.Register(second, secondBase);
+            var secondGarrison = new ArmyData { Owner = _player, Hex = second, IsGarrison = true };
+            ArmyRegistry.Register(secondGarrison);
+            _snapshot.Self = new SelfSnapshot { BaseHexes = new[] { Site, second }, Armies = Array.Empty<ArmySnapshot>(),
+                Hand = _hand.Hand, Deck = Array.Empty<CardDefinition>() };
+            var hero = new UnitData { Owner = _player, IsHero = true }; hero.Abilities.Add(UnitAbilities.Assembler);
+            _garrison.Members.Add(hero);
+            Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(ResearchProductionMode.Production,
+                _snapshot, _player, _hand, _ctx, null), Is.EqualTo((HexCoord?)Site));
+            Assert.That(Facts().All(o => o.FacilityHex.Equals(Site)), Is.True,
+                "the prepared base is the only site still offered; the other base yields");
+            Assert.That(Facts().Any(o => o.PreparationKind == DevelopmentPreparationKind.Operator), Is.False,
+                "its qualified operator is not sold again as a delivery to the second base");
+        }
+
+        [Test]
+        public void WholeArmyDepartureIsBlockedOnlyWhenNoQualifiedOperatorStaysOutsideIt()
+        {
+            var facility = new FacilityData(); facility.Abilities.Add(UnitAbilities.Production); _base.FacilitySlots[0] = facility;
+            var lead = new UnitData { Owner = _player, IsHero = true }; lead.Abilities.Add(UnitAbilities.Assembler);
+            var field = new ArmyData { Owner = _player, Hex = Site };
+            field.Members.Add(lead); ArmyRegistry.Register(field);
+            Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.True,
+                "the army's only hero is the facility's only operator");
+            var other = new UnitData { Owner = _player, IsHero = true }; other.Abilities.Add(UnitAbilities.Assembler);
+            _garrison.Members.Add(other);
+            Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.False,
+                "another qualified operator stays on the hex outside the leaving army");
+            _garrison.Members.Remove(other); field.Members.Add(other);
+            Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.True,
+                "an operator inside the leaving army is not a kept operator");
+            field.Hex = new HexCoord(5, 5);
+            Assert.That(AiArmyRoles.DepartureStripsOperator(_player, field), Is.False,
+                "an army away from the facility serves nothing");
+        }
+
+        [Test]
         public void BoundIncomingOperatorPreventsDuplicatePreparationForSameSiteAndRole()
         {
             var hero = new UnitData { Owner = _player, IsHero = true }; hero.Abilities.Add(UnitAbilities.Assembler);

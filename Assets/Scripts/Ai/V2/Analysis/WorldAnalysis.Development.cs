@@ -183,6 +183,18 @@ namespace Game.Ai.V2
                 DevelopmentOpportunityEvaluator.StepResourceHeadroom(
                     snap.Development.InvestmentSurplusByType, o.StageResourceCost));
             snap.Development.DevPathViable |= steps.Count > 0;
+            snap.Development.ResearchPreparationSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+                ResearchProductionMode.Research, snap, player, hand, ctx, intents);
+            snap.Development.ProductionPreparationSite = DevelopmentOpportunityEvaluator.SelectedPreparationSite(
+                ResearchProductionMode.Production, snap, player, hand, ctx, intents);
+            // Operator duty of every own field army, against the live roster outside it.
+            if (snap.Self?.Armies != null)
+                foreach (ArmySnapshot army in snap.Self.Armies)
+                {
+                    if (army == null || army.IsGarrison || army.IsPrison) continue;
+                    army.OperatorDutyBlocksDeparture = AiArmyRoles.DepartureStripsOperator(player,
+                        AiV2Util.ResolveArmy(player, army.ArmyId), snap.Development.PreparationSiteFor);
+                }
         }
 
         // READY generation options have already passed ResearchProductionSystem affordability and

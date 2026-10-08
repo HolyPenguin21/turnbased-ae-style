@@ -256,6 +256,42 @@ namespace Game.Ai
             return false;
         }
 
+        // Does the Research/Production duty of `army`'s hex lose a mode if `hero` leaves together with
+        // `army`? A duty is an own facility of the mode on the hex, or (preparationSite) the hex the
+        // player's preparation has selected for that mode. False when another qualified hero stays
+        // on the hex OUTSIDE `army` (an operator inside the leaving army is not a kept operator).
+        // THE one answer for Housekeeping's release, Economy's builder admissibility and Provisioning.
+        public static bool FacilityNeedsHero(PlayerSetupData player, ArmyData army, UnitData hero,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
+        {
+            if (player == null || army == null || hero == null)
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(army.Hex);
+            if (building == null || building.Owner != player)
+                return false;
+            foreach (ResearchProductionMode mode in new[]
+                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            {
+                bool facility = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
+                HexCoord? site = facility ? null : preparationSite?.Invoke(mode);
+                if ((!facility && !(site.HasValue && site.Value.Equals(army.Hex)))
+                    || !hero.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
+                    continue;
+                if (!ResearchProductionSystem.FindActors(player, army.Hex, mode)
+                        .Any(a => a != hero && !army.Members.Contains(a)))
+                    return true;
+            }
+            return false;
+        }
+
+        // The whole field army moving off its hex would leave a served duty without its operator.
+        // A shape fact apart from IsHeroLed: whether this army MAY take a new remote assignment.
+        public static bool DepartureStripsOperator(PlayerSetupData player, ArmyData army,
+            System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
+            army != null && !army.IsGarrison && !army.IsPrison
+            && army.Members.Any(m => m != null && m.IsHero && !m.IsPrisoner
+                && FacilityNeedsHero(player, army, m, preparationSite));
+
         // Batch form is the canonical safety check for atomic ground-combat assembly. Checking
         // candidates one-by-one against the unchanged source could approve several removals that
         // collectively cross the protected garrison floor.

@@ -322,6 +322,8 @@ namespace Game.Ai.V2
                             ?? System.Array.Empty<ArmySnapshot>())
                         .Where(a => a != null).OrderBy(a => a.ArmyId)
                         .Select(a => $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}"
+                            // A served facility's / selected site's operator duty decides builder admissibility.
+                            + $":duty{(a.OperatorDutyBlocksDeparture ? 1 : 0)}"
                             + (economyArmyIds.Contains(a.ArmyId)
                                 ? $":{a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.ActivationApCost}"
                                 : string.Empty)));

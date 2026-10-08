@@ -56,26 +56,6 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // Does the facility lose a mode it serves if `hero` leaves with `army`? False when another
-        // qualified hero stays on the hex outside that army.
-        internal static bool FacilityNeedsHero(PlayerSetupData player, ArmyData army, UnitData hero)
-        {
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            if (building == null || building.Owner != player)
-                return false;
-            foreach (ResearchProductionMode mode in new[]
-                     { ResearchProductionMode.Research, ResearchProductionMode.Production })
-            {
-                if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
-                    || !hero.HasAbility(ResearchProductionSystem.RoleAbility(mode)))
-                    continue;
-                if (!ResearchProductionSystem.FindActors(player, army.Hex, mode)
-                        .Any(a => a != hero && !army.Members.Contains(a)))
-                    return true;
-            }
-            return false;
-        }
-
         // Before a ground operation moves `army` away from its base: every operator the facility
         // needs is left in the local garrison when that is legal and costs no AP. Where it is not
         // (sole commander, full garrison, activation charge, claimed garrison) the departure goes
@@ -89,7 +69,7 @@ namespace Game.Ai.V2
                 return 0;
             List<UnitData> operators = army.Members
                 .Where(m => m != null && m.IsHero && AiArmyRoles.IsFacilityOperator(player, army.Hex, m)
-                    && FacilityNeedsHero(player, army, m))
+                    && AiArmyRoles.FacilityNeedsHero(player, army, m))
                 .ToList();
             if (operators.Count == 0)
                 return 0;

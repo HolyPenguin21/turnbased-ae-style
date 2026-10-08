@@ -656,7 +656,10 @@ namespace Game.Ai.V2
                     }
                     continue;
                 }
+                // Shape AND duty: a hero-led army that is the only operator of a served facility /
+                // selected preparation site takes no remote build (staying on the target is fine).
                 if (!army.IsMobileEconomyBuilder
+                    || (army.OperatorDutyBlocksDeparture && !army.Hex.Equals(target))
                     || (projectedArmy == null && !liveById.ContainsKey(army.ArmyId)))
                     continue;
                 // maxMovement hard-blocks any hex this army could never enter in one step (see
