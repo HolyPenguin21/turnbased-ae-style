@@ -300,6 +300,123 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ShockAndKillShareOneProbabilityMass()
+        {
+            // A8 against D2 / HP4: a kill is part of the hit, Shock cancels the answer on ANY damage.
+            float expected = Game.Combat.BattleSimulationKernel.ExpectedExchangeDamage(8, 2, new[] { UnitAbilities.ShockAttack },
+                new UnitTypeTag[0], None, 4, out float hit);
+            float below = Game.Combat.BattleSimulationKernel.ExpectedExchangeDamage(8, 2, new[] { UnitAbilities.ShockAttack },
+                new UnitTypeTag[0], None, 3, out _);
+            float kill = expected - below;
+            Assert.That(kill, Is.GreaterThan(0f).And.LessThanOrEqualTo(hit + 1e-6f));
+            EquipmentEfficiency.AnswerWeights(hit, kill, true, out float unhurt, out float hurt);
+            Assert.That(unhurt + hurt, Is.EqualTo(1f - hit).Within(1e-6f), "with Shock only the unhit answer remains");
+            float doubleCounted = (1f - kill) * (1f - hit);
+            Assert.That(doubleCounted, Is.LessThan(unhurt - 0.01f), "the old product removed the killed mass twice");
+            EquipmentEfficiency.AnswerWeights(hit, kill, false, out unhurt, out hurt);
+            Assert.That(unhurt + hurt, Is.EqualTo(1f - kill).Within(1e-6f), "without Shock only the dead stop answering");
+        }
+
+        [Test]
+        public void SurvivingEnemyBerserkAnswersWithTheRaisedAttack()
+        {
+            var plain = Ctx(Enemy(1, 3, 6));
+            var berserk = new EfficiencyContext { Targets = new[] { new WorthIt.DefenderProfile(1, false, null, 3, 6, 1,
+                new[] { UnitAbilities.Berserk }) }, HostTags = new[] { UnitTypeTag.Infantry } };
+            // Armour is worth more against an enemy that hits harder after being hit.
+            float vsPlain = U(Medium, S(3, 3, 4, 2), plain).Combat;
+            float vsBerserk = U(Medium, S(3, 3, 4, 2), berserk).Combat;
+            Assert.That(vsBerserk, Is.GreaterThan(vsPlain));
+        }
+
+        [Test]
+        public void ScorcherAndSplashJudgeTheRealNeighbour()
+        {
+            WorthIt.DefenderProfile tank = new WorthIt.DefenderProfile(2, false, new[] { UnitTypeTag.Vehicle }, 3, 6, 1);
+            WorthIt.DefenderProfile bio = new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Bio }, 3, 4, 1);
+            WorthIt.DefenderProfile steel = new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Vehicle }, 3, 4, 1);
+            EfficiencyContext Battle(WorthIt.DefenderProfile neighbour) => new EfficiencyContext
+            {
+                Targets = new[] { tank }, HostTags = new[] { UnitTypeTag.Infantry },
+                Battles = new List<IReadOnlyList<WorthIt.DefenderProfile>> { new[] { tank, neighbour } },
+            };
+            var scorcher = new[] { UnitAbilities.Scorcher };
+            float withBio = U(S(5, 2, 4, 2), S(5, 2, 4, 2), Battle(bio), None, scorcher).Combat;
+            float withSteel = U(S(5, 2, 4, 2), S(5, 2, 4, 2), Battle(steel), None, scorcher).Combat;
+            Assert.That(withBio, Is.GreaterThan(0f), "a Bio neighbour of a vehicle is a valid Scorcher recipient");
+            Assert.That(withSteel, Is.Zero, "a non-Bio neighbour is not, whatever the primary is");
+            float splashSteel = U(S(5, 2, 4, 2), S(5, 2, 4, 2), Battle(steel), None, new[] { UnitAbilities.Splash }).Combat;
+            Assert.That(splashSteel, Is.GreaterThan(0f), "Splash hits any neighbour");
+        }
+
+        [Test]
+        public void UnknownNeighboursAreEstimatedFromTheKnownComposition()
+        {
+            var bioPool = new[]
+            {
+                new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Bio }, 3, 4, 1),
+                new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Bio }, 3, 4, 1),
+            };
+            var steelPool = new[]
+            {
+                new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Vehicle }, 3, 4, 1),
+                new WorthIt.DefenderProfile(1, false, new[] { UnitTypeTag.Vehicle }, 3, 4, 1),
+            };
+            var scorcher = new[] { UnitAbilities.Scorcher };
+            EfficiencyContext Ctxt(WorthIt.DefenderProfile[] pool) => new EfficiencyContext
+                { Targets = pool, HostTags = new[] { UnitTypeTag.Infantry }, SecondaryNeighbors = 1f };
+            float bio = U(S(5, 2, 4, 2), S(5, 2, 4, 2), Ctxt(bioPool), None, scorcher).Combat;
+            float steel = U(S(5, 2, 4, 2), S(5, 2, 4, 2), Ctxt(steelPool), None, scorcher).Combat;
+            Assert.That(bio, Is.GreaterThan(steel));
+            Assert.That(steel, Is.Zero);
+        }
+
+        [Test]
+        public void AntiAirShotNeedsALegalReaction()
+        {
+            var aa = new[] { UnitAbilities.AntiAir };
+            var wasp = new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Aircraft }, 8, 6, 2);
+            EfficiencyContext Contact(int distance = 1, bool sees = true, bool used = false, int earlier = 0,
+                bool hidden = false, int radius = 1)
+            {
+                var c = Ctx(wasp);
+                c.AirContacts = new[] { new AirContact(wasp, distance, sees, used, earlier) };
+                c.HostHidden = hidden; c.AntiAirRadius = radius;
+                return c;
+            }
+            float legal = U(Heavy, Heavy, Contact(), None, aa).AntiAir;
+            Assert.That(legal, Is.GreaterThan(0f));
+            Assert.That(U(Heavy, Heavy, Contact(distance: 3), None, aa).AntiAir, Is.Zero, "out of the AA radius");
+            Assert.That(U(Heavy, Heavy, Contact(distance: 3, radius: 3), None, aa).AntiAir, Is.GreaterThan(0f),
+                "the carrier own radius stat decides");
+            Assert.That(U(Heavy, Heavy, Contact(sees: false), None, aa).AntiAir, Is.Zero, "its owner does not see the hex");
+            Assert.That(U(Heavy, Heavy, Contact(hidden: true), None, aa).AntiAir, Is.Zero, "a hidden unit takes no shot");
+            Assert.That(U(Heavy, Heavy, Contact(used: true), None, aa).AntiAir, Is.Zero, "the reaction was already used");
+            float second = U(Heavy, Heavy, Contact(earlier: 1), None, aa).AntiAir;
+            Assert.That(second, Is.GreaterThan(0f).And.LessThan(legal), "a carrier that fires first takes its share");
+            // No concrete contact: only a labelled reserve proxy from the known air composition.
+            var composition = Ctx(wasp);
+            Assert.That(U(Heavy, Heavy, composition, None, aa).AntiAir, Is.GreaterThan(0f));
+            Assert.That(U(Heavy, Heavy, Ctx(Enemy(2, 3, 4)), None, aa).AntiAir, Is.Zero);
+        }
+
+        [Test]
+        public void SnapshotFreeAndReferenceWorldShareOneFormula()
+        {
+            var host = new CardDefinition { cardType = CardType.Unit, attack = 2, defenseRating = 1, hitPoints = 4, range = 2 };
+            var item = new CardDefinition { cardType = CardType.Equipment, equipment = new EquipmentGrant() };
+            item.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 3 });
+            var free = StrategicCardEvaluator.EquipmentDeltaParts(item, host);
+            var emptyWorld = StrategicCardEvaluator.EquipmentDeltaParts(item, new CardData(host), new WorldSnapshot());
+            Assert.That(free.Combat, Is.GreaterThan(0f));
+            Assert.That(free.Total, Is.EqualTo(emptyWorld.Total).Within(1e-5f), "no second, linear formula for the reserve");
+            var big = new CardDefinition { cardType = CardType.Equipment, equipment = new EquipmentGrant() };
+            big.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 40 });
+            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(big, host).Combat,
+                Is.GreaterThan(free.Combat), "no fixed clamp on the result");
+        }
+
+        [Test]
         public void HeroDoesNotBecomeAFighter()
         {
             var hero = new EfficiencyContext { IsHero = true, ArmyAttack = 0f, Targets = new[] { Enemy(1, 3, 4) } };

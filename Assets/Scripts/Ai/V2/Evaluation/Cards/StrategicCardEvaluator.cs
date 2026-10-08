@@ -1347,68 +1347,12 @@ namespace Game.Ai.V2
                     || purpose.Scout?.RequiresStealth == true && !AbilityParams.AbilitiesHaveAnyStealth(predicted.Abilities)))
                 return new EquipmentDelta(-1.5f, 0f, "reject=assignment-capability-loss");
 
-            // Operational decisions (a snapshot exists) price the change in the host's efficiency
-            // through the one bonus-weight table. Only the snapshot-free overload below (Self's
-            // equipment-reserve power estimate) keeps the old power-line arithmetic.
-            if (snap != null)
-                return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap,
-                    includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent);
-
-            // Signed deltas are essential: an override that gains Attack but destroys Defense,
-            // movement or Fate is not a free upgrade.
-            // A hero is the army's container, not a fighter (AiPower.ToPowerUnit): its Attack /
-            // Defense / HP / Initiative / Resistance, Range and damage abilities are worth nothing
-            // here — only battle Fate, movement, activation and useful capabilities.
-            // Not a ban: such gear is still attachable, it just never looks like an upgrade.
-            float combatDelta = isHero
-                ? (After(EquipmentStat.Fate) - before[EquipmentStat.Fate]) * AiConfigV2.powerHeroFateWeight
-                : (After(EquipmentStat.Attack) - before[EquipmentStat.Attack]) * AiConfigV2.powerAttackWeight
-                + (After(EquipmentStat.Defense) - before[EquipmentStat.Defense]) * AiConfigV2.powerDefenseWeight
-                + (After(EquipmentStat.HitPoints) - before[EquipmentStat.HitPoints]) * AiConfigV2.powerHitPointsWeight
-                + (After(EquipmentStat.Initiative) - before[EquipmentStat.Initiative]) * AiConfigV2.powerInitiativeWeight
-                + (After(EquipmentStat.Resistance) - before[EquipmentStat.Resistance]) * AiConfigV2.powerResistanceWeight;
-
-            float tactical = 0f;
-            tactical += (After(EquipmentStat.MoveMax) - before[EquipmentStat.MoveMax]) * 0.20f;
-            if (!isHero)
-                tactical += (After(EquipmentStat.Range) - before[EquipmentStat.Range]) * 0.15f;
-            tactical += (before[EquipmentStat.ActivationApCost] - After(EquipmentStat.ActivationApCost)) * 0.25f;
-            // Command is not a new hero-upgrade policy. Preserve only genuinely lost strategic
-            // capabilities; additions are priced by their actual mechanic below.
-            tactical += EquipmentRoleDelta(hostAbilities, predicted.Abilities,
-                    before[EquipmentStat.MoveMax], After(EquipmentStat.MoveMax), snap, inv, snap == null);
-            // The same strategic trait value used by ScoreSurplusRole/SynergyValue. Stealth
-            // enables an option for heroes too; it is not another damage-dealing combat body.
-            bool hadStealth = AbilityParams.AbilitiesHaveAnyStealth(hostAbilities);
-            bool hasStealth = AbilityParams.AbilitiesHaveAnyStealth(predicted.Abilities);
-            if (includeStealthTrait)
-                tactical += ((hasStealth ? 1 : 0) - (hadStealth ? 1 : 0))
-                    * AiConfigV2.stratTraitMatchBonus * 0.5f;
-            float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-            // The snapshot-free overload is also used by Self's existing equipment-reserve
-            // power estimate. Preserve that estimate; operational decisions always supply a
-            // snapshot and replace it with the contextual projection below.
-            if (snap == null && !isHero)
-            {
-                int added = predicted.Abilities.Count(a => !AbilityParams.TryGetStealthLevel(a, out _)
-                    && !hostAbilities.Contains(a));
-                int lost = hostAbilities.Count(a => !AbilityParams.TryGetStealthLevel(a, out _)
-                    && !predicted.Abilities.Contains(a));
-                combat += (added - lost) * 0.15f;
-            }
-
-            // The whole delta keeps its [-1.5, 1.5] bound; both parts shrink proportionally.
-            float raw = combat + tactical;
-            float bounded = Mathf.Clamp(raw, -1.5f, 1.5f);
-            float scale = Mathf.Abs(raw) > 1e-6f ? bounded / raw : 1f;
-            using var __detail = new Game.Core.ProfileScope("AI/Equip.Detail");
-            string detail = snap == null ? null
-                : "stats=" + string.Join(",", before.OrderBy(k => k.Key)
-                    .Where(k => After(k.Key) != k.Value).Select(k => $"{k.Key}:{k.Value}->{After(k.Key)}"))
-                    + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(a => a, System.StringComparer.Ordinal))
-                    + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(a => a, System.StringComparer.Ordinal))
-                    + $" combat={combat * scale:0.###} tactical={tactical * scale:0.###}";
-            return new EquipmentDelta(combat * scale, tactical * scale, detail);
+            // ONE formula for every caller. A snapshot-free call (Self equipment-reserve estimate) is the same
+            // calculation in an explicit REFERENCE context: no known enemies (catalog prior profile), no mission,
+            // no army, no world effects (a reserve has none to read). The consumer converts the result to its
+            // own unit at its own boundary (WorldAnalysis.Self.EquipmentReserve).
+            return ScoreEquipmentByEfficiency(before, predicted, hostAbilities, isHero, snap,
+                includeStealthTrait, purpose, army, hostUnit, hostTags, deployment, hpSpent);
         }
 
         // Operational equipment value: the change in the host's efficiency (EquipmentEfficiency),
@@ -1463,6 +1407,11 @@ namespace Game.Ai.V2
                 ctx.SplashTargets = Mathf.Min(2f, ctx.SecondaryNeighbors);
                 ctx.EnemyCommanderInitiative = Mathf.RoundToInt((float)opposition.Average(o => o.Commander.Initiative));
             }
+            if (opposition.Count > 0)
+                // Real neighbours for Splash / Scorcher: the ground bodies of each known enemy army.
+                ctx.Battles = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets).Battles;
+            if (hostUnit != null && army != null)
+                ctx.AirContacts = AirContactsFor(snap, army, hostUnit, ctx);
             if (isHero)
             {
                 var fighters = army?.Members?.Where(m => m != null && !m.IsHero).ToList();
@@ -1527,7 +1476,7 @@ namespace Game.Ai.V2
             // contextual registry value, exactly as before.
             List<string> unpricedBefore = hostAbilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
             List<string> unpricedAfter = predicted.Abilities.Where(x => !EquipmentEfficiency.IsPriced(x)).ToList();
-            if (unpricedBefore.Count > 0 || unpricedAfter.Count > 0)
+            if (snap != null && (unpricedBefore.Count > 0 || unpricedAfter.Count > 0))
             {
                 var attachmentTargets = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets);
                 tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
@@ -1544,6 +1493,45 @@ namespace Game.Ai.V2
                 + " abilities+= " + string.Join(",", predicted.Abilities.Except(hostAbilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " abilities-= " + string.Join(",", hostAbilities.Except(predicted.Abilities).OrderBy(x => x, System.StringComparer.Ordinal))
                 + " " + breakdown + $" combat={combat:0.###} tactical={tactical:0.###}");
+        }
+
+        // The host as an AA carrier against the air armies honestly known to its owner: distance from its
+        // army, owner vision of that hex, the carrier hidden state, an already used reaction, and the AA
+        // members of the same army that fire before it (AntiAirRules order: distance, army, slot). The
+        // rules owner stays AntiAirRules / AntiAirState; this only reads their inputs.
+        private static List<AirContact> AirContactsFor(WorldSnapshot snap, ArmyData army, UnitData host,
+            EfficiencyContext ctx)
+        {
+            var contacts = new List<AirContact>();
+            ctx.AntiAirRadius = host.AntiAirRadius;
+            ctx.HostHidden = host.IsHidden;
+            if (snap?.Known?.EnemySightings == null || snap.Observer == null || army.Members == null)
+                return contacts;
+            int hostSlot = army.Members.IndexOf(host);
+            foreach (AiMapMemory.KnownEnemySighting sighting in snap.Known.EnemySightings)
+            {
+                if (!sighting.IsAir || sighting.Defenders == null)
+                    continue;
+                var air = sighting.Defenders.Where(d => d.HitPoints > 0
+                    && (d.TypeTags?.Contains(UnitTypeTag.Aircraft) ?? false)).ToList();
+                if (air.Count == 0)
+                    continue;
+                var mean = new WorthIt.DefenderProfile(air.Average(d => d.Defense), false, air[0].TypeTags,
+                    air.Average(d => d.Attack), air.Average(d => d.HitPoints), air[0].Initiative, air[0].Abilities);
+                int distance = HexGridMath.Distance(army.Hex, sighting.Hex);
+                int earlier = 0;
+                for (int i = 0; i < army.Members.Count && i < hostSlot; i++)
+                {
+                    UnitData other = army.Members[i];
+                    if (other != null && !other.IsHidden
+                        && Game.Aviation.AntiAirRules.TryGetRadius(other, out int r) && distance <= r
+                        && Game.Aviation.AntiAirState.CanReact(other, sighting.ArmyId))
+                        earlier++;
+                }
+                contacts.Add(new AirContact(mean, distance, VisionSystem.IsVisible(snap.Observer, sighting.Hex),
+                    !Game.Aviation.AntiAirState.CanReact(host, sighting.ArmyId), earlier));
+            }
+            return contacts;
         }
 
         // Known facts only: the mission's target hex gives the route the host's army will really walk
@@ -1820,50 +1808,6 @@ namespace Game.Ai.V2
             public float Total => Combat + Tactical;
         }
 
-        private static float EquipmentRoleDelta(IReadOnlyList<string> beforeAbilities,
-            IReadOnlyList<string> afterAbilities, int beforeMove, int afterMove,
-            WorldSnapshot snap, CapabilityInventory inv, bool additions = true)
-        {
-            var before = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(beforeAbilities, beforeMove));
-            var after = new HashSet<IntendedRole>(StrategicEffectRegistry.Roles(afterAbilities, afterMove));
-            if (AbilityParams.AbilitiesHaveAnyRecce(beforeAbilities)) before.Add(IntendedRole.Scout);
-            if (AbilityParams.AbilitiesHaveAnyRecce(afterAbilities)) after.Add(IntendedRole.Scout);
-            if (beforeAbilities != null && (beforeAbilities.Contains(UnitAbilities.Researcher)
-                || beforeAbilities.Contains(UnitAbilities.Assembler))) before.Add(IntendedRole.Development);
-            if (afterAbilities != null && (afterAbilities.Contains(UnitAbilities.Researcher)
-                || afterAbilities.Contains(UnitAbilities.Assembler))) after.Add(IntendedRole.Development);
-
-            float delta = 0f;
-            foreach (IntendedRole role in before)
-            {
-                if (after.Contains(role))
-                    continue;
-                switch (role)
-                {
-                    case IntendedRole.AntiAir:
-                    case IntendedRole.AntiArmor:
-                        if (EnemyThreatModel.ThreatPresent(role, snap))
-                            delta -= AiConfigV2.capabilityGapValue;
-                        break;
-                    case IntendedRole.Scout:
-                        delta -= inv != null && inv.TotalScouts <= 1
-                            ? AiConfigV2.capabilityGapValue : AiConfigV2.holdScarcityValue;
-                        break;
-                    case IntendedRole.Development:
-                        if (HasDevelopmentRolePath(snap, beforeAbilities))
-                            delta -= AiConfigV2.holdUniqueRoleValue;
-                        break;
-                    case IntendedRole.Support:
-                    case IntendedRole.CapabilitySpecialist:
-                        delta -= AiConfigV2.holdNearTermDemandValue * 0.5f;
-                        break;
-                }
-            }
-            foreach (IntendedRole role in after)
-                if (additions && !before.Contains(role))
-                    delta += AiConfigV2.stratTraitMatchBonus;
-            return delta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-        }
 
         // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)

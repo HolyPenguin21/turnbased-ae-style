@@ -280,6 +280,9 @@ namespace Game.Ai.V2
         // distance d the HOST strikes only if its Range reaches d and the ENEMY answers only if its Range
         // does (unknown enemy Range answers everywhere). Buckets are the reference distance shares, or the
         // single known contact distance. The exchange numbers are computed once; buckets only gate them.
+        // Outcomes are JOINT: a kill is a subset of a hit, so Shock (any positive damage cancels the answer)
+        // and a plain kill never both subtract from the same probability mass; an enemy Berserk that
+        // survives a hit answers with the raised Attack.
         private static float ContactSeries(EfficiencyStats s, IReadOnlyCollection<string> abilities,
             EfficiencyContext ctx, WorthIt.DefenderProfile t)
         {
@@ -290,9 +293,67 @@ namespace Game.Ai.V2
             bool berserk = abilities.Contains(UnitAbilities.Berserk);
             bool shock = abilities.Contains(UnitAbilities.ShockAttack);
             bool targetShock = targetAbilities.Contains(UnitAbilities.ShockAttack);
+            bool targetBerserk = targetAbilities.Contains(UnitAbilities.Berserk);
             bool regeneration = abilities.Contains(UnitAbilities.Regeneration);
 
-            // Host strike on a fresh enemy: damage as a fraction of the target, kill and hit chances.
+            // Splash / Scorcher recipients: the REAL neighbours of the primary target when its battle is
+            // known, else the known composition stands in for unknown ones. Each neighbour is judged by its
+            // own tags and HP (Scorcher only reaches a Bio neighbour, Splash any).
+            float SecondaryFraction(int attack)
+            {
+                bool splash = abilities.Contains(UnitAbilities.Splash);
+                bool scorch = abilities.Contains(UnitAbilities.Scorcher);
+                if (!splash && !scorch)
+                    return 0f;
+                float sumAll = 0f, sumBio = 0f;
+                int n;
+                float Side(WorthIt.DefenderProfile j)
+                {
+                    int hpJ = Mathf.Max(1, Mathf.CeilToInt(j.HitPoints));
+                    return BattleSimulationKernel.ExpectedExchangeDamage(attack, Mathf.RoundToInt(t.Defense),
+                        abilities, t.TypeTags, targetAbilities, hpJ, out _, true, j.Abilities) / hpJ;
+                }
+                bool IsBio(WorthIt.DefenderProfile j) => j.TypeTags?.Contains(UnitTypeTag.Bio) ?? false;
+                List<WorthIt.DefenderProfile> known = KnownNeighbours(ctx, t);
+                if (known != null)
+                {
+                    n = known.Count;
+                    foreach (var j in known)
+                    {
+                        float side = Side(j);
+                        sumAll += side;
+                        if (IsBio(j)) sumBio += side;
+                    }
+                }
+                else
+                {
+                    // Unknown neighbours: how many (mean enemy army size - 1) and what they look like (the
+                    // other known profiles, a small deterministic sample) are separate estimates.
+                    List<WorthIt.DefenderProfile> pool = NeighbourPool(ctx, t);
+                    n = Mathf.Min(Mathf.Max(0, Mathf.RoundToInt(ctx.SecondaryNeighbors)), 8);
+                    if (pool.Count == 0 || n == 0)
+                        return 0f;
+                    float allMean = 0f, bioMean = 0f;
+                    foreach (var j in pool)
+                    {
+                        float side = Side(j);
+                        allMean += side;
+                        if (IsBio(j)) bioMean += side;
+                    }
+                    sumAll = n * allMean / pool.Count;
+                    sumBio = n * bioMean / pool.Count;
+                }
+                if (n <= 0)
+                    return 0f;
+                int splashCount = splash ? Mathf.Min(2, n) : 0;
+                float fraction = splashCount / (float)n * sumAll;
+                // Scorcher picks one of the neighbours Splash left: each neighbour is its pick with 1/n.
+                if (scorch && n > splashCount)
+                    fraction += sumBio / n;
+                return fraction;
+            }
+
+            // Host strike on a fresh enemy: damage as a fraction of the targets, kill and hit chances.
             float Strike(int attack, out float kill, out float hit)
             {
                 float expected = BattleSimulationKernel.ExpectedExchangeDamage(attack, t.Defense < 0 ? 0 : Mathf.RoundToInt(t.Defense),
@@ -302,23 +363,7 @@ namespace Game.Ai.V2
                         abilities, t.TypeTags, targetAbilities, targetHp - 1, out _)
                     : 0f;
                 kill = Mathf.Clamp01(expected - below);
-                float damage = expected;
-                int neighbours = Mathf.Max(0, Mathf.RoundToInt(ctx.SecondaryNeighbors));
-                if (neighbours > 0)
-                {
-                    int splash = abilities.Contains(UnitAbilities.Splash) ? Mathf.Min(2, neighbours) : 0;
-                    int scorch = abilities.Contains(UnitAbilities.Scorcher)
-                        && (t.TypeTags?.Contains(UnitTypeTag.Bio) ?? false)
-                        ? Mathf.Clamp(neighbours - splash, 0, 1) : 0;
-                    int secondary = splash + scorch;
-                    if (secondary > 0)
-                    {
-                        float side = BattleSimulationKernel.ExpectedExchangeDamage(attack, Mathf.RoundToInt(t.Defense),
-                            abilities, t.TypeTags, targetAbilities, targetHp, out _, true, targetAbilities);
-                        damage += secondary * side;
-                    }
-                }
-                return damage / targetHp;
+                return expected / targetHp + SecondaryFraction(attack);
             }
 
             int attackPool = s.Attack, defense = s.Defense;
@@ -328,19 +373,21 @@ namespace Game.Ai.V2
             int targetInitiative = t.Initiative + ctx.EnemyCommanderInitiative;
             float hostFirst = hostInitiative > targetInitiative ? 1f : hostInitiative == targetInitiative ? 0.5f : 0f;
 
-            // The enemy strike depends only on the wound the host carries into the contact: memoised per HP.
-            var enemy = new Dictionary<int, (float expected, float hit, float dies)>();
-            (float expected, float hit, float dies) EnemyStrike(int hostHp)
+            // The enemy strike depends on the wound the host carries into the contact and on whether a hit
+            // on the enemy raised its Attack (Berserk): memoised per (HP, raised).
+            var enemy = new Dictionary<(int, bool), (float expected, float hit, float dies)>();
+            (float expected, float hit, float dies) EnemyStrike(int hostHp, bool raised)
             {
-                if (enemy.TryGetValue(hostHp, out var known))
+                if (enemy.TryGetValue((hostHp, raised), out var known))
                     return known;
-                float e = BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
+                int attack = Mathf.RoundToInt(t.Attack) + (raised ? mags.BerserkAttackGain : 0);
+                float e = BattleSimulationKernel.ExpectedExchangeDamage(attack, defense,
                     t.Abilities, hostTags, abilities, hostHp, out float hit);
                 float below = hostHp > 1
-                    ? BattleSimulationKernel.ExpectedExchangeDamage(Mathf.RoundToInt(t.Attack), defense,
+                    ? BattleSimulationKernel.ExpectedExchangeDamage(attack, defense,
                         t.Abilities, hostTags, abilities, hostHp - 1, out _)
                     : 0f;
-                return enemy[hostHp] = (e, hit, Mathf.Clamp01(e - below));
+                return enemy[(hostHp, raised)] = (e, hit, Mathf.Clamp01(e - below));
             }
 
             float Series(bool hostCan, bool targetCan)
@@ -352,22 +399,23 @@ namespace Game.Ai.V2
                 for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
                 {
                     int hostHp = Mathf.Max(1, s.HitPoints - Mathf.RoundToInt(cumulativeWound));
-                    (float tExpected, float tHit, float hostDies) = targetCan ? EnemyStrike(hostHp) : (0f, 0f, 0f);
+                    (float expected, float hit, float dies) plain = targetCan ? EnemyStrike(hostHp, false) : (0f, 0f, 0f);
+                    (float expected, float hit, float dies) raised = targetCan && targetBerserk ? EnemyStrike(hostHp, true) : plain;
 
-                    float hostRespondsAfterEnemy = 1f - (targetShock ? tHit : 0f);
-                    // Berserk: a hit on the host raises its Attack for its answer within this contact.
-                    float dealtB = berserk ? tHit * hBoosted + (1f - tHit) * hDealtA : hDealtA;
+                    // ---- host first. The enemy answers unless it died (a kill) or, with Shock, took ANY
+                    // damage (a hit, kills included). A survivor of a hit answers with the raised Attack.
+                    AnswerWeights(hHitA, hKillA, shock, out float answerUnhurt, out float answerHurt);
+                    float woundA = answerUnhurt * plain.expected + answerHurt * raised.expected;
+                    float deathA = answerUnhurt * plain.dies + answerHurt * raised.dies;
 
-                    // Host first: dealt; the enemy answers unless killed or suppressed.
-                    float enemyAnswers = (1f - hKillA) * (1f - (shock ? hHitA : 0f));
-                    float woundA = enemyAnswers * tExpected;
-                    float deathA = enemyAnswers * hostDies;
-                    // Enemy first: the host answers unless dead or suppressed.
-                    float woundB = tExpected;
-                    float deathB = hostDies;
+                    // ---- enemy first (at its plain Attack). The host answers unless it died or, against a
+                    // Shock enemy, was hit at all; a surviving hit raises a Berserk host.
+                    AnswerWeights(plain.hit, plain.dies, targetShock, out float hostUnhit, out float hostHitSurvives);
+                    float answerB = hostUnhit * hDealtA + hostHitSurvives * (berserk ? hBoosted : hDealtA);
+                    float woundB = plain.expected;
+                    float deathB = plain.dies;
 
-                    total += alive * (hostFirst * hDealtA
-                        + (1f - hostFirst) * (1f - deathB) * hostRespondsAfterEnemy * dealtB);
+                    total += alive * (hostFirst * hDealtA + (1f - hostFirst) * answerB);
                     cumulativeWound += hostFirst * woundA + (1f - hostFirst) * woundB;
                     alive *= 1f - (hostFirst * deathA + (1f - hostFirst) * deathB);
                     if (regeneration && alive > 0f)
@@ -388,11 +436,98 @@ namespace Game.Ai.V2
                 + AiConfigV2.equipDistanceShare4 * Series(s.Range >= 4, EnemyCan(4));
         }
 
-        // Value of the host's anti-air reaction: its damage on a legal air target, discounted by the
-        // reactions of the local army that already fire first. 0 without a known air target.
+        // Joint outcomes of one strike for the side that may answer it. A kill is a SUBSET of a hit, so:
+        // unhurt (answers at its plain Attack) = 1 - hit; hurt-but-alive (answers, a Berserk raised) = hit - kill,
+        // and with Shock any positive damage cancels the answer, so only the unhurt answer remains.
+        internal static void AnswerWeights(float hit, float kill, bool shock, out float unhurt, out float hurtAlive)
+        {
+            unhurt = Mathf.Clamp01(1f - hit);
+            hurtAlive = shock ? 0f : Mathf.Max(0f, hit - kill);
+        }
+
+        // The other ground bodies of the battle that contains `t`, or null when its battle is unknown.
+        private static List<WorthIt.DefenderProfile> KnownNeighbours(EfficiencyContext ctx, WorthIt.DefenderProfile t)
+        {
+            if (ctx.Battles == null)
+                return null;
+            foreach (var battle in ctx.Battles)
+            {
+                int at = -1;
+                for (int i = 0; i < battle.Count; i++)
+                    if (battle[i].Equals(t)) { at = i; break; }
+                if (at < 0)
+                    continue;
+                var others = new List<WorthIt.DefenderProfile>(battle.Count - 1);
+                for (int i = 0; i < battle.Count; i++)
+                    if (i != at) others.Add(battle[i]);
+                return others;
+            }
+            return null;
+        }
+
+        // Stand-in neighbours: the other known ground profiles, at most six, picked by stride.
+        private static List<WorthIt.DefenderProfile> NeighbourPool(EfficiencyContext ctx, WorthIt.DefenderProfile t)
+        {
+            var all = new List<WorthIt.DefenderProfile>();
+            bool skipped = false;
+            if (ctx.Targets != null)
+                foreach (var j in ctx.Targets)
+                {
+                    if (j.IsHero || j.HitPoints <= 0 || (j.TypeTags?.Contains(UnitTypeTag.Aircraft) ?? false))
+                        continue;
+                    if (!skipped && j.Equals(t)) { skipped = true; continue; }
+                    all.Add(j);
+                }
+            if (all.Count <= 6)
+                return all;
+            var sample = new List<WorthIt.DefenderProfile>(6);
+            for (int i = 0; i < 6; i++)
+                sample.Add(all[(int)((long)i * all.Count / 6)]);
+            return sample;
+        }
+
+        // AA value, two explicitly different things.
+        //  * CONCRETE: known air armies with a distance, owner vision, the host hidden state and the used
+        //    reaction. A reaction is legal exactly when AntiAirRules would offer it (radius, the owner sees
+        //    the hex, the carrier is not hidden, it has not already reacted); only legal ones pay, and a
+        //    carrier that fires earlier in the rule order (same army, lower slot) takes its share first.
+        //  * RESERVE PROXY: no concrete contact, only a known air composition - a labelled estimate of one
+        //    shot at that composition. Never presented as a legal reaction.
         private static float ReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
         {
-            if (!abilities.Contains(UnitAbilities.AntiAir) || ctx.Targets == null || ctx.Targets.Count == 0)
+            if (!abilities.Contains(UnitAbilities.AntiAir))
+                return 0f;
+            if (ctx.AirContacts != null && ctx.AirContacts.Count > 0)
+                return ConcreteReactionValue(s, abilities, ctx);
+            return ReserveReactionProxy(s, abilities, ctx);
+        }
+
+        private static float AirShotFraction(EfficiencyStats s, IReadOnlyCollection<string> abilities,
+            WorthIt.DefenderProfile air)
+        {
+            int hp = Mathf.Max(1, Mathf.CeilToInt(air.HitPoints));
+            return BattleSimulationKernel.ExpectedExchangeDamage(s.Attack, Mathf.RoundToInt(air.Defense),
+                abilities, air.TypeTags, air.Abilities ?? Array.Empty<string>(), hp, out _) / hp;
+        }
+
+        private static float ConcreteReactionValue(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        {
+            if (ctx.HostHidden || !Game.Aviation.AntiAirRules.TryGetRadius(abilities, ctx.AntiAirRadius, out int radius))
+                return 0f;
+            float value = 0f;
+            foreach (AirContact c in ctx.AirContacts)
+            {
+                if (c.ReactionUsed || !c.OwnerSeesHex || c.Distance > radius)
+                    continue;
+                float damage = Mathf.Clamp01(AirShotFraction(s, abilities, c.Air));
+                value += damage * Mathf.Pow(1f - damage, Mathf.Max(0, c.EarlierReactions));
+            }
+            return AiConfigV2.equipCombatBodyScale * value;
+        }
+
+        private static float ReserveReactionProxy(EfficiencyStats s, IReadOnlyCollection<string> abilities, EfficiencyContext ctx)
+        {
+            if (ctx.Targets == null || ctx.Targets.Count == 0)
                 return 0f;
             float value = 0f;
             int air = 0;
@@ -401,10 +536,8 @@ namespace Game.Ai.V2
                 if (!(t.TypeTags?.Contains(UnitTypeTag.Aircraft) ?? false) || t.HitPoints <= 0)
                     continue;
                 air++;
-                int hp = Mathf.Max(1, Mathf.CeilToInt(t.HitPoints));
-                float damage = BattleSimulationKernel.ExpectedExchangeDamage(s.Attack, Mathf.RoundToInt(t.Defense),
-                    abilities, t.TypeTags, t.Abilities, hp, out _) / hp;
-                value += damage * Mathf.Pow(1f - Mathf.Clamp01(damage), Mathf.Max(0, ctx.OtherAntiAirCarriers));
+                float damage = Mathf.Clamp01(AirShotFraction(s, abilities, t));
+                value += damage * Mathf.Pow(1f - damage, Mathf.Max(0, ctx.OtherAntiAirCarriers));
             }
             if (air == 0)
                 return 0f;
