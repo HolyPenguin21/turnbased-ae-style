@@ -204,7 +204,7 @@ namespace Game.Ai.V2
                 yield break;
 
             // Research/Production facilities unlock only through the SAME admitted preparation
-            // Development itself would act on (investment window + EV), never a looser predicate.
+            // Development itself would act on (current-step window/bank/cost), never a looser predicate.
             var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
             List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.Enumerate(
                     snap, player, root, hand, ctx, intents)
@@ -251,8 +251,7 @@ namespace Game.Ai.V2
                 DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
                     ? preparation.FirstOrDefault(op => op.PreparationFacilityCard == bestFacility.Card
                         && op.FacilityHex.Equals(b.Hex)
-                        // The evaluator already proved the later stages fit projected income;
-                        // today only the tier and the facility stage are paid.
+                        // Today only the tier and facility are paid; no future output is priced.
                         // A stage that already carries its tier is not charged it twice.
                         && !ResourceBundle.All.Any(t =>
                             (op.PreparationCapacityTier != null ? 0 : tier.cost?.Get(t) ?? 0)
@@ -266,9 +265,7 @@ namespace Game.Ai.V2
                     Building = b,
                     Tier = tier,
                     Facility = bestFacility.Card,
-                    FacilityUtility = witness != null
-                        ? Mathf.Min(bestFacility.Evaluation.TotalUseScore, witness.Ev)
-                        : bestFacility.Evaluation.TotalUseScore,
+                    FacilityUtility = bestFacility.Evaluation.TotalUseScore,
                     FacilityBreakdown = bestFacility.Evaluation.Breakdown?.ToCompact() ?? "no breakdown",
                 };
             }

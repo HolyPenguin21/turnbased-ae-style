@@ -30,6 +30,24 @@ namespace Game.Ai.V2
             _generatedDevelopmentOperators[card] = (site, mode, turn);
         }
 
+        // Read-only destination binding. Expired claims never constrain a new candidate.
+        internal bool CanUseGeneratedOperatorAt(CardData card, HexCoord site,
+            ResearchProductionMode mode, int turn) =>
+            !_generatedDevelopmentOperators.TryGetValue(card, out var claim)
+                || turn < claim.Turn || turn - claim.Turn > Math.Max(1, AiConfigV2.commitmentStallTurns)
+                || (claim.Site.Equals(site) && claim.Mode == mode);
+
+        internal CardData GeneratedOperatorFor(HexCoord site, ResearchProductionMode mode, int turn) =>
+            _generatedDevelopmentOperators.Where(x => x.Value.Site.Equals(site) && x.Value.Mode == mode
+                && turn >= x.Value.Turn && turn - x.Value.Turn <= Math.Max(1, AiConfigV2.commitmentStallTurns))
+                .Select(x => x.Key).FirstOrDefault();
+
+        internal string GeneratedOperatorFacts(int turn) => string.Join(";",
+            _generatedDevelopmentOperators.Where(x => turn >= x.Value.Turn
+                    && turn - x.Value.Turn <= Math.Max(1, AiConfigV2.commitmentStallTurns))
+                .Select(x => $"{GenerationSource.StableCardKey(x.Key)}:{x.Value.Site}:{x.Value.Mode}:{x.Value.Turn}")
+                .OrderBy(x => x, StringComparer.Ordinal));
+
         // Infrastructure provides current structural eligibility; State owns identity,
         // finite age and removal. An AP shortage is NOT a reason to discard a valid card.
         internal IReadOnlyList<CardData> ReconcileGeneratedDevelopmentOperators(int turn,
@@ -46,3 +64,4 @@ namespace Game.Ai.V2
 
     }
 }
+

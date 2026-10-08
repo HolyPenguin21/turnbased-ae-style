@@ -87,12 +87,8 @@ namespace Game.Ai.V2
                             card.Definition, card.Equipment, card.Mutator)
                             .Contains(ResearchProductionSystem.RoleAbility(mode)))
                         return false;
-                    BuildingData building = BuildingRegistry.FindAt(site);
-                    if (building == null || building.Owner != player
-                        || !building.HasFacilityWithAbility(
-                            ResearchProductionSystem.FacilityAbility(mode))
+                    if (!DevelopmentOpportunityEvaluator.IsPreparationSite(player, site)
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
-                        || Game.Combat.BattleInitiator.FindEnemyAt(site, player) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
                     return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
@@ -779,8 +775,6 @@ namespace Game.Ai.V2
             var rejected = new List<string>();
             foreach ((CardData card, int ordinal) in cards)
             {
-                StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
-                    NonCombatRole.Facility, card, snap, inv, hand, bestEquipmentUpgrade: 0f);
                 foreach (HexCoord baseHex in bases)
                 {
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
@@ -819,6 +813,11 @@ namespace Game.Ai.V2
                         rejected.Add($"{at}:spendable_resources");
                         continue;
                     }
+                    StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
+                        NonCombatRole.Facility, card, snap, inv, hand, bestEquipmentUpgrade: 0f,
+                        actualApCost: stageAp, actualResourceCost: stageCost,
+                        spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
+                        player: player);
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
                     BuildingData buildingToUpgrade = upgradeBase;
@@ -953,20 +952,24 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             AxisDemand demand, MaterializationReservation reservation)
         {
-            if (hand?.Hand == null || snap?.Development?.Facilities == null)
+            if (hand?.Hand == null || !demand.TargetHex.HasValue
+                || !demand.DevelopmentOperatorMode.HasValue
+                || !DevelopmentOpportunityEvaluator.IsPreparationSite(player, demand.TargetHex.Value))
                 return null;
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             var legal = new List<InfraCandidate>();
-            foreach (DevelopmentFacility fac in snap.Development.Facilities)
+            // Operator-first prepares the same own base; a facility is not a deployment precondition.
+            var sites = new[] { new DevelopmentFacility
             {
-                if (fac.HasHero || fac.Contested)
-                    continue;
-                if (demand.DevelopmentOperatorMode.HasValue
-                    && demand.DevelopmentOperatorMode.Value != fac.Mode)
-                    continue;
-                if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(fac.Hex))
-                    continue;
+                Hex = demand.TargetHex.Value, Mode = demand.DevelopmentOperatorMode.Value,
+                HasHero = ResearchProductionSystem.FindActor(player, demand.TargetHex.Value,
+                    demand.DevelopmentOperatorMode.Value) != null,
+                Contested = Game.Combat.BattleInitiator.FindEnemyAt(demand.TargetHex.Value, player) != null,
+            } };
+            foreach (DevelopmentFacility fac in sites)
+            {
+                if (fac.HasHero || fac.Contested) continue;
 
                 string role = ResearchProductionSystem.RoleAbility(fac.Mode);
                 ArmyData garrison = ArmyRegistry.AllAt(fac.Hex)
@@ -1000,7 +1003,9 @@ namespace Game.Ai.V2
                         abilities);
                     StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreForDemand(
                         valuationPlan, demand, valuationPlan.ExpectedTraits, inv,
-                        card.Definition.moveMax, hasCompetingHeroDemand: false, snap);
+                        card.Definition.moveMax, hasCompetingHeroDemand: false, snap,
+                        spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
+                        player: player);
 
                     HexCoord at = fac.Hex;
                     CardData selectedCard = card;
@@ -1012,7 +1017,7 @@ namespace Game.Ai.V2
                         DecisionScore = use.NetScore,
                         HandOrdinal = ordinal,
                         TargetHex = at,
-                        Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into facility garrison @({at.Q},{at.R})",
+                        Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
                         Execute = () =>
                         {
                             ArmyData g = ArmyRegistry.AllAt(at)
@@ -1052,8 +1057,7 @@ namespace Game.Ai.V2
             ArmyData destinationGarrison = ArmyRegistry.AllAt(demand.TargetHex.Value)
                 .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
             if (destination == null || destination.Owner != player
-                || !destination.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(
-                    demand.DevelopmentOperatorMode.Value))
+                || !destination.IsBase
                 || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)
                 || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, demand.TargetHex.Value, proposed.CardDef))
                 return null;
@@ -1101,4 +1105,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

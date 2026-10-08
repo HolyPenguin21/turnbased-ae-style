@@ -238,23 +238,18 @@ namespace Game.EditorTests
 
         [TestCase(AttachmentSlot.Equipment)]
         [TestCase(AttachmentSlot.Mutator)]
-        public void FutureEquipmentPreparationDoesNotRequireTodaysAttachmentBudget(AttachmentSlot slot)
+        public void ReadyOutputSelectionDoesNotRequireTodaysAttachmentBudget(AttachmentSlot slot)
         {
             var hand = new AiHandData(null, default, 0);
             var host = new CardData(AttachmentSlotTests.Host(hero: true));
             hand.AddCard(host);
             var output = AttachmentSlotTests.Attachment(slot, EquipmentStat.Fate, 4);
             output.activationApCost = 1;
-            var prepare = typeof(DevelopmentOpportunityEvaluator).GetMethod("PrepareEquipment",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-            var opportunity = (DevelopmentOpportunity)prepare.Invoke(null, new object[]
-            {
-                output, ResearchProductionMode.Production, default(HexCoord),
-                AttachmentSlotTests.Body(AttachmentSlotTests.Host(hero: true)), 1f, 0f,
-                null, new CapabilityInventory(), new PlayerSetupData(), null, hand, null,
-            });
-            Assert.That(opportunity, Is.Not.Null, "Future usefulness must survive an unavailable current AP bank");
-            Assert.That(opportunity.RecipientCard, Is.SameAs(host));
+            var opportunities = DevelopmentOpportunityEvaluator.EquipmentOpportunities(
+                ResearchProductionMode.Production, default, output, 1f, null, null,
+                new CapabilityInventory(), new PlayerSetupData(), null, hand, out _, futureAttachment: true);
+            Assert.That(opportunities, Has.Count.EqualTo(1), "Output selection survives an unavailable attachment budget");
+            Assert.That(opportunities[0].RecipientCard, Is.SameAs(host));
             Assert.That(EquipmentSystem.CanAttach(ResearchProductionSystem.MintCard(output), host,
                 null, out _), Is.False, "Live attachment still requires today's budget");
         }
@@ -700,3 +695,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

@@ -11,6 +11,28 @@ namespace Game.EditorTests
     public class AiDevelopmentReadmissionTests
     {
         [Test]
+        public void DeckQualificationChangesInvalidatePreparationEvenWithoutCombatStatChanges()
+        {
+            var snapshot = Snapshot(Army());
+            var definition = new CardDefinition { cardType = CardType.Hero, grantedAbilities = new List<string>() };
+            snapshot.Self.Deck = new[] { definition };
+            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            definition.grantedAbilities.Add(UnitAbilities.Assembler);
+            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+        }
+
+        [Test]
+        public void PreparationHeadroomInvalidatesAdmissionIndependentlyOfOutputFacts()
+        {
+            var snapshot = Snapshot(Army());
+            snapshot.Development.HasPreparationStep = true;
+            snapshot.Development.PreparationHeadroom = 0.2f;
+            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            snapshot.Development.PreparationHeadroom = 0.8f;
+            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+        }
+
+        [Test]
         public void ApReservationReleaseInvalidatesAdmissionWithoutChangingPhysicalAp()
         {
             var snapshot = Snapshot(Army());
@@ -221,3 +243,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

@@ -285,9 +285,7 @@ namespace Game.Ai.V2
     internal static class StrategicCardEvaluator
     {
         // Generated Equipment strengthens an EXISTING host: price its marginal value through the
-        // ONE EquipmentUpgradeValue, never the host's total combat power. Development PREPARE
-        // prices its projected output through this same method; its Ev only adds the
-        // prerequisite investment. WHEN Research/Production may spend at all is
+        // ONE EquipmentUpgradeValue, never the host's total combat power. READY development prices its chosen output here. WHEN Research/Production may spend at all is
         // DevelopmentInvestmentGate's decision (resources the main deck does not absorb), so no
         // displaced-alternative or economy multiplier is priced here a second time. Phase A and
         // other card chains share this evaluator's ONE AP/resource/chain cost function.
@@ -488,20 +486,17 @@ namespace Game.Ai.V2
             // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
             // before — this exclusion is scoped to the ResourceGain role only, not the ability.
             bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
-            // Support and its Development facility are the same real thing (a Researcher/Assembler
-            // hero needs a Lab/Factory to man, on the SAME hex; one without the other does
-            // nothing), so Support's RoleFit uses the SAME formula ScoreNonCombat uses for a
-            // Facility: full value when a facility to operate actually exists
-            // (snap.Self.HasDevFacility), zero when it does not.
+            // A compatible preparation path gives an operator value before a facility is built.
+            // This is snapshot evidence for the same role, not a hypothetical future generator.
             if (role == IntendedRole.Support)
             {
                 float supportEco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
-                bool supportHasFacility = snap?.Self?.HasDevFacility == true;
+                bool supportHasFacility = HasDevelopmentRolePath(snap, projected);
                 bd.RoleFit = supportHasFacility
                     ? AiConfigV2.nonCombatFacilityValue + (1f - supportEco) * AiConfigV2.nonCombatEconomyRunwayBonus
                     : 0f;
                 bd.EffectDetail = JoinDetail(bd.EffectDetail,
-                    $"support facilityGate hasFacility={supportHasFacility} "
+                    $"support preparationPath viable={supportHasFacility} "
                     + $"eco={supportEco.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}");
             }
@@ -1715,7 +1710,7 @@ namespace Game.Ai.V2
                             ? AiConfigV2.capabilityGapValue : AiConfigV2.holdScarcityValue;
                         break;
                     case IntendedRole.Development:
-                        if (snap?.Self?.HasDevFacility == true)
+                        if (HasDevelopmentRolePath(snap, beforeAbilities))
                             delta -= AiConfigV2.holdUniqueRoleValue;
                         break;
                     case IntendedRole.Support:
@@ -1791,6 +1786,14 @@ namespace Game.Ai.V2
 
         private static bool GrantAddsStealth(EquipmentGrant grant) =>
             grant?.addAbilities != null && grant.addAbilities.Any(a => AbilityParams.TryGetStealthLevel(a, out _));
+
+        internal static bool HasDevelopmentRolePath(WorldSnapshot snap, IReadOnlyList<string> abilities) =>
+            abilities != null && ((abilities.Contains(UnitAbilities.Researcher)
+                && (snap?.Development?.ResearchPreparationViable == true
+                    || snap?.Development?.Facilities?.Any(f => f.Mode == ResearchProductionMode.Research) == true))
+                || (abilities.Contains(UnitAbilities.Assembler)
+                && (snap?.Development?.ProductionPreparationViable == true
+                    || snap?.Development?.Facilities?.Any(f => f.Mode == ResearchProductionMode.Production) == true)));
 
         internal static float StrategicResourceCostValue(ResourceCost c) =>
             StrategicResourceCostValue(c, null);
@@ -1986,3 +1989,4 @@ namespace Game.Ai.V2
             : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
     }
 }
+

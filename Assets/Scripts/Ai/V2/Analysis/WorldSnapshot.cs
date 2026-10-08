@@ -125,6 +125,10 @@ namespace Game.Ai.V2
         // hero can still arrive), or a Research/Production Facility card in hand to build one. Damps
         // the LATENT desire term to zero in the pure opening when none of that is true.
         public bool DevPathViable;
+        public float PreparationHeadroom;
+        public bool HasPreparationStep;
+        public bool ResearchPreparationViable;
+        public bool ProductionPreparationViable;
     }
 
     // --- Four stockpiled resources as one value. Index order matches ResourceType.
@@ -1123,3 +1127,4 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
+
