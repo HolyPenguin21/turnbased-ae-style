@@ -57,6 +57,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -106,6 +107,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -150,6 +152,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -193,6 +196,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -237,6 +241,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -282,6 +287,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -325,6 +331,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -368,6 +375,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -412,6 +420,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -456,6 +465,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -502,6 +512,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -546,6 +557,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -590,6 +602,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -599,7 +612,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: 
-    displayName: AA Rad Hunter
+    displayName: Rad Hunter
     art: {fileID: 21300000, guid: db09506f895008949a636cec77987fc4, type: 3}
     detailArt: {fileID: 21300000, guid: 5df75208883fbc74b9fdfba8d3774f3e, type: 3}
     faction: 4
@@ -634,6 +647,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -677,6 +691,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -686,7 +701,7 @@ MonoBehaviour:
       statChanges: []
   - id: 15
     authoredKey: 
-    displayName: LI Ash Runner
+    displayName: Ash Runner
     art: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
     detailArt: {fileID: 21300000, guid: 90ab0daf85ccba5458429b9c63be44a2, type: 3}
     faction: 4
@@ -720,6 +735,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -729,7 +745,7 @@ MonoBehaviour:
       statChanges: []
   - id: 16
     authoredKey: 
-    displayName: MI Iron Husk
+    displayName: Iron Husk
     art: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
     detailArt: {fileID: 21300000, guid: ee6f6c5fedec0fc40a6f675c020d079a, type: 3}
     faction: 4
@@ -763,6 +779,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -807,6 +824,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -852,6 +870,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -861,7 +880,7 @@ MonoBehaviour:
       statChanges: []
   - id: 19
     authoredKey: 
-    displayName: HI Ash Walker
+    displayName: Ash Walker
     art: {fileID: 21300000, guid: 6ed8570f1fe48a440893bb9dd4af5b3c, type: 3}
     detailArt: {fileID: 21300000, guid: 4e88c907f33698f499d63cf4162b4647, type: 3}
     faction: 4
@@ -896,6 +915,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -905,7 +925,7 @@ MonoBehaviour:
       statChanges: []
   - id: 20
     authoredKey: 
-    displayName: BS Grave Engine
+    displayName: Grave Engine
     art: {fileID: 21300000, guid: e8c4d9a01faeee9449e49c1e9fd8ab6d, type: 3}
     detailArt: {fileID: 21300000, guid: 55bcaa95a0a348a4f9e0b0feda0607ff, type: 3}
     faction: 4
@@ -939,6 +959,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -948,7 +969,7 @@ MonoBehaviour:
       statChanges: []
   - id: 21
     authoredKey: 
-    displayName: MT Rust Tank
+    displayName: Rust Tank
     art: {fileID: 21300000, guid: b9746bf4a9b039749b2ec4a2f07dcf0e, type: 3}
     detailArt: {fileID: 21300000, guid: c971b0de2a0c2ca44af82aecc1069eb0, type: 3}
     faction: 4
@@ -982,6 +1003,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -990,6 +1012,50 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 22
+    authoredKey: 
+    displayName: Boomstick
+    art: {fileID: 21300000, guid: d5a53f2a6c4b76441a0946bea6253378, type: 3}
+    detailArt: {fileID: 21300000, guid: 5f4d7e6111348284290d73b35f035a66, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 5
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 6
+    defenseRating: 4
+    resistanceRating: 2
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 23
     authoredKey: 
     displayName: Leviathan
     art: {fileID: 21300000, guid: 1a7bc8a88297fdc4781e5f4053ba411f, type: 3}
@@ -1025,6 +1091,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1032,7 +1099,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 24
     authoredKey: 
     displayName: Scrap Mortar
     art: {fileID: 21300000, guid: efa5fad9a47aefc448acd94b7659be69, type: 3}
@@ -1068,6 +1135,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1075,7 +1143,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 25
     authoredKey: 
     displayName: Colossus
     art: {fileID: 21300000, guid: adb2a86f5ba326b49916a3783aacc613, type: 3}
@@ -1112,6 +1180,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1119,7 +1188,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 26
     authoredKey: 
     displayName: Ash Howitzer
     art: {fileID: 21300000, guid: f5dcd42f65057d84b8ab7c19dc945cd3, type: 3}
@@ -1157,6 +1226,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1164,7 +1234,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 27
     authoredKey: 
     displayName: Striker
     art: {fileID: 21300000, guid: d4a121c31ae111744ba193cd95d401e0, type: 3}
@@ -1201,6 +1271,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1208,7 +1279,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 28
     authoredKey: 
     displayName: Scrapwing
     art: {fileID: 21300000, guid: 26c9f88c50c9c4842930f5d8e37bf87f, type: 3}
@@ -1245,49 +1316,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 28
-    authoredKey: 
-    displayName: HT Boomstick
-    art: {fileID: 21300000, guid: d5a53f2a6c4b76441a0946bea6253378, type: 3}
-    detailArt: {fileID: 21300000, guid: 5f4d7e6111348284290d73b35f035a66, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 5
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 3
-      tech: 1
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 6
-    defenseRating: 4
-    resistanceRating: 2
-    range: 2
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000

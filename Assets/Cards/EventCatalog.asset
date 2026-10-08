@@ -103,7 +103,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Ashen/MI Iron Husk
+        cardKey: The Ashen/Iron Husk
   - name: Concrete bunker
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
     description: A reinforced logistics bunker hides beneath a ruined highway. Its supply vaults are occupied.

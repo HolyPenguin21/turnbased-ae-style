@@ -2389,7 +2389,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities:
       - ShockAttack
       - Hyperkinetic
@@ -3757,8 +3757,8 @@ MonoBehaviour:
   - id: 73
     authoredKey: neutral.equipment.infantry.optical-scope
     displayName: Optical Scope
-    art: {fileID: 21300000, guid: bc16254d5e0a45bf95081d60dea21ab8, type: 3}
-    detailArt: {fileID: 21300000, guid: b431421353f64ed8835f9b4fdd66edc2, type: 3}
+    art: {fileID: 21300000, guid: 32734e0672643854b993250833c7058d, type: 3}
+    detailArt: {fileID: 21300000, guid: 565e880cc61f8b643888938001a87bc6, type: 3}
     faction: 2
     cardType: 5
     apCost: 1
@@ -3767,7 +3767,7 @@ MonoBehaviour:
       energy: 0
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3783,7 +3783,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3794,7 +3794,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -3814,7 +3814,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 1
-    requiredBuildingAbility:
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 1
     commandRating: 0
@@ -3830,7 +3830,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 0
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities: []
     resourceYield:
       human: 0
@@ -3841,7 +3841,7 @@ MonoBehaviour:
     equipment:
       hostTypeTags: 03000000
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges:
@@ -3856,4 +3856,4 @@ MonoBehaviour:
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyNamePool:
   - Desert striders
-
+  - 
