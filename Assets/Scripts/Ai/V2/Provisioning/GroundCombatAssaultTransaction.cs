@@ -684,7 +684,7 @@ namespace Game.Ai.V2
 
             // GroundCombatAdmissionPolicy.AssaultGate picks the gate (Attack's floor; the strict
             // gate for fresh actors and the bounded continuation floor for the same Hard
-            // incumbent). Unlike PlanForArmy, this request can also assemble a legal same-hex
+            // incumbent). Unlike PlanForArmyAtThreshold, this request can also assemble a legal same-hex
             // roster, but may never re-select a different primary.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest

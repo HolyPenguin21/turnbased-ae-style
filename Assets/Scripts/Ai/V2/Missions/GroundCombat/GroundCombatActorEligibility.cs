@@ -23,7 +23,7 @@ namespace Game.Ai.V2
         // a 0-MP army must never be nominated here — PrepareGroundCombatAssignments would assign it
         // and Provisioning would reject it as unfit in the same pass. A DURABLE incumbent's
         // continuation re-test (GroundCombatAssemblyPlanner.PlanForArmyAtThreshold, reached via
-        // PlanForArmy / GroundCombatAdmissionRegistry's Hard-Raid continuation branch) resolves its
+        // GroundCombatAdmissionRegistry's Hard-Raid continuation branch) resolves its
         // actor directly by ArmyId and never calls this method, so an already-owned multi-turn
         // mission still waits for MP next turn instead of losing its actor here.
         internal static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds) =>

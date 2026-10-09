@@ -71,7 +71,7 @@ namespace Game.Ai.V2
         // not already taken by an accepted chain.
         public bool CardsDisjoint(MaterializationPlan p)
         {
-            // The same three cards PlanCards lists, without allocating a list per check (this runs
+            // The plan's three cards, checked without allocating a list per check (this runs
             // for every candidate of every node of the portfolio search).
             if (p != null
                 && (Held(p.BaseCardInHand) || Held(p.EquipmentInHand) || Held(p.UpgradeTargetCard)))

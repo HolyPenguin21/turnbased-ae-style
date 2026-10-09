@@ -19,7 +19,7 @@ namespace Game.Ai
     // the complete effective resource line last observed there — reading it off an already-visible
     // hex is no cheat, while reconstructing it later from the live map would be),
     // where an enemy/neutral army was last actually seen, which hexes carry a known active Hex
-    // Event with a real guard (see KnownEventGuardDefenseAt), and (2026-08-24, section 3.2) which
+    // Event with a real guard (see KnownEventGuardStrengthAt), and (2026-08-24, section 3.2) which
     // hexes carry a known building and its own last-observed owner (KnownBuildings). Per the
     // project owner's own "Видимость с памятью" principle — stale info is never auto-expired,
     // only overwritten by a fresh observation of that SAME hex (see OnVisibilityChanged's own
@@ -1073,7 +1073,7 @@ namespace Game.Ai
         }
 
         // Every known resource hex and its complete last-observed effective yield — the whole-map read
-        // behind IsResourceHexKnown, for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
+        // for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
         // needs the set itself (opportunity map + per-resource economy weighting), not just a
         // per-hex membership test. Same honesty rule as everything else here — only ever hexes
         // this player has actually seen the bonus on.
@@ -1162,7 +1162,7 @@ namespace Game.Ai
         // Null = no known active guarded event at this hex (never seen one, or it's since been
         // consumed — see OnEventConsumed). RaidWeakerArmyTask's own event-guard half of a target's
         // required strength (see that class's own FindTarget/RequiredStrengthAt — takes the max of
-        // this and KnownGarrisonDefenseAt for a hex, not their sum, since a physical neutral army
+        // this and the physical garrison defense for a hex, not their sum, since a physical neutral army
         // sharing this hex and this event's own card-guard are two separate fights, never fought
         // at once).
         public static GuardStrength? KnownEventGuardStrengthAt(PlayerSetupData actor, HexCoord hex)

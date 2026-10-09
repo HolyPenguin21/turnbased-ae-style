@@ -15,7 +15,7 @@ namespace Game.HexGrid
             R = r;
         }
 
-        // Inverse of FromOffset — back to the (col, row) rectangular grid coordinates a
+        // Back to the (col, row) rectangular grid coordinates a
         // player/UI thinks in.
         public (int col, int row) ToOffset()
         {

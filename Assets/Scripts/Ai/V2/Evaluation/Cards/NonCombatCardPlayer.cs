@@ -156,7 +156,7 @@ namespace Game.Ai.V2
 
         // Every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
-        // BestPlay is a convenience caller; Phase-B arbitration and reaction probes consume the whole set
+        // Phase-B arbitration and reaction probes consume the whole set
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
         internal static IEnumerable<NonCombatPlay> EnumeratePlays(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,

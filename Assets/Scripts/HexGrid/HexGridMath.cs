@@ -9,8 +9,8 @@ namespace Game.HexGrid
     public static class HexGridMath
     {
         // Ordered so direction[i] is the neighbour across the edge between hex corners i and
-        // (i+1)%6 (corner i sits at angle 60*i degrees) — required for BuildOuterBoundary to
-        // pair the right edge with the right corners.
+        // (i+1)%6 (corner i sits at angle 60*i degrees) — callers pair each edge
+        // with its corners by this order.
         public static readonly (int dq, int dr)[] NeighborDirectionsByEdge =
         {
             (1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)

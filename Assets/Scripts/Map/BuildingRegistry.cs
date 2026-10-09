@@ -99,7 +99,7 @@ namespace Game.Map
                 // 2026-08-24 fix (project owner's own report — see EnsureGarrisonForBuilding's own
                 // comment): a capture used to leave the previous owner's own empty garrison shell
                 // behind, unclaimed by the new owner, so every multi-base AI/UI lookup keyed off
-                // ArmyData.Owner (AiTurnController.OwnGarrisonArmies and everything built on it)
+                // ArmyData.Owner (AiTurnController.NearestOwnGarrisonArmy and everything built on it)
                 // never saw this base as garrisoned at all for its NEW owner. Runs before the
                 // vision recomputes below so both sides' vision already reflects the corrected
                 // garrison ownership.
@@ -195,8 +195,8 @@ namespace Game.Map
 
         // Shared by CaptureOrDestroy (a Base changing hands) and HexSelectionController.Factory's
         // own SpawnBuilding (a fresh Base built with Barracks) — the invariant every multi-base
-        // AI/UI lookup already assumes (AiTurnController.OwnGarrisonArmies/OwnGarrisonHexes and
-        // everything built on them, ArmyViewerModalUI, ...): a Barracks-tagged Base has EXACTLY one
+        // AI/UI lookup already assumes (AiTurnController.NearestOwnGarrisonArmy and
+        // everything built on it, ArmyViewerModalUI, ...): a Barracks-tagged Base has EXACTLY one
         // IsGarrison army, owned by whoever currently owns the building. No-op for a building with
         // no Barracks ability at all (a bare resource site never gets a garrison of its own).
         //

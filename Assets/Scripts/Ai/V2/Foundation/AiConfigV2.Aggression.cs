@@ -95,7 +95,7 @@ namespace Game.Ai.V2
         public const float raidNotionalActivationAp = 1f;
         public const float raidActivationApMax = 3f;
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
-        // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
+        // (parity with opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.80f;
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).

@@ -80,8 +80,7 @@ namespace Game.Core
         // entry to be referenced BY; CardHandUI/StartingDeckCatalog never see these at all, so
         // they can never be drawn into a hand.
         public CardDefinition[] extractionFacilityCards = new CardDefinition[4];
-        // Paid upgrade tiers for an already-placed Collect-tagged Facility (see
-        // BaseViewerModalUI.ImproveFacility) — a separate, cheaper ladder from baseUpgradeTiers
+        // Paid upgrade tiers for an already-placed Collect-tagged Facility — a separate, cheaper ladder from baseUpgradeTiers
         // since this only raises one Facility's own yield contribution, not a whole new slot.
         public BaseUpgradeTier[] facilityUpgradeTiers =
         {

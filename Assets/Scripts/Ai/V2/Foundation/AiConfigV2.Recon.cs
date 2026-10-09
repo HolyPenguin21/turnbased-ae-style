@@ -67,7 +67,7 @@
         //  retains its own actor cap; ProvisioningManager proves the selection can be delivered.
         // =======================================================================================
         // K — the absolute cap on concurrently executing GROUND Recon missions per AI turn.
-        // Owned by ReconAssignmentPlanner. Parity with V1 AiConfig.maxConcurrentVisitHex.
+        // Owned by ReconAssignmentPlanner.
         public const int maxConcurrentReconExecutions = 2;
         // N — how many ordinary Recon alternatives MissionLayer passes downstream. Tuning baseline,
         // NOT a gameplay invariant. Must remain >= maxConcurrentReconExecutions (a wider beam only
@@ -119,7 +119,7 @@
         // not keep an Explore focus an attractive target: if the cell and the unvisited neighbours
         // that make up its FreshNeighbors count were already observed recently (ground vision,
         // static vision or an air flyby) the map information is in hand, and only the physical
-        // frontier-expansion merit (scoutExploreHomeProximityWeight) should carry the objective.
+        // frontier-expansion merit should carry the objective.
         // The information half of the Explore quality blend is scaled by a factor that sits at this
         // floor at IntelAge 0 and recovers linearly to 1 across reconIntelStaleTurnsLo..Hi. It is
         // a floored multiplier, never a hard exclusion — a genuinely stale or strategically hot

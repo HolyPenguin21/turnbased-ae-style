@@ -35,8 +35,7 @@ namespace Game.Combat
         // other flat Attack/Defense sum already in this codebase).
         public static float AttackSum(ArmyData army) => AttackSum(army?.Members);
 
-        // Own non-hero Defense sum, no hex bonus — used both as DefenseAt's own first term and,
-        // on its own, as the ATTACKER's side of Score's return-fire read (an attacking army isn't
+        // Own non-hero Defense sum, no hex bonus — used on its own as the ATTACKER's side of Score's return-fire read (an attacking army isn't
         // standing on a defensible hex it gets credit for, it's marching onto the defender's).
         public static float DefenseSum(ArmyData army) => DefenseSum(army?.Members);
 
@@ -225,7 +224,7 @@ namespace Game.Combat
         // real live roster directly. Whenever a real per-unit roster is available on BOTH sides,
         // WinChance below plays MonteCarloTrials complete battles to actual HP-zero instead of one
         // flat exchange — same round structure BattleTurnOrder uses (shuffle for a random
-        // Initiative tie-break, then sort descending), same dice (RollSuccesses), just with a
+        // Initiative tie-break, then sort descending), same dice, just with a
         // RANDOM target each attack rather than BattleTargetSelector's scored pick — this class
         // still never has a live grid/position/range to be smart about (see this file's own top
         // comment), only a remembered/cheat-read roster.
@@ -982,8 +981,7 @@ namespace Game.Combat
         // alongside its Defense, honestly (only ever set from an actually-observed sighting or
         // guard — see AiMapMemory's own "Видимость с памятью" principle) — AiManagementPlanner's
         // own counter-tech card scoring (Hyperkinetic vs known Armored, Pyrokinetic vs known Bio)
-        // reads it via AiMapMemory.KnownEnemyTypeTagCount rather than through this struct
-        // directly. Never null — empty when the source had no tags (or wasn't a real UnitData/
+        // reads the tags off the sighting. Never null — empty when the source had no tags (or wasn't a real UnitData/
         // CardDefinition read at all).
         //
         // Attack/HitPoints/Initiative (added 2026-08-22, project owner's own call: "если мы
@@ -1063,8 +1061,8 @@ namespace Game.Combat
         // `extraDefense` — the hex's own terrain/Base-building bonus (HexDefenseBonus), added
         // 2026-08-20 (project owner's own report). DefenderProfile.Defense is always the
         // defender's own raw stat as memorized, never including where the fight would actually
-        // happen — every OTHER read in this file that compares against a real hex (DefenseAt,
-        // Score's own enemyDefense parameter) already folds this in; this coverage check used to
+        // happen — every OTHER read in this file that compares against a real hex (Score's own enemyDefense
+        // parameter) already folds this in; this coverage check used to
         // be the one exception, which could read a defender as damageable off its raw stat alone
         // while the hex bonus on top would actually make it un-killable. Defaults to 0f so a
         // caller with no hex to check against (a pure stat comparison) is unaffected.
@@ -1162,8 +1160,8 @@ namespace Game.Combat
         // fight) plus a Base building's own Defense stat if one sits here (see
         // BuildingData.IsBase — only Base buildings carry this, per BattingScreenUI.Combat.cs's
         // own gate). Needed on its own for a Hex Event's card-stat guard (AiMapMemory.
-        // KnownEventGuardDefenseAt) — that guard is never a live ArmyData sitting on the hex until
-        // Explore is chosen, so there's no army to hand DefenseAt, only the hex's own bonus to add
+        // KnownEventGuardStrengthAt) — that guard is never a live ArmyData sitting on the hex until
+        // Explore is chosen, so there's no army to hand over, only the hex's own bonus to add
         // on top of the guard's own card total.
         public static float HexDefenseBonus(HexCoord hex, HexMap map)
         {

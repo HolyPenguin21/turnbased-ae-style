@@ -90,9 +90,9 @@ namespace Game.UI
         private Phase _phase;
         // Guards OnOkClicked against a same-frame double-fire the same way _phase's own
         // NotRolled->Resolved transition already does for a fresh Roll/duel — but a bare
-        // ShowAnnouncement (see its own comment) never leaves Phase.Resolved, so _phase alone
+        // ShowSecondaryAttackResult (see its own comment) never leaves Phase.Resolved, so _phase alone
         // can't tell "already acknowledged" apart from "still showing" for that case. Reset
-        // false by every entry point that puts up a new closeable screen (Begin, ShowAnnouncement
+        // false by every entry point that puts up a new closeable screen (Begin, ShowSecondaryAttackResult
         // — BeginCaptureKill goes through Begin), set true the first time OnOkClicked actually
         // processes it.
         private bool _okAlreadyHandled;
@@ -343,7 +343,7 @@ namespace Game.UI
 
         // The ChallengeResultRoot checkbox's own read — same principle as IsAutorollEnabled
         // above, just gating AutoCloseResultIfNoHuman's three call sites (ShowResult/
-        // ShowCaptureKillResult/ShowAnnouncement) instead of Begin's Roll-Die auto-press.
+        // ShowCaptureKillResult/ShowSecondaryAttackResult) instead of Begin's Roll-Die auto-press.
         private bool IsAutoCloseResultEnabled => autoCloseResultToggle != null && autoCloseResultToggle.isOn;
 
         private bool _automateHumanSides;
@@ -352,7 +352,7 @@ namespace Game.UI
         // Neither current side needs to actually look at anything here before it happens — an
         // AI-vs-AI or AI-vs-neutral encounter (no human on either side), same population this
         // popup's own auto-roll/auto-close behavior targets. Reads the live _attacker/_defender
-        // fields rather than taking parameters so ShowAnnouncement (no attacker/defender of its
+        // fields rather than taking parameters so ShowSecondaryAttackResult (no attacker/defender of its
         // own — see its own comment) can reuse the exact same check off whatever the last real
         // challenge on this popup instance set them to.
         private bool RunsAutomatically => _automateHumanSides || (!IsHumanSide(_attacker) && !IsHumanSide(_defender));
@@ -695,7 +695,7 @@ namespace Game.UI
         // THE single teardown/finalization path for a Research/Production Challenge — used by
         // BOTH the normal Result -> OK flow (OnOkClicked) and every abnormal exit: a forced
         // Hide() from elsewhere, this popup being grabbed for another Challenge (Begin /
-        // BeginCaptureKill / ShowAnnouncement / a fresh BeginResearchProduction), any other
+        // BeginCaptureKill / ShowSecondaryAttackResult / a fresh BeginResearchProduction), any other
         // teardown of an active R/P state. Idempotent: the pending callback is captured-then-
         // nulled and _rpActive cleared on the first call, so any later call (e.g. Hide()
         // running right after OnOkClicked already finalized) is a no-op — the R/P callback can
@@ -734,7 +734,7 @@ namespace Game.UI
             callback?.Invoke(success);
         }
 
-        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowAnnouncement /
+        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowSecondaryAttackResult /
         // BeginResearchProduction): a reused popup abandons any in-flight R/P Challenge as a
         // failure — no card minted, Fate restored, callback fired exactly once.
         private void CleanupResearchProduction() => FinalizeResearchProduction(false);
@@ -1373,7 +1373,7 @@ namespace Game.UI
             // Capture/Kill Challenge result popup's second message duplicated/broken). Every
             // Resolve* site sets _phase = Resolved right before showing this result; the reopen
             // above always resets it back to NotRolled via Begin, so a stray second call usually
-            // finds the wrong phase and bails here instead — EXCEPT a plain ShowAnnouncement
+            // finds the wrong phase and bails here instead — EXCEPT a plain ShowSecondaryAttackResult
             // (e.g. "The enemy retreats." after a hero escapes its Capture Kill Challenge), which
             // never leaves Phase.Resolved (see its own comment), so that stray second call used
             // to sail straight through this check and re-fire the announcement's own callback a

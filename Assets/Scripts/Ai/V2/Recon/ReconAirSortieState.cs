@@ -170,7 +170,7 @@ namespace Game.Ai.V2
     //  its own advance on the footprint it just laid down (an r1-Recce aircraft footprints all six
     //  neighbours of its next candidate step), while two different aircraft — including a second
     //  wing the same turn — still can't grind the same ground. Turn-scoped by the same
-    //  airReconTargetCooldownTurns window V1's AirReconTargets uses; never marks a hex observed.
+    //  airReconTargetCooldownTurns window; never marks a hex observed.
     //
     //  R3 review fix — coverage is stored PER SORTIE per hex (sortieId -> lastTurn), not
     //  last-writer-wins. A single (turn, sortieId) cell meant sortie B footprinting a hex sortie A
