@@ -410,3 +410,28 @@ internal enum TurnWork { MandatoryAviation, PhaseA, Mission, PhaseB, ColdResidua
 | Сигнатуры уровней 1–4 | выполнено | §15 |
 
 **Статус Уровня 0: «проверен доступными средствами — native не выполнен».** Единственное оставшееся ограничение — нативная трасса `[AI][V2][Loop]` и полный EditMode в Unity: пока их нет, цепочка T8–T21 защищена построчным переносом, тестами вынесенных единиц и ревью; полный gameplay parity для Уровня 0 не заявляется. Рекомендация владельцу: до начала Уровня 1 снять один нативный лог (фиксированный seed, ≥ 10 ходов, `frameLogEnabled`) как эталон для сравнения `[Loop]`-строк.
+
+## 17. Нативный эталон (Unity), снят 2026-10-09 14:08–14:12
+
+Файл: `Logs/AiDebug.log`, копия `D:/aiv-work/native-baseline/AiDebug.master-fe2ccdf4-plus-L0.log` (2,6 МБ, 11 692 строк). Код — ветка `refactor/ai-v2-pipeline-simplification` с извлечениями Уровня 0 (номера строк `RunTurn:433/:759` в логе принадлежат этому коду). Два ИИ-игрока (Korrin, Grimm), ходы 1–11 у каждого, всего 22 хода. Seed не фиксировался.
+
+**Это эталон для Уровней 1+, а не сравнение «до/после» извлечений Уровня 0** (лога до извлечений нет): параллельно он показывает, что с извлечёнными единицами нативный прогон идёт без нарушений.
+
+| Показатель | Значение |
+|---|---|
+| `[AI][V2][Invariant]` | 22 строки, `violations=0` во всех; `revision bumps == commits` во всех 22 ходах; `ERROR` нет |
+| Входов в `RunTypedAdmissions` (`begin — typed operational admission`) | 50 |
+| Чем закончились эти 50 входов | `admission stopped — no provisioned task`: 38; `stop — no funded typed mission`: 12; `stop — settled task produced no typed invalidation`: **0**; bounded stop (96 шагов / no-progress): **0** |
+| `noProgress` | только 0 (175 раз) и 1 (39); значения 2 не было |
+| Максимум `step=` за ход | 23 (лимит 96) |
+| Раундов management | round=1: 22, round=2: 18; `operationalReadmit=1` в раунде 1 — в 15 из 22 |
+| Возвраты | `lifecycle returns wait`: 9 (Economy ReturnBuilder, Raid Return); `released after the tempo pass`: 2 |
+| Recovery (авиация) | 5 шагов `recovery actor=#35` подряд в одном ходу; сопутствующие `re-admission deferred — aviation obligations pending`: 5; затем при flush `Development skipped ... settled_state_unchanged` |
+| `ReleaseDeferredIncomeCover` | 16 записей |
+
+**Не покрыто этим логом** (нужен второй прогон или целевой тест, прежде чем менять эти пути): `aviation-rebase` (0), `cold Radar residual` (0), force-flush (`admitting the deferred axes anyway`, 0), `RecallUnsafeStrikes` (0), `Phase A deferred` на старте хода (0), любой bounded stop (0), ветка `settled task produced no typed invalidation` (0 — все 50 входов закончились на `selected == null` или `Funded == 0`).
+
+Следствия для планирования:
+1. Баунды (96 / 2) и ветка T13 в обычной игре не срабатывают — их удаление или перенос нельзя проверять этим логом; нужен characterization-тест на уровне 4.
+2. Пути rebase, cold и force-flush на нативе не наблюдались: Уровни 2 (rebase) и 3–4 (cold, force) требуют отдельного сценария с авиацией (перебазирование wing) и нулевым Radar-осью до начала правок этих мест.
+3. Сравнение «после» на Уровне 1 делать по структуре: последовательность типов `[Loop]`-строк на ход, `step=` с `progress/stop`, `management round` и итоговые `[Invariant]`. Совпадение числа `begin`, видов остановок и `violations=0` — минимальный критерий.
