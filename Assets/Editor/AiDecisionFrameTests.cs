@@ -382,7 +382,7 @@ namespace Game.EditorTests
             MissionIntentRegistry.Clear();
             try
             {
-                var session = AiTurnSession.Begin(player, null, null, null, turn);
+                using var session = AiTurnSession.Begin(player, null, null, null, turn);
                 MissionIntent staleA = ReturnBuilder(503, new Game.HexGrid.HexCoord(0, 0));
                 MissionIntent staleC = ReturnBuilder(505, new Game.HexGrid.HexCoord(0, 0));
                 var foreignKey = MissionIntentKey.ForEconomy(EconomyTaskKind.FoundBase, 0, new Game.HexGrid.HexCoord(6, 3));
