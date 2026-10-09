@@ -452,3 +452,53 @@ Managed (`e4-a-p`): 2162 теста, 1687 прошло, 475 упало, регр
 ## Цена изменения (до / после)
 
 Новая составляющая кадра (например, перечень Development-возможностей на кадр): раньше — рецепт `RefreshDecisionFrame`, места присваивания и проверка флага свежести во всех читателях; теперь — поле и шаг в `DecisionFrame` плюс реальный потребитель нового факта. Один класс вместо четырнадцати функций, но новый факт по-прежнему требует producer и consumer; доменное последствие остаётся у своего владельца.
+
+## Э5: доработка по сверке с ТЗ и повторная перепроверка
+
+Сверка с ТЗ §10 после первой версии показала расхождения; ниже — что исправлено, что проверено и что остаётся.
+
+### Что исправлено
+
+| Расхождение | Исправление |
+|---|---|
+| Нет `DecisionFrameView` | добавлен `readonly struct DecisionFrameView` (значения ссылок на момент вызова) и `DecisionFrame.View`; свойства кадра теперь отдают `IReadOnlyList<…>` для списков (`Recon`, `Aggression`, `Intents`, `Demands`), присваивание — `private set`; потребители в `Pipeline` компилируются без изменений (все принимают `IReadOnlyList`). Не deep-immutable: сами intents и leases остаются изменяемыми у владельцев |
+| Четыре неиспользуемых поля (`_ctx`, `_player`, `_root`, `_hand`) | удалены; конструктор `DecisionFrame(snapshot, services)` |
+| Инвентаризация не включала `CapacityUnlock` и `DeferredFlush` | см. ниже: оба идут через `ReenterStrategicAxes` и используют `RefreshOperationalDecision` / `AcceptChangedReentry`; собственных присваиваний ссылок кадра не имеют |
+| Перенос рецептов пакетно, без пошаговой трассы | добавлен **дифференциальный тест состояния**: `TheFrameFollowsTheInlineLocalsAndFlagOverRandomWalksOfTheTurn` — транскрипция прежних встроенных локалей, флага и рецептов (`RefreshDecisionFrame`, формирование, раунд, cold, итог) против `DecisionFrame` на одинаковых скриптовых сервисах, 3000 случайных прогулок по моментам хода (5–30 шагов, ~50 тыс. сравнений); после каждого шага равны последовательности вызовов сервисов, в конце — теги ссылок (какой вызов произвёл снапшот, objectives, intents, demands) и состояние кредита (проба `PrepareAdmission`). Мутации: сброс кредита, потерянная перегенерация demands в cold, лишний refresh в формировании — пойманы |
+| Формулировка «банковские трассы идентичны» | уточнена: трассы `S1/S4/S9` — это регрессия ledger, **кадра они не проходят**; для Э5 основание — тест ниже |
+
+### Банк через кадр
+
+`TheOperationalRefreshRetiresAStaleIntentAndReleasesOnlyItsOwnRows` (реальные: `DecisionFrame`, `AiTurnSession`, lease-book, `MissionIntentState.Remove`, ledger):
+
+| Момент | Строки ledger |
+|---|---|
+| старт: устаревшая операция A (Materials 3) и чужая операция (Energy 2) | 2 |
+| операционный refresh кадра | A снята, чужая операция осталась (Energy 2) |
+| тот же снапшот (ревизия не изменилась), добавлена вторая устаревшая операция C (Human 1) | 2 |
+| повторный операционный refresh | C снята — refresh **не пропущен**, чужая осталась |
+| конец хода (`CompleteReservations`) | 0 |
+| начало следующего хода | 0 |
+
+Вариант `useRealResolve = false`: политика resolve смоделирована (операция без живого актора удаляется), путь retire (`MissionIntentState.Remove` → lease → ledger) и кадр — реальные; проходит. Вариант `useRealResolve = true` вызывает реальный `MissionContinuityLayer.ResolveActive`, который сравнивает `UnityEngine.Object` (`ctx?.Map == null`), поэтому в managed-прогоне он помечен **Inconclusive** и исполняется только в Unity. Трасса `golden/E5_frame_bank.jsonl` проходит `check_boundaries.py`.
+
+Не проверено без движка: порядок строк при rollback канонической операции и transfer/rekey на реальном мире (S5/S8/S9 в Unity).
+
+### Кеши (повторно)
+
+Запись/чтение ссылок кадра, кредит, estimate-кеши, `KnowledgeVersion`, `WorldDelta`, факты Aggression — как в таблице выше; новое: списки отдаются как `IReadOnlyList` (внешний код не может присвоить ссылку и не получает изменяемый `List`), `View` — значение на момент вызова; поток данных между шагами рецепта проверен тестом (`EveryStepOfTheRecipeConsumesWhatThePreviousStepProduced`) и дифференциальным тестом (теги производящих вызовов совпадают с прежними).
+Не проверено на мире: «та же `KnowledgeVersion`, изменились HP / карта / рука» (S5) — кадр решений по номерам ревизий не принимает.
+
+### Инвентаризация: недостающие точки
+
+`CapacityUnlock` (после первого Phase A) и `DeferredFlush` / `TerminalForce` / `Trigger` — причины `ReenterStrategicAxes`; ссылки кадра они меняют только через `RefreshOperationalDecision` и `AcceptChangedReentry` (тест порядка точек), собственных присваиваний нет.
+
+### Остаётся вне Э5
+
+- `ReactionRoundExecutor` повторяет рецепт кадра собственным кодом (объективы, `RefreshAggressionOperationalFacts`, `ResolveActive`, `RefreshActors`): знание рецепта у одного класса достигнуто в пределах `RunTurn`, не в Reaction. Объединение меняет код вне объёма этапа и требует отдельного решения.
+- Межслойная связность Э5 не уменьшает (ТЗ это предусматривает): `Orchestration` 122 → 122, `Pipeline` 78 → 71.
+- Unity EditMode/PlayMode, нативная партия, S5/S8/S9 на реальном мире — не выполнялись.
+
+### Итог проверок после доработки
+
+Managed (`e5fix-a-p`): 2176 тестов, 1700 прошло, 475 упало; регрессий 0 относительно исходного baseline `717871b8` (1649 → 1700, +51) и относительно первой версии Э5 (+2); 1 Inconclusive (реальный `ResolveActive`). Compile 28 = 28. Банковские трассы `S1/S4/S9` идентичны золотым. Матрица: 203 связи, `Orchestration` 122 типа, `Pipeline` 71.

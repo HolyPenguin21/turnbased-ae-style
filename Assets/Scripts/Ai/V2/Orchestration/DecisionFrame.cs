@@ -19,11 +19,11 @@ namespace Game.Ai.V2
         internal Func<WorldSnapshot, List<ReconObjective>> EnumerateRecon;
         internal Action<WorldSnapshot> RefreshAggressionFacts;
         internal Func<WorldSnapshot, List<RaidObjective>> EnumerateAggression;
-        internal Func<WorldSnapshot, List<ReconObjective>, List<RaidObjective>, bool, List<MissionIntent>> ResolveActive;
-        internal Func<List<MissionIntent>, WorldSnapshot, List<ReconObjective>, ActorCommitments> RefreshActors;
-        internal Func<WorldSnapshot, List<ReconObjective>, ActorCommitments> RefreshPersistentActors;
-        internal Func<WorldSnapshot, List<ReconObjective>, List<RaidObjective>, List<MissionIntent>,
-            ActorCommitments, ISet<DesireAxis>, List<AxisDemand>> GenerateDemands;
+        internal Func<WorldSnapshot, IReadOnlyList<ReconObjective>, IReadOnlyList<RaidObjective>, bool, List<MissionIntent>> ResolveActive;
+        internal Func<IReadOnlyList<MissionIntent>, WorldSnapshot, IReadOnlyList<ReconObjective>, ActorCommitments> RefreshActors;
+        internal Func<WorldSnapshot, IReadOnlyList<ReconObjective>, ActorCommitments> RefreshPersistentActors;
+        internal Func<WorldSnapshot, IReadOnlyList<ReconObjective>, IReadOnlyList<RaidObjective>,
+            IReadOnlyList<MissionIntent>, ActorCommitments, ISet<DesireAxis>, List<AxisDemand>> GenerateDemands;
 
         internal static FrameServices Production(AiTurnSession session, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, DesireBreakdown breakdown) => new FrameServices
@@ -48,6 +48,32 @@ namespace Game.Ai.V2
         };
     }
 
+    // The read-only picture of the frame at one moment. A value: it never changes under its holder,
+    // so a holder that needs the next moment asks the frame for a new one.
+    internal readonly struct DecisionFrameView
+    {
+        internal readonly WorldSnapshot Snapshot;
+        internal readonly IReadOnlyList<ReconObjective> Recon;
+        internal readonly IReadOnlyList<RaidObjective> Aggression;
+        internal readonly IReadOnlyList<MissionIntent> Intents;
+        internal readonly ActorCommitments Commitments;
+        internal readonly IReadOnlyList<AxisDemand> Demands;
+        internal readonly ActorCommitments PostCommitments;
+
+        internal DecisionFrameView(WorldSnapshot snapshot, IReadOnlyList<ReconObjective> recon,
+            IReadOnlyList<RaidObjective> aggression, IReadOnlyList<MissionIntent> intents,
+            ActorCommitments commitments, IReadOnlyList<AxisDemand> demands, ActorCommitments postCommitments)
+        {
+            Snapshot = snapshot;
+            Recon = recon;
+            Aggression = aggression;
+            Intents = intents;
+            Commitments = commitments;
+            Demands = demands;
+            PostCommitments = postCommitments;
+        }
+    }
+
     // ===========================================================================================
     //  THE DECISION FRAME of one AI turn: the settled snapshot and what is derived from it for the
     //  decisions of the turn (Recon / Aggression objectives, durable intents, actor claims, demands),
@@ -69,37 +95,40 @@ namespace Game.Ai.V2
     internal sealed class DecisionFrame
     {
         private readonly FrameServices _services;
-        private readonly AiTurnContext _ctx;
-        private readonly PlayerSetupData _player;
-        private readonly PlayerRoot _root;
-        private readonly AiHandData _hand;
         private bool _ownershipCredit;
 
+        // The references are readable everywhere and assignable only here. The lists are exposed as
+        // read-only views; the intents and leases they describe stay mutable at their owners
+        // (this is not a deep-immutability promise).
+        private List<ReconObjective> _recon;
+        private List<RaidObjective> _aggression;
+        private List<MissionIntent> _intents;
+        private List<AxisDemand> _demands;
+
         internal WorldSnapshot Snapshot { get; private set; }
-        internal List<ReconObjective> Recon { get; private set; }
-        internal List<RaidObjective> Aggression { get; private set; }
-        internal List<MissionIntent> Intents { get; private set; }
+        internal IReadOnlyList<ReconObjective> Recon { get => _recon; private set => _recon = (List<ReconObjective>)value; }
+        internal IReadOnlyList<RaidObjective> Aggression { get => _aggression; private set => _aggression = (List<RaidObjective>)value; }
+        internal IReadOnlyList<MissionIntent> Intents { get => _intents; private set => _intents = (List<MissionIntent>)value; }
         internal ActorCommitments Commitments { get; private set; }
-        internal List<AxisDemand> Demands { get; private set; }
+        internal IReadOnlyList<AxisDemand> Demands { get => _demands; private set => _demands = (List<AxisDemand>)value; }
         // The ownership view Phase B and Housekeeping consume (persistent state of every intent).
         internal ActorCommitments PostCommitments { get; private set; }
 
-        internal DecisionFrame(WorldSnapshot snapshot, AiTurnContext ctx, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, FrameServices services)
+        // A value copy of the references of this moment, for components that are handed the frame's
+        // data (never kept across a yield: ask the frame again after the coroutine operation).
+        internal DecisionFrameView View => new DecisionFrameView(Snapshot, Recon, Aggression, Intents,
+            Commitments, Demands, PostCommitments);
+
+        internal DecisionFrame(WorldSnapshot snapshot, FrameServices services)
         {
             Snapshot = snapshot;
-            _ctx = ctx;
-            _player = player;
-            _root = root;
-            _hand = hand;
             _services = services;
         }
 
         internal static DecisionFrame Begin(WorldSnapshot snapshot, AiTurnSession session,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             DesireBreakdown breakdown) =>
-            new DecisionFrame(snapshot, ctx, player, root, hand,
-                FrameServices.Production(session, player, root, hand, ctx, breakdown));
+            new DecisionFrame(snapshot, FrameServices.Production(session, player, root, hand, ctx, breakdown));
 
         // ---- the start of the turn: separate named inputs (logs of the turn sit between them) ----
 
