@@ -77,7 +77,7 @@ flowchart TD
 | Последнее обязательство разрешилось без dirty trigger | `flush: true` в начале итерации → допуск | `Gate(triggered:false, flush:true, hasDeferred:true, pending:false) = Admit` | тесты `Gate` (5) |
 | Terminal force-flush при ещё pending | админит с логом | `AdmitDespitePending` | тест `Gate` |
 | Air Scout / обычная ground-задача | `Kind==Scout ∧ executor≠Ground → ExecutePlanStep`, иначе `TaskExecutor` | `RouteFor` | параметризованный тест (6 случаев); Explore не Scout-executor |
-| Число пар take→reenter | ordinary 2, rebase 1, recovery 2 | `ResolveStepTriggers(2 / TriggerPairs)` | `TriggerPairs` тест; ordinary передаёт 2 |
+| Число пар take→reenter | ordinary 2, rebase 1, recovery 2 | `ResolveStepTriggers(MissionTriggerPairs=2 / TriggerPairs)` | тесты `TriggerPairs`, `MissionTriggerPairs` |
 | Progress / noProgress | `StateChanged ∨ strategic`; rebase `moved ∨ strategic`; recovery `Mutated ∨ strategic` | `StepTriggerOutcome.Progressed(actionChanged)`, `NextNoProgress` | тест `StepProgress…` |
 | Тексты `[Loop]` и stall | как в baseline | `Label`, `StallMessage` (идентичны) | тест + диф |
 
@@ -135,7 +135,7 @@ Writers/readers резервов не добавлены и не удалены.
 | … air Scout и обычный ground task | выполнено на чистой части | `RouteFor` (6 случаев) |
 | Общий select/execute/post-step без финансирования | выполнено | `Select` + `RunMandatoryAviationStep` + `ResolveStepTriggers`; ledger/`Settle` не добавлены |
 | Сохранить delayed Phase A flush и продолжение обычных задач | выполнено | `Gate` эквивалентен baseline (все ветки покрыты); stall → `Kind=None` → `Mission` |
-| Удалить прежние post-step ветки; каждый item — один маршрут | выполнено | grep: `ExecuteContinuation`/`RunActorStep` в цикле только в адаптере; `MarkStalled` в Pipeline один; inline-копий take→reenter в шаге нет (все — `ResolveStepTriggers`) |
+| Удалить прежние post-step ветки; каждый item — один маршрут | выполнено | grep: `ExecuteContinuation`/`RunActorStep` в цикле только в адаптере; `MarkStalled` в Pipeline один; inline-копий take→reenter в work step нет (все — `ResolveStepTriggers`); пара take→reenter в management-раунде осталась своей — это Уровни 3–4 |
 | Ожидаемый результат: один operational selection boundary и одна обработка исхода для миссии/авиации | **выполнено в части выбора и fan-out/progress**; domain-специфичное завершение остаётся у каждого вида | ledger/`Settle`/`Reconcile`/observer boundary — только у миссии (авиация оплачена, нет intent); условия остановки различаются (stall vs break) |
 | Нативное подтверждение | **not run** | авиации в нативных логах нет (rebase — нигде; recovery — только лог Уровня 0) |
 

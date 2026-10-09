@@ -49,6 +49,7 @@ namespace Game.EditorTests
             Assert.IsTrue(changed.Progressed(false));
             Assert.AreEqual(0, StepTriggerOutcome.NextNoProgress(1, true));
             Assert.AreEqual(2, StepTriggerOutcome.NextNoProgress(1, false));
+            Assert.AreEqual(2, StepTriggerOutcome.MissionTriggerPairs, "ordinary step: two pairs");
         }
 
         // ---- delayed strategic re-admission (ReenterStrategicAxes gate) ---------------------------

@@ -927,7 +927,7 @@ namespace Game.Ai.V2
                     // Snapshot, mission ledger and reservation reconciliation now all describe
                     // the completed command; inspection never sees a half-settled action.
                     yield return ctx.WaitAtObserverActionBoundary();
-                    yield return ResolveStepTriggers(2);
+                    yield return ResolveStepTriggers(StepTriggerOutcome.MissionTriggerPairs);
                     StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
                     StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
                     bool strategicChanged = stepTriggers.StrategicChanged;

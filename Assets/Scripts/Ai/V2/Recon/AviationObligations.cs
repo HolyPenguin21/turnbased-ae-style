@@ -41,10 +41,10 @@ namespace Game.Ai.V2
         }
     }
 
-    // The strategic axes whose re-admission waited for aviation obligations. Pure bookkeeping so
-    // the pipeline's defer / flush rule is testable on its own.
     internal enum DeferredAdmissionGate { Skip, Defer, Admit, AdmitDespitePending }
 
+    // The strategic axes whose re-admission waited for aviation obligations. Pure bookkeeping so
+    // the pipeline's defer / flush rule is testable on its own.
     internal sealed class DeferredStrategicAdmission
     {
         // What a re-admission request does, given only its own inputs. `triggered`: a typed fact
