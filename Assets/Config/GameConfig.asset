@@ -506,6 +506,7 @@ MonoBehaviour:
     - name: Arid canyon snake
       terrainName: Deep canyon
       useInGeneration: 1
+      randomizeRotation: 1
       count: 1
       placementAttempts: 64
       exclusiveGroup: centerpiece
@@ -552,6 +553,7 @@ MonoBehaviour:
     - name: AridSteppe Giant machine wreck
       terrainName: Giant machine wreck
       useInGeneration: 1
+      randomizeRotation: 1
       count: 1
       placementAttempts: 64
       exclusiveGroup: centerpiece
@@ -734,6 +736,7 @@ MonoBehaviour:
       - name: Canyon snake
         terrainName: Deep canyon
         useInGeneration: 1
+        randomizeRotation: 1
         count: 1
         placementAttempts: 64
         exclusiveGroup: centerpiece
@@ -780,6 +783,7 @@ MonoBehaviour:
       - name: Desert Giant machine wreck
         terrainName: Giant machine wreck
         useInGeneration: 1
+        randomizeRotation: 1
         count: 1
         placementAttempts: 64
         exclusiveGroup: centerpiece
@@ -846,3 +850,4 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
+

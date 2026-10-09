@@ -16,6 +16,16 @@ namespace Game.HexGrid
             (1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)
         };
 
+        // Positive steps rotate counterclockwise when viewing the XZ map from above.
+        // Apply to all parts before translating the complex to its placement origin.
+        public static HexCoord RotateOffset60(HexCoord offset, int steps)
+        {
+            steps = (steps % 6 + 6) % 6;
+            for (int i = 0; i < steps; i++)
+                offset = new HexCoord(-offset.R, offset.Q + offset.R);
+            return offset;
+        }
+
         public static Vector3 AxialToWorld(int q, int r, float outerRadius)
         {
             float x = outerRadius * 1.5f * q;
@@ -87,3 +97,4 @@ namespace Game.HexGrid
         }
     }
 }
+
