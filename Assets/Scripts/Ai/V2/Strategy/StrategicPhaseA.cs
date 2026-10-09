@@ -684,6 +684,13 @@ namespace Game.Ai.V2
                         : new Dictionary<DemandState, DemandCandidate>();
 
                 var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
+                // One chain runs per pass, so the pick must be legal against the live recipient
+                // now; a chain that only fits after a portfolio hero lands waits for the next pass.
+                int portfolioSize = feasible.Count;
+                feasible = feasible.Where(c => ProjectedPhysicalState.FitsLiveNow(c.Plan)).ToList();
+                if (portfolioSize > 0 && feasible.Count < portfolioSize)
+                    AiDebugLog.Write($"[AI][V2]   strat.A order — {portfolioSize - feasible.Count} of "
+                        + $"{portfolioSize} portfolio chains wait for a capacity-raising chain to land first");
 
                 // ONE comparison of weighted scores: the best jointly feasible materialization
                 // chain (DecisionScore x Radar scale) against the best admissible Development

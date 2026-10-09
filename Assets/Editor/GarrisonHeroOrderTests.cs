@@ -151,6 +151,20 @@ namespace Game.EditorTests
             Assert.That(CanAdd(state, u), Is.False);           // back to cap 3
         }
 
+        [Test]
+        public void OnlyALiveLegalChainIsPickedSoTheCapacityRaisingHeroGoesFirst()
+        {
+            ArmyData g = Garrison(Hero("H3", 3), Body("U1"), Body("U2"));
+            var u = UnitPlan("u");
+            u.Deploy = new PlacementOption(default, DeploymentKind.Garrison, g);
+            var h8 = HeroPlan("h8", 8);
+            h8.Deploy = new PlacementOption(default, DeploymentKind.Garrison, g);
+            Assert.That(ProjectedPhysicalState.FitsLiveNow(u), Is.False);
+            Assert.That(ProjectedPhysicalState.FitsLiveNow(h8), Is.True);
+            g.AddMemberSorted(Hero("H8", 8));
+            Assert.That(ProjectedPhysicalState.FitsLiveNow(u), Is.True);
+        }
+
         private static readonly Type StateType = typeof(MaterializationPlan).Assembly
             .GetType("Game.Ai.V2.ProjectedPhysicalState", throwOnError: true);
         private static object NewState() => Activator.CreateInstance(StateType, nonPublic: true);
