@@ -91,11 +91,6 @@
         // Keep the generic intel staleness ramp observable before history purges.
         public const int reconObservationMemoryTurns = 12;
 
-        // Scout BaseValue = Lerp(min, max, quality); quality = Σ weighted terms / Σ weights, each term [0..1].
-        public const float scoutBaseValueMin = 15f;
-        public const float scoutBaseValueMax = 65f;
-        public const float scoutInfoGainWeight = 0.45f;          // Explore information gain
-        public const float scoutStrategicProximityWeight = 0.25f; // both — closeness to our own bases
         public const float scoutInfoGainNorm = 4f;               // FreshNeighbors that maps to a full info term
         public const int scoutProximityRampLo = 2;               // base-distance: at/under this -> proximity 1
         public const int scoutProximityRampHi = 12;              // base-distance: at/over this -> proximity 0
@@ -107,8 +102,6 @@
         //  proximity term, and its proximity ramp decays across the local->regional band (not out to
         //  distance 12) so a nearby frontier out-scores an equally informative distant one while
         //  meaningful nearby unknown remains.
-        public const float scoutExploreHomeProximityWeight = 0.55f; // vs scoutInfoGainWeight 0.45 in the Explore quality blend
-        public const int scoutExploreProximityRampHi = 7;           // Explore-only: home-distance at/over this -> home proximity 0
         //  Live step level: an adjacent step that increases distance from the nearest home asset is
         //  penalized while local unexplored coverage is still materially incomplete; the penalty
         //  fades to nothing once the local ring is well covered or the scout is already outside it.
@@ -192,7 +185,6 @@
         // eligible mover ("route unknown") is penalized, not treated as a healthy known route. Soft:
         // a genuinely unreachable objective still stays selectable if nothing better exists, so a
         // scout is never idle when only unknown-route work remains.
-        public const float scoutRouteUnknownAdmissionMultiplier = 0.35f;
 
         // --- Ground Recon reaction / assignment / concurrency / step-scoring tunables (spec §24).
         //     Previously scattered as private/internal consts and inline literals across
@@ -242,7 +234,6 @@
         public const float scoutStepDeadEndFactor = 0.70f;         // an Explore step into a zero-frontier unvisited pocket keeps this fraction of its value
         public const float scoutStepRefreshFreshNeighborWeight = 0.25f; // Refresh info term weight on fresh-neighbour count (Explore uses the full weight)
         public const float scoutLookaheadNearbyClaimWeight = 0.35f;     // bounded-lookahead per-hex nearby-claim discount
-        public const float scoutStepUndefendedBuildingBonus = 2.0f;     // added to an ADJACENT step's score when it lands on a foreign undefended Facility/Base (spec §13/§20) — never in lookahead, so it is a local bend only
 
         // =======================================================================================
         //  AIR RECON PER-STEP FLIGHT SCORING  (ReconAirStepPlanner, spec §24 — no scattered magic
@@ -367,14 +358,11 @@
         public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
         // FutureUtility term values. AP/resource costs use the shared stratCard /
         // stratChain dynamic cost model; Phase B has no parallel cost weights.
-        public const float surplusHeroVersatility = 0.35f;
-        public const float surplusUnitVersatility = 0.25f;
         // A deployed ApBonus source pays back every following turn. Keep this large enough to beat
         // a generic low-value garrison body in Phase B, without bypassing required Phase-A demands.
         // DEPRECATED (AI-MGR — Dynamic Strategic Effect Utility): the flat "+0.75 because ApBonus is
         // present" is gone. Recurring-AP value is now the dynamic model above (effectGlobal* /
         // effectRecurring* / apMarginalUtil*). Kept only so any stale reference still compiles.
-        public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
         // Idle-card pressure (playtest 2026-10-02: Laboratory/Factory/Base/Striker and equipment sat
         // in hand 15-20 turns with hand 1-7/10 and resources piling up, so the full-hand bonus above

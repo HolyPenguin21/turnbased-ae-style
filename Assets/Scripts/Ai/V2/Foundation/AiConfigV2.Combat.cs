@@ -93,7 +93,6 @@ namespace Game.Ai.V2
         public const int attackPreparationCardWaitTurns = 3;
         // Free Recon wing formation competes in the Phase-B arbiter at no more than this utility:
         // below every real card play / draw, above doing nothing.
-        public const float aviationFormWingUtilityCap = 0.5f;
         // An army whose power is at least this share of the player's field strike potential is part
         // of the fist and is never taken as an Economy builder (it defends or attacks instead).
         public const float economyBuilderFistShare = 0.25f;
@@ -109,7 +108,6 @@ namespace Game.Ai.V2
         //  build-order steps 6/9. Buildings / event guards / cheat-region targets: deferred there.
         // =======================================================================================
         public const float opportunityMinViableWinChance = 0.80f; // parity with raidMinViableWinChance (2026-10-01)
-        public const float opportunityNoHeroPenalty = 0.35f;      // raids are hero-led; no hero obtainable -> weak
         public const float opportunityValueNorm = 30f;            // targetValue that maps to a full value term
         // A safe, cheap, close win is itself worth wanting — one weak neutral next door is "a good
         // reason to be aggressive", so a target that CLEARS the viability

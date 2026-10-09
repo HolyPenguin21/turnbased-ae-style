@@ -48,7 +48,6 @@ namespace Game.Ai.V2
         public const int devFacilityExpectedUses = 3;
         // Success weight of an operator still in the remaining deck (facility stage only): the
         // draw is not certain, so its outputs count at this share.
-        public const float devDeckOperatorConfidence = 0.5f;
         // 2026-10-07 (user decision) — Research/Production diversity (DevelopmentDiversity): the
         // same card attempted within this many turns damps its gain by 1/(1 + weight x attempts);
         // a saturating ability (Stealth, Recce, Splash, ...) is also damped by 1/(1 + carriers).

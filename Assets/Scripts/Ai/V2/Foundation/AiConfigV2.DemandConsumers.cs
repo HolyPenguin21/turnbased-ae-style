@@ -31,7 +31,6 @@ namespace Game.Ai.V2
         // damage beat every other tempo candidate by ~5x. 1.0 keeps "repair beats replaying a badly
         // damaged unit" while minor repairs stay competitive rather than automatically dominant.
         public const float repairPowerValueWeight = 1.0f;
-        public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
     }
 }

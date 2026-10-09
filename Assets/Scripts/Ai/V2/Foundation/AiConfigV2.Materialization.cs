@@ -68,7 +68,6 @@
         // every existing reserve + the Phase-A generator claim. Bounded, never a production planner.
         public const bool surplusAllowGeneration = true;
         public const bool surplusAllowAttach = true;
-        public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
         public const bool surplusAllowDraw = true;
         // SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. A draw beyond it
@@ -245,9 +244,6 @@
         public const float heroLeadershipFitCap = 1.20f;
         public const float developmentOperatorSkillValue = 0.30f; // the one fixed value of a Researcher/Assembler ability (registry row, Development role); the game tag Support is not its source
         // HoldValue (spec §3) parts, used by EquipmentRoleDelta's lost-role penalty.
-        public const float holdUniqueRoleValue = 0.40f;    // a rare stealth body / a support hero while a combat leader is already fielded
-        public const float holdScarcityValue = 0.25f;      // reused by EquipmentRoleDelta's lost-Scout-role penalty (see that function)
-        public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
         // review-r4 P1 ARCH — StrategicEffectRegistry tunables (ability -> strategic value). AntiAir
         // / AntiArmor reuse capabilityGapValue, Support reuses surplusRecurringApIncomeBonus /
         // developmentOperatorSkillValue (parity with the old inline SupportRoleFit); only these two are new.
@@ -262,7 +258,6 @@
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /
         // aura mechanics — a value at/above the norm gives the effect its full BaseFit).
         public const int effectTargetDensityRadius = 3;    // hex radius around the deploy hex counted for AoE target density
-        public const float effectTargetDensityNorm = 4f;   // SUPERSEDED by effectAoeBodiesNorm — enemy ARMY count, kept for the LocalEnemyArmies field
         public const float effectSustainHpNorm = 8f;       // projected HP for a regen effect to reach full value
         public const float effectAuraAllyNorm = 3f;        // eligible allies in the dest army for an aura to reach full value
         // final closure §3 — richer AoE / regen context signals (still all inert until a real
@@ -370,7 +365,6 @@
         public const float roleVersatilityPerExtraRole = 0.12f;// value per real viable role beyond the first (NOT a Hero class bonus)
         public const float roleVersatilityCap = 0.40f;
         public const float altUseForegoneFraction = 0.25f;     // AlternativeUseValue = this * next-best PLAY role score (Hold is priced only in NetScore)
-        public const float stratHoldBeatsPlayMaxDemandValue = 40f; // legacy — superseded by the urgency ramp below
         // P0.2 review-r2 — Phase A ranks by NET decision value (play - hold + urgency) and plays
         // only when it is positive. Urgency ramps with the demand's Value (DemandUrgencyPolicy,
         // shared taskScoreUrgencyRampLo/Hi band — every demand family, including Development, is

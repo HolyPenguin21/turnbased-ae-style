@@ -25,11 +25,6 @@ namespace Game.Ai.V2
         // at most one accepted structural move; the loop stops early the moment no move improves
         // the lexicographic outcome.
         public const int housekeepingMaxPlanIterationsPerHex = 24;
-        // Canonical BaseCapacity / GarrisonBaseCapacity from Game.Map.ArmyData.ComputeCapacity,
-        // mirrored here so the pure planner can size virtual rosters without a live ArmyData.
-        // Keep in step with ArmyData if those ever change.
-        public const int armyBaseCapacityNoHero = 2;
-        public const int garrisonBaseCapacityNoHero = 4;
 
         // --- Hero operational-role model (spec §8). A combat-leadership score from canonical hero
         //     data only: CommandRating (how large a force it can lead) plus the hero's own

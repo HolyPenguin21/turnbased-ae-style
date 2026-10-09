@@ -34,10 +34,5 @@ namespace Game.Ai.V2
         // close to any route hex, or to the site itself, must be answered by an escort.
         public const int economyRouteThreatRadius = 1;
         public const int economySiteThreatRadius = 2;
-        public const float mobileCollectionMinSafeRetreatMargin = 0f;
-        public const int mobileCollectionMinCommitmentTurns = 1;
-        public const float economySecurityAbsWeight = 0.5f;
-        public const float economySecurityRelWeight = 0.3f;
-        public const float economySecurityBottleneckWeight = 0.2f;
     }
 }
