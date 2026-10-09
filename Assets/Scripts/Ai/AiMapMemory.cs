@@ -399,30 +399,6 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, List<ScoutDangerZone>> ScoutDangerZones =
             new Dictionary<PlayerSetupData, List<ScoutDangerZone>>();
 
-        // Разведка · Авиация (AiTaskKind.AirRecon) — hex -> the global turn an AirRecon sortie was
-        // last sent toward it (AiAviationSupport.ContinueSortie stamps this every outbound step).
-        // Purpose-built for AirReconTask.FindReconHex's own anti-loop cooldown (project owner's own
-        // spec — "AirRecon не должен бесконечно летать в один stale-гекс"): a hex flown to recently
-        // is not offered as a recon target again for AiConfig.airReconTargetCooldownTurns turns
-        // unless a known enemy army/building still sits on it. One entry per hex, re-stamped on a
-        // repeat sortie. Never auto-expired here — FindReconHex compares against the current turn
-        // itself (see WasAirReconnedWithin) and simply stops caring once the window has passed.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> AirReconTargets =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
-
-        // Агрессия · from-scratch raid — hex -> the global turn a fresh raid assembly against it
-        // was last rejected as non-viable (RaidWeakerArmyTask.EvaluateAssemblablePlan: no hero
-        // obtainable, composition can't cover every defender, or the strongest force we could
-        // realistically assemble still wins below raidMinimumWinChance). Purpose-built for
-        // AiAggressionPlanner.TryRaidAssembleCandidates' own pre-allocation gate — within
-        // AiConfig.raidPlanRejectCooldownTurns turns the hex is not re-projected (or re-logged) as
-        // a new-raid target, so the AI doesn't burn a Decide step every turn re-deriving the same
-        // "0% win chance" verdict it already reached. One entry per hex, re-stamped on a repeat
-        // rejection. Never auto-expired here — WasRaidPlanRejectedWithin compares against the
-        // current turn. Existing raid tasks and a ready idle army are never gated by this.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> RaidPlanRejected =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
-
         private static bool _subscribed;
         private static HexMap _map;
         public static bool GroundTerrainBlocked(HexCoord hex) => _map != null && !_map.CanEnter(hex);
@@ -571,8 +547,6 @@ namespace Game.Ai
             KnownBuildings.Clear();
             RefutedStartingCitadels.Clear();
             ScoutDangerZones.Clear();
-            AirReconTargets.Clear();
-            RaidPlanRejected.Clear();
             KnowledgeVersions.Clear();
             RouteMemoryVersions.Clear();
             _currentTurn = 0;
@@ -707,19 +681,6 @@ namespace Game.Ai
                 yield break;
             foreach (ScoutDangerZone zone in zones)
                 yield return (zone.Center, zone.Radius);
-        }
-
-        // Stamps `hex` as the target an AirRecon sortie is currently flying toward, at
-        // `turnNumber` — see AirReconTargets' own comment. Called every outbound step from
-        // AiAviationSupport.ContinueSortie so the cooldown counts from the sortie's last real
-        // progress toward the hex, not merely its launch turn.
-        public static void RecordAirReconTarget(PlayerSetupData actor, HexCoord hex, int turnNumber)
-        {
-            if (actor == null)
-                return;
-            if (!AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets))
-                AirReconTargets[actor] = targets = new Dictionary<HexCoord, int>();
-            targets[hex] = turnNumber;
         }
 
         private static bool SameEnemySighting(EnemySighting a, EnemySighting b)

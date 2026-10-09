@@ -60,56 +60,6 @@ namespace Game.Ai
             if (ObserverActionBoundaryPause != null)
                 yield return ObserverActionBoundaryPause();
         }
-        // Cross-category oscillation guard — every army a unit has actually sat in THIS turn via
-        // an AI-issued transfer (WouldRevisitArmy/RecordArmyVisit below). Started as
-        // GarrisonReorgTask's own private guard (its FindReorgMove tiers can undo each other
-        // within that one class), generalized here after the same shape of bug turned up ACROSS
-        // categories: AiAggressionPlanner.AssembleRaidForceRoutine and AiScoutPlanner.
-        // AssembleRecceScoutRoutine kept shuttling the same Recce unit back and forth between a
-        // raid force and a solo scout composition, neither aware the other had just undone its
-        // move, burning turn 8's entire step budget for nothing (see AiDebug.log 2026-08-17). Any
-        // routine that transfers a unit between armies can call RecordArmyVisit after a move
-        // lands and WouldRevisitArmy before proposing one, the same way GarrisonReorgTask always
-        // has. A fresh, empty dictionary every turn (From below constructs a brand new
-        // AiTurnContext per RunTurn call, never reused across turns) — a unit is free to revisit
-        // an army it sat in last turn, only a same-turn round-trip gets blocked.
-        public readonly Dictionary<UnitData, HashSet<ArmyData>> UnitVisitedArmies = new Dictionary<UnitData, HashSet<ArmyData>>();
-
-        // Records BOTH ends of a landed move (not just the destination) so a same-turn round trip
-        // is caught on whichever leg comes second, regardless of which direction happens to be
-        // proposed first.
-        public void RecordArmyVisit(UnitData unit, ArmyData source, ArmyData target)
-        {
-            if (unit == null)
-                return;
-            if (!UnitVisitedArmies.TryGetValue(unit, out HashSet<ArmyData> visited))
-                UnitVisitedArmies[unit] = visited = new HashSet<ArmyData>();
-            if (source != null)
-                visited.Add(source);
-            if (target != null)
-                visited.Add(target);
-        }
-
-        // PlayCard candidates that already failed to actually deploy THIS turn (2026-08-26 P1
-        // fix, project owner's own report) — an aviation card wrongly routed into a non-aviation
-        // candidate pipeline kept re-scoring itself and re-failing PlayCardRoutine's own deploy
-        // call every further step, burning the whole turn's step budget on the same doomed
-        // candidate. A fresh, empty set every turn, same shape as UnitVisitedArmies above — a
-        // card is free to fail and be retried NEXT turn once whatever made it fail may have
-        // changed (a place freed up, AP replenished), only a same-turn repeat is blocked. Every
-        // PlayCard candidate source (AiManagementPlanner.TryPlayCardCandidates, AiScoutPlanner's
-        // own Recce pipeline, AiAggressionPlanner.TryHeroCardForRaid) must skip a card in here;
-        // PlayCardRoutine adds to it the moment its own deploy call reports failure.
-        public readonly HashSet<CardData> FailedPlayCardsThisTurn = new HashSet<CardData>();
-
-        // Turn-scoped Research/Production attempts (spec §11) — one entry per (hero, mode, card)
-        // combination already Challenged this turn, win or lose. AiDevelopmentPlanner skips any
-        // combination in here, so a failed Challenge's spent resources can't be burned again by
-        // the same combination re-winning arbitration on a later step this same turn. Fresh and
-        // empty every turn (From builds a new AiTurnContext per RunTurn), so the option returns
-        // automatically next turn.
-        public readonly HashSet<(UnitData Hero, ResearchProductionMode Mode, CardDefinition Card)> DevelopmentAttemptsThisTurn
-            = new HashSet<(UnitData, ResearchProductionMode, CardDefinition)>();
 
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
             CardHandUI humanCardHand, float stepDelay,

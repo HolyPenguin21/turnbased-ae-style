@@ -96,7 +96,6 @@ namespace Game.Ai.V2
                     foreach (UnitData member in batchUnits)
                     {
                         movedUnits.Add(member);
-                        ctx.RecordArmyVisit(member, from, to);
                     }
                     res.Applied += batchUnits.Count;
                     res.StateChanged = true;
@@ -166,8 +165,6 @@ namespace Game.Ai.V2
                     WorldDeltaLifecycle.CommitMutation();
                     movedUnits.Add(unit);
                     movedUnits.Add(other);
-                    ctx.RecordArmyVisit(unit, from, to);
-                    ctx.RecordArmyVisit(other, to, from);
                     res.Applied++;
                     res.StateChanged = true;
                     continue;
@@ -187,7 +184,6 @@ namespace Game.Ai.V2
 
                 WorldDeltaLifecycle.CommitMutation();
                 movedUnits.Add(unit);
-                ctx.RecordArmyVisit(unit, from, to);
                 res.Applied++;
                 res.StateChanged = true;
             }

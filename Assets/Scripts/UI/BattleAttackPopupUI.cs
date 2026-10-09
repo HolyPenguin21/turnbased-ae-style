@@ -140,14 +140,6 @@ namespace Game.UI
         // OnStartRoundClicked), only get attacked. Feeds FateDuelAi.ShouldSpendFate's own Fate-
         // conservation rule for that case (see RunAiTurn).
         private bool _defenderIsRetreating;
-        // GroundCombat only — terrain modifier + (Base-tagged building's own Defense), folded
-        // straight into the SAME roll as any other Ground Combat attack rather than a separate
-        // manual-style Siege Challenge (see BattleScreenUI.Combat.cs's BeginAttack, the only
-        // caller that ever sets this to non-zero). Never applied to the attacker's own pool.
-        // Set in Begin as defenderTerrainBonus + defenderConstructionBonus (kept as a single sum
-        // here since roll math only cares about the total; the two components are only split out
-        // for BattleCombatantRowUI's own dice-count breakdown text).
-        private int _defenderBonusDice;
         // GroundCombat only — the ACTUAL dice-pool sizes the roll uses, resolved once in Begin
         // (attackerPoolSize/defenderPoolSize ?? the plain Attack/Defense+bonus default) and read
         // back by RunRollAndDuel instead of recomputing from _attacker.Attack/_defender.Defense
@@ -171,8 +163,6 @@ namespace Game.UI
         // Outcome itself (see ResolveCaptureKill) compares actual successes only, not this pool
         // size — per the user's own call, dropping the manual's separate "capture threshold".
         private int _hunterDicePool;
-        private int _targetDicePoolSize;
-        private CaptureKillOutcome _captureKillOutcome;
         private BattleChallengeSession _challengeSession;
         // Presentation mirrors of the domain session below; the popup never mutates them directly.
         private bool[] _attackerDice;
@@ -294,7 +284,6 @@ namespace Game.UI
             _attackerFateRemaining = Mathf.Max(0, attackerHero?.Fate ?? 0);
             _defenderFateRemaining = Mathf.Max(0, defenderHero?.Fate ?? 0);
             _defenderIsRetreating = defenderIsRetreating;
-            _defenderBonusDice = defenderBonusDice;
             _onResolved = onResolved;
             _onAiThought = onAiThought;
             _challengeSession = null;
@@ -1232,7 +1221,6 @@ namespace Game.UI
                 : CaptureKillOutcome.Killed;
             var result = new ChallengeResult(_attackerDice, _defenderDice);
 
-            _captureKillOutcome = outcome;
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
                 $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");
             ShowCaptureKillResult(outcome);
