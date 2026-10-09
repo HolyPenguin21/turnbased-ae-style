@@ -20,6 +20,8 @@
 - `Assets/Scripts/Ai/V2/Continuity/MissionIntent.Models.cs`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.AggressionAdmission.cs`
 - `Assets/Scripts/Ai/V2/Provisioning/ActiveDefenceProvisioner.cs`
+- `Assets/Scripts/Ai/V2/Provisioning/ProvisioningSession.cs`
+- `Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs`
 - `Assets/Scripts/Ai/V2/Execution/ActiveDefenceExecutor.cs`
 - `Assets/Editor/AiActiveDefenceTests.cs`
 - `Assets/Editor/AiAggressionOwnershipRegressionTests.cs`
@@ -109,9 +111,9 @@ C-01..10 и C-12 имеют модельные/существующие пров
 ## 6. Выполненные проверки
 
 - Скомпилированы все доступные C# проекта Roslyn с Unity reference DLL и verification-only stubs, включая тела добавленных PlayMode tests при UNITY_6000_3_OR_NEWER. Ошибок C# нет. Это не Unity build.
-- Обычный .NET reflection harness исходной версии: 1182 passed / 700 failed из 1882. Текущая версия: **1183 passed / 726 failed из 1909**. Пять старых тестов стали обращаться к native Object equality через новый гарантированный HoldChance. Поэтому обычный differential **не объявляется зелёным**.
-- Диагностический harness обеих версий с одинаковыми null-reference bridges: baseline **1379 passed / 503 failed**, current **1405 passed / 504 failed**, всего 1909. **0 регрессий среди прежних проходящих test IDs**. ActiveDefence: **39 passed / 1 engine-bound unavailable**. Единственный недоступный AD тест создаёт настоящий Unity GameObject/HexMap.
-- Добавлено 27 test cases относительно исходного общего количества; четыре coroutine PlayMode сценария считаются отдельно и не запускались reflection harness.
+- Обычный .NET reflection harness исходной версии: 1182 passed / 700 failed из 1882. Текущая версия: **1184 passed / 729 failed из 1913**. Пять старых тестов стали обращаться к native Object equality через новый гарантированный HoldChance. Поэтому обычный differential **не объявляется зелёным**.
+- Диагностический harness обеих версий с одинаковыми null-reference bridges: baseline **1379 passed / 503 failed**, current **1409 passed / 504 failed**, всего 1913. **0 регрессий среди прежних проходящих test IDs**. ActiveDefence: **43 passed / 1 engine-bound unavailable**. Единственный недоступный AD тест создаёт настоящий Unity GameObject/HexMap.
+- Добавлен 31 test case относительно исходного общего количества; пять coroutine PlayMode сценариев считаются отдельно и не запускались reflection harness.
 - Тесты содержат Facility filtering/dedup/lost ownership, точную secondary/citadel destination и соседний hex, ETA/MP/unknown ETA, достаточный гарнизон, один/два необходимых подкрепления, power без viability, Attack claims/hold, free host, отмену Regroup, safe withdrawal, прибытие, rekey, устойчивую повторную оценку, lease/Economy invariants, materialization deadline и fingerprint.
 
 Диагностические bridges существуют **только в verification copies**, не в Assets ветки: проверки настоящего null заменены ReferenceEquals в WorthIt, AiV2Util, MissionContinuityLayer, VisionSystem и AiMapMemory, чтобы избежать отсутствующих native Object internal calls на .NET. Две UI FindObjectsByType сигнатуры и одна PlayMode UI сигнатура адаптированы лишь под старые reference DLL. Managed Mathf stub имеет compile-only SmoothDamp. Боевой алгоритм WorthIt не подменён; однако destroyed Unity object semantics и игровые MonoBehaviour этим запуском не проверяются. Reflection harness выполняет Test/TestCase + SetUp/TearDown, не UnityTest и не весь Unity runner lifecycle.
@@ -124,7 +126,7 @@ C-01..10 и C-12 имеют модельные/существующие пров
 
 ## 8. Что сохранено
 
-Не изменены Attack evaluator/planner/мобилизация/Gather/Assault/RecoveryReturn/пороги/TryServeActiveDefence, Raid и Recon, общий WorldAnalysis.Threat, WorthIt и правила боя, SafeStepPathing и алгоритмы движения, TurnResourceBook, StrategicResourceReservationLedger, ResourceAllocator, MissionLease, ProvisioningSession, глобальный AiReturnBasePolicy и архитектура Pipeline. В общем admission partial добавлены только значимые поля fingerprint. В общем materialization policy добавлен только ActiveDefence-gated deadline check; остальные consumers идут прежним путём.
+Не изменены Attack evaluator/planner/мобилизация/Gather/Assault/RecoveryReturn/пороги/TryServeActiveDefence, Raid и Recon, общий WorldAnalysis.Threat, WorthIt и правила боя, SafeStepPathing и алгоритмы движения, TurnResourceBook, StrategicResourceReservationLedger, ResourceAllocator, MissionLease, глобальный AiReturnBasePolicy и архитектура Pipeline. В общем admission partial добавлены только значимые поля fingerprint. В общем materialization policy добавлен только ActiveDefence-gated deadline check; остальные consumers идут прежним путём.
 
 Отдельного threat evaluator, resource manager, reservation system, army owner или cache нет. Все физические действия остаются у executor/Transit. AirSupport получает только отфильтрованные objectives; авиационный бой, выносливость и возврат не переписаны.
 
@@ -134,3 +136,26 @@ C-01..10 и C-12 имеют модельные/существующие пров
 2. Получить измеренную шестистрочную таблицу банковских переходов через полный pipeline и settlement, включая Fresh Intercept, Continue на следующем ходу, конфликт двух миссий, параллельную Economy и конец хода.
 3. Выполнить AI-only партию с AiDebug, сверить фактические маршруты, AP, отмены, refresh и invariants.
 4. До этих результатов статус — реализация для проверки, **не полностью принятая задача по разделам 16/18/20 ТЗ**.
+
+## 10. Повторная проверка снизу вверх (2026-10-09)
+
+Проверяемый исходный HEAD рабочей ветки: `2d04a0404bfb685bedf6bfe1394b4fb33475da71`. Master повторно сверён: `5cc271837bb7b474ca7e171633fa3c96affe407a`. Проверена последовательность executor/Transit → outcome/retire/leases → Provisioning → Continuity → Planner/Demand/materialization → ActorCommitments → snapshot/threat/ForceNeed/fingerprint.
+
+Найдены и исправлены три корня ошибок:
+
+1. **Взаимное исключение необходимых Regroup legs в Provisioning.** PrepareGroundCombatAssignments правильно pin-ил оба actor, но per-leg AssessResponse считал вторую leg чужой недоступной силой. Теперь ProvisioningSession лишь сохраняет read-only список финансируемых pinned proposals текущего pass; он заменяется при каждом repack. ActiveDefenceProvisioner использует его для совместной оценки, открывая в прогнозе только peer leg того же enemy/asset/destination, разрешённую каноническими exclusions либо уже provisioned под собственным точным ключом. Сам actor по-прежнему связывается только со своей leg. Нефинансируемые, чужие и contended peers не считаются обещанным подкреплением. AssessResponse остаётся единственным решением достаточности и боевой оценки. Если финансируемый состав недостаточен, шаг получает существующий NoExecutableStep/RetryNextTurn, не ложную отмену потребности.
+2. **Разный контракт выжившего Return actor.** MissionActorPolicy сохранял claim непустого ground container, а Continuity требовал IsStructuralRaidActor и освобождал повреждённую армию посреди опасного отхода. Return Continuity теперь использует существующий GroundContainerStillValid. Intercept сохраняет боевой structural gate.
+3. **Ложная безопасность базы за счёт опаздывающего отступающего.** SafeWithdrawalBase добавлял actor в hypothetical defence независимо от ETA. Теперь это допустимо только при физическом присутствии либо своевременном прибытии. Без этого база оценивается по настоящим защитникам. Глобальная AiReturnBasePolicy не изменена.
+
+Также закрыта последняя граница перед расходом AP: ProvisionReturn SafeWithdrawal заново проверяет актуальную danger и допустимость назначенного safe home. Исчезновение danger либо небезопасный home даёт TargetInvalidated без команды движения. Добавлен native PlayMode тест этого отказа; он скомпилирован, но не выполнен.
+
+Новые четыре выполняемые регрессии:
+
+- FundedRegroupBatch_KeepsPeersInJointForecastWithoutSharingTheirActors — воспроизводит старый Shortage на raw exclusions и получает правильный Regroup после PrepareGroundCombatAssignments; после RegisterSuccess первой leg совместная оценка сохраняется, APClaimed остаётся 2.
+- FundedRegroupBatch_DoesNotPromiseUnfundedOrContendedPeers — один funded actor недостаточен, оба достаточны; повторный repack до одного удаляет peer без ручного cache reset; чужой claim исключается, APClaimed=0.
+- WithdrawalContinuesForSurvivingGroundContainerAfterLosingCombatEligibility — surviving container сохраняет intent и claim; пустой контейнер освобождается.
+- WithdrawalHome_DoesNotCountTheRetreatingArmyBeforeItCanArrive — ETA actor=2 при enemy ETA=1 не делает базу безопасной.
+
+Это локальные изменения поведения и небольшое расширение read-only контекста существующего provisioning pass. В shared ProvisioningManager/Session добавлена только передача финансируемых pinned proposals; assignment, exclusions, claims, AP accounting и поведение Attack/Raid не менялись. Новых reservation owners, battle evaluators и cache нет. Список текущего pass не требует добавления в стратегический fingerprint: он не переживает repack и читается при каждой финальной проверке; его актуальность покрыта регрессией repack.
+
+Банк перепроверен по владельцам: eligibility/совместная оценка не вызывает RegisterSuccess и не изменяет банк; real binding сохраняет exclusions; RegisterSuccess остаётся единственным идемпотентным pass claim; retire/rekey остаются владельцами освобождения. Полные runtime измерения AP и партия по-прежнему недоступны.

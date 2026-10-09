@@ -121,7 +121,8 @@ namespace Game.Ai.V2
             // A re-pack refreshes the entire assignment; never let last pass's assignments
             // exclude current candidates while solving the new batch.
             session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int>());
-            session.SetGroundCombatConstraints(durableCommitments, pinnedByOtherLegs);
+            session.SetGroundCombatConstraints(durableCommitments, pinnedByOtherLegs,
+                allocation?.Funded?.Select(fe => fe?.Mission));
             var cands = new List<List<int>>(open.Count);
             foreach (FundedEntry fe in open)
             {

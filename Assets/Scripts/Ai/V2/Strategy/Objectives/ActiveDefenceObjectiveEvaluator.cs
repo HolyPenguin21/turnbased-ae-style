@@ -233,7 +233,8 @@ namespace Game.Ai.V2
         // a different operation. A present garrison is assessed BEFORE proposing any movement.
         internal static ActiveDefenceResponse AssessResponse(WorldSnapshot snap,
             ActiveDefenceObjective objective, ISet<int> committed, ICollection<int> withdrawing,
-            int? pinnedActor, IEnumerable<MissionIntent> activeIntents = null)
+            int? pinnedActor, IEnumerable<MissionIntent> activeIntents = null,
+            ISet<int> fundedRegroupArmyIds = null)
         {
             if (objective == null || !IsDefendableAsset(snap, objective.Target.ProtectedAssetKind,
                     objective.Target.ProtectedAssetHex) || snap?.Self?.Armies == null)
@@ -262,6 +263,7 @@ namespace Game.Ai.V2
                     || i.ActiveDefence.ReturnPurpose != ActiveDefenceReturnPurpose.RegroupForAsset
                     || i.ActiveDefence.EnemyArmyId != objective.Target.EnemyArmyId
                     || !i.ActiveDefence.ProtectedAssetHex.Equals(asset)), snap, null);
+            if (fundedRegroupArmyIds != null) ownRegroup.UnionWith(fundedRegroupArmyIds);
             ownRegroup.ExceptWith(otherOwners.ClaimedArmyIds);
             unavailable.ExceptWith(ownRegroup);
             var response = new ActiveDefenceResponse { Opposition = opposition };
@@ -285,7 +287,8 @@ namespace Game.Ai.V2
             }
             List<ArmySnapshot> usable = BuildDefencePool(snap, unavailable, null);
             List<ArmySnapshot> timely = usable.Where(a => a.Hex.Equals(asset)
-                || (!IsPinnedStrongholdDefender(snap, a, unavailable)
+                || ((fundedRegroupArmyIds == null || fundedRegroupArmyIds.Contains(a.ArmyId))
+                    && !IsPinnedStrongholdDefender(snap, a, unavailable)
                     && CanArriveBeforeThreat(snap, a, asset, objective.Target.EnemyEta, out _))).ToList();
             response.RequiredPower = GroundCombatFeasibility.RequiredPower(WorthIt.UnitsOf(opposition), 0f);
             response.AvailablePower = GroundCombatFeasibility.AggregatePower(timely)
@@ -415,7 +418,9 @@ namespace Game.Ai.V2
                     && t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.activeDefenceWithdrawMaxEnemyEta
                     && HoldChanceAtAsset(snap, new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
                         { ProtectedAssetHex = h, ProtectedAssetKind = t.Asset.Kind } }, h,
-                        new[] { actor }, Opposition(snap, t.Contact.Army.ArmyId), committed)
+                        actor.Hex.Equals(h) || CanArriveBeforeThreat(snap, actor, h, t.EnemyEta, out _)
+                            ? new[] { actor } : System.Array.Empty<ArmySnapshot>(),
+                        Opposition(snap, t.Contact.Army.ArmyId), committed)
                         < AiConfigV2.activeDefenceHoldWinChance);
                 if (!unsafeBase) return h;
             }

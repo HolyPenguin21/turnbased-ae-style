@@ -43,6 +43,9 @@ namespace Game.Ai.V2
         // after Raid only because Raid happened to be the first lane built on it.
         private ActorCommitments _groundCombatDurableCommitments;
         private HashSet<int> _groundCombatPinnedByOtherLegs = new HashSet<int>();
+        // Read-only funded lifecycle proposals for joint feasibility, not another claim store.
+        private readonly List<MissionProposal> _groundCombatPinnedLegs = new List<MissionProposal>();
+        internal IReadOnlyList<MissionProposal> PinnedGroundCombatLegs => _groundCombatPinnedLegs;
 
         public ProvisioningSession(WorldSnapshot snapshot) : this(snapshot,
             AiTurnSession.Peek(snapshot?.Observer, snapshot?.TurnNumber ?? -1)) { }
@@ -102,10 +105,13 @@ namespace Game.Ai.V2
             AssignmentRejections => _assignmentRejections;
 
         internal void SetGroundCombatConstraints(ActorCommitments durableCommitments,
-            ISet<int> pinnedByOtherLegs)
+            ISet<int> pinnedByOtherLegs, IEnumerable<MissionProposal> pinnedLegs = null)
         {
             EnsureActive();
             _groundCombatDurableCommitments = durableCommitments;
+            _groundCombatPinnedLegs.Clear();
+            if (pinnedLegs != null)
+                _groundCombatPinnedLegs.AddRange(pinnedLegs.Where(p => GroundCombatLegs.PinsActors(p, out _, out _)));
             _groundCombatPinnedByOtherLegs = pinnedByOtherLegs == null
                 ? new HashSet<int>() : new HashSet<int>(pinnedByOtherLegs);
         }

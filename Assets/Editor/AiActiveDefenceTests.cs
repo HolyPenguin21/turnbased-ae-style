@@ -951,6 +951,119 @@ namespace Game.EditorTests
                 },
             };
         }
+        private static MissionProposal RegroupLeg(WorldSnapshot snap, int actorId)
+        {
+            var target = AssetObjective(snap).Target;
+            target.Phase = ActiveDefencePhase.Return;
+            target.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
+            target.ReturnHex = target.ProtectedAssetHex;
+            target.PrimaryArmyId = actorId;
+            return new MissionProposal { Kind = MissionKind.ActiveDefence, Target = target,
+                PreferredMoverArmyId = actorId };
+        }
+
+        private static void PrepareRegroupBatch(ProvisioningSession session, ActorCommitments commitments,
+            params MissionProposal[] missions)
+        {
+            var allocation = new TentativeAllocation();
+            allocation.Funded.AddRange(missions.Select(m => new FundedEntry { Mission = m,
+                Tentative = new ResourceVector(2f, 0f, 0f, 0f, 0f) }));
+            typeof(ProvisioningManager).GetMethod("PrepareGroundCombatAssignments",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                .Invoke(null, new object[] { session, allocation, commitments });
+        }
+
+        [Test]
+        public void FundedRegroupBatch_KeepsPeersInJointForecastWithoutSharingTheirActors()
+        {
+            var owner = new PlayerSetupData();
+            var snap = AssetWorld(DefenceActor(owner, 1, Secondary, 7, 7, 14),
+                DefenceActor(owner, 2, new HexCoord(0, 0), 7, 7, 14),
+                DefenceActor(owner, 3, new HexCoord(0, 1), 7, 7, 14));
+            var first = RegroupLeg(snap, 2);
+            var second = RegroupLeg(snap, 3);
+            using var session = new ProvisioningSession(snap);
+            PrepareRegroupBatch(session, new ActorCommitments(), first, second);
+            Assert.That(session.ExcludedForGroundCombat(first), Does.Contain(3),
+                "the peer is NOT available to bind or donate to the current leg");
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, AssetObjective(snap),
+                session.ExcludedForGroundCombat(first), null, null).Kind,
+                Is.EqualTo(ActiveDefenceResponseKind.Shortage), "reproduce the original per-leg exclusion bug");
+            var jointly = ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, first,
+                session, Array.Empty<MissionIntent>());
+            Assert.That(jointly.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            Assert.That(jointly.ReinforcementArmyIds, Is.EquivalentTo(new[] { 2, 3 }));
+            session.RegisterSuccess(StableMissionKey.For(first), new ProvisionedMission {
+                Mission = first, Kind = MissionKind.ActiveDefence, MoverArmyId = 2,
+                ActiveDefenceTarget = (ActiveDefenceMissionTarget)first.Target, ClaimedAp = 2f });
+            Assert.That(session.ExcludedForGroundCombat(second), Does.Contain(2));
+            Assert.That(ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, second,
+                session, Array.Empty<MissionIntent>()).Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            Assert.That(session.ApClaimed, Is.EqualTo(2f), "forecasting must not claim or charge the peer again");
+        }
+
+        [Test]
+        public void FundedRegroupBatch_DoesNotPromiseUnfundedOrContendedPeers()
+        {
+            var owner = new PlayerSetupData();
+            var snap = AssetWorld(DefenceActor(owner, 1, Secondary, 7, 7, 14),
+                DefenceActor(owner, 2, new HexCoord(0, 0), 7, 7, 14),
+                DefenceActor(owner, 3, new HexCoord(0, 1), 7, 7, 14));
+            var first = RegroupLeg(snap, 2);
+            var second = RegroupLeg(snap, 3);
+            using var session = new ProvisioningSession(snap);
+            PrepareRegroupBatch(session, new ActorCommitments(), first);
+            Assert.That(ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, first,
+                session, Array.Empty<MissionIntent>()).Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            PrepareRegroupBatch(session, new ActorCommitments(), first, second);
+            Assert.That(ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, first,
+                session, Array.Empty<MissionIntent>()).Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            PrepareRegroupBatch(session, new ActorCommitments(), first);
+            Assert.That(ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, first,
+                session, Array.Empty<MissionIntent>()).Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
+                "repack must discard the previous funded peer without manual cache reset");
+            var otherOwner = new ActorCommitments();
+            otherOwner.Claim(3);
+            PrepareRegroupBatch(session, otherOwner, first, second);
+            Assert.That(ActiveDefenceProvisioner.AssessRegroupForProvisioning(snap, first,
+                session, Array.Empty<MissionIntent>()).Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(otherOwner.IsArmyClaimed(3), Is.True);
+            Assert.That(session.ApClaimed, Is.Zero);
+        }
+
+        [Test]
+        public void WithdrawalContinuesForSurvivingGroundContainerAfterLosingCombatEligibility()
+        {
+            var actor = DefenceActor(new PlayerSetupData(), 7, new HexCoord(0, 0), 0, 0, 1);
+            actor.IsStructuralRaidActor = false;
+            var snap = AssetWorld(actor);
+            snap.Threat.Threats[0].Asset = new StrategicAssetSnapshot { Kind = AssetKind.Army, Hex = actor.Hex };
+            var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Home);
+            var registry = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            registry.Put(intent);
+            try
+            {
+                var commitments = ActorCommitments.FromIntents(registry.All, snap, null);
+                Assert.That(commitments.IsArmyClaimed(7), Is.True);
+                Assert.That(MissionContinuityLayer.ResolveActive(snap.Observer, snap), Does.Contain(intent));
+                actor.MemberCount = 0;
+                Assert.That(MissionContinuityLayer.ResolveActive(snap.Observer, snap), Is.Empty);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void WithdrawalHome_DoesNotCountTheRetreatingArmyBeforeItCanArrive()
+        {
+            var actor = DefenceActor(new PlayerSetupData(), 7, new HexCoord(-8, 0), 50, 50, 50);
+            var snap = AssetWorld(actor);
+            snap.Self.BaseHexes = new[] { Secondary };
+            snap.Threat.Threats[0].EnemyEta = 1;
+            Assert.That(ActiveDefenceObjectiveEvaluator.ArrivalEta(snap, actor, Secondary), Is.EqualTo(2));
+            Assert.That(ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, actor, null), Is.Null,
+                "a doomed base cannot become safe merely because a distant strong actor plans to return");
+        }
+
     }
 }
 #endif

@@ -41,7 +41,10 @@ namespace Game.Ai.V2
             if (defence?.Phase == ActiveDefencePhase.AirSupport)
                 return ResolveActiveDefenceAirSupport(player, snap, intent, defence);
             ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
+                && defence?.PrimaryArmyId == a.ArmyId
+                && (defence.Phase == ActiveDefencePhase.Return
+                    ? MissionActorPolicy.GroundContainerStillValid(a.ArmyId, snap)
+                    : a.IsStructuralRaidActor));
             if (defence == null || actor == null || ShouldReap(intent, snap?.TurnNumber ?? 0))
             {
                 AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END {intent.IntentKey} "

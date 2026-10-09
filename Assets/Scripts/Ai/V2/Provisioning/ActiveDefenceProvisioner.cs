@@ -157,16 +157,29 @@ namespace Game.Ai.V2
                 IReadOnlyList<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
                 ActiveDefenceObjective objective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap,
                     target.EnemyArmyId);
-                var committed = ActorCommitments.FromIntents(intents, snap, null).ClaimedArmyIdSet;
-                committed.UnionWith(session.ExcludedForGroundCombat(funded.Mission));
                 ActiveDefenceResponse response = objective == null
                     || !objective.Target.ProtectedAssetHex.Equals(target.ReturnHex.Value) ? null
-                    : ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective, committed,
-                        ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(intents), null, intents);
+                    : AssessRegroupForProvisioning(snap, funded.Mission, session, intents);
+                if (response?.Kind == ActiveDefenceResponseKind.Shortage)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        "regroup_funded_cohort_insufficient"));
                 if (response?.Kind != ActiveDefenceResponseKind.Regroup
                     || !response.ReinforcementArmyIds.Contains(actor.Id))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         "regroup_no_longer_needed"));
+            }
+            else
+            {
+                ArmySnapshot current = snap.Self.Armies.FirstOrDefault(a => a.ArmyId == actor.Id);
+                var committed = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All, snap, null).ClaimedArmyIdSet;
+                committed.UnionWith(session.ExcludedForGroundCombat(funded.Mission));
+                committed.Remove(actor.Id);
+                if (!ActiveDefenceObjectiveEvaluator.NeedsSafeWithdrawal(snap, current)
+                    || !ActiveDefenceObjectiveEvaluator.SafeWithdrawalBase(snap, current, committed,
+                        target.ReturnHex).Equals(target.ReturnHex))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "safe_withdrawal_released_or_home_unsafe"));
             }
             if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value,
                     profile: SafeRouteProfile.Combat) == null)
@@ -184,6 +197,38 @@ namespace Game.Ai.V2
                 ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = ap,
             });
+        }
+
+        // Re-evaluate the funded cohort together, but bind only this leg's own actor. The
+        // canonical exclusion view still rejects every independent operation and contested peer.
+        internal static ActiveDefenceResponse AssessRegroupForProvisioning(WorldSnapshot snap,
+            MissionProposal mission, ProvisioningSession session, IReadOnlyList<MissionIntent> intents)
+        {
+            if (!(mission?.Target is ActiveDefenceMissionTarget target)) return null;
+            var fundedActors = new HashSet<int>();
+            foreach (MissionProposal peer in session.PinnedGroundCombatLegs.Concat(new[] { mission }))
+            {
+                if (!(peer.Target is ActiveDefenceMissionTarget leg)
+                    || leg.Phase != ActiveDefencePhase.Return
+                    || leg.ReturnPurpose != ActiveDefenceReturnPurpose.RegroupForAsset
+                    || leg.EnemyArmyId != target.EnemyArmyId
+                    || !leg.ProtectedAssetHex.Equals(target.ProtectedAssetHex)
+                    || !leg.ReturnHex.Equals(target.ReturnHex) || !leg.PrimaryArmyId.HasValue) continue;
+                int id = leg.PrimaryArmyId.Value;
+                bool ownSuccess = session.Successful.TryGetValue(StableMissionKey.For(peer), out var bound)
+                    && bound.MoverArmyId == id && bound.Kind == MissionKind.ActiveDefence
+                    && bound.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return
+                    && bound.ActiveDefenceTarget.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset
+                    && bound.ActiveDefenceTarget.EnemyArmyId == leg.EnemyArmyId;
+                if (!ownSuccess && session.ExcludedForGroundCombat(peer).Contains(id)) continue;
+                fundedActors.Add(id);
+            }
+            var committed = ActorCommitments.FromIntents(intents, snap, null).ClaimedArmyIdSet;
+            committed.UnionWith(session.ExcludedForGroundCombat(mission));
+            var objective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, target.EnemyArmyId);
+            return objective == null ? null : ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                objective, committed, ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(intents),
+                null, intents, fundedActors);
         }
 
     }

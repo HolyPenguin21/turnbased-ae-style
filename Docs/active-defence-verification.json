@@ -7,8 +7,8 @@
     "passed": 1379
   },
   "current": {
-    "total": 1909,
-    "passed": 1405
+    "total": 1913,
+    "passed": 1409
   },
   "regressionsOfBaselinePassingTests": [],
   "activeDefenceTests": [
@@ -211,6 +211,26 @@
       "id": "AiActiveDefenceTests.MaterializedDefenderMustReachTheOwnedAssetBeforeDeadline()",
       "passed": true,
       "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.FundedRegroupBatch_KeepsPeersInJointForecastWithoutSharingTheirActors()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.FundedRegroupBatch_DoesNotPromiseUnfundedOrContendedPeers()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.WithdrawalContinuesForSurvivingGroundContainerAfterLosingCombatEligibility()",
+      "passed": true,
+      "error": null
+    },
+    {
+      "id": "AiActiveDefenceTests.WithdrawalHome_DoesNotCountTheRetreatingArmyBeforeItCanArrive()",
+      "passed": true,
+      "error": null
     }
   ],
   "relatedSuiteResults": {
@@ -305,10 +325,18 @@
       "failed": 700
     },
     "current": {
-      "total": 1909,
-      "passed": 1183,
-      "failed": 726
+      "total": 1913,
+      "passed": 1184,
+      "failed": 729
     },
     "limitations": "Five previously passing tests now reach native Object equality; diagnostic bridges resolve them, standard gate is not green."
+  },
+  "reviewBaseSha": "2d04a0404bfb685bedf6bfe1394b4fb33475da71",
+  "reviewChecks": {
+    "nativePlayModeCompilation": "exit 0, not executed in Unity",
+    "regroupCohortApClaimedAfterFirstSuccess": 2,
+    "regroupAssessmentWithUnfundedOrForeignClaimedPeerApClaimed": 0,
+    "fullRuntimeBankTable": "not measured",
+    "AIOnlyMatch": "not run"
   }
 }

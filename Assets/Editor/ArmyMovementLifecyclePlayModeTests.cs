@@ -300,6 +300,11 @@ namespace Game.EditorTests
                     new AssetThreatSnapshot { Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base,
                         Hex = _last, Value = 10f }, Contact = contact, CanDamage = true, EnemyEta = 1,
                         PotentialDamage = 1f, Confidence = 1f, Severity = 1f, AttackWinChance = 1f } } } };
+            if (purpose == ActiveDefenceReturnPurpose.SafeWithdrawal)
+                snap.Threat.Threats = snap.Threat.Threats.Concat(new[] { new AssetThreatSnapshot {
+                    Asset = new StrategicAssetSnapshot { Kind = AssetKind.Army, Hex = actor.Hex },
+                    Contact = contact, CanDamage = true, EnemyEta = 1, AttackWinChance = 1f,
+                    PotentialDamage = 1f, Confidence = 1f, Severity = 1f } }).ToArray();
             var target = ActiveDefenceObjectiveEvaluator.Enumerate(snap).Single().Target;
             target.Phase = ActiveDefencePhase.Return;
             target.ReturnPurpose = purpose;
@@ -354,6 +359,27 @@ namespace Game.EditorTests
         [UnityTest]
         public IEnumerator ActiveDefenceWithdrawal_UsesTheSameApOnlyMovementContract() =>
             DefenceReturnBankCase(false, ActiveDefenceReturnPurpose.SafeWithdrawal);
+
+        [UnityTest]
+        public IEnumerator ActiveDefenceWithdrawal_FinalProvisionRejectsReleasedDangerWithoutSpending()
+        {
+            _root.ActionPoints = 5;
+            ArmyData army = Army(air: false);
+            var fixture = DefenceReturnFixture(army, ActiveDefenceReturnPurpose.SafeWithdrawal);
+            fixture.snapshot.Threat.Threats = fixture.snapshot.Threat.Threats
+                .Where(t => t.Asset.Kind != AssetKind.Army).ToArray();
+            using var session = new ProvisioningSession(fixture.snapshot);
+            var funded = new FundedEntry { Mission = fixture.proposal,
+                Tentative = new ResourceVector(army.ActivationApCost, 0f, 0f, 0f, 0f) };
+            var provision = ActiveDefenceProvisioner.Provision(_owner, _root, Context(), session, funded);
+            Assert.That(provision.Success, Is.False);
+            Assert.That(provision.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
+            Assert.That(_root.ActionPoints, Is.EqualTo(5));
+            Assert.That(army.Hex, Is.EqualTo(_origin));
+            Assert.That(session.ApClaimed, Is.Zero);
+            Assert.That(session.ClaimedArmyIds, Is.Empty);
+            yield return null;
+        }
 
         [UnityTest]
         public IEnumerator ActiveDefenceRegroup_StaleSmallEnvelopeCannotMoveForFree()
