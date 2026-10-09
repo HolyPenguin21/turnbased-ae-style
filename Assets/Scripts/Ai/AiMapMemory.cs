@@ -1044,7 +1044,8 @@ namespace Game.Ai
         // correction only fires on a vision RECOMPUTE, which "the guard I'm already looking at just
         // got beaten" doesn't by itself trigger, so without this a watching player would keep
         // believing a guard is still there until their vision happens to recompute for some other
-        // reason.
+        // reason. Now also: the claimant itself learns at once (ConsumedBy), and only an event the
+        // player already knows is ever corrected.
         private static void OnEventConsumed(HexCoord hex)
         {
             // The claimant learns of its own completion at once, army or no army left after the
