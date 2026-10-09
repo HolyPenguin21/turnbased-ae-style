@@ -1,6 +1,6 @@
 # Упрощение пайплайна AI V2 — Уровень 0 (baseline и карта фактической схемы)
 
-Статус уровня 0: **черновик в работе** (сессия 1). Gameplay-код не менялся.
+Статус уровня 0: **проверен доступными средствами — native не выполнен** (см. §16–§17). Поведение не менялось; вынесены чистые единицы с тестами (§9).
 База: `master` @ `fe2ccdf4`. ТЗ проверялось на `1e77ed0a`; между ними изменены только
 `Analysis/WorldAnalysis.Knowledge.cs`, `.Observation.cs`, `WorldSnapshot.cs`,
 `Continuity/MissionContinuityLayer.Raid.cs`, `Execution/RaidExecutor.cs`,

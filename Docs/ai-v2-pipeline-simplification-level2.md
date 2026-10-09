@@ -65,8 +65,8 @@ SRP: `Pipeline` отвечает сейчас за выбор, исполнен�
 |---|---|---|
 | Baseline-арбитраж rebase/recovery зафиксирован | выполнено | §1, тесты `Next`/`RebaseFirst` (tie, Id, null, head only) |
 | Reuse routing, без нового `TaskExecutor`/store | выполнено | `MandatoryAviationStep` — статический адаптер без состояния |
-| Ordering-тесты: два вида, last obligation, stalled | **частично** | два вида, tie, пустые, головы списков — тесты есть; stalled-фильтр проверен по коду (`AviationRebasePlanner.cs:81`, `ReconAirExecutor.cs:244`) и существующим `AiReconAuditBugTests`, но цепочка «no-progress → MarkStalled → continue → обычная задача» внутри `RunTurn` управляемым тестом не покрыта (корутина зависит от движка) |
-| Общий select + протокол Уровня 1 | выполнено | `Next` + `ObserveSettled` в одной функции |
+| Ordering-тесты: два вида, last obligation, stalled, air Scout и обычная задача | **частично** (не покрыты: last obligation без dirty trigger, air Scout, обычная задача — всё внутри `RunTurn`) | два вида, tie, пустые, головы списков — тесты есть; stalled-фильтр проверен по коду (`AviationRebasePlanner.cs:81`, `ReconAirExecutor.cs:244`) и существующим `AiReconAuditBugTests`, но цепочка «no-progress → MarkStalled → continue → обычная задача» внутри `RunTurn` управляемым тестом не покрыта (корутина зависит от движка) |
+| Общий select + протокол Уровня 1 | **частично** | оба вида авиации выбираются одним `Next` и идут одним протоколом (`ObserveSettled`); выбор «авиация против обычной миссии» остаётся двумя последовательными ветками цикла (`Next != None → continue`), единый выбор operational work item — Уровень 4 (`TurnWork`) |
 | Без финансирования оплаченного | выполнено | `Pack` и порядок не менялись; ledger/`Settle` не добавлены |
 | Delayed Phase A flush, force-flush | выполнено | код не тронут (`Pending`, `ReenterStrategicAxes(flush/force)`) |
 | Продолжение обычных задач после no-progress | выполнено по коду | `MarkStalled` + `continue`, `FindMandatory*` исключают stalled |
