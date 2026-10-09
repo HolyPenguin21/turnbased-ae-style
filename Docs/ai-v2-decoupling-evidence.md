@@ -20,20 +20,34 @@
 
 `Tools/ai-v2-decoupling-verify/`: `compare_traces.py`, `check_boundaries.py`, `selftest.py`, `README.md` (схема JSONL и правила R1–R6).
 `selftest.py`: хорошая трасса → exit 0; пять негативных фикстур (перестановка consume/reentry, стёртый owner, второй commit, income-cover release после старта первого tempo, просроченная строка на следующем ходу) → exit 1. Запущен, **SELFTEST PASSED**.
-Ограничение: инструменты проверены только на синтетической трассе. Recorder, который пишет JSONL из тестов, ещё не существует; игровые логи нужных полей не содержат и численным сравнением не считаются.
+Затем добавлены recorder `Assets/Editor/AiDecouplingTrace.cs` и золотые трассы двух банковских fixture (§4); `check_boundaries.py` на них — ok. Ограничение: recorder читает ledger из теста в точках, которые выбирает fixture; полного цикла `RunTurn` он не записывает (это появится в fixture этапов). Игровые логи нужных полей не содержат и численным сравнением не считаются.
 
 ## 3. Транскрипция цикла
 
 `Assets/Editor/AiTurnLoopTests.cs` уже содержит независимую транскрипцию исходного цикла (`Baseline`, снята с `c3cdde46`, до L4) и генератор 20 000 многошаговых сценариев против реального `TurnLoop.Run`. Для Э1 тест расширяется (исходы тел вместо записи состояния), второй похожий тест не создаётся. Транскрипция «текущего» `Run` как эталона для Э6 совпадает с этой, так как порядок переходов L4→L5 не менялся (код цикла после `f46e4529` менялся только в K1/D-правках L5).
 
-## 4. Сценарии §12 ТЗ
+## 4. Сценарии §12 ТЗ: сопоставление с тестами на `717871b8`
 
-| ID | Состояние на `717871b8` |
-|---|---|
-| S1–S9 | детерминированных fixture в репозитории **нет**; часть покрывают существующие managed-тесты (`AiEconomyReservationLifecycleTests`, `AiStrategicReadmissionTests`, `AiLifecycleReturnPolicyTests`, `AiTurnLoopTests`), прямого соответствия «сценарий → тест» не установлено |
-| Нативные ветки | cold, rebase, stall, Phase B после Reaction, `PhaseBStateChanged`, срочные возвраты, лимиты, совместные Economy/Attack/Reaction с rollback — **не наблюдались** (L5 §12) |
+Покрытие: **полное** — тест проверяет именно то, что требует сценарий; **частичное** — часть условий; **нет** — fixture отсутствует и пишется в начале этапа, который его использует (на входной ревизии этапа, до правок кода). Нативные ветки (cold, rebase, stall, Phase B после Reaction, `PhaseBStateChanged`, срочные возвраты, лимиты) не блокируют работу по решению владельца; они остаются **не наблюдавшимися**.
 
-Следующий шаг до Э1: сопоставить S1–S9 существующим тестам, недостающие оформить как managed-fixtures с записанными ожидаемыми значениями **до** изменений кода. Расхождений baseline с требованиями ТЗ в Э0 не найдено; полного разбора S1–S9 на baseline не проводилось.
+| ID | Существующие тесты | Покрытие | Чего нет |
+|---|---|---|---|
+| S1 | `AiEconomyReservationLifecycleTests.CompletionBecomesUnexecutable_DowngradesOnlyItsOwnApAndPreservesPhysicalHold`, `InvalidCompletion_ReleasesOnlyInvalidOwnersRows`, `AiStrategicSpendabilityApTests.SwitchingDeferredEconomyHold_ReleasesPreviousOwnerOnly`; **новый** `AiDecouplingBaselineTests.S1_Bank_*` (с трассой) | частичное: банк (ledger, реальные `EconomyReservationLifecycle`) | порядок Observe→ledger→SettleStep→reconcile в `RunTurn`; income cover перед первым tempo (требует `ctx.Map`) — fixture до Э2 |
+| S2 | `AiAviationSortieCycleTests.MandatoryRebase_StalledWingsStopCounting_ForTheirTurnOnly` (только движок), `AiOperationalWorkSelectionTests.AStalledObligationLeavesTheFundedMissionsSelectable`, `AiTurnLoopTests` | частичное | пары rebase 1 / recovery 2 и compound-факт первого reentry — нет теста на уровне `StepTriggerSequence` с реестром |
+| S3 | `AiRetryNextTurnCarryTests`, `AiMissionStepResultTests`, `AiEconomyDecisionTests` (RepriceThisTurn) | частичное | независимые бюджеты assignment / reprice на пределе, история отказов после `SetAssignment` — fixture до Э3 |
+| S4 | `AiLifecycleReturnPolicyTests` (`AReturnLegWaits_ARealTaskDoesNot`, `AnActiveDefenceWithdrawalNeverWaits`, `AReturnNeverWaitsTwoTurnsInARow`, `OnlyARealHomeThreatStopsTheWait`), `AiStrategicSpendabilityApTests.TacticalRetreat_ProtectsItsActivation_*` | полное для политики ожидания; частичное для `MarkProtectedThisTurn` | связка «ожидание→запись→защита от stall» на реестрах — fixture до Э4 |
+| S5 | `AiCombatOpportunityWarmTests`, `AiCombatCacheLifecycleTests`, `WorthItEstimateCacheTests`, `AiMissionLeaseLifecycleTests` | частичное | «та же ревизия знания, иные HP/рука/pathing» и same-revision stale intent с `ResolveActive` — fixture до Э5 |
+| S6 | `AiStrategicReadmissionTests`, `AiOperationalWorkSelectionTests`, `AiTurnLoopTests`, `AiTurnSessionIsolationTests` | частичное | `PhaseBStateChanged` открывает проход на реальном раунде, потеря второго reentry при consume — fixture до Э6 |
+| S7 | `AiTurnLoopTests` (cold, окно, StageDone+PassOpen, 20 000 сценариев), `AiPipelineOrchestrationUnitTests` | полное для цикла; частичное для warm residual | «warm unresolved demands сохранены» на реальном cold-теле |
+| S8 | `AiStrategicSpendabilityApTests.ReactionRoundRelease_*`, `AiTurnResourceBookTests`, `AiReservationInvariantsTests` | частичное | совместные Economy+Attack preparation+Reaction за AP, rollback канонической операции, отмена итератора |
+| S9 | `AiMissionLeaseLifecycleTests` (`StaleResourceWriteCannotResetANewTurnsReservationStorage`, rekey/retire), `AiTurnSessionIsolationTests`; **новый** `S9_Bank_*` | частичное | следующий ход «другого игрока», anonymous claims после disposal |
+
+**Сделано в Э0:** recorder `AiDecouplingTrace` и фикстуры `S1_Bank_*`, `S9_Bank_*` (ledger-уровень) с записанными ожидаемыми значениями (4+3 AP → 3 AP после downgrade; нет утечки; следующий ход пуст; чужой игрок не затронут). Золотые трассы: `Tools/ai-v2-decoupling-verify/golden/S1_bank.jsonl` (7 записей), `S9_bank.jsonl` (4); `check_boundaries.py` — ok на обеих. Managed-прогон с ними: 2125 тестов, 1651 прошло, 474 упало, регрессий 0 относительно `d0-base-p`, 2 новых прошедших.
+**Не сделано:** остальные fixture сценариев (колонка «Чего нет») — каждый пишется в начале соответствующего этапа на его входной ревизии; до этого этап не стартует. Расхождений baseline с требованиями ТЗ при чтении не найдено; полный разбор S1–S9 на поведение в игре не проводился.
+
+## 4a. Матрица зависимостей на `717871b8`
+
+Скрипт `Tools/ai-v2-decoupling-verify/coupling_matrix.py --rev 717871b8` (в репозитории; метод тот же, что у `deps.py`): 289 файлов, **203** связи между папками `Ai/V2` — историческое число воспроизведено. `AiStrategyV2Pipeline.cs`: 14 папок, **84** внешних типа (как в отчёте сравнения). Вся папка `Orchestration/`: 16 папок, **122** внешних типа (в сравнении было 116→118 «без файлов моделей»; методика отличается — для сравнения этапов использовать только значения этого скрипта на одной и той же методике). Полный вывод: `D:/aiv-work/coupling/d0-717871b8.txt`. Это счёт ссылок на типы, не граф вызовов; вспомогательная метрика.
 
 ## 5. Коррекции документов
 
@@ -43,4 +57,4 @@
 
 ## 6. Что не выполнено
 
-Unity EditMode/PlayMode; нативная партия на этой ревизии; метрика межпапочных зависимостей на `717871b8` (`deps.py` из `D:/aiv-work/coupling` не запускался в Э0; цифры 203/14/116→118 — исторические); сопоставление S1–S9.
+Unity EditMode/PlayMode — берёт на себя владелец; нативные ветки (cold, rebase, stall, Phase B после Reaction, `PhaseBStateChanged`, срочные возвраты, лимиты) — не блокируют, остаются не наблюдавшимися. Остальные fixture S1–S9 (§4, колонка «Чего нет») пишутся в начале этапов. Скрипты `run.sh`, `patchrun.sh`, `regress.py` лежат только в `D:/aiv-work`.

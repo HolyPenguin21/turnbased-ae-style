@@ -11,6 +11,15 @@ python Tools/ai-v2-decoupling-verify/check_boundaries.py run.jsonl
 
 Exit codes: `0` ok, `1` violation / divergence, `2` bad input.
 
+## Recorder, golden traces, coupling matrix
+
+- Recorder: `Assets/Editor/AiDecouplingTrace.cs` (test-only, reads the ledger, writes JSONL when
+  `AI_V2_TRACE_DIR` is set). Fixtures: `Assets/Editor/AiDecouplingBaselineTests.cs`.
+- Golden traces: `golden/*.jsonl` — written on the stage's input revision. After a stage, rerun the fixtures with a new
+  `AI_V2_TRACE_DIR` and `compare_traces.py golden/S1_bank.jsonl <new>/S1_bank.jsonl`.
+- `coupling_matrix.py --rev <sha>` — the folder dependency matrix of `Ai/V2` and the exact foreign types of
+  `Orchestration` (whole folder) and of `AiStrategyV2Pipeline.cs`; same method for every revision.
+
 ## Trace schema (one JSON object per line)
 
 | Field | Meaning |
@@ -20,7 +29,7 @@ Exit codes: `0` ok, `1` violation / divergence, `2` bad input.
 | `ordinal` | strictly increasing within a (player, turn) scope |
 | `event` | `turn_start`, `take`, `consume`, `reentry`, `commit`, `terminal_force`, `income_cover_release`, `tempo_round_start`, spend / release / rollback events, ... |
 | `ap`, `h`, `e`, `m`, `t` | spendable AP and resources **at that point (before each guard)** |
-| `rows` | owner rows: `{owner, reason, resource, amount, expiry}` |
+| `rows` | owner rows: `{owner, reason, resource, amount, expiry}`; `expiry` is a stage name (`EndOfTurn`, ...) or a turn number (R6 checks only numbers) |
 | `operation_keys`, `actors` | operation keys and actor ids touched |
 | `world_revision`, `knowledge_version`, `pathing_version`, `scope_id` | cache and revision coordinates |
 | `consumed`, `pending` | pending / consumed fact reasons; `take_id` links take → consume → reentry |

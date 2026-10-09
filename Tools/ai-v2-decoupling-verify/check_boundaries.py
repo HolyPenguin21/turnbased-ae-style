@@ -97,7 +97,8 @@ def check(records):
             elif ev == "turn_start":
                 for row in r.get("rows") or []:
                     exp = row.get("expiry")
-                    if exp is not None and turn is not None and exp < turn:
+                    # `expiry` is a turn number, or a stage name (rows are turn-scoped; no number to check).
+                    if isinstance(exp, (int, float)) and turn is not None and exp < turn:
                         fail("R6", r, f"expired row visible at turn start: "
                              f"{json.dumps(row, ensure_ascii=False)}")
     return bad
