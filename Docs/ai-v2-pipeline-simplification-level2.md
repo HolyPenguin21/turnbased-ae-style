@@ -77,7 +77,7 @@ flowchart TD
 | Последнее обязательство разрешилось без dirty trigger | `flush: true` в начале итерации → допуск | `Gate(triggered:false, flush:true, hasDeferred:true, pending:false) = Admit` | тесты `Gate` (5) |
 | Terminal force-flush при ещё pending | админит с логом | `AdmitDespitePending` | тест `Gate` |
 | Air Scout / обычная ground-задача | `Kind==Scout ∧ executor≠Ground → ExecutePlanStep`, иначе `TaskExecutor` | `RouteFor` | параметризованный тест (6 случаев); Explore не Scout-executor |
-| Число пар take→reenter | ordinary 2, rebase 1, recovery 2 | `ResolveStepTriggers(MissionTriggerPairs=2 / TriggerPairs)` | тесты `TriggerPairs`, `MissionTriggerPairs` |
+| Число пар take→reenter | ordinary 2, rebase 1, recovery 2 | `ResolveStepTriggers(StepTriggerSequence.StandardPairs=2 / TriggerPairs)` | тесты `TriggerPairs`, `MissionTriggerPairs` |
 | Progress / noProgress | `StateChanged ∨ strategic`; rebase `moved ∨ strategic`; recovery `Mutated ∨ strategic` | `StepTriggerOutcome.Progressed(actionChanged)`, `NextNoProgress` | тест `StepProgress…` |
 | Тексты `[Loop]` и stall | как в baseline | `Label`, `StallMessage` (идентичны) | тест + диф |
 
@@ -148,3 +148,7 @@ Writers/readers резервов не добавлены и не удалены.
 5. Уровень 3 опирается на: `StepTriggerOutcome`/`ResolveStepTriggers` (единая точка fan-out), `DeferredStrategicAdmission.Gate`, `MandatoryAviationOrder.TriggerPairs` (различие пар).
 
 Масштаб: изменение оркестрации (поведение, порядок и тексты сохранены; состав вызовов и условий — те же).
+
+## 10. Поправка (найдена при проверке Уровня 3)
+
+`MandatoryAviationStep.cs` содержит одно перенесённое чтение физического AP (`root.ActionPoints` перед шагом recovery), которое `AiRawResourceReadRatchetTests` не знал; утверждённое число добавлено (Уровень 3, §12). Раздел §7 о «0 регрессий» не охватывал этот тест: он падал и на baseline.

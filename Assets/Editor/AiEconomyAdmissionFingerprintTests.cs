@@ -81,6 +81,32 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ABaseOpportunityAppearingOrMovingReadmitsEconomy()
+        {
+            WorldSnapshot none = Snap(Army(1));
+            WorldSnapshot one = Snap(Army(1));
+            one.Economy = new EconomyStanding
+            { BaseOpportunities = new[] { new EconomyBaseOpportunity { Hex = new HexCoord(2, 1) } } };
+            WorldSnapshot moved = Snap(Army(1));
+            moved.Economy = new EconomyStanding
+            { BaseOpportunities = new[] { new EconomyBaseOpportunity { Hex = new HexCoord(3, 1) } } };
+            Assert.AreNotEqual(Key(none), Key(one));
+            Assert.AreNotEqual(Key(one), Key(moved));
+            Assert.AreEqual(Key(one), Key(one));
+        }
+
+        [Test]
+        public void AnEconomyIntentChangingStatusReadmitsEconomy()
+        {
+            MissionIntent active = EconomyIntent(builder: 2);
+            MissionIntent suspended = EconomyIntent(builder: 2);
+            suspended.Status = IntentStatus.Suspended;
+            Assert.AreNotEqual(Key(Snap(Army(2)), new List<MissionIntent> { active }),
+                Key(Snap(Army(2)), new List<MissionIntent> { suspended }),
+                "claims and the owners list both carry the status");
+        }
+
+        [Test]
         public void ThePhysicalStockIsAnInput() =>
             Assert.AreNotEqual(Key(Snap(Army(1)), res: "3,3,3,3"), Key(Snap(Army(1)), res: "3,3,3,2"));
 

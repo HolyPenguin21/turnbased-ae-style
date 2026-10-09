@@ -15,7 +15,7 @@
 | `Orchestration/AiStrategyV2Pipeline.cs` (1457 → 1278) | `ReenterStrategicAxes(cause, reasons, axes)` вместо `flush`/`force`; `Decide` вместо inline-ворот/слияния отложенных/фильтра неизменных ключей; management-раунд использует общий `ResolveStepTriggers`; шесть копий «Warm → Frame → 4 присваивания» → `RefreshDecisionFrame` |
 | `Orchestration/StepTriggerSequence.cs` (новый) | Последовательность «take → reenter» × N с именованными константами `StandardPairs = 2` и `RebasePairs = 1` и объяснением различия; `ResolveStepTriggers` в `RunTurn` — тонкая обёртка; `TakeTypedTriggers(out …)` заменён на `TakeTypedSplit()` |
 | `Orchestration/OperationalWorkSelection.cs` | константа числа пар переехала в `StepTriggerSequence` |
-| Тесты | `AiStrategicReadmissionTests` (9), `AiEconomyAdmissionFingerprintTests` (8), `AiStepTriggerSequenceTests` (7); ссылки существующих тестов переведены на новые классы (`Pipeline.X` → `DevelopmentAdmission.X` и т. п.) |
+| Тесты | `AiStrategicReadmissionTests` (9), `AiEconomyAdmissionFingerprintTests` (10), `AiStepTriggerSequenceTests` (7); ссылки существующих тестов переведены на новые классы (`Pipeline.X` → `DevelopmentAdmission.X` и т. п.) |
 | `ARCHITECTURE.md` | строка про mid-turn re-admission описывает новых владельцев |
 
 ## 2. Все входы в повторный допуск (ТЗ §9, п. 1)
@@ -46,8 +46,8 @@
 | Какую ось ключом считать | `StrategicAdmissionFingerprints.For` | `AdmissionKey` в `RunTurn` | **single dispatcher**; ключ не составляет | тест маршрутизации (engine-bound) |
 | Какие оси идут в проход | `StrategicReadmission.Decide` | `ReenterStrategicAxes` | **extract**, чисто | `AiStrategicReadmissionTests` |
 | Состояние допуска (ключ по оси, отложенные) | `StrategicReadmission` | `RunTurn` | **один владелец**, не новое хранилище и не кеш: те же два объекта, что были замыканиями | grep: `lastStrategicAdmissionFingerprint`, `deferredAdmission` = 0 |
-| take→reenter | `ResolveStepTriggers` | шаг миссии, rebase, recovery, management | **merge** (3 копии + management → 1) | grep: `TakeTypedTriggers(` в helper + определение |
-| Число пар | `TriggerPairs` / `StandardTriggerPairs` | — | **retain** (rebase 1, остальные 2) | §9 п. 2 |
+| take→reenter | `ResolveStepTriggers` | шаг миссии, rebase, recovery, management | **merge** (3 копии + management → 1) | grep: `TakeTypedSplit` — единственный take, вызывается только из `StepTriggerSequence.Run` |
+| Число пар | `TriggerPairs` / `StepTriggerSequence.StandardPairs`, `RebasePairs` | — | **retain** (rebase 1, остальные 2) | §9 п. 2 |
 | Обновление кадра | `RefreshDecisionFrame` | 6 мест | **merge** | grep |
 | Решение ворот отложенного допуска | `DeferredStrategicAdmission.Gate` | `Decide` | **reuse** (Ур. 2) | тесты Ур. 2 |
 | Cold residual | отдельная ветка | 1 | **retain** (§2) | перечень (а)–(д) |
@@ -121,9 +121,9 @@ flowchart TD
 | Проверка | Результат |
 |---|---|
 | `compile_check.sh` (baseline `fe2ccdf4`: 28) на коде Уровня 3 | **passed**: 28 = 28, новых 0 |
-| `run.sh l3-c` | build errors 0; 2110 тестов, 1435 прошло до патча Unity-null |
-| `patchrun.sh l3-c l3-c-p` (после `StepTriggerSequence`) | **1636 прошло**, 474 упало |
-| `regress.py l2-c-p l3-c-p` | **регрессий 0**, новых проходящих 23 |
+| `run.sh l3-e` | build errors 0; 2112 теста, 1437 прошло до патча Unity-null |
+| `patchrun.sh l3-e l3-e-p` (итоговый код) | **1638 прошло**, 474 упало |
+| `regress.py l2-c-p l3-e-p` | **регрессий 0**, новых проходящих 25 |
 | 474 упавших | 472 прежних engine-bound + `MandatoryRebase_…` (Ур. 2) + `TheDispatcherRoutesEachAxis…` (читает `root == null`, Unity-object; выполнить в Unity) |
 | `test_regress.sh <sha>` | **not run** (нужен `mono` в PATH; использован эквивалент) |
 | Unity compile / EditMode / PlayMode | **not run** |
@@ -175,3 +175,11 @@ flowchart TD
 **Актуальность чтения.** Снимок мира свежий в обоих вариантах (`ObserveSettled`, а изнутри reentry — `RefreshStrategicKnowledge` и `RefreshDecisionFrame` при `StateChanged`). Различие — только спрос: при 1 паре `demands` по осям, затронутым составным фактом, не пересчитываются до следующего take, и ближайший `BuildMissionSet` использует их прежнюю редакцию — как в baseline. Ключи допуска сравниваются при следующем проходе с актуальным состоянием: изменившийся вход запускает проход, неизменный — нет (см. §7). Факт не воспроизводится повторно (consume один раз).
 
 **Что остаётся неподтверждённым.** `loopsig.py` (`violations=0`, нет `ERROR`) — необходимая, но недостаточная проверка: она не доказывает ни сохранение порядка действий, ни корректность банка и кешей. Обычный нативный лог проверит общий путь допуска, но не rebase. **Rebase нативно не подтверждён** и остаётся таким до отдельного сценария перебазирования wing; полная нативная приёмка по нему не заявляется.
+
+## 12. Перепроверка снизу вверх: найденное и исправленное
+
+1. **`AiRawResourceReadRatchetTests` (замораживает число прямых чтений ресурсов по файлам) не учитывал перенос кода Уровней 1–3.** Тест выполняется в managed-прогоне, но падал и на baseline из-за постороннего `Execution/ActiveDefenceExecutor.cs` (2 чтения при утверждённом 1), поэтому дифференциальное сравнение «регрессий 0» скрывало мои новые нарушения. Перенесённые, а не новые, чтения: `Pipeline.cs` 6 → 2, `InfrastructureFulfillment.cs` 16 → 15, новые файлы `EconomyReservationLifecycle.cs` 1 (Ур. 1), `MandatoryAviationStep.cs` 1 (Ур. 2), `EconomyAdmission.cs` 1 и `StrategicAdmissionFingerprints.cs` 2 (Ур. 3). Сумма по затронутым файлам 22 до и 22 после: новых чтений нет. Утверждённые числа в тесте обновлены (с пояснениями «moved, not new»). После правки в тесте остаётся одно расхождение — прежнее, `ActiveDefenceExecutor.cs` (2 против 1): оно есть на baseline `fe2ccdf4`, к этой задаче не относится, не исправлялось и в Unity даст падение этого теста.
+2. **Остальные упавшие тесты без признаков движка** (8 штук: `AiAggressionRaidTests`, `AiAttackLaneTests`, `AiAttackObjectiveTests`, `AiDevelopmentRadarResourceGateTests`, `AiEconomyDecisionTests`, `AiIndependentDevelopmentTests`, `AiRaidConfidenceTests`, `WorthItEstimateCacheTests`) — все падают и на baseline `l0-base-p` (числовые/семантические отличия окружения mono); к коду уровней не относятся, но тоже скрыты дифференциальным сравнением. Их результат в Unity — единственное достоверное.
+3. Устаревшие имена (`TakeTypedTriggers`, `MissionTriggerPairs`) в отчётах Уровней 2–3 и `ARCHITECTURE.md` приведены к фактическим.
+4. Покрытие входов ключа Economy расширено (вход «base opportunity», статус Economy-intent); AP, hand-версия и held-reservation в ключе — через `PlayerRoot`/ledger, это engine-bound и в managed-прогоне не проверяются.
+5. Проверено: все новые `.cs` имеют `.meta` с уникальными GUID; файлов не удалено.
