@@ -606,3 +606,57 @@ Managed (`e5fix-a-p`): 2176 тестов, 1700 прошло, 475 упало; р�
 ## Цена изменения (до / после)
 
 Новый тип работы уровня хода: раньше — enum / `Phase` / ветка / делегат в `TurnLoopWork` / closure в `RunTurn` / проводка; теперь — enum / `Phase` / ветка / интерфейс работы и компонент с явными зависимостями, собираемый в `RunTurn` (одна строка). Новый тип факта: producer → typed reason mapping → доменный consumer; тела работ неизменны при прежних границах. Новое доменное последствие на прежнем событии — у своего владельца (Strategy / Continuity / Recon); компоненты порядка работ не меняются.
+
+## Э6: повторная перепроверка и очистка неиспользуемого кода
+
+### Реализация снизу вверх — найденные пропуски
+
+| Находка | Что сделано |
+|---|---|
+| `StrategicReadmissionRunner` хранил `DesireBreakdown` (поле и параметр конструктора), который не читал: генерацию спроса с Э5 делает кадр | поле, параметр и аргумент в `RunTurn` удалены |
+| `DecisionFrame.View` и `DecisionFrameView` (добавлены в доработке Э5) не использует ни один потребитель, ни тест — мёртвый API | удалены. **Поправка к разделу «Э5: доработка»:** читаемый только снаружи доступ дают сами свойства кадра (`IReadOnlyList`, `private set`); отдельный тип-обёртка из ТЗ не нужен, отклонение (см. первую версию раздела Э5) остаётся в силе |
+| 19 неиспользуемых `using` в новых и изменённых файлах (`Game.Cards`, `Game.Economy`, `Game.HexGrid`, `System.Globalization`, `System.Linq`, `System.Collections.Generic`, `System` в `TurnLoop`) | удалены (сборка и тесты проходят) |
+| Неиспользуемая локаль `lastCommitments` в тесте кадра | удалена |
+| Устаревшие ссылки в комментариях и документации на уничтоженные имена (`ReenterStrategicAxes`, `TakeTypedSplit`, «provisioning retry stays nested», шапка конвейера) | исправлены в `ARCHITECTURE.md`, `StrategicPhaseA.cs`, `AdmissionIteration.cs`, `AiStrategyV2Pipeline.cs` |
+| Порядок вызовов внутри работ и хвоста хода не был закреплён тестом (только diff при переносе) | добавлен `EachWorkAndTheTailOfTheTurnKeepTheirOrderOfCalls`: шаг миссии (observe → ledger → settle → событие банка → boundary → observer → пары → исход), шаг авиации (без ledger / settle / observer), начало итерации, раунд Phase B, cold, повторный допуск, хвост хода (loop → recall → final ownership → settle → Housekeeping → audit → release). Мутации (убрать `AfterMissionSettlement`, `RefreshFinalOwnership`, `BeforeTempoSpend`, observer-boundary) — пойманы 4 из 4 |
+
+### Подтверждение очистки неиспользуемого кода
+
+Проверено двумя способами: предупреждения компилятора с отключённым `NoWarn` (CS0169 / CS0414 / CS0219 / CS0168 / CS8321) по изменённым областям и поиск объявленных членов без единой ссылки по всему `Assets`. После очистки по коду этой задачи остаётся:
+
+| Элемент | Статус |
+|---|---|
+| `PassParking.IsParked` | используется только тестами (сравнение множества парковки в дифференциальном тесте); оставлен как метод инспекции |
+| `Pipeline.RefreshDevelopmentOpportunities`, `AiStrategyV2Scope.AxisOf`, `StrategicReadmission.LastAdmitted`, `MissionProposal.ProtectedValue` | были до этой задачи (мёртвый код, оставленный решением владельца / используемый только тестами); не трогались |
+| профайлер-метка `AI/Pipeline.BuildMissionSet` в `MissionPortfolio.Build` | оставлена намеренно: имя метки — диагностический ключ, сравнение профилей не должно ломаться |
+| делегатное ядро `StepTriggerSequence.Run(pairs, take, reenter, …)` и `TypedTriggerFanOut.Split(pending, Func<bool>)` | не мёртвые: на них построены production-формы и тесты |
+
+Удалено в Э6 как старый/неиспользуемый код: `TurnLoopWork`, 14 локальных функций `RunTurn`, `OperationalFrame` / `RefreshOperationalFrame` (Э5), `BuildMissionSet` (Э4), статический `DemandIdentityDigest` в `Pipeline` (перенесён в runner), поле `_breakdown`, `DecisionFrame.View`, 19 `using`.
+
+### Резервирование через банк
+
+- Перенос не добавил и не убрал ни одной операции с резервами; порядок вызовов банка внутри каждой работы закреплён тестом порядка (шаг миссии: `SettleStep` → `AfterMissionSettlement` → `CheckBoundary`; раунд: `BeforeTempoSpend` → `UseSurplus`; повторный допуск: `FulfillDemands` → `CheckBoundary`).
+- Трассы банка `S1`, `S4`, `S9` и `E5_frame_bank` на итоговом коде идентичны золотым; `golden/E5_frame_bank` проходит реальный путь retire через кадр.
+- Жизненный цикл: `ProvisioningSession` — `using` на всю итерацию (скан); `PhaseResults.Carried` — чтение в момент использования (тест); sink-и и `TurnTelemetry` резервов не держат.
+- Не проверено без движка: rollback канонической операции, Phase B после Reaction, совместные Economy + Attack preparation + Reaction (S8).
+
+### Кеширование: запись и чтение, порядок вызовов
+
+| Единица | Порядок записи / чтения внутри (закреплён тестом порядка) |
+|---|---|
+| начало итерации | пейсинг кадров → `DeferredFlush` → `PrepareAdmission` (запись кадра) → портфель (чтение кадра, запись `breakdown`/`AttemptId`) → возвраты (запись `LastWait`, `LastProtectedTurn`) → парковка (чтение реестра) → `BindFunding` → `BeginTurn`/сессия → `Pack` |
+| шаг миссии | `CaptureStepObservation` → исполнение → `ObserveSettled` (запись снапшота кадра) → ledger → `SettleStep` (запись lease / intents) → событие банка → boundary → observer → пары триггеров (чтение/consume pending, запись кадра через runner) |
+| раунд Phase B | `PrepareTempoOwnership` (запись кадра) → capture → событие банка → `UseSurplus` → boundary → `ObserveSettled` → накопление → observer → пары |
+| cold | `PrepareColdResidual` → `GenerateDemands` (чтение) → Phase A → накопление → `AcceptChangedCold` (запись кадра + кредит) → observer |
+| повторный допуск | ворота (ленивое чтение pending / ключа) → refresh решения → ключи ввода → `GenerateDemands` → замена семейств → Phase A → boundary → refresh при изменении (кредит) → публикация дельты → `Commit` |
+| хвост хода | recall → `RefreshFinalOwnership` → `SettleAfterTurn` → Housekeeping (Reaction внутри) → `AcceptHousekeeping` → аудит → освобождение |
+
+Кеши, не затронутые этапом, как и раньше: estimate-кеши, `KnowledgeVersion`, WorldDelta, `PoolCache`. Телеметрия хода: `Missions` / `Allocation` обновляются сразу после присваивания в итерации (как переменные `RunTurn`), ключи funded считаются один раз.
+
+### Остающиеся ограничения (честно)
+
+- Внутри `StrategicReadmissionRunner` ворота `StrategicReadmission.Decide` по-прежнему получают три делегата (`pending`, `key`, лог): они нужны для ленивости (дорогой ключ не считается, если ворота скажут Skip). Это не замыкания `RunTurn`, но и не «прямые вызовы» из формулировки ТЗ.
+- `TypedTriggerFanOut.Split(pending, intents, snapshot)` содержит внутреннюю лямбду готовности строителя для ленивого вызова Continuity (не замыкание `RunTurn`).
+- Unity EditMode / PlayMode и нативные ветки не выполнялись; `OpenPass` и `SettleBeforeFirstRound` в managed не исполняются (движок).
+
+Итог проверок: managed 2186 тестов, 1710 прошло, 475 упало; регрессий 0 относительно исходного baseline `717871b8` (1649 → 1710, +61); compile 28 = 28; матрица: 203 связи, `Orchestration` 122 типа, `Pipeline` 41 тип / 10 папок.

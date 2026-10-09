@@ -1,10 +1,4 @@
 using System.Collections;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using Game.Cards;
-using Game.Economy;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 

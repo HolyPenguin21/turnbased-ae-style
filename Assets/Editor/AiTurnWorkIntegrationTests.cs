@@ -235,6 +235,78 @@ namespace Game.EditorTests
                 Is.Empty, "local functions left in RunTurn");
         }
 
+        // The order of calls inside each work, and of the turn's tail, written from the baseline (the
+        // protocol table of the task): reads and writes of the frame, the ledger, the bank and the
+        // observer boundary keep their places. The bodies differ by kind of work on purpose.
+        [Test]
+        public void EachWorkAndTheTailOfTheTurnKeepTheirOrderOfCalls()
+        {
+            string root = AiTurnLoopTests.FindScriptsRoot();
+            if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
+            string Code(string fileName) => string.Join(Environment.NewLine, System.IO.File
+                .ReadLines(System.IO.Directory.GetFiles(root, fileName, System.IO.SearchOption.AllDirectories).Single())
+                .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
+            void InOrder(string code, string what, params string[] steps)
+            {
+                int at = -1;
+                foreach (string step in steps)
+                {
+                    int next = code.IndexOf(step, at + 1, StringComparison.Ordinal);
+                    Assert.That(next, Is.GreaterThan(at), what + ": '" + step + "' is missing or out of order");
+                    at = next;
+                }
+            }
+
+            string admission = Code("AdmissionIteration.cs");
+            int mandatoryAt = admission.IndexOf("RunMandatoryAviationStep(MandatoryAviationKind", StringComparison.Ordinal);
+            int iterationAt = admission.IndexOf("public IEnumerator Iteration(", StringComparison.Ordinal);
+            string mandatory = admission.Substring(mandatoryAt, iterationAt - mandatoryAt);
+            string iteration = admission.Substring(iterationAt);
+
+            // mandatory aviation: no ledger, no SettleStep, no observer boundary
+            InOrder(mandatory, "mandatory aviation", "CaptureStepObservation(", "MandatoryAviationStep.Execute(",
+                "_frame.ObserveSettled(", "CheckBoundary(", "StepTriggerSequence.Run(", "outcome.SettledStep(",
+                "AviationObligations.RecordSettledStep(");
+            foreach (string absent in new[] { "RecordExecution(", "SettleStep(", "WaitAtObserverActionBoundary" })
+                Assert.That(mandatory, Does.Not.Contain(absent), "mandatory aviation must not call " + absent);
+
+            // a mission step: observe -> ledger -> settle -> bank event -> boundary -> observer -> pairs -> outcome
+            InOrder(iteration, "mission step", "ProvisionNext(", "CaptureStepObservation(", "TaskExecutor.ExecuteStep(",
+                "_frame.ObserveSettled(beforeStep", "RecordExecution(", "RecordDeferrals(", "RefreshObjectiveStatesLive(",
+                "SettleStep(", "AfterMissionSettlement(", "CheckBoundary(_player, _root, _ctx,",
+                "WaitAtObserverActionBoundary()", "StepTriggerSequence.Run(StepTriggerSequence.StandardPairs",
+                "outcome.SettledStep(progressed)", "outcome.StopAfterSettledStep(");
+
+            // the iteration itself: frame pacing -> deferred flush -> frame -> portfolio -> returns -> parking -> funding -> pack
+            InOrder(iteration, "iteration start", "realtimeSinceStartup", "ReadmissionCause.DeferredFlush",
+                "_frame.PrepareAdmission()", "MissionPortfolio.Build(", "DeferReturnsBeforeTempo(", "_passParking.Filter(",
+                "BindFunding(", "ResourceAllocator.BeginTurn(", "new ProvisioningSession(", ".Pack()",
+                "MandatoryAviationOrder.Next(", "OperationalWorkSelection.Select(");
+
+            // a Phase B round
+            InOrder(Code("TempoRound.cs"), "tempo round", "PrepareTempoOwnership(", "CaptureStepObservation(",
+                "BeforeTempoSpend(", "StrategicManager.UseSurplus(", "CheckBoundary(", "_frame.ObserveSettled(",
+                "PhaseB.Accumulate(", "WaitAtObserverActionBoundary()", "StepTriggerSequence.Run(", "sink.Outcome =");
+
+            // the cold residual
+            InOrder(Code("ColdResidual.cs"), "cold residual", "PrepareColdResidual(", "GenerateDemands(",
+                "CaptureStepObservation(", "StrategicManager.FulfillDemands(", "PhaseA.Accumulate(",
+                "UnresolvedDemands.AddRange(", "AcceptChangedCold(", "WaitAtObserverActionBoundary()", "sink.Changed = true");
+
+            // re-admission
+            InOrder(Code("StrategicReadmissionRunner.cs"), "re-admission", "_readmission.Decide(",
+                "_frame.RefreshOperationalDecision()", "admittedFingerprints", "_frame.GenerateDemands(",
+                "ReplaceDemandFamilies(", "CaptureStepObservation(", "StrategicManager.FulfillDemands(",
+                "ReservationInvariants.CheckBoundary(", "AcceptChangedReentry()", "PublishStepObservationDelta(",
+                "_readmission.Commit(");
+
+            // the tail of the turn: loop -> recall -> final ownership -> settle -> Housekeeping (Reaction inside)
+            // -> audit -> release
+            InOrder(Code("AiStrategyV2Pipeline.cs"), "end of the turn", "TurnLoop.Run(", "RecallUnsafeStrikes(",
+                "RefreshFinalOwnership()", "SettleAfterTurn(", "RunHousekeeping(", "AcceptHousekeeping()",
+                "AuditTurnEnd(", "CompleteReservations()");
+        }
+
         [Test]
         public void TheLoopOrdersThreeWorksThroughNarrowInterfaces()
         {

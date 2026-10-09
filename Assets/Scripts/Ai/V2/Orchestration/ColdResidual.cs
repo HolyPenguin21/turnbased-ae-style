@@ -1,10 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using Game.Cards;
-using Game.Economy;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -50,7 +46,6 @@ namespace Game.Ai.V2
                 RadarValueScale.For(_radar, a) <= 0f));
             return _coldAxes.Count;
         }
-
 
 
         public IEnumerator Run(ColdSink sink)

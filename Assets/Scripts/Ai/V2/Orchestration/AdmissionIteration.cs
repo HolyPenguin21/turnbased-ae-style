@@ -1,10 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using Game.Cards;
-using Game.Economy;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -107,7 +103,6 @@ namespace Game.Ai.V2
         }
 
 
-
         // One admission iteration of the open pass: settled world -> missions -> pack -> one work
         // step. Reports its ending in the outcome (TurnLoop applies it): a settled step, or a stop
         // (no funded mission, no provisioned task, or a settled task without a typed invalidation).
@@ -128,7 +123,7 @@ namespace Game.Ai.V2
             // re-enter the existing manager immediately after the settled task boundary.
             yield return _frame.PrepareAdmission();
             // Demand families persist across settled admissions. Only
-            // ReenterStrategicAxes replaces dirty families after a factual invalidation.
+            // StrategicReadmissionRunner replaces dirty families after a factual invalidation.
 
             // The proposals of this admission, valued (Missions).
             MissionPortfolioResult portfolio = MissionPortfolio.Build(_frame.Snapshot,

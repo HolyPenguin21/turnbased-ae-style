@@ -78,7 +78,7 @@ namespace Game.Ai.V2
         // (the Main pass, a reaction round's fresh DemandLayer.Generate, or an orchestration
         // reconciliation that actually re-evaluated Economy this round). False when `demands` is a
         // dirty-axis SUBSET that deliberately excludes Economy because Economy itself was not
-        // re-evaluated this call (AiStrategyV2Pipeline.ReenterStrategicAxes) — there, an absent
+        // re-evaluated this call (StrategicReadmissionRunner.Run) — there, an absent
         // Economy demand means "not looked at", not "resolved", and must never be read as license
         // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,

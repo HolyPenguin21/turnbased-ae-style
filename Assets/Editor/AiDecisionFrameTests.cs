@@ -233,7 +233,6 @@ namespace Game.EditorTests
             List<ReconObjective> lastRecon = null;
             List<RaidObjective> lastAggression = null;
             List<MissionIntent> lastIntents = null;
-            ActorCommitments lastCommitments = null;
             var services = new FrameServices
             {
                 RefreshKnowledge = s => { current = new WorldSnapshot { TurnNumber = s.TurnNumber + 1 }; return current; },
@@ -262,7 +261,7 @@ namespace Game.EditorTests
                     if (!ReferenceEquals(s, current)) violations.Add("actors on a stale snapshot");
                     if (!ReferenceEquals(intents, lastIntents)) violations.Add("actors got stale intents");
                     if (!ReferenceEquals(recon, lastRecon)) violations.Add("actors got stale recon");
-                    return lastCommitments = null;
+                    return null;
                 },
                 RefreshPersistentActors = (s, recon) =>
                 {

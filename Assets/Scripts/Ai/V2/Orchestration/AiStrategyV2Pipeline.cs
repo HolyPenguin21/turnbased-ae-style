@@ -2,8 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Game.Economy;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -67,11 +65,14 @@ namespace Game.Ai.V2
     //      (the first after the settle window), the zero-Radar residual once. Strategic
     //      re-admission (StrategicReadmission) follows each settled step through
     //      StepTriggerSequence: a resumed rebase takes one take->reenter pair, other work two.
+    //      The works are components (AdmissionIteration, TempoRound, ColdResidual, with
+    //      StrategicReadmissionRunner) over one DecisionFrame; RunTurn only assembles them.
     //   3. End: air-support safety recall, final Continuity reconciliation, summary, Housekeeping
     //      (which runs a pending Reaction pass), turn-end audit and reservation release, telemetry.
     //  Remaining exceptions, by design: every work kind keeps its own observation/settle order
     //  (only trigger resolution is shared); the cold residual calls Phase A directly, without the
-    //  re-admission key gate; the provisioning retry stays nested in the mission step; the recall,
+    //  re-admission key gate; the provisioning retry belongs to Provisioning (ProvisionNext) and runs
+    //  inside the mission step; the recall,
     //  Housekeeping and Reaction stay outside the loop.
     // ===========================================================================================
     public static partial class Pipeline
@@ -143,8 +144,8 @@ namespace Game.Ai.V2
             //     Manager changes which SCOUT can execute, never which objectives exist.
             frame.EnumerateObjectives();
 
-            // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
-            //     and AggressionMissionLayer (build-order step 9).
+            //     (3d. The ONE Aggression-opportunity enumeration for the turn is made by the same call —
+            //     shared by DemandLayer and AggressionMissionLayer.)
             // 3e. Development opportunities are NOT enumerated here: DemandLayer.Development calls
             //     DevelopmentOpportunityEvaluator.Enumerate against the settled state of each pass.
 
@@ -160,10 +161,10 @@ namespace Game.Ai.V2
             // 7a. Mission Continuity — resolve durable in-flight intents FIRST. This cleanly
             //     retires stale Raid intents
             //     before ActorCommitments or the allocator can protect them.
+            // Also builds the normalized "which of my armies are already committed to an operation"
+            // view, so DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING
+            // scout from an AVAILABLE one without knowing how continuity stores mover ownership.
             frame.ResolveInitialOwnership();
-            // Normalized "which of my armies are already committed to an operation" view — so
-            // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
-            // from an AVAILABLE one without knowing how continuity stores mover ownership.
 
             AiFrameLog.MissionContinuity(frame.Intents, frame.Commitments);
             AiFrameLog.Forces(frame.Snapshot, frame.Commitments);
@@ -266,7 +267,7 @@ namespace Game.Ai.V2
                 // RunTurn.
                 var phases = new PhaseResults(phaseA, phaseB);
                 var runner = new StrategicReadmissionRunner(frame, readmission, phases, apBudget, radar,
-                    assessment.Breakdown, player, root, hand, ctx);
+                    player, root, hand, ctx);
                 runner.SeedKeys(demandAxes);
 
                 // A stand-alone Base level bought by the first Phase A opened a slot AFTER the admission

@@ -2,9 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Game.Cards;
-using Game.Economy;
-using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 
@@ -41,14 +38,13 @@ namespace Game.Ai.V2
         private readonly PhaseResults _phases;
         private readonly PhaseAApBudget _apBudget;
         private readonly Radar _radar;
-        private readonly DesireBreakdown _breakdown;
         private readonly PlayerSetupData _player;
         private readonly PlayerRoot _root;
         private readonly AiHandData _hand;
         private readonly AiTurnContext _ctx;
 
         internal StrategicReadmissionRunner(DecisionFrame frame, StrategicReadmission readmission,
-            PhaseResults phases, PhaseAApBudget apBudget, Radar radar, DesireBreakdown breakdown,
+            PhaseResults phases, PhaseAApBudget apBudget, Radar radar,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             _frame = frame;
@@ -56,7 +52,6 @@ namespace Game.Ai.V2
             _phases = phases;
             _apBudget = apBudget;
             _radar = radar;
-            _breakdown = breakdown;
             _player = player;
             _root = root;
             _hand = hand;

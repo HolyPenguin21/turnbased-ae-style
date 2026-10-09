@@ -48,32 +48,6 @@ namespace Game.Ai.V2
         };
     }
 
-    // The read-only picture of the frame at one moment. A value: it never changes under its holder,
-    // so a holder that needs the next moment asks the frame for a new one.
-    internal readonly struct DecisionFrameView
-    {
-        internal readonly WorldSnapshot Snapshot;
-        internal readonly IReadOnlyList<ReconObjective> Recon;
-        internal readonly IReadOnlyList<RaidObjective> Aggression;
-        internal readonly IReadOnlyList<MissionIntent> Intents;
-        internal readonly ActorCommitments Commitments;
-        internal readonly IReadOnlyList<AxisDemand> Demands;
-        internal readonly ActorCommitments PostCommitments;
-
-        internal DecisionFrameView(WorldSnapshot snapshot, IReadOnlyList<ReconObjective> recon,
-            IReadOnlyList<RaidObjective> aggression, IReadOnlyList<MissionIntent> intents,
-            ActorCommitments commitments, IReadOnlyList<AxisDemand> demands, ActorCommitments postCommitments)
-        {
-            Snapshot = snapshot;
-            Recon = recon;
-            Aggression = aggression;
-            Intents = intents;
-            Commitments = commitments;
-            Demands = demands;
-            PostCommitments = postCommitments;
-        }
-    }
-
     // ===========================================================================================
     //  THE DECISION FRAME of one AI turn: the settled snapshot and what is derived from it for the
     //  decisions of the turn (Recon / Aggression objectives, durable intents, actor claims, demands),
@@ -113,11 +87,6 @@ namespace Game.Ai.V2
         internal IReadOnlyList<AxisDemand> Demands { get => _demands; private set => _demands = (List<AxisDemand>)value; }
         // The ownership view Phase B and Housekeeping consume (persistent state of every intent).
         internal ActorCommitments PostCommitments { get; private set; }
-
-        // A value copy of the references of this moment, for components that are handed the frame's
-        // data (never kept across a yield: ask the frame again after the coroutine operation).
-        internal DecisionFrameView View => new DecisionFrameView(Snapshot, Recon, Aggression, Intents,
-            Commitments, Demands, PostCommitments);
 
         internal DecisionFrame(WorldSnapshot snapshot, FrameServices services)
         {
