@@ -1064,6 +1064,380 @@ namespace Game.EditorTests
                 "a doomed base cannot become safe merely because a distant strong actor plans to return");
         }
 
+        // ===== ImmediateOpportunity (2026-10-09) ==================================================
+        // A weak visible field army that a free defender can reach AND START a fight with in the
+        // same own turn. Strategic Enumerate keeps its meaning; only the explicit immediate
+        // enumeration sees these contacts.
+
+        private static WorldSnapshot ImmediateWorld(PlayerSetupData owner, HexCoord enemyHex,
+            bool visible, bool known, params ArmySnapshot[] actors)
+        {
+            var enemy = new PlayerSetupData { Nickname = "scout-owner" };
+            var body = new WorthIt.DefenderProfile(1f, false, null, 1f, 2f, 3);
+            var contact = new EnemyContactSnapshot
+            {
+                Army = new ArmySnapshot { ArmyId = 77, Owner = enemy, EffectiveArmyPower = 3f,
+                    Members = new[] { body }, MemberCount = 1, MaxMovement = 3 },
+                Knowledge = visible ? ContactKnowledge.Exact : ContactKnowledge.LastKnown,
+                Position = enemyHex, LastObservedTurn = visible ? 8 : 5, Confidence = 1f,
+            };
+            return new WorldSnapshot
+            {
+                Observer = owner, TurnNumber = 8,
+                Self = new SelfSnapshot { Citadel = Home, BaseHexes = new[] { Home, Secondary }, Armies = actors },
+                Known = new KnownSnapshot { EnemySightings = known
+                    ? new[] { new AiMapMemory.KnownEnemySighting(enemyHex, enemy, "scout", 1, 1f, 1f,
+                        new List<WorthIt.DefenderProfile> { body }, false, 0, 0, visible ? 8 : 5, 77) }
+                    : new AiMapMemory.KnownEnemySighting[0] },
+                Threat = new ThreatModel { Contacts = new[] { contact }, Threats = new AssetThreatSnapshot[0] },
+            };
+        }
+
+        private static ActiveDefenceObjective ImmediateObjective(WorldSnapshot snap) =>
+            ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap).Single();
+
+        [Test]
+        public void Immediate_WeakVisibleScoutOutsideThreatList_InterceptsNow()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)));
+
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(snap), Is.Empty,
+                "the strategic enumeration is unchanged: the scout is below every strategic bar");
+            ActiveDefenceObjective objective = ImmediateObjective(snap);
+            Assert.That(objective.Target.InterceptPurpose,
+                Is.EqualTo(ActiveDefenceInterceptPurpose.ImmediateOpportunity));
+            Assert.That(objective.Target.EnemyEta, Is.Null, "an unknown EnemyEta does not forbid it");
+            Assert.That(objective.Target.ImmediateTurn, Is.EqualTo(8));
+            Assert.That(AiConfigV2.activeDefenceMinEnemyPower, Is.GreaterThan(3f));
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            Assert.That(response.Plan.BaseArmyId, Is.EqualTo(7));
+            Assert.That(response.Reason, Is.EqualTo("immediate_response"));
+        }
+
+        [Test]
+        public void Immediate_SufficientlyHeldBase_DoesNotBlockTheImmediateFight()
+        {
+            var owner = new PlayerSetupData();
+            // The same garrison that makes the strategic answer "asset_holds".
+            WorldSnapshot strategic = AssetWorld(DefenceActor(owner, 1, Secondary, 50, 50, 50, true),
+                DefenceActor(owner, 2, new HexCoord(-3, 0)));
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(strategic,
+                AssetObjective(strategic), null, null, null).Reason, Is.EqualTo("asset_holds"));
+
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 1, Secondary, 50, 50, 50, true),
+                DefenceActor(owner, 2, new HexCoord(-3, 0)));
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, ImmediateObjective(snap),
+                null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+        }
+
+        [TestCase(5, 3, TestName = "Immediate_NeedsNextTurn_NotApplied")]
+        [TestCase(2, 0, TestName = "Immediate_NoMovementLeft_NotApplied")]
+        public void Immediate_UnreachableThisTurn_IsDeferredNeverRegroupOrShortage(int distance, int mp)
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            actor.CurrentMovement = mp;
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-distance, 0), true, true, actor);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                ImmediateObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+            Assert.That(response.Movers, Is.Empty);
+            Assert.That(response.ReinforcementArmyIds, Is.Empty);
+            Assert.That(actor.MaxMovement, Is.EqualTo(3), "MaxMovement alone proves nothing");
+        }
+
+        [Test]
+        public void Immediate_RouteCostMustFitCurrentMovementExactly()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, actor);
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                out int cost, currentMovement: 2), Is.True);
+            Assert.That(cost, Is.EqualTo(2));
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                out _, currentMovement: 1), Is.False);
+            Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                out _, currentMovement: 0, maxMovement: 6), Is.False, "max 6 / current 0 is not reach");
+        }
+
+        [Test]
+        public void Immediate_RealTerrainAndBlockedRoute_AreHonoured()
+        {
+            var go = new UnityEngine.GameObject("immediate-route");
+            Game.Map.HexMap map = go.AddComponent<Game.Map.HexMap>();
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, actor);
+            snap.Map = map;
+            var terrain = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            for (int q = -3; q <= 0; q++) terrain[new HexCoord(q, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+            map.SetData(4, 1f, terrain);
+            try
+            {
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                    out int cost), Is.True);
+                Assert.That(cost, Is.EqualTo(2));
+                terrain[new HexCoord(-1, 0)].moveCost = 2;
+                map.SetData(4, 1f, terrain);
+                actor.CurrentMovement = 2;
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                    out cost), Is.False, "entering costs 2 + 1 = 3 > 2 current movement");
+                Assert.That(cost, Is.EqualTo(3));
+                terrain[new HexCoord(-1, 0)].moveCost = 9;
+                map.SetData(4, 1f, terrain);
+                actor.CurrentMovement = 3;
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, new HexCoord(-2, 0),
+                    out _), Is.False, "an impassable step never admits a false reach");
+            }
+            finally { AiMapMemory.Clear(); UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Immediate_MemoryOnlyOrUnsightedContact_IsNeverACandidate()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot actor = DefenceActor(owner, 7, new HexCoord(0, 0));
+            Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(
+                ImmediateWorld(owner, new HexCoord(-2, 0), visible: false, known: true, actor)), Is.Empty,
+                "a last-known position is not a basis for a new immediate fight");
+            Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(
+                ImmediateWorld(owner, new HexCoord(-2, 0), visible: true, known: false, actor)), Is.Empty,
+                "no canonical sighting, no interception");
+        }
+
+        [Test]
+        public void Immediate_ClaimedActorIsNotUsed_AndReleasedClaimIsReevaluated()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)));
+            ActiveDefenceObjective objective = ImmediateObjective(snap);
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective,
+                new HashSet<int> { 7 }, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer),
+                "an Attack-claimed actor is not borrowed");
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, objective,
+                new HashSet<int>(), null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+        }
+
+        [Test]
+        public void Immediate_AnotherArmyIsChosenOnlyByItsOwnReach()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot strongButSpent = DefenceActor(owner, 7, new HexCoord(0, 0), 20, 20, 30);
+            strongButSpent.CurrentMovement = 1;
+            ArmySnapshot reachable = DefenceActor(owner, 8, new HexCoord(-1, 1), 7, 7, 10);
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                strongButSpent, reachable);
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(snap,
+                ImmediateObjective(snap), null, null, null);
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            Assert.That(response.Plan.BaseArmyId, Is.EqualTo(8));
+            Assert.That(response.ExcludedArmyIds, Does.Contain(7));
+        }
+
+        [Test]
+        public void Immediate_LastDefenderOfThreatenedStronghold_StaysPinned()
+        {
+            var owner = new PlayerSetupData();
+            ArmySnapshot defender = DefenceActor(owner, 7, Secondary);
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, defender);
+            var other = new EnemyContactSnapshot { Army = new ArmySnapshot { ArmyId = 88,
+                Owner = new PlayerSetupData() }, Position = new HexCoord(-3, 0) };
+            snap.Threat.Threats = new[] { new AssetThreatSnapshot { Contact = other, CanDamage = true,
+                EnemyEta = AiConfigV2.strongholdDefenderPinEnemyEta,
+                Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base, Hex = Secondary } } };
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, ImmediateObjective(snap),
+                null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer));
+        }
+
+        [Test]
+        public void Immediate_CreatesNoDemandAndNoStrategicObjective()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true);
+            Assert.That(ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap), Has.Count.EqualTo(1));
+            Assert.That(AggressionDemandEvaluator.BuildActiveDefenceDemands(snap, null,
+                Array.Empty<MissionIntent>(), new ActorCommitments(), owner, out _), Is.Empty);
+            Assert.That(ForceNeedModel.DefensiveReserveForThreats(snap.Threat.Threats), Is.Zero);
+            Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(snap, ImmediateObjective(snap),
+                null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Defer),
+                "no defender: nothing to regroup or withdraw");
+        }
+
+        [Test]
+        public void Immediate_SharesTheEnemyIdentityWithStrategicIntercept_AndDefaultsKeepOldBehaviour()
+        {
+            var strategic = new ActiveDefenceMissionTarget { Phase = ActiveDefencePhase.Intercept, EnemyArmyId = 77 };
+            var immediate = strategic;
+            immediate.InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity;
+            immediate.ImmediateTurn = 8;
+            MissionProposal Of(ActiveDefenceMissionTarget t) => new MissionProposal
+                { Kind = MissionKind.ActiveDefence, Target = t };
+            Assert.That(MissionIntentKey.For(Of(immediate)), Is.EqualTo(MissionIntentKey.For(Of(strategic))));
+            Assert.That(StableMissionKey.For(Of(immediate)), Is.EqualTo(StableMissionKey.For(Of(strategic))));
+            Assert.That((int)ActiveDefenceInterceptPurpose.StrategicDefence, Is.Zero);
+            Assert.That(default(ActiveDefenceMissionTarget).InterceptPurpose,
+                Is.EqualTo(ActiveDefenceInterceptPurpose.StrategicDefence));
+            Assert.That(new ActiveDefenceIntent().InterceptPurpose,
+                Is.EqualTo(ActiveDefenceInterceptPurpose.StrategicDefence));
+        }
+
+        [Test]
+        public void Immediate_Planner_ProposesOneInterceptAndNoWithdrawalOrAirSupport()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)));
+            List<MissionProposal> proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
+            Assert.That(proposals, Has.Count.EqualTo(1));
+            var target = (ActiveDefenceMissionTarget)proposals[0].Target;
+            Assert.That(target.Phase, Is.EqualTo(ActiveDefencePhase.Intercept));
+            Assert.That(target.InterceptPurpose, Is.EqualTo(ActiveDefenceInterceptPurpose.ImmediateOpportunity));
+            Assert.That(target.ImmediateTurn, Is.EqualTo(8));
+            Assert.That(target.PrimaryArmyId, Is.EqualTo(7));
+            Assert.That(proposals[0].Requirements.ApMinimum, Is.EqualTo(2f), "the normal activation cost, nothing more");
+
+            // Already activated this turn: no second activation is charged.
+            snap.Self.Armies[0].HasActivatedThisTurn = true;
+            proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
+            Assert.That(proposals, Has.Count.EqualTo(1));
+            Assert.That(proposals[0].Requirements.ApMinimum, Is.Zero);
+        }
+
+        [Test]
+        public void Immediate_StrategicIncumbentOnTheSameEnemy_IsNotDuplicated()
+        {
+            var owner = new PlayerSetupData();
+            WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
+                DefenceActor(owner, 7, new HexCoord(0, 0)), DefenceActor(owner, 8, new HexCoord(0, 1)));
+            MissionIntent strategic = DefenceIntent(ActiveDefencePhase.Intercept, 77, 8, null);
+            var proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
+                new[] { strategic }, Array.Empty<RaidObjective>())
+                .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
+            Assert.That(proposals, Is.Empty, "the strategic intent owns the enemy; no second Intercept");
+        }
+
+        private static MissionIntent ImmediateIntent(int enemyId, int actorId, int turn)
+        {
+            MissionIntent intent = DefenceIntent(ActiveDefencePhase.Intercept, enemyId, actorId, null);
+            intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity;
+            intent.ActiveDefence.ImmediateTurn = turn;
+            return intent;
+        }
+
+        [TestCase(0, true, 3, true, TestName = "Immediate_Lifecycle_SameTurnReachable_Kept")]
+        [TestCase(1, true, 3, false, TestName = "Immediate_Lifecycle_NextTurn_Ends")]
+        [TestCase(0, false, 3, false, TestName = "Immediate_Lifecycle_ContactGone_Ends")]
+        [TestCase(0, true, 0, false, TestName = "Immediate_Lifecycle_NoMovementLeft_Ends")]
+        public void Immediate_Lifecycle(int turnOffset, bool contactVisible, int mp, bool kept)
+        {
+            var player = new PlayerSetupData { Nickname = "ImmediateLifecycle" };
+            MissionIntentRegistry.Clear();
+            try
+            {
+                ArmySnapshot actor = DefenceActor(player, 7, new HexCoord(0, 0));
+                actor.CurrentMovement = mp;
+                WorldSnapshot snap = ImmediateWorld(player, new HexCoord(-2, 0), contactVisible, contactVisible, actor);
+                snap.TurnNumber += turnOffset;
+                MissionIntent intent = ImmediateIntent(77, 7, 8);
+                var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
+
+                // The lane's own lifecycle answer (the part of ResolveActive that is not engine-bound).
+                bool alive = (bool)typeof(MissionContinuityLayer).GetMethod("ResolveActiveDefenceIntent",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
+                    .Invoke(null, new object[] { player, snap, intent, rekeys });
+
+                Assert.That(alive, Is.EqualTo(kept));
+                Assert.That(rekeys, Is.Empty, "an ended opportunity never becomes a Return");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void Immediate_ProjectedCurrentMovement_FollowsTheAssembledRoster()
+        {
+            var owner = new PlayerSetupData();
+            var host = new Game.Map.ArmyData { Owner = owner, Hex = new HexCoord(0, 0) };
+            host.Members.Add(new Game.Units.UnitData { Owner = owner, Attack = 7, Defense = 7,
+                HitPointsCurrent = 10, HitPointsMax = 10, MoveMax = 3, MoveCurrent = 3 });
+            var donor = new Game.Map.ArmyData { Owner = owner, Hex = new HexCoord(0, 0) };
+            var slow = new Game.Units.UnitData { Owner = owner, Attack = 7, Defense = 7,
+                HitPointsCurrent = 10, HitPointsMax = 10, MoveMax = 1, MoveCurrent = 1 };
+            donor.Members.Add(slow);
+            donor.Members.Add(new Game.Units.UnitData { Owner = owner, Attack = 1, Defense = 1,
+                HitPointsCurrent = 1, HitPointsMax = 1, MoveMax = 3, MoveCurrent = 3 });
+            Game.Map.ArmyRegistry.Register(host);
+            Game.Map.ArmyRegistry.Register(donor);
+            try
+            {
+                ArmySnapshot hostSnap = DefenceActor(owner, host.Id, host.Hex);
+                WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true, hostSnap);
+                var plan = new GroundCombatAssemblyPlan { Feasible = true, BaseArmyId = host.Id, NeedsAssembly = true };
+                plan.Transfers.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = slow });
+                Assert.That(GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan), Is.EqualTo(1));
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, hostSnap, new HexCoord(-2, 0),
+                    out _, GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan),
+                    GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)), Is.False,
+                    "the slow recruit makes the previously reachable fight impossible");
+                Assert.That(ActiveDefenceObjectiveEvaluator.CanReachNow(snap, hostSnap, new HexCoord(-2, 0),
+                    out _), Is.True);
+            }
+            finally { Game.Map.ArmyRegistry.Clear(); }
+        }
+
+        [Test]
+        public void Immediate_AdmissionFingerprint_TracksPurposeAndTurn_AndPlayersStayIsolated()
+        {
+            var one = new PlayerSetupData { Nickname = "imm-one" };
+            var two = new PlayerSetupData { Nickname = "imm-two" };
+            WorldSnapshot snap = ImmediateWorld(one, new HexCoord(-2, 0), true, true,
+                DefenceActor(one, 7, new HexCoord(0, 0)));
+            MissionIntent intent = ImmediateIntent(77, 7, 8);
+            intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.StrategicDefence;
+            MissionIntentRegistry.GetOrCreate(one).Put(intent);
+            try
+            {
+                string strategic = Pipeline.AggressionAdmissionFingerprint(snap, one);
+                intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity;
+                string immediate = Pipeline.AggressionAdmissionFingerprint(snap, one);
+                Assert.That(immediate, Is.Not.EqualTo(strategic));
+                intent.ActiveDefence.ImmediateTurn = 9;
+                Assert.That(Pipeline.AggressionAdmissionFingerprint(snap, one), Is.Not.EqualTo(immediate));
+
+                // The other player has no such intent and no claim: nothing carries over.
+                WorldSnapshot other = ImmediateWorld(two, new HexCoord(-2, 0), true, true,
+                    DefenceActor(two, 7, new HexCoord(0, 0)));
+                Assert.That(MissionIntentRegistry.GetOrCreate(two).All, Is.Empty);
+                Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(other, ImmediateObjective(other),
+                    null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void Immediate_DoesNotChangeStrategicEnumerateOrTheSignificanceBar()
+        {
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
+                AiConfigV2.activeDefenceMinEnemyPower - 0.1f), Is.False);
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
+                AiConfigV2.activeDefenceMinEnemyPower), Is.True);
+            WorldSnapshot below = DefenceWorld(10f, 100f, enemyPower: AiConfigV2.activeDefenceMinEnemyPower - 0.1f);
+            Assert.That(ActiveDefenceObjectiveEvaluator.Enumerate(below), Is.Empty);
+            Assert.That(ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(below, 42,
+                ActiveDefenceInterceptPurpose.StrategicDefence), Is.Null);
+        }
+
     }
 }
 #endif

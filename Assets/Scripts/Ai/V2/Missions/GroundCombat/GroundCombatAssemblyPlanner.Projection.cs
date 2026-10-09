@@ -50,6 +50,15 @@ namespace Game.Ai.V2
             return roster == null ? (int?)null : ArmyData.ComputeMaxMovement(roster);
         }
 
+        // The movement points the assembled roster has LEFT this turn (the shared current movement,
+        // ArmyData.ComputeCurrentMovement): a slower or already spent recruit lowers the whole
+        // formation. Same owner and null-means-fall-back contract as the projections above.
+        public static int? ProjectedCurrentMovement(WorldSnapshot snap, GroundCombatAssemblyPlan plan)
+        {
+            List<UnitData> roster = ProjectedRosterOrNull(snap, plan);
+            return roster == null ? (int?)null : ArmyData.ComputeCurrentMovement(roster);
+        }
+
         // The live roster a feasible plan would produce, or null when the plan is infeasible or
         // its host no longer resolves live. One resolution path for every projection above.
         private static List<UnitData> ProjectedRosterOrNull(WorldSnapshot snap,

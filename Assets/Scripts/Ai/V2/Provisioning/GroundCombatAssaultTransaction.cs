@@ -40,6 +40,9 @@ namespace Game.Ai.V2
         // Lane name for log lines and failure text only — never a behavioural switch.
         public string LaneLabel = "raid";
         public float Eps = AiConfigV2.allocatorSliceEpsilon;
+        // A lane-specific last proof on the roster that will really march (host + planned recruits,
+        // after shedding), run BEFORE any paid mutation. Returns a refusal reason, or null to go on.
+        public System.Func<ArmyData, IReadOnlyList<UnitData>, string> PreMutationVeto;
     }
 
     internal sealed class GroundCombatAssaultOutcome
@@ -897,6 +900,11 @@ namespace Game.Ai.V2
                         $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward {lane} target "
                         + $"({targetHex.Q},{targetHex.R})"
                         + (plan.NeedsAssembly ? " for the projected assembled roster" : ""))));
+
+            string veto = r.PreMutationVeto?.Invoke(host, projectedUnits);
+            if (veto != null)
+                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.NoExecutableStep($"{lane} host #{host.Id}: {veto}")));
 
             int activationAp = host.ProjectedActivationApCost(projectedUnits);
             float envelope = funded.Tentative.Ap;

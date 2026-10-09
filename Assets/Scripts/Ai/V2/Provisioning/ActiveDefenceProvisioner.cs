@@ -58,6 +58,10 @@ namespace Game.Ai.V2
             StableMissionKey key = StableMissionKey.For(mission);
             IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
                 { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
+            bool immediate = target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity;
+            if (immediate && (!hexVisibleNow || target.ImmediateTurn != session.Snapshot?.TurnNumber))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"immediate intercept of #{target.EnemyArmyId} is no longer a visible same-turn opportunity"));
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
                 new GroundCombatAssaultRequest
                 {
@@ -65,6 +69,11 @@ namespace Game.Ai.V2
                     Key = key, TargetHex = sighting.Value.Hex, Opposition = opposition,
                     DefenderHexDefenseBonus = 0f, LaneLabel = "active-defence",
                     Eps = AiConfigV2.allocatorSliceEpsilon,
+                    // The projected (assembled) roster must still START the fight now: a slower recruit
+                    // lowers the shared movement. Runs before the first transfer or any AP is claimed.
+                    PreMutationVeto = !immediate ? (System.Func<ArmyData, IReadOnlyList<Game.Units.UnitData>, string>)null
+                        : (host, units) => ImmediateReachVeto(ctx, player, host, units, sighting.Value.Hex,
+                            target.EnemyArmyId),
                 });
             if (!assault.Success)
                 return assault.Failure;
@@ -89,6 +98,19 @@ namespace Game.Ai.V2
                 // this one number exactly once.
                 ClaimedAp = assault.ActualAp,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
+        }
+
+        // null = the assembled roster reaches the enemy and begins the battle with its CURRENT movement.
+        private static string ImmediateReachVeto(AiTurnContext ctx, PlayerSetupData player, ArmyData host,
+            IReadOnlyList<Game.Units.UnitData> units, HexCoord enemyHex, int enemyId)
+        {
+            int mp = ArmyData.ComputeCurrentMovement(units), max = ArmyData.ComputeMaxMovement(units);
+            bool ok = ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, host.Hex, enemyHex,
+                mp, max, out int cost);
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Immediate][Provision] enemy={enemyId} actor={host.Id} "
+                + $"roster={units.Count} mp={mp}/{max} routeCost={(cost == int.MaxValue ? "none" : cost.ToString())} "
+                + $"decision={(ok ? "REACH_OK" : "REACH_REFUSED")}");
+            return ok ? null : $"immediate_unreachable mp={mp} routeCost={(cost == int.MaxValue ? "none" : cost.ToString())}";
         }
 
         // The wing striking the threat: the one GroundCombatAirSupport provisioning, aimed at the
