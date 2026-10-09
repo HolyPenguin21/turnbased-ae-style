@@ -99,7 +99,7 @@ namespace Game.EditorTests
         [TestCase("Flame Projector", 5, 3, 10, 6, 1)]
         [TestCase("Recoil Cannon", 7, 3, 10, 5, 2)]
         [TestCase("Portable Mortar", 5, 3, 10, 5, 3)]
-        [TestCase("Assault Conversion Kit", 5, 4, 10, 6, 1)]
+        [TestCase("Assault Conversion Kit", 5, 4, 12, 6, 1)]
         public void RepresentativeAuthoredEffects(string name, int attack, int defense, int hp, int move, int range)
         {
             var projected = EquipmentSystem.Project(new CardData(Host()), Gear(name));
@@ -326,7 +326,7 @@ namespace Game.EditorTests
         {
             var host = Host(); host.grantedAbilities.Clear();
             var projected = EquipmentSystem.Project(new CardData(host), Gear("Twin SMG"));
-            Assert.That(projected.Stats[EquipmentStat.Attack], Is.EqualTo(6));
+            Assert.That(projected.Stats[EquipmentStat.Attack], Is.EqualTo(8));
             Assert.That(projected.Stats[EquipmentStat.Range], Is.EqualTo(1));
             var damage = ChallengeResult.ApplyAbilityModifiers(2, projected.Abilities,
                 new[] { UnitTypeTag.Bio }, Array.Empty<string>(), AbilityMagnitudes.Default);

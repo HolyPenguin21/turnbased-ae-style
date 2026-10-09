@@ -12,8 +12,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Research/Production valued every (card, recipient) pair on its own, so the single best card
     //  won again and again (2026-10-07 log: Hunter Glands and Ghost Genome twice each in one
-    //  game). Two multiplicative damps on the opportunity's gain, applied once where a READY site
-    //  prices its output (DevelopmentOpportunityEvaluator.AddReady):
+    //  game). Two multiplicative damps on the attachment's gain: the same RepeatFactor is read
+    //  by READY recipient valuation and generated attachment deployment valuation.
     //
     //    saturation (moved to EquipmentEfficiency, priced for hand items too) = 1 / (1 + carriers) —
     //                 only for abilities whose value saturates (Stealth,
@@ -40,7 +40,8 @@ namespace Game.Ai.V2
 
         internal static void ClearAll() => History.Clear();
 
-        // One executed Challenge (won or lost: the resources are gone either way).
+        // One paid attachment Challenge, recorded by MaterializationExecutor.TryGenerate before
+        // its roll (won or lost). Consumers must not record the same attempt again.
         internal static void RecordAttempt(PlayerSetupData player, int turn, CardDefinition card)
         {
             if (player == null || card == null)

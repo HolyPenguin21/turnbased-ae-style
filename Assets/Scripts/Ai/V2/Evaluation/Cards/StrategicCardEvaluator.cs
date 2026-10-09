@@ -304,9 +304,7 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendable = root == null ? null
                 : (System.Func<ResourceType, float>)(type =>
                     StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            // The attachment AP is paid only on a won Challenge: it is charged at the success chance.
-            return marginalBenefit - ResourceCost(plan, snap, spendable, player,
-                deferredAttachmentWeight: Mathf.Clamp01(op.SuccessChance));
+            return marginalBenefit - ResourceCost(plan, snap, spendable, player);
         }
 
         // -----------------------------------------------------------------------------------------
@@ -727,9 +725,8 @@ namespace Game.Ai.V2
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             // The card is priced here. A concrete sortie pays its launch in provisioning;
             // paid airborne continuation has no recurring AP cost.
-            bd.ResourceEfficiency = -(ActionPrice.ToCardScore(ActionPrice.Ap(apCost))
-                                      + StrategicResourceCostValue(pricedResources, snap, spendableResource, player)
-                                      + genStepPenalty);
+            bd.ResourceEfficiency = -(ResourceCost(apCost, pricedResources, generation, snap,
+                                      spendableResource, player) + genStepPenalty);
             // Challenge cost is certain; every benefit of the minted card is success-contingent.
             bd.GenerationRiskDiscount = generation != null
                 ? GenerationExpectedValueDiscount(bd, Mathf.Clamp01(generation.SuccessChance))
@@ -771,14 +768,31 @@ namespace Game.Ai.V2
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
-            float deferredAttachmentWeight = 1f)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
             if (plan == null) return 0f;
-            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost
-                       + deferredAttachmentWeight * plan.DeferredAttachmentAp))
-                   + StrategicResourceCostValue(plan.ResCost, snap, spendableResource, player)
+            return ResourceCost(plan.ApCost + plan.DeferredAttachmentAp, plan.ResCost,
+                       plan.Generation, snap, spendableResource, player)
                    + ChainStepPenalty(plan.Kind);
+        }
+
+        // Score the two real outcomes, without changing the full successful-chain budget.
+        // A lost Challenge pays only creation; attachment/deployment happen only on success.
+        // Price each outcome before weighting: resource preservation can be nonlinear.
+        private static float ResourceCost(float successfulAp, ResourceCost successfulResources,
+            GenerationStep generation, WorldSnapshot snap,
+            System.Func<ResourceType, float> spendableResource, PlayerSetupData player)
+        {
+            float successfulCost = ActionPrice.ToCardScore(ActionPrice.Ap(successfulAp))
+                + StrategicResourceCostValue(successfulResources, snap, spendableResource, player);
+            if (generation == null)
+                return successfulCost;
+            float chance = Mathf.Clamp01(generation.SuccessChance);
+            float attemptCost = ActionPrice.ToCardScore(
+                    ResearchProductionSystem.AttemptApCost(generation.CardDef))
+                + StrategicResourceCostValue(generation.GenerationResourceCost, snap,
+                    spendableResource, player);
+            return chance * successfulCost + (1f - chance) * attemptCost;
         }
 
         // Idle-card pressure for a materialisation plan: the OLDEST hand card the plan consumes
@@ -1207,7 +1221,14 @@ namespace Game.Ai.V2
             // existing-recipient upgrades need the marginal trait; deploy chains must not add it twice.
             EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv,
                 includeStealthTrait: false, deployment: p);
-            return EquipmentUpgradeValue(delta);
+            // The same production-only repeat rule used by bound READY recipients. A generated
+            // body carrying an existing hand item must not damp that item's own utility.
+            float productionScale = p.Generation?.ProducesEquipment == true
+                && object.ReferenceEquals(p.Generation.CardDef, eq)
+                ? DevelopmentDiversity.RepeatFactor(snap?.Observer ?? p.Generation.Hero?.Owner,
+                    snap?.TurnNumber ?? 0, eq, out _)
+                : 1f;
+            return EquipmentUpgradeValue(delta) * productionScale;
         }
 
         // A deployed unit inside `army` (hand Equipment played onto the map).
@@ -1439,7 +1460,7 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
-            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex);
+            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -1538,14 +1559,33 @@ namespace Game.Ai.V2
         // (AiV2Util.TravelCost — the same route the mission planners price), the army's activation AP is
         // the sum of its members, and the map-knowledge owner supplies the unexplored fraction. Anything
         // not known stays at the context default (speed proxy, 0.5 dark, no detection relevance).
-        private static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
-            UnitData hostUnit, HexCoord? targetHex)
+        internal static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
+            UnitData hostUnit, HexCoord? targetHex, MissionIntent purpose = null)
         {
             if (snap?.MapKnowledge != null)
                 ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
-            if (army?.Members == null || hostUnit == null || !targetHex.HasValue || army.Hex.Equals(targetHex.Value))
+            if (army?.Members == null || hostUnit == null)
                 return;
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
+            if (purpose?.Kind == MissionKind.Scout && purpose.Scout != null
+                && !ReconScoutKinds.IsAirSweep(purpose.Scout.Kind)
+                && !ReconScoutKinds.IsCapture(purpose.Scout.Kind))
+            {
+                var target = new ScoutMissionTarget { Kind = purpose.Scout.Kind,
+                    FocusHex = purpose.Scout.FocusHex,
+                    Stealth = purpose.Scout.RequiresStealth ? StealthRequirement.Required : StealthRequirement.None };
+                ScoutCostEstimate route = ScoutCostModel.Estimate(snap, target,
+                    preferredMoverArmyId: army.Id, requirePreferredMover: true);
+                if (!route.MoverKnown || !route.ExecutionHex.HasValue) return;
+                // The same honest risk owner used by objective/vantage scoring. A detector's
+                // presence does not invent a hidden TARGET: DetectionRelevance stays unchanged.
+                ctx.StealthRisk = ScoutRiskModel.DetectorRisk(snap, route.ExecutionHex.Value);
+                ctx.RouteLength = Mathf.Max(0, Mathf.RoundToInt(route.EstimatedDistance));
+                ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
+                    army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
+                return;
+            }
+            if (!targetHex.HasValue || army.Hex.Equals(targetHex.Value)) return;
             int cost = actor != null ? AiV2Util.TravelCost(snap, actor, targetHex.Value, terrainOnly: true)
                 : HexGridMath.Distance(army.Hex, targetHex.Value);
             if (cost <= 0 || cost == int.MaxValue)

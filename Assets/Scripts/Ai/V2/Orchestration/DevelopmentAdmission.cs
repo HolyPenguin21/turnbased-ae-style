@@ -127,7 +127,8 @@ namespace Game.Ai.V2
                     {
                         if (u == null) continue;
                         rows.Add($"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
-                            + $"{u.Equipment != null}:{u.Mutator != null}:{u.Attack}:{u.Defense}:"
+                            + $"{u.Equipment != null}:{u.Mutator != null}:"
+                            + $"{u.Equipment?.authoredKey}:{u.Mutator?.authoredKey}:{u.Attack}:{u.Defense}:"
                             + $"{u.Resistance}:{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
                             + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
                             + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
@@ -159,9 +160,8 @@ namespace Game.Ai.V2
                     + $"{o.StakeCost.Energy:0.###},{o.StakeCost.Materials:0.###},"
                     + $"{o.StakeCost.Tech:0.###}"));
             // Every army is a possible Equipment recipient, so every roster is exact (WorthIt reads
-            // each profile individually — aggregates could hide a changed verdict). Position only
-            // matters for an army carrying a Research/Production operator: it prices the remote
-            // hero's delivery to a facility.
+            // each profile individually — aggregates could hide a changed verdict). Operator
+            // delivery and an assigned scout's attachment utility also read position/route state.
             string armies = string.Join(";", (snapshot?.Self?.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null).OrderBy(a => a.ArmyId)
@@ -177,6 +177,8 @@ namespace Game.Ai.V2
                         + $"roster={DefenderFingerprint(a.MembersWithHeroes)}"
                         + $":commander={CommanderFingerprint(a.Commander)}"
                         + $":mutators={string.Join(",", (a.NonHeroMutatorOccupied ?? System.Array.Empty<bool>()).Select(x => x ? "1" : "0"))}"
+                        + $":route={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:{a.ActivationApCost}:"
+                        + $"{a.HasActivatedThisTurn}:{a.IsSoloRecce}:{a.IsPrison}:{a.IsAir}:{a.IsHidden}:{a.CanEnterStealth}:{a.EffectiveVisionRadius}"
                         + operatorState;
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
@@ -241,7 +243,7 @@ namespace Game.Ai.V2
                     + string.Join(",", (i.Attack?.TargetRoster ?? new List<StrikeRosterSlot>())
                         .Select(r => r.Key).OrderBy(x => x, System.StringComparer.Ordinal))
                     + ":gather=" + string.Join(",", (i.Attack?.GatherSupportArmyIds ?? new List<int>()).OrderBy(x => x))
-                    + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
+                    + $":devHero={i.Development?.Hero?.RuntimeId}:scout={i.Scout?.Kind}:{i.Scout?.RequiresStealth}:{i.Scout?.FocusHex}:raid={i.Raid?.Target}:def={i.ActiveDefence?.EnemyArmyId}"));
             string benchmarks = string.Join(";", (snapshot?.Self?.Deck
                     ?? System.Array.Empty<Game.Cards.CardDefinition>()).Where(d => d != null)
                 .Select(d => d.cardType + ":" + string.Join(",", EquipmentSystem.Project(d, null, null).Stats
@@ -253,12 +255,29 @@ namespace Game.Ai.V2
             string knownTargets = string.Join(";", (snapshot?.Known?.EnemySightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                 .Concat(snapshot?.Known?.NeutralSightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Select(x => $"{x.ArmyId}:{x.Hex}:" + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
+                .Select(x => $"{x.ArmyId}:{x.Hex}:recce={x.RecceRadius},{x.RecceSpotStrength}:"
+                    + DefenderFingerprint(x.Defenders) + CommanderFingerprint(x.Commander))
                 .Concat((snapshot?.Known?.EventGuards ?? System.Array.Empty<KnownEventGuardSnapshot>())
                     .Select(g => $"guard:{g.Hex}:" + DefenderFingerprint(g.Defenders)))
                 .OrderBy(x => x, System.StringComparer.Ordinal));
+            // Raw inputs of the shared Scout route/vantage owner; no route or combat calculation
+            // in the cache key. Terrain changes use the snapshot's pathing version. Set order is
+            // irrelevant, while coverage and either kind of arrival block can change utility.
+            MapKnowledgeSnapshot map = snapshot?.MapKnowledge;
+            string routeMap = $"{snapshot?.Map != null}:{snapshot?.MapPathingVersion}:"
+                + (map?.ExplorableUnknownFrac.ToString("R", CultureInfo.InvariantCulture) ?? "-")
+                + ":hexes=" + string.Join(";", (map?.AllHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
+                + ":hard=" + string.Join(";", (map?.ScoutHardBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal))
+                + ":visible=" + string.Join(";", (map?.VisibleArrivalBlockedHexes ?? new HashSet<Game.HexGrid.HexCoord>())
+                    .Select(h => $"{h.Q},{h.R}").OrderBy(x => x, System.StringComparer.Ordinal));
+            string trimmedScouts = snapshot?.Observer == null ? "-" : string.Join(",",
+                ReconTurnStateStore.For(snapshot.Observer, snapshot.TurnNumber)
+                    .ReconActorsTrimmedThisTurn(snapshot.TurnNumber).OrderBy(x => x));
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
                 + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
+                + $"|routeMap={routeMap}|trimmedScouts={trimmedScouts}"
                 + $"|operatorClaims={MissionIntentRegistry.Peek(snapshot?.Observer)?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
                 + $"|prepSite={rd?.ResearchPreparationSite}:{rd?.ProductionPreparationSite}"
                 + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"

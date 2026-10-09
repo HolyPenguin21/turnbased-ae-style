@@ -1118,7 +1118,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges:
       - stat: 5
-        amount: 1
+        amount: 2
         isOverride: 0
   - id: 22
     authoredKey: neutral.equipment.armored.plasma-cannon
@@ -1476,7 +1476,10 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - Regeneration
-      statChanges: []
+      statChanges:
+      - stat: 0
+        amount: 1
+        isOverride: 0
   - id: 29
     authoredKey: neutral.mutator.hyper-regeneration
     displayName: Hyper-Regeneration
@@ -1521,6 +1524,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - Regeneration
+      - CeramicArmor
       statChanges:
       - stat: 4
         amount: 1
@@ -1578,6 +1582,9 @@ MonoBehaviour:
         isOverride: 0
       - stat: 5
         amount: -1
+        isOverride: 0
+      - stat: 4
+        amount: 2
         isOverride: 0
   - id: 31
     authoredKey: neutral.mutator.adrenal-surge
@@ -1785,6 +1792,9 @@ MonoBehaviour:
       - stat: 1
         amount: 1
         isOverride: 0
+      - stat: 0
+        amount: 1
+        isOverride: 0
   - id: 35
     authoredKey: neutral.mutator.rapid-synapse
     displayName: Rapid Synapse
@@ -1925,6 +1935,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - r1s4
+      - CeramicArmor
       statChanges:
       - stat: 6
         amount: 1
@@ -1983,6 +1994,9 @@ MonoBehaviour:
       - stat: 1
         amount: -1
         isOverride: 0
+      - stat: 0
+        amount: 1
+        isOverride: 0
   - id: 39
     authoredKey: neutral.mutator.chameleon-tissue
     displayName: Chameleon Tissue
@@ -2030,6 +2044,9 @@ MonoBehaviour:
       statChanges:
       - stat: 5
         amount: -1
+        isOverride: 0
+      - stat: 6
+        amount: 1
         isOverride: 0
   - id: 40
     authoredKey: neutral.mutator.fortunate-genome
@@ -2576,6 +2593,9 @@ MonoBehaviour:
       - stat: 3
         amount: 2
         isOverride: 1
+      - stat: 0
+        amount: 1
+        isOverride: 0
   - id: 51
     authoredKey: neutral.equipment.infantry.incendiary-rifle
     displayName: Incendiary Rifle
@@ -2739,8 +2759,8 @@ MonoBehaviour:
       - CriticalDamage
       statChanges:
       - stat: 0
-        amount: 1
-        isOverride: 0
+        amount: 8
+        isOverride: 1
       - stat: 3
         amount: 1
         isOverride: 1
@@ -2906,7 +2926,10 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities:
       - AA
-      statChanges: []
+      statChanges:
+      - stat: 0
+        amount: 1
+        isOverride: 0
   - id: 57
     authoredKey: neutral.equipment.mechanical.reinforced-chassis
     displayName: Reinforced Chassis
@@ -3756,6 +3779,9 @@ MonoBehaviour:
         isOverride: 1
       - stat: 1
         amount: 1
+        isOverride: 0
+      - stat: 4
+        amount: 2
         isOverride: 0
   - id: 73
     authoredKey: neutral.equipment.infantry.optical-scope

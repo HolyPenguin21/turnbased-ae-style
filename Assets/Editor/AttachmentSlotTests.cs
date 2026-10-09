@@ -52,6 +52,72 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EveryPublishedAttachmentProjectsTheLiveResultWithWoundsAndEitherOtherSlot()
+        {
+            var items = AttachmentContentTestData.Blocks(AttachmentContentTestData.NeutralPath)
+                .Select(AttachmentContentTestData.Read).Where(c => c.cardType == CardType.Equipment).ToArray();
+            Assert.That(items.Length, Is.EqualTo(62));
+            Assert.That(items.Count(c => c.attachmentSlot == AttachmentSlot.Equipment), Is.EqualTo(42));
+            var paths = new[] { "IronConcord", "TheAshen", "TheVessels" };
+            var hosts = paths.SelectMany(f => AttachmentContentTestData.Blocks(
+                    $"Assets/Cards/{f}/CardCatalog_{f}.asset"))
+                .Select(AttachmentContentTestData.Read)
+                .Where(c => c.cardType == CardType.Unit || c.cardType == CardType.Hero).ToArray();
+            foreach (var item in items)
+            {
+                int cases = 0;
+                foreach (var host in hosts.Where(h => EquipmentSystem.FitsHost(item, h, out _)))
+                foreach (var other in new CardDefinition[] { null }.Concat(items.Where(o =>
+                    o.attachmentSlot != item.attachmentSlot && EquipmentSystem.FitsHost(o, host, out _))))
+                {
+                    var equipment = item.attachmentSlot == AttachmentSlot.Equipment ? item : other;
+                    var mutator = item.attachmentSlot == AttachmentSlot.Mutator ? item : other;
+                    var expected = EquipmentSystem.Project(host, equipment, mutator);
+                    var body = Body(host);
+                    int wound = host.hitPoints > 1 ? 1 : 0;
+                    int spentFate = host.fate > 0 ? 1 : 0;
+                    body.HitPointsCurrent -= wound;
+                    body.Fate -= spentFate;
+                    EquipmentSystem.ApplyAttachments(body, equipment, mutator);
+                    string context = $"{item.authoredKey}/{host.authoredKey}/{other?.authoredKey}";
+                    Assert.That(new[] { body.Attack, body.Defense, body.Resistance, body.Range,
+                        body.HitPointsMax, body.MoveMax, body.Initiative, body.ActivationApCost,
+                        body.CommandRating, body.FateMax }, Is.EqualTo(new[] {
+                        expected.Stats[EquipmentStat.Attack], expected.Stats[EquipmentStat.Defense],
+                        expected.Stats[EquipmentStat.Resistance], expected.Stats[EquipmentStat.Range],
+                        expected.Stats[EquipmentStat.HitPoints], expected.Stats[EquipmentStat.MoveMax],
+                        expected.Stats[EquipmentStat.Initiative], expected.Stats[EquipmentStat.ActivationApCost],
+                        expected.Stats[EquipmentStat.CommandRating], expected.Stats[EquipmentStat.Fate] }), context);
+                    Assert.That(body.Abilities, Is.EquivalentTo(expected.Abilities), context);
+                    Assert.That(body.HitPointsCurrent,
+                        Is.EqualTo(System.Math.Max(1, body.HitPointsMax - wound)), context);
+                    Assert.That(body.Fate, Is.EqualTo(System.Math.Max(0, body.FateMax - spentFate)), context);
+                    cases++;
+                }
+                Assert.That(cases, Is.GreaterThan(0), item.authoredKey);
+            }
+        }
+
+        [Test]
+        public void AuthoredTwinSmgOverridesBeforeMutatorAttackAndPreservesWounds()
+        {
+            var cards = AttachmentContentTestData.Blocks(AttachmentContentTestData.NeutralPath)
+                .Select(AttachmentContentTestData.Read).ToArray();
+            var equipment = cards.Single(c => c.authoredKey == "neutral.equipment.infantry.twin-smg");
+            var mutator = cards.Single(c => c.authoredKey == "neutral.mutator.regenerative-culture");
+            var host = Host(); host.attack = 3; host.unitTypeTags.Add(UnitTypeTag.Infantry);
+            var body = Body(host); body.HitPointsCurrent -= 3;
+            EquipmentSystem.ApplyAttachments(body, equipment, null);
+            Assert.That(body.Attack, Is.EqualTo(8));
+            EquipmentSystem.ApplyAttachments(body, null, mutator);
+            Assert.That(body.Attack, Is.EqualTo(9));
+            Assert.That(body.Range, Is.EqualTo(1));
+            Assert.That(body.HitPointsMax - body.HitPointsCurrent, Is.EqualTo(3));
+            Assert.That(body.Abilities, Has.Member(UnitAbilities.CriticalDamage));
+            Assert.That(body.Abilities, Has.Member(UnitAbilities.Regeneration));
+        }
+
+        [Test]
         public void OccupancyOnlyChangePublishesCapabilityInvalidation()
         {
             var player = new Game.Players.PlayerSetupData();

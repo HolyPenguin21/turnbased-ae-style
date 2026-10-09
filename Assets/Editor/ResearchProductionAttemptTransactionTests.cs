@@ -1,4 +1,6 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Ai;
+using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -27,6 +29,8 @@ namespace Game.EditorTests
             BuildingRegistry.Clear();
             PlayerRootRegistry.Clear();
             StealthSystem.Clear();
+
+            DevelopmentDiversity.ClearAll();
 
             _player = new PlayerSetupData();
             _root = PlayerRoot.Create(_player, "rp transaction owner");
@@ -66,6 +70,7 @@ namespace Game.EditorTests
         [TearDown]
         public void TearDown()
         {
+            DevelopmentDiversity.ClearAll();
             StealthSystem.Clear();
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
@@ -80,6 +85,167 @@ namespace Game.EditorTests
             _root.ActionPoints = 10;
             Assert.That(StealthSystem.TryEnterStealth(_hero, _root), Is.True);
             _root.ActionPoints = 5;
+        }
+
+        [TestCase(AttachmentSlot.Equipment, 0, true)]
+        [TestCase(AttachmentSlot.Equipment, 6, false)]
+        [TestCase(AttachmentSlot.Mutator, 0, true)]
+        [TestCase(AttachmentSlot.Mutator, 6, false)]
+        public void PaidAiAttachmentAttemptEntersHistoryOnceOnWinOrLoss(AttachmentSlot slot, int required, bool won)
+        {
+            _card.cardType = CardType.Equipment;
+            _card.attachmentSlot = slot;
+            _card.fate = required;
+            _hero.Fate = 0;
+            _root.ActionPoints = 5;
+            _root.AddResource(ResourceType.Human, 2);
+            var ctx = new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog };
+            var hand = new AiHandData(null, default, 0);
+            var outcome = MaterializationExecutor.TryGenerate(new GenerationStep
+            {
+                CardDef = _card, Hero = _hero, FacilityHex = Site,
+                Mode = ResearchProductionMode.Research, ProducesEquipment = true,
+            }, _player, _root, hand, ctx);
+            Assert.That(outcome.Attempted, Is.True, outcome.FailReason);
+            Assert.That(outcome.Success, Is.EqualTo(won));
+            Assert.That(DevelopmentDiversity.RecentAttempts(_player, 8, _card), Is.EqualTo(1));
+            Assert.That(_root.ActionPoints, Is.EqualTo(3));
+            Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RejectedAiAttachmentAttemptDoesNotEnterHistory()
+        {
+            _card.cardType = CardType.Equipment;
+            _root.ActionPoints = 1;
+            _root.AddResource(ResourceType.Human, 2);
+            var outcome = MaterializationExecutor.TryGenerate(new GenerationStep
+            {
+                CardDef = _card, Hero = _hero, FacilityHex = Site,
+                Mode = ResearchProductionMode.Research, ProducesEquipment = true,
+            }, _player, _root, new AiHandData(null, default, 0),
+                new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog });
+            Assert.That(outcome.Attempted, Is.False);
+            Assert.That(DevelopmentDiversity.RecentAttempts(_player, 8, _card), Is.Zero);
+            Assert.That(_root.ActionPoints, Is.EqualTo(1));
+        }
+
+        [Test]
+        [TestCase(AttachmentSlot.Equipment, false)]
+        [TestCase(AttachmentSlot.Mutator, false)]
+        [TestCase(AttachmentSlot.Equipment, true)]
+        [TestCase(AttachmentSlot.Mutator, true)]
+        public void StaleGeneratedAttachmentRejectsBeforePaymentOrHistory(AttachmentSlot slot, bool removeHost)
+        {
+            _card.cardType = CardType.Equipment;
+            _card.attachmentSlot = slot;
+            _card.equipment = AttachmentSlotTests.Attachment(slot).equipment;
+            var body = new CardData(AttachmentSlotTests.Host());
+            var hand = new AiHandData(null, default, 0);
+            if (!removeHost) hand.AddCard(body);
+            if (slot == AttachmentSlot.Equipment) body.Equipment = _card;
+            else body.Mutator = _card;
+            _root.ActionPoints = 5;
+            _root.AddResource(ResourceType.Human, 2);
+            var plan = new MaterializationPlan
+            {
+                Kind = MaterializationChainKind.GenerateAttachDeploy,
+                BaseCardInHand = body, GeneratedEquipmentDef = _card,
+                ApCost = 2, ResCost = _card.resourceCost,
+                Generation = new GenerationStep { CardDef = _card, Hero = _hero, FacilityHex = Site,
+                    Mode = ResearchProductionMode.Research, ProducesEquipment = true },
+            };
+            var result = MaterializationExecutor.Execute(null, _player, _root, hand,
+                new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog }, plan, null);
+            Assert.That(result.GenerationAttempted, Is.False);
+            Assert.That(result.StateChanged, Is.False);
+            Assert.That(result.PlacementStale, Is.True, result.FailReason);
+            Assert.That(_root.ActionPoints, Is.EqualTo(5));
+            Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
+            Assert.That(DevelopmentDiversity.RecentAttempts(_player, 8, _card), Is.Zero);
+        }
+
+        [Test]
+        public void ExpectedCostCannotFundAnUnaffordableSuccessfulChain()
+        {
+            _card.cardType = CardType.Equipment;
+            _root.ActionPoints = 3;
+            _root.AddResource(ResourceType.Human, 2);
+            var plan = new MaterializationPlan
+            {
+                Kind = MaterializationChainKind.GenerateAttachDeploy, ApCost = 7,
+                ResCost = _card.resourceCost,
+                Generation = new GenerationStep { CardDef = _card, Hero = _hero, FacilityHex = Site,
+                    Mode = ResearchProductionMode.Research, ProducesEquipment = true, SuccessChance = 0 },
+            };
+            var result = MaterializationExecutor.Execute(null, _player, _root, new AiHandData(null, default, 0),
+                new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog }, plan, null);
+            Assert.That(result.GenerationAttempted, Is.False);
+            Assert.That(result.StateChanged, Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(3));
+            Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
+            Assert.That(DevelopmentDiversity.RecentAttempts(_player, 8, _card), Is.Zero);
+        }
+
+        [Test]
+        public void GeneratedNonCombatAlsoRequiresTheFullChainBeforePayment()
+        {
+            _root.ActionPoints = 3;
+            _root.AddResource(ResourceType.Human, 2);
+            var play = new NonCombatCardPlayer.NonCombatPlay
+            {
+                Kind = NonCombatCardPlayer.PlayKind.Facility,
+                Card = new CardData(_card) { ResearchProductionCreated = true },
+                ApCost = 7, ResCost = _card.resourceCost,
+                Generation = new GenerationStep { CardDef = _card, Hero = _hero, FacilityHex = Site,
+                    Mode = ResearchProductionMode.Research, SuccessChance = 0 },
+            };
+            var result = NonCombatCardPlayer.Execute(play, null, _player, _root,
+                new AiHandData(null, default, 0),
+                new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog });
+            Assert.That(result.GenerationAttempted, Is.False);
+            Assert.That(result.StateChanged, Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(3));
+            Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
+        }
+
+        [Test]
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void RecipientAttachmentIdentityIsAnExactStableAdmissionInput(AttachmentSlot slot)
+        {
+            var first = AttachmentSlotTests.Attachment(slot);
+            var second = AttachmentSlotTests.Attachment(slot);
+            first.authoredKey = "attachment-first"; second.authoredKey = "attachment-second";
+            if (slot == AttachmentSlot.Equipment) _hero.Equipment = first;
+            else _hero.Mutator = first;
+            string initial = DevelopmentAdmission.RecipientFacts(_player, null);
+            Assert.That(DevelopmentAdmission.RecipientFacts(_player, null), Is.EqualTo(initial));
+            if (slot == AttachmentSlot.Equipment) _hero.Equipment = second;
+            else _hero.Mutator = second;
+            Assert.That(DevelopmentAdmission.RecipientFacts(_player, null), Is.Not.EqualTo(initial),
+                "different attachment identity must not disappear behind equal stats and occupancy");
+        }
+
+        [Test]
+        public void FreeLostAttachmentAttemptStillInvalidatesTheDecisionSnapshot()
+        {
+            _card.cardType = CardType.Equipment;
+            _card.apCost = 0;
+            _card.resourceCost = null;
+            _card.fate = 6;
+            _hero.Fate = 0;
+            var outcome = MaterializationExecutor.TryGenerate(new GenerationStep
+            {
+                CardDef = _card, Hero = _hero, FacilityHex = Site,
+                Mode = ResearchProductionMode.Research, ProducesEquipment = true,
+            }, _player, _root, new AiHandData(null, default, 0),
+                new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog });
+            Assert.That(outcome.Attempted, Is.True, outcome.FailReason);
+            Assert.That(outcome.Success, Is.False);
+            Assert.That(outcome.StateChanged, Is.True,
+                "Repeat history is a decision input even when no physical resource was spent");
+            Assert.That(DevelopmentDiversity.RecentAttempts(_player, 8, _card), Is.EqualTo(1));
         }
 
         [Test]

@@ -623,6 +623,58 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ScoutAttachmentRouteInputsInvalidateDevelopmentAdmission()
+        {
+            var player = new PlayerSetupData();
+            var actor = new ArmySnapshot { ArmyId = 1, Hex = new HexCoord(0, 0),
+                IsSoloRecce = true, MemberCount = 1, CurrentMovement = 3, MaxMovement = 3 };
+            var focus = new HexCoord(4, 0);
+            var map = new MapKnowledgeSnapshot { AllHexes = new[] { actor.Hex, focus },
+                ScoutHardBlockedHexes = new HashSet<HexCoord>(),
+                VisibleArrivalBlockedHexes = new HashSet<HexCoord>() };
+            var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Armies = new[] { actor } },
+                MapKnowledge = map };
+            var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
+                PreferredMoverArmyId = actor.ArmyId,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus } };
+            try
+            {
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                string before = DevelopmentAdmission.Facts(snap, new[] { intent });
+                actor.Hex = new HexCoord(1, 0);
+                string moved = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(moved, Is.Not.EqualTo(before));
+                actor.CurrentMovement = 0;
+                string spent = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(spent, Is.Not.EqualTo(moved));
+                intent.Scout.FocusHex = new HexCoord(5, 0);
+                string retargeted = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(retargeted, Is.Not.EqualTo(spent), "a payload change must not rely on a rewritten intent key");
+                map.VisibleArrivalBlockedHexes.Add(focus);
+                string blocked = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(blocked, Is.Not.EqualTo(retargeted));
+                map.ExplorableUnknownFrac = 0.5f;
+                string coverage = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(coverage, Is.Not.EqualTo(blocked));
+                snap.MapPathingVersion++;
+                string terrain = DevelopmentAdmission.Facts(snap, new[] { intent });
+                Assert.That(terrain, Is.Not.EqualTo(coverage));
+                map.AllHexes = new[] { focus, new HexCoord(0, 0) };
+                Assert.That(DevelopmentAdmission.Facts(snap, new[] { intent }), Is.EqualTo(terrain),
+                    "enumeration order is not a route fact");
+                snap.Known = new KnownSnapshot { EnemySightings = new[] {
+                    new AiMapMemory.KnownEnemySighting(focus, player, "known", 1, 1, 1, null) } };
+                string blind = DevelopmentAdmission.Facts(snap, new[] { intent });
+                snap.Known.EnemySightings = new[] {
+                    new AiMapMemory.KnownEnemySighting(focus, player, "known", 1, 1, 1, null,
+                        recceRadius: 1, recceSpotStrength: 4) };
+                Assert.That(DevelopmentAdmission.Facts(snap, new[] { intent }), Is.Not.EqualTo(blind),
+                    "detector capability can change without changing the combat profile");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
         public void SecondaryEffectsCoordinateBothSlotsAndRespectRemainingTargets()
         {
             var body = new CardData(new CardDefinition { cardType = CardType.Unit,
