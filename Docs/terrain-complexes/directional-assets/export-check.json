@@ -1,0 +1,156 @@
+{
+  "files": 30,
+  "originals_byte_identical": true,
+  "seams": [
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 2.187,
+      "p95_rgb_error": 7.148
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.756,
+      "p95_rgb_error": 5.683
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.195,
+      "p95_rgb_error": 4.784
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.129,
+      "p95_rgb_error": 4.629
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 0.895,
+      "p95_rgb_error": 3.286
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.368,
+      "p95_rgb_error": 5.22
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.662,
+      "p95_rgb_error": 8.215
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.0,
+      "p95_rgb_error": 3.676
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.232,
+      "p95_rgb_error": 5.06
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.106,
+      "p95_rgb_error": 3.467
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 60,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 2.147,
+      "p95_rgb_error": 10.144
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 120,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 2.549,
+      "p95_rgb_error": 10.232
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 180,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 2.245,
+      "p95_rgb_error": 10.82
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 240,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.464,
+      "p95_rgb_error": 5.425
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 300,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 2.233,
+      "p95_rgb_error": 8.435
+    }
+  ]
+}
