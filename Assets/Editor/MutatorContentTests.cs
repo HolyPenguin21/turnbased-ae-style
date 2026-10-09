@@ -24,14 +24,14 @@ namespace Game.EditorTests
         [TestCase("dermal-plating", "Defense:1", "")]
         [TestCase("reactive-marrow", "HitPoints:2", "")]
         [TestCase("reinforced-skeleton", "Defense:1,HitPoints:1,Initiative:-1", "")]
-        [TestCase("pain-suppression", "HitPoints:2,MoveMax:-1", "")]
+        [TestCase("pain-suppression", "HitPoints:2,Defense:1,MoveMax:-1", "")]
         [TestCase("regenerative-culture", "", UnitAbilities.Regeneration)]
         [TestCase("hyper-regeneration", "HitPoints:1,MoveMax:-1", UnitAbilities.Regeneration)]
         [TestCase("survivor-strain", "Defense:1,MoveMax:-1", UnitAbilities.Regeneration)]
         [TestCase("adrenal-surge", "MoveMax:1,Initiative:1,Defense:-1", "")]
         [TestCase("metabolic-overdrive", "MoveMax:1,Defense:-1", "")]
         [TestCase("predator-reflexes", "Initiative:1,Defense:1,MoveMax:-1", "")]
-        [TestCase("neural-accelerator", "Initiative:1,ActivationApCost:-1", "")]
+        [TestCase("neural-accelerator", "Initiative:1,Defense:1", "")]
         [TestCase("rapid-synapse", "Defense:-1", UnitAbilities.RapidReaction)]
         [TestCase("hunter-glands", "Defense:-1", UnitAbilities.R1S4)]
         [TestCase("enhanced-senses", "Initiative:1,MoveMax:-1", UnitAbilities.R1S4)]
@@ -95,7 +95,14 @@ namespace Game.EditorTests
                 }
                 Assert.That(c.apCost, Is.EqualTo(1));
                 Assert.That(c.activationApCost, Is.EqualTo(1));
-                Assert.That(ResearchProductionSystem.RequiredSuccesses(c), Is.InRange(3, 5));
+                int expectedDifficulty = 3 + c.equipment.statChanges.Sum(change => change.amount)
+                    + 2 * c.equipment.addAbilities.Count;
+                Assert.That(ResearchProductionSystem.RequiredSuccesses(c), Is.EqualTo(expectedDifficulty), c.displayName);
+                bool shiftedEnergy = new[] { "hyper-regeneration", "survivor-strain", "neural-accelerator",
+                    "rapid-synapse", "reflex-genome" }.Any(slug => c.authoredKey == "neutral.mutator." + slug);
+                Assert.That(c.resourceCost.human, Is.EqualTo(shiftedEnergy ? 2 : 1), c.displayName);
+                Assert.That(c.resourceCost.energy, Is.EqualTo(1), c.displayName);
+                Assert.That(c.resourceCost.materials, Is.Zero, c.displayName);
                 CardData minted = ResearchProductionSystem.MintCard(c);
                 Assert.That(minted.EffectivePlayApCost, Is.EqualTo(1));
                 Assert.That(minted.EffectivePlayResourceCost, Is.Null, "Creation already paid the stake");
@@ -118,12 +125,14 @@ namespace Game.EditorTests
 
         [TestCase(0)]
         [TestCase(1)]
-        public void NeuralAcceleratorRespectsZeroActivationFloor(int initial)
+        public void NeuralAcceleratorAddsDefenseAndInitiativeWithoutChangingActivation(int initial)
         {
             var host = AttachmentSlotTests.Host(); host.activationApCost = initial;
             var unit = AttachmentSlotTests.Body(host);
             EquipmentSystem.ApplyAttachments(unit, null, Mutator("neural-accelerator"));
-            Assert.That(unit.ActivationApCost, Is.Zero);
+            Assert.That(unit.ActivationApCost, Is.EqualTo(initial));
+            Assert.That(unit.Defense, Is.EqualTo(host.defenseRating + 1));
+            Assert.That(unit.Initiative, Is.EqualTo(host.initiative + 1));
         }
 
         [TestCase(false)]
@@ -152,8 +161,10 @@ namespace Game.EditorTests
         {
             var neural = Mutator("neural-accelerator");
             string face = EquipmentCardText.CardFace(neural, null);
-            Assert.That(face, Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1").And.Contain("Activation AP -1"));
-            Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Does.Contain("Activation AP -1"));
+            Assert.That(face, Does.StartWith("Bio, Unit\n").And.Contain("Initiative 1").And.Not.Contain("Activation AP"));
+            Assert.That(EquipmentCardText.AttachedCardFace(neural, null), Does.Contain("Initiative 1").And.Not.Contain("Activation AP"));
+            Assert.That(EquipmentCardText.StatBadgeValue(neural.equipment, EquipmentStat.Defense), Is.EqualTo("1"));
+            Assert.That(EquipmentCardText.Description(neural, null), Does.Contain("Defense 1"));
             Assert.That(EquipmentCardText.CardFace(Mutator("fortunate-genome"), null), Does.Contain("Hero"));
             string description = EquipmentCardText.Description(Mutator("reinforced-skeleton"), null);
             Assert.That(description, Does.Contain("Defense 1").And.Contain("HP 1").And.Contain("Initiative -1"));
