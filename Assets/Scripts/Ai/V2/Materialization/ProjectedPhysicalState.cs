@@ -51,6 +51,31 @@ namespace Game.Ai.V2
             }
         }
 
+        // EXECUTION ORDER. The joint projection above proves a portfolio fits as a FINAL roster;
+        // Phase A then runs ONE chain per pass and re-plans on the refreshed world. A chain may
+        // therefore only be picked if it is legal against the recipient AS IT IS NOW (the same
+        // ArmyData.CanFitAdditionalCard the executor re-checks): a unit that fits only once a
+        // portfolio hero has landed waits for that hero, which is always legal first (it sets the
+        // capacity every other member of the portfolio relies on). Upgrades and fresh armies have
+        // no live roster to outgrow.
+        internal static bool FitsLiveNow(MaterializationPlan p)
+        {
+            if (p == null) return false;
+            if (p.Kind == MaterializationChainKind.GenerateAttachUpgrade || p.AttackRefitPrimaryId.HasValue)
+                return true;
+            CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+            if (d == null) return true;
+            switch (p.Deploy.Kind)
+            {
+                case DeploymentKind.ExistingArmy:
+                case DeploymentKind.Garrison:
+                case DeploymentKind.ReusableShell:
+                    return p.Deploy.Army != null && p.Deploy.Army.CanFitAdditionalCard(d);
+                default:
+                    return true;
+            }
+        }
+
         private static bool IsHeroPlan(MaterializationPlan p)
         {
             CardDefinition d = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
