@@ -123,7 +123,7 @@ namespace Game.EditorTests
             Assert.That(r.Parking.IsParked(order[0]), Is.True);
             Assert.That(o.AttemptedKeys, Is.EquivalentTo(order));
             Assert.That(o.FundedKeysAcrossPacks, Is.Not.Empty, "the re-pack is reported");
-            Assert.That(o.FundedKeysAcrossPacks, Does.Not.Contain(order[0]),
+            Assert.That(o.FundedKeysAcrossPacks.Contains(order[0]), Is.False,
                 "the rejected mission left the funded set");
             Assert.That(o.Selected, Is.Not.Null);
         }

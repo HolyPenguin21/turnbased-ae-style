@@ -316,9 +316,9 @@ namespace Game.EditorTests
                 Is.EquivalentTo(new[] { "SettleBeforeFirstRound", "Round" }));
             Assert.That(typeof(IColdWork).GetMethods().Select(m => m.Name),
                 Is.EquivalentTo(new[] { "AxisCount", "Run" }));
-            Assert.That(typeof(AdmissionIteration).GetInterfaces(), Does.Contain(typeof(IAdmissionWork)));
-            Assert.That(typeof(TempoRound).GetInterfaces(), Does.Contain(typeof(ITempoWork)));
-            Assert.That(typeof(ColdResidual).GetInterfaces(), Does.Contain(typeof(IColdWork)));
+            Assert.That(typeof(IAdmissionWork).IsAssignableFrom(typeof(AdmissionIteration)), Is.True);
+            Assert.That(typeof(ITempoWork).IsAssignableFrom(typeof(TempoRound)), Is.True);
+            Assert.That(typeof(IColdWork).IsAssignableFrom(typeof(ColdResidual)), Is.True);
         }
     }
 }
