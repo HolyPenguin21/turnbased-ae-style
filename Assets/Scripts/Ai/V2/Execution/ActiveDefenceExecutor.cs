@@ -133,6 +133,24 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
+            // An immediate opportunity is re-proved before EVERY step: the enemy must still be seen
+            // now, and the fight must still be startable with the movement that is left. Otherwise
+            // the intent ends here (Continuity releases it) and the army simply stays where it is.
+            if (pm.ActiveDefenceTarget.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity)
+            {
+                bool seen = VisionSystem.IsVisible(player, targetHex);
+                bool reach = seen && ActiveDefenceObjectiveEvaluator.CanReachNow(ctx.Map, player, army.Hex,
+                    targetHex, army.CurrentMovement, army.MaxMovement, out _);
+                if (!seen || !reach || pm.ActiveDefenceTarget.ImmediateTurn != ctx.TurnNumber)
+                {
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Immediate][Execution] enemy={enemyId} "
+                        + $"actor={army.Id} mp={army.CurrentMovement} visible={seen} reachable={reach} "
+                        + "decision=END reason=immediate_opportunity_lost");
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+            }
             HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex,
                 profile: SafeRouteProfile.Combat);
             if (!next.HasValue)
@@ -220,7 +238,8 @@ namespace Game.Ai.V2
             result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
-                + $"actor={pm?.MoverArmyId} purpose={pm?.ActiveDefenceTarget.ReturnPurpose} "
+                + $"actor={pm?.MoverArmyId} intercept={pm?.ActiveDefenceTarget.InterceptPurpose} "
+                + $"purpose={pm?.ActiveDefenceTarget.ReturnPurpose} "
                 + $"destination={pm?.ActiveDefenceTarget.ReturnHex} steps={result.StepsMoved} "
                 + $"apBefore={apBefore} apSpent={result.ApSpent} apAfter={root?.ActionPoints} stop={result.StopReason}");
         }

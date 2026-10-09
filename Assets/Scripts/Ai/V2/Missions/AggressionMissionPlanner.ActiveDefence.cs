@@ -70,6 +70,10 @@ namespace Game.Ai.V2
             // One fresh withdrawal per army per pass, however many threats ask for it: a Return is
             // identified by its own mover and destination, never by the threat.
             var withdrawalProposed = new HashSet<int>();
+            // Enemies whose strategic answer is already a concrete proposal (Intercept, Regroup or
+            // Shortage). Only a Defer / unlisted enemy may still get an immediate opportunity, so one
+            // enemy never receives two Intercepts or an Intercept beside a withdrawal.
+            var strategicallyAnswered = new HashSet<int>();
             foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
             {
                 MissionIntent incumbent = ActiveDefenceObjectiveEvaluator.IncumbentIntercept(
@@ -78,6 +82,8 @@ namespace Game.Ai.V2
                     snap, objective, committed, withdrawing, incumbent?.ActiveDefence?.PrimaryArmyId, activeIntents);
                 if (response == null)
                     continue;
+                if (response.Kind != ActiveDefenceResponseKind.Defer)
+                    strategicallyAnswered.Add(objective.Target.EnemyArmyId);
                 switch (response.Kind)
                 {
                     case ActiveDefenceResponseKind.Intercept:
@@ -118,6 +124,46 @@ namespace Game.Ai.V2
                             + $"movers=[{string.Join(",", response.Movers.Select(m => m.ArmyId))}]");
                         break;
                 }
+            }
+
+            AppendImmediateOpportunities(snap, activeIntents, committed, withdrawing, proposals,
+                deferredThisPass, strategicallyAnswered, ref pendingHost);
+        }
+
+        // ImmediateOpportunity: a visible weak field army that a free defender can reach and START a
+        // fight with in THIS turn. Only Intercept can come out of it (AssessResponse never returns
+        // Regroup / Shortage for it); a strategic incumbent on the same enemy keeps the enemy, and an
+        // immediate incumbent is honoured only within the turn that admitted it.
+        private static void AppendImmediateOpportunities(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
+            ICollection<int> withdrawing, List<MissionProposal> proposals,
+            IDictionary<MissionIntentKey, string> deferredThisPass, ISet<int> strategicallyAnswered,
+            ref (int armyId, float value)? pendingHost)
+        {
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.EnumerateImmediate(snap))
+            {
+                int enemyId = objective.Target.EnemyArmyId;
+                if (strategicallyAnswered.Contains(enemyId))
+                    continue;
+                MissionIntent incumbent = ActiveDefenceObjectiveEvaluator.IncumbentIntercept(
+                    activeIntents, enemyId);
+                if (incumbent != null && !(incumbent.ActiveDefence.InterceptPurpose
+                        == ActiveDefenceInterceptPurpose.ImmediateOpportunity
+                    && incumbent.ActiveDefence.ImmediateTurn == snap.TurnNumber))
+                    continue;
+                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                    snap, objective, committed, withdrawing,
+                    incumbent?.ActiveDefence?.PrimaryArmyId, activeIntents);
+                if (response == null)
+                    continue;
+                if (response.Kind == ActiveDefenceResponseKind.Intercept)
+                {
+                    pendingHost ??= PendingPreparationHost(snap, activeIntents, committed);
+                    AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals,
+                        pendingHost.Value);
+                }
+                else if (incumbent != null && deferredThisPass != null)
+                    deferredThisPass[incumbent.IntentKey] = response.Reason ?? "immediate_deferred";
             }
         }
 
@@ -160,6 +206,8 @@ namespace Game.Ai.V2
             target.ProjectedWinChance = plan.ProjectedWinChance;
             target.CoversAllDefenders = plan.CoversAllDefenders;
             target.EstimatedEta = eta;
+            if (target.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity)
+                target.ImmediateTurn = snap.TurnNumber;
             float ap = actor.HasActivatedThisTurn ? 0f
                 : GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan)
                     ?? actor.ActivationApCost;

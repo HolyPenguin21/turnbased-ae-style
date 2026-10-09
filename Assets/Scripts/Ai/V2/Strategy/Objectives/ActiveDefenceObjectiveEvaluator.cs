@@ -22,10 +22,19 @@ namespace Game.Ai.V2
     // Zero preserves old payloads as withdrawals; new regroup legs always opt in explicitly.
     public enum ActiveDefenceReturnPurpose { SafeWithdrawal = 0, RegroupForAsset = 1 }
 
+    // Why an Intercept exists. Zero keeps every existing intent a strategic defence of an asset.
+    // ImmediateOpportunity is one fight the defender can START in the very own turn it is admitted
+    // (a weak field army the strategic threat model does not list): it never pursues over turns,
+    // regroups, withdraws, raises demand or calls air support.
+    public enum ActiveDefenceInterceptPurpose { StrategicDefence = 0, ImmediateOpportunity = 1 }
+
     public struct ActiveDefenceMissionTarget
     {
         public ActiveDefencePhase Phase;
         public ActiveDefenceReturnPurpose ReturnPurpose;
+        public ActiveDefenceInterceptPurpose InterceptPurpose;
+        // ImmediateOpportunity only: the global turn it was admitted in (it ends with that turn).
+        public int ImmediateTurn;
         public int? EnemyEta;
         public int EnemyArmyId;
         public HexCoord LastKnownHex;
@@ -175,6 +184,229 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.Target.EnemyArmyId).ToList();
         }
 
+        // ---- IMMEDIATE OPPORTUNITY ---------------------------------------------------------------
+        // A weak field army the strategic threat model does not list (severity cutoff, no potential
+        // damage, power below activeDefenceMinEnemyPower) is still a legitimate fight when a defender
+        // can reach it and START the battle in this very own turn. This is deliberately a separate
+        // enumeration, never a loosened Enumerate: Enumerate keeps its strategic meaning for Attack's
+        // local reaction, Demand, aviation rebase and air support. Candidates come from the current
+        // honest contacts (visible NOW, also a canonical Known.EnemySightings entry) — never from
+        // Threat.Threats, which the severity cutoff already thinned, and never from a hidden registry.
+        // The protected asset only anchors scoring (nearest own Base/Citadel): no damage is invented.
+        public static List<ActiveDefenceObjective> EnumerateImmediate(WorldSnapshot snap)
+        {
+            var result = new List<ActiveDefenceObjective>();
+            if (snap?.Threat?.Contacts == null || snap.Self?.BaseHexes == null || snap.Observer == null)
+                return result;
+            var known = AiV2Util.KnownArmyIds(snap.Known?.EnemySightings
+                ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
+            var seen = new HashSet<int>();
+            foreach (EnemyContactSnapshot c in snap.Threat.Contacts.Where(c => c?.Army != null)
+                .OrderBy(c => c.Army.ArmyId))
+            {
+                int id = c.Army.ArmyId;
+                if (c.Knowledge != ContactKnowledge.Exact || !c.Position.HasValue || id < 0
+                    || c.Army.IsAir || c.Army.Owner == null || c.Army.Owner.IsNeutral
+                    || c.Army.Owner == snap.Observer || c.Army.Members == null
+                    || c.Army.Members.Count == 0 || !known.Contains(id) || !seen.Add(id))
+                    continue;
+                HexCoord position = c.Position.Value;
+                if (OnKnownForeignStructure(snap, position))
+                    continue;
+                StrategicAssetSnapshot asset = NearestOwnBaseAsset(snap, position);
+                if (asset == null)
+                    continue;
+                TaskScore score = new TaskScore(ownTerritoryProximity:
+                    TaskScoreEvaluator.ActiveDefenceProximity(
+                        TaskScoreEvaluator.NearestOwnedHomeDistance(snap, position)));
+                result.Add(new ActiveDefenceObjective
+                {
+                    TaskScore = score,
+                    Target = new ActiveDefenceMissionTarget
+                    {
+                        Phase = ActiveDefencePhase.Intercept,
+                        InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity,
+                        ImmediateTurn = snap.TurnNumber,
+                        EnemyArmyId = id,
+                        LastKnownHex = position,
+                        LastObservedTurn = c.LastObservedTurn,
+                        Confidence = c.Confidence,
+                        ProtectedAssetHex = asset.Hex,
+                        ProtectedAssetKind = asset.Kind,
+                        ProtectedAssetValue = asset.Value,
+                    },
+                });
+            }
+            return result.OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.Target.EnemyArmyId).ToList();
+        }
+
+        private static StrategicAssetSnapshot NearestOwnBaseAsset(WorldSnapshot snap, HexCoord from)
+        {
+            StrategicAssetSnapshot best = null;
+            foreach (StrategicAssetSnapshot a in snap.Threat?.Assets ?? (IReadOnlyList<StrategicAssetSnapshot>)
+                Array.Empty<StrategicAssetSnapshot>())
+                if (a != null && IsDefendableAsset(snap, a.Kind, a.Hex)
+                    && (best == null || CompareAssetDistance(from, a.Hex, best.Hex) < 0))
+                    best = a;
+            if (best != null)
+                return best;
+            // Fixtures / snapshots without an asset list: the own base hex alone anchors the score.
+            foreach (HexCoord h in snap.Self.BaseHexes)
+                if (best == null || CompareAssetDistance(from, h, best.Hex) < 0)
+                    best = new StrategicAssetSnapshot { Hex = h, Kind = AssetKind.Base };
+            return best;
+        }
+
+        private static int CompareAssetDistance(HexCoord from, HexCoord a, HexCoord b)
+        {
+            int byDistance = HexGridMath.Distance(from, a).CompareTo(HexGridMath.Distance(from, b));
+            if (byDistance != 0) return byDistance;
+            return a.Q != b.Q ? a.Q.CompareTo(b.Q) : a.R.CompareTo(b.R);
+        }
+
+        // A tracked enemy under the lifecycle the asking intent actually has. StrategicDefence keeps
+        // the original Enumerate semantics bit for bit; ImmediateOpportunity reads only the
+        // immediate enumeration, so one never answers for the other.
+        public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId,
+            ActiveDefenceInterceptPurpose purpose) =>
+            purpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity
+                ? EnumerateImmediate(snap).FirstOrDefault(o => o.Target.EnemyArmyId == enemyArmyId)
+                : ForTrackedEnemy(snap, enemyArmyId);
+
+        // THE proof that a fight can START now: the Combat-profile route's entering-hex costs (the
+        // enemy hex included — arrival is the attack) fit the CURRENT movement, and no single hex
+        // exceeds the roster's MaxMovement. Geometry, MaxMovement, ETA or "next turn" prove nothing.
+        // `currentMovement` / `maxMovement` are the figures of the roster that will really march.
+        internal static bool CanReachNow(HexMap map, PlayerSetupData owner, HexCoord from,
+            HexCoord target, int currentMovement, int maxMovement, out int routeCost)
+        {
+            routeCost = int.MaxValue;
+            if (map == null || owner == null || currentMovement <= 0 || maxMovement <= 0
+                || from.Equals(target))
+                return false;
+            HexPath route = SafeStepPathing.FindSafePath(map, owner, from, target, maxMovement,
+                SafeRouteProfile.Combat);
+            if (route == null || route.Hexes.Count < 2)
+                return false;
+            int cost = 0;
+            for (int i = 1; i < route.Hexes.Count; i++)
+            {
+                int step = map.TryGetTerrainAt(route.Hexes[i], out var entry)
+                    ? Math.Max(1, entry.moveCost) : 1;
+                if (step > maxMovement)
+                    return false;
+                cost += step;
+            }
+            routeCost = cost;
+            return cost <= currentMovement;
+        }
+
+        internal static bool CanReachNow(WorldSnapshot snap, ArmySnapshot actor, HexCoord target,
+            out int routeCost, int? currentMovement = null, int? maxMovement = null)
+        {
+            routeCost = int.MaxValue;
+            if (actor == null || snap == null)
+                return false;
+            int current = currentMovement ?? actor.CurrentMovement;
+            int max = maxMovement ?? actor.MaxMovement;
+            if (ReferenceEquals(snap.Map, null))
+            {
+                // Synthetic fixtures have no map: one cost point per hex of the straight line.
+                if (current <= 0 || actor.Hex.Equals(target)) return false;
+                routeCost = HexGridMath.Distance(actor.Hex, target);
+                return routeCost <= current;
+            }
+            return CanReachNow(snap.Map, snap.Observer, actor.Hex, target, current, max, out routeCost);
+        }
+
+        // The immediate answer: an Intercept the chosen roster can START now, or a Defer. Never
+        // Regroup / Shortage / Return. asset_holds, EnemyEta and the strategic arrival deadline are
+        // deliberately not consulted — they judge protecting an asset, not whether to strike now.
+        // Everything that owns the army stays: committed claims, withdrawals, the pinned stronghold
+        // defender and the shared WorthIt admission of GroundCombatAssemblyPlanner.
+        private static ActiveDefenceResponse AssessImmediate(WorldSnapshot snap,
+            ActiveDefenceObjective objective, ISet<int> committed, ICollection<int> withdrawing,
+            int? pinnedActor)
+        {
+            if (snap?.Self?.Armies == null || objective == null
+                || !IsDefendableAsset(snap, objective.Target.ProtectedAssetKind,
+                    objective.Target.ProtectedAssetHex))
+                return null;
+            int enemyId = objective.Target.EnemyArmyId;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = Opposition(snap, enemyId);
+            if (opposition == null || OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
+                return null;
+            var response = new ActiveDefenceResponse { Opposition = opposition };
+            EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c => c?.Army != null
+                && c.Army.ArmyId == enemyId && c.Position.HasValue);
+            HexCoord targetHex = objective.Target.LastKnownHex;
+            if (contact == null || contact.Knowledge != ContactKnowledge.Exact
+                || !contact.Position.Value.Equals(targetHex))
+                return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
+                    "immediate_contact_not_visible", -1, 0, 0);
+
+            var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            if (withdrawing != null) planExcluded.UnionWith(withdrawing);
+            if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            foreach (ArmySnapshot a in snap.Self.Armies.Where(GroundCombatActorEligibility.IsStructuralActor))
+                if (IsPinnedStrongholdDefender(snap, a, committed)
+                    || !CanReachNow(snap, a, targetHex, out _))
+                    planExcluded.Add(a.ArmyId);
+
+            // The planner may pick an assembly that drags the formation below the needed movement:
+            // the chosen roster is re-proved and a failing host is excluded for the next try.
+            for (int attempt = 0; attempt <= snap.Self.Armies.Count; attempt++)
+            {
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                    new GroundCombatAssemblyRequest
+                    {
+                        Opposition = opposition,
+                        WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
+                        PreferredPrimaryArmyId = pinnedActor,
+                        PinToPreferred = pinnedActor.HasValue,
+                        ExcludedArmyIds = planExcluded,
+                    });
+                if (!plan.Feasible)
+                    break;
+                ArmySnapshot host = snap.Self.Armies.FirstOrDefault(a => a != null
+                    && a.ArmyId == plan.BaseArmyId);
+                if (host == null)
+                    break;
+                int projectedMax = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
+                    ?? host.MaxMovement;
+                int projectedNow = GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, plan)
+                    ?? host.CurrentMovement;
+                if (CanReachNow(snap, host, targetHex, out int routeCost, projectedNow, projectedMax))
+                {
+                    response.Plan = plan;
+                    response.ExcludedArmyIds = planExcluded;
+                    return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Intercept,
+                        "immediate_response", host.ArmyId, projectedNow, routeCost, plan.ProjectedWinChance);
+                }
+                if (pinnedActor.HasValue && plan.BaseArmyId == pinnedActor.Value)
+                    break;
+                planExcluded.Add(plan.BaseArmyId);
+            }
+            return TraceImmediate(snap, objective, response, ActiveDefenceResponseKind.Defer,
+                "immediate_not_reachable_or_not_capable", -1, 0, 0);
+        }
+
+        private static ActiveDefenceResponse TraceImmediate(WorldSnapshot snap,
+            ActiveDefenceObjective objective, ActiveDefenceResponse response,
+            ActiveDefenceResponseKind kind, string reason, int actorId, int mp, int routeCost,
+            float win = 0f)
+        {
+            response.Kind = kind;
+            response.Reason = reason;
+            AiDebugLog.WriteDeduped($"immediate:{snap.Observer?.Nickname}:{snap.TurnNumber}:{objective.Target.EnemyArmyId}",
+                $"[AI][V2][ActiveDefence][Immediate] turn={snap.TurnNumber} player={snap.Observer?.Nickname} "
+                + $"enemy={objective.Target.EnemyArmyId}@{objective.Target.LastKnownHex} actor={(actorId < 0 ? "none" : actorId.ToString(CultureInfo.InvariantCulture))} "
+                + $"mp={mp} routeCost={(routeCost == int.MaxValue ? "none" : routeCost.ToString(CultureInfo.InvariantCulture))} "
+                + $"win={win:0.00} decision={kind} reason={reason}");
+            return response;
+        }
+
         // THE significance bar of a hostile contact (2026-10-01: by roster strength, not by skills —
         // a scout or a lone weak body is not worth an army's AP). Attack's local fight and its
         // retreat rule read the same bar instead of inventing a second importance model.
@@ -236,6 +468,9 @@ namespace Game.Ai.V2
             int? pinnedActor, IEnumerable<MissionIntent> activeIntents = null,
             ISet<int> fundedRegroupArmyIds = null)
         {
+            if (objective != null && objective.Target.InterceptPurpose
+                == ActiveDefenceInterceptPurpose.ImmediateOpportunity)
+                return AssessImmediate(snap, objective, committed, withdrawing, pinnedActor);
             if (objective == null || !IsDefendableAsset(snap, objective.Target.ProtectedAssetKind,
                     objective.Target.ProtectedAssetHex) || snap?.Self?.Armies == null)
                 return null;

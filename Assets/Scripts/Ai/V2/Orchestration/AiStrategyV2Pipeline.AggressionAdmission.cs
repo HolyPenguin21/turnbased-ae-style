@@ -63,6 +63,9 @@ namespace Game.Ai.V2
                     + $":{i.ActiveDefence?.ProtectedAssetHex.Q},{i.ActiveDefence?.ProtectedAssetHex.R}"
                     + $":dest={i.ActiveDefence?.ReturnHex?.Q},{i.ActiveDefence?.ReturnHex?.R}"
                     + $":eta={i.ActiveDefence?.EnemyEta}"
+                    // An immediate opportunity is a different task from a strategic intercept of
+                    // the same enemy, and it expires with the turn that admitted it.
+                    + $":ip={(int?)i.ActiveDefence?.InterceptPurpose}@{i.ActiveDefence?.ImmediateTurn}"
                     + $":{i.Raid?.SupportArmyId}{i.Attack?.SupportArmyId}"
                     + $":local={i.Attack?.IntermediateTarget.DiagnosticLabel}:{i.Attack?.LastOpportunisticStrikeTurn}"
                     // A bound support wing changes which task targets still want aviation.

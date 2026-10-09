@@ -109,6 +109,9 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            if (defence.InterceptPurpose == ActiveDefenceInterceptPurpose.ImmediateOpportunity)
+                return ResolveImmediateIntercept(snap, intent, defence, actor);
+
             ActiveDefenceObjective objective =
                 ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
             if (objective == null)
@@ -149,6 +152,38 @@ namespace Game.Ai.V2
             defence.ThreatSeverity = current.ThreatSeverity;
             defence.EstimatedEta = current.EstimatedEta;
             defence.EnemyEta = current.EnemyEta;
+            ResumeTransientSuspension(intent);
+            return true;
+        }
+
+        // ImmediateOpportunity lives only inside the turn that admitted it: a later turn, a contact
+        // that is no longer visible there, a route that closed, movement that no longer pays for the
+        // fight, or an actor that cannot win it any more ends the intent. Ending releases the claims
+        // and leaves the army where it stands (no Return is created); a fresh snapshot may admit a
+        // new, independent opportunity.
+        private static bool ResolveImmediateIntercept(WorldSnapshot snap, MissionIntent intent,
+            ActiveDefenceIntent defence, ArmySnapshot actor)
+        {
+            ActiveDefenceObjective objective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap,
+                defence.EnemyArmyId, ActiveDefenceInterceptPurpose.ImmediateOpportunity);
+            string end = defence.ImmediateTurn != (snap?.TurnNumber ?? 0) ? "immediate_turn_over"
+                : objective == null ? "immediate_contact_lost"
+                : !ActiveDefenceObjectiveEvaluator.CanReachNow(snap, actor, objective.Target.LastKnownHex,
+                    out _) ? "immediate_unreachable"
+                : !GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
+                    ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
+                    actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).Feasible
+                    ? "actor_no_longer_capable"
+                : null;
+            if (end != null)
+            {
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END enemy={defence.EnemyArmyId} "
+                    + $"actor={actor.ArmyId} purpose=ImmediateOpportunity reason={end}");
+                return false;
+            }
+            defence.LastKnownHex = objective.Target.LastKnownHex;
+            defence.LastObservedTurn = objective.Target.LastObservedTurn;
+            defence.Confidence = objective.Target.Confidence;
             ResumeTransientSuspension(intent);
             return true;
         }
@@ -212,6 +247,7 @@ namespace Game.Ai.V2
                 PrimaryArmyId = t.Phase == ActiveDefencePhase.AirSupport ? null
                     : o.MoverArmyId ?? t.PrimaryArmyId,
                 ReturnHex = t.ReturnHex, ReturnPurpose = t.ReturnPurpose, EnemyEta = t.EnemyEta,
+                InterceptPurpose = t.InterceptPurpose, ImmediateTurn = t.ImmediateTurn,
                 ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
                 AirSupportArmyId = t.Phase == ActiveDefencePhase.AirSupport
