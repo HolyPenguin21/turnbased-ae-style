@@ -397,45 +397,13 @@ namespace Game.Ai.V2
                     out StrategicInvalidationReason strategicReasons,
                     out HashSet<DesireAxis> dirtyStrategicAxes)
                 {
-                    StrategicInvalidation pending =
-                        turnSession.PendingInvalidations;
-                    // The OPERATIONAL mask is built from EVERY enabled mission axis, not only
-                    // Recon: destroying a neutral publishes a Contact invalidation Aggression must
-                    // consume, so the bounded loop gets a same-turn chance to refresh the objective
-                    // list, complete the old target, select the next one, or start a Return
-                    // mission. ActiveDefence is folded into Aggression, so this mask needs no extra
-                    // case for it.
-                    StrategicInvalidationReason operationalMask =
-                        AiStrategyV2Scope.OperationalInvalidationMask;
-                    operationalReasons = pending.Reasons & operationalMask;
-                    strategicReasons = StrategicInvalidationReason.None;
-                    dirtyStrategicAxes = new HashSet<DesireAxis>();
-                    // T03 — Aggression's shortages (Raid/Attack reinforcement, the Attack preparation
-                    // host, ActiveDefence) re-enter on its existing mask like Economy/Development:
-                    // otherwise fresh objectives and admission run beside a stale capability
-                    // request for the rest of the turn. Its fingerprint drops re-entries whose
-                    // inputs did not change (a scout's step, a walk that moved no demand input).
-                    foreach (DesireAxis axis in new[]
-                             {
-                                 DesireAxis.Economy, DesireAxis.Development, DesireAxis.Aggression,
-                             })
-                    {
-                        StrategicInvalidationReason axisReasons = pending.Reasons
-                            & DesireAxes.InvalidationMaskFor(axis);
-                        // Actor movement alone must not re-run every Economy infrastructure
-                        // candidate. It becomes actionable only when continuity's committed
-                        // builder actually reached its build hex; factual resource/site changes
-                        // still re-admit Economy normally.
-                        if (axis == DesireAxis.Economy
-                            && axisReasons == StrategicInvalidationReason.Actor
-                            && !MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot))
-                            continue;
-                        if (axisReasons == StrategicInvalidationReason.None)
-                            continue;
-                        dirtyStrategicAxes.Add(axis);
-                        strategicReasons |= axisReasons;
-                    }
-                    turnSession.ConsumeInvalidations(operationalReasons | strategicReasons);
+                    TypedTriggerSplit split = TypedTriggerFanOut.Split(
+                        turnSession.PendingInvalidations.Reasons,
+                        () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot));
+                    operationalReasons = split.Operational;
+                    strategicReasons = split.Strategic;
+                    dirtyStrategicAxes = split.DirtyAxes;
+                    turnSession.ConsumeInvalidations(split.Consumed);
                 }
 
                 // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
@@ -699,9 +667,9 @@ namespace Game.Ai.V2
                         AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber);
                     List<ArmyData> recoveries =
                         ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
-                    bool rebaseFirst = rebaseContinuations.Count > 0
-                        && (recoveries.Count == 0
-                            || rebaseContinuations[0].Id <= recoveries[0].Id);
+                    bool rebaseFirst = MandatoryAviationOrder.RebaseFirst(
+                        rebaseContinuations.Count > 0 ? rebaseContinuations[0].Id : (int?)null,
+                        recoveries.Count > 0 ? recoveries[0].Id : (int?)null);
                     if (rebaseFirst)
                     {
                         ArmyData rebaseWing = rebaseContinuations[0];

@@ -188,3 +188,16 @@ flowchart TD
 | Сигнатуры интерфейсов уровней 1–4 | не выполнено | |
 
 **Статус Уровня 0: «реализован — проверки незавершены»**. Gate на Уровень 1 не пройден: нет characterization-тестов порядка и таблиц банка/кешей. Следующие шаги: (1) вынести из `RunTurn` тестируемую единицу (минимально — выбор mandatory aviation: rebase vs recovery по Id, и разбор trigger fan-out) без смены поведения и покрыть её на baseline; (2) заполнить банковскую и кеш-таблицы по `StrategicManager`/`InfrastructureFulfillment`/`WorldAnalysis.Observation`; (3) описать сигнатуры.
+
+## 9. Вынесенные под тесты единицы (Уровень 0, без смены поведения)
+
+| Единица | Было | Стало | Владелец/срок жизни |
+|---|---|---|---|
+| `MandatoryAviationOrder.RebaseFirst(int?, int?)` | inline `rebaseFirst` в `RunTypedAdmissions` | статическая чистая функция, `Orchestration/` | без состояния |
+| `TypedTriggerFanOut.Split(reasons, Func<bool> economyBuilderReady)` → `TypedTriggerSplit` | тело локальной `TakeTypedTriggers` (-32 строки в `RunTurn`) | чистая функция; `Consume` остаётся в `turnSession` через `split.Consumed` | без состояния |
+
+Логика перенесена построчно; `EconomyBuilderReadyForCompletion` по-прежнему вызывается лениво и только при `Actor`-only для Economy. Оба вызова из `RunTurn` сохранены, порядок действий не менялся.
+
+Тесты: `Assets/Editor/AiPipelineOrchestrationUnitTests.cs` (10 случаев: приоритет и tie-break по Id, Actor-only для Economy, ленивость вызова, compound fan-out). **Оговорка:** это тесты нового кода, на ревизии baseline они не компилируются; ожидаемые значения выведены чтением прежнего inline-кода, а не запуском на baseline. Эквивалентность держится на построчном переносе и ревью диффа.
+
+Прогон (патченный, `D:/aiv-work/l0-cur-p`): 2053 теста, 1581 прошёл, 472 упало; относительно baseline `l0-base-p` регрессий 0, новых прошедших 10. Unity не запускался.
