@@ -66,7 +66,7 @@ flowchart TD
     CP --> RC["RecallUnsafeStrikes foreach"]
     RC --> FIN["RefreshActors; SettleAfterTurn; Summarize"]
     FIN --> DEAD{"!phaseBHandled — недостижимо"}
-    DEAD --> HK["итог; Housekeeping; AuditTurnEnd; CompleteReservations"]
+    DEAD --> HK["итог; Housekeeping (Reaction, если ожидает; освобождение её резерва; повтор Phase B ≤1); AuditTurnEnd; CompleteReservations"]
 ```
 
 ## 2. Схема A: один цикл с раскрытыми внутренними переходами
@@ -149,7 +149,7 @@ flowchart TD
     KC4 --> KC5
     KC5 --> Q
 
-    F["F, без изменений: RecallUnsafeStrikes foreach (safety-net вне Q); RefreshActors; SettleAfterTurn; Summarize → итог хода, Housekeeping"]
+    F["F, без изменений: RecallUnsafeStrikes foreach (safety-net вне Q); RefreshActors; SettleAfterTurn; Summarize → итог хода, Housekeeping (Reaction, если ожидает; освобождение её резерва; повтор Phase B ≤1)"]
 ```
 
 Чистые функции (новые, `Orchestration/TurnLoop.cs`):
@@ -475,7 +475,7 @@ Gate: `bash D:/aiv-work/run.sh <имя>` → `bash D:/aiv-work/patchrun.sh <им
 
 ### 13.4 Банк
 
-Цепочка physical stock → spendable → allocation → tentative claims → canonical spend → durable ownership → release/expiry не менялась ни в одном звене: писателей банка уровень не добавлял и не удалял; позиции вызовов — таблица §7.2. Удалены только недостижимые дубли `ReleaseDeferredEconomyIncomeCover` и `OperationContinuationWindow.Settle` в ветке `!phaseBHandled`. Проверено по всей изменённой последовательности (§13.5): между перемещёнными операторами нет вызовов, трогающих банк, кроме тех, что были там и раньше. `StrategicTempoBudget` (на ход) и парковка (на вызов `UseSurplus`) не сбрасываются циклом; раундов не больше 2. Pass claims `ProvisioningSession` (своя `MissionLeaseBook`, читается только сессией) — тот же `using`-scope итерации. Next-turn: писатели `LifecycleReturnPolicy.RecordWait`, `CapabilityPoolExhaustionRegistry`, `AviationObligationStallRegistry`, `OperationContinuationWindow` не менялись.
+Цепочка physical stock → spendable → allocation → tentative claims → canonical spend → durable ownership → release/expiry не менялась ни в одном звене: писателей банка уровень не добавлял и не удалял; позиции вызовов — таблица §7.2. Удалены только недостижимые дубли `ReleaseDeferredEconomyIncomeCover` и `OperationContinuationWindow.Settle` в ветке `!phaseBHandled`. Проверено по всей изменённой последовательности (§13.5): между перемещёнными операторами нет вызовов, трогающих банк, кроме тех, что были там и раньше. `StrategicTempoBudget` (на ход) и парковка (на вызов `UseSurplus`) не сбрасываются циклом; раундов Phase B в `TurnLoop` не больше 2. Кроме них `UseSurplus` вызывается ещё в Housekeeping после Reaction (повтор ≤ `maxEndOfTurnTempoReruns`, тот же ходовой бюджет) — Housekeeping уровнями не менялся (поправка Ур. 5). Pass claims `ProvisioningSession` (своя `MissionLeaseBook`, читается только сессией) — тот же `using`-scope итерации. Next-turn: писатели `LifecycleReturnPolicy.RecordWait`, `CapabilityPoolExhaustionRegistry`, `AviationObligationStallRegistry`, `OperationContinuationWindow` не менялись.
 
 Не выполнено: числовая таблица stock/holds/debits на каждой смене вида работы, сценарии «два Economy owner + Attack preparation + reaction protection + Phase B near-zero AP» — нужна нативная трасса (**not run**).
 

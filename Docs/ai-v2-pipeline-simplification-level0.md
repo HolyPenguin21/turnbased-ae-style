@@ -16,7 +16,7 @@
 ## 1. Фактическая схема `Pipeline.RunTurn`
 
 Вызывающий: `AiTurnController` → `RunEstimateCached(Pipeline.RunTurn)` → затем внешний
-`WaitAtObserverActionBoundary` → `onDone` (Reaction запускается вне `RunTurn`).
+`WaitAtObserverActionBoundary` → `onDone`. **Поправка (Уровень 5, 2026-10-09):** Reaction запускается **внутри** `RunTurn` — из Housekeeping (`HousekeepingManager.RunHousekeeping` → `StrategicReactionPass.ExecuteIfPending`; затем освобождение резерва Reaction и повтор Phase B `UseSurplus`, ≤ `maxEndOfTurnTempoReruns`), после `SettleAfterTurn` и до `AuditTurnEnd`/`CompleteReservations`. Прежняя запись «Reaction вне `RunTurn`» была ошибочной.
 
 ```mermaid
 flowchart TD
@@ -93,7 +93,7 @@ flowchart TD
     CP --> RECALL["RecallUnsafeStrikes → ExecuteContinuation (foreach)"]
     RECALL --> FIN["RefreshActors; SettleAfterTurn(empty)"]
     FIN --> TB{"!phaseBHandled (мёртвая ветка)"}
-    TB --> HK["Housekeeping; telemetry; AuditTurnEnd; CompleteReservations; Dispose"]
+    TB --> HK["Housekeeping (Reaction, если ожидает; освобождение её резерва; повтор Phase B ≤1); telemetry; AuditTurnEnd; CompleteReservations; Dispose"]
 ```
 
 ## 2. Метрики раздела 2 (исходные значения)
@@ -247,7 +247,7 @@ flowchart TD
 | `MissionIntentState` L38/45/46 | `Leases.Retire(key)` = снять actor-claims **и** ресурсы operation | — | при retire intent | Continuity |
 | `StrategicPhaseB.RefreshReactionReservation` | `ReleaseReasonExceptOwner` + Upsert (AP + 4 ресурса) | StrategicReactionPass, EndOfReaction | Phase B → Reaction | `UseSurplus` |
 | `StrategicPhaseB` L100 | `ReleaseByReason(Reaction)`, когда реакция неосуществима | | | `UseSurplus` |
-| `ReactionRoundExecutor` L48/L79, `StrategicReactionPass` L230 | `ReleaseByReason` / `ExpireStage(EndOfReaction)` | | Reaction | нет (вне `RunTurn`) |
+| `ReactionRoundExecutor` L48/L79, `StrategicReactionPass` L230 | `ReleaseByReason` / `ExpireStage(EndOfReaction)` | | Reaction | через `RunHousekeeping` (внутри `RunTurn`; поправка Ур. 5) |
 | `HousekeepingManager` L77 | `ReleaseByReason(Reaction)` перед tempo rerun | | | через `RunHousekeeping` |
 | `AiTurnSession.CompleteReservations` / `Dispose` | `ExpireStage(EndOfTurn)` + `AssertClearAtTurnEnd` | EndOfTurn | конец хода | L1376 |
 
