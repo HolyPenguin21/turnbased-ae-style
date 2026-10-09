@@ -52,17 +52,9 @@ namespace Game.Turns
         public bool IsAiObserverInspectionMode => _aiObserverMatch && _aiObserverPauseEngaged
             && !IsCombatPresentationActive;
 
-        // Dev-only: one switch for watching an AI turn play out. When on it (a) makes the fog
-        // overlay follow whichever AI is currently acting instead of staying on the last human's
-        // view (see BeginPlayerTurn), showing exactly that AI's own visible/explored/unseen hexes
-        // (VisionSystem.CurrentViewer, read through the same per-player Visible/Visited/EverSeen
-        // sets AiMapMemory itself reads — this does NOT touch VisionSystem.DebugRevealAll, which
-        // stays an independent, separately-controlled reveal-everything override so this debug
-        // view shows honestly what the AI could see, not the whole map), and shows that AI's own
-        // hand/resource debug panels; and (b) writes one line per stealth-detection challenge to
-        // Logs/AiDebug.log / the Console (StealthSystem.DebugLog — observer, hidden unit, hex,
-        // spot vs hide dice/hits, outcome; never player-facing, stealth design §3/§9). Off by
-        // default; Editor Inspector checkbox only, no in-game UI.
+        // Dev-only: follows the acting AI's own fog of war and shows its hand/resources
+        // in matches with a human. AI-only matches enable this view automatically.
+        // Does not affect the independent full-map reveal override below.
         [SerializeField] private bool debugWatchAiTurns;
 
         // Dev-only, independent of debugWatchAiTurns above: reveals the ENTIRE map (every hex,
@@ -77,7 +69,6 @@ namespace Game.Turns
 
         private void OnValidate()
         {
-            Game.Map.StealthSystem.DebugLog = debugWatchAiTurns;
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
         }
 
@@ -305,7 +296,6 @@ namespace Game.Turns
             // OnValidate already applies this on every Inspector edit, but that never fires on a
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
-            StealthSystem.DebugLog = debugWatchAiTurns;
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (gameMenu != null) gameMenu.VisibilityChanged += RecomputeBlockedState;
@@ -791,7 +781,7 @@ namespace Game.Turns
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
                 activePlayers, map, startingDeckCatalog, TurnNumber);
 
-            turnOrderPopup.Show(activePlayers, OnTurnOrderResolved, debugWatchAiTurns);
+            turnOrderPopup.Show(activePlayers, OnTurnOrderResolved);
         }
 
         private static readonly ResourceType[] AllResourceTypes =
@@ -1197,4 +1187,3 @@ namespace Game.Turns
         }
     }
 }
-

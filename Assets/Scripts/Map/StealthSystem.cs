@@ -35,7 +35,7 @@ namespace Game.Map
     //
     // The hidden challenge itself reuses Game.Combat.ChallengeResolver (the one deterministic/
     // testable dice path) and is SILENT: no popup, no combat UI, no player-facing or owner-
-    // facing log. The only diagnostic is DebugLog, opt-in, default off (project owner's spec).
+    // facing log.
     public static class StealthSystem
     {
         // Set by GameTurnController.BeginGame. Default returns 0 so the standalone stealth
@@ -55,10 +55,6 @@ namespace Game.Map
         // Terrain move cost at a hex — hideDice = stealthLevel + (moveCost - 1). Set by
         // whoever owns the HexMap at setup; default flat 1 (no terrain bump) for the sim.
         public static Func<HexCoord, int> TerrainMoveCostProvider = _ => 1;
-
-        // Opt-in developer diagnostic only (project owner's spec §3/§9) — never a player- or
-        // owner-facing signal. Off by default.
-        public static bool DebugLog;
 
         // The hidden challenge's dice roll — the shared ChallengeResolver path by default
         // (project owner's spec §2). A single injectable seam so the standalone stealth
@@ -369,28 +365,11 @@ namespace Game.Map
         // strength 0 and contributes max(1, 0) = 1 IN ITS OWN HEX only; an r1sX source also
         // reaches an ADJACENT hex, contributing its raw spot strength there (so r1s0 -> 0,
         // i.e. it reveals the hex and ordinary units but never detects an adjacent stealth).
-        // The winning vision source behind a SpotPoolAgainst result — carried purely so the
-        // STEALTH diagnostic (§4 logging) can name WHICH of the observer's armies/buildings
-        // actually did the spotting. Every non-diagnostic caller keeps using the plain int
-        // overload below.
-        public readonly struct SpotSource
-        {
-            public readonly int Pool;
-            public readonly string Label;
-            public SpotSource(int pool, string label) { Pool = pool; Label = label; }
-            public static readonly SpotSource None = new SpotSource(0, "no source");
-        }
-
         public static int SpotPoolAgainst(PlayerSetupData observer, HexCoord hiddenHex)
-            => SpotPoolAgainst(observer, hiddenHex, out _);
-
-        public static int SpotPoolAgainst(PlayerSetupData observer, HexCoord hiddenHex, out SpotSource best)
         {
-            best = SpotSource.None;
             if (observer == null)
                 return 0;
             int bestPool = 0;
-            string bestLabel = "no source";
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(observer))
             {
@@ -406,10 +385,7 @@ namespace Game.Map
                     AbilityParams.GetBestRecceSpotStrength(army),
                     AbilityParams.GetBestRecceRadius(army) > 0);
                 if (pool > bestPool)
-                {
                     bestPool = pool;
-                    bestLabel = $"army #{army.Id} \"{army.Name}\"";
-                }
             }
 
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
@@ -427,13 +403,9 @@ namespace Game.Map
                 }
                 int pool = SourcePool(building.Hex, hiddenHex, spot, hasRadius);
                 if (pool > bestPool)
-                {
                     bestPool = pool;
-                    bestLabel = $"building \"{building.Name}\" @ ({building.Hex.Q}, {building.Hex.R})";
-                }
             }
 
-            best = new SpotSource(bestPool, bestLabel);
             return bestPool;
         }
 
@@ -449,47 +421,23 @@ namespace Game.Map
         // One silent hidden challenge for a single (unit, observer) pair. Returns true and
         // records a personal detection on success; a spot pool of 0 skips the roll entirely.
         // Callers own the "one challenge per pair per atomic event" dedupe (§3).
-        public static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex,
-            string checkSource = null, ArmyData hiddenArmy = null)
-        {
-            int spot = SpotPoolAgainst(observer, hex, out SpotSource spotSource);
-            return ResolveDetection(unit, observer, hex, spotSource, checkSource, hiddenArmy);
-        }
+        public static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex)
+            => ResolveDetection(unit, observer, hex, SpotPoolAgainst(observer, hex));
 
-        private static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex,
-            SpotSource spotSource, string checkSource = null, ArmyData hiddenArmy = null)
+        private static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex, int spot)
         {
             if (unit == null || !unit.IsHidden || observer == null || observer == unit.Owner)
                 return false;
             if (IsDetectedBy(unit, observer))
                 return true; // already personally visible to this observer — no re-roll
 
-            // Axial (q, r), the same coordinate the map labels and the logs show.
-            int col = hex.Q, row = hex.R;
-            int spot = spotSource.Pool;
-            // §4 diagnostics — name the trigger ("arrival" / "new vision" / "hidden action"),
-            // the hidden unit (plus its army id where the caller knows it — UnitData has no id
-            // of its own), and, for a rolled challenge, which observer source won the spot pool.
-            string src = string.IsNullOrEmpty(checkSource) ? "unspecified" : checkSource;
-            string hiddenId = hiddenArmy != null ? $"{unit.Name} (army #{hiddenArmy.Id})" : unit.Name;
             if (spot <= 0)
-            {
-                if (DebugLog)
-                    Game.Ai.AiDebugLog.Write($"[STEALTH] check[{src}] {observer.Nickname} could not challenge hidden "
-                        + $"{hiddenId} @ ({col}, {row}) — spot pool 0 (no source close enough / strong enough).");
                 return false;
-            }
 
             int hide = HideDiceFor(unit, hex);
             ChallengeResult result = ChallengeRoller(spot, hide);
             // Tie keeps stealth — strictly more spot successes than hide successes to detect.
             bool detected = result.AttackerSuccesses > result.DefenderSuccesses;
-
-            if (DebugLog)
-                Game.Ai.AiDebugLog.Write($"[STEALTH] check[{src}] {observer.Nickname} (via {spotSource.Label}) "
-                    + $"vs hidden {hiddenId} @ ({col}, {row}): "
-                    + $"spot {spot} ({result.AttackerSuccesses} hits) vs hide {hide} ({result.DefenderSuccesses} hits) "
-                    + $"-> {(detected ? "DETECTED" : "still hidden")}");
 
             if (detected)
             {
@@ -544,14 +492,13 @@ namespace Game.Map
                     continue;
                 foreach (PlayerSetupData observer in EnemiesWithVisionOf(movedArmy.Owner, arrivalHex))
                     if (seen.Add((member, observer, arrivalHex)))
-                        ResolveDetection(member, observer, arrivalHex, "arrival", movedArmy);
+                        ResolveDetection(member, observer, arrivalHex);
             }
 
             HexCoord sourceHex = movedArmy.Controller != null
                 ? movedArmy.Controller.CurrentHex : arrivalHex;
             int sourceSpot = AbilityParams.GetBestRecceSpotStrength(movedArmy);
             bool sourceHasRadius = AbilityParams.GetBestRecceRadius(movedArmy) > 0;
-            var source = new SpotSource(0, $"army #{movedArmy.Id} \"{movedArmy.Name}\"");
             foreach (HexCoord hex in DetectionHexes(sourceHex, sourceHasRadius))
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                 {
@@ -560,8 +507,7 @@ namespace Game.Map
                     foreach (UnitData member in other.Members)
                         if (member.IsHidden && seen.Add((member, movedArmy.Owner, hex)))
                             ResolveDetection(member, movedArmy.Owner, hex,
-                                new SpotSource(SourcePool(sourceHex, hex, sourceSpot, sourceHasRadius), source.Label),
-                                "arrival", other);
+                                SourcePool(sourceHex, hex, sourceSpot, sourceHasRadius));
                 }
         }
 
@@ -575,8 +521,7 @@ namespace Game.Map
             HexCoord sourceHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
             RunChecksForNewVisionSource(army.Owner, sourceHex,
                 AbilityParams.GetBestRecceSpotStrength(unit),
-                AbilityParams.GetBestRecceRadius(unit) > 0,
-                $"unit \"{unit.Name}\" in army #{army.Id}");
+                AbilityParams.GetBestRecceRadius(unit) > 0);
         }
 
         public static void RunChecksForNewVisionSource(BuildingData building)
@@ -585,8 +530,7 @@ namespace Game.Map
                 return;
             RunChecksForNewVisionSource(building.Owner, building.Hex,
                 AbilityParams.GetBestRecceSpotStrength(building.Abilities),
-                AbilityParams.GetBestRecceRadius(building.Abilities) > 0,
-                $"building \"{building.Name}\"");
+                AbilityParams.GetBestRecceRadius(building.Abilities) > 0);
         }
 
         public static void RunChecksForNewVisionSource(BuildingData building, FacilityData facility)
@@ -595,15 +539,13 @@ namespace Game.Map
                 return;
             RunChecksForNewVisionSource(building.Owner, building.Hex,
                 AbilityParams.GetBestRecceSpotStrength(facility.Abilities),
-                AbilityParams.GetBestRecceRadius(facility.Abilities) > 0,
-                $"facility \"{facility.Name}\" in \"{building.Name}\"");
+                AbilityParams.GetBestRecceRadius(facility.Abilities) > 0);
         }
 
         private static void RunChecksForNewVisionSource(PlayerSetupData owner, HexCoord sourceHex,
-            int spotStrength, bool hasRadius, string label)
+            int spotStrength, bool hasRadius)
         {
             var done = new HashSet<UnitData>();
-            SpotSource source = new SpotSource(0, label);
             foreach (HexCoord hex in DetectionHexes(sourceHex, hasRadius))
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                 {
@@ -612,8 +554,7 @@ namespace Game.Map
                     foreach (UnitData member in other.Members)
                         if (member.IsHidden && done.Add(member))
                             ResolveDetection(member, owner, hex,
-                                new SpotSource(SourcePool(sourceHex, hex, spotStrength, hasRadius), source.Label),
-                                "new vision", other);
+                                SourcePool(sourceHex, hex, spotStrength, hasRadius));
                 }
         }
 
@@ -639,7 +580,7 @@ namespace Game.Map
             var done = new HashSet<PlayerSetupData>();
             foreach (PlayerSetupData observer in EnemiesWithVisionOf(owner, hex))
                 if (done.Add(observer))
-                    ResolveDetection(actor, observer, hex, "hidden action");
+                    ResolveDetection(actor, observer, hex);
         }
 
         private static IEnumerable<PlayerSetupData> EnemiesWithVisionOf(PlayerSetupData self, HexCoord hex)
