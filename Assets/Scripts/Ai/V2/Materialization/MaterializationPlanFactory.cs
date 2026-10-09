@@ -111,11 +111,11 @@ namespace Game.Ai.V2
             ap += p.Deploy.Kind == DeploymentKind.NewArmy ? ArmyActions.CreateArmyApCost : 0;
             if (p.GeneratedBaseDef != null)
                 ap += baseDef != null
-                    ? CardCostRules.PlayAp(new CardData(baseDef) { ResearchProductionCreated = true })
+                    ? CardCostRules.PlayAp(new CardData(baseDef) { ResearchProductionCreated = true }, p.ProjectedAbilities)
                     : 0;
             else if (baseInstance != null)
             {
-                ap += CardCostRules.PlayAp(baseInstance);
+                ap += CardCostRules.PlayAp(baseInstance, p.ProjectedAbilities);
                 Accumulate(baseInstance.EffectivePlayResourceCost, ref human, ref energy, ref materials, ref tech);
             }
             if (p.UsesEquipment)
@@ -162,3 +162,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

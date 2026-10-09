@@ -397,6 +397,59 @@ namespace Game.EditorTests
             Assert.That(upgrade.DeferredAttachmentAp, Is.EqualTo(1f));
         }
 
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void AttachmentRapidReactionPricesPhysicalDeploymentAndBothChainShapes(AttachmentSlot slot)
+        {
+            var host = new CardData(AttachmentSlotTests.Host());
+            host.Definition.apCost = 3;
+            host.Definition.activationApCost = 2;
+            host.Definition.resourceCost = new ResourceCost { human = 2 };
+            var item = AttachmentSlotTests.Attachment(slot);
+            item.apCost = 1;
+            item.activationApCost = 1;
+            item.resourceCost = new ResourceCost { tech = 2 };
+            item.equipment.addAbilities.Add(UnitAbilities.RapidReaction);
+            var projected = EquipmentSystem.Project(host.Definition, null, null, item).Abilities;
+            var placement = new PlacementOption(PrepSite, DeploymentKind.Garrison, new ArmyData { IsGarrison = true });
+
+            Assert.That(CardCostRules.PlayAp(host), Is.EqualTo(3));
+            Assert.That(CardCostRules.PlayAp(host, projected), Is.Zero);
+            var handItem = ResearchProductionSystem.MintCard(item);
+            var held = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.AttachDeploy,
+                null, host, 0, handItem, 1, placement, projected);
+            Assert.That(held.ApCost, Is.EqualTo(1f), "only the minted item's attachment costs AP");
+            Assert.That(host.Equipment, Is.Null, "pricing cannot attach to the held card");
+            Assert.That(host.Mutator, Is.Null);
+            Assert.That(held.ResCost.human, Is.EqualTo(2), "RapidReaction does not waive body resources");
+
+            var generation = new GenerationStep { CardDef = item, ProducesEquipment = true };
+            var generated = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateAttachDeploy,
+                null, generation, host, 0, true, placement, projected);
+            Assert.That(generated.ApCost, Is.EqualTo(2f), "attempt + attachment; zero final deploy AP");
+            Assert.That(generated.ResCost.human, Is.EqualTo(2));
+            Assert.That(generated.ResCost.tech, Is.EqualTo(2));
+
+            if (slot == AttachmentSlot.Mutator) host.Mutator = item;
+            else host.Equipment = item;
+            Assert.That(CardCostRules.PlayAp(host), Is.Zero, "physical action sees the installed item too");
+            host.ResearchProductionCreated = true;
+            Assert.That(CardCostRules.PlayAp(host), Is.Zero);
+        }
+
+        [Test]
+        public void DeploymentApWithoutRapidReactionKeepsOrdinaryAndMintedPrices()
+        {
+            var host = new CardData(AttachmentSlotTests.Host());
+            host.Definition.apCost = 3;
+            host.Definition.activationApCost = 2;
+            Assert.That(CardCostRules.PlayAp(host), Is.EqualTo(3));
+            host.ResearchProductionCreated = true;
+            Assert.That(CardCostRules.PlayAp(host), Is.EqualTo(2));
+            host.Definition.grantedAbilities.Add(UnitAbilities.RapidReaction);
+            Assert.That(CardCostRules.PlayAp(host), Is.Zero);
+        }
+
         // ---- Unified Research/Production preparation scoring (operator = a hero card; the site =
         // infrastructure; the fixed Researcher/Assembler value comes from the ability only).
         private static readonly HexCoord PrepSite = new HexCoord(3, -1);
