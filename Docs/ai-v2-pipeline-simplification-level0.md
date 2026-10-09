@@ -170,3 +170,21 @@ flowchart TD
 | `patchrun.sh` (`D:/aiv-work/l0-base-p`, **эталон для сравнения**) | 2043 | 1571 | 472 |
 
 Падения — тесты, которым нужен настоящий движок (UnityEngine.Object и т. п.). Baseline не обновлять после изменений; сравнивать через `regress.py`.
+
+## 8. Проверка Уровня 0 снизу вверх (по пунктам ТЗ §6 и gate §5.4)
+
+| Пункт ТЗ | Статус | Основание |
+|---|---|---|
+| Прочитаны инструкции/архитектура/README, зафиксированы SHA и версии | выполнено | base `fe2ccdf4`, Unity 6000.5.4f1 |
+| Трассировка `AiTurnController → RunTurn → … → Housekeeping` по callers | частично | `RunTurn` прочитан целиком; внутренности `StrategicManager`, `ResourceAllocator`, `ProvisioningManager`, `TaskExecutor`, `Reaction` не разобраны |
+| Для каждой стрелки guard/приоритет/bounds/reserve effect/snapshot state | частично | guards и bounds — есть (§1, §4); reserve effect и snapshot/revision по стрелкам — нет |
+| Раскрыть flush/force, ownershipFresh, zeroRadarWindow, returnsReleased/Deferred, phaseBHandled, retry sets, deferred admission | частично | писатели/читатели перечислены (§2); семантика reset boundary раскрыта для retry set и bounds |
+| Порядок observation → settlement | выполнено | §3 п.2 |
+| Baseline-трассы сценариев §12 + characterization assertions | **не выполнено** | тестов, вызывающих `RunTurn`, нет (§3a); трассы не сняты |
+| Метрики §2 и карта SRP/дублей | метрики выполнены; SRP-карта — частично | таблица размеров есть, DRY/SRP-таблица по правилам — нет |
+| Compile/test baseline | выполнено доступными средствами | §7; Linux `compile_check.sh` и Unity не запускались |
+| Банк: инвентаризация writers/lifetime | не выполнено | только каркас §5 |
+| Кеши: карта источников и refresh | не выполнено | только счётчики вызовов §5 |
+| Сигнатуры интерфейсов уровней 1–4 | не выполнено | |
+
+**Статус Уровня 0: «реализован — проверки незавершены»**. Gate на Уровень 1 не пройден: нет characterization-тестов порядка и таблиц банка/кешей. Следующие шаги: (1) вынести из `RunTurn` тестируемую единицу (минимально — выбор mandatory aviation: rebase vs recovery по Id, и разбор trigger fan-out) без смены поведения и покрыть её на baseline; (2) заполнить банковскую и кеш-таблицы по `StrategicManager`/`InfrastructureFulfillment`/`WorldAnalysis.Observation`; (3) описать сигнатуры.
