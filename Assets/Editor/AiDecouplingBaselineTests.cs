@@ -111,6 +111,140 @@ namespace Game.EditorTests
             trace.Flush();
         }
 
+        // S2: a rebase step runs ONE take->reenter pair, a recovery/mission/tempo step runs TWO. The
+        // first reentry publishes a compound fact (Capability). After one pair it is still pending
+        // (a later take gets it); after two pairs the second take has fanned it out. Pending-set
+        // model: take returns what is pending and consumes exactly that snapshot.
+        [TestCase(StepTriggerSequence.RebasePairs, 1, false)]
+        [TestCase(StepTriggerSequence.StandardPairs, 2, true)]
+        public void S2_Triggers_RebaseRunsOnePairAndRecoveryTwo_FirstReentryFactIsNotLost(
+            int pairs, int expectedTakes, bool compoundSeenByThisStep)
+        {
+            var pending = StrategicInvalidationReason.Actor;
+            int takes = 0, reentries = 0;
+            StepTriggerOutcome outcome = default;
+
+            System.Collections.IEnumerator run = StepTriggerSequence.Run(pairs,
+                take: () =>
+                {
+                    takes++;
+                    StrategicInvalidationReason snapshot = pending;
+                    pending &= ~snapshot; // consume exactly the snapshot
+                    return new TypedTriggerSplit(StrategicInvalidationReason.None, snapshot,
+                        new System.Collections.Generic.HashSet<DesireAxis>());
+                },
+                reenter: (reasons, axes) => Reenter(() =>
+                {
+                    reentries++;
+                    // the first reentry admits axes and publishes a compound fact
+                    if (reentries == 1) pending |= StrategicInvalidationReason.Capability;
+                }),
+                reentryChanged: () => reentries == 1,
+                done: o => outcome = o);
+            Drain(run);
+
+            Assert.That(takes, Is.EqualTo(expectedTakes));
+            Assert.That(reentries, Is.EqualTo(expectedTakes));
+            Assert.That(outcome.Strategic.HasFlag(StrategicInvalidationReason.Actor), Is.True);
+            Assert.That(outcome.Strategic.HasFlag(StrategicInvalidationReason.Capability),
+                Is.EqualTo(compoundSeenByThisStep));
+            Assert.That(pending.HasFlag(StrategicInvalidationReason.Capability),
+                Is.EqualTo(!compoundSeenByThisStep),
+                "the compound fact of the first reentry stays pending for the next take");
+            Assert.That(outcome.StrategicChanged, Is.True);
+        }
+
+        // Runs nested coroutines to completion the way the AI controller unwinds yielded IEnumerators.
+        private static void Drain(System.Collections.IEnumerator root)
+        {
+            var stack = new System.Collections.Generic.Stack<System.Collections.IEnumerator>();
+            stack.Push(root);
+            while (stack.Count > 0)
+            {
+                if (!stack.Peek().MoveNext()) { stack.Pop(); continue; }
+                if (stack.Peek().Current is System.Collections.IEnumerator nested) stack.Push(nested);
+            }
+        }
+
+        private static System.Collections.IEnumerator Reenter(System.Action body)
+        {
+            body();
+            yield break;
+        }
+
+        // S2: a stalled aviation actor is ignored for ITS turn only.
+        [Test]
+        public void S2_Stall_AMarkedActorIsStalledForItsTurnOnly()
+        {
+            var player = new PlayerSetupData();
+            var other = new PlayerSetupData();
+            AviationObligationStallRegistry.MarkStalled(player, 10, 77);
+            Assert.That(AviationObligationStallRegistry.IsStalled(player, 10, 77), Is.True);
+            Assert.That(AviationObligationStallRegistry.IsStalled(player, 10, 78), Is.False);
+            Assert.That(AviationObligationStallRegistry.IsStalled(player, 11, 77), Is.False,
+                "the next turn tries the actor again");
+            Assert.That(AviationObligationStallRegistry.IsStalled(other, 10, 77), Is.False);
+            AviationObligationStallRegistry.EndTurn(player, 10);
+            Assert.That(AviationObligationStallRegistry.IsStalled(player, 10, 77), Is.False);
+            AviationObligationStallRegistry.Clear();
+        }
+
+        // S4: ordinary return legs wait for the first Phase B round once; urgent ones (tactical
+        // retreat, ActiveDefence return) never wait; the wait is recorded per turn and the next
+        // turn the same leg goes at once; a waiting leg is protected from the stall counter only
+        // for that turn.
+        [Test]
+        public void S4_Returns_OrdinaryWaitsOnce_UrgentNeverWaits_ProtectionIsForTheWaitTurnOnly()
+        {
+            var player = new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
+            var target = new EconomyMissionTarget
+            { Kind = EconomyTaskKind.ReturnBuilder, TargetHex = new HexCoord(3, 3), BuilderArmyId = 7 };
+            var proposal = new MissionProposal { Kind = MissionKind.Economy, Target = target };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                IntentKey = MissionIntentKey.For(proposal),
+                Objective = new EconomyIntent
+                { Kind = EconomyTaskKind.ReturnBuilder, TargetHex = target.TargetHex, BuilderArmyId = 7 },
+            };
+            var active = new[] { intent };
+            try
+            {
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+                MissionIntentKey key = intent.IntentKey;
+
+                // turn 5, before the first Phase B round
+                var waiting = LifecycleReturnPolicy.SelectWaiting(new[] { proposal }, active, player, 5);
+                Assert.That(waiting.Count, Is.EqualTo(1), "an ordinary return waits");
+                LifecycleReturnPolicy.RecordWait(player, key, 5);
+                MissionContinuityLayer.MarkProtectedThisTurn(player, key, 5);
+                Assert.That(intent.LastProtectedTurn, Is.EqualTo(5));
+                Assert.That(LifecycleReturnPolicy.SelectWaiting(new[] { proposal }, active, player, 5).Count,
+                    Is.EqualTo(1), "later admissions of the same turn still wait");
+
+                // turn 6: waited last turn - goes now; protection stamp is the old turn
+                Assert.That(LifecycleReturnPolicy.SelectWaiting(new[] { proposal }, active, player, 6),
+                    Is.Empty, "no second wait in a row");
+                Assert.That(intent.LastProtectedTurn, Is.Not.EqualTo(6));
+
+                // urgent: an ActiveDefence leg is not deferrable at all
+                var adProposal = new MissionProposal { Kind = MissionKind.ActiveDefence };
+                var adIntent = new MissionIntent
+                {
+                    Kind = MissionKind.ActiveDefence, Status = IntentStatus.Active,
+                    IntentKey = MissionIntentKey.For(adProposal),
+                    Objective = new ActiveDefenceIntent { Phase = ActiveDefencePhase.Return },
+                };
+                Assert.That(LifecycleReturnPolicy.SelectWaiting(new[] { adProposal },
+                    new[] { adIntent }, player, 7), Is.Empty);
+            }
+            finally
+            {
+                LifecycleReturnPolicy.ClearAll();
+                MissionIntentRegistry.GetOrCreate(player).Remove(intent.IntentKey);
+            }
+        }
+
         // S9 (bank part): rekey/retire of one owner and a stale writer after a new turn began.
         [Test]
         public void S9_Bank_ReleaseByOwnerIsScopedAndStaleTurnWritesAreIgnored()
