@@ -322,3 +322,45 @@ Managed (`e3-a-p`): 2151 тест, 1676 прошло, 475 упало; регре
 ## Цена изменения (до / после)
 
 Новое семейство миссий или множитель ценности: раньше — `BuildMissionSet` (Orchestration) + планировщик; теперь — `MissionPortfolio` + планировщик (Missions); реальные execution/continuity-обработчики нового вида нужны по-прежнему. Новое правило срочности возврата: раньше — `Pipeline` + политика; теперь — Continuity (`LifecycleReturnPolicy` / `DeferReturnsBeforeTempo`), `TurnLoop` не меняется. Новые глобальные факты по-прежнему идут через старые точки fan-out.
+
+## Повторная перепроверка Э4 (реализация, банк, кеши)
+
+### Реализация (снизу вверх)
+
+| Уровень | Проверка | Результат |
+|---|---|---|
+| Перенос файла | `git diff -M` | `LifecycleReturnPolicy.cs` и `.meta` — rename 100 %; GUID `cce6239d13ff71c4a8941022ae8ea0a2` до и после совпадает |
+| `MissionPortfolio.Build` | построчное сравнение с телом `BuildMissionSet` на `4b4a4519` (текстовый diff без отступов и комментариев) | отличия ровно три: сигнатура, удалённая ветка `RefreshAggressionOperationalFacts` при `!aggressionPressureAlreadyRefreshed` (единственный вызывающий всегда передавал `true`), результат в `MissionPortfolioResult`; тело шагов идентично |
+| Портфель | дифференциальный тест с транскрипцией прежнего метода на **реальных** `V2TraceScope` (по экземпляру на сторону) и вторым admission на том же scope | совпали составы, `AttemptId` (счётчик продолжается между admission одного хода), оценки, deferrals |
+| Правило возвратов | **дифференциальный тест** `TheContinuityMethodReproducesTheInlineRuleOverManyScenarios`: 1500 сценариев, инлайн-блок `RunAdmissionIteration` (транскрипция) против `DeferReturnsBeforeTempo`; сравниваются сохранённые/ждущие предложения, deferrals, `MayWait` на тот же и следующий ход по каждой миссии, штампы `LastProtectedTurn`; охват: ждали > 200 сценариев, ActiveDefence остаётся > 100, угроза дому > 100 | совпало во всех |
+| Проводка | условие `if (view.ReturnsMayWait)` перед единственным вызовом | `TheReturnDeferralIsCalledOnlyWhileTheLoopAllowsTheWait` (скан); мутация `if (true)` поймана |
+| Мутации | убрать `Except`; подменить причину; убрать `RecordWait`/`MarkProtected`; игнор угрозы дому; условие проводки | пойманы все (по 1–3 теста каждая) |
+| Устаревшие ссылки | комментарии, называвшие удалённый `BuildMissionSet` | исправлены в `ReactionRoundExecutor` и `ResourceAllocator` (текст) |
+
+### Резервирование ресурсов через банк
+
+Тест `AWaitingReturnLeavesItsApToPhaseBAndIsFundedAfterTheFirstRound` проходит реальную цепочку `DeferReturnsBeforeTempo` → `BindFunding` → `ResourceAllocator.BeginTurn/Pack` на реальном ledger (AP хода = 6; задача 2 AP, возврат 2 AP, Hard-тир):
+
+| Момент | Funded | AP, закреплённый за funded | Свободно для Phase B | Строк в ledger |
+|---|---|---|---|---|
+| первый проход, возврат ждёт | только задача | 2 | 4 | 0 |
+| после первого раунда (ожидание закончено) | задача + возврат | 4 | 2 | 0 |
+
+Что это доказывает: ожидающий возврат не привязан к финансированию (`BindFunding` получает причину отложения, а не предупреждение «не материализован») и не удерживает AP; после раунда он финансируется тем же путём; резервов в банке ни ожидание, ни `Pack` не создают (финансирование tentative). Трасса `golden/S4_bank.jsonl` (3 записи) проходит `check_boundaries.py`.
+
+Сквозная проверка банка на всех этапах: трассы `S1_bank` и `S9_bank`, снятые на коде Э4, **идентичны** золотым (`compare_traces.py`: 7 и 4 записи).
+
+Не проверено: расходование реальных AP и `SpendAuthority` при исполнении возврата после раунда (Unity-fixture S4/S8).
+
+### Кеширование: чтение и запись
+
+| Состояние | Писатель | Читатель | Проверка этой перепроверки |
+|---|---|---|---|
+| Счётчик `AttemptId` (`V2TraceScope`) | `Build` | диагностика, корреляция | совпадает со старым методом, в том числе на втором admission хода |
+| `DesireBreakdown` Recon lane pressures | `RefreshReconLanePressures` в `Build` | планировщики | порядок шагов закреплён тестом; снапшот — текущий на момент вызова (Pipeline вызывает `Build` после блока `!ownershipFresh → RefreshStrategicKnowledge + RefreshDecisionFrame`, порядок не менялся) |
+| Aggression operational facts | кадр решения (`RefreshOperationalFrame`) | `AggressionMissionLayer` | `Build` их не пишет; прежний флаг всегда был `true` |
+| `LastWait` (постоянно), `LastProtectedTurn` (ход) | `DeferReturnsBeforeTempo` | следующий ход / `ReconcileAfterTurn` | дифференциальный тест сверяет оба на тот же и следующий ход |
+| Список предложений | `Build` | allocator, ledger | не переносится между вызовами (`EveryBuildProposesFreshInstances`) |
+| Прочие кеши (estimate, `KnowledgeVersion`, PathingVersion, WorldDelta, `PoolCache`) | — | — | этап их не трогал |
+
+Managed (`e4-a-p`): 2162 теста, 1687 прошло, 475 упало, регрессий 0 относительно `e3-a-p`, 11 новых прошедших. Unity и native — не выполнялись.

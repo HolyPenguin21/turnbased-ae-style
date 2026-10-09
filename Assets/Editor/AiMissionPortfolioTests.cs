@@ -127,6 +127,220 @@ namespace Game.EditorTests
             }
         }
 
+        // ---- differential: the inline rule of RunAdmissionIteration vs the Continuity method ----
+
+        // The block the method replaced (Pipeline.RunAdmissionIteration @ 4b4a4519), transcribed.
+        private static (List<MissionProposal> retained, bool deferred, Dictionary<MissionIntentKey, string> deferrals)
+            OldInline(bool returnsMayWait, WorldSnapshot snapshot, PlayerSetupData player, int turn,
+                List<MissionProposal> missions, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var missionDeferrals = new Dictionary<MissionIntentKey, string>();
+            bool deferred = false;
+            if (returnsMayWait && !LifecycleReturnPolicy.HomeThreatened(snapshot))
+            {
+                var waiting = LifecycleReturnPolicy.SelectWaiting(missions, activeIntents, player, turn);
+                if (waiting.Count > 0)
+                {
+                    deferred = true;
+                    foreach (MissionProposal m in waiting)
+                    {
+                        MissionIntentKey waitKey = MissionIntentKey.For(m);
+                        missionDeferrals[waitKey] = LifecycleReturnPolicy.DeferralReason;
+                        LifecycleReturnPolicy.RecordWait(player, waitKey, turn);
+                        MissionContinuityLayer.MarkProtectedThisTurn(player, waitKey, turn);
+                    }
+                    missions = missions.Except(waiting).ToList();
+                }
+            }
+            return (missions, deferred, missionDeferrals);
+        }
+
+        private sealed class DeferralRig
+        {
+            internal PlayerSetupData Player = new PlayerSetupData { Nickname = "Diff", ColorIndex = 5 };
+            internal List<MissionProposal> Missions = new List<MissionProposal>();
+            internal List<MissionIntent> Intents = new List<MissionIntent>();
+        }
+
+        private static DeferralRig MakeDeferralRig(Random rng, out bool threatened, out int turn, out bool mayWait)
+        {
+            var rig = new DeferralRig();
+            threatened = rng.Next(4) == 0;
+            turn = 4 + rng.Next(4);
+            mayWait = rng.Next(5) != 0;
+            int n = rng.Next(7);
+            for (int i = 0; i < n; i++)
+            {
+                int kind = rng.Next(4);
+                if (kind <= 1)
+                {
+                    var (intent, proposal) = Return(rig.Player, armyId: 10 + i);
+                    if (rng.Next(3) == 0)   // it already waited on the previous turn
+                        LifecycleReturnPolicy.RecordWait(rig.Player, MissionIntentKey.For(proposal), turn - 1);
+                    rig.Intents.Add(intent);
+                    rig.Missions.Add(proposal);
+                }
+                else if (kind == 2)
+                    rig.Missions.Add(Task(armyId: 40 + i));
+                else
+                {
+                    var ad = new MissionProposal
+                    {
+                        Kind = MissionKind.ActiveDefence,
+                        Target = new EconomyMissionTarget { BuilderArmyId = 90 + i, TargetHex = Site },
+                    };
+                    var adIntent = new MissionIntent
+                    {
+                        Kind = MissionKind.ActiveDefence, Status = IntentStatus.Active,
+                        IntentKey = MissionIntentKey.For(ad),
+                        Objective = new ActiveDefenceIntent { Phase = ActiveDefencePhase.Return },
+                    };
+                    MissionIntentRegistry.GetOrCreate(rig.Player).Put(adIntent);
+                    rig.Intents.Add(adIntent);
+                    rig.Missions.Add(ad);
+                }
+            }
+            return rig;
+        }
+
+        private static string KeysOf(IEnumerable<MissionProposal> ms) =>
+            string.Join(",", ms.Select(m => m == null ? "null" : MissionIntentKey.For(m).ToString()));
+
+        private static string StateDigest(DeferralRig rig, List<MissionProposal> retained, bool deferred,
+            IReadOnlyDictionary<MissionIntentKey, string> deferrals, int turn)
+        {
+            string wait = string.Join(",", deferrals.OrderBy(k => k.Key.ToString()).Select(kv => kv.Key + "=" + kv.Value));
+            string next = string.Join(",", rig.Missions.Select(m => LifecycleReturnPolicy.MayWait(rig.Player, MissionIntentKey.For(m), turn + 1)));
+            string same = string.Join(",", rig.Missions.Select(m => LifecycleReturnPolicy.MayWait(rig.Player, MissionIntentKey.For(m), turn)));
+            string prot = string.Join(",", rig.Intents.Select(i => i.LastProtectedTurn));
+            return "retained=[" + KeysOf(retained) + "] deferred=" + deferred + " deferrals=[" + wait + "] next=[" + next
+                + "] same=[" + same + "] prot=[" + prot + "]";
+        }
+
+        [Test]
+        public void TheContinuityMethodReproducesTheInlineRuleOverManyScenarios()
+        {
+            var seeds = new Random(20261010);
+            int waited = 0, urgentKept = 0, threatenedRuns = 0;
+            for (int n = 0; n < 1500; n++)
+            {
+                int seed = seeds.Next();
+                string[] digests = new string[2];
+                for (int variant = 0; variant < 2; variant++)
+                {
+                    LifecycleReturnPolicy.ClearAll();
+                    var rng = new Random(seed);
+                    DeferralRig rig = MakeDeferralRig(rng, out bool threatened, out int turn, out bool mayWait);
+                    var snap = new WorldSnapshot { Threat = new ThreatModel { UnderSiege = threatened } };
+                    if (variant == 0)
+                    {
+                        var (retained, deferred, deferrals) = OldInline(mayWait, snap, rig.Player, turn, rig.Missions, rig.Intents);
+                        digests[0] = StateDigest(rig, retained, deferred, deferrals, turn);
+                    }
+                    else
+                    {
+                        List<MissionProposal> retained = rig.Missions;
+                        bool deferred = false;
+                        IReadOnlyDictionary<MissionIntentKey, string> deferrals = new Dictionary<MissionIntentKey, string>();
+                        if (mayWait)
+                        {
+                            ReturnDeferral d = MissionContinuityLayer.DeferReturnsBeforeTempo(snap, rig.Player, turn, rig.Missions, rig.Intents);
+                            if (d.Waiting.Count > 0) { deferred = true; deferrals = d.Deferrals; retained = d.Retained; }
+                        }
+                        digests[1] = StateDigest(rig, retained, deferred, deferrals, turn);
+                        if (deferred) waited++;
+                        if (threatened) threatenedRuns++;
+                        if (rig.Missions.Any(m => m.Kind == MissionKind.ActiveDefence)
+                            && retained.Any(m => m.Kind == MissionKind.ActiveDefence)) urgentKept++;
+                    }
+                    foreach (MissionIntent i in rig.Intents.ToList())
+                        MissionIntentRegistry.GetOrCreate(rig.Player).Remove(i.IntentKey);
+                }
+                Assert.That(digests[1], Is.EqualTo(digests[0]), "scenario #" + n + " seed=" + seed);
+            }
+            Assert.That(waited, Is.GreaterThan(200));
+            Assert.That(urgentKept, Is.GreaterThan(100));
+            Assert.That(threatenedRuns, Is.GreaterThan(100));
+        }
+
+        // ---- the bank: a waiting return holds no AP in the first pass and is funded after the tempo ----
+
+        [Test]
+        public void AWaitingReturnLeavesItsApToPhaseBAndIsFundedAfterTheFirstRound()
+        {
+            var player = new PlayerSetupData { Nickname = "Bank", ColorIndex = 6 };
+            const int turn = 7;
+            WorldSnapshot snap = AiReconAuditBugTests.Snapshot(player, turn, new HexCoord(5, 1));
+            snap.Self.ActionPoints = 6;
+            snap.Threat = new ThreatModel();
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            var trace = new AiDecouplingTrace("S4_bank", player, 6);
+
+            var (intent, ret) = Return(player);
+            intent.Funding = CommitmentTier.Hard;
+            ret.Requirements = new MissionRequirements { ApMinimum = 2, ApDesired = 2, ApMaximum = 2 };
+            ret.Axes.Value[DesireAxis.Economy] = 1f;
+            ret.FromDurableIntent = true;
+            MissionProposal job = AiReconAuditBugTests.Scout(ScoutTargetKind.Explore, new HexCoord(5, 1));
+            job.Requirements = new MissionRequirements { ApMinimum = 2, ApDesired = 2, ApMaximum = 2 };
+            job.Axes.Value[DesireAxis.Recon] = 1f;
+            var intents = new[] { intent };
+            try
+            {
+                trace.Record(turn, "Pass", "turn_start", ap: 6f);
+
+                // first pass: the return waits
+                ReturnDeferral d = MissionContinuityLayer.DeferReturnsBeforeTempo(
+                    snap, player, turn, new List<MissionProposal> { job, ret }, intents);
+                Assert.That(d.Waiting, Is.EqualTo(new[] { ret }));
+                List<Commitment> commitments = MissionContinuityLayer.BindFunding(
+                    intents, d.Retained, snap, d.Deferrals);
+                Assert.That(commitments, Is.Empty, "the waiting leg is not bound to funding");
+                TentativeAllocation first = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                    d.Retained, commitments, player).Pack();
+                float firstAp = first.Funded.Sum(f => f.Tentative.Ap);
+                Assert.That(first.Funded.Select(f => f.Mission), Is.EqualTo(new[] { job }));
+                Assert.That(firstAp, Is.EqualTo(2f), "only the real task holds AP");
+                Assert.That(StrategicResourceReservationLedger.Rows(player, turn), Is.Empty);
+                trace.Record(turn, "Pass", "tempo_round_start", ap: snap.Self.ActionPoints - firstAp);
+
+                // after the first Phase B round the wait is over: the leg is bound and funded
+                List<Commitment> later = MissionContinuityLayer.BindFunding(
+                    intents, new List<MissionProposal> { job, ret }, snap, null);
+                TentativeAllocation second = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                    new List<MissionProposal> { job }, later, player).Pack();
+                float secondAp = second.Funded.Sum(f => f.Tentative.Ap);
+                Assert.That(second.Funded.Select(f => f.Mission), Is.EquivalentTo(new[] { job, ret }));
+                Assert.That(secondAp, Is.EqualTo(4f));
+                Assert.That(StrategicResourceReservationLedger.Rows(player, turn), Is.Empty,
+                    "funding is tentative: no reservation row is created by the wait or by the pack");
+                trace.Record(turn, "Pass", "turn_end", ap: snap.Self.ActionPoints - secondAp);
+                trace.Flush();
+                Assert.That(intent.LastProtectedTurn, Is.EqualTo(turn));
+            }
+            finally { MissionIntentRegistry.GetOrCreate(player).Remove(intent.IntentKey); }
+        }
+
+        // The wiring RunTurn cannot be exercised without the engine; the one condition that matters
+        // (returns wait only while the loop says the first Phase B round has not settled) is fixed
+        // at the source level: the deferral is called only under `view.ReturnsMayWait`.
+        [Test]
+        public void TheReturnDeferralIsCalledOnlyWhileTheLoopAllowsTheWait()
+        {
+            string root = AiTurnLoopTests.FindScriptsRoot();
+            if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
+            string file = System.IO.Directory.GetFiles(root, "AiStrategyV2Pipeline.cs",
+                System.IO.SearchOption.AllDirectories).Single();
+            string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
+                .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
+            int call = code.IndexOf("MissionContinuityLayer.DeferReturnsBeforeTempo(", StringComparison.Ordinal);
+            Assert.That(call, Is.GreaterThan(-1));
+            Assert.That(code.IndexOf("MissionContinuityLayer.DeferReturnsBeforeTempo(", call + 1, StringComparison.Ordinal),
+                Is.EqualTo(-1), "exactly one call site");
+            string before = code.Substring(Math.Max(0, call - 160), Math.Min(160, call));
+            Assert.That(before, Does.Contain("if (view.ReturnsMayWait)"));
+        }
+
         // ---- portfolio (Missions) ----
 
         private sealed class Fixture
@@ -164,7 +378,7 @@ namespace Game.EditorTests
 
         // The orchestrator method the portfolio replaced, transcribed (Aggression pressures were
         // always already refreshed by the decision frame).
-        private static List<MissionProposal> OldBuildMissionSet(Fixture f, out Dictionary<MissionIntentKey, string> deferred)
+        private static List<MissionProposal> OldBuildMissionSet(Fixture f, V2TraceScope trace, out Dictionary<MissionIntentKey, string> deferred)
         {
             StrategyLayer.RefreshReconLanePressures(f.Snap, f.Breakdown);
             deferred = new Dictionary<MissionIntentKey, string>();
@@ -178,7 +392,7 @@ namespace Game.EditorTests
                 Array.Empty<AxisDemand>()));
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))
-                    m.AttemptId = "?";
+                    m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
             foreach (MissionProposal m in missions)
                 if (m != null)
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(f.Radar, m);
@@ -196,11 +410,21 @@ namespace Game.EditorTests
             for (int jobs = 0; jobs <= 4; jobs++)
             {
                 Fixture oldF = MakeFixture(jobs), newF = MakeFixture(jobs);
-                List<MissionProposal> old = OldBuildMissionSet(oldF, out Dictionary<MissionIntentKey, string> oldDeferred);
+                // a real trace scope per side: the attempt-id counter is a write the portfolio owns
+                var oldTrace = new V2TraceScope("T3-P1-M");
+                var newTrace = new V2TraceScope("T3-P1-M");
+                List<MissionProposal> old = OldBuildMissionSet(oldF, oldTrace, out Dictionary<MissionIntentKey, string> oldDeferred);
                 MissionPortfolioResult built = MissionPortfolio.Build(newF.Snap, newF.Breakdown,
                     Array.Empty<MissionIntent>(), newF.Recon, Array.Empty<RaidObjective>(), newF.Radar,
-                    Array.Empty<AxisDemand>(), null, newF.Ctx);
+                    Array.Empty<AxisDemand>(), newTrace, newF.Ctx);
                 Assert.That(Digest(built.Missions), Is.EqualTo(Digest(old)), "jobs=" + jobs);
+                // the counter continues across the admissions of one turn
+                Fixture oldG = MakeFixture(jobs), newG = MakeFixture(jobs);
+                List<MissionProposal> old2 = OldBuildMissionSet(oldG, oldTrace, out _);
+                MissionPortfolioResult built2 = MissionPortfolio.Build(newG.Snap, newG.Breakdown,
+                    Array.Empty<MissionIntent>(), newG.Recon, Array.Empty<RaidObjective>(), newG.Radar,
+                    Array.Empty<AxisDemand>(), newTrace, newG.Ctx);
+                Assert.That(Digest(built2.Missions), Is.EqualTo(Digest(old2)), "second admission, jobs=" + jobs);
                 Assert.That(built.Deferrals.Select(kv => kv.Key + "=" + kv.Value),
                     Is.EqualTo(oldDeferred.Select(kv => kv.Key + "=" + kv.Value)), "jobs=" + jobs);
                 if (jobs > 0)

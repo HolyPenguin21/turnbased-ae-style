@@ -929,7 +929,7 @@ namespace Game.Ai.V2
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
         private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
-        // Radar model #2 — EffectiveValue is always populated (once, right after BuildMissionSet)
+        // Radar model #2 — EffectiveValue is always populated (once, right after MissionPortfolio.Build)
         // before any proposal reaches the allocator, INCLUDING a legitimate zero (a cold axis at
         // radar weight 0). There is no "not computed yet" case left to distinguish from "computed
         // as zero", so this must never fall back to the radar-blind BaseValue: that fallback used
