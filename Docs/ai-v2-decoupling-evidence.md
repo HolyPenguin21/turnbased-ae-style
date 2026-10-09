@@ -364,3 +364,91 @@ Managed (`e3-a-p`): 2151 тест, 1676 прошло, 475 упало; регре
 | Прочие кеши (estimate, `KnowledgeVersion`, PathingVersion, WorldDelta, `PoolCache`) | — | — | этап их не трогал |
 
 Managed (`e4-a-p`): 2162 теста, 1687 прошло, 475 упало, регрессий 0 относительно `e3-a-p`, 11 новых прошедших. Unity и native — не выполнялись.
+
+# Э5 — владелец кадра решения
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Вход этапа — `2444710f`.
+
+## Что изменено
+
+| Файл | Изменение |
+|---|---|
+| `Orchestration/DecisionFrame.cs` (новый) | `DecisionFrame` хранит `Snapshot`, `Recon`, `Aggression`, `Intents`, `Commitments`, `Demands`, `PostCommitments` (чтение снаружи, присваивает только сам класс) и маркер свежести; `FrameServices` — шов к мировым владельцам (`WorldAnalysis`, `StrategyLayer`, оценщики объектив, `MissionContinuityLayer`, `AiTurnSession`, `DemandLayer`, `CombatOpportunityAnalyzer`); `Production(...)` привязывает его к реальным методам |
+| `Orchestration/AiStrategyV2Pipeline.cs` | локали `snapshot`, `reconObjectives`, `aggressionObjectives`, `activeIntents`, `actorCommitments`, `demands`, `postCommitments`, флаг `ownershipFreshAfterPhaseA`, локальная функция `RefreshDecisionFrame` и статический `RefreshOperationalFrame` / `OperationalFrame` удалены; все чтения — `frame.X`, все присваивания — именованные операции |
+| `Assets/Editor/AiDecisionFrameTests.cs` (новый) | 11 тестов |
+
+**Отклонение от ТЗ (с обоснованием):** отдельного `DecisionFrameView.cs` нет. Свойства кадра имеют `private set`, поэтому снаружи они уже доступны только на чтение; отдельный тип-обёртка не добавил бы ограничения, только слой. Если вам нужен именно этот файл — это обёртка без изменения поведения.
+
+## Инвентаризация: кто писал и читал (до этапа)
+
+| Ссылка | Места присваивания в `RunTurn` | После |
+|---|---|---|
+| `snapshot` | скан; обновления после Phase A / повторного допуска / формирования / раунда Phase B / cold / Housekeeping; `ObserveSettled` после авиашага, шага миссии, раунда, cold, recall (≈13) | только `DecisionFrame` (скан остаётся локалью `scanned` до создания кадра и после не используется) |
+| `reconObjectives`, `aggressionObjectives`, `activeIntents`, `actorCommitments` | старт, `RefreshDecisionFrame`, формирование, раунд Phase B (Recon) | только `DecisionFrame` |
+| `demands` | старт, после Phase A, замена семейств, cold | `RebuildDemands`, `ReplaceDemandFamilies` |
+| `postCommitments` | раунд Phase B, итоговое владение | `PrepareTempoOwnership`, `RefreshFinalOwnership` |
+| `ownershipFreshAfterPhaseA` | старт (`phaseA.StateChanged`), повторный допуск (changed), cold (changed); сброс в итерации | `StartWithCredit`, `AcceptChangedReentry`, `AcceptChangedCold`, `PrepareAdmission` |
+
+## Моменты хода → операции (порядок вызовов внутри операции — прежний)
+
+| Момент | Операция | Рецепт |
+|---|---|---|
+| старт | `EnumerateObjectives`, `ResolveInitialOwnership`, `RebuildDemands` | Recon → Aggression; `ResolveActive` **с** turn context → `RefreshActors`; все оси (логи между операциями остались на местах) |
+| первый Phase A изменил мир | `AcceptChangedPhaseA` + `RebuildDemands` | `RefreshStrategicKnowledge` → warm → Recon → факты Aggression → Aggression → `ResolveActive` (без ctx) → `RefreshActors`; затем все оси; кредит не выдаётся |
+| начало итерации допуска | `PrepareAdmission` | без кредита: знание + операционное решение; кредит потрачен в любом случае |
+| повторный допуск | `RefreshOperationalDecision`, `GenerateDemands`, `ReplaceDemandFamilies`, `AcceptChangedReentry` | при изменении мира — знание + решение + кредит |
+| шаг миссии / авиации / раунд / recall | `ObserveSettled` | `WorldAnalysis.ObserveSettled` |
+| сформировано крыло | `RefreshAfterFormation` | знание → Recon → `ResolveActive` (без ctx) → `RefreshActors`; без warm и без Aggression |
+| раунд Phase B | `PrepareTempoOwnership` | знание → Recon → ownership постоянного состояния; без `ResolveActive` |
+| cold | `PrepareColdResidual`, `GenerateDemands`, `AcceptChangedCold` | знание + решение каждый раз; при изменении: observe → решение → все оси → кредит |
+| конец | `RefreshFinalOwnership`, `AcceptHousekeeping` | ownership постоянного состояния; знание после Housekeeping при `StateChanged` |
+
+Политика не менялась: полный refresh в тех же точках; пропуска «ревизия не изменилась» нет (`ResolveActive` и `RefreshActors` — не чистые чтения).
+
+## Сверка с требованиями Э5
+
+| Требование ТЗ | Результат |
+|---|---|
+| Полный список писателей/читателей до переноса | таблица выше; 7 ссылок и флаг сведены к одному классу |
+| Операции по текущим точкам, без setters наружу | 17 операций; `private set`; скан `RunTurnHoldsNoSharedFrameLocalsAndAssignsNothingOfTheFrame` (нет прежних локалей и присваиваний `frame.X =`) |
+| Порядок точек вызова операций в `RunTurn` | `RunTurnNamesEveryMomentOfTheFrameInTheBaselineOrder`: 22 вызова в порядке файла = порядку прежних встроенных присваиваний |
+| Warm перед потребителем, нет пропуска по ревизии | `TheOperationalRefreshWarmsFirstAndNeverSkipsAnyStage` (повторный вызов с тем же снапшотом снова исполняет все стадии) |
+| Кредит только там, где выставлялся | `AnAdmissionRefreshes…`, `OnlyAChangedReentryAndAChangedColdResidualGrantTheCredit` |
+| Частичные рецепты формирования и Phase B не превращены в полный refresh | `TheFormationAndTheTempoRoundUseTheirOwnPartialRecipes` |
+| Следующий читатель видит обновлённый кадр | `ARefreshedSnapshotIsWhatTheNextReaderSees`, `EveryStepOfTheRecipeConsumesWhatThePreviousStepProduced` (каждый сервис получает объекты предыдущего шага, не устаревшие) |
+| Initial `ResolveActive` с ctx, operational без ctx | закреплено тестом старта и операционного refresh |
+| Рецепт остаётся в Orchestration, нижние слои не зависят от кадра | `DecisionFrame` в `Orchestration/`; потребителей в Analysis/Strategy/Missions/Provisioning нет (им по-прежнему передаются предметные данные, не кадр) |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e5-a-p`) | 2173 теста, 1698 прошло, 475 упало; регрессий 0 относительно `e4-a-p` (+11) **и относительно исходного baseline `717871b8`** (1649 → 1698, +49 новых прошедших; baseline пересоздан и совпал с первоначальным 1649 / 474) |
+| Мутации | 7 из 7 пойманы: нет проверки кредита; кредит не выдаётся при повторном допуске; пропущен warm; `ResolveActive` с ctx в операционном refresh; `ResolveActive` в раунде Phase B; перестановка стадий; в `RunTurn` подменена операция (`AcceptChangedReentry` → `AcceptChangedPhaseA`) |
+| Compile | 28 = 28, новых 0 |
+| Матрица зависимостей | 203 связи. `Orchestration` целиком: 122 → 122 (типы переехали из `Pipeline` в `DecisionFrame` внутри той же папки). `Pipeline`: 78 → **71** тип (ушли `DemandLayer`, оба оценщика объектив, `DesireBreakdown`, `ReconObjective`, `MissionIntent`, `ActorCommitments`). Как и предупреждало ТЗ, **межслойная связность Э5 не уменьшает**; уменьшается число писателей общих данных и знание тел работ о порядке обновления |
+| Лог-/банк-трассы | `golden/S1_bank`, `S9_bank`, `S4_bank` на коде Э5 идентичны золотым (`compare_traces.py`) |
+
+## Перепроверка: резервирование ресурсов через банк
+
+- Кадр **не пишет банк**. Единственные операции, которые влияют на резервы, — прежние `MissionContinuityLayer.ResolveActive` (может retire/rekey intents и тем самым снять строки владельца) и `AiTurnSession.RefreshActors` (проекция lease). Их вызовы вынесены в операции без изменения аргументов и порядка; последовательность вызовов и **идентичность передаваемых объектов** закреплены тестами. Нельзя доказывать этап фразой «кадр не пишет банк», поэтому эффект retire/rekey на строки проверяется прежними `AiMissionLeaseLifecycleTests` / `AiEconomyDecisionTests.ReturnBuilder_*` (не менялись, проходят) и банковскими трассами S1/S4/S9 (идентичны).
+- Пропуск refresh «по ревизии» отсутствует: стейл-intent при той же ревизии мира по-прежнему проходит `ResolveActive` на каждом операционном refresh (тест повторного вызова).
+- Carried reservation (`phaseB.Reservation ?? phaseA.Reservation`) не входит в кадр и по-прежнему читается в момент использования.
+- Не проверено: сквозной тест «retire через `ResolveActive` → строки ledger → rollback» на реальном мире (Unity-fixture S5/S9); сервисы кадра с реальным миром — engine-bound.
+
+## Перепроверка: кеширование на чтение и запись
+
+| Состояние | Писатель | Читатель | Область | Проверка |
+|---|---|---|---|---|
+| Ссылки кадра (`Snapshot`, `Recon`, `Aggression`, `Intents`, `Commitments`, `Demands`, `PostCommitments`) | только `DecisionFrame` | тела работ `RunTurn`, `AdmissionKey`, `TakeTypedSplit` (читают в момент вызова через `frame.X`, не захватывают значение на ход) | ход | скан: нет присваиваний и прежних локалей вне кадра; поток данных проверен тестом |
+| Маркер свежести (кредит) | `StartWithCredit`, `AcceptChangedReentry`, `AcceptChangedCold` | `PrepareAdmission` (тратит) | ход | три писателя + сброс = как в базе, теперь в одном классе |
+| Estimate-кеш (`WorthIt`), `PoolCache` боевого анализа | `CombatOpportunityAnalyzer.WarmEstimates` | анализаторы | область `AiTurnController` | `WarmEstimates` вызывается перед каждым операционным refresh (тест порядка); второй scope не открывается |
+| `KnowledgeVersion` / карта / pathing | `WorldAnalysis` | `WorldAnalysis` | — | кадр не дублирует выбор Scan / operational / full: просто вызывает `RefreshStrategicKnowledge` и `ObserveSettled` |
+| `WorldDelta` | `ObserveSettled`/`Publish` | аудит | — | не затронуты |
+| Aggression operational facts | `RefreshAggressionFacts` внутри операционного refresh | оценщик объективов, планировщик (Э4) | кадр | вызывается только из `RefreshOperationalDecision` |
+
+Не проверено: семантика «та же `KnowledgeVersion`, изменились HP/карта/рука» на реальном мире (S5 — Unity-fixture); кадр хранит только ссылки и никогда не принимает решений по номеру ревизии.
+
+## Цена изменения (до / после)
+
+Новая составляющая кадра (например, перечень Development-возможностей на кадр): раньше — рецепт `RefreshDecisionFrame`, места присваивания и проверка флага свежести во всех читателях; теперь — поле и шаг в `DecisionFrame` плюс реальный потребитель нового факта. Один класс вместо четырнадцати функций, но новый факт по-прежнему требует producer и consumer; доменное последствие остаётся у своего владельца.

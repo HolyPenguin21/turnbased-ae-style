@@ -123,22 +123,22 @@ namespace Game.Ai.V2
             int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
 
             // 2. One shared scan.
-            WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+            WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx);
             // The first Analyze (desires, Aggression facts) is ~50 ms of Monte Carlo: fill the exact
             // estimate cache across frames first, so Analyze below only reads it.
-            yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
+            yield return CombatOpportunityAnalyzer.WarmEstimates(scanned);
             // P_start: the first scanned force ceiling is this player's baseline for the game.
-            ForceBaselineRegistry.RecordStart(player, snapshot.Self.TotalMilitaryPotential);
-            AiFrameLog.GameState(snapshot, hand);
-            AiFrameLog.WorldAnalysis(snapshot);
-            ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, snapshot);
+            ForceBaselineRegistry.RecordStart(player, scanned.Self.TotalMilitaryPotential);
+            AiFrameLog.GameState(scanned, hand);
+            AiFrameLog.WorldAnalysis(scanned);
+            ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, scanned);
             // The first Attack preparation step's AP hold reads this turn's mobilization gate.
-            StrategicManager.ObserveInitialForce(snapshot, player, ctx);
+            StrategicManager.ObserveInitialForce(scanned, player, ctx);
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
-            RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
+            RadarAssessment assessment = StrategyLayer.Evaluate(scanned, radarState);
             DesireVector desires = assessment.Desires;
             Radar radar = assessment.Radar;
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
@@ -146,52 +146,39 @@ namespace Game.Ai.V2
                 + $"runway {desires.EconomicRunway.ToString("0.00", CultureInfo.InvariantCulture)}");
             AiFrameLog.Strategy(assessment);
 
+            // The decision frame holds the settled snapshot and what is derived from it from here on.
+            DecisionFrame frame = DecisionFrame.Begin(scanned, turnSession, player, root, hand, ctx,
+                assessment.Breakdown);
+
             // 3c. The ONE Recon-opportunity enumeration for the turn — shared by DemandLayer and
             //     ReconMissionPlanner. FROZEN here (before StrategicManager touches own forces): Strategic
             //     Manager changes which SCOUT can execute, never which objectives exist.
-            List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+            frame.EnumerateObjectives();
 
             // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
             //     and AggressionMissionLayer (build-order step 9).
-            List<RaidObjective> aggressionObjectives = RaidObjectiveEvaluator.Enumerate(
-                snapshot, assessment.Breakdown.OpportunityReport);
             // 3e. Development opportunities are NOT enumerated here: DemandLayer.Development calls
             //     DevelopmentOpportunityEvaluator.Enumerate against the settled state of each pass.
 
-            foreach (RaidObjective ao in aggressionObjectives)
+            foreach (RaidObjective ao in frame.Aggression)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
                     + $"base {ao.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
                     + $"readyWin {ao.ReadyWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"asmWin {ao.AssemblableWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"def {ao.DefenderCount} gate {(ao.GatePassed ? 1 : 0)}"
                     + $"{(ao.NeedsCombatPower ? " needsPower" : "")}{(ao.NeedsHero ? " needsHero" : "")}");
-            AiFrameLog.Objectives(reconObjectives, aggressionObjectives);
+            AiFrameLog.Objectives(frame.Recon, frame.Aggression);
 
             // 7a. Mission Continuity — resolve durable in-flight intents FIRST. This cleanly
             //     retires stale Raid intents
             //     before ActorCommitments or the allocator can protect them.
-            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
-                player, snapshot, reconObjectives, aggressionObjectives, ctx);
+            frame.ResolveInitialOwnership();
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
-            ActorCommitments actorCommitments = turnSession.RefreshActors(activeIntents, snapshot, reconObjectives);
 
-            // The one recipe that makes the operational frame current after the snapshot changed:
-            // warm the combat estimates for it, rebuild Recon / Aggression / intents / actor claims
-            // from it (RefreshOperationalFrame, in that order), and hold them as this decision's
-            // frame. Callers refresh the snapshot first where their step requires it.
-            IEnumerator RefreshDecisionFrame()
-            {
-                yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                OperationalFrame frame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                reconObjectives = frame.Recon;
-                aggressionObjectives = frame.Aggression;
-                activeIntents = frame.Intents;
-                actorCommitments = frame.Commitments;
-            }
-            AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
-            AiFrameLog.Forces(snapshot, actorCommitments);
+            AiFrameLog.MissionContinuity(frame.Intents, frame.Commitments);
+            AiFrameLog.Forces(frame.Snapshot, frame.Commitments);
 
             // DemandLayer measures air capacity itself via ReconAssignmentPlanner.MeasureAirCapacity
             //     (the same canonical capacity owner ground uses), recomputed fresh every call — no
@@ -199,9 +186,7 @@ namespace Game.Ai.V2
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). All real axes are live.
             var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
-            List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                demandAxes);
+            frame.RebuildDemands(demandAxes);
 
             // S2. Phase A's AP budget reads the player's live AP; its only own state is the
             //     follow-up AP promised to capabilities it delivers. Radar scales objective value
@@ -225,8 +210,8 @@ namespace Game.Ai.V2
             }
             else
             {
-                phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                    ctx, apBudget, demands, actorCommitments, activeIntents, reconObjectives,
+                phaseA = StrategicManager.FulfillDemands(frame.Snapshot, player, root, hand,
+                    ctx, apBudget, frame.Demands, frame.Commitments, frame.Intents, frame.Recon,
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
@@ -237,20 +222,16 @@ namespace Game.Ai.V2
             //     Radar remains fixed while operational Aggression facts refresh below.
             if (phaseA.StateChanged)
             {
-                snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                    snapshot, player, root, hand, ctx);
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout); re-reading the same continuity owner
                 // here keeps stale pre-build actor claims from executing.
-                yield return RefreshDecisionFrame();
+                yield return frame.AcceptChangedPhaseA();
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
                 // This call regenerates every axis, so DemandLayer.Development
                 // builds its own opportunities against this pass's complete need context.
-                demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                    reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
-                    player, ctx, root, demandAxes);
+                frame.RebuildDemands(demandAxes);
             }
             // Phase A is fully reflected in the settled snapshot/continuity view before pause.
             yield return ctx.WaitAtObserverActionBoundary();
@@ -260,7 +241,7 @@ namespace Game.Ai.V2
             if (!AviationObligations.Pending(player, ctx))
             {
                 AviationRebasePlan formation = AviationRebasePlanner.BuildFormationPlan(
-                    snapshot, player, root, ctx, reconObjectives, activeIntents, actorCommitments);
+                    frame.Snapshot, player, root, ctx, frame.Recon, frame.Intents, frame.Commitments);
                 if (formation != null)
                 {
                     bool formedWing = false;
@@ -269,13 +250,7 @@ namespace Game.Ai.V2
                     if (formedWing)
                     {
                         // The launch/flight actions already published their revision receipts.
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        activeIntents = MissionContinuityLayer.ResolveActive(
-                            player, snapshot, reconObjectives, aggressionObjectives);
-                        actorCommitments = turnSession.RefreshActors(
-                            activeIntents, snapshot, reconObjectives);
+                        frame.RefreshAfterFormation();
                     }
                     yield return ctx.WaitAtObserverActionBoundary();
                 }
@@ -288,7 +263,6 @@ namespace Game.Ai.V2
             var provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
             var allExecuted = new List<ExecutionResult>();
             var phaseB = new StrategicPhaseResult();
-            ActorCommitments postCommitments = null;
 
             // The typed mid-turn architecture is the canonical production path. The
             // initial Phase A settles before operational admission; a later factual Development
@@ -301,7 +275,8 @@ namespace Game.Ai.V2
                 // zero-Radar residual window, waiting return legs (LifecycleReturnPolicy: they wait
                 // until the first Phase B round), Phase B rounds, stage and the open pass.
                 var loop = new TurnLoopState();
-                bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
+                // The first Phase A already refreshed the derived part when it changed the world.
+                frame.StartWithCredit(phaseA.StateChanged);
 
                 // The reservation Phase A carries through the turn: Phase B's once a round produced
                 // one, else Phase A's. Read at every use, never cached (both owners replace it).
@@ -318,7 +293,7 @@ namespace Game.Ai.V2
                 }
 
                 string AdmissionKey(DesireAxis axis) =>
-                    StrategicAdmissionFingerprints.For(axis, snapshot, activeIntents, root, hand, player, ctx);
+                    StrategicAdmissionFingerprints.For(axis, frame.Snapshot, frame.Intents, root, hand, player, ctx);
 
                 foreach (DesireAxis axis in demandAxes.Where(a =>
                              a == DesireAxis.Economy || a == DesireAxis.Development
@@ -334,7 +309,7 @@ namespace Game.Ai.V2
                 {
                     TypedTriggerSplit split = TypedTriggerFanOut.Split(
                         turnSession.PendingInvalidations.Reasons,
-                        () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot));
+                        () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(frame.Intents, frame.Snapshot));
                     turnSession.ConsumeInvalidations(split.Consumed);
                     return split;
                 }
@@ -379,7 +354,7 @@ namespace Game.Ai.V2
                     if (dirtyAxes.Count == 0)
                         yield break;
 
-                    yield return RefreshDecisionFrame();
+                    yield return frame.RefreshOperationalDecision();
                     // T03 — the baseline is the input Generate actually evaluates: taken after
                     // continuity resolved (a completed target, a handed-off donor), before any
                     // follow-up delivery. Post-delivery state is judged by the delta it publishes,
@@ -387,14 +362,10 @@ namespace Game.Ai.V2
                     Dictionary<DesireAxis, string> admittedFingerprints = dirtyAxes
                         .ToDictionary(axis => axis, AdmissionKey);
                     Dictionary<DesireAxis, string> demandsBefore = dirtyAxes.ToDictionary(axis => axis,
-                        axis => DemandIdentityDigest(demands, axis));
-                    List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                        reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, dirtyAxes);
+                        axis => DemandIdentityDigest(frame.Demands, axis));
+                    List<AxisDemand> regenerated = frame.GenerateDemands(dirtyAxes);
                     List<AxisDemand> dirtyDemands = regenerated;
-                    demands = demands.Where(d => d != null
-                            && !dirtyAxes.Contains(d.RequestingAxis))
-                        .Concat(regenerated).ToList();
+                    frame.ReplaceDemandFamilies(dirtyAxes, regenerated);
                     // Economy deferred-hold reconciliation now lives entirely inside
                     // StrategicPhaseA (economyAxisAuthoritative) — a single canonical writer
                     // instead of this call duplicating the same existence check right before it.
@@ -402,10 +373,10 @@ namespace Game.Ai.V2
                     // this round" signal Phase A needs to tell "Economy resolved" apart from
                     // "Economy wasn't part of this dirty-axis subset".
                     WorldAnalysis.StepObservationStamp beforeCapabilities =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
-                        snapshot, player, root, hand, ctx, apBudget, dirtyDemands,
-                        actorCommitments, activeIntents, reconObjectives,
+                        frame.Snapshot, player, root, hand, ctx, apBudget, dirtyDemands,
+                        frame.Commitments, frame.Intents, frame.Recon,
                         CarriedReservation(),
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
                         deferFreshZeroRadar: true);
@@ -414,13 +385,10 @@ namespace Game.Ai.V2
                         $"phaseA reentry axes={string.Join(",", dirtyAxes)}");
                     if (followup.StateChanged)
                     {
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        yield return RefreshDecisionFrame();
-                        ownershipFreshAfterPhaseA = true;
+                        yield return frame.AcceptChangedReentry();
                     }
                     WorldAnalysis.StepObservationStamp afterCapabilities =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeCapabilities, afterCapabilities, null);
                     readmission.Commit(dirtyAxes, admittedFingerprints);
@@ -459,12 +427,11 @@ namespace Game.Ai.V2
                 {
                     string label = MandatoryAviationOrder.Label(kind);
                     WorldAnalysis.StepObservationStamp beforeAviation =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     bool actionChanged = false;
                     yield return MandatoryAviationStep.Execute(kind, actor, player, root, ctx,
-                        snapshot, v => actionChanged = v);
-                    snapshot = WorldAnalysis.ObserveSettled(
-                        snapshot, player, root, hand, ctx, beforeAviation, null);
+                        frame.Snapshot, v => actionChanged = v);
+                    frame.ObserveSettled(beforeAviation, null);
                     // The step is counted by TurnLoop when this iteration returns; its number is
                     // already known from the view.
                     int stepNumber = view.SettledSteps + 1;
@@ -525,19 +492,14 @@ namespace Game.Ai.V2
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
-                    if (!ownershipFreshAfterPhaseA)
-                    {
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-                        yield return RefreshDecisionFrame();
-                    }
-                    ownershipFreshAfterPhaseA = false;
+                    yield return frame.PrepareAdmission();
                     // Demand families persist across settled admissions. Only
                     // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
                     // The proposals of this admission, valued (Missions).
-                    MissionPortfolioResult portfolio = MissionPortfolio.Build(snapshot,
-                        assessment.Breakdown, activeIntents, reconObjectives, aggressionObjectives,
-                        radar, demands, trace, ctx);
+                    MissionPortfolioResult portfolio = MissionPortfolio.Build(frame.Snapshot,
+                        assessment.Breakdown, frame.Intents, frame.Recon, frame.Aggression,
+                        radar, frame.Demands, trace, ctx);
                     missions = portfolio.Missions;
                     Dictionary<MissionIntentKey, string> missionDeferrals = portfolio.Deferrals;
                     // Return legs wait for the first Phase B round (Continuity decides which, records
@@ -546,7 +508,7 @@ namespace Game.Ai.V2
                     if (view.ReturnsMayWait)
                     {
                         ReturnDeferral returns = MissionContinuityLayer.DeferReturnsBeforeTempo(
-                            snapshot, player, ctx.TurnNumber, missions, activeIntents);
+                            frame.Snapshot, player, ctx.TurnNumber, missions, frame.Intents);
                         if (returns.Waiting.Count > 0)
                         {
                             outcome.DeferReturns();
@@ -555,20 +517,20 @@ namespace Game.Ai.V2
                             missions = returns.Retained;
                         }
                     }
-                    PassParkingResult parked = passParking.Filter(missions, snapshot, player);
+                    PassParkingResult parked = passParking.Filter(missions, frame.Snapshot, player);
                     foreach (KeyValuePair<MissionIntentKey, string> parkedLeg in parked.Deferrals)
                         missionDeferrals[parkedLeg.Key] = parkedLeg.Value;
                     missions = parked.Retained;
                     List<Commitment> cycleCommitments =
-                        MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot,
+                        MissionContinuityLayer.BindFunding(frame.Intents, missions, frame.Snapshot,
                             missionDeferrals);
                     var cycleLedger = new MissionOutcomeLedger();
                     cycleLedger.RegisterProposals(missions);
                     cycleLedger.RegisterCommitments(cycleCommitments);
 
-                    AllocationSession cycleSession = ResourceAllocator.BeginTurn(snapshot, radar,
+                    AllocationSession cycleSession = ResourceAllocator.BeginTurn(frame.Snapshot, radar,
                         missions, cycleCommitments, player);
-                    using var cycleProvisioning = new ProvisioningSession(snapshot, turnSession);
+                    using var cycleProvisioning = new ProvisioningSession(frame.Snapshot, turnSession);
                     allocation = cycleSession.Pack();
                     RecordFunded(allocation);
 
@@ -597,7 +559,7 @@ namespace Game.Ai.V2
                     // Which funded mission becomes executable: the retry / reprice protocol and the
                     // parking of rejected jobs belong to Provisioning (ProvisionNext).
                     ProvisioningSelectionOutcome pick = ProvisioningManager.ProvisionNext(player, root,
-                        hand, ctx, snapshot, actorCommitments, cycleSession, cycleProvisioning,
+                        hand, ctx, frame.Snapshot, frame.Commitments, cycleSession, cycleProvisioning,
                         passParking, allocation);
                     allocation = pick.FinalAllocation;
                     foreach (StableMissionKey fundedKey in pick.FundedKeysAcrossPacks)
@@ -624,7 +586,7 @@ namespace Game.Ai.V2
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
                         turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
-                            snapshot, reconObjectives);
+                            frame.Snapshot, frame.Recon);
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
                         outcome.NoProvisionedTask(
@@ -638,26 +600,25 @@ namespace Game.Ai.V2
                     }
 
                     WorldAnalysis.StepObservationStamp beforeStep =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     var stepResults = new List<ExecutionResult>();
                     if (OperationalWorkSelection.RouteFor(selected.Kind, selected.ExecutorKind)
                         == MissionRoute.AirRecon)
                     {
                         AirReconPlan plan = AirReconPlanner.Plan(player, root, ctx,
-                            snapshot, new[] { selected });
+                            frame.Snapshot, new[] { selected });
                         var airStepResult = new AirReconExecutionResult();
                         yield return ReconAirExecutor.ExecutePlanStep(plan, player, root, ctx,
-                            snapshot, airStepResult, stepResults);
+                            frame.Snapshot, airStepResult, stepResults);
                     }
                     else
                     {
                         yield return TaskExecutor.ExecuteStep(player, root, ctx,
-                            selected, stepResults, snapshot, enforceFreshPlan: true);
+                            selected, stepResults, frame.Snapshot, enforceFreshPlan: true);
                     }
 
                     ExecutionResult settled = stepResults.FirstOrDefault();
-                    snapshot = WorldAnalysis.ObserveSettled(
-                        snapshot, player, root, hand, ctx, beforeStep, settled);
+                    frame.ObserveSettled(beforeStep, settled);
 
                     foreach (ExecutionResult er in stepResults)
                     {
@@ -669,7 +630,7 @@ namespace Game.Ai.V2
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
                     turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
-                        snapshot, reconObjectives);
+                        frame.Snapshot, frame.Recon);
                     // A single atomic move may consume the last MP after Provisioning had
                     // legitimately reserved this owner's completion AP: the bank settles its stage.
                     StrategicManager.AfterMissionSettlement(player, root, hand, ctx);
@@ -723,25 +684,20 @@ namespace Game.Ai.V2
                 // round consumes a coherent strategic snapshot, refreshed first.
                 IEnumerator RunTempoRound(int managementRound, System.Action<TempoRoundOutcome> done)
                 {
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    postCommitments = turnSession.RefreshActors(
-                        turnSession.PersistentState.All, snapshot, reconObjectives);
+                    frame.PrepareTempoOwnership();
 
                     WorldAnalysis.StepObservationStamp beforeManagement =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     // A prior Phase B action may have spent AP or removed a build card: the bank
                     // revalidates its holds before the next pass.
                     StrategicManager.BeforeTempoSpend(player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
-                    yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                        postCommitments, CarriedReservation(),
-                        phaseBRound, reconObjectives);
+                    yield return StrategicManager.UseSurplus(frame.Snapshot, player, root, hand, ctx,
+                        frame.PostCommitments, CarriedReservation(),
+                        phaseBRound, frame.Recon);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
-                    snapshot = WorldAnalysis.ObserveSettled(
-                        snapshot, player, root, hand, ctx, beforeManagement, null);
+                    frame.ObserveSettled(beforeManagement, null);
                     phaseB.Accumulate(phaseBRound);
                     yield return ctx.WaitAtObserverActionBoundary();
 
@@ -779,12 +735,8 @@ namespace Game.Ai.V2
 
                 IEnumerator RunColdResidual(System.Action<bool> stateChanged)
                 {
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    yield return RefreshDecisionFrame();
-                    List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                            reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, demandAxes)
+                    yield return frame.PrepareColdResidual();
+                    List<AxisDemand> coldDemands = frame.GenerateDemands(demandAxes)
                         .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();
                     if (coldDemands.Count > 0)
                     {
@@ -794,10 +746,10 @@ namespace Game.Ai.V2
                             .UnresolvedDemands.Where(d => d != null
                                 && RadarValueScale.For(radar, d.RequestingAxis) > 0f).ToList();
                         WorldAnalysis.StepObservationStamp beforeCold =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                            WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                         StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
-                            snapshot, player, root, hand, ctx, apBudget, coldDemands,
-                            actorCommitments, activeIntents, reconObjectives,
+                            frame.Snapshot, player, root, hand, ctx, apBudget, coldDemands,
+                            frame.Commitments, frame.Intents, frame.Recon,
                             CarriedReservation(),
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
                             radar: radar);
@@ -807,14 +759,7 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            snapshot = WorldAnalysis.ObserveSettled(
-                                snapshot, player, root, hand, ctx, beforeCold, null);
-                            yield return RefreshDecisionFrame();
-                            demands = DemandLayer.Generate(
-                                snapshot, assessment.Breakdown, reconObjectives,
-                                aggressionObjectives, activeIntents, actorCommitments,
-                                player, ctx, root, demandAxes);
-                            ownershipFreshAfterPhaseA = true;
+                            yield return frame.AcceptChangedCold(beforeCold, demandAxes);
                             yield return ctx.WaitAtObserverActionBoundary();
                             // TurnLoop opens the typed admission pass on this settled state.
                             stateChanged(true);
@@ -856,12 +801,11 @@ namespace Game.Ai.V2
                 foreach (ArmyData unsafeWing in GroundCombatAirSupport.RecallUnsafeStrikes(player, ctx.Map))
                 {
                     WorldAnalysis.StepObservationStamp beforeRecall =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     bool recallChanged = false;
                     yield return AviationRebasePlanner.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
-                    snapshot = WorldAnalysis.ObserveSettled(
-                        snapshot, player, root, hand, ctx, beforeRecall, null);
+                    frame.ObserveSettled(beforeRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"air-support recall #{unsafeWing.Id}");
                     yield return ctx.WaitAtObserverActionBoundary();
@@ -870,8 +814,7 @@ namespace Game.Ai.V2
                 // Cold Phase A and the following typed admissions may have created or
                 // re-bound actors AFTER management captured postCommitments. Housekeeping
                 // must see the latest canonical ownership, never the pre-cold snapshot.
-                postCommitments = turnSession.RefreshActors(
-                    turnSession.PersistentState.All, snapshot, reconObjectives);
+                frame.RefreshFinalOwnership();
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
@@ -908,18 +851,17 @@ namespace Game.Ai.V2
             //    capability and remains the authoritative same-hex reorganisation path.
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.RunHousekeeping(
-                snapshot, player, root, ctx, postCommitments, housekeeping, phaseB.Reservation);
+                frame.Snapshot, player, root, ctx, frame.PostCommitments, housekeeping, phaseB.Reservation);
             ReservationInvariants.CheckBoundary(player, root, ctx, "housekeeping");
             if (housekeeping.StateChanged)
-                snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                    snapshot, player, root, hand, ctx);
+                frame.AcceptHousekeeping();
             yield return ctx.WaitAtObserverActionBoundary();
 
             // --- Main-phase activity bucket. DERIVED once, here, from this pipeline's own facts —
             //     never incremented inside a nested layer (spec §11). The Reaction bucket is owned
             //     by StrategicReactionPass the same way. Total = Main + Reaction, no double count.
             V2PhaseActivity main = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            main.DemandsRaised = demands.Count;
+            main.DemandsRaised = frame.Demands.Count;
             main.MissionsConsidered = missions.Count;
             // §8 — the activity bucket's peers (Provisioned, ExecutionAttempts, …) are all
             // full-turn cumulative, so MissionsFunded is the distinct-missions-funded-this-turn
@@ -946,7 +888,7 @@ namespace Game.Ai.V2
 
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
-            turnSession.AuditTurnEnd(snapshot, reconObjectives);
+            turnSession.AuditTurnEnd(frame.Snapshot, frame.Recon);
             turnSession.CompleteReservations();
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
@@ -955,7 +897,7 @@ namespace Game.Ai.V2
             // Emit the canonical turn summary only after every turn-scoped cleanup/invariant check
             // has completed, so [TURN-END] really is the final strategic lifecycle marker.
             if (AiDebugLog.Verbose) AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
-                + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
+                + $"(demands {frame.Demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
                 + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
                 + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
@@ -966,34 +908,6 @@ namespace Game.Ai.V2
                 StrategicTempoBudget.For(player, ctx.TurnNumber).DrawActionsUsed, apMeasure);
             turnSession.Dispose();
             yield return null;
-        }
-
-        // One recipe for re-deriving the operational facts of a decision frame after a settled
-        // mutation: Recon and Aggression objectives, durable intents, then the actor-claim view.
-        private readonly struct OperationalFrame
-        {
-            internal readonly List<ReconObjective> Recon;
-            internal readonly List<RaidObjective> Aggression;
-            internal readonly List<MissionIntent> Intents;
-            internal readonly ActorCommitments Commitments;
-            internal OperationalFrame(List<ReconObjective> recon, List<RaidObjective> aggression,
-                List<MissionIntent> intents, ActorCommitments commitments)
-            { Recon = recon; Aggression = aggression; Intents = intents; Commitments = commitments; }
-        }
-
-        private static OperationalFrame RefreshOperationalFrame(AiTurnSession session,
-            WorldSnapshot snapshot, DesireBreakdown breakdown)
-        {
-            List<ReconObjective> recon = ReconObjectiveEvaluator.Enumerate(snapshot);
-            // Rebuild the operational Aggression facts from this settled snapshot before
-            // re-enumerating objectives, so a neutral destroyed by the previous step is gone.
-            StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
-            List<RaidObjective> aggression = RaidObjectiveEvaluator.Enumerate(
-                snapshot, breakdown.OpportunityReport);
-            List<MissionIntent> intents = MissionContinuityLayer.ResolveActive(
-                session.Player, snapshot, recon, aggression);
-            return new OperationalFrame(recon, aggression, intents,
-                session.RefreshActors(intents, snapshot, recon));
         }
 
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
