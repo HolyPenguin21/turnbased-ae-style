@@ -110,7 +110,8 @@ namespace Game.Ai.V2
             {
                 // Event guards have no ArmyId until spawned — never queried in ArmyRegistry before
                 // the trigger, never spawned here. The stable hex is the whole identity.
-                if (!HexEventRegistry.HasActiveEvent(pm.RaidTarget.Hex))
+                if (RaidObjectiveEvaluator.EventTargetState(player, pm.RaidTarget.Hex)
+                    != AiMapMemory.KnownEventState.Active)
                 {
                     result.StopReason = ExecutionStopReason.TargetInvalidated;
                     result.NeedsReplan = true;
@@ -157,7 +158,18 @@ namespace Game.Ai.V2
                 // unchanged either way. A physical neutral army resolves through the ordinary
                 // contact/battle systems exactly as before.
                 if (pm.RaidTarget.Kind == RaidTargetKind.EventGuard && ctx.HexSelection != null)
+                {
+                    // Standing on the hex IS the re-observation: an event another player finished
+                    // while we walked is confirmed here (memory) and the goal is simply reached.
+                    AiMapMemory.ObserveEventAt(player, targetHex);
+                    if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+                    {
+                        result.ReachedGoal = true;
+                        result.StopReason = ExecutionStopReason.ReachedGoal;
+                        yield break;
+                    }
                     ctx.HexSelection.TriggerAiEventExplore(army, targetHex);
+                }
                 result.StopReason = ExecutionStopReason.EnemyDiscovered;
                 yield break;
             }

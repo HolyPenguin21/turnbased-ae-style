@@ -24,8 +24,19 @@ namespace Game.EditorTests
     // for AI V2 work.
     public class AiAggressionRaidTests
     {
+        // Event-memory tests only: a fresh AiMapMemory that listens to the registry's notifications.
+        private static void UseFreshMemory()
+        {
+            Game.Ai.AiMapMemory.Clear();
+            Game.Ai.AiMapMemory.EnsureSubscribed();
+        }
+
         [TearDown]
-        public void ClearHexEvents() => HexEventRegistry.Clear();
+        public void ClearHexEvents()
+        {
+            HexEventRegistry.Clear();
+            Game.Ai.AiMapMemory.Clear();
+        }
 
         // ---- RaidTargetRef / key distinctness ------------------------------------------------
 
@@ -446,22 +457,45 @@ namespace Game.EditorTests
         [Test]
         public void IsObjectiveSatisfiedLive_EventGuard_ConsumedIsSatisfied()
         {
+            UseFreshMemory();
             var hex = new HexCoord(1, 1);
             SetActiveEvent(hex);
-            HexEventRegistry.MarkConsumed(hex);
             var player = new PlayerSetupData { Nickname = "P1" };
+            HexEventRegistry.MarkDiscovered(hex, player);
+            HexEventRegistry.MarkConsumed(hex, player);
 
             bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
 
-            Assert.That(satisfied, Is.True);
+            Assert.That(satisfied, Is.True, "the claimant knows the completion at once");
+        }
+
+        [Test]
+        public void IsObjectiveSatisfiedLive_EventGuard_ConsumedByOtherOutOfSightIsNotSatisfied()
+        {
+            UseFreshMemory();
+            var hex = new HexCoord(1, 4);
+            SetActiveEvent(hex);
+            var player = new PlayerSetupData { Nickname = "P1" };
+            var other = new PlayerSetupData { Nickname = "P2" };
+            HexEventRegistry.MarkDiscovered(hex, player);
+            HexEventRegistry.MarkDiscovered(hex, other);
+            HexEventRegistry.MarkConsumed(hex, other);
+
+            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+
+            Assert.That(satisfied, Is.False, "an unobserved completion must not end our mission remotely");
+            Assert.That(Game.Ai.AiMapMemory.KnownEventStateAt(player, hex),
+                Is.EqualTo(Game.Ai.AiMapMemory.KnownEventState.Active));
         }
 
         [Test]
         public void IsObjectiveSatisfiedLive_EventGuard_NotConsumedIsNotSatisfied()
         {
+            UseFreshMemory();
             var hex = new HexCoord(1, 2);
             SetActiveEvent(hex);
             var player = new PlayerSetupData { Nickname = "P1" };
+            HexEventRegistry.MarkDiscovered(hex, player);
 
             bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
 
@@ -472,16 +506,17 @@ namespace Game.EditorTests
         public void IsIntentStillValid_EventGuard_ActiveWhileEventActive_RegardlessOfSightings()
         {
             var hex = new HexCoord(1, 3);
-            SetActiveEvent(hex);
-            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 0, hex: new HexCoord(9, 9),
-                defenders: new List<WorthIt.DefenderProfile>(), withOwnArmy: false);
+            WorldSnapshot snap = SnapshotWithEventGuard(hex, Weak());
             var intent = new RaidIntent { Target = RaidTargetRef.ForEventGuard(hex), OperationStarted = true };
 
             Assert.That(RaidObjectiveEvaluator.IsIntentStillValid(snap, intent), Is.True);
 
-            HexEventRegistry.MarkConsumed(hex);
+            // Same intent against a snapshot whose memory no longer holds the guard (confirmed done).
+            WorldSnapshot afterCompletion = SnapshotWithNeutralSighting(armyId: 0, hex: new HexCoord(9, 9),
+                defenders: new List<WorthIt.DefenderProfile>(), withOwnArmy: false);
+            afterCompletion.Known.EventGuardHexes = new List<HexCoord>();
 
-            Assert.That(RaidObjectiveEvaluator.IsIntentStillValid(snap, intent), Is.False);
+            Assert.That(RaidObjectiveEvaluator.IsIntentStillValid(afterCompletion, intent), Is.False);
         }
 
         // ---- SupportReturn phase ---------------------------------------------------------------
@@ -601,6 +636,7 @@ namespace Game.EditorTests
             var defenders = defender.HasValue
                 ? new List<WorthIt.DefenderProfile> { defender.Value }
                 : new List<WorthIt.DefenderProfile>();
+            snap.Known.EventGuardHexes = new List<HexCoord> { hex };
             snap.Known.EventGuards = new List<KnownEventGuardSnapshot>
             {
                 new KnownEventGuardSnapshot(hex,

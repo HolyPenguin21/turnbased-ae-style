@@ -18,15 +18,16 @@ namespace Game.Ai.V2
         // ---- SNAPSHOT (continuity / mission-layer re-materialisation) -----------------------
 
         // Is the tracked target still a coherent thing to raid? Reads ONLY the snapshot's honest
-        // sightings for a NeutralArmy target, or the live (but universally visible) event registry
-        // for an EventGuard target — never a live army-ownership system.
+        // knowledge: sightings for a NeutralArmy target, the remembered active guard for an
+        // EventGuard target — never a live army-ownership system or the live event registry.
         public static bool IsIntentStillValid(WorldSnapshot snap, RaidIntent intent)
         {
             if (snap?.Known == null || intent == null || !intent.Target.HasValue)
                 return false;
 
             if (intent.Target.Kind == RaidTargetKind.EventGuard)
-                return HexEventRegistry.HasActiveEvent(intent.Target.Hex);
+                return snap.Known.EventGuardHexes != null
+                    && snap.Known.EventGuardHexes.Contains(intent.Target.Hex);
 
             AiMapMemory.KnownEnemySighting? s = FindSighting(snap, intent.Target.ArmyId);
             if (s == null)
@@ -76,19 +77,16 @@ namespace Game.Ai.V2
         //      the neutral/fog case -> not satisfied.
         //   4) Only absence from both live ownership and honest memory counts as confirmed gone.
         //  EventGuard:
-        //   Satisfied exactly when HexEventRegistry marks that hex's entry Consumed — whether by us
-        //   (victory) or by another player who explored it first. Disappearance from visibility has
-        //   no bearing; the registry entry is the single source of truth.
+        //   Satisfied exactly when OUR memory confirms the event completed — by us (known at once)
+        //   or by another player, learned only on a re-observation of the hex. Disappearance from
+        //   visibility, or a global Consumed flag we have not observed, has no bearing.
         public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, RaidTargetRef target)
         {
             if (player == null || !target.HasValue)
                 return false;
 
             if (target.Kind == RaidTargetKind.EventGuard)
-            {
-                HexEventRegistry.Entry entry = HexEventRegistry.FindAt(target.Hex);
-                return entry != null && entry.Consumed;
-            }
+                return AiMapMemory.KnownEventStateAt(player, target.Hex) == AiMapMemory.KnownEventState.Completed;
 
             int targetArmyId = target.ArmyId;
             if (ArmyRegistry.AllForOwner(player)
@@ -110,6 +108,12 @@ namespace Game.Ai.V2
                 .Any(s => s.ArmyId == targetArmyId);
             return !rememberedEnemy && !rememberedNeutral;
         }
+
+        // The one answer to "what do WE know about this event target" for Provisioning/Execution:
+        // Active = remembered, still pending; Completed = we confirmed it is done; Unknown = we hold
+        // no personal knowledge of it (never actionable).
+        public static AiMapMemory.KnownEventState EventTargetState(PlayerSetupData player, HexCoord hex) =>
+            AiMapMemory.KnownEventStateAt(player, hex);
 
         public static List<RaidObjective> Enumerate(WorldSnapshot snap, CombatOpportunityReport report)
         {

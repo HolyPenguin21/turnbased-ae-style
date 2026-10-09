@@ -55,13 +55,16 @@ namespace Game.Ai.V2
             bool targetIsNeutral;
             if (raidTarget.Kind == RaidTargetKind.EventGuard)
             {
-                if (!HexEventRegistry.HasActiveEvent(raidTarget.Hex))
+                // Our own memory only: a global Consumed flag we have not observed must not end the
+                // mission here (the arrival will confirm it).
+                AiMapMemory.KnownEventState eventState = RaidObjectiveEvaluator.EventTargetState(player, raidTarget.Hex);
+                if (eventState != AiMapMemory.KnownEventState.Active)
                 {
-                    return RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, raidTarget)
+                    return eventState == AiMapMemory.KnownEventState.Completed
                         ? ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                             $"raid target {raidTarget.DiagnosticLabel} already consumed"))
                         : ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                            $"raid target {raidTarget.DiagnosticLabel} no longer has an active event"));
+                            $"raid target {raidTarget.DiagnosticLabel} is not a known active event"));
                 }
                 targetHex = raidTarget.Hex;
                 opposition = AiV2Util.KnownOpposition(snap, raidTarget);

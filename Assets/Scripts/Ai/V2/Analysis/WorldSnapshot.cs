@@ -632,6 +632,11 @@ namespace Game.Ai.V2
         public IReadOnlyList<AiMapMemory.KnownEnemySighting> NeutralSightings;
         public IReadOnlyList<AiMapMemory.KnownBuilding> Buildings;
         public IReadOnlyList<HexCoord> EventGuardHexes;
+        // Hex Events the observer has personally met, split by what it knows: still active (guarded
+        // or not) and confirmed completed. An event absent from both is unknown to it - the guard
+        // list above never doubles as a "completed" signal.
+        public IReadOnlyList<HexCoord> ActiveEventHexes;
+        public IReadOnlyList<HexCoord> CompletedEventHexes;
         // Typed event-guard snapshot (hex + strength + defender profiles), sourced only from
         // AiMapMemory.KnownEventGuardHexes/KnownEventGuardStrengthAt — never a live map read or a
         // fabricated ArmyData. Feeds CombatOpportunityAnalyzer as a second Raid target kind.

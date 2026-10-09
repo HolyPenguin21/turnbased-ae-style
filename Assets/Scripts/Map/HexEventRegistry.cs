@@ -55,6 +55,13 @@ namespace Game.Map
             // else). Never populated for an event that's only ever been Explored straight through
             // (it's Consumed before a marker would matter) or never reached at all.
             public HashSet<PlayerSetupData> DiscoveredBy = new HashSet<PlayerSetupData>();
+            // Every player whose own ground army got this event's Explore/Skip choice (see
+            // MarkDiscovered) — the personal-knowledge fact AI memory is allowed to act on. Kept apart
+            // from DiscoveredBy on purpose: that set gates the on-map marker and is never filled for
+            // an event that was only ever Explored, while this one is filled by every real encounter.
+            public HashSet<PlayerSetupData> KnownBy = new HashSet<PlayerSetupData>();
+            // The player whose reward claim consumed the event (null until Consumed).
+            public PlayerSetupData ConsumedBy;
             public List<RewardEntry> SelectedRewards = new List<RewardEntry>();
             public List<(RewardEntry reward, CardDefinition card)> ResolvedCardRewards = new List<(RewardEntry, CardDefinition)>();
             // Set once the player (or AI) leaves this event unresolved via Skip (see
@@ -75,6 +82,10 @@ namespace Game.Map
         // than as a bool other code has to poll, same reasoning as VisionSystem.VisibilityChanged.
         public static event Action<HexCoord> EventSkipped;
         public static event Action<HexCoord> EventConsumed;
+        // Fired once per (event, player): that player's own ground army just got the event's
+        // Explore/Skip choice. The fact is already recorded in Entry.KnownBy when this fires, so a
+        // subscriber (AiMapMemory) can read the entry on behalf of exactly that player.
+        public static event Action<HexCoord, PlayerSetupData> EventDiscovered;
 
         public static void Clear()
         {
@@ -141,11 +152,37 @@ namespace Game.Map
             return entry != null && player != null && entry.DiscoveredBy.Contains(player);
         }
 
-        public static void MarkConsumed(HexCoord hex)
+        // Has `player` personally encountered the event on `hex` — see Entry.KnownBy.
+        public static bool IsKnownBy(HexCoord hex, PlayerSetupData player)
         {
-            if (ByHex.TryGetValue(hex, out Entry entry))
+            Entry entry = FindAt(hex);
+            return entry != null && player != null && entry.KnownBy.Contains(player);
+        }
+
+        // Records that `player`'s own ground army was just offered this event's Explore/Skip choice
+        // (call it from the authoritative interaction handler, never from planning code), then
+        // announces it — once per player. Neither vision, aviation nor another player's encounter
+        // ever reaches here.
+        public static void MarkDiscovered(HexCoord hex, PlayerSetupData player)
+        {
+            if (player == null || !ByHex.TryGetValue(hex, out Entry entry))
+                return;
+            if (entry.KnownBy.Add(player))
+                EventDiscovered?.Invoke(hex, player);
+        }
+
+        // `consumer` — the player whose reward claim ends the event; it learns of the completion
+        // at once (see AiMapMemory.OnEventConsumed). Fires only on the first Consumed transition.
+        public static void MarkConsumed(HexCoord hex, PlayerSetupData consumer = null)
+        {
+            if (ByHex.TryGetValue(hex, out Entry entry) && !entry.Consumed)
             {
                 entry.Consumed = true;
+                entry.ConsumedBy = consumer;
+                // Claiming the reward is the most personal encounter there is, even if no choice
+                // popup preceded it (no EventDiscovered here - EventConsumed carries the news).
+                if (consumer != null)
+                    entry.KnownBy.Add(consumer);
                 EventConsumed?.Invoke(hex);
             }
         }
@@ -162,6 +199,7 @@ namespace Game.Map
                 return;
             if (discoverer != null)
                 entry.DiscoveredBy.Add(discoverer);
+            MarkDiscovered(hex, discoverer);
             if (!entry.Skipped)
             {
                 entry.Skipped = true;

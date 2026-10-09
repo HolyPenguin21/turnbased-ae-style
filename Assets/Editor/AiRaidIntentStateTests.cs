@@ -157,9 +157,11 @@ namespace Game.EditorTests
             var targetHex = new HexCoord(5, 1);
             RaidTargetRef target = RaidTargetRef.ForEventGuard(targetHex);
             HexEventRegistry.Set(targetHex, null, null, null, null, null);
+            Game.Ai.AiMapMemory.Clear();
+            Game.Ai.AiMapMemory.EnsureSubscribed();
             try
             {
-                HexEventRegistry.MarkConsumed(targetHex);
+                HexEventRegistry.MarkConsumed(targetHex, player);
                 Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target), Is.True);
 
                 WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
@@ -190,7 +192,7 @@ namespace Game.EditorTests
                 Assert.That(commitments.IsArmyClaimed(11), Is.False);
                 Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(originalKey, out _), Is.True);
             }
-            finally { HexEventRegistry.Clear(); }
+            finally { HexEventRegistry.Clear(); Game.Ai.AiMapMemory.Clear(); }
         }
 
         [Test]
