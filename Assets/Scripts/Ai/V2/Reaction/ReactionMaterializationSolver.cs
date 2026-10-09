@@ -122,9 +122,7 @@ namespace Game.Ai.V2
                                 : new List<AiPower.PowerUnit>(),
                             elig);
                         if (live != null)
-                            physical.SeedRecipient(k, live.IsGarrison,
-                                live.Members.Count(m => m != null && !m.IsHero),
-                                live.Members.Any(m => m != null && m.IsHero), live.Capacity);
+                            physical.SeedRecipient(k, live);
                         return (k, elig);
                     }
                     default: // ReusableShell / NewArmy — fresh container, ProjectedPhysicalState

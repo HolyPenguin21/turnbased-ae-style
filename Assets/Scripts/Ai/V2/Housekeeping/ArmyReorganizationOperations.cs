@@ -25,6 +25,28 @@ namespace Game.Ai.V2
             return c;
         }
 
+        // Garrison-only twin of the commander reorder: restore the canonical hero order (heroes by
+        // descending CommandRating) in ONE zero-AP mutation, which the executor applies as
+        // ArmyData.NormalizeGarrisonOrder. Unlike a commander promotion it does not mark the hero
+        // moved: a roster-order restore never consumes the one-transfer-per-unit budget.
+        private static VState TryNormalizeGarrison(VState state, int armyId)
+        {
+            VState c = state.Clone();
+            List<ReorgUnit> roster = c.Roster[armyId];
+            if (!c.Meta[armyId].IsGarrison || ReorgViability.IsCanonicalGarrisonOrder(roster))
+                return null;
+            List<ReorgUnit> ordered = ReorgViability.NormalizeRoster(roster);
+            ReorgUnit anchor = ordered.Where((u, i) => !ReferenceEquals(u, roster[i]))
+                .FirstOrDefault(u => u != null && u.IsHero);
+            if (anchor == null || anchor.IsCommitted)
+                return null;
+            roster.Clear();
+            roster.AddRange(ordered);
+            c.Transfers.Add(PlannedTransfer.Reorder(anchor.Key, armyId,
+                "restore garrison hero order by CommandRating"));
+            return c;
+        }
+
         private static VState TryWholeFold(VState state, int srcId, int dstId)
         {
             List<ReorgUnit> source = state.Roster[srcId];
@@ -64,7 +86,7 @@ namespace Game.Ai.V2
                     return null;
 
                 from.Remove(u);
-                ReorgViability.AddMemberSorted(to, u);
+                ReorgViability.AddMemberSorted(to, u, dstMeta.IsGarrison);
                 c.Transfers.Add(PlannedTransfer.WholeFold(u.Key, srcId, dstId,
                     "fold army into destination atomically"));
                 c.MovedUnitKeys.Add(u.Key);
@@ -93,7 +115,7 @@ namespace Game.Ai.V2
                 return null;
 
             from.Remove(u);
-            ReorgViability.AddMemberSorted(to, u);
+            ReorgViability.AddMemberSorted(to, u, dstMeta.IsGarrison);
             c.Transfers.Add(new PlannedTransfer(u.Key, srcId, dstId, reason));
             c.MovedUnitKeys.Add(u.Key);
             return c;
@@ -131,7 +153,7 @@ namespace Game.Ai.V2
                     break;
 
                 donor.Remove(u);
-                ReorgViability.AddMemberSorted(weak, u);
+                ReorgViability.AddMemberSorted(weak, u, weakMeta.IsGarrison);
                 c.Transfers.Add(new PlannedTransfer(u.Key, donorId, weakId,
                     "seed weak army from donor surplus"));
                 c.MovedUnitKeys.Add(u.Key);
@@ -172,10 +194,10 @@ namespace Game.Ai.V2
 
             var afterA = new List<ReorgUnit>(a);
             afterA.Remove(ua);
-            ReorgViability.AddMemberSorted(afterA, ub);
+            ReorgViability.AddMemberSorted(afterA, ub, aMeta.IsGarrison);
             var afterB = new List<ReorgUnit>(b);
             afterB.Remove(ub);
-            ReorgViability.AddMemberSorted(afterB, ua);
+            ReorgViability.AddMemberSorted(afterB, ua, bMeta.IsGarrison);
 
             if (ReorgViability.Capacity(afterA, aMeta.IsGarrison) < afterA.Count
                 || ReorgViability.Capacity(afterB, bMeta.IsGarrison) < afterB.Count)
@@ -214,7 +236,7 @@ namespace Game.Ai.V2
                 return false;
 
             var after = new List<ReorgUnit>(dest);
-            ReorgViability.AddMemberSorted(after, u);
+            ReorgViability.AddMemberSorted(after, u, destMeta.IsGarrison);
             return ReorgViability.Capacity(after, destMeta.IsGarrison) >= after.Count;
         }
 

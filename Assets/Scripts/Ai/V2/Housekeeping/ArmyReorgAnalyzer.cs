@@ -144,8 +144,9 @@ namespace Game.Ai.V2
             HexCoord citadelHex, Dictionary<int, UnitData> unitByKey, ref int nextKey)
         {
             // Preserve the canonical live roster order. ArmyData.ComputeCapacity uses the FIRST hero,
-            // and AddMemberSorted deliberately preserves hero insertion order; re-sorting heroes by
-            // power here can therefore make the pure planner disagree with gameplay capacity.
+            // and a field army's AddMemberSorted preserves hero insertion order (a garrison is
+            // arranged by CommandRating); re-sorting heroes by power here can therefore make the
+            // pure planner disagree with gameplay capacity.
             var container = new ReorgContainer
             {
                 ArmyId = army.Id,

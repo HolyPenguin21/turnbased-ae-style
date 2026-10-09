@@ -608,12 +608,17 @@ namespace Game.Ai.V2
                     nominalCapacity = a.Capacity;
                     occupiedSlots = a.OccupiedBattleSlots;
                     destHasHero = a.HasHero;
-                    // Mirror the ArmyData domain rule: a hero rewrites capacity to its
-                    // CommandRating ONLY as the FIRST hero — a second hero is appended after the
+                    // Mirror the ArmyData domain rule: in a FIELD army a hero rewrites capacity to
+                    // its CommandRating ONLY as the FIRST hero — a second hero is appended after the
                     // existing commander and does NOT raise capacity (no auto TryReorderCommander).
+                    // A GARRISON is kept ordered by CommandRating, so its best hero governs.
+                    bool incomingHero = primary != null && primary.cardType == CardType.Hero;
                     int cap = plan.AttackRefitPromotesCommander
                         ? AiPower.ProjectMaterialization(plan).CommandRating
-                        : ArmyData.ComputeProjectedCapacity(nominalCapacity, destHasHero, primary);
+                        : a.IsGarrison && incomingHero
+                            ? ArmyData.ComputeProjectedGarrisonCapacity(nominalCapacity, a.HeroCount,
+                                a.BestHeroCommandRating, 1, primary.commandRating)
+                            : ArmyData.ComputeProjectedCapacity(nominalCapacity, destHasHero, primary);
                     freeSlots = System.Math.Max(0, cap - occupiedSlots - primaryBodySlots);
                     return;
                 }

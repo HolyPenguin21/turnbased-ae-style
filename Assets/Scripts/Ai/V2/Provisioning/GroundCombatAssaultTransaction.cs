@@ -616,7 +616,7 @@ namespace Game.Ai.V2
         {
             var remainder = support.Members.Where(u => !incoming.Contains(u)).Concat(displaced).ToList();
             return remainder.Count >= 1
-                && ArmyData.ComputeCapacity(remainder, support.IsGarrison) >= remainder.Count;
+                && ArmyData.RosterFits(remainder, support.IsGarrison);
         }
 
         // Attack may consume a singleton field support. All other transfers retain one member;
@@ -788,7 +788,7 @@ namespace Game.Ai.V2
                         var withHero = new List<UnitData>(shedGarrison.Members);
                         withHero.AddRange(shed);
                         withHero.Add(hero);
-                        if (ArmyData.ComputeCapacity(withHero, true) < withHero.Count)
+                        if (!ArmyData.RosterFits(withHero, true))
                             break;
                         shed.Add(hero);
                     }
@@ -838,7 +838,7 @@ namespace Game.Ai.V2
                                 $"adding {t.Unit.Name} to activated {lane} host would spend unbudgeted AP")));
 
                     var withU = new List<UnitData>(projectedUnits) { t.Unit };
-                    if (ArmyData.ComputeCapacity(withU, host.IsGarrison) < withU.Count)
+                    if (!ArmyData.RosterFits(withU, host.IsGarrison))
                         return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                             ProvisionFailure.AssemblyInfeasible(
                                 $"{lane} host #{host.Id} no longer has capacity for planned assembly")));

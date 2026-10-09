@@ -435,8 +435,8 @@ namespace Game.Turns
                 // Left imprisoned rather than released into an invariant violation; it'll be
                 // reconsidered the next time ReleasePrisoners runs (e.g. after the garrison
                 // frees up room some other way).
-                var projected = new List<UnitData>(garrison.Members) { hero };
-                if (ArmyData.ComputeCapacity(projected, garrison.IsGarrison) < projected.Count)
+                if (!ArmyData.RosterFits(ArmyData.ProjectAdd(garrison.Members, hero, garrison.IsGarrison),
+                        garrison.IsGarrison))
                     continue;
 
                 prison.Members.Remove(hero);

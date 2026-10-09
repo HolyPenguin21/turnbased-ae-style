@@ -122,6 +122,18 @@ namespace Game.Ai.V2
                             + $"{reorderContract.Label} keeps its commander");
                         break;
                     }
+                    if (from.IsGarrison)
+                    {
+                        // Garrison order is canonical (CommandRating), restored in one mutation;
+                        // an already-canonical roster is a no-op: no commit, no StateChanged.
+                        if (from.NormalizeGarrisonOrder())
+                        {
+                            WorldDeltaLifecycle.CommitMutation();
+                            res.Applied++;
+                            res.StateChanged = true;
+                        }
+                        continue;
+                    }
                     if (!from.TryReorderCommander(unit, out string reorderFail))
                     {
                         Fail(res, plan, $"reorder failed #{from.Id} ({unit.Name}) ({reorderFail})");
@@ -287,8 +299,7 @@ namespace Game.Ai.V2
             // Mirror ArmyActions.TransferMember's projected-roster capacity rule exactly. A hero
             // may legally join a currently-full no-hero army because its CommandRating raises the
             // resulting capacity; using to.HasRoom here recreated the planner/runtime mismatch.
-            var projected = new List<UnitData>(to.Members) { unit };
-            if (ArmyData.ComputeCapacity(projected, to.IsGarrison) < projected.Count)
+            if (!ArmyData.RosterFits(ArmyData.ProjectAdd(to.Members, unit, to.IsGarrison), to.IsGarrison))
             { why = "destination would exceed projected capacity"; return false; }
             if (!from.CanLeaveWithoutOvercrowding(unit)) { why = "source would overcrowd"; return false; }
             if (!KeepsOperationMovement(player, turn, to, new[] { unit }, commitments, out why))

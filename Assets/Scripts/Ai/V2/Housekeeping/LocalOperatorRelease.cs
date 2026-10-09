@@ -95,10 +95,14 @@ namespace Game.Ai.V2
                 return why;
             if (hero.ActivationApCost > 0 && garrison.RequiresActivationCharge(hero))
                 return "transfer would spend AP";
+            // The garrison's final roster is built by the same ProjectAdd the real transfer uses
+            // (normalized by CommandRating), never a raw append read through the first hero.
             var joined = new List<UnitData>(garrison.Members);
-            if (alsoJoining != null) joined.AddRange(alsoJoining);
-            joined.Add(hero);
-            if (ArmyData.ComputeCapacity(joined, true) < joined.Count)
+            if (alsoJoining != null)
+                foreach (UnitData joining in alsoJoining)
+                    joined = ArmyData.ProjectAdd(joined, joining, true);
+            joined = ArmyData.ProjectAdd(joined, hero, true);
+            if (!ArmyData.RosterFits(joined, true))
                 return "garrison full";
             if (!leads && !army.CanLeaveWithoutOvercrowding(hero)) return "army would overcrowd";
             return null;

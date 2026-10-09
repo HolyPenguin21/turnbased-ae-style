@@ -370,8 +370,9 @@ namespace Game.Map
             }
             if (!target.IsAirfield)
             {
-                var projectedTarget = new List<UnitData>(target.Members) { unit };
-                if (ArmyData.ComputeCapacity(projectedTarget, target.IsGarrison) < projectedTarget.Count)
+                // Judged on the roster AddMemberSorted will actually produce (garrison: normalized).
+                if (!ArmyData.RosterFits(ArmyData.ProjectAdd(target.Members, unit, target.IsGarrison),
+                        target.IsGarrison))
                 {
                     failReason = $"{unit.Name} wouldn't fit in {target.Name} after the transfer.";
                     return false;
@@ -400,6 +401,7 @@ namespace Game.Map
             }
 
             source.Members.Remove(unit);
+            source.NormalizeGarrisonOrder();
             target.AddMemberSorted(unit);
             if (target.IsAirfield)
                 AviationRules.ResetAfterLanding(unit);
@@ -489,26 +491,23 @@ namespace Game.Map
                 }
             }
 
+            // Both final rosters are built by the same ProjectAdd the commit uses (a garrison is
+            // normalized by CommandRating), so preview and commit cannot disagree.
             var projectedSource = source.Members.Where(u => !distinct.Contains(u)).ToList();
             foreach (UnitData unit in back)
-            {
-                int index = unit.IsHero ? projectedSource.Count(u => u.IsHero) : projectedSource.Count;
-                projectedSource.Insert(index, unit);
-            }
-            if (ArmyData.ComputeCapacity(projectedSource, source.IsGarrison) < projectedSource.Count)
+                projectedSource = ArmyData.ProjectAdd(projectedSource, unit, source.IsGarrison);
+            if (!ArmyData.RosterFits(projectedSource, source.IsGarrison))
             {
                 failReason = $"The batch would leave {source.Name} without room for everyone else.";
                 return false;
             }
             var projectedTarget = target.Members.Where(u => !back.Contains(u)).ToList();
             foreach (UnitData unit in distinct)
-            {
-                int index = unit == promoteToCommander ? 0
-                    : unit.IsHero ? projectedTarget.Count(u => u.IsHero) : projectedTarget.Count;
-                projectedTarget.Insert(index, unit);
-            }
-            if (!target.IsAirfield
-                && ArmyData.ComputeCapacity(projectedTarget, target.IsGarrison) < projectedTarget.Count)
+                projectedTarget = ArmyData.ProjectAdd(projectedTarget, unit, target.IsGarrison);
+            // An explicit promotion is a field-army choice; a garrison keeps its CommandRating order.
+            if (promoteToCommander != null && !target.IsGarrison && projectedTarget.Remove(promoteToCommander))
+                projectedTarget.Insert(0, promoteToCommander);
+            if (!target.IsAirfield && !ArmyData.RosterFits(projectedTarget, target.IsGarrison))
             {
                 failReason = $"The batch wouldn't fit in {target.Name}.";
                 return false;
@@ -576,7 +575,9 @@ namespace Game.Map
                 target.AddMemberSorted(unit);
             foreach (UnitData unit in back)
                 source.AddMemberSorted(unit);
-            if (promoteToCommander != null && target.Members.IndexOf(promoteToCommander) > 0)
+            source.NormalizeGarrisonOrder();
+            if (promoteToCommander != null && !target.IsGarrison
+                && target.Members.IndexOf(promoteToCommander) > 0)
                 target.TryReorderCommander(promoteToCommander, out _);
             if (target.IsAirfield)
                 foreach (UnitData unit in units)
@@ -678,16 +679,16 @@ namespace Game.Map
 
             var remainingA = new List<UnitData>(armyA.Members);
             remainingA.Remove(unitA);
-            remainingA.Add(unitB);
-            if (ArmyData.ComputeCapacity(remainingA, armyA.IsGarrison) < remainingA.Count)
+            remainingA = ArmyData.ProjectAdd(remainingA, unitB, armyA.IsGarrison);
+            if (!ArmyData.RosterFits(remainingA, armyA.IsGarrison))
             {
                 failReason = $"{unitB.Name} wouldn't fit in {armyA.Name} once {unitA.Name} leaves.";
                 return false;
             }
             var remainingB = new List<UnitData>(armyB.Members);
             remainingB.Remove(unitB);
-            remainingB.Add(unitA);
-            if (ArmyData.ComputeCapacity(remainingB, armyB.IsGarrison) < remainingB.Count)
+            remainingB = ArmyData.ProjectAdd(remainingB, unitA, armyB.IsGarrison);
+            if (!ArmyData.RosterFits(remainingB, armyB.IsGarrison))
             {
                 failReason = $"{unitA.Name} wouldn't fit in {armyB.Name} once {unitB.Name} leaves.";
                 return false;

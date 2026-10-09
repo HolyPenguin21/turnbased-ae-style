@@ -58,10 +58,10 @@ namespace Game.Ai.V2
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
-                    int capacityWith = ArmyData.ComputeCapacity(withHero, host.IsGarrison);
+                    int capacityWith = ArmyData.ComputeRosterCapacity(withHero, host.IsGarrison);
                     if (capacityWith >= withHero.Count
                         && (!preparation
-                            || capacityWith > ArmyData.ComputeCapacity(projectedUnits, host.IsGarrison)
+                            || capacityWith > ArmyData.ComputeRosterCapacity(projectedUnits, host.IsGarrison)
                             || AiPower.EffectiveArmyPower(withHero) > AiPower.EffectiveArmyPower(projectedUnits)))
                     {
                         garrisonHeroTaken = AiArmyRoles.IsGarrisonHero(hero);
@@ -114,7 +114,7 @@ namespace Game.Ai.V2
                         continue;
                     }
                     var withPick = new List<UnitData>(projectedUnits) { pick };
-                    if (ArmyData.ComputeCapacity(withPick, host.IsGarrison) < withPick.Count)
+                    if (!ArmyData.RosterFits(withPick, host.IsGarrison))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;

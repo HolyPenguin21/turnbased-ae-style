@@ -310,10 +310,30 @@ namespace Game.Map
             => projectedMemberCount <= ComputeProjectedCapacity(
                 nominalCapacity, hasExistingHero, incoming);
 
+        // Garrison-aware: the incoming card is judged on the roster the add would actually produce
+        // (ProjectAdd), so a hero that outranks the current commander and thereby widens a full
+        // garrison is admitted, exactly as AddMemberSorted will then arrange it.
+        // Garrison capacity projection from facts, for planners that hold counts not rosters. A
+        // normalized garrison is led by its highest-CommandRating hero (see NormalizeRoster), so
+        // the governing value is the maximum over existing AND added heroes; with no hero at all
+        // the nominal garrison capacity applies. Mirrors ComputeCapacity(NormalizeRoster(..)).
+        public static int ComputeProjectedGarrisonCapacity(int nominalCapacity, int existingHeroCount,
+            int existingMaxCommandRating, int addedHeroCount, int addedMaxCommandRating)
+        {
+            bool hasExisting = existingHeroCount > 0;
+            bool hasAdded = addedHeroCount > 0;
+            if (!hasExisting && !hasAdded) return nominalCapacity;
+            if (hasExisting && hasAdded) return System.Math.Max(existingMaxCommandRating, addedMaxCommandRating);
+            return hasExisting ? existingMaxCommandRating : addedMaxCommandRating;
+        }
+
         public bool CanFitAdditionalCard(CardDefinition incoming)
-            => incoming != null
-                && ProjectedRosterFits(Capacity, Members.Any(m => m != null && m.IsHero),
-                    Members.Count + 1, incoming);
+        {
+            if (incoming == null) return false;
+            bool hero = incoming.cardType == CardType.Hero;
+            var prospective = new UnitData { IsHero = hero, CommandRating = hero ? incoming.commandRating : 0 };
+            return RosterFits(ProjectAdd(Members, prospective, IsGarrison), IsGarrison);
+        }
 
         // The cap only ever bites when something is about to be ADDED (see Capacity's own
         // comment) — an already-formed roster must never shrink or go partly invisible because
@@ -342,7 +362,7 @@ namespace Game.Map
                 return Members.Contains(unit);
             var remaining = new List<UnitData>(Members);
             remaining.Remove(unit);
-            return ComputeCapacity(remaining, IsGarrison) >= remaining.Count;
+            return RosterFits(remaining, IsGarrison);
         }
 
         // HasRecce was removed when Recce became parameterized (r1s0/r1s4/...) — read
@@ -350,13 +370,76 @@ namespace Game.Map
 
         // Heroes always sit at the front of the roster (ArmyViewerModalUI's grid keeps them
         // there even as the player freely drags cards to reorder — see its hero-first reorder
-        // clamp). A new hero goes in right after whichever heroes are already there; a regular
-        // unit always goes to the very end, which trivially keeps heroes a contiguous prefix
-        // without needing to re-sort the whole list.
+        // clamp). A field army's new hero goes in right after whichever heroes are already there
+        // and a regular unit at the very end. A GARRISON is additionally kept in canonical order
+        // (NormalizeRoster): heroes by descending CommandRating, so the first hero — the one that
+        // gives the garrison its Capacity and Commander — is always its best. A manual reorder in
+        // the viewer therefore lasts until the next roster change.
         public void AddMemberSorted(UnitData unit)
         {
+            if (IsGarrison)
+            {
+                Members.Add(unit);
+                NormalizeGarrisonOrder();
+                return;
+            }
             int index = unit.IsHero ? Members.Count(m => m.IsHero) : Members.Count;
             Members.Insert(index, unit);
+        }
+
+        // Canonical garrison order: heroes first, stable by descending CommandRating (equal
+        // ratings keep their relative order), then ordinary units in their existing order. A pure
+        // function of the list — never touches live Members.
+        public static List<UnitData> NormalizeRoster(IEnumerable<UnitData> members)
+        {
+            var heroes = new List<UnitData>();
+            var rest = new List<UnitData>();
+            if (members != null)
+                foreach (UnitData m in members)
+                    (m != null && m.IsHero ? heroes : rest).Add(m);
+            var ordered = heroes.OrderByDescending(h => h.CommandRating).ToList();
+            ordered.AddRange(rest);
+            return ordered;
+        }
+
+        // The roster `roster` + `unit` would have after AddMemberSorted into a container of the
+        // given kind — the preview twin of the commit, so legality and result cannot diverge.
+        public static List<UnitData> ProjectAdd(IEnumerable<UnitData> roster, UnitData unit, bool isGarrison)
+        {
+            var list = new List<UnitData>(roster ?? System.Array.Empty<UnitData>());
+            if (isGarrison)
+            {
+                list.Add(unit);
+                return NormalizeRoster(list);
+            }
+            int index = unit != null && unit.IsHero ? list.Count(m => m != null && m.IsHero) : list.Count;
+            list.Insert(index, unit);
+            return list;
+        }
+
+        // Whether a FINAL roster is legal for its container kind: capacity is read from the order
+        // the commit will establish (normalized for a garrison), not from a stale list order.
+        public static bool RosterFits(IReadOnlyCollection<UnitData> finalRoster, bool isGarrison)
+            => ComputeRosterCapacity(finalRoster, isGarrison) >= finalRoster.Count;
+
+        // Capacity of a FINAL roster as the container will arrange it (a garrison is normalized
+        // first). For a field army this is exactly ComputeCapacity.
+        public static int ComputeRosterCapacity(IEnumerable<UnitData> finalRoster, bool isGarrison)
+            => ComputeCapacity(isGarrison ? NormalizeRoster(finalRoster) : finalRoster, isGarrison);
+
+        // Re-applies the canonical order to this garrison. True only if the order actually
+        // changed (a no-op returns false and leaves Members untouched). Not a garrison -> false.
+        public bool NormalizeGarrisonOrder()
+        {
+            if (!IsGarrison) return false;
+            List<UnitData> ordered = NormalizeRoster(Members);
+            bool same = true;
+            for (int i = 0; i < ordered.Count && same; i++)
+                same = ReferenceEquals(ordered[i], Members[i]);
+            if (same) return false;
+            Members.Clear();
+            Members.AddRange(ordered);
+            return true;
         }
 
         // Canonical zero-AP roster-order operation: make `hero` the FIRST member, so
