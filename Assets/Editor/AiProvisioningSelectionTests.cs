@@ -237,6 +237,39 @@ namespace Game.EditorTests
             Assert.That(offenders, Is.Empty, string.Join(System.Environment.NewLine, offenders));
         }
 
+        // The selection is a protocol over claims, not a spender: it must not touch the reservation
+        // ledger, the lease book or the Economy stages, and it must not close the session (the
+        // selected mission executes under its claims).
+        [Test]
+        public void TheSelectionProtocolSpendsNothingAndLeavesTheSessionOpen()
+        {
+            string root = AiTurnLoopTests.FindScriptsRoot();
+            if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
+            string file = System.IO.Directory.GetFiles(root, "ProvisioningManager.Selection.cs",
+                System.IO.SearchOption.AllDirectories).Single();
+            string code = string.Join(System.Environment.NewLine, System.IO.File.ReadLines(file)
+                .Select(l => l.Split(new[] { "//" }, 2, System.StringSplitOptions.None)[0]));
+            foreach (string banned in new[] { "StrategicResourceReservationLedger", "MissionLeaseBook",
+                "EconomyReservationLifecycle", "OperationContinuationWindow", "SpendAuthority", ".Dispose(" })
+                Assert.That(code, Does.Not.Contain(banned), banned);
+        }
+
+        [Test]
+        public void ASuccessfulSelectionKeepsItsClaimsOpenAndTheLedgerUntouched()
+        {
+            Rig r = Build(2, 9f);
+            StrategicResourceReservationLedger.BeginTurn(Us, 3);
+            int rowsBefore = StrategicResourceReservationLedger.Rows(Us, 3).Count;
+            ProvisioningSelectionOutcome o = ProvisioningManager.ProvisionNext(Us, r.Snap, r.Session,
+                r.Provisioning, r.Parking, r.Initial, Steps(f => ProvisioningResult.Ok(Prov(f))));
+            Assert.That(StrategicResourceReservationLedger.Rows(Us, 3).Count, Is.EqualTo(rowsBefore));
+            Assert.That(r.Provisioning.AlreadyProvisioned(o.SelectedKey), Is.True,
+                "the claim of the selected mission is held for its execution");
+            Assert.That(r.Session.Pack().LockedClaim.Ap, Is.EqualTo(o.Selected.ClaimedAp),
+                "and the allocator treats it as a locked claim in the next pack");
+            r.Provisioning.Dispose();
+        }
+
         // ---- PassParking ----
 
         [Test]

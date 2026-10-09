@@ -215,3 +215,46 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 ## Цена изменения (до / после)
 
 Новая provisioning disposition («повторить после следующего pack»): раньше — правка `while` и обоих хвостов учёта отказа в `RunAdmissionIteration` + Provisioning + State; теперь — `ProvisionNext` (+ реестр State), потребитель исхода (цикл `Events` в оркестраторе) не получает новой ветки. Новый факт, снимающий исчерпание пула, обрабатывает прежний реестр State; оркестратор его доказательств не знает.
+
+## Перепроверка Э3: реализация, резервирование, кеши
+
+### Реализация (снизу вверх)
+
+| Уровень | Что проверено | Результат |
+|---|---|---|
+| Контракты | `PassParking`, `ProvisionEvent`, `ProvisioningSelectionOutcome` — только данные и парковка; ни исполнения, ни трат | `TheSelectionProtocolSpendsNothingAndLeavesTheSessionOpen` (скан кода файла: нет ledger резервов, `MissionLeaseBook`, `EconomyReservationLifecycle`, `OperationContinuationWindow`, `SpendAuthority`, `.Dispose(`) |
+| Протокол | построчная сверка `ProvisionNext` с исходным циклом | **дифференциальный тест**: `AiProvisioningSelectionParityTests` — 1500 случайных сценариев, независимая транскрипция исходного цикла (`19c80a86`) и новый код на одинаковых реальных `AllocationSession` и реестре; сравниваются последовательность вызовов мировых шагов (prepare / scout / provision с funded-ключами), выбранная миссия, ключи, `IsCommitment`, попытанные ключи, итоговый pack, ключи всех паков, телеметрия, `MissionOutcomeLedger` (через `FinalizeSteps`), парковка, чтения реестра, состояние аллокатора. Генератор достигает ветвей (выбор > 100, без выбора > 100, парковка > 100, re-pack > 100, доказанное исчерпание пула > 50 сценариев). Прошёл |
+| Чувствительность теста | мутации `ProvisionNext` | 9 из 9 пойманы: общий счётчик; граница `<=`; не вызывается `DeferNoExecutableStep`; `SettleScoutBatch` без снапшота; `RecordProvisionFailure` без снапшота; нет учёта ключей паков; нет `AttemptedKeys` у пакета; нет `RegisterProvisionSuccess`; снятая `RegisterSuccess` сессии |
+| Потребитель | `Pipeline` | журнал проигрывается через `MissionOutcomeLedger.RecordProvisionAttempt` (интерпретация исхода — у Continuity), телеметрия считается в цикле по событиям в прежнем порядке |
+
+Побочное изменение: `MissionOutcomeLedger.RecordProvisionAttempt` (Continuity) — один диспетчер `Success`/`Failure`; поведение записей не менялось.
+
+### Резервирование ресурсов
+
+| Вопрос | Проверка | Результат |
+|---|---|---|
+| Выбор тратит или резервирует что-либо сам | скан файла + тест `ASuccessfulSelectionKeepsItsClaimsOpenAndTheLedgerUntouched` | число строк `StrategicResourceReservationLedger` до/после вызова не меняется |
+| Claims выбранной миссии живут до исполнения | тот же тест | `AlreadyProvisioned(selectedKey)` истинно после вызова; следующий `Pack` содержит locked claim, равный `ClaimedAp` |
+| Состояние аллокатора (repriced floors, rejected, locked) | в дифференциальном тесте после прогона делается ещё один `Pack` и сравниваются: funded-ключи с `Tentative.Ap`, `LockedClaim.Ap`, число deferred, `HasNewFailures`, `Converged`, `PassNumber`, `ProvisioningSession.ApClaimed` и признаки `AlreadyProvisioned` по каждой миссии | идентично исходному циклу во всех 1500 сценариях |
+| Закрытие сессии | `using var cycleProvisioning` остался в итерации; `ProvisionNext` не вызывает `Dispose` (скан) | мутация «Dispose внутри» поймана |
+| Исключение посреди выбора | `cycleLedger` — локальная переменная итерации и при исключении отбрасывается вместе с ходом; журнал до проигрывания теряется так же, как терялся бы ledger | изменения поведения нет |
+| Порядок относительно реальных трат | `Provision`, `PreparePass` — прежние методы; порядок их вызовов и аргументы идентичны (последовательность вызовов в дифференциальном тесте) | совпадает |
+
+Не проверено: реальные `Provision*` на мире (списание AP/ресурсов, `Economy` completion в `ProvisioningManager.Economy*`) — это Unity-fixture S3/S8; код `Provision` в этапе не менялся.
+
+### Кеширование: запись и чтение
+
+| Кеш / состояние | Писатели | Читатели | Область | Что показала проверка |
+|---|---|---|---|---|
+| `CapabilityPoolExhaustionRegistry` (`DeferredMissions`, `RetryNextTurn`, `Exhausted`) | `DeferNoExecutableStep`, `CarryRetryNextTurn` (через `PassParking.Park`), `SettleScoutBatch`, `RecordProvisionFailure`, `MarkExhausted` | `CanAttempt` (выбор), `ShouldSkipRetried` (фильтр парковки), `IsExhausted` | ход (`BeginTurn`/`EndTurn` в `AiTurnSession`) | порядок записи/чтения совпадает с исходным: итоговые чтения `CanAttempt`/`ShouldSkipRetried`/`IsExhausted` по каждой миссии идентичны во всех сценариях, включая «застрявший» пул (доказательство исчерпания); сброс на новом ходу — `NewTurn_ForgetsTheCarriedRetry` |
+| Множество парковки прохода | `PassParking.Park` | `PassParking.Filter` следующего settled-допуска | проход (новый `PassParking` при каждом `OpenPass`) | `ANewPassForgetsTheSetButTheRegistryKeepsTheVerdictWhileThePoolIsProvenEmpty`; множество парковки идентично в дифференциальном тесте |
+| Снапшот мира | не изменяется внутри протокола (ни `Scan`, ни `ObserveSettled`) | `SettleScoutBatch`, `CanAttempt`, `ShouldSkipRetried` читают один и тот же `snapshot`, переданный на входе | вызов | в `Pipeline` передаётся текущая локаль `snapshot` непосредственно в точке прежнего цикла |
+| `AllocationSession` (`_lastFingerprint`, rejected, floors, locked) | `RegisterProvision*`, `Pack` | `Pack`, `HasNewFailures`, `Converged` | итерация (`ResourceAllocator.BeginTurn` на итерацию) | порядок вызовов идентичен (в трассе вызовов и состоянии после) |
+| `MissionOutcomeLedger` | `RegisterProposals/Commitments`, `RecordProvisionAttempt`, `RecordDeferrals`, `RecordExecution` | `FinalizeSteps` после исполнения | итерация | журнал проигрывается сразу после `ProvisionNext` и до `RecordDeferrals`/исполнения; читателей между старым и новым местом записи нет (поиск); итоговый `FinalizeSteps` идентичен в дифференциальном тесте |
+| WorldDelta / `KnowledgeVersion` / PathingVersion / estimate-кеши / combat `PoolCache` | — | — | — | этап их не касается: изменены только `Provisioning/`, `Orchestration/AiStrategyV2Pipeline.cs`, `Continuity/MissionOutcomeLedger.cs` и тесты (`git diff --stat`) |
+
+Равенство ревизий не доказывает содержимого ключей кеша: чтения реестра проверены по значениям, а не по номерам версий.
+
+### Итог перепроверки
+
+Managed (`e3-a-p`): 2151 тест, 1676 прошло, 475 упало; регрессий 0 относительно `e2-a-p`, 14 новых прошедших. Compile 28 = 28. Unity и native — не выполнялись; S3 и мировые части `Provision*` — Unity-fixtures.

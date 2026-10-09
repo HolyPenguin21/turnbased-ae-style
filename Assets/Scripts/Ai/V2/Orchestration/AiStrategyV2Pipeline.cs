@@ -610,15 +610,14 @@ namespace Game.Ai.V2
                     // happened, before the step executes (nothing in between reads the ledger).
                     foreach (ProvisionEvent attempt in pick.Events)
                     {
+                        cycleLedger.RecordProvisionAttempt(attempt);
                         if (attempt.Kind == ProvisionEventKind.Success)
                         {
-                            cycleLedger.RecordProvisionSuccess(attempt.Proposal, attempt.Provisioned);
                             provisioned.Add(attempt.Provisioned);
                             continue;
                         }
                         provisioningFailures.TryGetValue(attempt.Failure.Kind, out int failureCount);
                         provisioningFailures[attempt.Failure.Kind] = failureCount + 1;
-                        cycleLedger.RecordProvisionFailure(attempt.Proposal, attempt.Failure);
                     }
                     ProvisionedMission selected = pick.Selected;
                     bool selectedIsCommitment = pick.SelectedIsCommitment;
