@@ -243,6 +243,9 @@ namespace Game.Ai.V2
         private static int CommanderMismatch(List<ReorgUnit> units, bool isGarrison,
             IReadOnlyList<WorthIt.DefendingArmy> context)
         {
+            // A garrison is judged on its whole hero order, not on the identity of its first hero.
+            if (isGarrison)
+                return ReorgViability.IsCanonicalGarrisonOrder(units) ? 0 : 1;
             if (units.Count(u => u != null && u.IsHero) < 2)
                 return 0;
             ReorgUnit current = units.First(u => u != null && u.IsHero);

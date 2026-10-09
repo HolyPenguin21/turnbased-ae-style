@@ -100,11 +100,7 @@ namespace Game.Ai.V2
                     {
                         ArmyData tgt = p?.Deploy.Army;
                         if (tgt == null) continue;
-                        _physical.SeedRecipient(ProjectedPhysicalState.RecipientKey(p),
-                            tgt.IsGarrison,
-                            tgt.Members.Count(u => u != null && !u.IsHero),
-                            tgt.Members.Any(u => u != null && u.IsHero),
-                            tgt.Capacity);
+                        _physical.SeedRecipient(ProjectedPhysicalState.RecipientKey(p), tgt);
                     }
 
                 _apPool = root != null

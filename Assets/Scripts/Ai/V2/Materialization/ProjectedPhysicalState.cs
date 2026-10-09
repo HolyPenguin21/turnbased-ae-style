@@ -16,12 +16,16 @@ namespace Game.Ai.V2
     //  consumption model does not model.
     //
     //  CAPACITY RULE — mirrors ArmyData.ComputeCapacity + CardPlayExecutor exactly:
+    //    FIELD army:
     //    · an EXISTING hero in the recipient governs capacity (its CommandRating is already baked
-    //      into the frozen ArmySnapshot.Capacity we seed with);
+    //      into the frozen live Capacity we seed with);
     //    · otherwise the FIRST hero THIS portfolio adds governs capacity (== its CommandRating —
     //      a replacement of the nominal value, even when CommandRating is zero);
-    //    · otherwise the nominal base (garrison 4 / field 2).
-    //  A recipient's projected roster fits when projected member count <= projected capacity.
+    //    · otherwise the nominal base (field 2).
+    //    GARRISON (kept ordered by CommandRating, ArmyData.NormalizeRoster): the HIGHEST
+    //    CommandRating among existing and added heroes governs; no hero -> nominal garrison base.
+    //  A recipient's projected roster fits when projected member count (EVERY existing member,
+    //  heroes included, plus everything added) <= projected capacity.
     //  Hand-slot peaks of every generate chain are summed against the free hand.
     // ===========================================================================================
     internal sealed class ProjectedPhysicalState
@@ -65,11 +69,13 @@ namespace Game.Ai.V2
         {
             public bool IsGarrison;
             public int BaseNonHero;         // existing non-hero members
-            public bool BaseHasHero;        // an existing hero (its CR is already in BaseNominalCapacity)
-            public int BaseNominalCapacity; // frozen ArmySnapshot.Capacity — governs the base-hero case
+            public int BaseHeroCount;       // existing heroes: every one occupies a slot
+            public int BaseMaxHeroCr;       // best existing CommandRating; valid only when BaseHeroCount > 0
+            public int BaseNominalCapacity; // frozen live Capacity: governs the field base-hero case
             public int AddedNonHero;
             public int AddedHeroes;
             public int FirstAddedHeroCr;    // valid only when AddedHeroes > 0; zero is a legal rating
+            public int AddedMaxHeroCr;      // best added CommandRating; valid only when AddedHeroes > 0
         }
 
         private readonly Dictionary<string, Recipient> _recipients =
@@ -80,20 +86,30 @@ namespace Game.Ai.V2
 
         internal void SeedHandSlots(int free) => _handSlotsFree = Mathf.Max(0, free);
 
-        // Seed an EXISTING recipient once from world facts. Fresh (NewArmy / ReusableShell)
-        // recipients need no seed — they default to an empty non-garrison container.
-        internal void SeedRecipient(string key, bool isGarrison, int baseNonHero, bool baseHasHero,
-            int baseNominalCapacity)
+        // Seed an EXISTING recipient once from the live container: the one place both solvers
+        // read these facts, so Phase A and Reaction can never disagree on a recipient's base.
+        // Fresh (NewArmy / ReusableShell) recipients need no seed; they default to an empty
+        // non-garrison container.
+        internal void SeedRecipient(string key, ArmyData live)
         {
-            if (_recipients.ContainsKey(key)) return;
+            if (live == null || _recipients.ContainsKey(key)) return;
+            int heroes = 0, maxCr = 0, nonHero = 0;
+            foreach (UnitData m in live.Members)
+            {
+                if (m == null) continue;
+                if (!m.IsHero) { nonHero++; continue; }
+                maxCr = heroes == 0 ? m.CommandRating : Mathf.Max(maxCr, m.CommandRating);
+                heroes++;
+            }
             _recipients[key] = new Recipient
             {
-                IsGarrison = isGarrison,
-                BaseNonHero = Mathf.Max(0, baseNonHero),
-                BaseHasHero = baseHasHero,
+                IsGarrison = live.IsGarrison,
+                BaseNonHero = nonHero,
+                BaseHeroCount = heroes,
+                BaseMaxHeroCr = maxCr,
                 // Preserve the physical capacity exactly. A zero-CommandRating existing hero
                 // yields capacity zero, not one; a planner must not make that army expandable.
-                BaseNominalCapacity = baseNominalCapacity,
+                BaseNominalCapacity = live.Capacity,
             };
         }
 
@@ -105,9 +121,21 @@ namespace Game.Ai.V2
         // physical deployment uses, so planner and executor cannot disagree.
         private static bool RosterFits(in Recipient r)
         {
-            int members = r.BaseNonHero + (r.BaseHasHero ? 1 : 0) + r.AddedNonHero + r.AddedHeroes;
-            return ArmyData.ProjectedRosterFits(r.BaseNominalCapacity, r.BaseHasHero,
+            int members = r.BaseNonHero + r.BaseHeroCount + r.AddedNonHero + r.AddedHeroes;
+            if (r.IsGarrison)
+                return members <= ArmyData.ComputeProjectedGarrisonCapacity(r.BaseNominalCapacity,
+                    r.BaseHeroCount, r.BaseMaxHeroCr, r.AddedHeroes, r.AddedMaxHeroCr);
+            return ArmyData.ProjectedRosterFits(r.BaseNominalCapacity, r.BaseHeroCount > 0,
                 members, r.AddedHeroes, r.FirstAddedHeroCr);
+        }
+
+        // Count is the identity sentinel, not the CommandRating (which can be zero).
+        private static void AddHero(ref Recipient r, int commandRating)
+        {
+            bool first = r.AddedHeroes == 0;
+            r.AddedHeroes++;
+            if (first) r.FirstAddedHeroCr = commandRating;
+            r.AddedMaxHeroCr = first ? commandRating : Mathf.Max(r.AddedMaxHeroCr, commandRating);
         }
 
         internal readonly struct Token
@@ -117,15 +145,21 @@ namespace Game.Ai.V2
             public readonly bool WasFirstAddedHero;
             public readonly int HandPeak;
             public readonly UnitData UpgradedUnit;
+            // The recipient hero facts BEFORE this Add: Remove restores them verbatim (both
+            // solvers push/pop in strict LIFO), so a repeated maximum survives removing one copy.
+            public readonly int PrevFirstAddedHeroCr;
+            public readonly int PrevAddedMaxHeroCr;
 
             public Token(string key, bool isHero, bool wasFirstAddedHero, int handPeak,
-                UnitData upgradedUnit = null)
+                UnitData upgradedUnit = null, int prevFirstAddedHeroCr = 0, int prevAddedMaxHeroCr = 0)
             {
                 Key = key;
                 IsHero = isHero;
                 WasFirstAddedHero = wasFirstAddedHero;
                 HandPeak = handPeak;
                 UpgradedUnit = upgradedUnit;
+                PrevFirstAddedHeroCr = prevFirstAddedHeroCr;
+                PrevAddedMaxHeroCr = prevAddedMaxHeroCr;
             }
         }
 
@@ -142,13 +176,7 @@ namespace Game.Ai.V2
             string key = RecipientKey(p);
             Recipient r = Get(key);
             bool hero = IsHeroPlan(p);
-            if (hero)
-            {
-                // Count is the identity sentinel, not the CommandRating (which can be zero).
-                bool firstHero = r.AddedHeroes == 0;
-                r.AddedHeroes++;
-                if (firstHero) r.FirstAddedHeroCr = HeroCommandRating(p);
-            }
+            if (hero) AddHero(ref r, HeroCommandRating(p));   // r is a copy: CanAdd never mutates state
             else r.AddedNonHero++;
             return RosterFits(r);
         }
@@ -167,18 +195,14 @@ namespace Game.Ai.V2
             string key = RecipientKey(p);
             Recipient r = Get(key);
             bool hero = IsHeroPlan(p);
-            bool firstHero = false;
-            if (hero)
-            {
-                firstHero = r.AddedHeroes == 0;
-                r.AddedHeroes++;
-                if (firstHero) r.FirstAddedHeroCr = HeroCommandRating(p);
-            }
+            bool firstHero = hero && r.AddedHeroes == 0;
+            int prevFirst = r.FirstAddedHeroCr, prevMax = r.AddedMaxHeroCr;
+            if (hero) AddHero(ref r, HeroCommandRating(p));
             else r.AddedNonHero++;
             _recipients[key] = r;
             int peak = Mathf.Max(0, p.HandSlotsNeededAtPeak);
             _handSlotsUsed += peak;
-            return new Token(key, hero, firstHero, peak);
+            return new Token(key, hero, firstHero, peak, null, prevFirst, prevMax);
         }
 
         internal void Remove(in Token t)
@@ -190,7 +214,8 @@ namespace Game.Ai.V2
                 if (t.IsHero)
                 {
                     r.AddedHeroes = Mathf.Max(0, r.AddedHeroes - 1);
-                    if (t.WasFirstAddedHero) r.FirstAddedHeroCr = 0;
+                    r.FirstAddedHeroCr = t.PrevFirstAddedHeroCr;
+                    r.AddedMaxHeroCr = t.PrevAddedMaxHeroCr;
                 }
                 else r.AddedNonHero = Mathf.Max(0, r.AddedNonHero - 1);
                 _recipients[t.Key] = r;

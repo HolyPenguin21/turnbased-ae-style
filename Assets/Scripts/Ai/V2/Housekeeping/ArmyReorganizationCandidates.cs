@@ -50,6 +50,15 @@ namespace Game.Ai.V2
                 if (!meta.CanReorderCommander)
                     continue;
                 List<ReorgUnit> units = state.Roster[armyId];
+                // A garrison is arranged by CommandRating, not by combat evaluation: the whole
+                // hero order is restored in one reorder (a right first hero can hide a wrong tail).
+                if (meta.IsGarrison)
+                {
+                    VState normalized = TryNormalizeGarrison(state, armyId);
+                    if (normalized != null)
+                        yield return normalized;
+                    continue;
+                }
                 if (units.Count(u => u != null && u.IsHero) < 2)
                     continue;
                 ReorgUnit current = units.First(u => u != null && u.IsHero);
@@ -467,6 +476,10 @@ namespace Game.Ai.V2
             List<ReorgUnit> heroes = units.Where(u => u != null && u.IsHero).ToList();
             if (heroes.Count == 0)
                 return null;
+            // Garrison rule (ArmyData.NormalizeRoster): the highest CommandRating leads, equal
+            // ratings keep their current order. Combat probability never lowers garrison capacity.
+            if (isGarrison)
+                return heroes.OrderByDescending(h => h.CommandRating).First();
             List<ReorgUnit> legal = heroes
                 .Where(h => ReorgViability.Capacity(LedBy(units, h), isGarrison) >= units.Count)
                 .ToList();
@@ -513,7 +526,7 @@ namespace Game.Ai.V2
             int BodyRoom(List<ReorgUnit> roster) =>
                 ReorgViability.Capacity(roster, meta.IsGarrison) - roster.Count(x => x != null && x.IsHero);
             var after = new List<ReorgUnit>(dest);
-            ReorgViability.AddMemberSorted(after, hero);
+            ReorgViability.AddMemberSorted(after, hero, meta.IsGarrison);
             ReorgUnit lead = meta.CanReorderCommander || !dest.Any(x => x != null && x.IsHero)
                 ? BestCommander(after, meta.IsGarrison, CommandContext(state))
                 : after.First(x => x != null && x.IsHero);

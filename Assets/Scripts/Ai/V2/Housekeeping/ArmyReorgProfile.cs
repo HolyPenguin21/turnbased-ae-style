@@ -354,16 +354,49 @@ namespace Game.Ai.V2
 
         // Mirrors ArmyData.AddMemberSorted so virtual hero order — and therefore first-hero
         // CommandRating semantics — stays identical to the live gameplay roster after transfers.
-        public static void AddMemberSorted(List<ReorgUnit> roster, ReorgUnit unit)
+        // A garrison is re-normalized (ArmyData.NormalizeRoster) exactly as the live add does.
+        public static void AddMemberSorted(List<ReorgUnit> roster, ReorgUnit unit, bool isGarrison)
         {
+            if (isGarrison)
+            {
+                roster.Add(unit);
+                List<ReorgUnit> ordered = NormalizeRoster(roster);
+                roster.Clear();
+                roster.AddRange(ordered);
+                return;
+            }
             int index = unit.IsHero ? roster.Count(u => u.IsHero) : roster.Count;
             roster.Insert(index, unit);
+        }
+
+        // Mirrors ArmyData.NormalizeRoster: heroes first, stable by descending CommandRating, then
+        // the other units in their existing order.
+        public static List<ReorgUnit> NormalizeRoster(IEnumerable<ReorgUnit> units)
+        {
+            var heroes = new List<ReorgUnit>();
+            var rest = new List<ReorgUnit>();
+            foreach (ReorgUnit u in units ?? Enumerable.Empty<ReorgUnit>())
+                (u != null && u.IsHero ? heroes : rest).Add(u);
+            List<ReorgUnit> ordered = heroes.OrderByDescending(h => h.CommandRating).ToList();
+            ordered.AddRange(rest);
+            return ordered;
+        }
+
+        public static bool IsCanonicalGarrisonOrder(IReadOnlyList<ReorgUnit> units)
+        {
+            List<ReorgUnit> ordered = NormalizeRoster(units);
+            for (int i = 0; i < ordered.Count; i++)
+                if (!ReferenceEquals(ordered[i], units[i]))
+                    return false;
+            return true;
         }
 
         public static bool CanLeaveWithoutOvercrowding(IReadOnlyList<ReorgUnit> units, ReorgUnit leaving, bool isGarrison)
         {
             var remaining = new List<ReorgUnit>(units ?? Array.Empty<ReorgUnit>());
             remaining.Remove(leaving);
+            if (isGarrison)
+                remaining = NormalizeRoster(remaining);
             return Capacity(remaining, isGarrison) >= remaining.Count;
         }
     }
