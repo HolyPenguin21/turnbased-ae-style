@@ -2,6 +2,8 @@
   <PropertyGroup><TargetFramework>net8.0</TargetFramework><OutputType>Exe</OutputType><EnableDefaultCompileItems>false</EnableDefaultCompileItems><DefineConstants>UNITY_INCLUDE_TESTS;TERRAIN_MANAGED_HARNESS</DefineConstants><LangVersion>9.0</LangVersion></PropertyGroup>
   <ItemGroup>
     <Compile Include="UnityStubs.cs;Program.cs" />
+    <Compile Include="../../Assets/Scripts/Tools/HexTileMeshGenerator.cs" />
+    <Compile Include="../../Assets/Scripts/Tools/HexMapGenerator.cs" />
     <Compile Include="../../Assets/Scripts/Economy/ResourceType.cs;../../Assets/Scripts/Economy/ResourceYields.cs;../../Assets/Scripts/Economy/HexResourceCalculator.cs" />
     <Compile Include="../../Assets/Editor/TerrainComplexTests.cs" />
     <Compile Include="../../Assets/Scripts/HexGrid/HexCoord.cs;../../Assets/Scripts/HexGrid/HexGridMath.cs;../../Assets/Scripts/HexGrid/HexPath.cs;../../Assets/Scripts/HexGrid/HexPathfinder.cs" />
@@ -10,3 +12,4 @@
     <PackageReference Include="NUnit" Version="3.14.0" />
   </ItemGroup>
 </Project>
+

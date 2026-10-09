@@ -20,6 +20,8 @@ namespace Game.Terrain
         public string terrainName;
         [Tooltip("Use this complex when generating maps for this biome. Disabled templates receive no placements.")]
         public bool useInGeneration = true;
+        [Tooltip("Choose one of six 60-degree orientations per generated instance. Textures are reused without modifying their pixels.")]
+        public bool randomizeRotation;
         // Relative share of MapGenerationSettings.complexCount, not an absolute instance count.
         [Min(0)] public int count = 1;
         [Min(1)] public int placementAttempts = 64;
@@ -34,8 +36,8 @@ namespace Game.Terrain
         [Range(0f, 1f)] public float minCenterFraction = 0f;
         [Range(0f, 1f)] public float maxCenterFraction = 1f;
         [Min(0.01f)] public float framesPerSecond = 3f;
-        // Offsets are the authored, final footprint. Runtime generation may translate the
-        // whole complex to another origin, but never rotates or mirrors this shape.
+        // Authored footprint. If randomizeRotation is enabled, placement rotates all offsets
+        // and rendering applies the matching inverse UV rotation. No mirroring.
         public string[] allowedTerrainNames = { "Desert", "Sand dunes", "Rock desert" };
         public TerrainComplexPart[] parts;
 
@@ -66,3 +68,4 @@ namespace Game.Terrain
 
     }
 }
+

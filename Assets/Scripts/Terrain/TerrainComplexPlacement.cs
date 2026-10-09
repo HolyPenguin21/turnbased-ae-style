@@ -7,6 +7,10 @@ namespace Game.Terrain
 {
     public static class TerrainComplexPlacement
     {
+        // Choose after family allocation; orientations must not change template weights.
+        public static int ChooseRotationSteps(TerrainComplexTemplate template, Func<int, int> randomBelow) =>
+            template != null && template.randomizeRotation ? randomBelow(6) : 0;
+
         // Splits `total` instances across templates in proportion to their shares (largest
         // remainder). Ties in the remainder go in random order, so a small total still varies
         // which templates appear. A zero share never receives an instance.
@@ -87,7 +91,8 @@ namespace Game.Terrain
         public static bool TryValidate(TerrainComplexTemplate template, HexCoord origin,
             IReadOnlyDictionary<HexCoord, int> assignment, IReadOnlyList<TerrainTypeEntry> types,
             int terrainIndex, HashSet<HexCoord> claimed, Func<HexCoord, bool> protectedHex,
-            out HexCoord[] cells, int minCenterDistance = 0, int maxCenterDistance = int.MaxValue)
+            out HexCoord[] cells, int minCenterDistance = 0, int maxCenterDistance = int.MaxValue,
+            int rotationSteps = 0)
         {
             cells = null;
             if (template == null || !template.useInGeneration || !template.IsValid()
@@ -96,8 +101,9 @@ namespace Game.Terrain
             var candidates = new HexCoord[template.parts.Length];
             for (int i = 0; i < candidates.Length; i++)
             {
-                var offset = template.parts[i].offset;
-                HexCoord h = new HexCoord(origin.Q + offset.x, origin.R + offset.y);
+                var authored = template.parts[i].offset;
+                HexCoord offset = HexGridMath.RotateOffset60(new HexCoord(authored.x, authored.y), rotationSteps);
+                HexCoord h = new HexCoord(origin.Q + offset.Q, origin.R + offset.R);
                 if (!assignment.TryGetValue(h, out int existing) || claimed.Contains(h)
                     || (protectedHex != null && protectedHex(h)) || !footprint.Add(h)
                     || HexGridMath.Distance(new HexCoord(0, 0), h) < minCenterDistance
@@ -140,3 +146,4 @@ namespace Game.Terrain
         }
     }
 }
+

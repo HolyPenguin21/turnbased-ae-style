@@ -298,6 +298,165 @@ namespace Game.EditorTests
                 new HexCoord(0, 1),
             }));
         }
+        [Test] public void SixRotationsPreservePartOrderAndReturnToAuthoredFootprint()
+        {
+            var part1 = new HexCoord(1, 0);
+            var expected = new[] { new HexCoord(1, 0), new HexCoord(0, 1),
+                new HexCoord(-1, 1), new HexCoord(-1, 0), new HexCoord(0, -1), new HexCoord(1, -1) };
+            var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1));
+            var authored = t.parts.Select(p => (p.offset.x, p.offset.y)).ToArray();
+            for (int rotation = 0; rotation < 6; rotation++)
+            {
+                Assert.That(HexGridMath.RotateOffset60(part1, rotation), Is.EqualTo(expected[rotation]));
+                Assert.That(TerrainComplexPlacement.TryValidate(t, _origin, Assignment(),
+                    new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), null, out var cells,
+                    rotationSteps: rotation), Is.True);
+                Assert.That(cells[0], Is.EqualTo(_origin));
+                Assert.That(cells[1], Is.EqualTo(expected[rotation]));
+                Assert.That(HexGridMath.Distance(cells[1], cells[2]), Is.EqualTo(1));
+                Assert.That(HexGridMath.Distance(cells[0], cells[2]), Is.EqualTo(2));
+            }
+            Assert.That(HexGridMath.RotateOffset60(new HexCoord(1, 1), 6), Is.EqualTo(new HexCoord(1, 1)));
+            Assert.That(HexGridMath.RotateOffset60(part1, -1), Is.EqualTo(expected[5]));
+            Assert.That(t.parts.Select(p => (p.offset.x, p.offset.y)).ToArray(), Is.EqualTo(authored));
+        }
+
+        [Test] public void RotationChoiceIsUniformAndDoesNotChangeFamilyWeights()
+        {
+            var canyon = Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1));
+            var wreck = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
+            canyon.exclusiveGroup = wreck.exclusiveGroup = "centerpiece";
+            canyon.randomizeRotation = wreck.randomizeRotation = true;
+            for (int roll = 0; roll < 6; roll++)
+                Assert.That(TerrainComplexPlacement.ChooseRotationSteps(canyon, n =>
+                { Assert.That(n, Is.EqualTo(6)); return roll; }), Is.EqualTo(roll));
+            Assert.That(TerrainComplexPlacement.ChooseFromExclusiveGroups(new[] { canyon, wreck }, n => 0), Is.EqualTo(new[] { 0 }));
+            Assert.That(TerrainComplexPlacement.ChooseFromExclusiveGroups(new[] { canyon, wreck }, n => 1), Is.EqualTo(new[] { 1 }));
+            canyon.randomizeRotation = false;
+            Assert.That(TerrainComplexPlacement.ChooseRotationSteps(canyon, n =>
+                { Assert.Fail("A fixed template must not consume a random draw."); return 0; }), Is.Zero);
+        }
+
+        [Test] public void RotatedFootprintChecksProtectedCellsAndRejectsAtomically()
+        {
+            var t = Template(new Vector2Int(0, 0), new Vector2Int(1, 0));
+            for (int rotation = 0; rotation < 6; rotation++)
+            {
+                var data = Assignment();
+                var original = data.ToDictionary(p => p.Key, p => p.Value);
+                HexCoord protectedCell = HexGridMath.RotateOffset60(new HexCoord(1, 0), rotation);
+                Assert.That(TerrainComplexPlacement.TryValidate(t, _origin, data,
+                    new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), h => h.Equals(protectedCell),
+                    out var cells, rotationSteps: rotation), Is.False);
+                Assert.That(cells, Is.Null);
+                Assert.That(data, Is.EquivalentTo(original));
+                Assert.That(TerrainComplexPlacement.TryValidate(t, _origin, data,
+                    new[] { _desert, _lake }, 1, new HashSet<HexCoord> { protectedCell }, null,
+                    out _, rotationSteps: rotation), Is.False);
+                Assert.That(TerrainComplexPlacement.TryValidate(t, _origin, data,
+                    new[] { _desert, _lake }, 1, new HashSet<HexCoord>(), null,
+                    out _, 1, 3, rotation), Is.False, "the rotated footprint still cannot occupy the centre band exclusion");
+            }
+        }
+
+        [Test] public void MeshRotationChangesOnlyUvsAndKeepsGlobalPartAlignment()
+        {
+            var offsets = new[] { new HexCoord(0, 0), new HexCoord(1, 0), new HexCoord(1, 1) };
+            foreach (HexCoord offset in offsets)
+            for (int rotation = 0; rotation < 6; rotation++)
+            {
+                var vertices = new List<Vector3>(); var normals = new List<Vector3>();
+                var uvs = new List<Vector2>(); var colors = new List<Color>(); var triangles = new List<int>();
+                HexCoord rotated = HexGridMath.RotateOffset60(offset, rotation);
+                Vector3 center = HexGridMath.AxialToWorld(rotated.Q, rotated.R, 1);
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, triangles,
+                    center, 1, 0.15f, 0.95f, rotationSteps: rotation);
+                var baselineVertices = new List<Vector3>(); var baselineNormals = new List<Vector3>();
+                var baselineUvs = new List<Vector2>(); var baselineColors = new List<Color>(); var baselineTriangles = new List<int>();
+                HexTileMeshGenerator.AppendFlatHexFace(baselineVertices, baselineNormals, baselineUvs,
+                    baselineColors, baselineTriangles, center, 1, 0.15f, 0.95f);
+                Assert.That(vertices, Is.EqualTo(baselineVertices)); Assert.That(normals, Is.EqualTo(baselineNormals));
+                Assert.That(triangles, Is.EqualTo(baselineTriangles)); Assert.That(colors, Is.EqualTo(baselineColors));
+                Assert.That(uvs[0].x, Is.EqualTo(0.5f)); Assert.That(uvs[0].y, Is.EqualTo(0.5f));
+                Vector3 sourceCenter = HexGridMath.AxialToWorld(offset.Q, offset.R, 1);
+                float angle = -rotation * 60 * Mathf.Deg2Rad;
+                for (int i = 1; i < vertices.Count; i++)
+                {
+                    Vector3 point = vertices[i];
+                    float sourceX = point.x * Mathf.Cos(angle) - point.z * Mathf.Sin(angle);
+                    float sourceZ = point.x * Mathf.Sin(angle) + point.z * Mathf.Cos(angle);
+                    Assert.That(sourceCenter.x + (uvs[i].x - 0.5f) * 2, Is.EqualTo(sourceX).Within(0.00001f));
+                    Assert.That(sourceCenter.z + (uvs[i].y - 0.5f) * 2, Is.EqualTo(sourceZ).Within(0.00001f));
+                    Assert.That(colors[i].r, Is.EqualTo(1)); Assert.That(colors[i].g, Is.EqualTo(1));
+                    Assert.That(colors[i].b, Is.EqualTo(1));
+                    Assert.That(colors[i].a, Is.EqualTo(i <= 6 ? 1 : 0.05f).Within(0.00001f));
+                }
+            }
+        }
+
+        [Test] public void GeneratorPublishesMatchingRotatedTerrainAndMeshUsingOriginalTextures()
+        {
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var part2 = new Texture2D(2, 2); var part3 = new Texture2D(2, 2);
+            var template = Template(new Vector2Int(0, 0), new Vector2Int(1, 0), new Vector2Int(1, 1));
+            template.randomizeRotation = true;
+            template.parts[1].frames = new[] { part2 }; template.parts[2].frames = new[] { part3 };
+            config.mapGeneration = new MapGenerationSettings
+            {
+                radius = 4, borderDepthFraction = 0, complexCount = 1, impassableEdgeMarginRings = 0,
+                mountainsTerrainName = "", terrainTypes = new List<TerrainTypeEntry> { _desert, _lake },
+                complexes = new List<TerrainComplexTemplate> { template },
+            };
+            if (_object.GetComponent<MeshFilter>() == null) _object.AddComponent<MeshFilter>();
+            if (_object.GetComponent<MeshRenderer>() == null) _object.AddComponent<MeshRenderer>();
+            var generator = _object.AddComponent<HexMapGenerator>();
+            typeof(HexMapGenerator).GetField("gameConfig", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(generator, config);
+            var randomState = UnityEngine.Random.state;
+            var seen = new HashSet<int>();
+            try
+            {
+                for (int seed = 0; seed < 60; seed++)
+                {
+                    UnityEngine.Random.InitState(seed); generator.Generate();
+                    Mesh mesh = _object.GetComponent<MeshFilter>().sharedMesh;
+                    Material[] materials = _object.GetComponent<MeshRenderer>().sharedMaterials;
+                    var indices = new int[3]; var centers = new HexCoord[3];
+                    for (int part = 0; part < 3; part++)
+                    {
+                        int slot = materials.Length - 3 + part;
+                        Assert.That(materials[slot].mainTexture, Is.SameAs(template.parts[part].frames[0]));
+                        indices[part] = mesh.GetTriangles(slot)[0];
+                        centers[part] = _map.WorldToHex(mesh.vertices[indices[part]]);
+                        Assert.That(_map.CanEnter(centers[part]), Is.False);
+                        Assert.That(_map.CanEnter(centers[part], airborne: true), Is.True);
+                    }
+                    int rotation = Enumerable.Range(0, 6).Single(step =>
+                    {
+                        HexCoord offset = HexGridMath.RotateOffset60(new HexCoord(1, 0), step);
+                        return centers[1].Equals(new HexCoord(centers[0].Q + offset.Q, centers[0].R + offset.R));
+                    });
+                    seen.Add(rotation);
+                    HexCoord third = HexGridMath.RotateOffset60(new HexCoord(1, 1), rotation);
+                    Assert.That(centers[2], Is.EqualTo(new HexCoord(centers[0].Q + third.Q, centers[0].R + third.R)));
+                    float uvAngle = Mathf.Deg2Rad * (60 * ((6 - rotation) % 6));
+                    for (int part = 0; part < 3; part++)
+                    {
+                        // First outer-ring vertex follows centre + six inner-ring vertices.
+                        Vector2 uv = mesh.uv[indices[part] + 7];
+                        Assert.That(uv.x, Is.EqualTo(0.5f + 0.5f * Mathf.Cos(uvAngle)).Within(0.00001f));
+                        Assert.That(uv.y, Is.EqualTo(0.5f + 0.5f * Mathf.Sin(uvAngle)).Within(0.00001f));
+                    }
+                }
+                Assert.That(seen.Count, Is.EqualTo(6), "Repeated map generation must reach every orientation.");
+            }
+            finally
+            {
+                UnityEngine.Random.state = randomState;
+                UnityEngine.Object.DestroyImmediate(config);
+                UnityEngine.Object.DestroyImmediate(part2); UnityEngine.Object.DestroyImmediate(part3);
+            }
+        }
+
         [Test] public void InvalidDisconnectedOrDuplicateShapesRejected()
         {
             Assert.That(Template(new Vector2Int(0, 0), new Vector2Int(3, 0)).IsValid(), Is.False);
@@ -633,12 +792,13 @@ namespace Game.EditorTests
             var army = new ArmyData { Hex = _origin };
             var unit = new UnitData { MoveCurrent = 3, MoveMax = 3 }; army.Members.Add(unit);
             var controller = _object.AddComponent<ArmyController>(); controller.SetData(army);
+            typeof(ArmyController).GetProperty("IsMoving").SetValue(controller, true);
             var target = new HexCoord(1, 0); _map.SetTerrainAt(target, _lake);
             int activations = 0;
             var method = typeof(ArmyController).GetMethod("MoveRoutine", BindingFlags.NonPublic | BindingFlags.Instance);
             var routine = (IEnumerator)method.Invoke(controller, new object[] { _map,
                 new List<HexCoord> { _origin, target }, (Func<HexCoord, Vector3>)(h => Vector3.zero),
-                null, null, null, null, null, (Func<bool>)(() => { activations++; return true; }) });
+                null, null, null, null, (Func<bool>)(() => { activations++; return true; }) });
             Assert.That(routine.MoveNext(), Is.False);
             Assert.That(unit.MoveCurrent, Is.EqualTo(3));
             Assert.That(activations, Is.EqualTo(0), "A refused first step must not charge activation.");
@@ -647,3 +807,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

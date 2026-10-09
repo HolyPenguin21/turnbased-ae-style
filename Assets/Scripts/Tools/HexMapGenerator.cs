@@ -74,12 +74,14 @@ namespace Game.Map
             List<TextureVariantSlot> variantSlots = BuildVariantSlots(out List<int>[] slotIndicesByType);
             List<PlacedComplex> complexes = PlaceComplexes(allCoords, assignment);
             var complexSlots = new Dictionary<HexCoord, int>();
+            var complexRotations = new Dictionary<HexCoord, int>();
             foreach (PlacedComplex complex in complexes)
             {
                 complex.FirstSlot = variantSlots.Count;
                 for (int i = 0; i < complex.Cells.Length; i++)
                 {
                     complexSlots[complex.Cells[i]] = variantSlots.Count;
+                    complexRotations[complex.Cells[i]] = complex.RotationSteps;
                     variantSlots.Add(new TextureVariantSlot(complex.TypeIndex, complex.Template.parts[i].frames[0]));
                 }
             }
@@ -115,7 +117,9 @@ namespace Game.Map
                 int variantSlot = complexSlots.TryGetValue(coord, out int complexSlot)
                     ? complexSlot : PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
                 chosenTexture[coord] = variantSlots[variantSlot].Texture;
-                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha);
+                int rotationSteps = complexRotations.TryGetValue(coord, out int rotation) ? rotation : 0;
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha,
+                    rotationSteps: rotationSteps);
                 hexData[coord] = _activeBiome.terrainTypes[typeIndex];
 
                 if (!boundsInitialized) { bounds = new Bounds(center, Vector3.zero); boundsInitialized = true; }
@@ -411,6 +415,7 @@ namespace Game.Map
         private sealed class PlacedComplex
         {
             public TerrainComplexTemplate Template;
+            public int RotationSteps;
             public HexCoord[] Cells;
             public int TypeIndex;
             public int FirstSlot;
@@ -448,6 +453,8 @@ namespace Game.Map
                 for (int instance = 0; instance < instances[t]; instance++)
                 {
                     bool placed = false;
+                    // One uniformly chosen orientation per instance, kept across retries.
+                    int rotationSteps = TerrainComplexPlacement.ChooseRotationSteps(template, n => Random.Range(0, n));
                     // Origins come from the band the footprint must fit in (footprint offsets reach
                     // at most 2 rings from the origin), so a narrow "near the middle" band is not
                     // left to the luck of 64 uniform rolls over the whole map.
@@ -467,11 +474,11 @@ namespace Game.Map
                             || HexResourceBonusRegistry.GetBonus(h) != null;
                         if (!TerrainComplexPlacement.TryValidate(template, origin, assignment,
                             _activeBiome.terrainTypes, typeIndex, claimed, Protected, out HexCoord[] cells,
-                            minCenter, maxCenter)) continue;
+                            minCenter, maxCenter, rotationSteps)) continue;
                         // All rejection paths above leave the original assignment unchanged.
                         foreach (HexCoord h in cells) { assignment[h] = typeIndex; claimed.Add(h); }
                         result.Add(new PlacedComplex
-                        { Template = template, Cells = cells, TypeIndex = typeIndex });
+                        { Template = template, Cells = cells, TypeIndex = typeIndex, RotationSteps = rotationSteps });
                         placed = true;
                         break;
                     }
@@ -661,3 +668,4 @@ namespace Game.Map
         }
     }
 }
+
