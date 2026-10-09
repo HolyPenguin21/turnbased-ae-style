@@ -217,7 +217,13 @@ before the next round or the cold stage. `TurnLoopState` holds the control count
 `TempoRoundVerdict` decides what follows a round. The work bodies (admission iteration with
 mandatory aviation / mission selection, provisioning retry, execution, Phase B round, cold
 residual) stay in `Pipeline.RunTurn` with their own observation/settle order;
-`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop.
+`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop (the loop, not `RunTurn`: Reaction
+runs inside `RunTurn`, from Housekeeping, followed by one bounded Phase B rerun).
+`TurnLoop` is the single owner of the *transitions*; it is not yet the single *writer* of every field of
+`TurnLoopState` (the work bodies write `SettledSteps`, `ReturnsDeferred`, and share `NoProgressCycles`
+and `ResidualWindow` with the loop). Removing that shared write, and moving domain rules to their
+owners, is the decoupling task: `Docs/ai-v2-decoupling-plan.md`, evidence and tools in
+`Docs/ai-v2-decoupling-evidence.md` and `Tools/ai-v2-decoupling-verify/`.
 
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.

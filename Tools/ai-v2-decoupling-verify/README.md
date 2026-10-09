@@ -28,7 +28,8 @@ Exit codes: `0` ok, `1` violation / divergence, `2` bad input.
 | `work` | work kind (`Mission`, `MandatoryAviation`, `Tempo`, `Cold`, `Pass`, `Reentry`, `Recall`, ...) |
 | `ordinal` | strictly increasing within a (player, turn) scope |
 | `event` | `turn_start`, `take`, `consume`, `reentry`, `commit`, `terminal_force`, `income_cover_release`, `tempo_round_start`, spend / release / rollback events, ... |
-| `ap`, `h`, `e`, `m`, `t` | spendable AP and resources **at that point (before each guard)** |
+| `ap`, `h`, `e`, `m`, `t` | caller-recorded SPENDABLE values at that point (before a guard); `null` when the fixture does not know them |
+| `reserved` | `{ap,h,e,m,t}` held by the ledger at that point (always recorded) |
 | `rows` | owner rows: `{owner, reason, resource, amount, expiry}`; `expiry` is a stage name (`EndOfTurn`, ...) or a turn number (R6 checks only numbers) |
 | `operation_keys`, `actors` | operation keys and actor ids touched |
 | `world_revision`, `knowledge_version`, `pathing_version`, `scope_id` | cache and revision coordinates |

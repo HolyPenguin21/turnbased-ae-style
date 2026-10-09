@@ -29,8 +29,9 @@ namespace Game.EditorTests
 
         internal IReadOnlyList<string> Lines => _lines;
 
-        // ap is the caller's value at that point (the physical spend authority is not the ledger).
-        internal void Record(int turn, string work, string evt, float ap = 0f, int worldRevision = 0,
+        // ap/h/e/m/t: the caller's SPENDABLE values at that point (null = not recorded; the physical spend
+        // authority is the game root, not the ledger). `reserved` is always read from the ledger.
+        internal void Record(int turn, string work, string evt, float? ap = null, int worldRevision = 0,
             int knowledgeVersion = 0, int pathingVersion = 0, int scopeId = 0, string takeId = null,
             string[] pending = null, string[] consumed = null, string[] operationKeys = null,
             int[] actors = null)
@@ -41,8 +42,14 @@ namespace Game.EditorTests
               .Append(",\"work\":").Append(Q(work))
               .Append(",\"ordinal\":").Append(++_ordinal)
               .Append(",\"event\":").Append(Q(evt))
-              .Append(",\"ap\":").Append(F(ap))
-              .Append(",\"h\":0,\"e\":0,\"m\":0,\"t\":0")
+              .Append(",\"ap\":").Append(ap.HasValue ? F(ap.Value) : "null")
+              .Append(",\"h\":null,\"e\":null,\"m\":null,\"t\":null")
+              .Append(",\"reserved\":{")
+              .Append("\"ap\":").Append(F(Held(turn, StrategicReservedResource.ActionPoints)))
+              .Append(",\"h\":").Append(F(Held(turn, StrategicReservedResource.Human)))
+              .Append(",\"e\":").Append(F(Held(turn, StrategicReservedResource.Energy)))
+              .Append(",\"m\":").Append(F(Held(turn, StrategicReservedResource.Materials)))
+              .Append(",\"t\":").Append(F(Held(turn, StrategicReservedResource.Tech))).Append('}')
               .Append(",\"rows\":[");
             bool first = true;
             foreach (StrategicResourceReservation r in StrategicResourceReservationLedger.Rows(_player, turn))
@@ -67,6 +74,9 @@ namespace Game.EditorTests
             sb.Append('}');
             _lines.Add(sb.ToString());
         }
+
+        private float Held(int turn, StrategicReservedResource r) =>
+            StrategicResourceReservationLedger.Active(_player, turn, r);
 
         // Writes <AI_V2_TRACE_DIR>/<name>.jsonl when the variable is set; returns the path or null.
         internal string Flush()

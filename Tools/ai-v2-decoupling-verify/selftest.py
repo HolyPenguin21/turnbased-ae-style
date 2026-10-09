@@ -50,6 +50,10 @@ def swap(t, i, j):
     return t
 
 
+RULE = {"consume_reentry_swapped": "R4", "owner_erased": "R3", "second_commit": "R2",
+        "income_cover_after_tempo": "R5", "expired_view_next_turn": "R6"}
+
+
 def mutations():
     base = good()
     m = {}
@@ -69,9 +73,12 @@ def write(path, records):
             f.write(json.dumps(r) + "\n")
 
 
-def run(script, *args):
-    return subprocess.run([sys.executable, os.path.join(HERE, script), *args],
-                          capture_output=True, text=True).returncode
+def run(script, *args, want_rule=None):
+    r = subprocess.run([sys.executable, os.path.join(HERE, script), *args],
+                       capture_output=True, text=True)
+    if want_rule is not None and (r.returncode != 1 or want_rule not in r.stdout):
+        return -1   # rejected for the wrong reason (or not rejected)
+    return r.returncode
 
 
 def main():
@@ -87,10 +94,10 @@ def main():
             p = os.path.join(d, name + ".jsonl")
             write(p, trace)
             # Order/ownership/commit/expiry mutations are structural: check_boundaries must reject them.
-            c = run("check_boundaries.py", p)
+            c = run("check_boundaries.py", p, want_rule=RULE[name])
             # The trace comparer must reject every mutation against the good trace as well.
             k = run("compare_traces.py", g, p)
-            print(f"{name}: check_boundaries exit {c}, compare_traces exit {k} (expected 1, 1)")
+            print(f"{name}: check_boundaries exit {c}, compare_traces exit {k} (expected 1 by the named rule, 1)")
             ok &= c == 1 and k == 1
     print("SELFTEST " + ("PASSED" if ok else "FAILED"))
     return 0 if ok else 1

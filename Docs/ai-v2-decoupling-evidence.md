@@ -24,7 +24,7 @@
 
 ## 3. Транскрипция цикла
 
-`Assets/Editor/AiTurnLoopTests.cs` уже содержит независимую транскрипцию исходного цикла (`Baseline`, снята с `c3cdde46`, до L4) и генератор 20 000 многошаговых сценариев против реального `TurnLoop.Run`. Для Э1 тест расширяется (исходы тел вместо записи состояния), второй похожий тест не создаётся. Транскрипция «текущего» `Run` как эталона для Э6 совпадает с этой, так как порядок переходов L4→L5 не менялся (код цикла после `f46e4529` менялся только в K1/D-правках L5).
+`Assets/Editor/AiTurnLoopTests.cs` уже содержит независимую транскрипцию исходного цикла (`Baseline`, снята с `c3cdde46`, до L4) и генератор 20 000 многошаговых сценариев против реального `TurnLoop.Run`. Для Э1 тест расширяется (исходы тел вместо записи состояния), второй похожий тест не создаётся. Транскрипция «текущего» `Run` как эталона для Э6 совпадает с этой, так как порядок переходов L4→L5 не менялся (`git log f46e4529..HEAD -- TurnLoop.cs` — пусто (до Э0 файл не менялся после `f46e4529`)).
 
 ## 4. Сценарии §12 ТЗ: сопоставление с тестами на `717871b8`
 
@@ -44,7 +44,7 @@
 
 **Сделано в Э0:** recorder `AiDecouplingTrace` и фикстуры `S1_Bank_*`, `S9_Bank_*` (ledger-уровень) с записанными ожидаемыми значениями (4+3 AP → 3 AP после downgrade; нет утечки; следующий ход пуст; чужой игрок не затронут). Золотые трассы: `Tools/ai-v2-decoupling-verify/golden/S1_bank.jsonl` (7 записей), `S9_bank.jsonl` (4); `check_boundaries.py` — ok на обеих. Managed-прогон с ними: 2125 тестов, 1651 прошло, 474 упало, регрессий 0 относительно `d0-base-p`, 2 новых прошедших.
 **Добавлены после первой версии:** `S2_Triggers_*` (2 случая), `S2_Stall_*`, `S4_Returns_*`. Прогон: 2129 тестов, 1655 прошло, 474 упало, регрессий 0 относительно `d0-base-p`, 6 новых прошедших.
-**Не сделано и почему:** S3 (бюджеты assignment/reprice) требует `ResourceAllocator` с миром и армиями; S5 (кеши знания, `ResolveActive` на same revision) — `WorldSnapshot` и карту; S8 (совместные Economy+Attack+Reaction, rollback канонической операции) — игровой корень и движок; S6/S7 в части цикла закрыты `AiTurnLoopTests` (20 000 сценариев), в части реальных тел — нужны мир и движок. Managed-прогон их не построит без Unity-объектов; они пишутся как PlayMode/EditMode-fixtures на входной ревизии этапа, который их использует (S3→Э3, S5→Э5, S6/S7→Э6, S8→Э2/Э6), и запускаются в Unity владельцем. До этого соответствующий этап не стартует. Расхождений baseline с требованиями ТЗ при чтении не найдено; полный разбор S1–S9 на поведение в игре не проводился.
+**Не сделано и почему:** S3 (бюджеты assignment/reprice) требует `ResourceAllocator` с миром и армиями; S5 (кеши знания, `ResolveActive` на same revision) — `WorldSnapshot` и карту; S8 (совместные Economy+Attack+Reaction, rollback канонической операции) — игровой корень и движок; S6/S7 в части цикла закрыты `AiTurnLoopTests` (20 000 сценариев), в части реальных тел — нужны мир и движок. Managed-прогон их не построит без Unity-объектов; они пишутся как PlayMode/EditMode-fixtures на входной ревизии этапа, который их использует (S3→Э3, S5→Э5, S6/S7→Э6, S8→Э2/Э6), и запускаются в Unity владельцем. До этого соответствующий этап не стартует. Расхождений между ТЗ и кодом при сверке ссылок не найдено (§4b); сценарии S1–S9 в игре не проигрывались.
 
 ## 4a. Матрица зависимостей на `717871b8`
 
@@ -59,3 +59,23 @@
 ## 6. Что не выполнено
 
 Unity EditMode/PlayMode — берёт на себя владелец; нативные ветки (cold, rebase, stall, Phase B после Reaction, `PhaseBStateChanged`, срочные возвраты, лимиты) — не блокируют, остаются не наблюдавшимися. Остальные fixture S1–S9 (§4, колонка «Чего нет») пишутся в начале этапов. Скрипты `run.sh`, `patchrun.sh`, `regress.py` лежат только в `D:/aiv-work`.
+
+## 7. Сверка ссылок ТЗ с кодом на `717871b8` (§4b)
+
+Проверено чтением и `grep`; поведение не исполнялось.
+
+| Утверждение ТЗ | Результат |
+|---|---|
+| `ReconcileEconomyCompletionReservations` L817/858/887, `ReleaseDeferredEconomyIncomeCover` L862, `OperationContinuationWindow.Settle` L865, `SetMobilizationOpen` L137 | совпадает; Settle/Release/Reconcile стоят в блоке первого Phase B, Reconcile на L887 — перед `UseSurplus` |
+| `MarkStalled` в `RunTurn` | L485 |
+| флаг `ownershipFreshAfterPhaseA` | писатели L308, L424, L969, сброс L550 — 3 писателя + сброс, как в ТЗ |
+| `ResolveActive`/`RefreshActors` | старт L177/182, повтор L279/281, итог L880/1025, `RefreshOperationalFrame` L1145 |
+| `BuildMissionSet` | единственный production-вызов L555 (учесть в Э4: общий `Build` для «иных callers» не нужен, если так и останется) |
+| `RecordProvisionFailure/Success` в `MissionOutcomeLedger` | пишут только `PendingFailure`/`Provisioned` строки (`MissionOutcomeLedger.cs` L52–64) |
+| вызовы `cycleLedger.RecordProvision*` в цикле | `RunTurn` L668/725/739 — только запись; чтение проверить повторно на входной ревизии Э3 |
+| `CapabilityPoolExhaustionRegistry` | кроме `RunTurn` использует **Reaction** (`ReactionRoundExecutor` L199–210 — тот же ledger и тот же реестр): при Э3 Reaction остаётся прежним потребителем реестра, его зависимость не исчезает |
+| `TurnLoop.cs` | без правок кода после `f46e4529` |
+
+## 8. Конфигурация фикстур
+
+Константы, от которых зависят проверки: `AiConfigV2.maxMidTurnStepsPerTurn = 96`, `maxMidTurnNoProgressCycles = 2`, `maxEndOfTurnTempoReruns = 1`, `lifecycleReturnHomeThreatSeverity = 0.25`; временное `attackRequiresDefenderCoverage = false`. Фикстуры S1/S2/S4/S9 не используют карту, seed и руки: их входы заданы в коде теста (игроки `PlayerSetupData`, ходы 21/31/5–7/10–11, стоимости и AP из тела теста). Недетерминированные партии — только smoke. Сохранённые входы миров для S3/S5/S8 появятся вместе с их fixtures.

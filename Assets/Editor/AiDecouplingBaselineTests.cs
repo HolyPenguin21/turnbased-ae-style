@@ -54,7 +54,7 @@ namespace Game.EditorTests
 
             StrategicResourceReservationLedger.BeginTurn(player, turn);
             StrategicResourceReservationLedger.BeginTurn(other2, turn);
-            trace.Record(turn, "Pass", "turn_start", ap: 0f);
+            trace.Record(turn, "Pass", "turn_start");
 
             var ownerCost = new ResourceCost(human: 2, materials: 3);
             var otherCost = new ResourceCost(energy: 2, tech: 1);
