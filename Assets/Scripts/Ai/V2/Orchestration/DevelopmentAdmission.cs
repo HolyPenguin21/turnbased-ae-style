@@ -9,9 +9,8 @@ using Game.Cards;
 
 namespace Game.Ai.V2
 {
-    // Development-lane strategic-admission fingerprint. A mechanical partial of Pipeline,
-    // not a second admission owner: RunTurn (AiStrategyV2Pipeline.cs) is still the only
-    // caller, through DevelopmentAdmissionFingerprint.
+    // Development-lane strategic-admission fingerprint. The domain owner of the
+    // Development key; the common readmission (StrategicReadmission) only compares keys.
     //
     // The key carries exactly what DevelopmentOpportunityEvaluator.Enumerate reads, so an
     // unchanged key provably cannot change a Development decision:
@@ -28,24 +27,24 @@ namespace Game.Ai.V2
     //   * the composition of every known threat EquipmentDeltaParts evaluates against;
     //   * ForceNeedModel.JustifiedForceNeed (asset threats, edge, idle-stock surplus) — the need
     //     every minted-output score is weighted by. Preparation has independent structural facts.
-    public static partial class Pipeline
+    internal static class DevelopmentAdmission
     {
         // AP retains both the exact pool and the known offering affordability thresholds:
         //   * per offering: ResearchProductionSystem.AttemptApCost(card)
         //     (the READY creation gate), and
         //   * per Unit/Equipment card in hand: CardData.EffectivePlayApCost.
-        internal static string DevelopmentAdmissionFingerprint(WorldSnapshot snapshot,
+        internal static string Fingerprint(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
             string resources, int handVersion, AiHandData hand = null, PlayerSetupData player = null,
             PlayerRoot root = null, AiTurnContext ctx = null) =>
             $"axis={DesireAxis.Development}"
             + $"|window={(snapshot != null ? DevelopmentInvestmentGate.OpenMask(player, snapshot.TurnNumber) : "----")}"
-            + "|apfit=" + DevelopmentApAffordability(snapshot, hand, actionPoints,
+            + "|apfit=" + ApAffordability(snapshot, hand, actionPoints,
                 root != null && ctx != null ? StrategicSpendability.SpendableAp(player, root, ctx) : (float?)null)
             + $"|res={resources}"
-            + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
+            + $"|price={PriceInputs(snapshot, player, root, ctx)}"
             + $"|hand={handVersion}"
-            + $"|recipients={DevelopmentRecipientFacts(player, hand)}"
+            + $"|recipients={RecipientFacts(player, hand)}"
             // The need's exact inputs, not its value: computing the value runs the Monte Carlo
             // behind every known fight, which this "did anything change" key must not pay for.
             + $"|need={(snapshot != null ? ForceNeedModel.ChangeKey(snapshot) : "none")}"
@@ -53,11 +52,11 @@ namespace Game.Ai.V2
             // cards this player already made lately (DevelopmentDiversity).
             + $"|supply={(snapshot?.Self != null ? (snapshot.Self.Deck?.Count ?? 0) + (snapshot.Self.Hand?.Count ?? 0) : -1)}"
             + $"|repeat={DevelopmentDiversity.HistoryKey(player, snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0)}"
-            + $"|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
+            + $"|{Facts(snapshot, activeIntents)}";
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
         // verified starvation block — every resource fact the canonical card price reads.
-        internal static string DevelopmentPriceInputs(WorldSnapshot snapshot, PlayerSetupData player,
+        internal static string PriceInputs(WorldSnapshot snapshot, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx)
         {
             int turn = snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0;
@@ -80,7 +79,7 @@ namespace Game.Ai.V2
         }
 
         // The known offering thresholds plus the exact AP pool needed by preparation.
-        internal static string DevelopmentApAffordability(WorldSnapshot snapshot, AiHandData hand,
+        internal static string ApAffordability(WorldSnapshot snapshot, AiHandData hand,
             int actionPoints, float? spendableAp = null)
         {
             // Physical AP can stay unchanged when another owner's hold is released/placed.
@@ -107,7 +106,7 @@ namespace Game.Ai.V2
 
         // Enumerate reads these live own recipients too. Occupancy alone can change legality
         // without changing power; equal aggregate stats do not identify the physical recipient.
-        internal static string DevelopmentRecipientFacts(PlayerSetupData player, AiHandData hand)
+        internal static string RecipientFacts(PlayerSetupData player, AiHandData hand)
         {
             var rows = new List<string>();
             foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
@@ -139,7 +138,7 @@ namespace Game.Ai.V2
             return string.Join(";", rows.OrderBy(x => x, System.StringComparer.Ordinal));
         }
 
-        internal static string DevelopmentAdmissionFacts(WorldSnapshot snapshot,
+        internal static string Facts(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents)
         {
             DevelopmentReadiness rd = snapshot?.Development;

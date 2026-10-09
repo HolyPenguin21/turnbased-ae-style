@@ -71,17 +71,17 @@ namespace Game.EditorTests
             var hand = new AiHandData(null, default, 0);
             hand.SetCurrentTurn(5);
             var host = new CardData(AttachmentSlotTests.Host(hero: true)); hand.AddCard(host);
-            string before = Pipeline.DevelopmentRecipientFacts(null, hand);
+            string before = DevelopmentAdmission.RecipientFacts(null, hand);
             var output = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Fate, 4);
             output.activationApCost = 2; output.resourceCost = new ResourceCost { energy = 99 };
             var pending = ResearchProductionSystem.MintCard(output); hand.AddCard(pending);
-            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.RecipientFacts(null, hand), Is.Not.EqualTo(before));
             hand.SetCurrentTurn(6);
             Assert.That(hand.Hand.Contains(pending), Is.True);
             Assert.That(pending.EffectivePlayApCost, Is.EqualTo(2));
             Assert.That(pending.EffectivePlayResourceCost, Is.Null);
             hand.RemoveCard(pending);
-            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.EqualTo(before));
+            Assert.That(DevelopmentAdmission.RecipientFacts(null, hand), Is.EqualTo(before));
         }
 
         [TestCase(AttachmentSlot.Mutator, EquipmentStat.Fate)]

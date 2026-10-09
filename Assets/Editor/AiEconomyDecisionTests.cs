@@ -2289,11 +2289,11 @@ namespace Game.EditorTests
                 [DesireAxis.Economy] = "state:17",
             };
 
-            Assert.That(Pipeline.StrategicAdmissionNeeded(
+            Assert.That(StrategicReadmission.Needed(
                 handled, DesireAxis.Economy, "state:17"), Is.False);
-            Assert.That(Pipeline.StrategicAdmissionNeeded(
+            Assert.That(StrategicReadmission.Needed(
                 handled, DesireAxis.Economy, "state:18"), Is.True);
-            Assert.That(Pipeline.StrategicAdmissionNeeded(
+            Assert.That(StrategicReadmission.Needed(
                 handled, DesireAxis.Development, "state:17"), Is.True);
         }
 

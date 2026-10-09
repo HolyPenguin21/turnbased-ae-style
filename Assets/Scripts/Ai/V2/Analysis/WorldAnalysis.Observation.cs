@@ -361,7 +361,7 @@ namespace Game.Ai.V2
         }
 
         // The one identity of an asset threat: the Threat invalidation above and the Aggression
-        // admission fingerprint (Pipeline.AggressionAdmissionFingerprint) compare the same key.
+        // admission fingerprint (AggressionAdmission.Fingerprint) compare the same key.
         internal static string ThreatKey(AssetThreatSnapshot t)
         {
             if (t == null) return "-";
