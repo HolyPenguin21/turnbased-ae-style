@@ -77,6 +77,12 @@ namespace Game.Ai.V2
                 return new GenerationOutcome(false, false, null, false,
                     $"generation no longer valid ({why})");
 
+            // Every paid attachment Challenge enters the same history, regardless of the
+            // consumer or the roll result. Rejected attempts and existing hand cards do not.
+            bool historyChanged = g.CardDef.cardType == CardType.Equipment;
+            if (historyChanged)
+                DevelopmentDiversity.RecordAttempt(player, ctx.TurnNumber, g.CardDef);
+
             bool costMoved = ap0 != root.ActionPoints
                 || h0 != root.GetResource(ResourceType.Human)
                 || e0 != root.GetResource(ResourceType.Energy)
@@ -87,7 +93,7 @@ namespace Game.Ai.V2
                 ResearchProductionSystem.RollChallenge(g.Hero, g.CardDef);
             if (!outcome.Success)
                 return new GenerationOutcome(true, false, null,
-                    costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
+                    historyChanged || costMoved || (g.Mode == ResearchProductionMode.Research && wasHidden),
                     $"Challenge lost ({outcome.Successes}/{outcome.Required})");
 
             CardData minted = ResearchProductionSystem.MintCard(g.CardDef);

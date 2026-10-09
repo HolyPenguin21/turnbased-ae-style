@@ -167,9 +167,11 @@ namespace Game.EditorTests
                     Deck = Array.Empty<CardDefinition>(),
                 },
             };
-            var equipment = new CardDefinition { cardType = CardType.Equipment };
+            var equipment = new CardDefinition { cardType = CardType.Equipment,
+                apCost = 3, resourceCost = new ResourceCost { energy = 4 } };
             opportunity.Card = equipment;
-            plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
+            plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true,
+                SuccessChance = opportunity.SuccessChance };
             plan.GeneratedEquipmentDef = equipment;
             float resourceCost = StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snapshot);
             // No recipient => no WorthIt matchup witness: value = delta x persistence, applied ONCE.
@@ -197,9 +199,10 @@ namespace Game.EditorTests
                 Kind = MaterializationChainKind.GenerateAttachUpgrade,
                 ApCost = 2f,
             };
-            var equipment = new CardDefinition { cardType = CardType.Equipment };
+            var equipment = new CardDefinition { cardType = CardType.Equipment, apCost = 2 };
             opportunity.Card = equipment;
-            plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
+            plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true,
+                SuccessChance = opportunity.SuccessChance };
             plan.GeneratedEquipmentDef = equipment;
             float useful = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
                 opportunity, plan, null, null, null, null);
@@ -340,6 +343,58 @@ namespace Game.EditorTests
                 "No defender or deck benchmark means no witnessed combat delta (the efficiency value stands, no fabricated threat)");
             Assert.That(primary.Attack, Is.EqualTo(1));
             Assert.That(primary.Equipment, Is.Null);
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void GeneratedAttachmentCostsOnlyChargeTheSuccessfulFollowupAtItsChance(AttachmentSlot slot)
+        {
+            var host = new CardData(AttachmentSlotTests.Host());
+            host.Definition.apCost = 3;
+            host.Definition.resourceCost = new ResourceCost { energy = 2 };
+            var equipment = AttachmentSlotTests.Attachment(slot);
+            equipment.apCost = 1;
+            equipment.activationApCost = 1;
+            equipment.resourceCost = new ResourceCost { materials = 3 };
+            var generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
+            var snap = PrepSnapshot(true, true);
+            var inv = new CapabilityInventory();
+            var demand = new AxisDemand { Capability = CapabilityKind.FieldCombatPower,
+                RequestingAxis = DesireAxis.Aggression, DesiredAmount = 1 };
+            var projected = EquipmentSystem.Project(host.Definition, null, null, equipment).Abilities;
+            var plan = MaterializationPlanFactory.MakeGeneratedPlan(
+                MaterializationChainKind.GenerateAttachDeploy, demand, generation, host, 0, true,
+                new PlacementOption(PrepSite, DeploymentKind.Garrison, new ArmyData { IsGarrison = true }),
+                projected);
+            float fullAp = plan.ApCost;
+            float fullCost = ActionPrice.ToCardScore(fullAp)
+                + StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snap);
+            float attemptCost = ActionPrice.ToCardScore(1f)
+                + StrategicCardEvaluator.StrategicResourceCostValue(equipment.resourceCost, snap);
+            float penalties = AiConfigV2.stratChainGenerationStepPenalty + AiConfigV2.stratChainAttachStepPenalty;
+            foreach (float chance in new[] { 0f, 0.5f, 1f })
+            {
+                generation.SuccessChance = chance;
+                var phaseA = StrategicCardEvaluator.ScoreForDemand(plan, demand, plan.ExpectedTraits,
+                    inv, host.Definition.moveMax, false, snap);
+                var phaseB = StrategicCardEvaluator.ScoreSurplus(plan, inv, false, false, null, projected, snap);
+                float expected = -(chance * fullCost + (1f - chance) * attemptCost + penalties);
+                Assert.That(phaseA.Breakdown.ResourceEfficiency, Is.EqualTo(expected).Within(1e-5f));
+                Assert.That(phaseB.Breakdown.ResourceEfficiency, Is.EqualTo(expected).Within(1e-5f));
+                Assert.That(plan.ApCost, Is.EqualTo(fullAp), "Expected pricing must not reduce the funded chain");
+                Assert.That(plan.ResCost.energy, Is.EqualTo(2));
+                Assert.That(plan.ResCost.materials, Is.EqualTo(3));
+            }
+
+            var op = new DevelopmentOpportunity { Card = equipment, Generation = generation,
+                RecipientCard = host, SuccessChance = 0.5f };
+            generation.SuccessChance = op.SuccessChance;
+            var upgrade = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(op, generation, DesireAxis.Development);
+            float ready = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(op, upgrade, snap, null, null, null);
+            Assert.That(ready, Is.EqualTo(-(attemptCost + ActionPrice.ToCardScore(0.5f) + penalties)).Within(1e-5f),
+                "READY funds creation only, but prices the same success-contingent attachment");
+            Assert.That(upgrade.ApCost, Is.EqualTo(1f));
+            Assert.That(upgrade.DeferredAttachmentAp, Is.EqualTo(1f));
         }
 
         // ---- Unified Research/Production preparation scoring (operator = a hero card; the site =

@@ -73,6 +73,36 @@ namespace Game.EditorTests
             Assert.That(DevelopmentDiversity.FamilyOf(null), Is.Null);
         }
 
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void GeneratedAttachmentDeploymentUsesTheSameRepeatFactorAndHandItemsStayUnchanged(AttachmentSlot slot)
+        {
+            var host = new CardData(AttachmentSlotTests.Host());
+            var equipment = AttachmentSlotTests.Attachment(slot, EquipmentStat.Attack, 4);
+            equipment.authoredKey = "repeat-output";
+            var snap = new WorldSnapshot { Observer = player, TurnNumber = 8 };
+            var plan = new MaterializationPlan { Kind = MaterializationChainKind.GenerateAttachDeploy,
+                BaseCardInHand = host, GeneratedEquipmentDef = equipment,
+                Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true } };
+            float fresh = StrategicCardEvaluator.EquipmentUpgradeValue(plan, snap);
+            Assert.That(fresh, Is.GreaterThan(0f));
+            DevelopmentDiversity.RecordAttempt(player, 8, equipment);
+            float factor = DevelopmentDiversity.RepeatFactor(player, 8, equipment, out _);
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(plan, snap),
+                Is.EqualTo(fresh * factor).Within(1e-5f));
+
+            // Existing item, first on an existing body, then on a generated body: its purchase
+            // has already happened and cannot receive a production repeat discount again.
+            plan.GeneratedEquipmentDef = null;
+            plan.EquipmentInHand = new CardData(equipment);
+            plan.Generation = null;
+            plan.Kind = MaterializationChainKind.AttachDeploy;
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(plan, snap), Is.EqualTo(fresh).Within(1e-5f));
+            plan.Generation = new GenerationStep { CardDef = host.Definition, ProducesEquipment = false };
+            plan.Kind = MaterializationChainKind.GenerateAttachDeploy;
+            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(plan, snap), Is.EqualTo(fresh).Within(1e-5f));
+        }
+
         [Test]
         public void PureStatCard_HasNoSaturatingFamilyAndTwoAbilitiesOneFamily()
         {
