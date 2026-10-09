@@ -221,7 +221,7 @@ namespace Game.Ai.V2
                     }
                     // The delivery is now a durable intent: protect it through the ONE deferred
                     // writer for active builds, same owner key and rules as every later Phase A.
-                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                    EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                         player, ctx.TurnNumber, delivery);
                     demand.EconomyPreferredBuilderArmyId = builderId;
                     delivered = 1f;

@@ -676,12 +676,8 @@ namespace Game.Ai.V2
                         bool rebaseMoved = false;
                         yield return AviationRebasePlanner.ExecuteContinuation(
                             player, root, ctx, rebaseWing, v => rebaseMoved = v);
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        WorldAnalysis.StepObservationStamp afterRebase =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                            beforeRebase, afterRebase, null);
+                        snapshot = WorldAnalysis.ObserveSettled(
+                            snapshot, player, root, hand, ctx, beforeRebase, null);
                         settledSteps++;
                         ReservationInvariants.CheckBoundary(player, root, ctx,
                             $"step {settledSteps} aviation-rebase #{rebaseWing.Id}");
@@ -725,12 +721,8 @@ namespace Game.Ai.V2
                         yield return ReconAirExecutor.RunActorStep(player, root, ctx, snapshot,
                             recovery, recoveryResult, recoveryApBefore, recoveryFocus,
                             perMissionResult: null, control: recoveryControl);
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        WorldAnalysis.StepObservationStamp afterRecovery =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                            beforeRecovery, afterRecovery, null);
+                        snapshot = WorldAnalysis.ObserveSettled(
+                            snapshot, player, root, hand, ctx, beforeRecovery, null);
                         settledSteps++;
                         ReservationInvariants.CheckBoundary(player, root, ctx,
                             $"step {settledSteps} recovery #{recovery.Id}");
@@ -910,9 +902,8 @@ namespace Game.Ai.V2
                     if (selected == null)
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
-                        foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
-                                     .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                            turnSession.Settle(outcome, snapshot, reconObjectives);
+                        turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
+                            snapshot, reconObjectives);
                         noProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
@@ -943,13 +934,9 @@ namespace Game.Ai.V2
                             selected, stepResults, snapshot, enforceFreshPlan: true);
                     }
 
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
                     ExecutionResult settled = stepResults.FirstOrDefault();
-                    WorldAnalysis.StepObservationStamp afterStep =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeStep, afterStep, settled);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeStep, settled);
 
                     foreach (ExecutionResult er in stepResults)
                     {
@@ -960,12 +947,11 @@ namespace Game.Ai.V2
                     }
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
-                    foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
-                                 .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                        turnSession.Settle(outcome, snapshot, reconObjectives);
+                    turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
+                        snapshot, reconObjectives);
                     // A single atomic move may consume the last MP after Provisioning had
                     // legitimately reserved this owner's completion AP. Settle its stage now.
-                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                         player, root, hand, ctx);
 
                     settledSteps++;
@@ -1036,11 +1022,11 @@ namespace Game.Ai.V2
                 yield return RunTypedAdmissions();
                 // Also reconcile on bounded/no-progress exits where no additional typed
                 // admission occurs: Phase B must see AP that no actor can spend on a build.
-                InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                     player, root, hand, ctx);
                 // Every build still deferred now cannot complete this turn: release the part of
                 // its hold the next income tick covers, so Phase B may spend it.
-                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
+                EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover(player, ctx);
                 // Continuing Hard operations had their funding chance in the loop above; their
                 // Phase-A protection ends here so Phase B sees every AP nobody will spend.
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
@@ -1064,7 +1050,7 @@ namespace Game.Ai.V2
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     // A prior Phase B action may have spent AP or removed a build card.
                     // Revalidate each owner's stronger completion claim before the next pass.
-                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                         player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
@@ -1072,12 +1058,8 @@ namespace Game.Ai.V2
                         phaseBRound, reconObjectives);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    WorldAnalysis.StepObservationStamp afterManagement =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeManagement, afterManagement, null);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeManagement, null);
                     phaseB.Accumulate(phaseBRound);
                     yield return ctx.WaitAtObserverActionBoundary();
                     // Phase B has spent first; return legs now take what is left.
@@ -1185,12 +1167,8 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                                snapshot, player, root, hand, ctx);
-                            WorldAnalysis.StepObservationStamp afterCold =
-                                WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                            WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                                beforeCold, afterCold, null);
+                            snapshot = WorldAnalysis.ObserveSettled(
+                                snapshot, player, root, hand, ctx, beforeCold, null);
                             yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
                             OperationalFrame coldFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
                             reconObjectives = coldFrame.Recon;
@@ -1222,12 +1200,8 @@ namespace Game.Ai.V2
                     bool recallChanged = false;
                     yield return AviationRebasePlanner.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    WorldAnalysis.StepObservationStamp afterRecall =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeRecall, afterRecall, null);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"air-support recall #{unsafeWing.Id}");
                     yield return ctx.WaitAtObserverActionBoundary();
@@ -1253,7 +1227,7 @@ namespace Game.Ai.V2
             // the pre-execution Known/MapKnowledge layers.
             if (!phaseBHandled)
             {
-                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
+                EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover(player, ctx);
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);

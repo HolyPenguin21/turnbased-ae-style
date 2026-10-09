@@ -2802,9 +2802,9 @@ namespace Game.EditorTests
             AxisDemand winner = DeferredEconomyDemand(
                 builder, new HexCoord(4, 0), ResourceType.Materials, human: 0, materials: 3);
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                 snapshot, player, 12, first);
-            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                 snapshot, player, 12, winner);
 
             string winnerOwner = InfrastructureFulfillment.EconomyReservationOwner(winner);
@@ -2823,7 +2823,7 @@ namespace Game.EditorTests
             var player = new Game.Players.PlayerSetupData();
             StrategicResourceReservationLedger.BeginTurn(player, 13);
             var completionCost = new ResourceCost { human = 2 };
-            InfrastructureFulfillment.ReserveEconomyCost(player, 13,
+            EconomyReservationLifecycle.ReserveEconomyCost(player, 13,
                 ReservationOwner.ForPass("Economy:completion"), completionCost, 1f);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             ArmySnapshot builder = EconomyBuilder(62, 2, 5f);
@@ -2832,7 +2832,7 @@ namespace Game.EditorTests
                 builder, new HexCoord(4, 0), ResourceType.Materials,
                 human: 0, materials: 3);
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                 snapshot, player, 13, alternative);
 
             Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
@@ -3048,7 +3048,7 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+            Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.False,
                 "a route beyond the builder's own movement budget must not freeze resources " +
                 "on the very first turn the site is scored — that is what the durable-intent " +
@@ -3058,14 +3058,14 @@ namespace Game.EditorTests
             {
                 new EconomyBuilderRouteSnapshot { ArmyId = 7, TravelCost = 3, IsOnTarget = false },
             };
-            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+            Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.True, "on-target-next-turn must reserve");
 
             demand.EconomyBuilderRoutes = new[]
             {
                 new EconomyBuilderRouteSnapshot { ArmyId = 7, TravelCost = 0, IsOnTarget = true },
             };
-            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+            Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.True, "already on target must always reserve");
 
             demand.EconomyBuilderRoutes = new[]
@@ -3075,7 +3075,7 @@ namespace Game.EditorTests
                     ArmyId = 7, TravelCost = int.MaxValue, IsOnTarget = false,
                 },
             };
-            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+            Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.False);
         }
 
@@ -3684,7 +3684,7 @@ namespace Game.EditorTests
             };
             StrategicResourceReservationLedger.BeginTurn(player, 20);
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                 player, 20, intent);
 
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
@@ -3919,11 +3919,11 @@ namespace Game.EditorTests
                 EconomyBuildResourceCost = new ResourceCost { human = 3 } };
             try
             {
-                Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(null, demand), Is.True,
+                Assert.That(EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(null, demand), Is.True,
                     "Phase A must select an accepted escort prerequisite before clearing deferred holds");
                 StrategicResourceReservationLedger.BeginTurn(player, turn);
-                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
-                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
+                EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
+                EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForPendingHero(player, turn, demand);
                 Assert.That(StrategicResourceReservationLedger.Active(player, turn,
                     StrategicReservedResource.Human), Is.EqualTo(3f), "repeat admission must not stack the hold");
                 Assert.That(StrategicResourceReservationLedger.Active(player, turn,

@@ -153,7 +153,7 @@ namespace Game.Ai.V2
 
             void ProtectActiveEconomyBuild(MissionIntent active)
             {
-                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                     player, ctx.TurnNumber, active);
                 if (active.Economy.BuildCard != null)
                     result.Reservation.ClaimedEconomyBuildCards.Add(active.Economy.BuildCard);
@@ -279,7 +279,7 @@ namespace Game.Ai.V2
             if (states.Count == 0 && deferredStates.Count == 0)
             {
                 if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
-                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
+                    EconomyReservationLifecycle.ClearDeferredEconomyResources(player, ctx.TurnNumber);
                 if (coldStates.Count > 0)
                 {
                     result.Reservation.UnresolvedDemands.Clear();
@@ -303,7 +303,7 @@ namespace Game.Ai.V2
                         && (!s.Demand.IsPersistenceDeferred
                             || InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(s.Demand) != null))
                     .Select(s => s.Demand)
-                    .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
+                    .Where(d => EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources(snap, d))
                     .ToList();
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
@@ -319,14 +319,14 @@ namespace Game.Ai.V2
                 // (economyBuildObligations is empty whenever one does), so every deferred row is an
                 // earlier pass's demand hold; a re-admission pass that now protects a different
                 // site replaces it instead of stacking a second hold for the same build card.
-                InfrastructureFulfillment.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
+                EconomyReservationLifecycle.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
                     InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
                         ?? InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
                 if (InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild) != null)
-                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
+                    EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForPendingHero(
                         player, ctx.TurnNumber, protectedEconomyBuild);
                 else
-                    InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                    EconomyReservationLifecycle.ReserveDeferredEconomyResources(
                         snap, player, ctx.TurnNumber, protectedEconomyBuild);
                 AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
@@ -338,7 +338,7 @@ namespace Game.Ai.V2
                 // Economy's authoritative view. A dirty-axis subset that never included Economy
                 // (economyAxisAuthoritative == false) says nothing about whether Economy's build
                 // target still exists; the hold must be left exactly as it was.
-                InfrastructureFulfillment.ClearDeferredEconomyResources(
+                EconomyReservationLifecycle.ClearDeferredEconomyResources(
                     player, ctx.TurnNumber);
             }
 
@@ -668,7 +668,7 @@ namespace Game.Ai.V2
                                 // protected earlier in this pass and stay protected.
                                 string suppressedOwner = state.Demand.EconomyHeroBuildOwner;
                                 if (suppressedOwner != null)
-                                    InfrastructureFulfillment.ClearDeferredEconomyResources(
+                                    EconomyReservationLifecycle.ClearDeferredEconomyResources(
                                         player, ctx.TurnNumber, suppressedOwner);
                             }
                         }

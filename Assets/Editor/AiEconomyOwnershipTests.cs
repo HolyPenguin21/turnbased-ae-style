@@ -415,11 +415,11 @@ namespace Game.EditorTests
                 EconomyTaskKind.BuildExtraction, (int)ResourceType.Materials, Site));
             string b = EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(
                 EconomyTaskKind.BuildExtraction, (int)ResourceType.Materials, new HexCoord(3, 0)));
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 0,
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 0,
                 StrategicReservationReason.EconomyDeferredBuild);
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(b), new ResourceCost { energy = 2 }, 0,
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(b), new ResourceCost { energy = 2 }, 0,
                 StrategicReservationReason.EconomyDeferredBuild);
-            InfrastructureFulfillment.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 3);
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 1, ReservationOwner.ForPass(a), new ResourceCost { materials = 4 }, 3);
             StrategicResourceReservationLedger.ReleaseByOwner(p, 1, a);
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(p, 1, b,
                 StrategicReservationReason.EconomyDeferredBuild), Is.True);

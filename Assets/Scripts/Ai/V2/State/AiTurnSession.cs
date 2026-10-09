@@ -125,7 +125,7 @@ namespace Game.Ai.V2
             EnsureActive();
             RequireFrame(snapshot);
             if (result == null) { MissionContinuityLayer.ReconcileStep(Player, TurnNumber, null); return; }
-            IntentTrace before = TraceIntent(result.IntentKey);
+            LifecycleAudit.IntentTrace before = LifecycleAudit.Trace(PersistentState, Leases, result.IntentKey);
             MissionContinuityLayer.ReconcileStep(Player, TurnNumber, result);
             if (result.MadeProgress && result.StateVersionAfter >= 0)
                 _progressReceipts.Add(result.StateVersionAfter);
@@ -141,81 +141,19 @@ namespace Game.Ai.V2
                 Leases.ReplaceOperationActors(result.IntentKey, projection);
                 projection.Close();
             }
-            LogTransition(result, before);
+            LastLifecycleLine = LifecycleAudit.LogTransition(PersistentState, Leases, result, before);
         }
 
-        // The durable intent as the lifecycle line sees it: identity kept so a rekey is visible.
-        private readonly struct IntentTrace
+        // Domain settlement of one admission's normalized outcomes: only the attempts this cycle
+        // actually made (a ledger row of an unattempted mission is not a step). Continuity decides
+        // each intent's fate; the lease projection stays in Settle.
+        internal void SettleStep(IEnumerable<MissionStepResult> outcomes,
+            ISet<StableMissionKey> attempted, WorldSnapshot snapshot,
+            IReadOnlyList<ReconObjective> objectives)
         {
-            internal readonly MissionIntent Intent;
-            internal readonly string State;
-            internal readonly int Stall;
-            internal readonly int ActorCount;
-            internal readonly int ResourceRows;
-            internal IntentTrace(MissionIntent intent, string state, int stall, int actors, int resources)
-            { Intent = intent; State = state; Stall = stall; ActorCount = actors; ResourceRows = resources; }
-        }
-
-        private IntentTrace TraceIntent(MissionIntentKey key)
-        {
-            PersistentState.TryGet(key, out MissionIntent intent);
-            return new IntentTrace(intent,
-                intent == null ? "none" : intent.Status + (intent.Status == IntentStatus.Suspended
-                    ? "/" + intent.Suspended : ""),
-                intent?.StallTurns ?? 0, Leases.ActorsFor(key).Count, Leases.ResourcesFor(key).Count);
-        }
-
-        // The single lifecycle-transition line, one per settled step, showing the whole chain:
-        //   exec   = what Execution/Provisioning/Allocation reported,
-        //   norm   = how the result boundary (ledger) normalized it,
-        //   domain = what Continuity decided for the durable intent,
-        //   claims = the lease effect. Domain continuity keeps its own detail lines.
-        private void LogTransition(MissionStepResult result, IntentTrace before)
-        {
-            MissionIntentKey key = result.IntentKey;
-            var dirty = StrategicInvalidationReason.None;
-            foreach (WorldDelta delta in result.WorldDeltas) dirty |= delta.DirtyFacts;
-            string source = result.StopReason.HasValue ? "execution"
-                : result.ProvisionFailureKindValue.HasValue ? "provisioning"
-                : result.AllocationDeferReason.HasValue ? "deferral" : "none";
-            // The step may have created the durable intent, kept it, rekeyed it or retired it.
-            bool alive = before.Intent != null
-                ? PersistentState.All.Contains(before.Intent)
-                : PersistentState.TryGet(key, out _);
-            IntentTrace after = alive
-                ? TraceIntent(before.Intent != null ? before.Intent.IntentKey : key) : default;
-            string fate = before.Intent == null ? (alive ? "created" : "none")
-                : !alive ? "retired"
-                : before.Intent.IntentKey.Equals(key) ? "kept" : "rekeyed:" + before.Intent.IntentKey;
-            string newState = alive ? after.State : (before.Intent == null ? "none" : "retired");
-            string payloads = (result.GetPayload<ReconStepPayload>() != null ? "recon," : "")
-                + (result.GetPayload<RaidStepPayload>() != null ? "raid," : "")
-                + (result.GetPayload<AttackStepPayload>() != null ? "attack," : "")
-                + (result.GetPayload<ActiveDefenceStepPayload>() != null ? "defence," : "")
-                + (result.GetPayload<EconomyStepPayload>() != null ? "economy," : "")
-                + (result.GetPayload<DevelopmentStepPayload>() != null ? "development," : "")
-                + (result.GetPayload<GroundCombatStepPayload>() != null ? "ground," : "");
-            var inv = System.Globalization.CultureInfo.InvariantCulture;
-            string line = ($"[AI][V2][Lifecycle] operation={key} kind={key.Kind}"
-                + $" | exec stop={result.StopReason?.ToString() ?? "-"}"
-                + $" prov={result.ProvisionFailureKindValue?.ToString() ?? "-"}"
-                + $" defer={result.AllocationDeferReason?.ToString() ?? "-"}"
-                + $" progress={(result.MadeProgress ? 1 : 0)} moved={result.StepsMoved}"
-                + $" ap={result.ApSpent.ToString("0.##", inv)} rev={result.StateVersionAfter}"
-                + $" sat={(result.ObjectiveSatisfied ? 1 : 0)}/{(result.ObjectiveSatisfiedExternally ? 1 : 0)}"
-                + $" mover={(result.MoverArmyId.HasValue ? result.MoverArmyId.Value.ToString() : "-")}"
-                + $" payload=[{payloads.TrimEnd(',')}]"
-                + $" | norm src={source} result={result.Disposition}"
-                + $" | domain intent={fate} old={before.State} new={newState}"
-                + $" stall={before.Stall}>{(alive ? after.Stall : 0)}"
-                + $" | claims actors={before.ActorCount}>{Leases.ActorsFor(key).Count}"
-                + $" [{string.Join(",", Leases.ActorsFor(key))}]"
-                + $" resources={before.ResourceRows}>{Leases.ResourcesFor(key).Count}"
-                + $" dirty={dirty}");
-            LastLifecycleLine = line;
-            // A repeated identical transition for the same operation (a failed attempt retried by
-            // later cycles) is written once.
-            AiDebugLog.WriteDeduped("lifecycle:" + key, line);
+            foreach (MissionStepResult outcome in outcomes.Where(o => o != null
+                         && attempted.Contains(o.AttemptKey)).ToList())
+                Settle(outcome, snapshot, objectives);
         }
 
         // End-of-turn invariants. Violations are written as [AI][V2][Invariant] ERROR lines and
@@ -229,7 +167,12 @@ namespace Game.Ai.V2
             if (_audited) return violations;
             _audited = true;
             int checkedOperations = 0;
-            try { CollectViolations(snapshot, objectives, violations, ref checkedOperations); }
+            try
+            {
+                LifecycleAudit.CollectViolations(snapshot, objectives, violations, ref checkedOperations,
+                    PersistentState, Leases, _lastActorIntents, _progressReceipts,
+                    _revisionAtBegin, _commitsAtBegin);
+            }
             catch (Exception e) { violations.Add("audit failed: " + e.GetType().Name + ": " + e.Message); }
 
             int bumps = WorldDeltaLifecycle.Current - _revisionAtBegin;
@@ -241,50 +184,6 @@ namespace Game.Ai.V2
             foreach (string v in violations)
                 AiDebugLog.Write("[AI][V2][Invariant] ERROR " + v);
             return violations;
-        }
-
-        private void CollectViolations(WorldSnapshot snapshot, IReadOnlyList<ReconObjective> objectives,
-            List<string> violations, ref int checkedOperations)
-        {
-            int bumps = WorldDeltaLifecycle.Current - _revisionAtBegin;
-            int commits = WorldDeltaLifecycle.CommitEvents - _commitsAtBegin;
-            // 1. Every operation that owns actor claims still has a durable intent (else a retired
-            //    operation leaked its claim), and every tracked operation's claims equal the
-            //    detached derivation of the same intent.
-            foreach (MissionIntentKey op in Leases.Operations())
-                if (!PersistentState.TryGet(op, out _))
-                    violations.Add($"claim owner {op} has no durable intent; actors=[{string.Join(",", Leases.ActorsFor(op))}]");
-            if (snapshot?.Self?.Armies != null)
-                foreach (MissionIntent intent in _lastActorIntents)
-                {
-                    if (intent == null || !PersistentState.TryGet(intent.IntentKey, out MissionIntent live)
-                        || !ReferenceEquals(live, intent))
-                        continue;
-                    checkedOperations++;
-                    var derived = new HashSet<int>(MissionActorPolicy.Build(new[] { intent }, snapshot,
-                        objectives).ClaimedArmyIdSet);
-                    var table = new HashSet<int>(Leases.ActorsFor(intent.IntentKey));
-                    if (!derived.SetEquals(table))
-                        violations.Add($"claim table != derived view for {intent.IntentKey}: "
-                            + $"table=[{string.Join(",", table.OrderBy(x => x))}] "
-                            + $"derived=[{string.Join(",", derived.OrderBy(x => x))}]");
-                }
-
-            // 2. Revision: advances equal commit events, no transaction is left open, and every
-            //    step that claimed progress carries a receipt from this turn that is not in the future.
-            if (bumps != commits)
-                violations.Add($"revision advanced {bumps} time(s) but {commits} mutation(s) committed");
-            if (WorldDeltaLifecycle.TransactionOpen)
-                violations.Add("a world mutation transaction is still open at turn end");
-            foreach (int receipt in _progressReceipts)
-            {
-                if (receipt <= _revisionAtBegin)
-                    violations.Add($"a step reported progress with receipt {receipt}, which does not advance the "
-                        + $"turn-start revision {_revisionAtBegin} (missed stamp)");
-                else if (receipt > WorldDeltaLifecycle.Current)
-                    violations.Add($"a step carries receipt {receipt} newer than the current revision "
-                        + $"{WorldDeltaLifecycle.Current}");
-            }
         }
 
         internal void SettleAfterTurn(IReadOnlyList<MissionStepResult> results)

@@ -42,7 +42,7 @@ namespace Game.EditorTests
             MissionIntent intent = ActiveFoundBaseIntent(
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                 player, turn, intent);
 
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
@@ -81,13 +81,13 @@ namespace Game.EditorTests
             // Earlier in the same turn the concrete actor was proved able to finish, so
             // Provisioning legitimately protected completion AP. A re-entrant Phase A pass in the
             // same turn then re-states the durable delivery's deferred obligation.
-            InfrastructureFulfillment.ReserveEconomyCost(
+            EconomyReservationLifecycle.ReserveEconomyCost(
                 player, turn, ReservationOwner.ForPass(owner), cost, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
             Assert.That(StrategicResourceReservationLedger.Active(
                 player, turn, StrategicReservedResource.ActionPoints), Is.EqualTo(4f));
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                 player, turn, intent);
 
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(
@@ -116,14 +116,14 @@ namespace Game.EditorTests
             MissionIntent intent = ActiveFoundBaseIntent(19, new HexCoord(3, 2), ownerCost, 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
             const string other = "independent-other-build";
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner),
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner),
                 ownerCost, 4f);
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(other),
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(other),
                 otherCost, 3f);
 
             // After a settled movement, this actor can no longer reach its site this turn.
             // The project itself remains valid and has future-turn physical requirements.
-            InfrastructureFulfillment.ReconcileEconomyCompletionOwner(player, turn, owner,
+            EconomyReservationLifecycle.ReconcileEconomyCompletionOwner(player, turn, owner,
                 intent, durableValid: true, completionThisTurn: false);
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
                 StrategicReservationReason.EconomyBuildCompletion), Is.False);
@@ -140,9 +140,9 @@ namespace Game.EditorTests
                 StrategicReservedResource.Materials), Is.EqualTo(3f));
 
             // Idempotent reentry, and Phase A's ordinary deferred request cannot re-promote AP.
-            InfrastructureFulfillment.ReconcileEconomyCompletionOwner(player, turn, owner,
+            EconomyReservationLifecycle.ReconcileEconomyCompletionOwner(player, turn, owner,
                 intent, durableValid: true, completionThisTurn: false);
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                 player, turn, intent);
             Assert.That(StrategicResourceReservationLedger.Active(player, turn,
                 StrategicReservedResource.ActionPoints), Is.EqualTo(3f));
@@ -159,11 +159,11 @@ namespace Game.EditorTests
             MissionIntent invalid = ActiveFoundBaseIntent(21, new HexCoord(1, 3), invalidCost, 4f);
             string owner = EconomyMissionPlanner.OwnerKey(invalid.LastAttemptKey);
             const string other = "independent-other-build";
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner),
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner),
                 invalidCost, 4f);
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(other),
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(other),
                 otherCost, 3f);
-            InfrastructureFulfillment.ReconcileEconomyCompletionOwner(player, turn, owner,
+            EconomyReservationLifecycle.ReconcileEconomyCompletionOwner(player, turn, owner,
                 invalid, durableValid: false, completionThisTurn: false);
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
                 StrategicReservationReason.EconomyBuildCompletion), Is.False);
@@ -184,8 +184,8 @@ namespace Game.EditorTests
             var cost = new ResourceCost(materials: 2);
             MissionIntent intent = ActiveFoundBaseIntent(23, new HexCoord(1, 3), cost, 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
-            InfrastructureFulfillment.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner), cost, 4f);
-            InfrastructureFulfillment.ReconcileEconomyCompletionOwner(player, turn, owner,
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, ReservationOwner.ForPass(owner), cost, 4f);
+            EconomyReservationLifecycle.ReconcileEconomyCompletionOwner(player, turn, owner,
                 intent, durableValid: true, completionThisTurn: true);
             Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(player, turn,
                 owner, StrategicReservationReason.EconomyBuildCompletion, cost, 4f), Is.True);
@@ -202,13 +202,13 @@ namespace Game.EditorTests
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                 player, turn, intent);
             Assert.That(StrategicResourceReservationLedger.Active(
                 player, turn, StrategicReservedResource.ActionPoints), Is.Zero);
 
             // This is the canonical Provisioning transition once CompletionThisTurn is true.
-            InfrastructureFulfillment.ReserveEconomyCost(
+            EconomyReservationLifecycle.ReserveEconomyCost(
                 player, turn, ReservationOwner.ForPass(owner), cost, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
 

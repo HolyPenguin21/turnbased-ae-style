@@ -383,7 +383,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
             MissionIntent intent = DurableIntent(player, m, 4);
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
             Assert.That(StrategicResourceReservationLedger.Active(player, 4,
                 StrategicReservedResource.Materials), Is.EqualTo(3f));
 
@@ -436,7 +436,7 @@ namespace Game.EditorTests
                 ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
                 MaterialsMinimum = 3f, MaterialsDesired = 3f, MaterialsMaximum = 3f,
             };
-            InfrastructureFulfillment.ReserveEconomyCost(player, 1, ReservationOwner.ForPass("Economy:another-build"),
+            EconomyReservationLifecycle.ReserveEconomyCost(player, 1, ReservationOwner.ForPass("Economy:another-build"),
                 new ResourceCost(materials: 2), 0f, otherOwnersReason);
             var snap = new WorldSnapshot
             {
@@ -500,7 +500,7 @@ namespace Game.EditorTests
                     },
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
-                InfrastructureFulfillment.ReserveEconomyCost(player, turn,
+                EconomyReservationLifecycle.ReserveEconomyCost(player, turn,
                     ReservationOwner.ForPass(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m))),
                     new ResourceCost(materials: 4), 1f);
                 return m;
@@ -598,7 +598,7 @@ namespace Game.EditorTests
             intent.Status = IntentStatus.Suspended;
             intent.Suspended = SuspendReason.CapabilityUnavailable;
 
-            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
+            EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
 
             Assert.That(StrategicResourceReservationLedger.Active(player, 4,
                 StrategicReservedResource.Materials), Is.EqualTo(3f),
