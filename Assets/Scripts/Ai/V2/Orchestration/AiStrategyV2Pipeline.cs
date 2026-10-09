@@ -598,10 +598,8 @@ namespace Game.Ai.V2
                         out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
                     if (!lifecycleReturnsReleased && !LifecycleReturnPolicy.HomeThreatened(snapshot))
                     {
-                        var waiting = missions.Where(m => LifecycleReturnPolicy.IsDeferrableReturn(
-                                m, activeIntents)
-                            && LifecycleReturnPolicy.MayWait(player, MissionIntentKey.For(m), ctx.TurnNumber))
-                            .ToList();
+                        var waiting = LifecycleReturnPolicy.SelectWaiting(
+                            missions, activeIntents, player, ctx.TurnNumber);
                         if (waiting.Count > 0)
                         {
                             lifecycleReturnsDeferred = true;
@@ -918,9 +916,7 @@ namespace Game.Ai.V2
                         noProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
-                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
-                            && !fe.IsCommitment && fe.Mission != null
-                            && fe.Mission.EffectiveValue <= 0f);
+                        zeroRadarResidualWindow = ResidualWindowPolicy.AfterNoProvisionedTask(allocation.Funded);
                         AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
                             + $"noProgress={noProgressCycles}");
                         // No task command ran and no observation can differ. Repeating the same
@@ -1008,9 +1004,8 @@ namespace Game.Ai.V2
                     {
                         // Ignore the task that JUST executed: only unfinished positive
                         // allocations should prevent residual admission.
-                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe?.Mission != null
-                            && (StableMissionKey.For(fe.Mission).Equals(selectedKey)
-                                || (!fe.IsCommitment && fe.Mission.EffectiveValue <= 0f)));
+                        zeroRadarResidualWindow = ResidualWindowPolicy.AfterSettledTask(
+                            allocation.Funded, selectedKey);
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
                         break;
                     }
