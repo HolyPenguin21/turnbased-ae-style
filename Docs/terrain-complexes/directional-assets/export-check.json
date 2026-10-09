@@ -9,8 +9,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 2.187,
-      "p95_rgb_error": 7.148
+      "mean_rgb_error": 1.151,
+      "p95_rgb_error": 4.189,
+      "connected_dark_edge_samples": 55
     },
     {
       "family": "Canyon",
@@ -19,8 +20,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.756,
-      "p95_rgb_error": 5.683
+      "mean_rgb_error": 1.651,
+      "p95_rgb_error": 5.944,
+      "connected_dark_edge_samples": 52
     },
     {
       "family": "Canyon",
@@ -29,8 +31,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.195,
-      "p95_rgb_error": 4.784
+      "mean_rgb_error": 1.305,
+      "p95_rgb_error": 4.181,
+      "connected_dark_edge_samples": 53
     },
     {
       "family": "Canyon",
@@ -39,8 +42,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.129,
-      "p95_rgb_error": 4.629
+      "mean_rgb_error": 1.302,
+      "p95_rgb_error": 4.172,
+      "connected_dark_edge_samples": 50
     },
     {
       "family": "Canyon",
@@ -49,8 +53,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 0.895,
-      "p95_rgb_error": 3.286
+      "mean_rgb_error": 1.371,
+      "p95_rgb_error": 4.704,
+      "connected_dark_edge_samples": 78
     },
     {
       "family": "Canyon",
@@ -59,8 +64,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.368,
-      "p95_rgb_error": 5.22
+      "mean_rgb_error": 1.167,
+      "p95_rgb_error": 4.149,
+      "connected_dark_edge_samples": 78
     },
     {
       "family": "Canyon",
@@ -69,8 +75,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.662,
-      "p95_rgb_error": 8.215
+      "mean_rgb_error": 1.092,
+      "p95_rgb_error": 3.875,
+      "connected_dark_edge_samples": 57
     },
     {
       "family": "Canyon",
@@ -79,8 +86,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.0,
-      "p95_rgb_error": 3.676
+      "mean_rgb_error": 1.532,
+      "p95_rgb_error": 5.784,
+      "connected_dark_edge_samples": 70
     },
     {
       "family": "Canyon",
@@ -89,8 +97,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.232,
-      "p95_rgb_error": 5.06
+      "mean_rgb_error": 1.115,
+      "p95_rgb_error": 3.583,
+      "connected_dark_edge_samples": 41
     },
     {
       "family": "Canyon",
@@ -99,8 +108,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.106,
-      "p95_rgb_error": 3.467
+      "mean_rgb_error": 1.183,
+      "p95_rgb_error": 4.19,
+      "connected_dark_edge_samples": 65
     },
     {
       "family": "GiantMachineWreck",
@@ -109,8 +119,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 2.147,
-      "p95_rgb_error": 10.144
+      "mean_rgb_error": 1.153,
+      "p95_rgb_error": 4.223,
+      "connected_dark_edge_samples": 79
     },
     {
       "family": "GiantMachineWreck",
@@ -119,8 +130,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 2.549,
-      "p95_rgb_error": 10.232
+      "mean_rgb_error": 1.317,
+      "p95_rgb_error": 4.851,
+      "connected_dark_edge_samples": 52
     },
     {
       "family": "GiantMachineWreck",
@@ -129,8 +141,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 2.245,
-      "p95_rgb_error": 10.82
+      "mean_rgb_error": 1.33,
+      "p95_rgb_error": 4.925,
+      "connected_dark_edge_samples": 67
     },
     {
       "family": "GiantMachineWreck",
@@ -139,8 +152,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.464,
-      "p95_rgb_error": 5.425
+      "mean_rgb_error": 1.347,
+      "p95_rgb_error": 4.394,
+      "connected_dark_edge_samples": 67
     },
     {
       "family": "GiantMachineWreck",
@@ -149,8 +163,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 2.233,
-      "p95_rgb_error": 8.435
+      "mean_rgb_error": 1.072,
+      "p95_rgb_error": 4.404,
+      "connected_dark_edge_samples": 71
     }
   ]
 }
