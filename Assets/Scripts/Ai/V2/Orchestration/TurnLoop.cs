@@ -70,8 +70,9 @@ namespace Game.Ai.V2
     }
 
     // The turn loop's control state (previously closure locals of Pipeline.RunTurn). Counters and
-    // flags only; the loop is its single transition owner, the work bodies write the counters they
-    // always wrote (settled steps, no progress, residual window, deferred returns).
+    // flags only; the loop is its single transition owner (not yet the single writer of every field:
+    // the work bodies write settled steps and deferred returns, and share no progress and the
+    // residual window with the loop).
     internal sealed class TurnLoopState
     {
         internal int SettledSteps;
