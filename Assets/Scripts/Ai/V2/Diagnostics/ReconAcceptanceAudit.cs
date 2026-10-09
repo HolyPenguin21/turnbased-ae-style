@@ -12,8 +12,6 @@ namespace Game.Ai.V2
     internal static class ReconAcceptanceAudit
     {
         private const string WeakRecceAttack = "weak-recce-opportunistic-attack";
-        private const string HiddenFacilityCapture = "hidden-facility-capture";
-        private const string HiddenFacilityCancel = "hidden-facility-cancel-on-danger";
         private const string MostlyExploredRefresh = "refresh-dominates-mostly-explored";
         private const string StaleStrategicRefresh = "stale-strategic-refresh";
         private const string CoarseDirectionBoundary = "coarse-direction-boundary";
@@ -26,8 +24,6 @@ namespace Game.Ai.V2
         private static readonly string[] Scenarios =
         {
             WeakRecceAttack,
-            HiddenFacilityCapture,
-            HiddenFacilityCancel,
             MostlyExploredRefresh,
             StaleStrategicRefresh,
             CoarseDirectionBoundary,

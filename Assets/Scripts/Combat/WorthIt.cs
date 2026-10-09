@@ -35,8 +35,8 @@ namespace Game.Combat
         // other flat Attack/Defense sum already in this codebase).
         public static float AttackSum(ArmyData army) => AttackSum(army?.Members);
 
-        // Own non-hero Defense sum, no hex bonus — used on its own as the ATTACKER's side of Score's return-fire read (an attacking army isn't
-        // standing on a defensible hex it gets credit for, it's marching onto the defender's).
+        // Own non-hero Defense sum, no hex bonus — used on its own as the ATTACKER's side of Score's
+        // return-fire read (an attacking army isn't standing on a defensible hex it gets credit for, it's marching onto the defender's).
         public static float DefenseSum(ArmyData army) => DefenseSum(army?.Members);
 
         // Roster-scoped overloads — same non-hero flat sum against an explicit member set rather

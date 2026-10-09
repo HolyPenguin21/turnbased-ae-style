@@ -15,15 +15,6 @@ namespace Game.HexGrid
             R = r;
         }
 
-        // Back to the (col, row) rectangular grid coordinates a
-        // player/UI thinks in.
-        public (int col, int row) ToOffset()
-        {
-            int col = Q;
-            int row = R + (col - (col & 1)) / 2;
-            return (col, row);
-        }
-
         public bool Equals(HexCoord other) => Q == other.Q && R == other.R;
         public override bool Equals(object obj) => obj is HexCoord other && Equals(other);
         public override int GetHashCode() => (Q, R).GetHashCode();

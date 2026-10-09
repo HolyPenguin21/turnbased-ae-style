@@ -30,7 +30,6 @@ namespace Game.Map
             new Dictionary<PlayerSetupData, Dictionary<int, ArmySighting>>();
         private static readonly Dictionary<PlayerSetupData, HashSet<HexCoord>> KnownBuildingHexes =
             new Dictionary<PlayerSetupData, HashSet<HexCoord>>();
-        private static readonly HashSet<HexCoord> EmptyHexes = new HashSet<HexCoord>();
 
         // True for a match with no human at all (AI-vs-AI observer): every player can then be the
         // map viewer in turn (VisionSystem.CurrentViewer), so each of them keeps the same
