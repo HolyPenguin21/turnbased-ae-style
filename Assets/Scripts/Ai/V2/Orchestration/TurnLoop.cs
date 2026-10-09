@@ -70,9 +70,9 @@ namespace Game.Ai.V2
     }
 
     // The turn loop's control state (previously closure locals of Pipeline.RunTurn). Counters and
-    // flags only; the loop is its single transition owner (not yet the single writer of every field:
-    // the work bodies write settled steps and deferred returns, and share no progress and the
-    // residual window with the loop).
+    // flags only. TurnLoop is its ONLY writer: the work bodies get a read-only TurnLoopView and
+    // report what happened in an AdmissionIterationOutcome, which TurnLoop applies after the
+    // iteration (AiTurnLoopTests also scans the sources for writes outside this file).
     internal sealed class TurnLoopState
     {
         internal int SettledSteps;
@@ -97,13 +97,95 @@ namespace Game.Ai.V2
             && NoProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles;
     }
 
+    // The read-only view of the control state an admission iteration is given. A value copy taken
+    // when the iteration starts: counters cannot change under the iteration (only TurnLoop writes
+    // them, after the iteration returns), so a body that needs "the step number" or "no-progress
+    // after this step" for a boundary or a log line computes it from the view and the outcome.
+    internal readonly struct TurnLoopView
+    {
+        internal readonly int SettledSteps;
+        internal readonly int NoProgressCycles;
+        internal readonly bool ReturnsMayWait;
+        internal readonly bool WithinStepBounds;
+
+        internal TurnLoopView(TurnLoopState s)
+        {
+            SettledSteps = s.SettledSteps;
+            NoProgressCycles = s.NoProgressCycles;
+            ReturnsMayWait = s.ReturnsMayWait;
+            WithinStepBounds = s.WithinStepBounds;
+        }
+    }
+
+    internal enum ProgressUpdate
+    {
+        Unchanged,   // no work step ran and none is counted (no funded mission)
+        Increment,   // no task could be provisioned: one cycle without progress
+        FromStep,    // a settled step: StepTriggerOutcome.NextNoProgress(current, Progressed)
+    }
+
+    // The result of ONE admission iteration, filled by its body and applied by TurnLoop once the
+    // iteration returned. The variants are the iteration's possible endings, not modes of a generic
+    // completion: settled step (aviation or mission), no funded mission, no provisioned task,
+    // settled task without a typed invalidation; plus "a return leg waited".
+    internal sealed class AdmissionIterationOutcome
+    {
+        internal int SettledStepDelta { get; private set; }
+        internal ProgressUpdate Progress { get; private set; }
+        internal bool Progressed { get; private set; }
+        internal bool StopPass { get; private set; }
+        internal bool? ResidualVerdict { get; private set; }
+        internal bool ReturnsDeferred { get; private set; }
+
+        // A return leg waited for the first Phase B round in this iteration.
+        internal void DeferReturns() => ReturnsDeferred = true;
+
+        // A settled work step (mandatory aviation or mission): counts as one step.
+        internal void SettledStep(bool progressed)
+        {
+            SettledStepDelta = 1;
+            Progress = ProgressUpdate.FromStep;
+            Progressed = progressed;
+        }
+
+        // The portfolio has no funded mission: stop, the residual window opens.
+        internal void NoFundedMission()
+        {
+            ResidualVerdict = true;
+            StopPass = true;
+        }
+
+        // No task could be provisioned: no step, one cycle without progress, stop.
+        internal void NoProvisionedTask(bool residualWindow)
+        {
+            Progress = ProgressUpdate.Increment;
+            ResidualVerdict = residualWindow;
+            StopPass = true;
+        }
+
+        // The settled mission produced no typed invalidation: stop (the step itself is recorded
+        // with SettledStep).
+        internal void StopAfterSettledStep(bool residualWindow)
+        {
+            ResidualVerdict = residualWindow;
+            StopPass = true;
+        }
+
+        // The no-progress counter after this iteration, from the counter before it. The only place
+        // this arithmetic lives: TurnLoop applies it and bodies use it for their log lines.
+        internal int NoProgressAfter(int current) =>
+            Progress == ProgressUpdate.Increment ? current + 1
+            : Progress == ProgressUpdate.FromStep ? StepTriggerOutcome.NextNoProgress(current, Progressed)
+            : current;
+    }
+
     // The existing work bodies of the turn, owned by Pipeline.RunTurn. The loop only orders them.
     internal struct TurnLoopWork
     {
         // Pass-scoped resets that live with the admission body (retry set, frame-pacing clock).
         internal Action OpenPass;
-        // One admission iteration; reports true when the pass must stop.
-        internal Func<Action<bool>, IEnumerator> Iteration;
+        // One admission iteration: reads the view, reports its ending in the outcome.
+        internal Func<TurnLoopView, AdmissionIterationOutcome, IEnumerator> Iteration;
         // The deferred-axes force admission that ends every pass.
         internal Func<IEnumerator> TerminalForce;
         // The settlement window before the first Phase B round (income cover, continuation window).
@@ -147,9 +229,10 @@ namespace Game.Ai.V2
                 {
                     case TurnPhase.Ordinary:
                     {
-                        bool stop = false;
-                        yield return work.Iteration(v => stop = v);
-                        if (stop)
+                        var outcome = new AdmissionIterationOutcome();
+                        yield return work.Iteration(new TurnLoopView(s), outcome);
+                        ApplyIterationOutcome(s, outcome);
+                        if (outcome.StopPass)
                             yield return ClosePass(s, work);
                         break;
                     }
@@ -193,6 +276,17 @@ namespace Game.Ai.V2
                         yield break;
                 }
             }
+        }
+
+        // The only write of the iteration's counters. Independent fields, so the order is free.
+        internal static void ApplyIterationOutcome(TurnLoopState s, AdmissionIterationOutcome o)
+        {
+            s.SettledSteps += o.SettledStepDelta;
+            s.NoProgressCycles = o.NoProgressAfter(s.NoProgressCycles);
+            if (o.ResidualVerdict.HasValue)
+                s.ResidualWindow = o.ResidualVerdict.Value;
+            if (o.ReturnsDeferred)
+                s.ReturnsDeferred = true;
         }
 
         private static void OpenPass(TurnLoopState s, TurnLoopWork work, AdmissionCause cause)

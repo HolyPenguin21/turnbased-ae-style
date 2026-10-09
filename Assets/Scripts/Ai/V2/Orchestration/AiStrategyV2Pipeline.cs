@@ -458,7 +458,8 @@ namespace Game.Ai.V2
                 // A mandatory aviation obligation as a work step. Execution stays with the existing
                 // owners (MandatoryAviationStep). No ledger, Settle or observer boundary: the
                 // obligation was paid when the sortie launched.
-                IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor)
+                IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor,
+                    TurnLoopView view, AdmissionIterationOutcome outcome)
                 {
                     string label = MandatoryAviationOrder.Label(kind);
                     WorldAnalysis.StepObservationStamp beforeAviation =
@@ -468,13 +469,15 @@ namespace Game.Ai.V2
                         snapshot, v => actionChanged = v);
                     snapshot = WorldAnalysis.ObserveSettled(
                         snapshot, player, root, hand, ctx, beforeAviation, null);
-                    loop.SettledSteps++;
+                    // The step is counted by TurnLoop when this iteration returns; its number is
+                    // already known from the view.
+                    int stepNumber = view.SettledSteps + 1;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
-                        $"step {loop.SettledSteps} {label} #{actor.Id}");
+                        $"step {stepNumber} {label} #{actor.Id}");
                     yield return ResolveStepTriggers(MandatoryAviationOrder.TriggerPairs(kind));
                     bool progress = stepTriggers.Progressed(actionChanged);
-                    loop.NoProgressCycles = StepTriggerOutcome.NextNoProgress(loop.NoProgressCycles, progress);
-                    AiDebugLog.Write($"[AI][V2][Loop] step={loop.SettledSteps} {label} actor=#{actor.Id} "
+                    outcome.SettledStep(progress);
+                    AiDebugLog.Write($"[AI][V2][Loop] step={stepNumber} {label} actor=#{actor.Id} "
                         + $"progress={(progress ? 1 : 0)} "
                         + $"operationalTriggers={stepTriggers.Operational} "
                         + $"strategicTriggers={stepTriggers.Strategic}");
@@ -527,9 +530,10 @@ namespace Game.Ai.V2
                 }
 
                 // One admission iteration of the open pass: settled world -> missions -> pack ->
-                // one work step. Reports true when the pass stops (no funded mission, no provisioned
-                // task, or a settled task without a typed invalidation).
-                IEnumerator RunAdmissionIteration(System.Action<bool> stopPass)
+                // one work step. Reports its ending in the outcome (TurnLoop applies it): a settled step,
+                // or a stop (no funded mission, no provisioned task, or a settled task without a typed
+                // invalidation).
+                IEnumerator RunAdmissionIteration(TurnLoopView view, AdmissionIterationOutcome outcome)
                 {
                     if (UnityEngine.Time.realtimeSinceStartup - lastYieldTime >= yieldBudgetSeconds)
                     {
@@ -555,13 +559,13 @@ namespace Game.Ai.V2
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
                         out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
-                    if (loop.ReturnsMayWait && !LifecycleReturnPolicy.HomeThreatened(snapshot))
+                    if (view.ReturnsMayWait && !LifecycleReturnPolicy.HomeThreatened(snapshot))
                     {
                         var waiting = LifecycleReturnPolicy.SelectWaiting(
                             missions, activeIntents, player, ctx.TurnNumber);
                         if (waiting.Count > 0)
                         {
-                            loop.ReturnsDeferred = true;
+                            outcome.DeferReturns();
                             foreach (MissionProposal m in waiting)
                             {
                                 MissionIntentKey waitKey = MissionIntentKey.For(m);
@@ -625,14 +629,13 @@ namespace Game.Ai.V2
                         mandatory.Kind, allocation.Funded.Count);
                     if (work == OperationalWorkKind.MandatoryAviation)
                     {
-                        yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor);
+                        yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor, view, outcome);
                         yield break;
                     }
                     if (work == OperationalWorkKind.None)
                     {
-                        loop.ResidualWindow = true;
+                        outcome.NoFundedMission();
                         AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
-                        stopPass(true);
                         yield break;
                     }
 
@@ -766,16 +769,15 @@ namespace Game.Ai.V2
                         cycleLedger.RecordDeferrals(allocation.Deferred);
                         turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
                             snapshot, reconObjectives);
-                        loop.NoProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
-                        loop.ResidualWindow = ResidualWindowPolicy.AfterNoProvisionedTask(allocation.Funded);
+                        outcome.NoProvisionedTask(
+                            ResidualWindowPolicy.AfterNoProvisionedTask(allocation.Funded));
                         AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
-                            + $"noProgress={loop.NoProgressCycles}");
+                            + $"noProgress={outcome.NoProgressAfter(view.NoProgressCycles)}");
                         // No task command ran and no observation can differ. Repeating the same
                         // admission under a fresh session only reproduces the same rejection; stop
                         // this family without consuming the real bounded task-step budget.
-                        stopPass(true);
                         yield break;
                     }
 
@@ -817,9 +819,9 @@ namespace Game.Ai.V2
                     EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                         player, root, hand, ctx);
 
-                    loop.SettledSteps++;
+                    int taskStepNumber = view.SettledSteps + 1;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
-                        $"step {loop.SettledSteps} task={selectedKey}");
+                        $"step {taskStepNumber} task={selectedKey}");
                     // Snapshot, mission ledger and reservation reconciliation now all describe
                     // the completed command; inspection never sees a half-settled action.
                     yield return ctx.WaitAtObserverActionBoundary();
@@ -829,19 +831,18 @@ namespace Game.Ai.V2
                     bool strategicChanged = stepTriggers.StrategicChanged;
                     bool progressed = stepTriggers.Progressed(stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged));
-                    loop.NoProgressCycles = StepTriggerOutcome.NextNoProgress(loop.NoProgressCycles, progressed);
-                    AiDebugLog.Write($"[AI][V2][Loop] step={loop.SettledSteps} task={selectedKey} "
+                    outcome.SettledStep(progressed);
+                    AiDebugLog.Write($"[AI][V2][Loop] step={taskStepNumber} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
                         + $"operationalTriggers={operationalReasons} strategicTriggers={strategicReasons} "
-                        + $"noProgress={loop.NoProgressCycles}");
+                        + $"noProgress={outcome.NoProgressAfter(view.NoProgressCycles)}");
                     if (operationalReasons == StrategicInvalidationReason.None && !strategicChanged)
                     {
                         // Ignore the task that JUST executed: only unfinished positive
                         // allocations should prevent residual admission.
-                        loop.ResidualWindow = ResidualWindowPolicy.AfterSettledTask(
-                            allocation.Funded, selectedKey);
+                        outcome.StopAfterSettledStep(ResidualWindowPolicy.AfterSettledTask(
+                            allocation.Funded, selectedKey));
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
-                        stopPass(true);
                     }
                 }
 

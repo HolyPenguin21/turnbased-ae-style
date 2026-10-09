@@ -53,8 +53,10 @@ namespace Game.EditorTests
             }
         }
 
-        // The work bodies mutate exactly the counters the production bodies mutate (settled steps,
-        // no progress, residual window, deferred returns) and record what they observed.
+        // The work bodies record what they observed. The baseline reference mutates the shared
+        // counters itself (as the baseline bodies did: Iteration); the loop under test gets a
+        // read-only view and reports an outcome (IterationOutcome) that only TurnLoop applies.
+        // Both derive the same ending from the same script.
         private sealed class Works
         {
             private readonly Scenario _sc;
@@ -80,6 +82,43 @@ namespace Game.EditorTests
                 Trace.Add($"begin cause={_openCause()} retrySet#{_retrySet} {Counters}");
             }
 
+            // The loop under test (Level E1): no writes to the state, only an outcome.
+            internal IEnumerator IterationOutcome(TurnLoopView view, AdmissionIterationOutcome outcome)
+            {
+                bool mayWait = view.ReturnsMayWait;
+                IterationScript it = _sc.Iterations.Count > 0 ? _sc.Iterations.Dequeue()
+                    : new IterationScript { Kind = IterationKind.StopNoFunded };
+                if (it.DefersReturn && mayWait)
+                    outcome.DeferReturns();
+                switch (it.Kind)
+                {
+                    case IterationKind.AviationStep:
+                    case IterationKind.MissionStep:
+                        outcome.SettledStep(it.Progress);
+                        break;
+                    case IterationKind.StopNoFunded:
+                        outcome.NoFundedMission();
+                        break;
+                    case IterationKind.StopNoProvisioned:
+                        outcome.NoProvisionedTask(it.Residual);
+                        break;
+                    case IterationKind.StopNoTrigger:
+                        outcome.SettledStep(it.Progress);
+                        outcome.StopAfterSettledStep(it.Residual);
+                        break;
+                }
+                // The line the baseline prints after its writes: computed from the view + outcome
+                // (the residual window, which the view does not carry, is read from the state).
+                int steps = view.SettledSteps + outcome.SettledStepDelta;
+                int np = outcome.NoProgressAfter(view.NoProgressCycles);
+                bool zr = outcome.ResidualVerdict ?? _st.ResidualWindow;
+                bool deferred = _st.ReturnsDeferred || outcome.ReturnsDeferred;
+                Trace.Add($"iter {it.Kind} mayWait={(mayWait ? 1 : 0)} deferred={(deferred ? 1 : 0)} "
+                    + $"s={steps} np={np} zr={(zr ? 1 : 0)}");
+                yield break;
+            }
+
+            // The baseline reference: the bodies write the shared counters themselves.
             internal IEnumerator Iteration(Action<bool> stop)
             {
                 bool mayWait = _returnsMayWait();
@@ -159,7 +198,7 @@ namespace Game.EditorTests
             Drain(TurnLoop.Run(st, new TurnLoopWork
             {
                 OpenPass = w.OpenPass,
-                Iteration = w.Iteration,
+                Iteration = w.IterationOutcome,
                 TerminalForce = w.TerminalForce,
                 FirstPhaseBSettle = w.FirstPhaseBSettle,
                 TempoRound = w.TempoRound,
@@ -534,6 +573,132 @@ namespace Game.EditorTests
                 new TurnLoopState { ResidualWindow = true, SettledSteps = MaxSteps }, 1));
             Assert.IsFalse(TurnLoop.ColdEligible(
                 new TurnLoopState { ResidualWindow = true, NoProgressCycles = MaxNoProgress }, 1));
+        }
+
+        // ---- Level E1: one writer of the control state ----------------------------------------
+
+        // The table of iteration endings, written from the baseline source (L506-L846 of the
+        // pre-decoupling Pipeline) with literal expectations: what each ending does to the counters.
+        // columns: ending, steps delta, no-progress before -> after, residual verdict, stop, deferred
+        [Test]
+        public void TheIterationEndingsChangeTheCountersExactlyAsTheBaselineBodiesDid()
+        {
+            TurnLoopState Apply(Action<AdmissionIterationOutcome> body, int steps, int np, bool zr,
+                bool deferred = false)
+            {
+                var s = new TurnLoopState
+                { SettledSteps = steps, NoProgressCycles = np, ResidualWindow = zr, ReturnsDeferred = deferred };
+                var o = new AdmissionIterationOutcome();
+                body(o);
+                TurnLoop.ApplyIterationOutcome(s, o);
+                return s;
+            }
+
+            // mandatory aviation action / mission step with progress: +1 step, no progress reset to 0
+            TurnLoopState a = Apply(o => o.SettledStep(true), 4, 1, true);
+            Assert.AreEqual((5, 0, true), (a.SettledSteps, a.NoProgressCycles, a.ResidualWindow));
+            // a settled step without progress: +1 step, +1 cycle; the residual window is untouched
+            TurnLoopState b = Apply(o => o.SettledStep(false), 4, 0, false);
+            Assert.AreEqual((5, 1, false), (b.SettledSteps, b.NoProgressCycles, b.ResidualWindow));
+            // no funded mission: window opens, nothing else changes
+            TurnLoopState c = Apply(o => o.NoFundedMission(), 4, 1, false);
+            Assert.AreEqual((4, 1, true), (c.SettledSteps, c.NoProgressCycles, c.ResidualWindow));
+            // no provisioned task: no step, +1 cycle, window = verdict (both values)
+            TurnLoopState d1 = Apply(o => o.NoProvisionedTask(true), 4, 0, false);
+            Assert.AreEqual((4, 1, true), (d1.SettledSteps, d1.NoProgressCycles, d1.ResidualWindow));
+            TurnLoopState d2 = Apply(o => o.NoProvisionedTask(false), 4, 0, true);
+            Assert.AreEqual((4, 1, false), (d2.SettledSteps, d2.NoProgressCycles, d2.ResidualWindow));
+            // settled mission without typed invalidation: step counted + window = verdict
+            TurnLoopState e = Apply(o => { o.SettledStep(true); o.StopAfterSettledStep(true); }, 7, 1, false);
+            Assert.AreEqual((8, 0, true), (e.SettledSteps, e.NoProgressCycles, e.ResidualWindow));
+            // a return leg waited: only the flag; it accumulates and is never cleared by an iteration
+            TurnLoopState f = Apply(o => o.DeferReturns(), 4, 1, true);
+            Assert.AreEqual((4, 1, true, true), (f.SettledSteps, f.NoProgressCycles, f.ResidualWindow, f.ReturnsDeferred));
+            TurnLoopState g = Apply(o => o.SettledStep(true), 4, 1, true, deferred: true);
+            Assert.IsTrue(g.ReturnsDeferred);
+
+            // stop flag: only the three stopping endings
+            var stops = new[]
+            {
+                (new Action<AdmissionIterationOutcome>(o => o.SettledStep(true)), false),
+                (o => o.NoFundedMission(), true),
+                (o => o.NoProvisionedTask(false), true),
+                (o => { o.SettledStep(false); o.StopAfterSettledStep(false); }, true),
+                (o => o.DeferReturns(), false),
+            };
+            foreach (var (body, stop) in stops)
+            {
+                var o = new AdmissionIterationOutcome();
+                body(o);
+                Assert.AreEqual(stop, o.StopPass);
+            }
+            // the projection used by log lines equals what Apply stores (one place for the arithmetic)
+            foreach (int np in new[] { 0, 1, 2 })
+            {
+                var o = new AdmissionIterationOutcome();
+                o.SettledStep(false);
+                var s = new TurnLoopState { NoProgressCycles = np };
+                TurnLoop.ApplyIterationOutcome(s, o);
+                Assert.AreEqual(s.NoProgressCycles, o.NoProgressAfter(np));
+            }
+        }
+
+        // The view is a copy taken at the start of the iteration: later writes by TurnLoop do not
+        // change it, and it carries no reference to the writable state.
+        [Test]
+        public void TheViewIsAValueCopyAndHoldsNoStateReference()
+        {
+            var s = new TurnLoopState { SettledSteps = 3, NoProgressCycles = 1 };
+            var view = new TurnLoopView(s);
+            s.SettledSteps = 9;
+            Assert.AreEqual(3, view.SettledSteps);
+            Assert.AreEqual(1, view.NoProgressCycles);
+            Assert.IsFalse(typeof(TurnLoopView).GetFields(System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+                .Any(f => f.FieldType == typeof(TurnLoopState)));
+        }
+
+        // Source check (task E1): the fields of TurnLoopState are written only in TurnLoop.cs.
+        [Test]
+        public void OnlyTurnLoopWritesTheTurnLoopState()
+        {
+            string root = FindScriptsRoot();
+            if (root == null)
+                Assert.Ignore("Assets/Scripts not found from the working directory");
+            var write = new System.Text.RegularExpressions.Regex(
+                @"(?<![\w.])(?:loop|state|st|s)\.(?:SettledSteps|NoProgressCycles|ResidualWindow|ReturnsDeferred|PhaseBRounds|Stage|PassOpen|PassCause)\s*(?:=(?!=)|\+\+|--|\+=|-=)",
+                System.Text.RegularExpressions.RegexOptions.Compiled);
+            var offenders = new List<string>();
+            foreach (string file in System.IO.Directory.GetFiles(root, "*.cs", System.IO.SearchOption.AllDirectories))
+            {
+                if (System.IO.Path.GetFileName(file) == "TurnLoop.cs")
+                    continue;
+                int n = 0;
+                foreach (string line in System.IO.File.ReadLines(file))
+                {
+                    n++;
+                    string code = line.Split(new[] { "//" }, 2, StringSplitOptions.None)[0];
+                    if (write.IsMatch(code))
+                        offenders.Add($"{System.IO.Path.GetFileName(file)}:{n}: {line.Trim()}");
+                }
+            }
+            Assert.IsEmpty(offenders, "TurnLoopState is written outside TurnLoop.cs:" + System.Environment.NewLine + string.Join(System.Environment.NewLine, offenders));
+        }
+
+        private static string FindScriptsRoot()
+        {
+            foreach (string start in new[] { System.IO.Directory.GetCurrentDirectory(), AppDomain.CurrentDomain.BaseDirectory })
+            {
+                var dir = new System.IO.DirectoryInfo(start);
+                for (int depth = 0; dir != null && depth < 8; depth++, dir = dir.Parent)
+                {
+                    string a = System.IO.Path.Combine(dir.FullName, "Assets", "Scripts");
+                    if (System.IO.Directory.Exists(a)) return a;
+                    string b = System.IO.Path.Combine(dir.FullName, "src", "Assets", "Scripts");
+                    if (System.IO.Directory.Exists(b)) return b;
+                }
+            }
+            return null;
         }
 
         private static void Drain(IEnumerator root)
