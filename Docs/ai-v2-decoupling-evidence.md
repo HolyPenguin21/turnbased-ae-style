@@ -258,3 +258,67 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 ### Итог перепроверки
 
 Managed (`e3-a-p`): 2151 тест, 1676 прошло, 475 упало; регрессий 0 относительно `e2-a-p`, 14 новых прошедших. Compile 28 = 28. Unity и native — не выполнялись; S3 и мировые части `Provision*` — Unity-fixtures.
+
+# Э4 — Missions владеет портфелем, Continuity — возвратами
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Вход этапа — `4b4a4519`.
+
+## Что изменено
+
+| Файл | Изменение |
+|---|---|
+| `Missions/MissionPortfolio.cs` (новый) | `Build(snapshot, breakdown, activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace, ctx)` → `MissionPortfolioResult(Missions, Deferrals)`: обновление Recon lane pressures → 4 планировщика → `AttemptId` → `EffectiveValue = BaseValue × RadarValueScale` → `AttackPreparationPriority` → `TaskScores` → корреляция. Перенесено из `Pipeline.BuildMissionSet` (метод удалён) |
+| `Continuity/LifecycleReturnPolicy.cs` | перенесён из `Orchestration/` через `git mv` вместе с `.meta` (GUID `cce6239d…` сохранён), namespace, `LastWait`, `ClearAll` не менялись |
+| `Continuity/MissionContinuityLayer.ReturnDeferral.cs` (новый partial) | `DeferReturnsBeforeTempo(snapshot, player, turn, proposals, activeIntents)`: `HomeThreatened` → `SelectWaiting` → `RecordWait` → `MarkProtectedThisTurn` → лог → `Retained/Waiting/Deferrals` в прежнем порядке |
+| `Orchestration/AiStrategyV2Pipeline.cs` | `MissionPortfolio.Build`; `if (view.ReturnsMayWait) DeferReturnsBeforeTempo(…)`; исход «возврат ждал» → `outcome.DeferReturns()`; фильтр парковки (Э3) стоит после ожидания, до `BindFunding`, как и был |
+| `Assets/Editor/AiMissionPortfolioTests.cs` (новый) | 10 тестов |
+| `ARCHITECTURE.md` | путь правила возвратов исправлен |
+
+**Мёртвая ветка убрана.** `BuildMissionSet` имел единственного production-вызывающего (`RunAdmissionIteration`), и тот всегда передавал `aggressionPressureAlreadyRefreshed: true` — ветка повторного `RefreshAggressionOperationalFacts` не исполнялась. `Build` её не содержит; факты Aggression по-прежнему обновляет кадр решения (`RefreshOperationalFrame`) в том же шаге, что и objectives. `ReactionRoundExecutor` собирает свой набор отдельным кодом (Recon + Aggression, другие логи) и не менялся.
+
+## Сверка с требованиями Э4
+
+| Требование ТЗ | Результат |
+|---|---|
+| Порядок шагов портфеля | `ThePortfolioKeepsTheOrderOfItsSteps` (порядок вызовов в файле) + дифференциальный тест |
+| `EffectiveValue = BaseValue × RadarValueScale`, баланс не менялся | `ThePortfolioMatchesTheReplacedOrchestratorMethod` (транскрипция прежнего метода, 5 размеров набора, неравномерный Radar: Recon = 0,1) и `EveryMissionIsValuedByTheRadarAndGetsAnAttemptId` |
+| Правило возвратов у Continuity, порядок HomeThreatened → SelectWaiting → RecordWait → MarkProtected | `AnOrdinaryReturnWaitsIsRecordedAndProtectedAndARealTaskStays`, `AHomeThreatLeavesEveryProposalAndRecordsNothing`, `AReturnThatWaitedLastTurnGoesAtOnceAndAnActiveDefenceWithdrawalNeverWaits` (+ прежние `AiLifecycleReturnPolicyTests`) |
+| `TurnLoop` сообщает только `ReturnsMayWait`; при `false` операция не вызывается | условие `if (view.ReturnsMayWait)` перед вызовом; `HomeThreatened` внутри операции |
+| `ReturnsDeferred` передаётся исходом итерации | `outcome.DeferReturns()` (Э1) |
+| Четыре планировщика, `AttackPreparationPriority`, `HomeThreatened`/`SelectWaiting`/`RecordWait`/`MarkProtected` не вызываются из Orchestration | `OrchestrationDoesNotAssembleThePortfolioOrRunTheReturnRule` (скан всей папки, комментарии игнорируются; запись `.EffectiveValue =`) |
+| `RadarValueScale` в cold остаётся | остаётся (`ColdAxisCount`) — отмечено как необходимая зависимость |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e4-a-p`) | 2159 тестов, 1684 прошло, 475 упало; регрессий 0 относительно `e3-a-p`, 8 новых прошедших. Тесты портфеля используют наземный Scout (`ScoutCostModel` читает карту) — в managed-прогоне они проходят только в patched-прогоне (`patchrun.sh`), в Unity штатно |
+| Мутации | 7 из 7 пойманы: нет `RecordWait`; нет `MarkProtectedThisTurn`; игнор угрозы дому; нет Radar-масштаба; неверный `AttemptId`; пропущен `AttackPreparationPriority` (ловит тест порядка шагов: в фикстуре нет Attack preparation, на выходе он не виден) |
+| Compile | 28 = 28, новых 0 |
+| Матрица зависимостей | 203 связи. `Orchestration` целиком: 125 → **122** типа (убраны `ReconMissionPlanner`, `AggressionMissionLayer`, `EconomyMissionPlanner`, `DevelopmentMissionPlanner`, `AttackPreparationPriority`, `ThreatModel`; добавлены `MissionPortfolio`, `MissionPortfolioResult`, `ReturnDeferral`). `Pipeline`: 80 → 78 типов, 13 папок. Новые связи: `Missions → Strategy/Diagnostics/Orchestration (Radar)`, `Continuity → Analysis (ThreatModel)/Provisioning (ProvisionEvent)` |
+
+## Перепроверка: резервирование
+
+- Ожидание возврата и построение портфеля **ничего не резервируют**: тесты проверяют, что строки `StrategicResourceReservationLedger` не появляются ни после `DeferReturnsBeforeTempo`, ни после `Build`.
+- Ожидающие возвраты исключаются из набора **до** `BindFunding` и `Pack`, поэтому ни AP, ни claims на них не выделяются в этом проходе; после первого раунда Phase B они снова в наборе (`ReturnsMayWait == false`) — как и раньше.
+- `LifecycleReturnPolicy.LastWait` — постоянная политика между ходами, **не** состояние хода: её не очищают `AiTurnSession`/lease-механизмы (поиск `LastWait` по `Assets/Scripts`: используют только `RecordWait`, `MayWait`, `ClearAll` при старте матча). Проверено тестом: ожидание на ходу 5 запрещает ожидание на ходу 6.
+- `MarkProtectedThisTurn` пишет только `intent.LastProtectedTurn` (подавляет `StallTurns++` на этот ход) — не резерв.
+- Не проверено: порядок AP-распределения Pack/BindFunding на реальном мире (S4 в Unity).
+
+## Перепроверка: кеши
+
+| Состояние | Писатель | Читатель | Область | Проверка |
+|---|---|---|---|---|
+| `DesireBreakdown` Recon lane pressures | `StrategyLayer.RefreshReconLanePressures` (внутри `Build`, перед планировщиками) | планировщики Recon / Aggression / Economy | вызов | порядок закреплён тестом шагов; снапшот — тот, что получил вызов |
+| Aggression operational facts | кадр решения (`RefreshOperationalFrame`) | `AggressionMissionLayer` | кадр | `Build` их не обновляет (прежняя ветка не исполнялась); тест порядка запрещает `RefreshAggressionOperationalFacts` в файле |
+| Proposals, `AttemptId` | `Build` | `RegisterProposals`, allocator | admission | `EveryBuildProposesFreshInstances`: экземпляры не переносятся между вызовами |
+| `LastWait` | `RecordWait` | `MayWait`/`SelectWaiting` следующего хода | матч (постоянно) | тесты ходов 5/6 |
+| `LastProtectedTurn` | `MarkProtectedThisTurn` | `ReconcileAfterTurn` | ход | штамп = ход ожидания; на следующий ход прежнее значение |
+| Radar / `RadarValueScale` | не меняется внутри хода | `Build` | ход | неравномерный Radar в тесте: оценка ≠ тождество |
+| Estimate-кеши, `KnowledgeVersion`, PathingVersion, WorldDelta | не затрагиваются | — | — | этап их не менял |
+
+Не проверено: `AttackPreparationPriority.Apply` на реальном Attack-наборе (порядок вызова закреплён, поведение функции покрыто её собственными тестами).
+
+## Цена изменения (до / после)
+
+Новое семейство миссий или множитель ценности: раньше — `BuildMissionSet` (Orchestration) + планировщик; теперь — `MissionPortfolio` + планировщик (Missions); реальные execution/continuity-обработчики нового вида нужны по-прежнему. Новое правило срочности возврата: раньше — `Pipeline` + политика; теперь — Continuity (`LifecycleReturnPolicy` / `DeferReturnsBeforeTempo`), `TurnLoop` не меняется. Новые глобальные факты по-прежнему идут через старые точки fan-out.

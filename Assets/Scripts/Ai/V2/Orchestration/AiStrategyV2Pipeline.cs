@@ -534,29 +534,25 @@ namespace Game.Ai.V2
                     // Demand families persist across settled admissions. Only
                     // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
-                    Dictionary<MissionIntentKey, string> missionDeferrals;
-                    missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
-                        reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
-                        out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
-                    if (view.ReturnsMayWait && !LifecycleReturnPolicy.HomeThreatened(snapshot))
+                    // The proposals of this admission, valued (Missions).
+                    MissionPortfolioResult portfolio = MissionPortfolio.Build(snapshot,
+                        assessment.Breakdown, activeIntents, reconObjectives, aggressionObjectives,
+                        radar, demands, trace, ctx);
+                    missions = portfolio.Missions;
+                    Dictionary<MissionIntentKey, string> missionDeferrals = portfolio.Deferrals;
+                    // Return legs wait for the first Phase B round (Continuity decides which, records
+                    // the wait and protects it from the stall counter); the loop only says whether the
+                    // wait is still allowed.
+                    if (view.ReturnsMayWait)
                     {
-                        var waiting = LifecycleReturnPolicy.SelectWaiting(
-                            missions, activeIntents, player, ctx.TurnNumber);
-                        if (waiting.Count > 0)
+                        ReturnDeferral returns = MissionContinuityLayer.DeferReturnsBeforeTempo(
+                            snapshot, player, ctx.TurnNumber, missions, activeIntents);
+                        if (returns.Waiting.Count > 0)
                         {
                             outcome.DeferReturns();
-                            foreach (MissionProposal m in waiting)
-                            {
-                                MissionIntentKey waitKey = MissionIntentKey.For(m);
-                                missionDeferrals[waitKey] = LifecycleReturnPolicy.DeferralReason;
-                                LifecycleReturnPolicy.RecordWait(player, waitKey, ctx.TurnNumber);
-                                // A deliberate wait is not a stall (ReconcileAfterTurn).
-                                MissionContinuityLayer.MarkProtectedThisTurn(player, waitKey, ctx.TurnNumber);
-                            }
-                            missions = missions.Except(waiting).ToList();
-                            AiDebugLog.WriteDeduped($"returns-wait#{player.ColorIndex}#{ctx.TurnNumber}",
-                                $"[AI][V2][Loop] lifecycle returns wait for the tempo pass (no home threat): "
-                                + string.Join(", ", waiting.Select(m => StableMissionKey.For(m).ToString())));
+                            foreach (KeyValuePair<MissionIntentKey, string> wait in returns.Deferrals)
+                                missionDeferrals[wait.Key] = wait.Value;
+                            missions = returns.Retained;
                         }
                     }
                     PassParkingResult parked = passParking.Filter(missions, snapshot, player);
@@ -998,46 +994,6 @@ namespace Game.Ai.V2
                 session.Player, snapshot, recon, aggression);
             return new OperationalFrame(recon, aggression, intents,
                 session.RefreshActors(intents, snapshot, recon));
-        }
-
-        private static List<MissionProposal> BuildMissionSet(WorldSnapshot snapshot,
-            DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<ReconObjective> reconObjectives,
-            IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar,
-            IReadOnlyList<AxisDemand> demands, V2TraceScope trace,
-            AiTurnContext ctx, out Dictionary<MissionIntentKey, string> deferredThisPass,
-            bool aggressionPressureAlreadyRefreshed = false)
-        {
-            using var __profile = new Game.Core.ProfileScope("AI/Pipeline.BuildMissionSet");
-            // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
-            // the current snapshot right before Missions consumes them, so a frontier completion
-            // earlier this same settled pass is reflected without Missions itself triggering
-            // Strategy/Desire recomputation.
-            StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
-            // The same discipline for the Aggression lane: refresh only the
-            // operational opportunity facts from the current snapshot, never the radar.
-            if (!aggressionPressureAlreadyRefreshed)
-                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
-            deferredThisPass = new Dictionary<MissionIntentKey, string>();
-            List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
-                activeIntents, reconObjectives, deferredThisPass, ctx);
-            missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                activeIntents, aggressionObjectives, ctx, deferredThisPass));
-            missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
-                activeIntents, demands, deferredThisPass));
-            missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
-
-            foreach (MissionProposal m in missions)
-                if (m != null && string.IsNullOrEmpty(m.AttemptId))
-                    m.AttemptId = trace?.NextMissionAttemptId() ?? "?";
-            foreach (MissionProposal m in missions)
-                if (m != null)
-                    m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
-            AttackPreparationPriority.Apply(missions);
-            AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
-
-            AiV2Trace.CorrelateDemandsToMissions(demands, missions);
-            return missions;
         }
 
         // End-of-turn initiative AP telemetry write-back (see the turn-start capture above). A
