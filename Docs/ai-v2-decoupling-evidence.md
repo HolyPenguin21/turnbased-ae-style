@@ -79,3 +79,44 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 ## 8. Конфигурация фикстур
 
 Константы, от которых зависят проверки: `AiConfigV2.maxMidTurnStepsPerTurn = 96`, `maxMidTurnNoProgressCycles = 2`, `maxEndOfTurnTempoReruns = 1`, `lifecycleReturnHomeThreatSeverity = 0.25`; временное `attackRequiresDefenderCoverage = false`. Фикстуры S1/S2/S4/S9 не используют карту, seed и руки: их входы заданы в коде теста (игроки `PlayerSetupData`, ходы 21/31/5–7/10–11, стоимости и AP из тела теста). Недетерминированные партии — только smoke. Сохранённые входы миров для S3/S5/S8 появятся вместе с их fixtures.
+
+# Э1 — один писатель `TurnLoopState`
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Код: `663d075c`, вход этапа — `e62b624b`.
+
+## Что изменено
+
+| Файл | Изменение |
+|---|---|
+| `Orchestration/TurnLoop.cs` | + `TurnLoopView` (readonly struct: значения `SettledSteps`, `NoProgressCycles`, `ReturnsMayWait`, `WithinStepBounds`; ссылки на состояние нет), + `ProgressUpdate`, + `AdmissionIterationOutcome` (одноразовый sink: `SettledStep`, `NoFundedMission`, `NoProvisionedTask`, `StopAfterSettledStep`, `DeferReturns`, `NoProgressAfter`), + `TurnLoop.ApplyIterationOutcome` (единственная запись счётчиков итерации); `TurnLoopWork.Iteration` принимает view и outcome вместо `Action<bool>` |
+| `Orchestration/AiStrategyV2Pipeline.cs` | `RunAdmissionIteration` и `RunMandatoryAviationStep` получают view/outcome; все записи `loop.SettledSteps/NoProgressCycles/ResidualWindow/ReturnsDeferred` и три `stopPass(true)` заменены вызовами outcome. Остальные записи уже были в `TurnLoop` |
+| `Assets/Editor/AiTurnLoopTests.cs` | драйвер проверяемого цикла использует outcome, **эталон-транскрипция baseline не менялась** (тела пишут состояние сами, как в исходнике); + таблица исходов с литеральными ожиданиями; + view без ссылки на состояние; + проверка исходников |
+
+Новый файл `AdmissionIterationOutcome.cs` ТЗ предлагало отдельным; типы размещены в `TurnLoop.cs` рядом с `TurnLoopWork`, потому что они часть контракта цикла и больше нигде не используются. Если нужен отдельный файл — перенос без изменений поведения.
+
+## Сверка с требованиями Э1
+
+| Требование ТЗ | Результат |
+|---|---|
+| Исходы: mandatory action, mission, no-funded, no-provisioned, mission без typed invalidation, deferred returns | таблица `TheIterationEndingsChangeTheCountersExactlyAsTheBaselineBodiesDid` с литеральными значениями (ожидания из исходника тел до Э1) |
+| Все записи — в `TurnLoop.ApplyIterationOutcome` | `OnlyTurnLoopWritesTheTurnLoopState` сканирует `Assets/Scripts`: записей вне `TurnLoop.cs` нет; мутация (прямая запись `loop.ReturnsDeferred` в теле) — тест **падает** |
+| view без ссылки на writable state | поля `TurnLoopView` — только значения; тест рефлексией проверяет отсутствие поля типа `TurnLoopState` |
+| промежуточные boundary/log: номер шага `view.SettledSteps + delta` | `CheckBoundary` и строки `[Loop] step=` используют `stepNumber`/`taskStepNumber`; `noProgress=` в логе — `outcome.NoProgressAfter(view.NoProgressCycles)` (та же арифметика, что в `Apply`, одно место). Читателей счётчиков внутри итерации, кроме этих двух мест, нет (`grep loop\.` по `RunTurn` — пусто) |
+| сброс окна при `OpenPass`, no-progress при вердикте раунда, `ReturnsDeferred` накапливается | не менялись (остались в `TurnLoop`); `ReturnsDeferred` — `|=` |
+| `AiTurnLoopTests`, 20 000 сценариев против транскрипции baseline | проходит; мутация `Apply` без записи окна — **5 из 13 тестов класса падают** |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e1-a-p`) | 2132 теста, 1658 прошло, 474 упало; регрессий 0 относительно `d0-fix-p`, 3 новых прошедших |
+| Compile | 28 = 28, новых 0 (`cmpcc.py`) |
+| Мутации | 2 из 2 пойманы (запись в тело; потеря записи окна в `Apply`) |
+| Матрица зависимостей (`coupling_matrix.py`) | 203 связи, `Pipeline` 14 папок / 84 типа, `Orchestration` 16 / 122 — **без изменений**, как и предсказывало ТЗ (Э1 — совместная запись, а не межпапочные вызовы) |
+| Писатели `TurnLoopState` | было: `TurnLoop` + тела (`SettledSteps`, `ReturnsDeferred`, `NoProgressCycles`, `ResidualWindow`); стало: только `TurnLoop` (проверено сканом) |
+| Банк / кеши | не затрагивались: счётчики не банк и не кеш; порядок вызовов и точки refresh/reconcile/ledger/settle в итерации не менялись; равенство control-trace — транскрипцией `AiTurnLoopTests` |
+| Unity EditMode/PlayMode, native | не выполнялись (S1/S4/S8 на реальных телах — вне managed) |
+
+## Цена изменения (до / после)
+
+Изменить правило no-progress (например, считать раунд Phase B без изменений шагом без прогресса): раньше — `TurnLoop` + три тела (авиация, миссия, отказ provisioning) + вердикт; теперь — `AdmissionIterationOutcome.NoProgressAfter`/`ApplyIterationOutcome` и вердикт в `TurnLoop`; тела сообщают только факт исхода. Межуровневая цена этапом не уменьшена (честная граница по ТЗ).
