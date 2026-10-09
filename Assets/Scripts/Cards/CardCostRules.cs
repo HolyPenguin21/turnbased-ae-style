@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.Economy;
 using Game.Map;
 
@@ -16,6 +17,11 @@ namespace Game.Cards
         // Play-time AP. Delegates to ArmyActions.EffectiveDeployApCost(CardData), which already
         // folds in RapidReaction (0 AP) and ResearchProductionCreated (activationApCost).
         public static int PlayAp(CardData card) => ArmyActions.EffectiveDeployApCost(card);
+
+        // A chain attaches before it deploys. Its read-only final ability projection must
+        // use the same physical AP rule without changing the held card or either slot.
+        public static int PlayAp(CardData card, IReadOnlyList<string> projectedAbilities)
+            => ArmyActions.EffectiveDeployApCost(card, projectedAbilities);
 
         // Play-time ResourceCost of this instance — null for a Research/Production card (already
         // paid at Create), the definition's own resourceCost otherwise. Callers treat null as

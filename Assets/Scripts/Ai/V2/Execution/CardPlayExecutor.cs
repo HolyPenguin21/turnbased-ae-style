@@ -99,14 +99,28 @@ namespace Game.Ai.V2
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan, out string reason, bool resourceForecast = false,
             BuildingData projectedBuilding = null)
+            => PreflightCore(player, root, hand, ctx, plan, out reason, resourceForecast,
+                projectedBuilding, generatedDefinition: null);
+
+        // Before minting, only the card's presence in hand is prospective. Reuse every
+        // placement/ownership/dependency check; the enclosing chain owns its full budget.
+        internal static bool PreflightGenerated(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, CardPlayPlan plan, CardDefinition definition, out string reason)
+            => PreflightCore(player, root, hand, ctx, plan, out reason, resourceForecast: true,
+                projectedBuilding: null, generatedDefinition: definition);
+
+        private static bool PreflightCore(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, CardPlayPlan plan, out string reason, bool resourceForecast,
+            BuildingData projectedBuilding, CardDefinition generatedDefinition)
         {
             reason = null;
-            if (player == null || root == null || hand == null || ctx == null || plan.Card == null)
+            if (player == null || root == null || hand == null || ctx == null
+                || (plan.Card == null && generatedDefinition == null))
             { reason = "missing args"; return false; }
-            if (!hand.Hand.Contains(plan.Card))
+            if (generatedDefinition == null && !hand.Hand.Contains(plan.Card))
             { reason = "card not in hand"; return false; }
 
-            CardDefinition def = plan.Card.Definition;
+            CardDefinition def = generatedDefinition ?? plan.Card.Definition;
             if (def == null) { reason = "card has no definition"; return false; }
             if (def.isAviation) { reason = "aviation card not handled by StrategicManager"; return false; }
             if (def.cardType != CardType.Unit && def.cardType != CardType.Hero)

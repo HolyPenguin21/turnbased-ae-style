@@ -202,6 +202,39 @@ namespace Game.EditorTests
                 "BaseValue's own CardPrice must be army #10's real activation fee, not army #20's");
         }
 
+        [Test]
+        public void AttachmentEstimate_DoesNotSubstituteAnotherScoutForSpentRecipient()
+        {
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(new PlayerSetupData(), focus);
+            ((List<ArmySnapshot>)snap.Self.Armies)[0].CurrentMovement = 0;
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = focus };
+            ScoutCostEstimate ordinary = ScoutCostModel.Estimate(snap, target, preferredMoverArmyId: 10);
+            ScoutCostEstimate recipient = ScoutCostModel.Estimate(snap, target,
+                preferredMoverArmyId: 10, requirePreferredMover: true);
+            Assert.That(ordinary.PreferredMoverArmyId, Is.EqualTo(20));
+            Assert.That(recipient.MoverKnown, Is.False);
+            Assert.That(recipient.ExecutionHex, Is.Null);
+        }
+
+        [Test]
+        public void AttachmentEstimate_KeepsRecipientAndExposesRefreshVantage()
+        {
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(new PlayerSetupData(), focus);
+            ((List<ArmySnapshot>)snap.Self.Armies)[0].EffectiveVisionRadius = 1;
+            snap.MapKnowledge.VisibleArrivalBlockedHexes = new HashSet<HexCoord> { focus };
+            var target = new ScoutMissionTarget { Kind = ScoutTargetKind.Refresh, FocusHex = focus };
+            ScoutCostEstimate recipient = ScoutCostModel.Estimate(snap, target,
+                preferredMoverArmyId: 10, requirePreferredMover: true);
+            Assert.That(recipient.MoverKnown, Is.True);
+            Assert.That(recipient.PreferredMoverArmyId, Is.EqualTo(10));
+            Assert.That(recipient.ExecutionHex.HasValue, Is.True);
+            Assert.That(recipient.ExecutionHex.Value, Is.Not.EqualTo(focus));
+            Assert.That(recipient.EstimatedDistance,
+                Is.EqualTo(HexGridMath.Distance(snap.Self.Armies[0].Hex, recipient.ExecutionHex.Value)));
+        }
+
         private static MissionIntent Incumbent(HexCoord focus, int armyId)
         {
             var intent = new MissionIntent

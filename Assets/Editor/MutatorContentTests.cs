@@ -25,18 +25,18 @@ namespace Game.EditorTests
         [TestCase("reactive-marrow", "HitPoints:2", "")]
         [TestCase("reinforced-skeleton", "Defense:1,HitPoints:1,Initiative:-1", "")]
         [TestCase("pain-suppression", "HitPoints:2,Defense:1,MoveMax:-1", "")]
-        [TestCase("regenerative-culture", "", UnitAbilities.Regeneration)]
-        [TestCase("hyper-regeneration", "HitPoints:1,MoveMax:-1", UnitAbilities.Regeneration)]
-        [TestCase("survivor-strain", "Defense:1,MoveMax:-1", UnitAbilities.Regeneration)]
+        [TestCase("regenerative-culture", "Attack:1", UnitAbilities.Regeneration)]
+        [TestCase("hyper-regeneration", "HitPoints:1,MoveMax:-1", "Regeneration,CeramicArmor")]
+        [TestCase("survivor-strain", "Defense:1,MoveMax:-1,HitPoints:2", UnitAbilities.Regeneration)]
         [TestCase("adrenal-surge", "MoveMax:1,Initiative:1,Defense:-1", "")]
         [TestCase("metabolic-overdrive", "MoveMax:1,Defense:-1", "")]
         [TestCase("predator-reflexes", "Initiative:1,Defense:1,MoveMax:-1", "")]
-        [TestCase("neural-accelerator", "Initiative:1,Defense:1", "")]
+        [TestCase("neural-accelerator", "Initiative:1,Defense:1,Attack:1", "")]
         [TestCase("rapid-synapse", "Defense:-1", UnitAbilities.RapidReaction)]
         [TestCase("hunter-glands", "Defense:-1", UnitAbilities.R1S4)]
-        [TestCase("enhanced-senses", "Initiative:1,MoveMax:-1", UnitAbilities.R1S4)]
-        [TestCase("wanderer-strain", "MoveMax:1,Defense:-1", UnitAbilities.R1S4)]
-        [TestCase("chameleon-tissue", "MoveMax:-1", UnitAbilities.Stealth4)]
+        [TestCase("enhanced-senses", "Initiative:1,MoveMax:-1", "r1s4,CeramicArmor")]
+        [TestCase("wanderer-strain", "MoveMax:1,Defense:-1,Attack:1", UnitAbilities.R1S4)]
+        [TestCase("chameleon-tissue", "MoveMax:-1,Initiative:1", UnitAbilities.Stealth4)]
         [TestCase("fortunate-genome", "Fate:1", "")]
         [TestCase("ghost-genome", "", UnitAbilities.Stealth4)]
         [TestCase("hunter-genome", "", UnitAbilities.R1S4)]
@@ -45,7 +45,7 @@ namespace Game.EditorTests
         {
             CardDefinition card = Mutator(slug);
             Assert.That(string.Join(",", card.equipment.statChanges.Select(c => c.stat + ":" + c.amount)), Is.EqualTo(stats));
-            Assert.That(card.equipment.addAbilities, Is.EquivalentTo(skill.Length == 0 ? new string[0] : new[] { skill }));
+            Assert.That(card.equipment.addAbilities, Is.EquivalentTo(skill.Length == 0 ? new string[0] : skill.Split(',')));
             bool hero = card.equipment.hostKinds.Contains(EquipmentHostKind.Hero);
             var host = AttachmentSlotTests.Host(hero);
             host.grantedAbilities.Clear();
@@ -61,7 +61,7 @@ namespace Game.EditorTests
             Assert.That(body.Initiative, Is.EqualTo(predicted.Stats[EquipmentStat.Initiative]));
             Assert.That(body.ActivationApCost, Is.EqualTo(predicted.Stats[EquipmentStat.ActivationApCost]));
             Assert.That(body.FateMax, Is.EqualTo(predicted.Stats[EquipmentStat.Fate]));
-            Assert.That(body.Attack, Is.EqualTo(host.attack));
+            Assert.That(body.Attack, Is.EqualTo(predicted.Stats[EquipmentStat.Attack]));
             Assert.That(body.Range, Is.EqualTo(host.range));
             Assert.That(body.CommandRating, Is.EqualTo(host.commandRating));
         }
@@ -87,7 +87,7 @@ namespace Game.EditorTests
                 foreach (var change in c.equipment.statChanges)
                 {
                     Assert.That(change.isOverride, Is.False);
-                    Assert.That(change.stat == EquipmentStat.Attack || change.stat == EquipmentStat.Range
+                    Assert.That(change.stat == EquipmentStat.Range
                         || change.stat == EquipmentStat.CommandRating || change.stat == EquipmentStat.Resistance,
                         Is.False, change.stat.ToString());
                     Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 2 : 1));
@@ -95,8 +95,11 @@ namespace Game.EditorTests
                 }
                 Assert.That(c.apCost, Is.EqualTo(1));
                 Assert.That(c.activationApCost, Is.EqualTo(1));
-                int expectedDifficulty = 3 + c.equipment.statChanges.Sum(change => change.amount)
-                    + 2 * c.equipment.addAbilities.Count;
+                // Challenge is authored balance, independent of this effect-only strengthening.
+                string slug = c.authoredKey.Substring("neutral.mutator.".Length);
+                int expectedDifficulty = slug == "metabolic-overdrive" ? 3
+                    : new[] { "dermal-plating", "reinforced-skeleton", "adrenal-surge", "predator-reflexes",
+                        "rapid-synapse", "hunter-glands", "chameleon-tissue", "fortunate-genome" }.Contains(slug) ? 4 : 5;
                 Assert.That(ResearchProductionSystem.RequiredSuccesses(c), Is.EqualTo(expectedDifficulty), c.displayName);
                 bool shiftedEnergy = new[] { "hyper-regeneration", "survivor-strain", "neural-accelerator",
                     "rapid-synapse", "reflex-genome" }.Any(slug => c.authoredKey == "neutral.mutator." + slug);
@@ -117,10 +120,12 @@ namespace Game.EditorTests
         public void RecceIsExactlyR1S4AndDoesNotRemoveCompatibleStealth(string slug)
         {
             var c = Mutator(slug);
-            Assert.That(AbilityParams.TryGetRecce(c.equipment.addAbilities.Single(), out int radius, out int strength), Is.True);
+            Assert.That(AbilityParams.TryGetRecce(c.equipment.addAbilities.Single(a => AbilityParams.TryGetRecce(a, out _, out _)), out int radius, out int strength), Is.True);
             Assert.That(radius, Is.EqualTo(1)); Assert.That(strength, Is.EqualTo(4));
             var abilities = EquipmentSystem.EffectiveAbilities(new[] { UnitAbilities.Stealth4 }, c.equipment);
-            Assert.That(abilities, Is.EquivalentTo(new[] { UnitAbilities.Stealth4, UnitAbilities.R1S4 }));
+            Assert.That(abilities, Is.EquivalentTo(slug == "enhanced-senses"
+                ? new[] { UnitAbilities.Stealth4, UnitAbilities.R1S4, UnitAbilities.CeramicArmor }
+                : new[] { UnitAbilities.Stealth4, UnitAbilities.R1S4 }));
         }
 
         [TestCase(0)]

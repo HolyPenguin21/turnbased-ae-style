@@ -123,15 +123,36 @@ namespace Game.Ai.V2
             return sink;
         }
 
-        // Direct / AttachDeploy carry an existing hand card and a fully-resolved placement — those
-        // must still legally play right now. A Generate* shape has no card to preflight pre-mint
-        // (MaterializationExecutor re-validates the placement after minting).
-        private static bool PreflightIfExisting(PlayerSetupData player, PlayerRoot root, AiHandData hand,
+        // Shared by admission and execution before payment. Price/funding stays with the
+        // canonical chain; this checks the live sources, independent slot and placement.
+        internal static bool PreflightIfExisting(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, MaterializationPlan p)
         {
-            if (p.Generation != null || p.BaseCardInHand == null)
+            if (p == null || hand == null) return false;
+            if (p.Kind == MaterializationChainKind.GenerateAttachUpgrade)
                 return true;
-            return CardPlayExecutor.Preflight(player, root, hand, ctx, p.Deploy.Bind(p.BaseCardInHand), out _);
+            CardData body = p.BaseCardInHand;
+            bool generatedBody = p.GeneratedBaseDef != null;
+            if (!generatedBody && (body == null || !hand.Hand.Contains(body)))
+                return false;
+            if (p.UsesEquipment)
+            {
+                CardDefinition attachment = p.GeneratedEquipmentDef ?? p.EquipmentInHand?.Definition;
+                if (p.GeneratedEquipmentDef == null
+                    && (p.EquipmentInHand == null || !hand.Hand.Contains(p.EquipmentInHand)
+                        || ReferenceEquals(p.EquipmentInHand, body)))
+                    return false;
+                if (!(generatedBody
+                    ? EquipmentSystem.FitsHost(attachment, p.GeneratedBaseDef, out _)
+                    : EquipmentSystem.CanAttachPreview(attachment, body, out _))) return false;
+            }
+            if (p.Deploy.Kind != DeploymentKind.NewArmy && !ArmyRegistry.IsRegistered(p.Deploy.Army))
+                return false;
+            return generatedBody
+                ? CardPlayExecutor.PreflightGenerated(player, root, hand, ctx, p.Deploy.Bind(null),
+                    p.GeneratedBaseDef, out _)
+                : CardPlayExecutor.Preflight(player, root, hand, ctx, p.Deploy.Bind(body), out _,
+                    resourceForecast: true);
         }
 
         internal static void AddIfFeasibleA(

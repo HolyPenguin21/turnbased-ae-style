@@ -655,6 +655,16 @@ namespace Game.Ai.V2
                 return res;
             }
 
+            // Revalidate the successful-chain budget before minting too. Expected score
+            // never authorizes a fractional payment or the use of a newly protected hold.
+            if (play.ApCost > StrategicSpendability.SpendableAp(player, root, ctx)
+                    + AiConfigV2.allocatorSliceEpsilon
+                || !StrategicSpendability.FitsSpendableResources(player, root, ctx, play.ResCost))
+            {
+                res.FailReason = "non-combat chain no longer fits AP/spendable reserves";
+                return res;
+            }
+
             int apBefore = root.ActionPoints;
             int stateVersionBefore = WorldDeltaLifecycle.Current;
 

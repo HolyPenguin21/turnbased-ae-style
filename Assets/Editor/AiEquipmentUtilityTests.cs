@@ -1,8 +1,13 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using Game.Ai.V2;
+using Game.Ai;
 using Game.Cards;
 using Game.Combat;
+using Game.HexGrid;
+using Game.Map;
+using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -414,6 +419,61 @@ namespace Game.EditorTests
             big.equipment.statChanges.Add(new EquipmentStatChange { stat = EquipmentStat.Attack, amount = 40 });
             Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(big, host).Combat,
                 Is.GreaterThan(free.Combat), "no fixed clamp on the result");
+        }
+
+        [TestCase(AttachmentSlot.Equipment)]
+        [TestCase(AttachmentSlot.Mutator)]
+        public void AssignedScout_UsesItsRouteForRapidReactionInEitherIndependentSlot(AttachmentSlot slot)
+        {
+            var host = new UnitData { MoveMax = 3, ActivationApCost = 1 };
+            var army = new ArmyData { Hex = new HexCoord(0, 0) };
+            army.Members.Add(host);
+            var actor = new ArmySnapshot { ArmyId = army.Id, Hex = army.Hex,
+                IsSoloRecce = true, MemberCount = 1, CurrentMovement = 3,
+                MaxMovement = 3, ActivationApCost = 1 };
+            var snap = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] { actor } } };
+            var purpose = new MissionIntent { Kind = MissionKind.Scout, PreferredMoverArmyId = army.Id,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(7, 0) } };
+            var ctx = new EfficiencyContext { IsHero = true };
+            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
+            var body = new CardDefinition { cardType = CardType.Hero, moveMax = 3, activationApCost = 1 };
+            var item = new CardDefinition { cardType = CardType.Equipment, attachmentSlot = slot,
+                equipment = new EquipmentGrant() };
+            item.equipment.addAbilities.Add(UnitAbilities.RapidReaction);
+            PredictedEquipmentState projected = EquipmentSystem.Project(body, null, null, item);
+            Assert.That(ctx.RouteLength, Is.EqualTo(7));
+            Assert.That(U(S(0, 1, 4, 1), S(0, 1, 4, 1), ctx,
+                None, new List<string>(projected.Abilities).ToArray()).Ap,
+                Is.EqualTo(ActionPrice.ToCardScore(3f)).Within(1e-5f),
+                "three route activations replace the unassigned 1.5-activation proxy, without requiring the other slot");
+        }
+
+        [Test]
+        public void AssignedScout_StealthReadsHonestDetectorsWithoutInventingHiddenTargets()
+        {
+            var host = new UnitData(); var army = new ArmyData { Hex = new HexCoord(0, 0) };
+            army.Members.Add(host);
+            HexCoord focus = new HexCoord(3, 0);
+            var sightings = new List<AiMapMemory.KnownEnemySighting>();
+            for (int i = 0; i < 8; i++) sightings.Add(new AiMapMemory.KnownEnemySighting(
+                focus, new PlayerSetupData(), "detector", 1, 1, 1, null, armyId: i));
+            var snap = new WorldSnapshot { Known = new KnownSnapshot { EnemySightings = sightings },
+                Self = new SelfSnapshot { Armies = new[] { new ArmySnapshot { ArmyId = army.Id,
+                    Hex = army.Hex, IsSoloRecce = true, MemberCount = 1, CurrentMovement = 3, MaxMovement = 3 } } } };
+            var purpose = new MissionIntent { Kind = MissionKind.Scout, PreferredMoverArmyId = army.Id,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus } };
+            var ctx = new EfficiencyContext { IsHero = true, StealthUsable = true };
+            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(ctx, snap, army, host, null, purpose);
+            Assert.That(ctx.StealthRisk, Is.EqualTo(ScoutRiskModel.DetectorRisk(snap, focus)));
+            Assert.That(ctx.DetectionRelevance, Is.Zero, "enemy detectors are not evidence of a hidden target");
+            var stealth = new[] { "Stealth4" };
+            Assert.That(U(Medium, Medium, ctx, None, stealth).Stealth,
+                Is.GreaterThan(U(Medium, Medium, new EfficiencyContext { IsHero = true, StealthUsable = true }, None, stealth).Stealth));
+            snap.Known = new KnownSnapshot();
+            var unknown = new EfficiencyContext { IsHero = true, StealthUsable = true };
+            StrategicCardEvaluator.ApplyKnownRouteAndCoverage(unknown, snap, army, host, null, purpose);
+            Assert.That(U(Medium, Medium, unknown, None, stealth).Stealth,
+                Is.EqualTo(U(Medium, Medium, new EfficiencyContext { IsHero = true, StealthUsable = true }, None, stealth).Stealth));
         }
 
         [Test]

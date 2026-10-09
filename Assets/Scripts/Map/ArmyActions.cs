@@ -137,13 +137,18 @@ namespace Game.Map
         }
 
         public static int EffectiveDeployApCost(CardData card)
+            => EffectiveDeployApCost(card, null);
+
+        // Physical deployment and a materialization preview share the final ability state.
+        // Attaching RapidReaction before deployment has the same price as a native ability.
+        public static int EffectiveDeployApCost(CardData card, IReadOnlyList<string> projectedAbilities)
         {
             if (card?.Definition == null)
                 return 0;
-            CardDefinition definition = card.Definition;
-            if (definition.grantedAbilities != null && definition.grantedAbilities.Contains(UnitAbilities.RapidReaction))
+            IReadOnlyList<string> abilities = projectedAbilities ?? EquipmentSystem.EffectiveAbilities(card);
+            if (abilities.Contains(UnitAbilities.RapidReaction))
                 return 0;
-            return card.ResearchProductionCreated ? definition.activationApCost : definition.apCost;
+            return card.EffectivePlayApCost;
         }
 
         // Pure gameplay legality primitive shared by human preview, AI planning and the physical

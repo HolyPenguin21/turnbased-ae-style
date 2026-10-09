@@ -84,14 +84,16 @@ namespace Game.Ai.V2
                 || plan.ApCost != challengeAp || plan.DeferredAttachmentAp != attachAp
                 || DevelopmentOpportunityEvaluator.PendingEquipmentCovers(op, hand, snap,
                     CapabilityInventory.Build(snap, player, null))
-                || !StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player))
+                || !StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player,
+                    demand?.SpendAuthority ?? default))
                 return DevUpgradeResult.Skip("upgrade_chain_no_longer_spendable");
 
             int apBefore = root.ActionPoints;
             bool wasHiddenHero = generation.Mode == ResearchProductionMode.Research
                 && generation.Hero != null && generation.Hero.IsHidden;
             MaterializationExecutor.GenerationOutcome generated =
-                MaterializationExecutor.TryGenerate(generation, player, root, hand, ctx);
+                MaterializationExecutor.TryGenerate(generation, player, root, hand, ctx,
+                    demand?.SpendAuthority ?? default);
             if (!generated.Attempted)
                 return DevUpgradeResult.Skip(generated.FailReason ?? "generation_preflight_failed");
             if (!generated.Success)
