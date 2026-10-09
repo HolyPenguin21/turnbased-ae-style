@@ -210,7 +210,7 @@ No-op/rollback: `HasMutation = false` не публикует (не трогал
 | Проверка | Результат |
 |---|---|
 | Managed-прогон итогового кода (`l5-a-p`) | **1649 прошло**, 474 упало; регрессий 0 против `l4-c-p` и против исходного `l0-base-p` (1571) |
-| 474 упавших | ровно те 472, что падают на `fe2ccdf4` (engine-bound, а также 8 non-engine с отличиями mono и `AiRawResourceReadRatchetTests` из-за постороннего `ActiveDefenceExecutor.cs`), + 2 новых engine-bound теста (`MandatoryRebase_StalledWingsStopCounting_ForTheirTurnOnly`, `TheDispatcherRoutesEachAxisToItsOwnerAndSharesNoKey`); проходивших на baseline и упавших сейчас — 0 |
+| 474 упавших | ровно те 472, что падают в managed-прогоне и на `fe2ccdf4` (по сообщениям — в основном обращения к движку; среди них 8 без признаков движка и `AiRawResourceReadRatchetTests` из-за постороннего `ActiveDefenceExecutor.cs`; их статус **в Unity не установлен** — сравнить с baseline в Unity), + 2 новых теста, требующих движка (`MandatoryRebase_StalledWingsStopCounting_ForTheirTurnOnly`, `TheDispatcherRoutesEachAxisToItsOwnerAndSharesNoKey`); проходивших на baseline и упавших сейчас — 0 |
 | `compile_check.sh` + `cmpcc.py` | 28 = 28, новых 0 |
 | `ratchet.py` | сумма прямых чтений по затронутым файлам не выросла (утверждённые числа «moved, not new» обновлены на Ур. 3) |
 | Мутационная проверка цикла (Ур. 4) | 5/5 |
@@ -220,7 +220,7 @@ No-op/rollback: `HasMutation = false` не публикует (не трогал
 | Unity compile / EditMode / PlayMode | **not run** |
 
 Ограничения и оставшаяся работа:
-1. Полное сохранение игрового поведения **не объявляется**: детерминированной партии нет; native на итоговом SHA и EditMode — not run. Для закрытия ТЗ §14: Unity EditMode целиком (в т.ч. 474 engine-bound), обычный нативный лог на итоговом SHA (`loopsig.py`, `turnorder.py`), сценарии ТЗ §12 в Unity.
+1. Полное сохранение игрового поведения **не объявляется**: детерминированной партии нет; native на итоговом SHA и EditMode — not run. Для закрытия ТЗ §14: Unity EditMode целиком с сравнением 472 падающих в managed-прогоне тестов против baseline **в Unity** и двумя новыми (§11.3), сценарии ТЗ §12 в Unity. Нативная партия на итоговом коде — §12.
 2. Rebase нативно не наблюдался ни разу; cold residual в нативе не наблюдался (покрыт managed-трассами Ур. 4).
 3. Банковская числовая таблица по ходам и multi-owner/rollback сценарии — not run.
 4. Число управляющих состояний не сократилось (§5).
@@ -323,7 +323,7 @@ No-op/rollback: `HasMutation = false` не публикует (не трогал
 
 SHA — коммит этого раздела (последний на ветке `refactor/ai-v2-pipeline-simplification`); код идентичен `300bb989` (последующие коммиты меняют только `Docs/`). Нативная партия Уровня 4 — доказательство только для `f46e4529`; на итоговый SHA не переносится.
 
-1. **EditMode целиком**, включая 474 теста, выполнимых только в Unity, и два новых из §11.3.
+1. **EditMode целиком**; 472 теста, падающие в managed-прогоне и на baseline, сравнить с результатом baseline **в Unity** (их происхождение определяется результатом, не количеством); два новых из §11.3 требуют движка.
 2. **Обычная партия**: `python D:/aiv-work/loopsig.py <лог>` и `python D:/aiv-work/scratch-keep/turnorder.py <лог>`, плюс сценарии:
    - **Внутриходовое продолжение:** ход с несколькими шагами миссий и `management round=2`; проход после раунда (`cause=PhaseBTrigger`) продолжает задачи того же хода.
    - **Phase B → возвраты:** `returns wait` до раунда 1, затем `cause=ReturnsReleased` (или возврат исполнен в проходе `PhaseBTrigger`); возврат, ждавший в прошлом ходу, исполнен без ожидания; при угрозе дому, tactical retreat, ActiveDefence return — без ожидания.
@@ -332,3 +332,66 @@ SHA — коммит этого раздела (последний на ветк
    - **Авиационные обязательства:** recovery и, желательно, перебазирование; `re-admission deferred`, затем flush после последнего обязательства; stall не блокирует миссии.
    - **Банк и следующий ход:** отложенная Economy-постройка, Attack preparation и Reaction в одной партии; `[Invariant] violations=0`, нет `ERROR`, после Housekeeping нет оставшихся резервов; на следующем ходу те же intents продолжаются без повторной оплаты.
 3. Нативный лог на итоговом SHA, EditMode, PlayMode — **not run**.
+
+## 12. Нативная партия на итоговом коде (2026-10-09 17:38–17:45)
+
+### 12.1 Что запускалось
+
+| Что | Значение |
+|---|---|
+| Ветка / HEAD при запуске | `refactor/ai-v2-pipeline-simplification` @ `bb3224051e067d461762e0855c17849adf41aa15` (коммит 17:37:21), дерево чистое; код = `300bb989` |
+| Сборка | `Library/ScriptAssemblies/Assembly-CSharp.dll` собрана 17:30:35 — позже последней правки `.cs` (17:21:50) и коммита `300bb989` (17:24:07); `.cs` новее сборки — 0; ошибок компиляции в `Editor.log` нет |
+| Партия | AI против AI (Thane, Halden), 15 раундов, сессия лога 17:38:21–17:45:28, итог: Halden wins (Thane выбит на 15-м раунде) |
+| Сохранено | `D:/aiv-work/native-final/`: `AiDebug.log`, `Editor.log`, `AiMatchSummary.txt`, `AiMatchTurns.csv`; XML тестов нет (EditMode не запускался) |
+
+### 12.2 Структурные проверки
+
+| Проверка | Результат |
+|---|---|
+| `loopsig.py` | 29 ходов V2; `invariant:violations=0`; `begin` 54 = `open:Initial` 29 + `open:PhaseBTrigger` 23 + `open:ReturnsReleased` 2; раунд 1 — 29, раунд 2 — 18; 185 шагов миссий, 2 recovery |
+| `turnorder.py` (правила порядка по ходам) | **0 ошибок** |
+| Исключения / `[ERROR]` / `[Invariant] ERROR` / `reservation leak at turn end` | 0 / 0 / 0 / 0 |
+| Итоговый аудит ревизий хода | во всех 29 ходах `bumps == commits`, `stagedChildren=0`, `violations=0`, проверено 72 операции |
+
+### 12.3 Переходы по существу
+
+| Переход | Что наблюдалось | Вывод |
+|---|---|---|
+| Внутриходовое продолжение | проходы `PhaseBTrigger` с шагами у Thane в ходах 3 (2 шага), 7 (1), 11 (3), 12 (1); остальные проходы после раунда — 0 шагов с причиной остановки | passed |
+| Решение после раунда Phase B (все 47 раундов) | по строке `strat.B/tempo — END` каждого раунда: Phase B действовала в 22 раундах, и во всех 22 раунд публиковал operational trigger → проход `PhaseBTrigger`; во всех раундах без триггеров Phase B ничего не сыграла и не взяла → проход не открывался | 0 расхождений с правилом baseline; путь `PhaseBStateChanged` (Phase B действовала без триггера) **не возник** |
+| Release возвратов | 8 ожиданий только до раунда 1; Halden t5: возврат Raid #19 ждал → раунд 1 без триггеров → `ReturnsReleased` → `NoExecutableStep [RetryNextTurn]` (у армии нет MP после боя); Halden t6: тот же возврат идёт **без ожидания** (ждал в прошлом ходу) и исполнен; Thane t9: `ReturnsReleased` → шаг `Economy(ReturnBuilder …)` исполнен | passed |
+| Cold admission | строк `cold Radar residual` — 0 | **не наблюдалось** |
+| Compound facts | в 192 шагах/раундах один допуск дошёл до нескольких осей; в 11 случаях (включая раунд Phase B) первый reentry изменил состояние (`changed=1`), а вторая пара в том же шаге донесла новые факты (Capability, Resources, Infrastructure) до Economy/Development/Aggression | passed |
+| Авиационные обязательства | Thane t14: после AirSweep и первого recovery допуск отложен (`deferred`); после последнего recovery отложенные оси допущены (Development — пропуск по неизменному ключу, Aggression — допуск) | passed (recovery); **rebase не наблюдался** |
+| Phase B после Reaction (Housekeeping) | Reaction не запускалась ни разу (нет строк резерва и раунда Reaction), повтора `tempo re-run after reaction` — 0 | **не наблюдалось** |
+
+### 12.4 Банк и следующий ход
+
+| Проверка | Результат |
+|---|---|
+| `DeferredIncomeCover` (18 событий) | все — после первого прохода и до раунда 1 (окно первого Phase B) |
+| `Reservation EXPIRE stage=EndOfTurn` (12) | все — после завершения цикла хода |
+| Переходы deferred → completion внутри хода | 6 ходов; пример `BuildExtraction -3,-2 res#1`: T2 deferred (снят и восстановлен внутри хода), истёк на конце хода, T3 пересоздан, затем completion и исполнение |
+| Утечки резервов на конец хода | 0 (`AssertClearAtTurnEnd` не сработал ни разу) |
+| Актуальность чтений | сверка ревизий без потерь и повторов (12.2); ход начинается со свежего scan; численного сравнения с baseline на одном seed нет |
+
+### 12.5 Таблица покрытия
+
+| Сценарий | Произошло в партии | Результат | Что нужно для закрытия |
+|---|---|---|---|
+| Внутриходовое продолжение после Phase B | да | passed | — |
+| Phase B → release возвратов; ожидание прошлого хода | да | passed | — |
+| Возврат при угрозе дому / tactical retreat / ActiveDefence return | нет | **не наблюдалось** | партия с угрозой базе или отступлением |
+| Phase B меняет руку без operational trigger (`PhaseBStateChanged`) | нет | **не наблюдалось** (managed: passed) | партия, где Phase B играет карту без публикации operational-факта |
+| Cold admission | нет | **не наблюдалось** (managed: passed) | ось с нулевым Radar и остаточным окном |
+| Compound facts, вторая пара | да | passed | — |
+| Recovery, deferred → flush | да | passed | — |
+| Rebase | нет | **не наблюдалось** | отдельный сценарий перебазирования wing |
+| Stall авиации | нет | не наблюдалось | wing без возможного шага |
+| Phase B после Reaction | нет | **не наблюдалось** | партия с ожидающей Reaction |
+| Bounds: max steps / no progress | max-step 22 < 96; bounded stop — 0 | лимиты не достигались | ход, упирающийся в лимит (managed: passed) |
+| Банк: deferred/completion, income cover, конец хода | да | passed (по позициям и утечкам) | числовая таблица на одном seed — нет детерминизма |
+| Банк: Economy + Attack preparation + Reaction одновременно, rollback | нет | **не наблюдалось** | отдельный сценарий |
+| EditMode / PlayMode | — | **not run** | прогон в Unity; 472 теста, падающих в managed-прогоне и на baseline, сравнить с baseline **в Unity** (их статус там не известен); 2 новых — Unity-only (§11.3) |
+
+Расхождений с правилами baseline не обнаружено; первого отличающегося перехода нет. Это партия итогового кода, а не сравнение с baseline на одном seed: полное сохранение игрового поведения не объявляется.
