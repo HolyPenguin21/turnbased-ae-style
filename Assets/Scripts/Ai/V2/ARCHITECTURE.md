@@ -207,6 +207,18 @@ capability fulfilment and surplus/tempo arbitration. They are re-entered only
 through bounded adapters and retain turn-scoped parking/reservation state; the
 terminal Phase-B/reaction path remains the final safety net.
 
+**One main loop (level 4).** `Orchestration/TurnLoop.Run` is the single owner of the turn's
+transitions after the first Phase A: it opens every operational admission pass (at the start,
+after a Phase B round that asks for it, after a cold residual that changed state), runs its
+iterations while `maxMidTurnStepsPerTurn` / `maxMidTurnNoProgressCycles` hold, closes it with the
+terminal force admission, then runs the Phase B rounds (first round preceded by the settle window,
+at most `maxEndOfTurnTempoReruns + 1`) and the zero-Radar residual once. An open pass always runs
+before the next round or the cold stage. `TurnLoopState` holds the control counters;
+`TempoRoundVerdict` decides what follows a round. The work bodies (admission iteration with
+mandatory aviation / mission selection, provisioning retry, execution, Phase B round, cold
+residual) stay in `Pipeline.RunTurn` with their own observation/settle order;
+`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop.
+
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
 Every turn builds the real Desire evaluators, normalizes one Radar and runs all four

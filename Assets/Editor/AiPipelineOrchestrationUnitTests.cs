@@ -60,7 +60,7 @@ namespace Game.EditorTests
             Assert.AreEqual(s.Operational | s.Strategic, s.Consumed);
         }
 
-        // ---- zero-Radar residual window (Pipeline's zeroRadarResidualWindow writers) ----------
+        // ---- zero-Radar residual window (writers of TurnLoopState.ResidualWindow) -------------
 
         private static FundedEntry Funded(float value, bool commitment, int objective)
         {

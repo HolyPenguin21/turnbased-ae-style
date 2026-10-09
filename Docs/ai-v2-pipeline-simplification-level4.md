@@ -1,6 +1,6 @@
 # AI V2 — упрощение пайплайна, Уровень 4: один основной цикл вместо operational и management loops
 
-Статус: **реализован — проверки незавершены** (план одобрен владельцем с уточнениями §0a; шаг 1 выполнен, §12).
+Статус: **проверен доступными средствами — native не выполнен** (план одобрен владельцем с уточнениями §0a; шаги 1–3 выполнены, §12; отчёт §13).
 Ветка `refactor/ai-v2-pipeline-simplification`. База: `c3cdde46` (конец Уровня 3).
 Среда: Unity 6000.5.4f1 (`ProjectSettings/ProjectVersion.txt`); проверки — net472 + mono из Unity; Unity-редактор не запускался.
 Строки — по `Orchestration/AiStrategyV2Pipeline.cs` @ `c3cdde46`.
@@ -71,7 +71,7 @@ flowchart TD
 
 ## 2. Схема A: один цикл с раскрытыми внутренними переходами
 
-Изменение алгоритма — только структура управления в `RunTurn`: одно `while`, решение «что дальше» — чистая функция `OperationalWorkSelection.Phase` (существующий класс Ур. 2). Тела работ — существующие локальные функции/блоки `RunTurn`, перенесённые без изменений текста и порядка.
+Изменение алгоритма — только структура управления: одно `while` в `TurnLoop.Run` (вызывается из `RunTurn`), решение «что дальше» — чистая функция `TurnLoop.Phase` (размещение пересмотрено на шаге 1, §8). Тела работ — существующие локальные функции/блоки `RunTurn`, перенесённые без изменений текста и порядка.
 
 ```mermaid
 flowchart TD
@@ -152,7 +152,7 @@ flowchart TD
     F["F, без изменений: RecallUnsafeStrikes foreach (safety-net вне Q); RefreshActors; SettleAfterTurn; Summarize → итог хода, Housekeeping"]
 ```
 
-Чистые функции (новые, в существующем `OperationalWorkSelection.cs`):
+Чистые функции (новые, `Orchestration/TurnLoop.cs`):
 ```
 Phase(passOpen, settled, noProgress, stage) =
     passOpen ? (settled < maxMidTurnStepsPerTurn && noProgress < maxMidTurnNoProgressCycles ? Ordinary : CloseOrdinary)
@@ -405,15 +405,121 @@ Gate: `bash D:/aiv-work/run.sh <имя>` → `bash D:/aiv-work/patchrun.sh <им
 
 ## 12. Ход работы
 
-### Шаг 1 — независимый baseline переходов и тесты последовательностей (не подключено)
+### Шаг 1 — независимый baseline переходов и тесты последовательностей (`a4f8642a`)
 
 | Что | Результат |
 |---|---|
-| `Orchestration/TurnLoop.cs` (новый, `.meta` с новым GUID) | `TurnLoop.Run/Phase/ColdEligible`, `TurnLoopState`, `TurnLoopWork`, `TempoRoundOutcome/Verdict`, enum-ы; не вызывается из `RunTurn` |
-| `Editor/AiTurnLoopTests.cs` (новый) | эталон — транскрипция управляющих операторов `RunTurn` @ `c3cdde46` (L469–L834, L846–L934, L940–L990: `while`, `break`, три `if`, два выхода, `lifecycleReturnsReleased`, `phaseBHandled`, cold guard) с номерами строк; одинаковые скриптовые тела работ; 20 000 детерминированных сценариев по 0–40 итераций, старт у глобальных лимитов; сравнение полных трасс (порядок работ, счётчики на каждой границе, ворота ожидания возвратов, сброс retry-set, `TerminalForce`, причина открытия прохода); проверка, что генератор достиг всех причин, обоих bounds, обоих раундов и cold. Вердикт — 32 комбинации × 2 значения числа раундов против транскрипции L898–L932. Пять трасс выписаны вручную из исходника |
+| `Orchestration/TurnLoop.cs` (новый, `.meta` с новым GUID) | `TurnLoop.Run/Phase/ColdEligible`, `TurnLoopState`, `TurnLoopWork`, `TempoRoundOutcome/Verdict`, enum-ы |
+| `Editor/AiTurnLoopTests.cs` (новый) | эталон — транскрипция управляющих операторов `RunTurn` @ `c3cdde46` (L469–L834, L846–L934, L940–L990: `while`, `break`, три `if`, два выхода, `lifecycleReturnsReleased`, `phaseBHandled`, cold guard) с номерами строк; одинаковые скриптовые тела работ; 20 000 детерминированных сценариев по 0–40 итераций, со стартом у глобальных лимитов; сравнение полных трасс (порядок работ, счётчики на каждой границе, ворота ожидания возвратов, сброс retry-set, `TerminalForce`, причина открытия прохода); проверка, что генератор достиг всех причин, обоих bounds, обоих раундов и cold. Вердикт — 32 комбинации × 2 значения числа раундов против транскрипции L898–L932. Пять трасс выписаны вручную из исходника |
 | Чувствительность (мутации `TurnLoop.cs` в копии сборки) | смена приоритета причин — 2 теста падают; без ограничения раундов — 3; без сброса окна при открытии прохода — 3; `releaseNow` после инкремента — 2; settle window в каждом раунде — 3; без мутации — 10/10 |
-| `run.sh l4-a` + `patchrun.sh` | build errors 0; 2122 теста, **1648 прошло**, 474 упало |
-| `regress.py l3-e-p l4-a-p` | **регрессий 0**, новых проходящих 10 (все `AiTurnLoopTests`) |
+
+### Шаг 2 — подключение цикла (`b09a7fc8`)
+
+`RunTurn` вызывает `TurnLoop.Run` с телами работ — локальными функциями, перенесёнными построчно: `OpenAdmissionPass` (retry-set, часы yield), `RunAdmissionIteration` (тело прежнего `while`), `TerminalForceAdmission`, `SettleBeforeFirstPhaseB` (прежние L847–L856), `RunTempoRound` (тело прежнего раунда без `releaseNow`/`released`/трёх `if`/выходов), `ColdAxisCount` + `RunColdResidual` (тело cold-ветки). Дифф без пробелов (`git diff -w`) содержит только: переименование счётчиков в поля `TurnLoopState`, `continue` → `yield break`, `break` → `stopPass(true)`, удалённые управляющие конструкции, вызов `TurnLoop.Run` и удалённую ветку `if (!phaseBHandled)`.
+
+### Шаг 3 — документация и интеграционный проход (этот коммит)
+
+`ARCHITECTURE.md` (абзац «One main loop»), комментарии `ResidualWindowPolicy` и теста приведены к новым владельцам. Интеграционный проход — §13.4–§13.6.
+
+## 13. Отчёт Уровня 4 (форма ТЗ §13)
+
+### 13.1 SHA и объём
+
+База `c3cdde46`; результат кода `b09a7fc8` (шаг 2), тесты `a4f8642a` (шаг 1); документация — коммит после `b09a7fc8`.
+
+| Файл | Изменение |
+|---|---|
+| `Orchestration/TurnLoop.cs` (новый, 220 строк) | единственный владелец переходов цикла хода (§8) |
+| `Orchestration/AiStrategyV2Pipeline.cs` (1263 → 1234) | `RunTypedAdmissions`, management `for`, три `if`, cold-вход, `phaseBHandled` + ветка, `lifecycleReturnsReleased`, 5 локальных счётчиков удалены; тела работ — локальные функции; вызов `TurnLoop.Run` |
+| `Orchestration/ResidualWindowPolicy.cs` | комментарий (владелец окна) |
+| `Editor/AiTurnLoopTests.cs` (новый, 10 тестов) | §12 шаг 1 |
+| `Editor/AiPipelineOrchestrationUnitTests.cs` | комментарий |
+| `ARCHITECTURE.md` | абзац «One main loop (level 4)» |
+
+### 13.2 Схема до/после
+
+До — §1; после — §2 (все внутренние переходы раскрыты). Удалённые узлы и переходы — §3.1. Явно сохранённые исключения: provisioning retry внутри Mission (владелец allocator/provisioning), пакеты Phase A/B, разные последовательности наблюдения/завершения по видам работ (§4), отдельный путь cold (§5), `RecallUnsafeStrikes` вне цикла, Housekeeping и Reaction вне цикла, первый Phase A и formation до цикла.
+
+**Сокращение** (метрики ТЗ §2):
+
+| Метрика | До | После |
+|---|---|---|
+| Самостоятельные циклы решения в `RunTurn` | 2 (`while` прохода, `for` management) | 1 (`TurnLoop.Run`) |
+| Владельцы переходов | 2 (`RunTypedAdmissions`, тело `RunTurn` с management и cold) | 1 (`TurnLoop`) |
+| Глубина вложенности циклов решения в `RunTurn` | 2 (operational внутри management) | 1 |
+| Точки входа в операционный допуск | 5 | 1 (`TurnLoop.OpenPass`) |
+| Обратные пути из Phase B / cold в operational | 4 прямых вызова | 0; событие `OpenPass(cause)` |
+| Вызовы `ReenterStrategicAxes` в коде | 5 (`Trigger`, `DeferredFlush`, `TerminalForce`, `CapacityUnlock`, объявление) | 5 (без изменений) |
+| Самостоятельные последовательности завершения | Mission, авиация, Phase B, cold, recall, reentry | без изменений (§4) |
+| Управляющие состояния | 9 флагов/счётчиков + `managementRound` | 7 прежних + `PhaseBRounds` + `Stage` + `PassOpen` |
+
+**Число управляющих состояний не сократилось** (−2 флага, −1 переменная цикла, +3 поля). Взаимодействие упростилось: один владелец переходов; ни одна работа не вызывает другую; повтор прохода — событие с причиной, а не вложенный вызов; все три поля пишет только `TurnLoop` (`PhaseBRounds` — после раунда, `Stage` — по вердикту и после cold, `PassOpen` — открытие/закрытие).
+
+### 13.3 Связанные механики
+
+| Механика | Сценарий / вход | Baseline-порядок | После | Доказательство |
+|---|---|---|---|---|
+| Первый проход и bounds | старт, `settled` у 96, `noProgress` у 2 | вход → итерации → bounded-логи → `TerminalForce` | то же | транскрипция + 20 000 трасс; `TheGlobalStepCapEndsEveryPassAndBlocksCold`, `TheNoProgressBoundEndsThePass…` |
+| Первый Phase B | после первого прохода | settle window → раунд 1 | settle window при `PhaseBRounds==0` → раунд 1 | трассы; мутация «settle в каждом раунде» ловится |
+| Ожидание возвратов → release | возврат отложен в первом проходе | ждёт до раунда 1; release-проход только при `¬opDirty ∧ ¬stateChanged`; второй раунд не отпускает повторно | `ReturnsMayWait = PhaseBRounds==0`; `releaseNow` до инкремента | `AWaitedReturnIsReleased…`, трассы (поле `mayWait` в каждой итерации), мутация «release после инкремента» |
+| Угроза дому, ActiveDefence return, tactical retreat, ожидание прошлого хода | — | `HomeThreatened`, `IsDeferrableReturn`, `MayWait` | **код не менялся** (вызываются в той же итерации, тем же порядком) | `OnlyARealHomeThreatStopsTheWait`, `AnActiveDefenceWithdrawalNeverWaits`, tactical retreat в `AiAttackFieldContactTests`, `AReturnNeverWaitsTwoTurnsInARow` — проходят |
+| Phase B меняет руку без триггера | `stateChanged`, нет `op` | проход до выхода из раунда, затем cold | то же (`cause=PhaseBStateChanged`) | `APhaseBHandChange…`, 32 комбинации |
+| Повтор раунда | `stateChanged ∨ stratChanged` и есть dirty | раунд 2 после прохода; не больше 2 раундов | то же | 32 × 2; мутация «без ограничения раундов» |
+| Сброс no-progress | раунд с триггером/изменением | 4 места обнуления | `ResetNoProgress` | 32 комбинации |
+| Cold | окно последнего прохода | один раз после Tempo; проход при `changed` | то же | трассы; `ColdNeeds…`, мутация «без сброса окна» |
+| Retry-set | новый на каждый проход | `new` при входе | `OpenAdmissionPass` | трассы (`retrySet#n` на каждом входе) |
+| Rebase/recovery/Mission в итерации | — | без изменений | без изменений | текстовый дифф |
+| Нативный порядок действий | обычная партия | — | — | **not run** |
+
+Допустимые отличия логов: новая строка `admission pass opened — cause=…` после каждой `begin`; у строк `begin`, `bounded stop`, `lifecycle returns released` сменилась метка вызывающего файла/метода (`AiDebugLog` пишет caller-атрибуты), текст тот же.
+
+### 13.4 Банк
+
+Цепочка physical stock → spendable → allocation → tentative claims → canonical spend → durable ownership → release/expiry не менялась ни в одном звене: писателей банка уровень не добавлял и не удалял; позиции вызовов — таблица §7.2. Удалены только недостижимые дубли `ReleaseDeferredEconomyIncomeCover` и `OperationContinuationWindow.Settle` в ветке `!phaseBHandled`. Проверено по всей изменённой последовательности (§13.5): между перемещёнными операторами нет вызовов, трогающих банк, кроме тех, что были там и раньше. `StrategicTempoBudget` (на ход) и парковка (на вызов `UseSurplus`) не сбрасываются циклом; раундов не больше 2. Pass claims `ProvisioningSession` (своя `MissionLeaseBook`, читается только сессией) — тот же `using`-scope итерации. Next-turn: писатели `LifecycleReturnPolicy.RecordWait`, `CapabilityPoolExhaustionRegistry`, `AviationObligationStallRegistry`, `OperationContinuationWindow` не менялись.
+
+Не выполнено: числовая таблица stock/holds/debits на каждой смене вида работы, сценарии «два Economy owner + Attack preparation + reaction protection + Phase B near-zero AP» — нужна нативная трасса (**not run**).
+
+### 13.5 Кеши и актуальность чтения: весь интервал refresh → читатель
+
+Сравнение исполняемой последовательности операторов baseline и после (по транскрипции и диффу). Все отличия — перестановки внутри одного раунда Phase B; в остальном последовательность исполняемых операторов совпадает.
+
+| Перемещённый оператор | Было | Стало | Что исполняется в интервале между старой и новой позицией | Читатели перемещённого значения в интервале |
+|---|---|---|---|---|
+| `released = true` → `PhaseBRounds++` | после `ObserverBoundary`, до триггеров раунда | после триггеров и лога раунда | `ResolveStepTriggers(2)`: take/consume, `Reenter` (refresh кадра, `Generate`, `FulfillDemands` — AP, карты, carried `Reservation`, claims через Phase A, `Publish`, `Commit`), лог | нет: значение читает только итерация допуска (`ReturnsMayWait`), а её в интервале нет |
+| `releaseNow = …ReturnsDeferred` | там же | там же, что инкремент | то же | `ReturnsDeferred` пишет только итерация допуска — в интервале её нет |
+| `noProgressCycles = 0` при `opDirty ∨ stratChanged` | до лога раунда | после лога раунда | лог | нет (лог раунда не печатает `noProgress`) |
+| `noProgressCycles = 0` перед проходом, лог `returns released` | внутри `if`, перед вызовом | в `TurnLoop` перед `OpenPass` | — | — |
+| `zr = false`, лог `begin`, новый retry-set, часы yield | вход `RunTypedAdmissions` | `TurnLoop.OpenPass` + `OpenAdmissionPass` | новая строка cause (только лог) | — |
+| `coldAxes` | после выхода из management | в `ColdAxisCount` при `Stage=Cold` | — (тот же момент) | `radar`, `demandAxes` не меняются за ход |
+
+Для каждого читателя кадра (итерация допуска, раунд Phase B, cold, reentry, Housekeeping) интервал от его refresh до чтения состоит из тех же операторов, что и в baseline: новых писателей claims, резервов, intents, руки или фактов в интервалы не добавлено. Факты, опубликованные внутри раунда, по-прежнему берёт его `ResolveStepTriggers` или следующий take; повторной публикации нет (receipt-ы не тронуты). `WarmEstimates` вызывается в тех же местах. Наблюдение и следующий допуск не выполняются внутри незавершённого действия: `TurnLoop` переходит к следующей работе только после возврата корутины работы.
+
+### 13.6 DRY/SRP
+
+Таблица — §3 и §10 (решения выполнены: merge входа прохода, вердикт вместо трёх `if` и четырёх сбросов, `PhaseBRounds` вместо флага и переменной цикла, delete мёртвой ветки; отложены как чистые DRY-переносы — `fundedKeysThisTurn`, `Reservation ??`, хвост учёта отказа provisioning). SRP — §8: один новый файл; `TurnLoop` не оценивает, не финансирует, не исполняет и не наблюдает; тела работ и их владельцы не менялись; `RunTurn` остаётся большим методом-оркестратором (≈1020 строк), что записано как ограничение.
+
+### 13.7 Команды и результаты
+
+| Проверка | Результат |
+|---|---|
+| `run.sh l4-a` / `l4-b` | build errors 0; 2122 теста |
+| `patchrun.sh` → `l4-a-p`, `l4-b-p` | **1648 прошло**, 474 упало (оба) |
+| `regress.py l3-e-p l4-b-p`; итоговое дерево `l4-c-p` | **регрессий 0**, новых проходящих 10 (оба) |
+| `regress.py l0-base-p l4-c-p` (baseline Уровня 0) | **регрессий 0**, новых проходящих 77 (1571 → 1648) |
+| 474 упавших | те же, что на `l3-e-p` (472 engine-bound + 2 из Ур. 2–3); 8 non-engine и `AiRawResourceReadRatchetTests` падают и на baseline (L3 §12) |
 | `compile_check.sh` + `cmpcc.py` | **28 = 28**, новых 0 |
-| `ratchet.py` | без изменений относительно Ур. 3 (в `TurnLoop.cs` прямых чтений нет) |
-| Unity EditMode / native | **not run** |
+| `ratchet.py` | без изменений относительно Ур. 3 (прямых чтений не переносили; в `TurnLoop.cs` их нет) |
+| Мутационная проверка тестов цикла | 5/5 мутаций пойманы |
+| `test_regress.sh <sha>` | **not run** (нужен `mono` в PATH; использован эквивалент) |
+| Unity compile / EditMode / PlayMode | **not run** |
+| Нативный прогон | **not run** |
+
+### 13.8 Ограничения и зависимости
+
+1. Native **not run**: полное сохранение игрового поведения не заявляется. Для приёмки нужен обычный нативный лог на `b09a7fc8`+: `python D:/aiv-work/loopsig.py <лог>` — `violations=0`, нет `ERROR`, число `begin` равно сумме `open:*` (счётчик добавлен в `loopsig.py`, вне репозитория), строки `management round` и `lifecycle returns released` прежнего вида. Это необходимо, но недостаточно (порядок, банк, кеши подтверждаются только трассой на одном seed, которой в проекте нет).
+2. Rebase нативно не подтверждён (как и на Ур. 2–3).
+3. Числовой банковский отчёт по ходам — not run (§13.4).
+4. Число управляющих состояний не сократилось (§13.2).
+5. Уровень 5 зависит от: `TurnLoop` как единственного владельца переходов; отложенных DRY-переносов (§10); решения о выносе тел работ и старта хода из `RunTurn` (§8) — только при доказанной пользе.
+
+Масштаб: изменение архитектуры оркестрации хода (структура управления); порядок работ, тела работ, bounds и тексты прежних логов сохранены.

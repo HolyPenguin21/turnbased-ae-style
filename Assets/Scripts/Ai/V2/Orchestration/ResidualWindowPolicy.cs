@@ -4,9 +4,9 @@ using System.Linq;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  When the cold / zero-Radar residual window may open (Pipeline.RunTurn's
-    //  `zeroRadarResidualWindow`). A zero Radar is not a prohibition, but cold preparation only
-    //  uses what ordinary work left: every funded entry that is still outstanding must be a
+    //  When the cold / zero-Radar residual window may open (TurnLoopState.ResidualWindow,
+    //  written by Pipeline.RunTurn's admission iteration). A zero Radar is not a prohibition,
+    //  but cold preparation only uses what ordinary work left: every funded entry that is still outstanding must be a
     //  zero-value, non-commitment one. Pure predicates over the allocator's Funded list; the
     //  caller owns the flag and its reset boundary.
     // ===========================================================================================
