@@ -1,6 +1,6 @@
 # AI V2 — план развязки уровней (без изменения кода)
 
-Статус: **план, на согласовании владельца**. База: `master` @ `54be196f`. Связанный анализ: `Docs/ai-v2-pipeline-simplification-coupling.md`.
+Статус: **план реализованных этапов Э1–Э6**; результаты и ограничения проверки — в `Docs/ai-v2-decoupling-final-report.md`, доказательства — в `Docs/ai-v2-decoupling-evidence.md`. База плана: `master` @ `54be196f`. [Исходный анализ связности](https://github.com/HolyPenguin21/turnbased-ae-style/blob/54be196f/Docs/ai-v2-pipeline-simplification-coupling.md) сохранён в истории Git.
 
 ## 0. Цель и правила
 
