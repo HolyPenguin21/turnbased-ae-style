@@ -435,3 +435,8 @@ internal enum TurnWork { MandatoryAviation, PhaseA, Mission, PhaseB, ColdResidua
 1. Баунды (96 / 2) и ветка T13 в обычной игре не срабатывают — их удаление или перенос нельзя проверять этим логом; нужен characterization-тест на уровне 4.
 2. Пути rebase, cold и force-flush на нативе не наблюдались: Уровни 2 (rebase) и 3–4 (cold, force) требуют отдельного сценария с авиацией (перебазирование wing) и нулевым Radar-осью до начала правок этих мест.
 3. Сравнение «после» на Уровне 1 делать по структуре: последовательность типов `[Loop]`-строк на ход, `step=` с `progress/stop`, `management round` и итоговые `[Invariant]`. Совпадение числа `begin`, видов остановок и `violations=0` — минимальный критерий.
+
+## 18. Дополнение: compile baseline командой ТЗ §12 (сессия Уровня 2)
+
+`Tools/ai-verify/compile_check.sh --baseline fe2ccdf4` (неизменяемая база Уровня 0, `AI_VERIFY_WORK=D:/aiv-work/ai-verify`): **passed, 28 ошибок baseline** (UI/editor-заглушки, как в README). Файл `compile_baseline.txt` не пересоздавался после изменений; уровни 1 и 2 сравнивались с ним (Уровень 2: 28 = 28, новых 0).
+Остаются **not run**: `test_regress.sh <sha>` (нужен `mono` в PATH; использован эквивалент `run.sh`/`patchrun.sh`/`regress.py` с baseline `l0-base-p`, 1571), Unity compile/EditMode, baseline-трассы сценариев §12 (нативные).
