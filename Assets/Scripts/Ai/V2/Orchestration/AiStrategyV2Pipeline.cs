@@ -58,10 +58,21 @@ namespace Game.Ai.V2
     //     ExecutionStopReason live in TaskExecutor.cs.
 
     // ===========================================================================================
-    //  THE PIPELINE — walking skeleton. Every stage below is a stub that returns empty/neutral and
-    //  mutates NOTHING. Toggling AiConfig.aiStrategyV2Enabled on right now yields an AI that logs
-    //  one full pipeline pass and then passes its turn. That is the intended build-order step 1
-    //  end state: full loop runs, zero tasks, no throw.
+    //  THE PIPELINE — one AI turn (RunTurn), in this order:
+    //   1. Start: hand top-up, one WorldAnalysis scan + estimate warm-up, Radar, the turn's Recon
+    //      and Aggression objectives, Continuity (ResolveActive) and actor claims, the first demand
+    //      frame, Phase A (deferred while an aviation obligation is pending), wing formation.
+    //   2. The ONE main loop (TurnLoop.Run): typed operational admission passes (mandatory aviation
+    //      before funded missions, one settled work step per iteration), the Phase B tempo rounds
+    //      (the first after the settle window), the zero-Radar residual once. Strategic
+    //      re-admission (StrategicReadmission) follows each settled step through
+    //      StepTriggerSequence: a resumed rebase takes one take->reenter pair, other work two.
+    //   3. End: air-support safety recall, final Continuity reconciliation, summary, Housekeeping
+    //      (which runs a pending Reaction pass), turn-end audit and reservation release, telemetry.
+    //  Remaining exceptions, by design: every work kind keeps its own observation/settle order
+    //  (only trigger resolution is shared); the cold residual calls Phase A directly, without the
+    //  re-admission key gate; the provisioning retry stays nested in the mission step; the recall,
+    //  Housekeeping and Reaction stay outside the loop.
     // ===========================================================================================
     public static partial class Pipeline
     {
@@ -296,6 +307,20 @@ namespace Game.Ai.V2
                 var loop = new TurnLoopState();
                 bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
 
+                // The reservation Phase A carries through the turn: Phase B's once a round produced
+                // one, else Phase A's. Read at every use, never cached (both owners replace it).
+                MaterializationReservation CarriedReservation() =>
+                    phaseB.Reservation ?? phaseA.Reservation;
+
+                // Every mission any pack of this turn funded (turn activity: MissionsFunded), recorded
+                // right after each pack; a key funded again is counted once.
+                void RecordFunded(TentativeAllocation packed)
+                {
+                    foreach (FundedEntry fe in packed.Funded)
+                        if (fe?.Mission != null)
+                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                }
+
                 string AdmissionKey(DesireAxis axis) =>
                     StrategicAdmissionFingerprints.For(axis, snapshot, activeIntents, root, hand, player, ctx);
 
@@ -385,7 +410,7 @@ namespace Game.Ai.V2
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
                         snapshot, player, root, hand, ctx, apBudget, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
-                        phaseB.Reservation ?? phaseA.Reservation,
+                        CarriedReservation(),
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
                         deferFreshZeroRadar: true);
                     phaseA.Accumulate(followup);
@@ -586,9 +611,7 @@ namespace Game.Ai.V2
                         missions, cycleCommitments, player);
                     using var cycleProvisioning = new ProvisioningSession(snapshot, turnSession);
                     allocation = cycleSession.Pack();
-                    foreach (FundedEntry fe in allocation.Funded)
-                        if (fe?.Mission != null)
-                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                    RecordFunded(allocation);
 
                     // Airborne obligations are settled before discretionary mission progress: a
                     // multi-turn rebase already committed to landing, and a recovery whose wing
@@ -677,9 +700,7 @@ namespace Game.Ai.V2
                             {
                                 assignmentReallocPass++;
                                 allocation = cycleSession.Pack();
-                                foreach (FundedEntry fe in allocation.Funded)
-                                    if (fe?.Mission != null)
-                                        fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                                RecordFunded(allocation);
                                 continue;
                             }
                         }
@@ -737,9 +758,7 @@ namespace Game.Ai.V2
                             break;
                         }
                         allocation = cycleSession.Pack();
-                        foreach (FundedEntry fe in allocation.Funded)
-                            if (fe?.Mission != null)
-                                fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                        RecordFunded(allocation);
                     }
 
                     if (selected == null)
@@ -869,7 +888,7 @@ namespace Game.Ai.V2
                         player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                        postCommitments, phaseB.Reservation ?? phaseA.Reservation,
+                        postCommitments, CarriedReservation(),
                         phaseBRound, reconObjectives);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
@@ -923,7 +942,7 @@ namespace Game.Ai.V2
                     {
                         // Phase A owns one carried Reservation object. Its per-call residual
                         // rewrite must not erase still-unfulfilled positive-axis telemetry.
-                        List<AxisDemand> warmResidual = (phaseB.Reservation ?? phaseA.Reservation)
+                        List<AxisDemand> warmResidual = CarriedReservation()
                             .UnresolvedDemands.Where(d => d != null
                                 && RadarValueScale.For(radar, d.RequestingAxis) > 0f).ToList();
                         WorldAnalysis.StepObservationStamp beforeCold =
@@ -931,7 +950,7 @@ namespace Game.Ai.V2
                         StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
                             snapshot, player, root, hand, ctx, apBudget, coldDemands,
                             actorCommitments, activeIntents, reconObjectives,
-                            phaseB.Reservation ?? phaseA.Reservation,
+                            CarriedReservation(),
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
                             radar: radar);
                         phaseA.Accumulate(coldPass);
@@ -1198,37 +1217,8 @@ namespace Game.Ai.V2
         }
     }
 
-    // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own
-    //      file. Signatures are deliberate seams; fill the bodies, don't reshape the flow.
-
-    // WorldAnalysis (build-order step 2) now lives in its own file, WorldAnalysis.cs.
-
-    // StrategyLayer (build-order step 3) now lives in its own file, DesireEvaluators.cs, together
-    // with ReconEvaluator / AggressionEvaluator, the AiRadarState cross-turn registry, and the
-    // RadarAssessment / DesireBreakdown contract it returns.
-
-    // MissionLayer (build-order step 4, + step 7.1 candidate beam) now lives in its own file,
-    // ReconMissionPlanner.cs, with ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3).
-    // It reads the DesireBreakdown and emits a CANDIDATE BEAM of up to
-    // AiConfigV2.scoutCandidateBeamWidth Scout proposals (execution capacity K and mission
-    // conflicts are the allocator's job — MissionAdmissionPolicy); Raid is added in step 9.
-
-    // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
-    // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier
-    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionStepResult
-    // (the ordered per-turn record ReconcileAfterTurn transitions on). ScoutObjectiveEvaluator (the
-    // shared completion / validity home) lives in ScoutObjectiveEvaluator.cs.
-
-    // ResourceAllocator (build-order step 5) lives in ResourceAllocator.cs. ProvisioningManager /
-    // ProvisioningSession / ProvisionedMission / ProvisionFailure / ProvisioningResult (build-order
-    // step 6a) live in ProvisioningManager.cs, with the shared ScoutMoverSelector. TaskExecutor /
-    // ExecutionResult / ExecutionStopReason (step 6a) live in TaskExecutor.cs. AiScoutStealthPolicy
-    // (the shared V1+V2 stealth-warrant primitive) lives in Assets/Scripts/Ai/AiScoutStealthPolicy.cs.
-
-    // HousekeepingManager (renamed from Manager) — build-order step 8C. A SEPARATE, post-mission
-    // system from StrategicManager: it owns deterministic same-hex army/garrison REORGANIZATION,
-    // not card play. NOT a radar axis — off-budget. It now lives in its own file,
-    // HousekeepingManager.cs, with LocalForceGroup / ArmyReorgProfile (ArmyReorgProfile.cs),
-    // ArmyReorgAnalyzer.cs, ArmyReorganizationPlanner.cs, ReorganizationPlan.cs and
-    // HousekeepingExecutor.cs. This orchestration file only calls it (stage 8 above).
+    // The stage owners (WorldAnalysis, StrategyLayer, the mission planners, MissionContinuityLayer,
+    // ResourceAllocator, ProvisioningManager, TaskExecutor / ReconAirExecutor, StrategicManager,
+    // HousekeepingManager) live in their own folders; Assets/Scripts/Ai/V2/ARCHITECTURE.md is the
+    // normative ownership map. This file only orders and calls them.
 }

@@ -4,8 +4,9 @@ using System.Collections.Generic;
 namespace Game.Ai.V2
 {
     // Why a strategic re-admission is requested. One protocol, explicit causes instead of
-    // flush / force flags. (The cold zero-Radar residual is NOT a cause: it selects its axes by
-    // Radar and bypasses the fingerprint gate; it stays its own branch until level 4.)
+    // flush / force flags; the cause is interpreted only by StrategicReadmission (Gate, Decide).
+    // (The cold zero-Radar residual is NOT a cause: it selects its axes by Radar and bypasses the
+    // fingerprint gate; it is its own work of the turn loop, TurnLoop.)
     public enum ReadmissionCause
     {
         Trigger,         // typed facts named dirty axes after a settled step / Phase B round
@@ -38,6 +39,26 @@ namespace Game.Ai.V2
         internal string LastAdmitted(DesireAxis axis) =>
             _admitted.TryGetValue(axis, out string key) ? key : null;
 
+        // What a re-admission request does, given only its own inputs — the one place the cause is
+        // read for the aviation wait. `triggered`: typed facts named dirty axes. DeferredFlush and
+        // TerminalForce also admit the axes that waited for aviation; DeferredFlush only once nothing
+        // is pending, TerminalForce even while an obligation is pending (the pass is over). Trigger
+        // and CapacityUnlock admit only their own axes and wait (Defer) while an obligation is
+        // pending. `obligationsPending` is read only when the request could be admitted at all.
+        internal static DeferredAdmissionGate Gate(ReadmissionCause cause, bool triggered,
+            bool hasDeferredAxes, Func<bool> obligationsPending)
+        {
+            bool admitsDeferred = cause == ReadmissionCause.DeferredFlush
+                || cause == ReadmissionCause.TerminalForce;
+            if (!triggered && !(admitsDeferred && hasDeferredAxes))
+                return DeferredAdmissionGate.Skip;
+            if (!obligationsPending())
+                return DeferredAdmissionGate.Admit;
+            if (cause == ReadmissionCause.TerminalForce)
+                return DeferredAdmissionGate.AdmitDespitePending;
+            return triggered ? DeferredAdmissionGate.Defer : DeferredAdmissionGate.Skip;
+        }
+
         // Decide a request. Returns the gate; on Admit, `axes` holds the axes to run (deferred ones
         // merged in, unchanged keys removed — possibly empty). `onUnchanged` receives each dropped
         // axis with its key for diagnostics. `obligationsPending` is read only when the request
@@ -48,15 +69,11 @@ namespace Game.Ai.V2
             out HashSet<DesireAxis> axes)
         {
             axes = null;
-            bool flush = cause == ReadmissionCause.DeferredFlush;
-            bool force = cause == ReadmissionCause.TerminalForce;
             bool triggered = reasons != StrategicInvalidationReason.None
                 && dirtyAxes != null && dirtyAxes.Count > 0;
             if (cause == ReadmissionCause.CapacityUnlock)
                 _admitted.Remove(DesireAxis.Development);
-            bool wanted = triggered || ((flush || force) && Deferred.HasAxes);
-            DeferredAdmissionGate gate = DeferredStrategicAdmission.Gate(triggered, flush, force,
-                Deferred.HasAxes, obligationsPending: wanted && obligationsPending());
+            DeferredAdmissionGate gate = Gate(cause, triggered, Deferred.HasAxes, obligationsPending);
             if (gate == DeferredAdmissionGate.Defer)
             {
                 Deferred.Defer(dirtyAxes);
