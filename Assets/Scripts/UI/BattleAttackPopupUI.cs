@@ -419,7 +419,7 @@ namespace Game.UI
             UnitData hunterHero = hunterArmy?.Members.Find(m => m.IsHero);
             UnitData hunterFace = hunterHero ?? hunterArmy?.Members.Find(m => !m.IsHero);
             int hunterUnits = hunterArmy?.Members.FindAll(m => !m.IsHero).Count ?? 0;
-            _hunterDicePool = 1 + hunterUnits / 2;
+            _hunterDicePool = BattleResolutionRules.CaptureKillHunterPool(hunterUnits);
             _onCaptureKillResolved = onResolved;
 
             // The manual: "the target hero receives a dice pool equal to his fate" — his FULL

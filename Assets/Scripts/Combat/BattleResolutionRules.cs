@@ -48,6 +48,10 @@ namespace Game.Combat
                 challenge.Damage, damage, appliedAbilities);
         }
 
+        // The live popup and the knowledge-only estimate use the same hunter pool.
+        public static int CaptureKillHunterPool(int nonHeroUnitCount) =>
+            1 + System.Math.Max(0, nonHeroUnitCount) / 2;
+
         public static CaptureKillOutcome ResolveCaptureKill(bool[] attackerDice, bool[] defenderDice)
         {
             var challenge = new ChallengeResult(attackerDice ?? System.Array.Empty<bool>(),

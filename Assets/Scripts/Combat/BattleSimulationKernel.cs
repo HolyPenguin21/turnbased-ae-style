@@ -89,6 +89,35 @@ namespace Game.Combat
             bool[] attackDice = RollDice(Mathf.Max(0, attackPool), rng);
             bool[] defenseDice = RollDice(Mathf.Max(0, defensePool), rng);
 
+            ResolveFateDuel(attackDice, defenseDice, attackerAbilities, defenderTypeTags,
+                defenderAbilities, ref attackerFate, ref defenderFate, defenderHp,
+                magnitudes, rng, defenderIsRetreating, isCaptureKill: false);
+
+            BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
+                attackDice, defenseDice, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
+            return new BattleSimExchangeOutcome(outcome.Damage, outcome.Damage > 0,
+                outcome.AttackerSuccesses, outcome.DefenderSuccesses);
+        }
+
+        public static CaptureKillOutcome ResolveCaptureKill(int hunterPool, int heroPool,
+            ref int hunterFate, ref int heroFate, System.Random rng)
+        {
+            if (rng == null)
+                throw new ArgumentNullException(nameof(rng));
+            bool[] hunterDice = RollDice(hunterPool, rng);
+            bool[] heroDice = RollDice(heroPool, rng);
+            ResolveFateDuel(hunterDice, heroDice, null, null, null,
+                ref hunterFate, ref heroFate, int.MaxValue, AbilityMagnitudes.Default,
+                rng, defenderIsRetreating: false, isCaptureKill: true);
+            return BattleResolutionRules.ResolveCaptureKill(hunterDice, heroDice);
+        }
+
+        private static void ResolveFateDuel(bool[] attackDice, bool[] defenseDice,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
+            IEnumerable<string> defenderAbilities, ref int attackerFate, ref int defenderFate,
+            int defenderHp, AbilityMagnitudes magnitudes, System.Random rng,
+            bool defenderIsRetreating, bool isCaptureKill)
+        {
             if (attackerFate > 0 || defenderFate > 0)
             {
                 var order = new FateDuelOrder();
@@ -97,18 +126,13 @@ namespace Game.Combat
                     bool spent = defenderTurn
                         ? RunFateTurn(attackDice, defenseDice, defenseDice, true, ref defenderFate,
                             attackerAbilities, defenderTypeTags, defenderAbilities, defenderHp,
-                            magnitudes, rng, defenderIsRetreating)
+                            magnitudes, rng, defenderIsRetreating, isCaptureKill)
                         : RunFateTurn(attackDice, defenseDice, attackDice, false, ref attackerFate,
                             attackerAbilities, defenderTypeTags, defenderAbilities, defenderHp,
-                            magnitudes, rng, false);
+                            magnitudes, rng, false, isCaptureKill);
                     order.Report(spent);
                 }
             }
-
-            BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
-                attackDice, defenseDice, attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
-            return new BattleSimExchangeOutcome(outcome.Damage, outcome.Damage > 0,
-                outcome.AttackerSuccesses, outcome.DefenderSuccesses);
         }
 
         public static void ApplyPrimaryOutcome(BattleSimExchangeOutcome outcome,
@@ -187,13 +211,14 @@ namespace Game.Combat
         private static bool RunFateTurn(bool[] attackerDice, bool[] defenderDice, bool[] ownDice,
             bool isDefender, ref int fate, IEnumerable<string> attackerAbilities,
             IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
-            int defenderHp, AbilityMagnitudes magnitudes, System.Random rng, bool defenderIsRetreating)
+            int defenderHp, AbilityMagnitudes magnitudes, System.Random rng, bool defenderIsRetreating,
+            bool isCaptureKill)
         {
             bool spent = false;
             while (fate > 0 && FateDuelAi.ShouldSpendFate(
                        attackerDice, defenderDice, fate, isDefender,
                        attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes,
-                       defenderIsRetreating, defenderHp))
+                       defenderIsRetreating, defenderHp, isCaptureKill))
             {
                 int miss = Array.IndexOf(ownDice, false);
                 if (miss < 0)

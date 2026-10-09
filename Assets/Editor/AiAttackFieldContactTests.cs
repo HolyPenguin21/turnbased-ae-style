@@ -30,23 +30,17 @@ namespace Game.EditorTests
         private static readonly HexCoord Home = new HexCoord(-1, 0);
         private static readonly HexCoord MainHex = new HexCoord(12, 0);
         private static readonly AttackTargetRef Main = AttackTargetRef.For(MainHex, Red, AttackTargetKind.Citadel);
-        private HashSet<HexCoord> _visible;
-        private Func<PlayerSetupData, HexCoord, bool> _savedVisibility;
 
         [SetUp]
         public void SetUp()
         {
             ArmyRegistry.Clear();
             MissionIntentRegistry.Clear();
-            _visible = new HashSet<HexCoord>();
-            _savedVisibility = AttackTacticalOpportunity.HexVisibleNow;
-            AttackTacticalOpportunity.HexVisibleNow = (p, h) => _visible.Contains(h);
         }
 
         [TearDown]
         public void TearDown()
         {
-            AttackTacticalOpportunity.HexVisibleNow = _savedVisibility;
             ArmyRegistry.Clear();
             MissionIntentRegistry.Clear();
             AiAllocatorStateRegistry.Clear();
@@ -89,17 +83,104 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ContactSeenThisTurnButNotInViewNow_IsNotChased()
+        public void LastKnownContact_UsesTheSameInterceptRuleAsAFreshContact()
         {
             ArmySnapshot us = Army(7, Origin, Strong());
             var enemy = Sight(5, new HexCoord(0, 2), Red, Weak());
             var snap = Snap(us, enemy);
-            _visible.Clear(); // it was seen earlier this turn (SeenTurn == TurnNumber) and then left
+            AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            snap.TurnNumber++; // the same observed package now lives only in last-known memory
+            AttackLocalAction remembered = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            Assert.That(remembered.Kind, Is.EqualTo(AttackLocalActionKind.Intercept));
+            Assert.That(remembered.EnemyArmyId, Is.EqualTo(fresh.EnemyArmyId));
+            Assert.That(remembered.WinChance, Is.EqualTo(fresh.WinChance));
+            Assert.That(remembered.CoversAllDefenders, Is.EqualTo(fresh.CoversAllDefenders));
+        }
+
+        [Test]
+        public void LastKnownWinnableContactOnThePath_IsFoughtInsteadOfBypassed()
+        {
+            ArmySnapshot us = Army(7, Origin, Strong());
+            WorldSnapshot snap = Snap(us, Sight(5, new HexCoord(2, 0), Red, Weak()));
+            snap.TurnNumber++;
+            AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            Assert.That(action.FightsPathContact, Is.True);
+            Assert.That(action.EnemyArmyId, Is.EqualTo(5));
+            Assert.That(action.CoversAllDefenders, Is.True);
+        }
+
+        [Test]
+        public void LastKnownUnwinnableContactOnThePath_UsesTheSameRetreatRule()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(2, 2, 6) });
+            WorldSnapshot snap = Snap(us, Sight(5, new HexCoord(2, 0), Red,
+                new[] { Body(60, 60, 500), Body(60, 60, 500) }));
+            snap.TurnNumber++;
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).Kind,
+                Is.EqualTo(AttackLocalActionKind.Retreat));
+        }
+
+        [Test]
+        public void LastKnownDetour_StillCannotChasePastTheCurrentMovementBudget()
+        {
+            ArmySnapshot us = Army(7, Origin, Strong());
+            WorldSnapshot snap = Snap(us, Sight(5, new HexCoord(0, 4), Red, Weak()));
+            snap.TurnNumber++;
             Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).Kind,
                 Is.EqualTo(AttackLocalActionKind.Continue));
-            _visible.Add(enemy.Hex);
+        }
+
+        [Test]
+        public void ReobservedContact_ChangesTheDecision_AndRemovingItRemovesTheFight()
+        {
+            ArmySnapshot us = Army(7, Origin, Strong());
+            var hex = new HexCoord(2, 0);
+            WorldSnapshot snap = Snap(us, Sight(5, hex, Red, Weak()));
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).FightsPathContact,
+                Is.True);
+            snap.Known.EnemySightings = new[] { Sight(5, hex, Red, new[] { Body(900, 900, 9000) }) };
             Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).Kind,
-                Is.EqualTo(AttackLocalActionKind.Intercept));
+                Is.EqualTo(AttackLocalActionKind.Retreat));
+            snap.Known.EnemySightings = Array.Empty<AiMapMemory.KnownEnemySighting>();
+            Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).FightsPathContact,
+                Is.False);
+        }
+
+        [Test]
+        public void SoloHeroOnThePath_IsACaptureKillContact_IncludingLastKnownMemory()
+        {
+            ArmySnapshot us = Army(7, Origin, Strong());
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 0);
+            WorldSnapshot snap = Snap(us, Sight(5, new HexCoord(2, 0), Red, new[] { hero }));
+            snap.TurnNumber++;
+            AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            Assert.That(action.FightsPathContact, Is.True);
+            Assert.That(action.WinChance, Is.EqualTo(1f), "a zero-Fate hero cannot escape this challenge");
+            Assert.That(action.CoversAllDefenders, Is.True, "no tactical defender requires penetration");
+        }
+
+        [Test]
+        public void SoloHeroContact_UsesCaptureKillOdds_InsteadOfAnEmptyBattleWin()
+        {
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 10);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { hero }, new WorthIt.SideCommander(0, 10)) };
+            bool clears = AttackTacticalOpportunity.ClearsContact(new[] { Body(900, 900, 900) },
+                default, opposition, 0, out float chance, out bool cover);
+            Assert.That(cover, Is.True);
+            Assert.That(chance, Is.LessThan(0.40f));
+            Assert.That(clears, Is.False, "Attack/Defense damage stats do not win a Capture/Kill roll");
+        }
+
+        [Test]
+        public void LastKnownContact_StillRequiresCoverageOfEveryFightingDefender()
+        {
+            ArmySnapshot us = Army(7, Origin, new[] { Body(1, 1, 500) });
+            WorldSnapshot snap = Snap(us, Sight(5, new HexCoord(0, 2), Red, new[] { Body(1, 900, 3) }));
+            snap.TurnNumber++;
+            AttackLocalAction action = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            Assert.That(action.Kind, Is.EqualTo(AttackLocalActionKind.Continue));
         }
 
         [Test]
@@ -203,7 +284,6 @@ namespace Game.EditorTests
                 new[] { Body(60, 60, 500), Body(60, 60, 500) }, seenTurn: 6, armyId: 77);
             WorldSnapshot snap = Snap(us);
             snap.Known.NeutralSightings = new[] { guard };
-            _visible.Add(guard.Hex);
             Assert.That(AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null).Kind,
                 Is.EqualTo(AttackLocalActionKind.Continue));
             // an unbeatable enemy army far outside today's reach and one more turn of movement
@@ -212,13 +292,16 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void InsignificantHostileArmy_IsNotWorthAWithdrawal()
+        public void InsignificantHostileArmyOnThePath_IsEvaluatedWithoutTheSignificanceGate()
         {
-            ArmySnapshot us = Army(7, Origin, new[] { Body(1, 1, 2) });
+            ArmySnapshot us = Army(7, Origin, Strong());
             var scrap = Sight(5, new HexCoord(2, 0), Red, new[] { Body(1, 0, 3) });
             Assert.That(AiPower.EffectiveArmyPowerFromProfiles(scrap.Defenders),
                 Is.LessThan(AiConfigV2.activeDefenceMinEnemyPower));
-            Assert.That(Decide(us, scrap).Kind, Is.Not.EqualTo(AttackLocalActionKind.Retreat));
+            Assert.That(Decide(us, scrap).FightsPathContact, Is.True);
+            var offRoute = Sight(5, new HexCoord(0, 2), Red, scrap.Defenders);
+            Assert.That(Decide(us, offRoute).Kind, Is.EqualTo(AttackLocalActionKind.Continue),
+                "a voluntary detour still requires significance");
         }
 
         [Test]
@@ -354,8 +437,8 @@ namespace Game.EditorTests
             state.PutRetreatWitness(new AttackRetreatWitness
             {
                 Target = Main, OwnArmyId = 7, EnemyArmyId = 5, EnemyHex = enemy.Hex,
-                EnemyFingerprint = AttackTacticalOpportunity.CombatFingerprint(
-                    WorthIt.UnitsOf(AttackTacticalOpportunity.OppositionOn(snap, enemy.Hex))),
+                EnemyFingerprint = AttackTacticalOpportunity.ContactFingerprint(
+                    AttackTacticalOpportunity.OppositionOn(snap, enemy.Hex)),
                 OwnFingerprint = AttackRetreatWitness.OwnFingerprintOf(weak),
                 Turn = 6,
             });
@@ -369,6 +452,35 @@ namespace Game.EditorTests
             ArmySnapshot reinforced = Army(7, Origin, new[] { Body(300, 300, 5000), Body(300, 300, 5000), Body(300, 300, 5000) });
             Assert.That(AttackRetreatWitness.Blocks(state, snap, Main, reinforced, out _), Is.False);
             Assert.That(state.TryGetRetreatWitness(Main, out _), Is.False, "cleared once the odds are confirmed");
+        }
+
+        [Test]
+        public void HeroRetreatWitness_RechecksObservedFate_WithoutGrantingAnEmptyBattleWin()
+        {
+            var state = MissionIntentRegistry.GetOrCreate(Us);
+            ArmySnapshot us = Army(7, Origin, Strong());
+            var hex = new HexCoord(2, 0);
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 10);
+            WorldSnapshot snap = Snap(us, new AiMapMemory.KnownEnemySighting(hex, Red, "hero", 1,
+                0, 0, new[] { hero }, seenTurn: 6, commander: new WorthIt.SideCommander(0, 10), armyId: 5));
+            AttackLocalAction retreat = AttackTacticalOpportunity.Decide(snap, us, Main, -1, false, null);
+            Assert.That(retreat.Kind, Is.EqualTo(AttackLocalActionKind.Retreat));
+            state.PutRetreatWitness(new AttackRetreatWitness { Target = Main, EnemyArmyId = 5,
+                EnemyHex = hex, EnemyFingerprint = retreat.ContactFingerprint,
+                OwnFingerprint = AttackRetreatWitness.OwnFingerprintOf(us) });
+            Assert.That(AttackRetreatWitness.Blocks(state, snap, Main, us, out _), Is.True);
+            // A roster change alone cannot turn Capture/Kill into the empty tactical battle win.
+            ArmySnapshot changed = Army(7, Origin, new[] { Body(900, 900, 900) });
+            Assert.That(AttackRetreatWitness.Blocks(state, snap, Main, changed, out _), Is.True);
+            // Only an observed change in Fate can change this otherwise identical hero challenge.
+            snap.Known.EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(hex, Red, "hero", 1,
+                0, 0, new[] { hero }, seenTurn: 7, commander: new WorthIt.SideCommander(0, 0), armyId: 5) };
+            bool clears = AttackTacticalOpportunity.ClearsContact(changed.Members.ToList(), changed.Commander,
+                AttackTacticalOpportunity.OppositionOn(snap, hex), 0, out _, out _);
+            Assert.That(AttackRetreatWitness.Blocks(state, snap, Main, changed, out string why),
+                Is.EqualTo(!clears));
+            Assert.That(why, Is.Not.EqualTo("unchanged_obstacle"), "observed current Fate participates in the fingerprint");
         }
 
         [Test]
@@ -509,7 +621,6 @@ namespace Game.EditorTests
 
         private WorldSnapshot Snap(ArmySnapshot us, params AiMapMemory.KnownEnemySighting[] enemies)
         {
-            foreach (var e in enemies) _visible.Add(e.Hex);
             return new WorldSnapshot
             {
                 TurnNumber = 6, Observer = Us,

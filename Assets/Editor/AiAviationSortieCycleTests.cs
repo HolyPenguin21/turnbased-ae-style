@@ -844,7 +844,9 @@ namespace Game.EditorTests
                 Assert.That(observed.Roster.Units.Count, Is.EqualTo(2));
                 Assert.That(observed.Roster.Units.Count(u => u.IsHero), Is.EqualTo(1));
                 Assert.That(observed.Roster.CurrentFates[1], Is.EqualTo(3));
-                Assert.That(snap.Known.EnemySightings.Single().Defenders.Count, Is.EqualTo(1));
+                Assert.That(snap.Known.EnemySightings.Single().Defenders.Count, Is.EqualTo(2));
+                Assert.That(snap.Known.EnemySightings.Single().Defenders.Count(p => p.IsHero), Is.EqualTo(1),
+                    "the observed hero is retained; the hidden hero is excluded");
                 Assert.That(snap.Known.EnemySightings.Single().Defenders[0].MaxHitPoints, Is.EqualTo(60f));
                 var opposition = new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(body) },
                     WorthIt.SideCommander.Of(hero), 2f, army.Id) };
