@@ -136,7 +136,7 @@ namespace Game.Ai.V2
                     activeIntents, snapshot, reconObjectives);
             }
 
-            // Same Orchestration-owned refresh as the main pass (AiStrategyV2Pipeline.BuildMissionSet)
+            // Same Orchestration-owned refresh as the main pass (MissionPortfolio.Build)
             // — Missions must receive current Recon pressures, not trigger their recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, assessment.Breakdown);
             if (!aggressionPressureFresh)

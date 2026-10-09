@@ -26,10 +26,41 @@ namespace Game.Ai.V2
     //  A re-entry only publishes new facts when it actually admits axes; while another aviation
     //  obligation is pending the first re-entry defers instead (no new facts either way).
     // ===========================================================================================
+    // The outcome of one trigger resolution (transient: an iterator cannot return a value).
+    internal sealed class StepTriggerSink
+    {
+        internal StepTriggerOutcome Outcome;
+    }
+
     internal static class StepTriggerSequence
     {
         internal const int StandardPairs = 2;
         internal const int RebasePairs = 1;
+
+        // The production form: the pending facts of the session are fanned out (one snapshot) and
+        // consumed, the strategic share is re-admitted by the readmission runner, `pairs` times. The
+        // outcome goes to the sink (an iterator cannot return a value). The delegate form below is
+        // the same sequence over abstract take / re-enter steps and is what the tests drive.
+        internal static IEnumerator Run(int pairs, AiTurnSession session, DecisionFrame frame,
+            IStrategicReadmission runner, StepTriggerSink sink)
+        {
+            ReadmissionOutcome last = new ReadmissionOutcome();
+            return Run(pairs,
+                take: () =>
+                {
+                    TypedTriggerSplit split = TypedTriggerFanOut.Split(
+                        session.PendingInvalidations.Reasons, frame.Intents, frame.Snapshot);
+                    session.ConsumeInvalidations(split.Consumed);
+                    return split;
+                },
+                reenter: (reasons, axes) =>
+                {
+                    last = new ReadmissionOutcome();
+                    return runner.Run(ReadmissionCause.Trigger, reasons, axes, last);
+                },
+                reentryChanged: () => last.StateChanged,
+                done: outcome => sink.Outcome = outcome);
+        }
 
         // take: fan the pending facts out and consume that snapshot (nothing else).
         // reenter: the re-admission for the strategic share of that snapshot.

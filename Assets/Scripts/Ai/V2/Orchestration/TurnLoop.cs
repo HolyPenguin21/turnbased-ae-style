@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 
 namespace Game.Ai.V2
@@ -70,8 +69,9 @@ namespace Game.Ai.V2
     }
 
     // The turn loop's control state (previously closure locals of Pipeline.RunTurn). Counters and
-    // flags only; the loop is its single transition owner, the work bodies write the counters they
-    // always wrote (settled steps, no progress, residual window, deferred returns).
+    // flags only. TurnLoop is its ONLY writer: the work bodies get a read-only TurnLoopView and
+    // report what happened in an AdmissionIterationOutcome, which TurnLoop applies after the
+    // iteration (AiTurnLoopTests also scans the sources for writes outside this file).
     internal sealed class TurnLoopState
     {
         internal int SettledSteps;
@@ -96,23 +96,125 @@ namespace Game.Ai.V2
             && NoProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles;
     }
 
-    // The existing work bodies of the turn, owned by Pipeline.RunTurn. The loop only orders them.
-    internal struct TurnLoopWork
+    // The read-only view of the control state an admission iteration is given. A value copy taken
+    // when the iteration starts: counters cannot change under the iteration (only TurnLoop writes
+    // them, after the iteration returns), so a body that needs "the step number" or "no-progress
+    // after this step" for a boundary or a log line computes it from the view and the outcome.
+    internal readonly struct TurnLoopView
     {
-        // Pass-scoped resets that live with the admission body (retry set, frame-pacing clock).
-        internal Action OpenPass;
-        // One admission iteration; reports true when the pass must stop.
-        internal Func<Action<bool>, IEnumerator> Iteration;
+        internal readonly int SettledSteps;
+        internal readonly int NoProgressCycles;
+        internal readonly bool ReturnsMayWait;
+        internal readonly bool WithinStepBounds;
+
+        internal TurnLoopView(TurnLoopState s)
+        {
+            SettledSteps = s.SettledSteps;
+            NoProgressCycles = s.NoProgressCycles;
+            ReturnsMayWait = s.ReturnsMayWait;
+            WithinStepBounds = s.WithinStepBounds;
+        }
+    }
+
+    internal enum ProgressUpdate
+    {
+        Unchanged,   // no work step ran and none is counted (no funded mission)
+        Increment,   // no task could be provisioned: one cycle without progress
+        FromStep,    // a settled step: StepTriggerOutcome.NextNoProgress(current, Progressed)
+    }
+
+    // The result of ONE admission iteration, filled by its body and applied by TurnLoop once the
+    // iteration returned. The variants are the iteration's possible endings, not modes of a generic
+    // completion: settled step (aviation or mission), no funded mission, no provisioned task,
+    // settled task without a typed invalidation; plus "a return leg waited".
+    internal sealed class AdmissionIterationOutcome
+    {
+        internal int SettledStepDelta { get; private set; }
+        internal ProgressUpdate Progress { get; private set; }
+        internal bool Progressed { get; private set; }
+        internal bool StopPass { get; private set; }
+        internal bool? ResidualVerdict { get; private set; }
+        internal bool ReturnsDeferred { get; private set; }
+
+        // A return leg waited for the first Phase B round in this iteration.
+        internal void DeferReturns() => ReturnsDeferred = true;
+
+        // A settled work step (mandatory aviation or mission): counts as one step.
+        internal void SettledStep(bool progressed)
+        {
+            SettledStepDelta = 1;
+            Progress = ProgressUpdate.FromStep;
+            Progressed = progressed;
+        }
+
+        // The portfolio has no funded mission: stop, the residual window opens.
+        internal void NoFundedMission()
+        {
+            ResidualVerdict = true;
+            StopPass = true;
+        }
+
+        // No task could be provisioned: no step, one cycle without progress, stop.
+        internal void NoProvisionedTask(bool residualWindow)
+        {
+            Progress = ProgressUpdate.Increment;
+            ResidualVerdict = residualWindow;
+            StopPass = true;
+        }
+
+        // The settled mission produced no typed invalidation: stop (the step itself is recorded
+        // with SettledStep).
+        internal void StopAfterSettledStep(bool residualWindow)
+        {
+            ResidualVerdict = residualWindow;
+            StopPass = true;
+        }
+
+        // The no-progress counter after this iteration, from the counter before it. The only place
+        // this arithmetic lives: TurnLoop applies it and bodies use it for their log lines.
+        internal int NoProgressAfter(int current) =>
+            Progress == ProgressUpdate.Increment ? current + 1
+            : Progress == ProgressUpdate.FromStep ? StepTriggerOutcome.NextNoProgress(current, Progressed)
+            : current;
+    }
+
+    // The works the loop orders. Each is a component with explicit dependencies (AdmissionIteration,
+    // TempoRound, ColdResidual); the loop only decides which one runs next and applies their outcomes.
+    // The interfaces exist so the loop can be driven by scripted works in tests.
+    internal interface IAdmissionWork
+    {
+        // Pass-scoped resets (the parking of rejected jobs, the frame-pacing clock).
+        void OpenPass();
+        // One admission iteration: reads the view, reports its ending in the outcome.
+        IEnumerator Iteration(TurnLoopView view, AdmissionIterationOutcome outcome);
         // The deferred-axes force admission that ends every pass.
-        internal Func<IEnumerator> TerminalForce;
+        IEnumerator TerminalForce();
+    }
+
+    internal interface ITempoWork
+    {
         // The settlement window before the first Phase B round (income cover, continuation window).
-        internal Action FirstPhaseBSettle;
-        // One Phase B round (its index, outcome).
-        internal Func<int, Action<TempoRoundOutcome>, IEnumerator> TempoRound;
+        void SettleBeforeFirstRound();
+        // One Phase B round: its index; the outcome goes to the sink.
+        IEnumerator Round(int index, TempoRoundSink sink);
+    }
+
+    internal interface IColdWork
+    {
         // Number of zero-Radar axes (read when the cold stage is reached).
-        internal Func<int> ColdAxisCount;
-        // The cold residual body; reports whether it changed state.
-        internal Func<Action<bool>, IEnumerator> Cold;
+        int AxisCount();
+        // The cold residual body; the sink says whether it changed state.
+        IEnumerator Run(ColdSink sink);
+    }
+
+    internal sealed class TempoRoundSink
+    {
+        internal TempoRoundOutcome Outcome;
+    }
+
+    internal sealed class ColdSink
+    {
+        internal bool Changed;
     }
 
     // ===========================================================================================
@@ -137,32 +239,34 @@ namespace Game.Ai.V2
         internal static bool ColdEligible(TurnLoopState s, int coldAxisCount) =>
             s.ResidualWindow && coldAxisCount > 0 && s.WithinStepBounds;
 
-        internal static IEnumerator Run(TurnLoopState s, TurnLoopWork work)
+        internal static IEnumerator Run(TurnLoopState s, IAdmissionWork admission, ITempoWork tempo, IColdWork cold)
         {
-            OpenPass(s, work, AdmissionCause.Initial);
+            OpenPass(s, admission, AdmissionCause.Initial);
             while (true)
             {
                 switch (Phase(s))
                 {
                     case TurnPhase.Ordinary:
                     {
-                        bool stop = false;
-                        yield return work.Iteration(v => stop = v);
-                        if (stop)
-                            yield return ClosePass(s, work);
+                        var outcome = new AdmissionIterationOutcome();
+                        yield return admission.Iteration(new TurnLoopView(s), outcome);
+                        ApplyIterationOutcome(s, outcome);
+                        if (outcome.StopPass)
+                            yield return ClosePass(s, admission);
                         break;
                     }
                     case TurnPhase.CloseOrdinary:
-                        yield return ClosePass(s, work);
+                        yield return ClosePass(s, admission);
                         break;
                     case TurnPhase.Tempo:
                     {
                         // First Phase B: continuing Hard operations and deferred builds had their
                         // chance in the first pass; settle what they keep before Phase B spends.
                         if (s.PhaseBRounds == 0)
-                            work.FirstPhaseBSettle();
-                        TempoRoundOutcome round = default;
-                        yield return work.TempoRound(s.PhaseBRounds, o => round = o);
+                            tempo.SettleBeforeFirstRound();
+                        var roundSink = new TempoRoundSink();
+                        yield return tempo.Round(s.PhaseBRounds, roundSink);
+                        TempoRoundOutcome round = roundSink.Outcome;
                         // Phase B has spent first; return legs now take what is left.
                         bool releaseReturnsNow = s.PhaseBRounds == 0 && s.ReturnsDeferred;
                         s.PhaseBRounds++;
@@ -173,18 +277,18 @@ namespace Game.Ai.V2
                         if (verdict.Cause == AdmissionCause.ReturnsReleased)
                             AiDebugLog.Write("[AI][V2][Loop] lifecycle returns released after the tempo pass");
                         if (verdict.Cause != AdmissionCause.None)
-                            OpenPass(s, work, verdict.Cause);
+                            OpenPass(s, admission, verdict.Cause);
                         if (verdict.Closed)
                             s.Stage = TurnStage.Cold;
                         break;
                     }
                     case TurnPhase.Cold:
-                        if (ColdEligible(s, work.ColdAxisCount()))
+                        if (ColdEligible(s, cold.AxisCount()))
                         {
-                            bool changed = false;
-                            yield return work.Cold(v => changed = v);
-                            if (changed)
-                                OpenPass(s, work, AdmissionCause.ColdChanged);
+                            var coldSink = new ColdSink();
+                            yield return cold.Run(coldSink);
+                            if (coldSink.Changed)
+                                OpenPass(s, admission, AdmissionCause.ColdChanged);
                         }
                         s.Stage = TurnStage.Done;
                         break;
@@ -194,17 +298,28 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void OpenPass(TurnLoopState s, TurnLoopWork work, AdmissionCause cause)
+        // The only write of the iteration's counters. Independent fields, so the order is free.
+        internal static void ApplyIterationOutcome(TurnLoopState s, AdmissionIterationOutcome o)
+        {
+            s.SettledSteps += o.SettledStepDelta;
+            s.NoProgressCycles = o.NoProgressAfter(s.NoProgressCycles);
+            if (o.ResidualVerdict.HasValue)
+                s.ResidualWindow = o.ResidualVerdict.Value;
+            if (o.ReturnsDeferred)
+                s.ReturnsDeferred = true;
+        }
+
+        private static void OpenPass(TurnLoopState s, IAdmissionWork admission, AdmissionCause cause)
         {
             s.ResidualWindow = false;
             s.PassOpen = true;
             s.PassCause = cause;
             AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
             AiDebugLog.Write($"[AI][V2][Loop] admission pass opened — cause={cause}");
-            work.OpenPass();
+            admission.OpenPass();
         }
 
-        private static IEnumerator ClosePass(TurnLoopState s, TurnLoopWork work)
+        private static IEnumerator ClosePass(TurnLoopState s, IAdmissionWork admission)
         {
             if (s.SettledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
                 AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
@@ -213,7 +328,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                     + $"{s.NoProgressCycles}");
             // Axes still waiting for aviation must not be lost when the pass ends first.
-            yield return work.TerminalForce();
+            yield return admission.TerminalForce();
             s.PassOpen = false;
         }
     }

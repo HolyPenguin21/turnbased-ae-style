@@ -19,6 +19,18 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class AviationObligations
     {
+        // The outcome of one settled obligation step, reported after the step's triggers were
+        // re-entered (so a fact the re-entry published counts as progress). An obligation that did
+        // not progress is stalled for the rest of this turn only. Returns true when it stalled.
+        internal static bool RecordSettledStep(PlayerSetupData player, AiTurnContext ctx, int actorId,
+            bool progressed)
+        {
+            if (progressed || player == null || ctx == null)
+                return false;
+            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, actorId);
+            return true;
+        }
+
         internal static bool Pending(PlayerSetupData player, AiTurnContext ctx) =>
             player != null && ctx != null
             && (AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber).Count > 0

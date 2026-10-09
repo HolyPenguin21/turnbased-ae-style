@@ -214,10 +214,46 @@ iterations while `maxMidTurnStepsPerTurn` / `maxMidTurnNoProgressCycles` hold, c
 terminal force admission, then runs the Phase B rounds (first round preceded by the settle window,
 at most `maxEndOfTurnTempoReruns + 1`) and the zero-Radar residual once. An open pass always runs
 before the next round or the cold stage. `TurnLoopState` holds the control counters;
-`TempoRoundVerdict` decides what follows a round. The work bodies (admission iteration with
-mandatory aviation / mission selection, provisioning retry, execution, Phase B round, cold
-residual) stay in `Pipeline.RunTurn` with their own observation/settle order;
-`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop.
+`TempoRoundVerdict` decides what follows a round. The work bodies are components with explicit
+dependencies, ordered through narrow interfaces: `AdmissionIteration` (`IAdmissionWork`: one iteration with
+mandatory aviation / mission selection, provisioning, execution, and the terminal force admission),
+`TempoRound` (`ITempoWork`: the bank settlement before the first round and a Phase B round) and
+`ColdResidual` (`IColdWork`). Typed re-admission is `StrategicReadmissionRunner`; the settled-step trigger
+sequence (`StepTriggerSequence`) talks to the session, the `DecisionFrame` and the runner directly. Each
+work keeps its own observation/settle order. `Pipeline.RunTurn` assembles them: start of the turn, the
+loop, recall, final ownership, `SettleAfterTurn`, Housekeeping, audit and cleanup.
+`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop (the loop, not `RunTurn`: Reaction
+runs inside `RunTurn`, from Housekeeping, followed by one bounded Phase B rerun).
+`TurnLoop` is the single owner of the *transitions*; it is not yet the single *writer* of every field of
+`TurnLoopState` (the work bodies write `SettledSteps`, `ReturnsDeferred`, and share `NoProgressCycles`
+and `ResidualWindow` with the loop). Removing that shared write, and moving domain rules to their
+owners, is the decoupling task: `Docs/ai-v2-decoupling-plan.md`, evidence and tools in
+`Docs/ai-v2-decoupling-evidence.md` and `Tools/ai-v2-decoupling-verify/`.
+
+**Responsibility map after the decoupling (stages E1-E6).** What changes where. The control flow
+stays with `TurnLoop`; every domain rule lives with its owner; the orchestrator only reports its own
+moments and assembles components. Evidence: `Docs/ai-v2-decoupling-evidence.md`, final report:
+`Docs/ai-v2-decoupling-final-report.md`.
+
+| Rule / state | Owner | The orchestrator's contract |
+|---|---|---|
+| Turn transitions; the control counters (`SettledSteps`, `NoProgressCycles`, `ResidualWindow`, `ReturnsDeferred`, `PhaseBRounds`) | `TurnLoop` (the only writer of `TurnLoopState`) | a work reads `TurnLoopView`, reports an `AdmissionIterationOutcome`, `TempoRoundSink`, `ColdSink` |
+| Which work runs next; the three works | `TurnLoop` orders `IAdmissionWork` / `ITempoWork` / `IColdWork`; `AdmissionIteration`, `TempoRound`, `ColdResidual` implement them | explicit constructor dependencies, no reach back into `RunTurn` |
+| The settled snapshot, Recon / Aggression objectives, intents, actor claims, demands, freshness credit | `DecisionFrame` (the only writer; 17 named operations, one per moment of the turn; no skip by revision) | the works read `frame.X` at the moment of use |
+| Typed re-admission (gate, fingerprints, Phase A follow-up, delta publication, commit) | `StrategicReadmissionRunner` over `StrategicReadmission`; keys from the axis owners (`*Admission`) | `Run(cause, reasons, axes, ReadmissionOutcome)` |
+| Settled-step triggers (snapshot -> fan-out -> consume -> re-enter, rebase 1 pair, others 2) | `StepTriggerSequence` + `TypedTriggerFanOut` (builder readiness asked of Continuity) | `Run(pairs, session, frame, readmission, sink)` |
+| Bank stages around the turn (completion reconcile, income cover release, continuation window, mobilization gate) | `StrategicTurnLifecycle` via `StrategicManager` -> `EconomyReservationLifecycle` / `OperationContinuationWindow` | four named moments: `ObserveInitialForce`, `AfterMissionSettlement`, `BeforeFirstTempo`, `BeforeTempoSpend` |
+| Stalled aviation obligations | `AviationObligations.RecordSettledStep` (Recon) | reports the outcome of the step after the re-entry pairs |
+| Selection of the executable mission (retry / reprice budgets, parking of a pass) | `ProvisioningManager.ProvisionNext`, `PassParking` (Provisioning), packing by `AllocationSession` | one call per iteration; a journal of attempts replayed into `MissionOutcomeLedger.RecordProvisionAttempt` |
+| Mission portfolio (planners, `EffectiveValue`, preparation priority) | `MissionPortfolio.Build` (Missions) | `Build(...)` returns proposals and planner deferrals |
+| Deferral of return legs before the first Phase B round | `MissionContinuityLayer.DeferReturnsBeforeTempo`, `LifecycleReturnPolicy` (Continuity) | the loop only says `ReturnsMayWait` |
+| Physical resources, leases, turn lifetime | canonical game endpoints; `MissionLeaseBook` + `StrategicResourceReservationLedger` + `AiTurnSession` | unchanged |
+| Facts and revisions | `WorldDeltaLifecycle`, `StrategicInterruptRegistry` | unchanged |
+
+Remaining by design: the axis admission keys and `AttackForceReadiness` / `RadarValueScale` in Orchestration,
+the delegates inside `StrategicReadmission.Decide` and the builder-readiness lambda in `TypedTriggerFanOut`
+(both for laziness), Housekeeping -> Reaction -> `UseSurplus`, and `ReactionRoundExecutor` with its own copy of
+the frame recipe and the re-provisioning loop.
 
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
@@ -266,7 +302,7 @@ reactivate when important contact becomes stale or blind again.
 | Air support of a ground fight (wing options, strike estimate split back per defending army, second strike, landing base, leg requirements, wing provisioning, the flight step) | `Missions/GroundCombat/GroundCombatAirSupport` + `Execution/GroundCombatLegStep.AirStrikeSortie`. Raid (its AirSupport recovery phase) and Attack (a side leg) keep only their target identity, strike policy, win read and lifecycle. The held wing is `GroundCombatLegs.HeldAirSupportArmyId`; an airborne strike sortie no operation holds becomes a landing obligation (`ReleaseOrphanStrikes` → `AviationRebasePlanner.FindMandatoryContinuations`) |
 | Turns an army needs to cover a distance | `AiV2Util.TurnsToCover` |
 | Typed strategic invalidations | `State/StrategicInterruptRegistry` — factual reason mask plus per-reason payload; no second event bus |
-| Mid-turn strategic re-admission (demand regeneration + Phase-A follow-up) | `Pipeline.TakeTypedSplit` → `StepTriggerSequence.Run` (rebase 1 pair, other work 2) / `ReenterStrategicAxes(ReadmissionCause, …)` for Economy, Development and Aggression, each on `DesireAxes.InvalidationMaskFor(axis)`. `Orchestration/StrategicReadmission` decides which axes run (deferred-for-aviation axes, unchanged-key filter, per-axis last-admitted key); the key itself comes from the axis' domain owner through `StrategicAdmissionFingerprints.For` (`DevelopmentAdmission`, `AggressionAdmission`, `EconomyAdmission`), so an unchanged input set never re-runs the lane. Aggression's mask adds Hand (field cards decide deliverability); its baseline is taken after `ResolveActive`/`ActorCommitments`, before `Generate`, and each re-admission logs the family old→new by consumer identity (`DemandIdentityDigest`). Recon stays operational-only |
+| Mid-turn strategic re-admission (demand regeneration + Phase-A follow-up) | `StepTriggerSequence.Run` (takes the typed split from the session, rebase 1 pair, other work 2) / `StrategicReadmissionRunner.Run(ReadmissionCause, …)` for Economy, Development and Aggression, each on `DesireAxes.InvalidationMaskFor(axis)`. `Orchestration/StrategicReadmission` decides which axes run (deferred-for-aviation axes, unchanged-key filter, per-axis last-admitted key); the key itself comes from the axis' domain owner through `StrategicAdmissionFingerprints.For` (`DevelopmentAdmission`, `AggressionAdmission`, `EconomyAdmission`), so an unchanged input set never re-runs the lane. Aggression's mask adds Hand (field cards decide deliverability); its baseline is taken after `ResolveActive`/`ActorCommitments`, before `Generate`, and each re-admission logs the family old→new by consumer identity (`DemandIdentityDigest`). Recon stays operational-only |
 | Execution state-version counter | `State/WorldDeltaLifecycle` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |
@@ -276,7 +312,7 @@ reactivate when important contact becomes stale or blind again.
 | Card placement legality | `Materialization/PlacementRules` |
 | Drawing cards (2026-10-01) | Two owners, one executor (`Execution/CardDrawExecutor`), one per-turn draw cap (`StrategicTempoBudget`, `maxTerminalDrawsPerTurn`): `Strategy/HandReplenishPolicy` refills a hand below `handReplenishTargetCards` BEFORE the turn's scan, keeping `handReplenishMinApLeft` + the pending aviation obligations' activation (`AviationObligations.ActivationAp`) on top of the bank's claims, and raises no hand interrupt (the scan sees the new hand); every other draw is Phase B's Draw candidate |
 | How much AP the AI could usefully spend (2026-10-01) | `EffectEvaluationContext.ResolveUsefulApDemand`: the witnessed AP demand of the last turns (`State/ApTurnPressure`: AP spent + draws to the hand target + affordable AP-costing hand cards + budget-deferred missions, mean of `apWitnessedDemandHistoryTurns`, read into `ApActionEconomySnapshot.WitnessedApDemand` at the scan) replaces the structural guess and floors the evaluation-time card workload; the structural fallback (first turn only) counts draws. It prices every recurring +AP source (Base, hero, facility) through `ResolveMarginalApUtility`. `[AI][V2][ApBudget]` logs the same measurement |
-| When a return leg spends AP (2026-10-01) | `Orchestration/LifecycleReturnPolicy`: while no home threat (`ThreatModel` siege, or Citadel/Base severity >= `lifecycleReturnHomeThreatSeverity`), a lifecycle return (Raid Return/RecoveryReturn, Economy ReturnBuilder/ReturnCollector, Attack RecoveryReturn — `MissionIntent.IsLifecycleLeg`, ActiveDefence excluded) is withheld from admission as a recorded planner deferral until the first Phase B round has spent, then admitted from what is left |
+| When a return leg spends AP (2026-10-01) | `Continuity/LifecycleReturnPolicy` (applied by `MissionContinuityLayer.DeferReturnsBeforeTempo`; the loop only reports `ReturnsMayWait`): while no home threat (`ThreatModel` siege, or Citadel/Base severity >= `lifecycleReturnHomeThreatSeverity`), a lifecycle return (Raid Return/RecoveryReturn, Economy ReturnBuilder/ReturnCollector, Attack RecoveryReturn — `MissionIntent.IsLifecycleLeg`, ActiveDefence excluded) is withheld from admission as a recorded planner deferral until the first Phase B round has spent, then admitted from what is left |
 | Attack preparation vs card play and Raids (2026-10-01) | While mobilization is open (`OperationContinuationWindow.SetMobilizationOpen`, stamped at the scan) and no Attack operation exists, `StrategicSpendability.OperationContinuationHold` holds `attackPreparationFirstStepApHold` AP for the first preparation step; a live preparation's host still walking to an own Base is a protected leg. The hold binds card play until the mission loop settles; a demand with `ConsumerMissionKind == Attack` may draw on it (`InfrastructureFulfillment.SpendAuthorityFor`), the allocator (ledger-only) always may. `Missions/AttackPreparationPriority` ranks every fresh Raid just below a fresh preparation step; started Raids keep their rank |
 | Strategic spendability ("does this cost fit spendable resources") | `State/StrategicSpendability` — every admission and its later gate read the SAME pool: Phase A chain admission (AP and H/E/M/T) and `MaterializationExecutor` re-check; `ResourceAllocator.PhysicalAvailableFor` (one owner-aware physical pool for every mission kind, holds already drawn by their own Economy mission credited once) and each lane's Provisioning gate; Raid recovery's repair projection reads `EconomyStanding.SpendableStockpile` like the Phase-B repair it predicts |
 | Attack bar and the pool it is measured on (2026-10-01) | `Strategy/Objectives/AttackForcePool` → `SelfSnapshot.AttackPeak` (the > 80% bar of every Attack stage, the mobilization field-strike gate, Phase B's draw bonus), `StrikeRoster`, `StrikePool`: the peak greedy over the force an Attack can really assemble — every field army, other operations' included (Raid, ActiveDefence, Economy, Development come back; 2026-10-01 user decision), garrison bodies above the defence floor, spareable garrison heroes, held cards (with attached equipment) and the deck; OUT: explicit scouts (lone scouts and Scout-mission armies — the same set FieldStrikePotential leaves out, so the mobilization gate compares like with like), the garrison's mandatory defence, garrison heroes and facility operators. `TotalMilitaryPotential` stays the whole-deck ceiling (reserve, readiness, Panel_Data). A residual demand Phase A proved structurally undeliverable (`AxisDemand.StructurallyUndeliverable`) keeps no claim on hand cards (`UnresolvedClaimFor`), so Phase B may play them |

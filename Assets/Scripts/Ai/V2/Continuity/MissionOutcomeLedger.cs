@@ -49,6 +49,17 @@ namespace Game.Ai.V2
                 if (c?.Mission != null) MissionStepFactsFor(c.Mission).WasCommitment = true;
         }
 
+        // One attempt of the provisioning selection, replayed in the order it happened (the journal
+        // of ProvisioningManager.ProvisionNext). Interpretation stays here: the selection only
+        // reports what it tried.
+        internal void RecordProvisionAttempt(in ProvisionEvent attempt)
+        {
+            if (attempt.Kind == ProvisionEventKind.Success)
+                RecordProvisionSuccess(attempt.Proposal, attempt.Provisioned);
+            else
+                RecordProvisionFailure(attempt.Proposal, attempt.Failure);
+        }
+
         public void RecordProvisionSuccess(MissionProposal m, ProvisionedMission pm)
         {
             MissionStepFacts r = MissionStepFactsFor(m);
