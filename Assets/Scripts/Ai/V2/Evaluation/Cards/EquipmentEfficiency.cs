@@ -123,9 +123,6 @@ namespace Game.Ai.V2
 
         internal static float Base(EfficiencyStats s) => Base(s.Attack, s.Defense, s.HitPoints, s.Range);
 
-        // ---- price of E / supply ---------------------------------------------------------------------
-        internal static float ToCardValue(float efficiency) => efficiency * AiConfigV2.equipCardValuePerE;
-
         // ---- the table -----------------------------------------------------------------------------------
         internal static EfficiencyBreakdown Delta(EfficiencyStats before, IReadOnlyCollection<string> beforeAbilities,
             EfficiencyStats after, IReadOnlyCollection<string> afterAbilities, EfficiencyContext ctx)

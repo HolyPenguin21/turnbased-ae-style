@@ -203,21 +203,6 @@ namespace Game.Cards
         // Tech) — see GameConfig.extractionFacilityCards, which is indexed the same way.
         public static string CollectAbilityFor(Game.Economy.ResourceType type) => CollectAbilities[(int)type];
 
-        // "Is this a citadel" used to be its own separate tag — removed as pure redundant
-        // bookkeeping, since collecting all 4 resource types on its own (no Facility needed) IS
-        // already what makes a building a citadel (see HexSelectionController.SpawnBuilding,
-        // the only place this was ever actually read). Not shown in any ability list, unlike
-        // the tag it replaced.
-        public static bool IsFullCitadel(Game.Map.BuildingData building)
-        {
-            if (building == null)
-                return false;
-            foreach (string ability in CollectAbilities)
-                if (!building.HasAbility(ability))
-                    return false;
-            return true;
-        }
-
         // --- Every tag above, in one place --------------------------------------------------
         // Symbol references, not fresh string literals — a typo here is a compile error, not a
         // silent runtime mismatch. Drives AbilityTagDrawer's dropdown and

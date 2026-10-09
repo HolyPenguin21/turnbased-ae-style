@@ -19,7 +19,7 @@ namespace Game.Ai
     // the complete effective resource line last observed there — reading it off an already-visible
     // hex is no cheat, while reconstructing it later from the live map would be),
     // where an enemy/neutral army was last actually seen, which hexes carry a known active Hex
-    // Event with a real guard (see KnownEventGuardDefenseAt), and (2026-08-24, section 3.2) which
+    // Event with a real guard (see KnownEventGuardStrengthAt), and (2026-08-24, section 3.2) which
     // hexes carry a known building and its own last-observed owner (KnownBuildings). Per the
     // project owner's own "Видимость с памятью" principle — stale info is never auto-expired,
     // only overwritten by a fresh observation of that SAME hex (see OnVisibilityChanged's own
@@ -399,30 +399,6 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, List<ScoutDangerZone>> ScoutDangerZones =
             new Dictionary<PlayerSetupData, List<ScoutDangerZone>>();
 
-        // Разведка · Авиация (AiTaskKind.AirRecon) — hex -> the global turn an AirRecon sortie was
-        // last sent toward it (AiAviationSupport.ContinueSortie stamps this every outbound step).
-        // Purpose-built for AirReconTask.FindReconHex's own anti-loop cooldown (project owner's own
-        // spec — "AirRecon не должен бесконечно летать в один stale-гекс"): a hex flown to recently
-        // is not offered as a recon target again for AiConfig.airReconTargetCooldownTurns turns
-        // unless a known enemy army/building still sits on it. One entry per hex, re-stamped on a
-        // repeat sortie. Never auto-expired here — FindReconHex compares against the current turn
-        // itself (see WasAirReconnedWithin) and simply stops caring once the window has passed.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> AirReconTargets =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
-
-        // Агрессия · from-scratch raid — hex -> the global turn a fresh raid assembly against it
-        // was last rejected as non-viable (RaidWeakerArmyTask.EvaluateAssemblablePlan: no hero
-        // obtainable, composition can't cover every defender, or the strongest force we could
-        // realistically assemble still wins below raidMinimumWinChance). Purpose-built for
-        // AiAggressionPlanner.TryRaidAssembleCandidates' own pre-allocation gate — within
-        // AiConfig.raidPlanRejectCooldownTurns turns the hex is not re-projected (or re-logged) as
-        // a new-raid target, so the AI doesn't burn a Decide step every turn re-deriving the same
-        // "0% win chance" verdict it already reached. One entry per hex, re-stamped on a repeat
-        // rejection. Never auto-expired here — WasRaidPlanRejectedWithin compares against the
-        // current turn. Existing raid tasks and a ready idle army are never gated by this.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, int>> RaidPlanRejected =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
-
         private static bool _subscribed;
         private static HexMap _map;
         public static bool GroundTerrainBlocked(HexCoord hex) => _map != null && !_map.CanEnter(hex);
@@ -571,8 +547,6 @@ namespace Game.Ai
             KnownBuildings.Clear();
             RefutedStartingCitadels.Clear();
             ScoutDangerZones.Clear();
-            AirReconTargets.Clear();
-            RaidPlanRejected.Clear();
             KnowledgeVersions.Clear();
             RouteMemoryVersions.Clear();
             _currentTurn = 0;
@@ -707,52 +681,6 @@ namespace Game.Ai
                 yield break;
             foreach (ScoutDangerZone zone in zones)
                 yield return (zone.Center, zone.Radius);
-        }
-
-        // Stamps `hex` as the target an AirRecon sortie is currently flying toward, at
-        // `turnNumber` — see AirReconTargets' own comment. Called every outbound step from
-        // AiAviationSupport.ContinueSortie so the cooldown counts from the sortie's last real
-        // progress toward the hex, not merely its launch turn.
-        public static void RecordAirReconTarget(PlayerSetupData actor, HexCoord hex, int turnNumber)
-        {
-            if (actor == null)
-                return;
-            if (!AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets))
-                AirReconTargets[actor] = targets = new Dictionary<HexCoord, int>();
-            targets[hex] = turnNumber;
-        }
-
-        // True if an AirRecon sortie was last sent toward `hex` fewer than `cooldownTurns` turns
-        // ago (relative to `currentTurn`). AirReconTask.FindReconHex uses this to stop re-proposing
-        // the same stale hex over and over — the caller still applies the "unless a known enemy
-        // army/building is there" exception itself.
-        public static bool WasAirReconnedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
-        {
-            return AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets)
-                && targets.TryGetValue(hex, out int turn)
-                && currentTurn - turn < cooldownTurns;
-        }
-
-        // Stamps `hex` as a from-scratch raid target that failed AiAggressionPlanner's own
-        // pre-allocation viability gate this turn — see RaidPlanRejected's own comment.
-        public static void MarkRaidPlanRejected(PlayerSetupData actor, HexCoord hex, int turnNumber)
-        {
-            if (actor == null)
-                return;
-            if (!RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes))
-                RaidPlanRejected[actor] = hexes = new Dictionary<HexCoord, int>();
-            hexes[hex] = turnNumber;
-        }
-
-        // True if a fresh raid assembly against `hex` was rejected as non-viable fewer than
-        // `cooldownTurns` turns ago (relative to `currentTurn`). TryRaidAssembleCandidates checks
-        // this before re-projecting the target, so it doesn't re-run the same doomed math (and
-        // re-log it) every Decide step within the cooldown window.
-        public static bool WasRaidPlanRejectedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
-        {
-            return RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes)
-                && hexes.TryGetValue(hex, out int turn)
-                && currentTurn - turn < cooldownTurns;
         }
 
         private static bool SameEnemySighting(EnemySighting a, EnemySighting b)
@@ -1144,16 +1072,8 @@ namespace Game.Ai
                 }
         }
 
-        // A hex's resource bonus counts as "known" the moment it's ever been merely VISIBLE, not
-        // necessarily visited — matches how AiScoutPlanner's own isUndiscoveredResource bonus
-        // already treats discovery (fogged vs visible, not visited vs unvisited).
-        public static bool IsResourceHexKnown(PlayerSetupData actor, HexCoord hex)
-        {
-            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, KnownResourceHex> set) && set.ContainsKey(hex);
-        }
-
         // Every known resource hex and its complete last-observed effective yield — the whole-map read
-        // behind IsResourceHexKnown, for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
+        // for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
         // needs the set itself (opportunity map + per-resource economy weighting), not just a
         // per-hex membership test. Same honesty rule as everything else here — only ever hexes
         // this player has actually seen the bonus on.
@@ -1239,20 +1159,10 @@ namespace Game.Ai
             return null;
         }
 
-        public static float KnownGarrisonDefenseAt(PlayerSetupData actor, HexCoord hex)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                return 0f;
-            foreach (EnemySighting sighting in sightings.Values)
-                if (sighting.Hex.Equals(hex))
-                    return sighting.DefenseSum;
-            return 0f;
-        }
-
         // Null = no known active guarded event at this hex (never seen one, or it's since been
         // consumed — see OnEventConsumed). RaidWeakerArmyTask's own event-guard half of a target's
         // required strength (see that class's own FindTarget/RequiredStrengthAt — takes the max of
-        // this and KnownGarrisonDefenseAt for a hex, not their sum, since a physical neutral army
+        // this and the physical garrison defense for a hex, not their sum, since a physical neutral army
         // sharing this hex and this event's own card-guard are two separate fights, never fought
         // at once).
         public static GuardStrength? KnownEventGuardStrengthAt(PlayerSetupData actor, HexCoord hex)
@@ -1262,12 +1172,6 @@ namespace Game.Ai
                 ? strength
                 : (GuardStrength?)null;
         }
-
-        public static float? KnownEventGuardDefenseAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Defense;
-
-        // Same guard, its own card-stat Attack sum instead of Defense — WorthIt.Score's own "how
-        // hard would the guard hit back" half (see RaidWeakerArmyTask.RequiredStrengthAt).
-        public static float? KnownEventGuardAttackAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Attack;
 
         // Every hex this player has ever seen an active guarded event on — RaidWeakerArmyTask's
         // own candidate-gatherer needs to enumerate these the same way it enumerates
@@ -1471,31 +1375,6 @@ namespace Game.Ai
                     sighting.IsStartingCitadel, sighting.FacilityAbilities,
                     sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
                     sighting.Defense, sighting.SeenTurn);
-        }
-
-        // How many individual non-hero members, across every currently-known ARMY sighting for
-        // `actor` (physical armies only — EnemySightings, not KnownEventGuards' own card-stat
-        // guards, which aren't really "an enemy army" in the sense this counts), carry `tag` —
-        // AiManagementPlanner's own counter-tech PlayCard scoring reads this (Hyperkinetic once
-        // enough known Armored targets are on record, Pyrokinetic for Bio — see that class's own
-        // comment) to prefer a card that would actually counter what's already been scouted.
-        // Same "видимость с памятью" honesty as every other read here — only ever counts a
-        // sighting this player has actually observed, corrected/overwritten the same way
-        // DefenseSum/AttackSum already are, never the true enemy roster.
-        public static int KnownEnemyTypeTagCount(PlayerSetupData actor, UnitTypeTag tag)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                return 0;
-            int count = 0;
-            foreach (EnemySighting sighting in sightings.Values)
-            {
-                if (sighting.Defenders == null)
-                    continue;
-                foreach (WorthIt.DefenderProfile defender in sighting.Defenders)
-                    if (defender.TypeTags.Contains(tag))
-                        count++;
-            }
-            return count;
         }
     }
 }

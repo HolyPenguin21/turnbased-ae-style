@@ -12,8 +12,6 @@ namespace Game.Ai.V2
     internal static class ReconAcceptanceAudit
     {
         private const string WeakRecceAttack = "weak-recce-opportunistic-attack";
-        private const string HiddenFacilityCapture = "hidden-facility-capture";
-        private const string HiddenFacilityCancel = "hidden-facility-cancel-on-danger";
         private const string MostlyExploredRefresh = "refresh-dominates-mostly-explored";
         private const string StaleStrategicRefresh = "stale-strategic-refresh";
         private const string CoarseDirectionBoundary = "coarse-direction-boundary";
@@ -26,8 +24,6 @@ namespace Game.Ai.V2
         private static readonly string[] Scenarios =
         {
             WeakRecceAttack,
-            HiddenFacilityCapture,
-            HiddenFacilityCancel,
             MostlyExploredRefresh,
             StaleStrategicRefresh,
             CoarseDirectionBoundary,
@@ -142,24 +138,6 @@ namespace Game.Ai.V2
         {
             Record(player, turn, WeakRecceAttack, battleOccurred,
                 $"actor=#{armyId} target=#{targetArmyId} win={winChance:0.00} battle={(battleOccurred ? 1 : 0)}");
-        }
-
-        public static void RecordHiddenFacilityCapture(PlayerSetupData player, int turn, int armyId,
-            HexCoord hex, bool startedHidden, bool worldChanged)
-        {
-            Record(player, turn, HiddenFacilityCapture, startedHidden && worldChanged,
-                $"actor=#{armyId} hex=({hex.Q},{hex.R}) hiddenEntry={(startedHidden ? 1 : 0)} "
-                + $"resolved={(worldChanged ? 1 : 0)}");
-        }
-
-        public static void RecordHiddenFacilityCancel(PlayerSetupData player, int turn, int armyId,
-            HexCoord hex, bool startedHidden, ReconReactionAction afterDecloak)
-        {
-            bool danger = afterDecloak == ReconReactionAction.Flee
-                || afterDecloak == ReconReactionAction.EvadeDetector
-                || afterDecloak == ReconReactionAction.StopAndReplan;
-            Record(player, turn, HiddenFacilityCancel, startedHidden && danger,
-                $"actor=#{armyId} hex=({hex.Q},{hex.R}) hiddenEntry={(startedHidden ? 1 : 0)} afterDecloak={afterDecloak}");
         }
 
         public static void RecordMostlyExploredPressure(PlayerSetupData player, int turn,

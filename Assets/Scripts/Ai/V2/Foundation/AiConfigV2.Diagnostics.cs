@@ -21,7 +21,6 @@ namespace Game.Ai.V2
         // gameplay operation (or one explicit no-op result) followed by settlement and observation.
         public const int maxMidTurnStepsPerTurn = 96;
         public const int maxMidTurnNoProgressCycles = 2;
-        public const int maxMidTurnFallbackReturns = 1;
 
     }
 }

@@ -967,11 +967,6 @@ namespace Game.Ai.V2
             return c;
         }
 
-        // Does the card carry ANY effect using the given context (e.g. RecurringResource -> the
-        // "recurring-AP income" immediate-tempo bonus, without naming ApBonus).
-        public static bool HasContext(IEnumerable<string> abilities, int moveMax, StrategicEffectContext context)
-            => Resolve(abilities, moveMax).Any(e => e.Context == context);
-
         // AI-MGR — does this ability set carry ANY PlayerGlobal recurring-resource effect (ApBonus
         // today; a future +Energy/turn, +draw/N-turns, +movement-budget row the same). GENERIC — it
         // never names a concrete ability, so a new such mechanic is picked up with zero edits here.

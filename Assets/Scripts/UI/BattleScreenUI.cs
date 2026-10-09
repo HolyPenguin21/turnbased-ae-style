@@ -182,8 +182,7 @@ namespace Game.UI
         // non-hero unit can advance across the neutral row into the opposing side's own rows
         // during the Round's movement step to reach melee range (see BattleGrid's row-layout
         // comment), so "which row group a unit sits in" stops matching "which army it belongs
-        // to" the moment that happens. Grid-row lookups (BattleGrid.IsAttackerSideRow,
-        // BattleTurnOrder.FindHero) are still correct for HEROES, which never leave their own
+        // to" the moment that happens. Grid-row lookups (BattleTurnOrder.FindHero) are still correct for HEROES, which never leave their own
         // side's rows, and for genuinely row-relative concerns like initiative bonus/movement
         // legality — but any code deciding whose hero/Fate/ownership applies to a specific unit
         // must use this instead. Root cause of the Spend-button bug in project_battle_ai_bugs_open

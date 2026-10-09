@@ -842,8 +842,8 @@ namespace Game.UI
         // Experience/Battle Honors/Prestige are declined mechanics (see MECHANICS_CHECKLIST.md
         // pt. 10) and are omitted entirely rather than stubbed. Leader/capacity, Movement Range
         // and Fate Points are real, computed from
-        // Members. Terrain/Construction Def mirror BattleParticipantColumnUI's own identical
-        // lookup for the in-battle version of this same info — shown here too so the player can
+        // Members. Terrain/Construction Def mirror the in-battle lookup
+        // of this same info — shown here too so the player can
         // see what this army's hex would give it before it's actually attacked.
         private void ShowArmySummary()
         {

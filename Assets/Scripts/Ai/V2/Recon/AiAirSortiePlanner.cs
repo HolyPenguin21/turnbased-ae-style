@@ -519,15 +519,6 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // Anti-loop memory — AirRecon must not fly endlessly into one stale hex: once a recon
-            // sortie is underway toward a hex, stamp it so another sortie is not sent to the same
-            // hex for AiConfig.airReconTargetCooldownTurns turns after this one ends (unless live
-            // enemy intel turns up on it). Re-stamped every outbound step — including the step that
-            // reaches it — so the cooldown counts from the sortie's last real progress. Recon only:
-            // Strike has its own targeting and no such loop to guard against.
-            if (task.Kind == AirSortieKind.Recon && task.Outbound)
-                AiMapMemory.RecordAirReconTarget(player, task.TargetHex, ctx.TurnNumber);
-
             // Outbound leg finished the moment the army reaches the objective — the strike itself
             // (if the target was still there) or the recon reveal already happened as a side effect
             // of the MoveArmy step that landed the army on this hex (AviationCombatPresenter.

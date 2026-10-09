@@ -307,12 +307,6 @@ namespace Game.Ai.V2
             });
         }
 
-        // Both lanes share the one GroundCombatAssemblyTransaction primitive so "did the world
-        // really change" is measured identically.
-        private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx) =>
-            GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "raid");
-
         // Was a duplicate of GroundCombatFeasibility.Clears — with a stale hardcoded win-chance
         // threshold and no `cover` output — now calls that shared, parameterized implementation
         // directly at the one call site above (see Docs/ai-duplicate-methods-analysis.md, D4).

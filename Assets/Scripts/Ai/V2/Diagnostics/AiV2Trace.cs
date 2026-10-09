@@ -153,8 +153,6 @@ namespace Game.Ai.V2
         public static V2TraceScope CurrentScope(PlayerSetupData player) =>
             player != null && Scopes.TryGetValue(player, out V2TraceScope s) ? s : null;
 
-        public static string CurrentId(PlayerSetupData player) => CurrentScope(player)?.Id ?? "T?-P?-?";
-
         // -----------------------------------------------------------------------------------------
         //  Demand -> Mission causal link  (spec §1.6)
         // -----------------------------------------------------------------------------------------
@@ -274,49 +272,11 @@ namespace Game.Ai.V2
             Write($"[AI][V2][{scopeId}][STATE] {start.Transition(end)}", cf, cm, cl);
         }
 
-        // Mid-turn loop control lines. Diagnostics only: callers pass already-observed facts;
-        // this layer never refreshes analysis, classifies invalidations, or changes loop control.
-        public static void LogMidTurnStep(string scopeId, int cycle, int step,
-            string taskType, string taskKey, int? actorId, int plannedAtVersion,
-            int beforeVersion, int afterVersion, int apBefore, int apAfter,
-            string resourceDelta, string invalidations, string dirtyFamilies, string outcome,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "",
-            [CallerLineNumber] int cl = 0)
-        {
-            string actor = actorId.HasValue
-                ? actorId.Value.ToString(CultureInfo.InvariantCulture)
-                : "-";
-            Write($"[AI][V2][{scopeId}][LOOP][STEP] cycle={cycle} step={step} "
-                + $"task={taskType ?? "-"} key={taskKey ?? "-"} actor={actor} "
-                + $"plannedAt={plannedAtVersion} version={beforeVersion}→{afterVersion} "
-                + $"AP={apBefore}→{apAfter} resources={resourceDelta ?? "-"} "
-                + $"invalidations={invalidations ?? "-"} dirty={dirtyFamilies ?? "-"} "
-                + $"outcome={outcome ?? "-"}", cf, cm, cl);
-        }
-
-        public static void LogMidTurnStop(string scopeId, int cycles, int steps,
-            string reason, int stateVersion, int noProgressCycles, int fallbackReturns,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "",
-            [CallerLineNumber] int cl = 0)
-        {
-            Write($"[AI][V2][{scopeId}][LOOP][STOP] reason={reason ?? "-"} cycles={cycles} "
-                + $"steps={steps} version={stateVersion} noProgress={noProgressCycles} "
-                + $"fallbackReturns={fallbackReturns}", cf, cm, cl);
-        }
-
         // -----------------------------------------------------------------------------------------
         //  Invariant checks. `corrId` is the tightest available id — a MissionAttemptId, a
         //  DemandTraceId, or (failing both) a scope id.
         // -----------------------------------------------------------------------------------------
         private const float Eps = 0.05f;
-
-        public static void CheckOk(string corrId, string tag, string detail,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0) =>
-            Check("OK", corrId, tag, detail, cf, cm, cl);
-
-        public static void CheckWarn(string corrId, string tag, string detail,
-            [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0) =>
-            Check("WARN", corrId, tag, detail, cf, cm, cl);
 
         public static void CheckError(string corrId, string tag, string detail,
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0) =>

@@ -90,9 +90,9 @@ namespace Game.UI
         private Phase _phase;
         // Guards OnOkClicked against a same-frame double-fire the same way _phase's own
         // NotRolled->Resolved transition already does for a fresh Roll/duel — but a bare
-        // ShowAnnouncement (see its own comment) never leaves Phase.Resolved, so _phase alone
+        // ShowSecondaryAttackResult (see its own comment) never leaves Phase.Resolved, so _phase alone
         // can't tell "already acknowledged" apart from "still showing" for that case. Reset
-        // false by every entry point that puts up a new closeable screen (Begin, ShowAnnouncement
+        // false by every entry point that puts up a new closeable screen (Begin, ShowSecondaryAttackResult
         // — BeginCaptureKill goes through Begin), set true the first time OnOkClicked actually
         // processes it.
         private bool _okAlreadyHandled;
@@ -140,14 +140,6 @@ namespace Game.UI
         // OnStartRoundClicked), only get attacked. Feeds FateDuelAi.ShouldSpendFate's own Fate-
         // conservation rule for that case (see RunAiTurn).
         private bool _defenderIsRetreating;
-        // GroundCombat only — terrain modifier + (Base-tagged building's own Defense), folded
-        // straight into the SAME roll as any other Ground Combat attack rather than a separate
-        // manual-style Siege Challenge (see BattleScreenUI.Combat.cs's BeginAttack, the only
-        // caller that ever sets this to non-zero). Never applied to the attacker's own pool.
-        // Set in Begin as defenderTerrainBonus + defenderConstructionBonus (kept as a single sum
-        // here since roll math only cares about the total; the two components are only split out
-        // for BattleCombatantRowUI's own dice-count breakdown text).
-        private int _defenderBonusDice;
         // GroundCombat only — the ACTUAL dice-pool sizes the roll uses, resolved once in Begin
         // (attackerPoolSize/defenderPoolSize ?? the plain Attack/Defense+bonus default) and read
         // back by RunRollAndDuel instead of recomputing from _attacker.Attack/_defender.Defense
@@ -171,8 +163,6 @@ namespace Game.UI
         // Outcome itself (see ResolveCaptureKill) compares actual successes only, not this pool
         // size — per the user's own call, dropping the manual's separate "capture threshold".
         private int _hunterDicePool;
-        private int _targetDicePoolSize;
-        private CaptureKillOutcome _captureKillOutcome;
         private BattleChallengeSession _challengeSession;
         // Presentation mirrors of the domain session below; the popup never mutates them directly.
         private bool[] _attackerDice;
@@ -294,7 +284,6 @@ namespace Game.UI
             _attackerFateRemaining = Mathf.Max(0, attackerHero?.Fate ?? 0);
             _defenderFateRemaining = Mathf.Max(0, defenderHero?.Fate ?? 0);
             _defenderIsRetreating = defenderIsRetreating;
-            _defenderBonusDice = defenderBonusDice;
             _onResolved = onResolved;
             _onAiThought = onAiThought;
             _challengeSession = null;
@@ -354,7 +343,7 @@ namespace Game.UI
 
         // The ChallengeResultRoot checkbox's own read — same principle as IsAutorollEnabled
         // above, just gating AutoCloseResultIfNoHuman's three call sites (ShowResult/
-        // ShowCaptureKillResult/ShowAnnouncement) instead of Begin's Roll-Die auto-press.
+        // ShowCaptureKillResult/ShowSecondaryAttackResult) instead of Begin's Roll-Die auto-press.
         private bool IsAutoCloseResultEnabled => autoCloseResultToggle != null && autoCloseResultToggle.isOn;
 
         private bool _automateHumanSides;
@@ -363,7 +352,7 @@ namespace Game.UI
         // Neither current side needs to actually look at anything here before it happens — an
         // AI-vs-AI or AI-vs-neutral encounter (no human on either side), same population this
         // popup's own auto-roll/auto-close behavior targets. Reads the live _attacker/_defender
-        // fields rather than taking parameters so ShowAnnouncement (no attacker/defender of its
+        // fields rather than taking parameters so ShowSecondaryAttackResult (no attacker/defender of its
         // own — see its own comment) can reuse the exact same check off whatever the last real
         // challenge on this popup instance set them to.
         private bool RunsAutomatically => _automateHumanSides || (!IsHumanSide(_attacker) && !IsHumanSide(_defender));
@@ -443,55 +432,6 @@ namespace Game.UI
             _kind = ChallengeKind.CaptureKill;
             if (titleText != null)
                 titleText.text = "CAPTURE/KILL CHALLENGE";
-        }
-
-        // A plain single-screen announcement — no roll, no dice, no attacker/defender rows —
-        // reusing just this popup's Result state (rollStateRoot skipped entirely) for a message
-        // that isn't really a Challenge at all, e.g. "Your army retreats." after a hero-only
-        // army's Capture Kill Challenge ends in Escaped (see BattleScreenUI.Combat.cs's
-        // HandleCaptureKillOutcome) — same panel the user asked for (BattleAttackPopupUI's own
-        // ResultStateRoot) rather than a brand new popup for what's a one-line acknowledgement.
-        public void ShowAnnouncement(string message, Action onAcknowledged, bool automateHumanSides = false)
-        {
-            CleanupResearchProduction();
-            _automateHumanSides = automateHumanSides;
-            _kind = ChallengeKind.Announcement;
-            _onAnnouncementAcknowledged = onAcknowledged;
-            // Never goes through Begin (no attacker/defender roll of its own) — the ONE other
-            // place that puts up a fresh closeable screen, so it needs its own reset of the
-            // OnOkClicked re-entrancy guard (see _okAlreadyHandled's own comment: _phase alone
-            // can't do this job here, since it never leaves Resolved across an Announcement).
-            _okAlreadyHandled = false;
-            // Resolved, not NotRolled/InProgress — this IS the result screen already, there's no
-            // roll to wait for; OnOkClicked's own guard expects Resolved to mean "a result is up".
-            _phase = Phase.Resolved;
-
-            if (panelRoot != null)
-            {
-                panelRoot.SetActive(true);
-                panelRoot.transform.SetAsLastSibling();
-            }
-            VisibilityChanged?.Invoke();
-            if (rollStateRoot != null)
-                rollStateRoot.SetActive(false);
-            if (resultStateRoot != null)
-                resultStateRoot.SetActive(true);
-
-            if (resultArtImage != null)
-                resultArtImage.gameObject.SetActive(false);
-            if (resultTargetArtImage != null)
-                resultTargetArtImage.gameObject.SetActive(false);
-            if (resultTargetNameText != null)
-                resultTargetNameText.text = string.Empty;
-            if (resultTargetHpText != null)
-                resultTargetHpText.text = string.Empty;
-            if (destroyedStamp != null)
-                destroyedStamp.SetActive(false);
-            if (resultSummaryText != null)
-                resultSummaryText.text = message;
-
-            if (RunsAutomatically || IsAutoCloseResultEnabled)
-                StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
         // ============================ Research / Production Challenge ============================
@@ -755,7 +695,7 @@ namespace Game.UI
         // THE single teardown/finalization path for a Research/Production Challenge — used by
         // BOTH the normal Result -> OK flow (OnOkClicked) and every abnormal exit: a forced
         // Hide() from elsewhere, this popup being grabbed for another Challenge (Begin /
-        // BeginCaptureKill / ShowAnnouncement / a fresh BeginResearchProduction), any other
+        // BeginCaptureKill / ShowSecondaryAttackResult / a fresh BeginResearchProduction), any other
         // teardown of an active R/P state. Idempotent: the pending callback is captured-then-
         // nulled and _rpActive cleared on the first call, so any later call (e.g. Hide()
         // running right after OnOkClicked already finalized) is a no-op — the R/P callback can
@@ -794,7 +734,7 @@ namespace Game.UI
             callback?.Invoke(success);
         }
 
-        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowAnnouncement /
+        // Popup-reuse call sites (Begin / BeginCaptureKill via Begin / ShowSecondaryAttackResult /
         // BeginResearchProduction): a reused popup abandons any in-flight R/P Challenge as a
         // failure — no card minted, Fate restored, callback fired exactly once.
         private void CleanupResearchProduction() => FinalizeResearchProduction(false);
@@ -891,12 +831,6 @@ namespace Game.UI
         // BeginCaptureKill's own note) still has nothing to SPEND, but still clicked Roll Die and
         // still needs to see the result and click Accept themselves.
         private bool CanSpend(UnitData hero) => !_automateHumanSides && IsHumanSide(hero);
-
-        // Whether `hero` has any Fate left to POSSIBLY spend at all — used only to decide whether
-        // the whole duel phase is worth entering in the first place (see RunDuel's own skip
-        // check), not whether THIS turn specifically has anything to do (that's canSpend/
-        // shouldSpend inside RunHumanTurn/RunAiTurn, which also need a miss on the dice).
-        private static bool HasFateToSpend(UnitData hero) => hero != null && hero.Fate > 0;
 
         // The Fate duel itself. Defender's Prerogative: the defender always goes first. Declining
         // (Accept, or an AI/no-Fate side auto-declining — see RunHumanTurn/RunAiTurn) hands the
@@ -1287,7 +1221,6 @@ namespace Game.UI
                 : CaptureKillOutcome.Killed;
             var result = new ChallengeResult(_attackerDice, _defenderDice);
 
-            _captureKillOutcome = outcome;
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} (hunter) -> {_defender?.Name} (target hero): " +
                 $"rawSuccesses(attacker={result.AttackerSuccesses},defender={result.DefenderSuccesses}) outcome={outcome}");
             ShowCaptureKillResult(outcome);
@@ -1440,7 +1373,7 @@ namespace Game.UI
             // Capture/Kill Challenge result popup's second message duplicated/broken). Every
             // Resolve* site sets _phase = Resolved right before showing this result; the reopen
             // above always resets it back to NotRolled via Begin, so a stray second call usually
-            // finds the wrong phase and bails here instead — EXCEPT a plain ShowAnnouncement
+            // finds the wrong phase and bails here instead — EXCEPT a plain ShowSecondaryAttackResult
             // (e.g. "The enemy retreats." after a hero escapes its Capture Kill Challenge), which
             // never leaves Phase.Resolved (see its own comment), so that stray second call used
             // to sail straight through this check and re-fire the announcement's own callback a

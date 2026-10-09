@@ -50,19 +50,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // The physical hand-card instances a chain consumes (base + equipment). The generation
-        // source is tracked separately by GenerationStep.CardKey.
-        public static IReadOnlyList<CardData> PlanCards(MaterializationPlan p)
-        {
-            var list = new List<CardData>(2);
-            if (p?.BaseCardInHand != null) list.Add(p.BaseCardInHand);
-            if (p?.EquipmentInHand != null) list.Add(p.EquipmentInHand);
-            // An in-hand upgrade host is not consumed by attaching, but it is a physical object
-            // that cannot simultaneously be deployed or receive a second portfolio attachment.
-            if (p?.UpgradeTargetCard != null) list.Add(p.UpgradeTargetCard);
-            return list;
-        }
-
         public static string GenKey(MaterializationPlan p) => p?.Generation?.CardKey;
 
         internal static string UpgradeConflictKey(CardData card, Game.Units.UnitData unit) =>
@@ -84,7 +71,7 @@ namespace Game.Ai.V2
         // not already taken by an accepted chain.
         public bool CardsDisjoint(MaterializationPlan p)
         {
-            // The same three cards PlanCards lists, without allocating a list per check (this runs
+            // The plan's three cards, checked without allocating a list per check (this runs
             // for every candidate of every node of the portfolio search).
             if (p != null
                 && (Held(p.BaseCardInHand) || Held(p.EquipmentInHand) || Held(p.UpgradeTargetCard)))

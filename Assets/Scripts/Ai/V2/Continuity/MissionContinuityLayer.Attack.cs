@@ -1045,13 +1045,6 @@ namespace Game.Ai.V2
                 + ")");
         }
 
-        // §71 — a started operation is NOT re-pointed at a slightly better-scoring target. This is
-        // the only place Attack applies continuity protection, and it is a statement about identity,
-        // not a score comparison: while the bound target is still valid and the operation is still
-        // viable, a fresh candidate simply competes for a DIFFERENT intent next time this one ends.
-        internal static bool AttackIntentIsProtected(MissionIntent intent) =>
-            intent?.Attack != null && intent.Attack.OperationStarted
-            && intent.Status == IntentStatus.Active;
         internal static void ClassifyAttackStep(ExecutionResult e, MissionStepResult o)
         {
             if (GroundCombatLegs.IsSupportLeg(o)

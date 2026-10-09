@@ -21,7 +21,7 @@ namespace Game.Ai
     // separate per-unit concern and never a role signal here.
     //
     // Three army shapes AiTurnController's own PlayCard tier deliberately steers cards toward
-    // (the project owner's own spec): a solo Recce party (unit or hero, see IsEmptyDeployableArmy
+    // (the project owner's own spec): a solo Recce party (unit or hero
     // — never diluted into a bigger roster, since a bigger army costs more AP to move and covers
     // fewer hexes per trip for the exact same Recce vision bonus), a hero-led combat escort
     // (IsHeroLedCombatArmy, no Recce), and the garrison itself as a stockpile for plain Unit cards that
@@ -87,36 +87,6 @@ namespace Game.Ai
                 if (member.HasAbility(collectAbility))
                     return true;
             return false;
-        }
-
-        // Whether `army` has a real roster slot at all — not the garrison (nothing there is a
-        // deployable "army" a card joins) and not a Prison, whose "room" is captured enemy
-        // heroes' own Command Rating headroom (see ArmyData.ComputeCapacity), not a slot the AI
-        // could ever deploy a card into (see the project owner's own report: without this check
-        // the AI would try to "recruit" straight into its own Prison).
-        public static bool HasOpenSlot(ArmyData army)
-        {
-            // Airfield storage and air armies never count as an open "recipient" slot for any
-            // ground-side generic search that funnels through here (project owner's report,
-            // 2026-08-26: an empty airfield container kept surfacing as AssembleRaidForce/
-            // ActiveDefenceForce's "forming" army, proposing a hero/unit "join Airfield" only to
-            // fail at ArmyActions.TransferMember with "Ground units and heroes cannot join
-            // aviation.") — aircraft placement has its own dedicated path (AiAviationSupport/
-            // AiManagementPlanner.FindAviationPlacement), never this one.
-            if (army == null || army.IsGarrison || army.IsPrison
-                || AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
-                return false;
-            return army.HasRoom;
-        }
-
-        // A fresh, empty, non-garrison army — the only kind of army a Recce card ever founds (see
-        // AiManagementPlanner.FindPlacement). Never an army with anything already in it: per the
-        // project owner's own report, a Recce unit belongs SOLO (bigger armies cost more AP to
-        // move and cover fewer hexes per trip for the same vision bonus). A Hero card used to
-        // found one of these too, but no longer does — see IsPlainReserveArmy's own comment.
-        public static bool IsEmptyDeployableArmy(ArmyData army)
-        {
-            return HasOpenSlot(army) && army.Members.Count == 0;
         }
 
         // Garrison/prison, Recce, and hero-led-with-room armies all have their own dedicated
@@ -203,13 +173,13 @@ namespace Game.Ai
         //
         // 2026-08-24 tightened (project owner's own SecureBase spec) from the original bare
         // "Members.Count > 1" (never take the literal last body) to the real secure floor —
-        // IsBaseGarrisonSecure's own secureBaseMinNonHeroUnits headcount: taking a NON-hero from a
+        // secureBaseMinNonHeroUnits headcount: taking a NON-hero from a
         // non-citadel garrison is only allowed if it would still have that many non-hero members
         // left afterward, so recruitment can never pull an already-secure second base back down
         // below secure, and can never touch an already-fragile one at all (remaining count would
         // fall below the floor). A hero leaving is still governed by the old coarser "don't take
         // the literal last body" rule — heroes never count toward the secure headcount either way
-        // (see IsBaseGarrisonSecure's own comment), so a lone hero minding a fresh base's garrison
+        // (only non-heroes count toward secureBaseMinNonHeroUnits), so a lone hero minding a fresh base's garrison
         // stays put exactly like before, until AiManagementPlanner's own placement priority (see
         // GarrisonHexesForPlacement) routes a real replacement in.
         //
@@ -218,9 +188,8 @@ namespace Game.Ai
         // occasional Raid/Reorg recruit, SecureBase actively loops "find the nearest donor with a
         // spareable unit" call after call until a base is secure, and the citadel is very often the
         // nearest one, so leaving it unconditionally exempt could drain it down to zero non-hero
-        // defenders over a few of those trips. Passing false applies the SAME secureCitadelMinNonHeroUnits
-        // floor to the citadel that non-citadel bases already get (kept as its OWN constant, not
-        // reused from secureBaseMinNonHeroUnits, so the two can be tuned independently later).
+        // defenders over a few of those trips. Passing false applies the SAME secureBaseMinNonHeroUnits
+        // floor to the citadel that non-citadel bases already get.
         //
         // 2026-09-25 (V2 final audit F2): the default is now FALSE. Every V2 lane (Raid / Attack /
         // ActiveDefence donors, Economy / Development / Recon garrison extraction, Analysis' free-
@@ -451,26 +420,6 @@ namespace Game.Ai
                 }
             }
             return Walk(0);
-        }
-
-        // A non-citadel base's own garrison counts as genuinely secure once it holds at least
-        // AiConfig.secureBaseMinNonHeroUnits combat-capable NON-HERO members — a hero may sit
-        // alongside them (SecureBaseTask never turns one away), but never substitutes for this
-        // headcount (project owner's own spec: "hero может дополнять защиту, но не заменяет этот
-        // минимум" — a single hero-only garrison, exactly the state AiAggressionPlanner's own
-        // AdvanceGarrisonSeed can leave behind once its own builder army runs out of non-hero
-        // members to spare, is NOT secure). Shared by (at least) four mechanisms per the project
-        // owner's own call: SecureBaseTask's own trigger/completion, card-placement routing
-        // (AiManagementPlanner.GarrisonHexesForPlacement), the donor guard right above
-        // (CanSpareGarrisonMember), and GarrisonReorgTask's own balance/composition tiers, which all
-        // read AiArmyRoles.CanSpareGarrisonMember already — one predicate, one place. False (never
-        // secure) if this player has no garrison at all on `hex` yet.
-        public static bool IsBaseGarrisonSecure(PlayerSetupData player, HexCoord hex)
-        {
-            if (player == null)
-                return false;
-            ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
-            return garrison != null && garrison.Members.Count(m => m.IsGroundCombatant) >= AiConfig.secureBaseMinNonHeroUnits;
         }
 
         // The best hero Economy may pull straight out of `garrison` to travel to a resource site,

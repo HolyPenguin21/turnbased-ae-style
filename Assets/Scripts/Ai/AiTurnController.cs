@@ -60,87 +60,6 @@ namespace Game.Ai
             if (ObserverActionBoundaryPause != null)
                 yield return ObserverActionBoundaryPause();
         }
-        // Cross-category oscillation guard — every army a unit has actually sat in THIS turn via
-        // an AI-issued transfer (WouldRevisitArmy/RecordArmyVisit below). Started as
-        // GarrisonReorgTask's own private guard (its FindReorgMove tiers can undo each other
-        // within that one class), generalized here after the same shape of bug turned up ACROSS
-        // categories: AiAggressionPlanner.AssembleRaidForceRoutine and AiScoutPlanner.
-        // AssembleRecceScoutRoutine kept shuttling the same Recce unit back and forth between a
-        // raid force and a solo scout composition, neither aware the other had just undone its
-        // move, burning turn 8's entire step budget for nothing (see AiDebug.log 2026-08-17). Any
-        // routine that transfers a unit between armies can call RecordArmyVisit after a move
-        // lands and WouldRevisitArmy before proposing one, the same way GarrisonReorgTask always
-        // has. A fresh, empty dictionary every turn (From below constructs a brand new
-        // AiTurnContext per RunTurn call, never reused across turns) — a unit is free to revisit
-        // an army it sat in last turn, only a same-turn round-trip gets blocked.
-        public readonly Dictionary<UnitData, HashSet<ArmyData>> UnitVisitedArmies = new Dictionary<UnitData, HashSet<ArmyData>>();
-
-        // See UnitVisitedArmies' own comment. Keyed by unit only (not unit+turn) since this
-        // dictionary itself is already fresh every turn — nothing to distinguish by turn here.
-        public bool WouldRevisitArmy(UnitData unit, ArmyData target)
-        {
-            return unit != null && target != null && UnitVisitedArmies.TryGetValue(unit, out HashSet<ArmyData> visited)
-                && visited.Contains(target);
-        }
-
-        // Records BOTH ends of a landed move (not just the destination) so a same-turn round trip
-        // is caught on whichever leg comes second, regardless of which direction happens to be
-        // proposed first.
-        public void RecordArmyVisit(UnitData unit, ArmyData source, ArmyData target)
-        {
-            if (unit == null)
-                return;
-            if (!UnitVisitedArmies.TryGetValue(unit, out HashSet<ArmyData> visited))
-                UnitVisitedArmies[unit] = visited = new HashSet<ArmyData>();
-            if (source != null)
-                visited.Add(source);
-            if (target != null)
-                visited.Add(target);
-        }
-
-        // Called once, by AiTurnController.RunGarrisonReorgPhase, right before its own drain loop
-        // starts — 2026-08-21 fix, project owner's own report. UnitVisitedArmies' own history was
-        // built up to stop the MAIN per-step Decide loop from undoing itself across several steps
-        // in the SAME turn (see that field's own comment — the Recce shuttling bug this was
-        // generalized from). RunGarrisonReorgPhase runs exactly once, as the very last thing a turn
-        // does, with nothing left this turn that could ever read a leftover main-loop visit again —
-        // so a unit the main loop moved earlier this turn (e.g. a fresh raid/defense recruit) has
-        // no real same-turn round-trip risk left to protect against by staying blocked from an
-        // end-of-turn garrison fold: nothing will try to pull it back OUT again until next turn's
-        // own fresh evaluation regardless of what this phase does with it now. Cleared, not left
-        // alone, specifically so this phase's OWN drain loop (which still runs several iterations,
-        // see maxGarrisonReorgStepsPerTurn) keeps protecting itself from tier-vs-tier ping-pong
-        // WITHIN this same call — a unit this phase itself folds into the garrison this iteration
-        // still can't be immediately shoved back out to some field army by a later iteration the
-        // same call, only the STALE main-loop history is discarded.
-        public void ClearVisitedArmiesForReorgPhase() => UnitVisitedArmies.Clear();
-
-        // PlayCard candidates that already failed to actually deploy THIS turn (2026-08-26 P1
-        // fix, project owner's own report) — an aviation card wrongly routed into a non-aviation
-        // candidate pipeline kept re-scoring itself and re-failing PlayCardRoutine's own deploy
-        // call every further step, burning the whole turn's step budget on the same doomed
-        // candidate. A fresh, empty set every turn, same shape as UnitVisitedArmies above — a
-        // card is free to fail and be retried NEXT turn once whatever made it fail may have
-        // changed (a place freed up, AP replenished), only a same-turn repeat is blocked. Every
-        // PlayCard candidate source (AiManagementPlanner.TryPlayCardCandidates, AiScoutPlanner's
-        // own Recce pipeline, AiAggressionPlanner.TryHeroCardForRaid) must skip a card in here;
-        // PlayCardRoutine adds to it the moment its own deploy call reports failure.
-        public readonly HashSet<CardData> FailedPlayCardsThisTurn = new HashSet<CardData>();
-
-        // Turn-scoped Research/Production attempts (spec §11) — one entry per (hero, mode, card)
-        // combination already Challenged this turn, win or lose. AiDevelopmentPlanner skips any
-        // combination in here, so a failed Challenge's spent resources can't be burned again by
-        // the same combination re-winning arbitration on a later step this same turn. Fresh and
-        // empty every turn (From builds a new AiTurnContext per RunTurn), so the option returns
-        // automatically next turn.
-        public readonly HashSet<(UnitData Hero, ResearchProductionMode Mode, CardDefinition Card)> DevelopmentAttemptsThisTurn
-            = new HashSet<(UnitData, ResearchProductionMode, CardDefinition)>();
-
-        public bool HasTriedDevelopment(UnitData hero, ResearchProductionMode mode, CardDefinition card)
-            => DevelopmentAttemptsThisTurn.Contains((hero, mode, card));
-
-        public void RecordDevelopmentAttempt(UnitData hero, ResearchProductionMode mode, CardDefinition card)
-            => DevelopmentAttemptsThisTurn.Add((hero, mode, card));
 
         public static AiTurnContext From(RtsCameraController camera, HexMap map, HexSelectionController hexSelection,
             CardHandUI humanCardHand, float stepDelay,
@@ -624,25 +543,6 @@ namespace Game.Ai
         // yet, same as those two always have.
         internal static HexCoord NearestOwnGarrisonHex(PlayerSetupData player, HexCoord fromHex) =>
             NearestOwnGarrisonArmy(player, fromHex)?.Hex ?? GarrisonHexFor(player);
-
-        // Every one of this player's own garrison armies (the starting citadel's, plus any
-        // later-founded Base with Barracks), citadel first — RunGarrisonReorgPhase's own per-
-        // garrison drain loop is the first reader; AiManagementPlanner's multi-base routing
-        // (FindPlacement/ReserveArmyRoutine) reads OwnGarrisonHexes below instead, since it only
-        // needs the hex, not the army itself.
-        internal static IEnumerable<ArmyData> OwnGarrisonArmies(PlayerSetupData player)
-        {
-            HexCoord citadelHex = GarrisonHexFor(player);
-            return ArmyRegistry.AllForOwner(player).Where(a => a.IsGarrison)
-                .OrderBy(a => a.Hex.Equals(citadelHex) ? 0 : 1);
-        }
-
-        // Every one of this player's own garrisoned hexes (the starting citadel, plus any
-        // later-founded Base with Barracks) — AiDefencePlanner.TryStartDefenceCandidates' own
-        // per-home loop is the first reader, iterating this to give each base its own DefendCitadel
-        // task instead of the old single shared one.
-        internal static IEnumerable<HexCoord> OwnGarrisonHexes(PlayerSetupData player) =>
-            OwnGarrisonArmies(player).Select(a => a.Hex).Distinct();
 
         internal static ArmyData NearestOwnGarrisonArmy(PlayerSetupData player, HexCoord fromHex)
         {

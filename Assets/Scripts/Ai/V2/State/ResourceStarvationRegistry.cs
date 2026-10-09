@@ -130,17 +130,6 @@ namespace Game.Ai.V2
             s.VerifiedPending.Clear();
         }
 
-        // Called only by the no-chain diagnostic after it has inspected a matching card/chain and
-        // found a concrete resource deficit. The subsequent RecordBlock consumes this evidence.
-        public static void VerifyBlock(PlayerSetupData player, ResourceType type)
-        {
-            if (player == null)
-                return;
-            State s = Get(player);
-            s.RequireVerifiedEvidence = true;
-            s.VerifiedPending.Add(type);
-        }
-
         public static void RecordBlock(PlayerSetupData player, ResourceType type)
         {
             if (player == null)

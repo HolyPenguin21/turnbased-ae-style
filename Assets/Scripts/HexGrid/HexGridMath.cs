@@ -9,8 +9,8 @@ namespace Game.HexGrid
     public static class HexGridMath
     {
         // Ordered so direction[i] is the neighbour across the edge between hex corners i and
-        // (i+1)%6 (corner i sits at angle 60*i degrees) — required for BuildOuterBoundary to
-        // pair the right edge with the right corners.
+        // (i+1)%6 (corner i sits at angle 60*i degrees) — callers pair each edge
+        // with its corners by this order.
         public static readonly (int dq, int dr)[] NeighborDirectionsByEdge =
         {
             (1, 0), (0, 1), (-1, 1), (-1, 0), (0, -1), (1, -1)
@@ -84,93 +84,6 @@ namespace Game.HexGrid
                 for (int dr = rMin; dr <= rMax; dr++)
                     yield return new HexCoord(center.Q + dq, center.R + dr);
             }
-        }
-
-        // The real outer boundary of a set of hex cells, tracing actual hex edges — not an
-        // idealised shape. An edge belongs to the boundary when the cell across it isn't also
-        // in the set (including "doesn't exist on the map", so a cluster clipped by the map's
-        // edge gets a correctly stepped outline instead of overshooting past the border).
-        public static List<Vector3> BuildOuterBoundary(IEnumerable<HexCoord> cells, Func<HexCoord, Vector3> hexToWorld, float outerRadius)
-        {
-            var cellSet = new HashSet<HexCoord>(cells);
-            var boundaryEdges = new List<(Vector3 a, Vector3 b)>();
-
-            foreach (HexCoord cell in cellSet)
-            {
-                Vector3 center = hexToWorld(cell);
-                var corners = new Vector3[6];
-                for (int i = 0; i < 6; i++)
-                {
-                    float angle = Mathf.Deg2Rad * (60f * i);
-                    corners[i] = center + new Vector3(outerRadius * Mathf.Cos(angle), 0f, outerRadius * Mathf.Sin(angle));
-                }
-
-                for (int i = 0; i < 6; i++)
-                {
-                    (int dq, int dr) = NeighborDirectionsByEdge[i];
-                    var neighbor = new HexCoord(cell.Q + dq, cell.R + dr);
-                    if (!cellSet.Contains(neighbor))
-                        boundaryEdges.Add((corners[i], corners[(i + 1) % 6]));
-                }
-            }
-
-            return ChainEdgesIntoLoop(boundaryEdges);
-        }
-
-        // Stitches an unordered bag of boundary line segments into one ordered, closed loop
-        // by walking from shared endpoint to shared endpoint. Endpoints are matched by
-        // position rounded to whole millimetres, since two edges from different hexes should
-        // land on the exact same corner but float arithmetic can differ by a hair.
-        private static List<Vector3> ChainEdgesIntoLoop(List<(Vector3 a, Vector3 b)> edges)
-        {
-            var loop = new List<Vector3>();
-            if (edges.Count == 0)
-                return loop;
-
-            (int, int, int) Key(Vector3 v) => (Mathf.RoundToInt(v.x * 1000f), Mathf.RoundToInt(v.y * 1000f), Mathf.RoundToInt(v.z * 1000f));
-
-            var adjacency = new Dictionary<(int, int, int), List<(int, int, int)>>();
-            var positions = new Dictionary<(int, int, int), Vector3>();
-
-            void AddAdjacency(Vector3 from, Vector3 to)
-            {
-                var key = Key(from);
-                if (!adjacency.TryGetValue(key, out List<(int, int, int)> list))
-                {
-                    list = new List<(int, int, int)>();
-                    adjacency[key] = list;
-                }
-                list.Add(Key(to));
-                positions[key] = from;
-            }
-
-            foreach ((Vector3 a, Vector3 b) in edges)
-            {
-                AddAdjacency(a, b);
-                AddAdjacency(b, a);
-            }
-
-            (int, int, int) startKey = Key(edges[0].a);
-            (int, int, int) currentKey = startKey;
-            (int, int, int)? previousKey = null;
-
-            int safety = adjacency.Count * 2 + 10;
-            while (safety-- > 0)
-            {
-                loop.Add(positions[currentKey]);
-                List<(int, int, int)> neighbors = adjacency[currentKey];
-                (int, int, int) nextKey = (previousKey.HasValue && neighbors[0].Equals(previousKey.Value) && neighbors.Count > 1)
-                    ? neighbors[1]
-                    : neighbors[0];
-
-                if (nextKey.Equals(startKey))
-                    break;
-
-                previousKey = currentKey;
-                currentKey = nextKey;
-            }
-
-            return loop;
         }
     }
 }

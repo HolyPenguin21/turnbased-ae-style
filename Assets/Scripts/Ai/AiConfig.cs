@@ -8,11 +8,6 @@ namespace Game.Ai
     // Plain static const class (no serialized .asset) — retune by editing this file only.
     public static class AiConfig
     {
-        // Reconnaissance — VisitHex concurrency + stall watchdog (AiScoutPlanner's V2 heirs, and
-        // SafeStepPathing's callers).
-        public const int maxConcurrentVisitHex = 2;
-        public const int visitHexStallTurns = 2;
-
         // How many turns an unrefreshed enemy-army sighting stays in AiMapMemory before it expires.
         public const int enemySightingMemoryTurns = 2;
 
@@ -22,10 +17,7 @@ namespace Game.Ai
 
         // Aggression / raid physical gates (WorthIt-backed viability, used by the V2 raid lane).
         public const float aggressionBaseWeight = 100f;
-        public const float raidMinimumWinChance = 0.65f;
         public const int raidThreatRadius = 2;
-        public const int raidAssembleMaxTurns = 6;
-        public const int raidPlanRejectCooldownTurns = 3;
 
         // Siege geometry + minimum garrison bodies. (Renamed from the
         // old defence* naming: these are shared Analysis/Economy facts, not a Defence lane.)
@@ -33,7 +25,6 @@ namespace Game.Ai
         // The minimum win chance an Economy escort must project before it is considered safe.
         public const float economyEscortMinWinChance = 0.6f;
         public const int secureBaseMinNonHeroUnits = 2;
-        public const int secureCitadelMinNonHeroUnits = 2;
         // Garrison defence floor (user decision 2026-09-30): the non-hero power a garrison keeps is
         // this share of the player's whole ground force (map + hand + deck, aviation excluded —
         // PlayerForceAnalysis' additive scale); at least one body always stays. Read by
@@ -43,23 +34,10 @@ namespace Game.Ai
 
         // Economy / management physical capacity.
         public const int garrisonReservedSlots = 1;
-        public const int neutralBuildTriggerRadius = 1;
-
-        // BuildBase wait ceiling (turns) before a stalled founder task frees its army.
-        public const int buildBaseMaxWaitTurns = 5;
 
         // Aviation execution knobs (AviationSupport, AirStrike/AirRecon in the V2 recon-air lane).
-        public const int aviationLaunchMinReadyAircraft = 1;
-        public const int maxStrikesPerSortie = 2;
         public const int airReconTargetCooldownTurns = 3;
         public const float airStrikeContinuationScore = aggressionBaseWeight + 15f;
 
-        // Operations directive boost + development success floor (still read by V2).
-        public const float operationDirectiveBoost = 16f;
-        public const float developmentMinSuccessChance = 0.45f;
-
-        // Defence competitive scores still referenced by kept code paths.
-        public const float defenceActiveAssemblyScore = 120f;
-        public const float defencePreemptScore = 130f;
     }
 }

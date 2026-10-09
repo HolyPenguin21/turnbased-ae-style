@@ -213,54 +213,6 @@ namespace Game.UI
             return gameConfig.baseUpgradeTiers[tierIndex];
         }
 
-        public BaseUpgradeTier PeekNextFacilityUpgradeTier(FacilityData facility)
-        {
-            if (facility == null || gameConfig == null || gameConfig.facilityUpgradeTiers == null)
-                return null;
-            if (!facility.Abilities.Overlaps(UnitAbilities.CollectAbilities))
-                return null;
-            if (IsFacilityAtYieldCap(facility))
-                return null;
-            int tierIndex = facility.UpgradeLevel;
-            if (tierIndex < 0 || tierIndex >= gameConfig.facilityUpgradeTiers.Length)
-                return null;
-            return gameConfig.facilityUpgradeTiers[tierIndex];
-        }
-
-        // UI deliberately leaves this dormant. A legacy direct invocation still uses the
-        // normal owner guard and, on success, publishes its actual income change.
-        public bool CanImproveFacility(FacilityData facility) => false;
-
-        private bool IsFacilityAtYieldCap(FacilityData facility)
-        {
-            if (facility == null || _currentBuilding == null)
-                return false;
-            ResourceType? type = ResolveCollectResourceType(facility);
-            if (!type.HasValue)
-                return false;
-            return _currentBuilding.CollectedAmount(type.Value) >= GetHexYield(type.Value);
-        }
-
-        private static ResourceType? ResolveCollectResourceType(FacilityData facility)
-        {
-            foreach (string ability in facility.Abilities)
-            {
-                int index = Array.IndexOf(UnitAbilities.CollectAbilities, ability);
-                if (index >= 0)
-                    return (ResourceType)index;
-            }
-            return null;
-        }
-
-        private int GetHexYield(ResourceType type)
-        {
-            if (map == null)
-                return int.MaxValue;
-            map.TryGetTerrainAt(_currentBuilding.Hex, out TerrainTypeEntry entry);
-            ResourceYields yield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(_currentBuilding.Hex));
-            return yield.Get(type);
-        }
-
         public void UpgradeBase()
         {
             if (!CanManageCurrentBuilding || _currentBuilding == null
@@ -293,42 +245,6 @@ namespace Game.UI
                 return;
             _currentBuilding.StructurePointsCurrent = _currentBuilding.StructurePointsMax;
             ShowBaseSummary();
-        }
-
-        public void ImproveFacility(int facilityIndex)
-        {
-            if (!CanManageCurrentBuilding || _currentBuilding == null
-                || facilityIndex < 0 || facilityIndex >= _currentBuilding.TotalFacilitySlots)
-                return;
-            FacilityData facility = _currentBuilding.FacilitySlots[facilityIndex];
-            if (facility == null)
-                return;
-            if (!facility.Abilities.Overlaps(UnitAbilities.CollectAbilities))
-                return;
-            if (IsFacilityAtYieldCap(facility))
-            {
-                turnController?.ShowSpawnHint($"{facility.Name} is already collecting this hex's full yield.");
-                return;
-            }
-            if (gameConfig == null || gameConfig.facilityUpgradeTiers == null
-                || facility.UpgradeLevel < 0 || facility.UpgradeLevel >= gameConfig.facilityUpgradeTiers.Length)
-            {
-                turnController?.ShowSpawnHint($"{facility.Name} is already fully upgraded.");
-                return;
-            }
-            BaseUpgradeTier tier = gameConfig.facilityUpgradeTiers[facility.UpgradeLevel];
-            PlayerRoot root = PlayerRootRegistry.FindFor(_currentBuilding.Owner);
-            if (root == null || !root.CanSpendActionPoints(tier.apCost) || !tier.cost.CanAfford(root))
-            {
-                turnController?.ShowSpawnHint($"Not enough resources to upgrade {facility.Name}.");
-                return;
-            }
-
-            root.SpendActionPoints(tier.apCost);
-            tier.cost.PayFrom(root);
-            facility.UpgradeLevel++;
-            VisionSystem.NotifyContentChanged(_currentBuilding.Hex);
-            ShowFacilityDetail(facility);
         }
     }
 }

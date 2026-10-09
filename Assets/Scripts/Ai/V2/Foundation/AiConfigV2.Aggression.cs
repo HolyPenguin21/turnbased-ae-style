@@ -4,7 +4,6 @@ namespace Game.Ai.V2
     // Aggression axis readiness and shared Aggression/Raid objective and mission configuration.
     public static partial class AiConfigV2
     {
-        public const int raidRecoveryMaxWaitTurns = 2;
         public const float raidRepairMinWinChanceGain = 0.001f;
         // The last combat army on an own Citadel/Base stays put while a known hostile force that
         // can damage it is at most this many turns away
@@ -88,8 +87,6 @@ namespace Game.Ai.V2
         //  ("a quarter of my own raw strength is a noticeable slice of the enemy's field force")
         //  and the floor only keeps a single scrap unit from pulling a campaign off its axis. Both
         //  are meant to be retuned from real [AI][V2][Attack][Tactical] log lines.
-        public const float attackTacticalOpportunityMinStrengthShare = 0.25f;
-        public const float attackTacticalOpportunityMinRawStrength = 2f;
         // N — how many Raid alternatives AggressionMissionPlanner hands downstream (beam width).
         // Execution capacity is bounded by real armies / heroes / commitments / resources, NOT a
         // fixed K (spec §20), so there is no maxConcurrentRaidExecutions.
@@ -98,7 +95,7 @@ namespace Game.Ai.V2
         public const float raidNotionalActivationAp = 1f;
         public const float raidActivationApMax = 3f;
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
-        // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
+        // (parity with opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.80f;
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).

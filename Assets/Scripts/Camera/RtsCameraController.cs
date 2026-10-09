@@ -105,15 +105,6 @@ namespace Game.Cameras
             _panRoutine = StartCoroutine(PanRoutine(worldPosition, duration, onComplete));
         }
 
-        // Convenience overload for anything that only knows a hex, not a world position — e.g.
-        // Game.Ai.AiTurnController panning to wherever an AI army currently is or is headed.
-        public void PanToHex(HexCoord hex, HexMap map, float duration = 1.5f, Action onComplete = null)
-        {
-            if (map == null)
-                return;
-            PanTo(map.HexToWorld(hex), duration, onComplete);
-        }
-
         private IEnumerator PanRoutine(Vector3 worldPosition, float duration, Action onComplete)
         {
             Vector3 start = _groundTarget;

@@ -93,22 +93,12 @@ namespace Game.Ai
         public HexCoord TargetHex;
         public CardData Card;
         public string Reason;
-        public IReadOnlyList<UnitData> UnitsToMove;
-        public UnitData CollectorUnit;
-        public ArmyData MergeTarget;
-        public CardData EquipmentHostCard;
-        public HexCoord? EconomyBuildHex;
         public ResourceType? EconomyResourceType;
         public IReadOnlyList<UnitData> AircraftToLaunch;
         public HexCoord AirActionHex;
         public HexCoord AirLandingHex;
-        public UnitData DevelopHero;
-        public ResearchProductionMode DevelopMode;
-        public CardDefinition DevelopCard;
 
         public float Score;
-
-        public bool IsRecoveryDraw;
 
         // Recon may already have prepared visible combat or budgeted optional/required stealth.
         // The shared mover must not override that decision. Other callers retain their existing
