@@ -16,9 +16,9 @@ namespace Game.EditorTests
             var snapshot = Snapshot(Army());
             var definition = new CardDefinition { cardType = CardType.Hero, grantedAbilities = new List<string>() };
             snapshot.Self.Deck = new[] { definition };
-            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            string before = DevelopmentAdmission.Facts(snapshot, null);
             definition.grantedAbilities.Add(UnitAbilities.Assembler);
-            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.Facts(snapshot, null), Is.Not.EqualTo(before));
         }
 
         [Test]
@@ -27,9 +27,9 @@ namespace Game.EditorTests
             var snapshot = Snapshot(Army());
             snapshot.Development.HasPreparationStep = true;
             snapshot.Development.PreparationHeadroom = 0.2f;
-            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            string before = DevelopmentAdmission.Facts(snapshot, null);
             snapshot.Development.PreparationHeadroom = 0.8f;
-            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.Facts(snapshot, null), Is.Not.EqualTo(before));
         }
 
         [Test]
@@ -46,7 +46,7 @@ namespace Game.EditorTests
                     Resource = StrategicReservedResource.ActionPoints, Amount = 3,
                     ExpirationStage = StrategicReservationExpiry.EndOfReaction,
                 });
-                string Key() => Pipeline.DevelopmentApAffordability(snapshot, null, physicalAp,
+                string Key() => DevelopmentAdmission.ApAffordability(snapshot, null, physicalAp,
                     TurnResourceBook.Free(physicalAp, TurnResourceBook.LedgerClaims(player, turn),
                         StrategicReservedResource.ActionPoints, default));
                 string held = Key();
@@ -65,9 +65,9 @@ namespace Game.EditorTests
                   LastIntrinsicValue = 1f };
             var intents = new[] { intent };
             var snapshot = Snapshot(Army());
-            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, intents);
+            string before = DevelopmentAdmission.Facts(snapshot, intents);
             intent.LastIntrinsicValue = 8f;
-            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, intents), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.Facts(snapshot, intents), Is.Not.EqualTo(before));
         }
 
         [Test]
@@ -76,12 +76,12 @@ namespace Game.EditorTests
             var definition = AttachmentSlotTests.Host(hero: true);
             var card = new CardData(definition);
             var hand = new AiHandData(null, default, 0); hand.AddCard(card);
-            string before = Pipeline.DevelopmentRecipientFacts(null, hand);
+            string before = DevelopmentAdmission.RecipientFacts(null, hand);
             card.Equipment = AttachmentSlotTests.Attachment(AttachmentSlot.Equipment, EquipmentStat.Attack, 0);
-            string equipment = Pipeline.DevelopmentRecipientFacts(null, hand);
+            string equipment = DevelopmentAdmission.RecipientFacts(null, hand);
             Assert.That(equipment, Is.Not.EqualTo(before));
             card.Mutator = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator, EquipmentStat.Attack, 0);
-            Assert.That(Pipeline.DevelopmentRecipientFacts(null, hand), Is.Not.EqualTo(equipment));
+            Assert.That(DevelopmentAdmission.RecipientFacts(null, hand), Is.Not.EqualTo(equipment));
         }
 
         [Test]
@@ -94,9 +94,9 @@ namespace Game.EditorTests
                 Commander = new Game.Combat.WorthIt.SideCommander(2, 1),
             };
             snapshot.TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } };
-            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            string before = DevelopmentAdmission.Facts(snapshot, null);
             enemy.Commander = new Game.Combat.WorthIt.SideCommander(2, 4);
-            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.Facts(snapshot, null), Is.Not.EqualTo(before));
         }
 
         [Test]
@@ -107,8 +107,8 @@ namespace Game.EditorTests
             {
                 Card = new CardDefinition { cardType = CardType.Equipment, apCost = 1, activationApCost = 1 },
             } };
-            Assert.That(Pipeline.DevelopmentApAffordability(snapshot, null, 3),
-                Is.Not.EqualTo(Pipeline.DevelopmentApAffordability(snapshot, null, 4)));
+            Assert.That(DevelopmentAdmission.ApAffordability(snapshot, null, 3),
+                Is.Not.EqualTo(DevelopmentAdmission.ApAffordability(snapshot, null, 4)));
         }
 
         private static WorldSnapshot Snapshot(ArmySnapshot army,
@@ -155,7 +155,7 @@ namespace Game.EditorTests
 
         private static string Fingerprint(WorldSnapshot snapshot, int ap = 4,
             string resources = "3,3,3,3", int handVersion = 7) =>
-            Pipeline.DevelopmentAdmissionFingerprint(snapshot, null, ap, resources, handVersion);
+            DevelopmentAdmission.Fingerprint(snapshot, null, ap, resources, handVersion);
 
         [Test]
         public void RaidReturnMovement_DoesNotReadmitDevelopment_ButActorStillInvalidatesOperations()
@@ -197,9 +197,9 @@ namespace Game.EditorTests
         {
             var snapshot = Snapshot(Army());
             snapshot.Self.Armies[0].NonHeroMutatorOccupied = new[] { false, false };
-            string before = Pipeline.DevelopmentAdmissionFacts(snapshot, null);
+            string before = DevelopmentAdmission.Facts(snapshot, null);
             snapshot.Self.Armies[0].NonHeroMutatorOccupied = new[] { true, false };
-            Assert.That(Pipeline.DevelopmentAdmissionFacts(snapshot, null), Is.Not.EqualTo(before));
+            Assert.That(DevelopmentAdmission.Facts(snapshot, null), Is.Not.EqualTo(before));
         }
 
         [Test]

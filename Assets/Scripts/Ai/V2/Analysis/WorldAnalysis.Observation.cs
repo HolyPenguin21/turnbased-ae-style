@@ -26,6 +26,20 @@ namespace Game.Ai.V2
             new StepObservationStamp(snapshot,
                 root != null ? AiV2Trace.Stamp(root) : default, hand);
 
+        // The one settled-observation boundary of a step: refresh the snapshot AFTER the mutation,
+        // stamp it, and publish the before/after delta (one publication per fact). Callers whose
+        // actions publish their own receipts (Phase A, formation) and the conditional re-admission
+        // refresh do not use it. Returns the refreshed snapshot.
+        internal static WorldSnapshot ObserveSettled(WorldSnapshot snapshot, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, StepObservationStamp before,
+            ExecutionResult execution)
+        {
+            snapshot = RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+            StepObservationStamp after = CaptureStepObservation(root, hand, snapshot);
+            PublishStepObservationDelta(player, ctx.TurnNumber, before, after, execution);
+            return snapshot;
+        }
+
         internal static void PublishStepObservationDelta(PlayerSetupData player, int turn,
             StepObservationStamp before, StepObservationStamp after,
             ExecutionResult execution)
@@ -347,7 +361,7 @@ namespace Game.Ai.V2
         }
 
         // The one identity of an asset threat: the Threat invalidation above and the Aggression
-        // admission fingerprint (Pipeline.AggressionAdmissionFingerprint) compare the same key.
+        // admission fingerprint (AggressionAdmission.Fingerprint) compare the same key.
         internal static string ThreatKey(AssetThreatSnapshot t)
         {
             if (t == null) return "-";

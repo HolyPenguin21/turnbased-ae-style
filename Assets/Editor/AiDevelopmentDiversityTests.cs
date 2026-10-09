@@ -43,8 +43,8 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot { Deck = new CardDefinition[deck], Hand = new Game.Cards.CardData[0],
                     BaseHexes = new[] { new Game.HexGrid.HexCoord(0, 0) }, Armies = new ArmySnapshot[0] },
                 Development = new DevelopmentReadiness { Facilities = new DevelopmentFacility[0] } };
-            string full = Pipeline.DevelopmentAdmissionFingerprint(Snap(30), null, 4, "3,3,3,3", 7);
-            Assert.That(Pipeline.DevelopmentAdmissionFingerprint(Snap(29), null, 4, "3,3,3,3", 7),
+            string full = DevelopmentAdmission.Fingerprint(Snap(30), null, 4, "3,3,3,3", 7);
+            Assert.That(DevelopmentAdmission.Fingerprint(Snap(29), null, 4, "3,3,3,3", 7),
                 Is.Not.EqualTo(full), "one card fewer in the deck moves the supply multiplier");
         }
 

@@ -203,15 +203,15 @@ namespace Game.EditorTests
         public void AdmissionCache_TracksExactMovementAndLocalStrikeLifecycle()
         {
             var snap = Snapshot(); var intent = Intent(); MissionIntentRegistry.GetOrCreate(Us).Put(intent);
-            string first = Pipeline.AggressionAdmissionFingerprint(snap, Us);
+            string first = AggressionAdmission.Fingerprint(snap, Us);
             snap.Self.Armies[0].CurrentMovement = 1;
-            string lessMovement = Pipeline.AggressionAdmissionFingerprint(snap, Us);
+            string lessMovement = AggressionAdmission.Fingerprint(snap, Us);
             Assert.That(lessMovement, Is.Not.EqualTo(first), "positive MP alone cannot prove contact is still reachable");
             intent.Attack.IntermediateTarget = Local;
-            string pinned = Pipeline.AggressionAdmissionFingerprint(snap, Us);
+            string pinned = AggressionAdmission.Fingerprint(snap, Us);
             Assert.That(pinned, Is.Not.EqualTo(lessMovement));
             intent.Attack.LastOpportunisticStrikeTurn = 6;
-            Assert.That(Pipeline.AggressionAdmissionFingerprint(snap, Us), Is.Not.EqualTo(pinned));
+            Assert.That(AggressionAdmission.Fingerprint(snap, Us), Is.Not.EqualTo(pinned));
         }
 
         [Test]

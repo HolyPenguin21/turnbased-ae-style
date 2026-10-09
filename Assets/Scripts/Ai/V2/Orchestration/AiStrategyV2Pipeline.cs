@@ -58,19 +58,24 @@ namespace Game.Ai.V2
     //     ExecutionStopReason live in TaskExecutor.cs.
 
     // ===========================================================================================
-    //  THE PIPELINE — walking skeleton. Every stage below is a stub that returns empty/neutral and
-    //  mutates NOTHING. Toggling AiConfig.aiStrategyV2Enabled on right now yields an AI that logs
-    //  one full pipeline pass and then passes its turn. That is the intended build-order step 1
-    //  end state: full loop runs, zero tasks, no throw.
+    //  THE PIPELINE — one AI turn (RunTurn), in this order:
+    //   1. Start: hand top-up, one WorldAnalysis scan + estimate warm-up, Radar, the turn's Recon
+    //      and Aggression objectives, Continuity (ResolveActive) and actor claims, the first demand
+    //      frame, Phase A (deferred while an aviation obligation is pending), wing formation.
+    //   2. The ONE main loop (TurnLoop.Run): typed operational admission passes (mandatory aviation
+    //      before funded missions, one settled work step per iteration), the Phase B tempo rounds
+    //      (the first after the settle window), the zero-Radar residual once. Strategic
+    //      re-admission (StrategicReadmission) follows each settled step through
+    //      StepTriggerSequence: a resumed rebase takes one take->reenter pair, other work two.
+    //   3. End: air-support safety recall, final Continuity reconciliation, summary, Housekeeping
+    //      (which runs a pending Reaction pass), turn-end audit and reservation release, telemetry.
+    //  Remaining exceptions, by design: every work kind keeps its own observation/settle order
+    //  (only trigger resolution is shared); the cold residual calls Phase A directly, without the
+    //  re-admission key gate; the provisioning retry stays nested in the mission step; the recall,
+    //  Housekeeping and Reaction stay outside the loop.
     // ===========================================================================================
     public static partial class Pipeline
     {
-        internal static bool StrategicAdmissionNeeded(
-            IReadOnlyDictionary<DesireAxis, string> lastHandled,
-            DesireAxis axis, string fingerprint) => lastHandled == null
-            || !lastHandled.TryGetValue(axis, out string previous)
-            || previous != fingerprint;
-
         // T03 — one axis's demand family by stable consumer identity (consumer intent, capability,
         // pinned host, target hex) plus its amount: the re-admission log's old→new line.
         internal static string DemandIdentityDigest(IEnumerable<AxisDemand> demands, DesireAxis axis) =>
@@ -175,6 +180,20 @@ namespace Game.Ai.V2
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
             ActorCommitments actorCommitments = turnSession.RefreshActors(activeIntents, snapshot, reconObjectives);
+
+            // The one recipe that makes the operational frame current after the snapshot changed:
+            // warm the combat estimates for it, rebuild Recon / Aggression / intents / actor claims
+            // from it (RefreshOperationalFrame, in that order), and hold them as this decision's
+            // frame. Callers refresh the snapshot first where their step requires it.
+            IEnumerator RefreshDecisionFrame()
+            {
+                yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
+                OperationalFrame frame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
+                reconObjectives = frame.Recon;
+                aggressionObjectives = frame.Aggression;
+                activeIntents = frame.Intents;
+                actorCommitments = frame.Commitments;
+            }
             AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
             AiFrameLog.Forces(snapshot, actorCommitments);
 
@@ -200,12 +219,12 @@ namespace Game.Ai.V2
             //     return or rebase, Phase A is deferred and the loop below settles the wings; every
             //     axis is then admitted in one re-admission pass.
             int handAtStart = (hand?.Hand?.Count ?? 0) - replenishDrawn;
-            var deferredAdmission = new DeferredStrategicAdmission();
+            var readmission = new StrategicReadmission();
             StrategicPhaseResult phaseA;
             if (AviationObligations.Pending(player, ctx))
             {
                 phaseA = new StrategicPhaseResult();
-                deferredAdmission.Defer(demandAxes);
+                readmission.Deferred.Defer(demandAxes);
                 AiDebugLog.Write("[AI][V2] Phase A deferred — aviation obligations settle first");
             }
             else
@@ -227,12 +246,7 @@ namespace Game.Ai.V2
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout); re-reading the same continuity owner
                 // here keeps stale pre-build actor claims from executing.
-                yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                OperationalFrame phaseAFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                reconObjectives = phaseAFrame.Recon;
-                aggressionObjectives = phaseAFrame.Aggression;
-                activeIntents = phaseAFrame.Intents;
-                actorCommitments = phaseAFrame.Commitments;
+                yield return RefreshDecisionFrame();
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
@@ -279,7 +293,6 @@ namespace Game.Ai.V2
             var allExecuted = new List<ExecutionResult>();
             var phaseB = new StrategicPhaseResult();
             ActorCommitments postCommitments = null;
-            bool phaseBHandled = false;
 
             // The typed mid-turn architecture is the canonical production path. The
             // initial Phase A settles before operational admission; a later factual Development
@@ -288,220 +301,95 @@ namespace Game.Ai.V2
             // settle -> observe -> typed re-admission path.
             {
                 missions = new List<MissionProposal>();
-                int settledSteps = 0;
-                int noProgressCycles = 0;
-                var lastStrategicAdmissionFingerprint = new Dictionary<DesireAxis, string>();
+                // The turn loop's control state (TurnLoop): settled steps, no progress, the
+                // zero-Radar residual window, waiting return legs (LifecycleReturnPolicy: they wait
+                // until the first Phase B round), Phase B rounds, stage and the open pass.
+                var loop = new TurnLoopState();
                 bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
-                bool zeroRadarResidualWindow = false;
-                // LifecycleReturnPolicy: return legs wait until the first Phase B round.
-                bool lifecycleReturnsReleased = false;
-                bool lifecycleReturnsDeferred = false;
 
-                string StrategicAdmissionFingerprint(DesireAxis axis)
+                // The reservation Phase A carries through the turn: Phase B's once a round produced
+                // one, else Phase A's. Read at every use, never cached (both owners replace it).
+                MaterializationReservation CarriedReservation() =>
+                    phaseB.Reservation ?? phaseA.Reservation;
+
+                // Every mission any pack of this turn funded (turn activity: MissionsFunded), recorded
+                // right after each pack; a key funded again is counted once.
+                void RecordFunded(TentativeAllocation packed)
                 {
-                    using var __profile = new Game.Core.ProfileScope("AI/Pipeline.AdmissionFingerprint");
-                    string resources = root == null ? "-" : string.Join(",",
-                        ResourceBundle.All.Select(t => root.GetResource(t).ToString("0.###",
-                            CultureInfo.InvariantCulture)));
-                    if (axis == DesireAxis.Development)
-                        return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
-                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand, player,
-                            root, ctx);
-                    // T03 — Aggression carries its own inputs (AiStrategyV2Pipeline.AggressionAdmission.cs).
-                    if (axis == DesireAxis.Aggression)
-                        return AggressionAdmissionFingerprint(snapshot, player);
-                    // Economy only from here on (Development returned above). The key carries what
-                    // Economy's decision reads and nothing that ticks on every executed step: no
-                    // global state version, and position/movement/activation only for armies the
-                    // economy analysis advertises as builders/collectors (or an Economy intent
-                    // holds) — a scout stepping its waypoint cannot change a build decision. Every
-                    // army still contributes identity, size and hero presence, so an army gaining a
-                    // hero (a new builder candidate) or being formed/destroyed re-admits Economy.
-                    HashSet<int> economyArmyIds = EconomyRelevantArmyIds(snapshot, activeIntents);
-                    string armies = string.Join(";", (snapshot?.Self?.Armies
-                            ?? System.Array.Empty<ArmySnapshot>())
-                        .Where(a => a != null).OrderBy(a => a.ArmyId)
-                        .Select(a => $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}"
-                            // A served facility's / selected site's operator duty decides builder admissibility.
-                            + $":duty{(a.OperatorDutyBlocksDeparture ? 1 : 0)}"
-                            // Availability and prices can change when a legal zero-AP release
-                            // becomes possible, even though the real army's roster is unchanged.
-                            + (a.EconomyDeparture != null
-                                ? $":eco{a.EconomyDeparture.MemberCount}:{a.EconomyDeparture.Capacity}"
-                                    + $":{a.EconomyDeparture.CurrentMovement}:{a.EconomyDeparture.MaxMovement}"
-                                    + $":{a.EconomyDeparture.ActivationApCost}:{a.EconomyDeparture.EffectiveArmyPower:0.###}"
-                                : ":eco0")
-                            + (economyArmyIds.Contains(a.ArmyId)
-                                ? $":{a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.ActivationApCost}"
-                                : string.Empty)));
-                    // Actor occupancy by ANY mission (a builder claimed by a raid is unavailable),
-                    // by kind/status/claimed actor only — never intent identity, so a scout
-                    // retargeting its waypoint keeps the same key.
-                    string claims = string.Join(";", (activeIntents ?? new List<MissionIntent>())
-                        .Where(i => i != null)
-                        .Select(i => $"{i.Kind}:{i.Status}:{i.PreferredMoverArmyId}"
-                            + $":{i.Raid?.AirSupportArmyId}"
-                            // Held ground supports (convoys, gathers) — the same list
-                            // ActorCommitments claims (GroundCombatLegs).
-                            + $":sup{string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i))}")
-                        .Distinct().OrderBy(x => x, System.StringComparer.Ordinal));
-                    // The fingerprint's site facts are produced by the SAME
-                    // WorldAnalysis.EconomyOpportunityRows the typed invalidation is derived from,
-                    // so a "this known site became usable" event is never published and then
-                    // suppressed here on an unchanged key: the trigger and the admission gate
-                    // describe the same world.
-                    string economyFacts = "|sites=" + string.Join(";",
-                            WorldAnalysis.EconomyOpportunityRows(snapshot)
-                            .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
-                            .Select(kv => $"{kv.Key}={kv.Value}"))
-                        + "|bases=" + string.Join(";", (snapshot?.Economy?.BaseOpportunities
-                            ?? System.Array.Empty<EconomyBaseOpportunity>())
-                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
-                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.HexYield.Sum:0.###}"))
-                        + "|threats=" + string.Join(";", (snapshot?.Known?.EnemySightings
-                            ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                            .Concat(snapshot?.Known?.NeutralSightings
-                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
-                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.SeenTurn}:{x.Defenders?.Count ?? 0}"))
-                        + "|owners=" + string.Join(";", (activeIntents
-                            ?? new List<MissionIntent>())
-                            .Where(i => i?.Kind == MissionKind.Economy)
-                            .OrderBy(i => i.IntentKey)
-                            .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"));
-                    // Raw AP stays: Economy's AP reads (chain sums, ledger-aware SpendableAp) have
-                    // no small exact threshold set like Development's apfit, and AP only moves on
-                    // an activation or a play, not on every step. Other lanes' holds shrink what
-                    // Economy may spend, so they are input; Economy's own rows are its output and
-                    // stay out (they would re-admit the axis on its own writes).
-                    return $"axis={axis}|ap={root?.ActionPoints ?? 0}"
-                        + $"|res={resources}|hand={hand?.MutationVersion ?? -1}"
-                        + "|held=" + StrategicResourceReservationLedger.ReasonDigest(player,
-                            ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass)
-                        + $"|armies={armies}|claims={claims}"
-                        + economyFacts;
+                    foreach (FundedEntry fe in packed.Funded)
+                        if (fe?.Mission != null)
+                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
                 }
+
+                string AdmissionKey(DesireAxis axis) =>
+                    StrategicAdmissionFingerprints.For(axis, snapshot, activeIntents, root, hand, player, ctx);
 
                 foreach (DesireAxis axis in demandAxes.Where(a =>
                              a == DesireAxis.Economy || a == DesireAxis.Development
                              || a == DesireAxis.Aggression))
-                    lastStrategicAdmissionFingerprint[axis] =
-                        StrategicAdmissionFingerprint(axis);
+                    readmission.Seed(axis, AdmissionKey(axis));
 
                 // One factual flag may invalidate more than one family (for example, discovering
                 // a deficient ResourceSite changes both Recon knowledge and Development
                 // opportunity). Snapshot the aggregate once, derive every affected family, and
                 // only then consume the shared reasons so family order cannot erase a sibling's
                 // trigger.
-                void TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
-                    out StrategicInvalidationReason strategicReasons,
-                    out HashSet<DesireAxis> dirtyStrategicAxes)
+                TypedTriggerSplit TakeTypedSplit()
                 {
-                    StrategicInvalidation pending =
-                        turnSession.PendingInvalidations;
-                    // The OPERATIONAL mask is built from EVERY enabled mission axis, not only
-                    // Recon: destroying a neutral publishes a Contact invalidation Aggression must
-                    // consume, so the bounded loop gets a same-turn chance to refresh the objective
-                    // list, complete the old target, select the next one, or start a Return
-                    // mission. ActiveDefence is folded into Aggression, so this mask needs no extra
-                    // case for it.
-                    StrategicInvalidationReason operationalMask =
-                        AiStrategyV2Scope.OperationalInvalidationMask;
-                    operationalReasons = pending.Reasons & operationalMask;
-                    strategicReasons = StrategicInvalidationReason.None;
-                    dirtyStrategicAxes = new HashSet<DesireAxis>();
-                    // T03 — Aggression's shortages (Raid/Attack reinforcement, the Attack preparation
-                    // host, ActiveDefence) re-enter on its existing mask like Economy/Development:
-                    // otherwise fresh objectives and admission run beside a stale capability
-                    // request for the rest of the turn. Its fingerprint drops re-entries whose
-                    // inputs did not change (a scout's step, a walk that moved no demand input).
-                    foreach (DesireAxis axis in new[]
-                             {
-                                 DesireAxis.Economy, DesireAxis.Development, DesireAxis.Aggression,
-                             })
-                    {
-                        StrategicInvalidationReason axisReasons = pending.Reasons
-                            & DesireAxes.InvalidationMaskFor(axis);
-                        // Actor movement alone must not re-run every Economy infrastructure
-                        // candidate. It becomes actionable only when continuity's committed
-                        // builder actually reached its build hex; factual resource/site changes
-                        // still re-admit Economy normally.
-                        if (axis == DesireAxis.Economy
-                            && axisReasons == StrategicInvalidationReason.Actor
-                            && !MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot))
-                            continue;
-                        if (axisReasons == StrategicInvalidationReason.None)
-                            continue;
-                        dirtyStrategicAxes.Add(axis);
-                        strategicReasons |= axisReasons;
-                    }
-                    turnSession.ConsumeInvalidations(operationalReasons | strategicReasons);
+                    TypedTriggerSplit split = TypedTriggerFanOut.Split(
+                        turnSession.PendingInvalidations.Reasons,
+                        () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot));
+                    turnSession.ConsumeInvalidations(split.Consumed);
+                    return split;
                 }
 
                 // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
                 // carried reservation. This is deliberately local orchestration, not a second
                 // manager or a new vertical layer.
                 // Aviation obligations first: while a wing must still return or rebase, the axes
-                // wait in `deferredAdmission`. The first call after the last obligation settles
-                // admits them together with its own. `flush` admits waiting axes with no new
-                // trigger once nothing is pending (loop top); `force` admits them even while an
-                // obligation is still pending (the loop is over and will not settle it).
+                // wait in `readmission.Deferred`. The first call after the last obligation settles
+                // admits them together with its own. The cause says why the pass is requested:
+                // Trigger (typed facts), DeferredFlush (admit waiting axes with no new trigger once
+                // nothing is pending, loop top), TerminalForce (admit them even while an obligation
+                // is still pending: the loop is over and will not settle it), CapacityUnlock.
+                // StrategicReadmission decides which axes run; the domain owners compute the keys.
                 bool reentryStateChanged = false;
-                IEnumerator ReenterStrategicAxes(StrategicInvalidationReason reasons,
-                    HashSet<DesireAxis> dirtyAxes, bool flush = false, bool force = false)
+                IEnumerator ReenterStrategicAxes(ReadmissionCause cause,
+                    StrategicInvalidationReason reasons, HashSet<DesireAxis> dirtyAxes)
                 {
                     reentryStateChanged = false;
-                    bool triggered = reasons != StrategicInvalidationReason.None
-                        && dirtyAxes != null && dirtyAxes.Count > 0;
-                    if (!triggered && !((flush || force) && deferredAdmission.HasAxes))
-                        yield break;
-                    if (AviationObligations.Pending(player, ctx))
-                    {
-                        if (!force)
-                        {
-                            if (triggered)
-                            {
-                                deferredAdmission.Defer(dirtyAxes);
-                                AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
-                                    + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
-                            }
-                            yield break;
-                        }
-                        AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
-                            + "loop — admitting the deferred axes anyway");
-                    }
-                    if (deferredAdmission.HasAxes)
-                        dirtyAxes = deferredAdmission.TakeWith(triggered ? dirtyAxes : null);
-
-                    dirtyAxes.RemoveWhere(axis =>
-                    {
-                        string fingerprint = StrategicAdmissionFingerprint(axis);
-                        bool unchanged = !StrategicAdmissionNeeded(
-                            lastStrategicAdmissionFingerprint, axis, fingerprint);
-                        if (unchanged)
+                    DeferredAdmissionGate gate = readmission.Decide(cause, reasons, dirtyAxes,
+                        () => AviationObligations.Pending(player, ctx), AdmissionKey,
+                        (axis, fingerprint) =>
                             // Diagnostics only: admission still compares the full fingerprint.
                             // All axes can have large keys; print a digest and suppress repeats.
                             AiDebugLog.WriteDeduped($"admission-unchanged|{axis}",
                                 $"[AI][V2][Loop] strategic re-admission skipped "
                                 + $"axis={axis} reason=settled_state_unchanged fingerprint="
-                                + $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}");
-                        return unchanged;
-                    });
+                                + $"#{(uint)fingerprint.GetHashCode():x8}/{fingerprint.Length}"),
+                        out HashSet<DesireAxis> admittedAxes);
+                    if (gate == DeferredAdmissionGate.Skip)
+                        yield break;
+                    if (gate == DeferredAdmissionGate.Defer)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
+                            + $"obligations pending; axes={string.Join(",", readmission.Deferred.Axes)}");
+                        yield break;
+                    }
+                    if (gate == DeferredAdmissionGate.AdmitDespitePending)
+                        AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
+                            + "loop — admitting the deferred axes anyway");
+                    dirtyAxes = admittedAxes;
                     if (dirtyAxes.Count == 0)
                         yield break;
 
-                    yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                    OperationalFrame reenterFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                    reconObjectives = reenterFrame.Recon;
-                    aggressionObjectives = reenterFrame.Aggression;
-                    activeIntents = reenterFrame.Intents;
-                    actorCommitments = reenterFrame.Commitments;
+                    yield return RefreshDecisionFrame();
                     // T03 — the baseline is the input Generate actually evaluates: taken after
                     // continuity resolved (a completed target, a handed-off donor), before any
                     // follow-up delivery. Post-delivery state is judged by the delta it publishes,
                     // never pre-declared as already considered.
                     Dictionary<DesireAxis, string> admittedFingerprints = dirtyAxes
-                        .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
+                        .ToDictionary(axis => axis, AdmissionKey);
                     Dictionary<DesireAxis, string> demandsBefore = dirtyAxes.ToDictionary(axis => axis,
                         axis => DemandIdentityDigest(demands, axis));
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
@@ -522,7 +410,7 @@ namespace Game.Ai.V2
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
                         snapshot, player, root, hand, ctx, apBudget, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
-                        phaseB.Reservation ?? phaseA.Reservation,
+                        CarriedReservation(),
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
                         deferFreshZeroRadar: true);
                     phaseA.Accumulate(followup);
@@ -532,21 +420,14 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
-                        yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                        OperationalFrame followupFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                        reconObjectives = followupFrame.Recon;
-                        aggressionObjectives = followupFrame.Aggression;
-                        activeIntents = followupFrame.Intents;
-                        actorCommitments = followupFrame.Commitments;
+                        yield return RefreshDecisionFrame();
                         ownershipFreshAfterPhaseA = true;
                     }
                     WorldAnalysis.StepObservationStamp afterCapabilities =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeCapabilities, afterCapabilities, null);
-                    foreach (DesireAxis axis in dirtyAxes)
-                        lastStrategicAdmissionFingerprint[axis] =
-                            admittedFingerprints[axis];
+                    readmission.Commit(dirtyAxes, admittedFingerprints);
                     AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission "
                         + $"axes={string.Join(",", dirtyAxes)} triggers={reasons} "
                         + $"changed={(followup.StateChanged ? 1 : 0)}");
@@ -561,44 +442,95 @@ namespace Game.Ai.V2
                     reentryStateChanged = followup.StateChanged;
                 }
 
-                IEnumerator RunTypedAdmissions()
+                // The shared outcome of a settled work step: take the typed triggers and re-enter the
+                // strategic axes `pairs` times, accumulating reasons and whether any re-admission
+                // changed state. Re-entry may publish another compound fact (for example,
+                // materializing a Raid reinforcement changes Actor + Capability); a further pair
+                // routes it through the same typed fan-out before it is consumed. The pair count is
+                // baseline behaviour per work kind and stays until the single trigger protocol
+                // (level 3). The result is a transient value (an iterator cannot return one).
+                StepTriggerOutcome stepTriggers = default;
+                IEnumerator ResolveStepTriggers(int pairs) =>
+                    StepTriggerSequence.Run(pairs, TakeTypedSplit,
+                        (reasons, axes) => ReenterStrategicAxes(ReadmissionCause.Trigger, reasons, axes),
+                        () => reentryStateChanged, outcome => stepTriggers = outcome);
+
+                // A mandatory aviation obligation as a work step. Execution stays with the existing
+                // owners (MandatoryAviationStep). No ledger, Settle or observer boundary: the
+                // obligation was paid when the sortie launched.
+                IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor)
                 {
-                    zeroRadarResidualWindow = false;
-                    AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
-
-                    // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
-                    // running THIS turn" — ResourceAllocator.cs:172, covers MoverContended AND
-                    // NoExecutableStep alike) carry that verdict, but nothing enforced it across
-                    // settled steps: BuildMissionSet re-proposed the same losing job every
-                    // micro-step, re-running the full batch solve only to reach the identical
-                    // rejection again (same busy/unreachable movers, nothing changed). Originally
-                    // this set only recorded MoverContended, so a NoExecutableStep rejection (a
-                    // scout physically can't reach its target this turn) kept re-entering the
-                    // batch solve every settled step for no reason — same churn, different kind.
-                    // Recorded live as each RetryNextTurn failure is seen below (NOT by reading
-                    // ProvisioningSession.AssignmentRejections after the step settles — a later
-                    // intra-step realloc pass drops an already-rejected mission out of Funded
-                    // entirely, and ProvisioningSession.SetAssignment clears+refills that dict on
-                    // every pass, so by settle time it only ever held the last pass's leftovers,
-                    // almost always empty). Consumed only at the NEXT settled step's BuildMissionSet
-                    // filter below, so this step's own remaining realloc passes still see the full
-                    // candidate set — the existing intra-step "chance within the batch" is untouched.
-                    var retryNextTurnThisPass = new HashSet<StableMissionKey>();
-
-                    // Perf: an AI turn can run dozens of settled steps back-to-back with no other
-                    // yield in between (each step's own yields resolve synchronously — see the
-                    // profiler), so the whole turn could land in one single-frame hitch (observed
-                    // ~885ms / 15 FPS). Give a real frame back to the
-                    // engine whenever the wall-clock budget since the last frame is exceeded, so the
-                    // same total work is spread across several frames instead of freezing one.
-                    // Total AI-turn wall-clock time goes UP by roughly one frame per yield — a
-                    // deliberate tradeoff: smoother frame pacing over shorter total wait.
-                    const float yieldBudgetSeconds = 0.008f;
-                    float lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
-
-                    while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
-                        && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                    string label = MandatoryAviationOrder.Label(kind);
+                    WorldAnalysis.StepObservationStamp beforeAviation =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    bool actionChanged = false;
+                    yield return MandatoryAviationStep.Execute(kind, actor, player, root, ctx,
+                        snapshot, v => actionChanged = v);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeAviation, null);
+                    loop.SettledSteps++;
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"step {loop.SettledSteps} {label} #{actor.Id}");
+                    yield return ResolveStepTriggers(MandatoryAviationOrder.TriggerPairs(kind));
+                    bool progress = stepTriggers.Progressed(actionChanged);
+                    loop.NoProgressCycles = StepTriggerOutcome.NextNoProgress(loop.NoProgressCycles, progress);
+                    AiDebugLog.Write($"[AI][V2][Loop] step={loop.SettledSteps} {label} actor=#{actor.Id} "
+                        + $"progress={(progress ? 1 : 0)} "
+                        + $"operationalTriggers={stepTriggers.Operational} "
+                        + $"strategicTriggers={stepTriggers.Strategic}");
+                    if (!progress)
                     {
+                        // Recon audit B1 — skipped for the rest of this turn; it must not stop
+                        // every mission's admission with it.
+                        AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, actor.Id);
+                        AiDebugLog.Write("[AI][V2][Loop] "
+                            + MandatoryAviationOrder.StallMessage(kind, actor.Id));
+                    }
+                }
+
+                // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
+                // running THIS turn" — ResourceAllocator.cs:172, covers MoverContended AND
+                // NoExecutableStep alike) carry that verdict, but nothing enforced it across
+                // settled steps: BuildMissionSet re-proposed the same losing job every
+                // micro-step, re-running the full batch solve only to reach the identical
+                // rejection again (same busy/unreachable movers, nothing changed). Originally
+                // this set only recorded MoverContended, so a NoExecutableStep rejection (a
+                // scout physically can't reach its target this turn) kept re-entering the
+                // batch solve every settled step for no reason — same churn, different kind.
+                // Recorded live as each RetryNextTurn failure is seen below (NOT by reading
+                // ProvisioningSession.AssignmentRejections after the step settles — a later
+                // intra-step realloc pass drops an already-rejected mission out of Funded
+                // entirely, and ProvisioningSession.SetAssignment clears+refills that dict on
+                // every pass, so by settle time it only ever held the last pass's leftovers,
+                // almost always empty). Consumed only at the NEXT settled step's BuildMissionSet
+                // filter below, so this step's own remaining realloc passes still see the full
+                // candidate set — the existing intra-step "chance within the batch" is untouched.
+                // Scoped to one admission pass: OpenAdmissionPass starts it empty.
+                HashSet<StableMissionKey> retryNextTurnThisPass = null;
+
+                // Perf: an AI turn can run dozens of settled steps back-to-back with no other
+                // yield in between (each step's own yields resolve synchronously — see the
+                // profiler), so the whole turn could land in one single-frame hitch (observed
+                // ~885ms / 15 FPS). Give a real frame back to the
+                // engine whenever the wall-clock budget since the last frame is exceeded, so the
+                // same total work is spread across several frames instead of freezing one.
+                // Total AI-turn wall-clock time goes UP by roughly one frame per yield — a
+                // deliberate tradeoff: smoother frame pacing over shorter total wait.
+                const float yieldBudgetSeconds = 0.008f;
+                float lastYieldTime = 0f;
+
+                // The pass-scoped resets of an admission pass (TurnLoop opens every pass).
+                void OpenAdmissionPass()
+                {
+                    retryNextTurnThisPass = new HashSet<StableMissionKey>();
+                    lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
+                }
+
+                // One admission iteration of the open pass: settled world -> missions -> pack ->
+                // one work step. Reports true when the pass stops (no funded mission, no provisioned
+                // task, or a settled task without a typed invalidation).
+                IEnumerator RunAdmissionIteration(System.Action<bool> stopPass)
+                {
                     if (UnityEngine.Time.realtimeSinceStartup - lastYieldTime >= yieldBudgetSeconds)
                     {
                         yield return null;
@@ -606,19 +538,14 @@ namespace Game.Ai.V2
                     }
                     // The last aviation obligation may have settled (or stalled) without a typed
                     // trigger: admit the axes that waited for it before this admission.
-                    yield return ReenterStrategicAxes(StrategicInvalidationReason.None, null, flush: true);
+                    yield return ReenterStrategicAxes(ReadmissionCause.DeferredFlush, StrategicInvalidationReason.None, null);
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
                     if (!ownershipFreshAfterPhaseA)
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-                        yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                        OperationalFrame settledFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                        reconObjectives = settledFrame.Recon;
-                        aggressionObjectives = settledFrame.Aggression;
-                        activeIntents = settledFrame.Intents;
-                        actorCommitments = settledFrame.Commitments;
+                        yield return RefreshDecisionFrame();
                     }
                     ownershipFreshAfterPhaseA = false;
                     // Demand families persist across settled admissions. Only
@@ -628,15 +555,13 @@ namespace Game.Ai.V2
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
                         out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
-                    if (!lifecycleReturnsReleased && !LifecycleReturnPolicy.HomeThreatened(snapshot))
+                    if (loop.ReturnsMayWait && !LifecycleReturnPolicy.HomeThreatened(snapshot))
                     {
-                        var waiting = missions.Where(m => LifecycleReturnPolicy.IsDeferrableReturn(
-                                m, activeIntents)
-                            && LifecycleReturnPolicy.MayWait(player, MissionIntentKey.For(m), ctx.TurnNumber))
-                            .ToList();
+                        var waiting = LifecycleReturnPolicy.SelectWaiting(
+                            missions, activeIntents, player, ctx.TurnNumber);
                         if (waiting.Count > 0)
                         {
-                            lifecycleReturnsDeferred = true;
+                            loop.ReturnsDeferred = true;
                             foreach (MissionProposal m in waiting)
                             {
                                 MissionIntentKey waitKey = MissionIntentKey.For(m);
@@ -686,130 +611,29 @@ namespace Game.Ai.V2
                         missions, cycleCommitments, player);
                     using var cycleProvisioning = new ProvisioningSession(snapshot, turnSession);
                     allocation = cycleSession.Pack();
-                    foreach (FundedEntry fe in allocation.Funded)
-                        if (fe?.Mission != null)
-                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                    RecordFunded(allocation);
 
-                    // A multi-turn rebase is already airborne and committed to landing. Resume
-                    // one such obligation before discretionary mission progress; no card was played
-                    // yet while it was pending (AviationObligations), so its activation resources
-                    // are still there. Route safety and destination validity are live-rechecked
-                    // inside ExecuteContinuation rather than trusting last turn's projection.
-                    List<ArmyData> rebaseContinuations =
-                        AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber);
-                    List<ArmyData> recoveries =
-                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
-                    bool rebaseFirst = rebaseContinuations.Count > 0
-                        && (recoveries.Count == 0
-                            || rebaseContinuations[0].Id <= recoveries[0].Id);
-                    if (rebaseFirst)
+                    // Airborne obligations are settled before discretionary mission progress: a
+                    // multi-turn rebase already committed to landing, and a recovery whose wing
+                    // must return. Both are already paid (no card was played while one was pending,
+                    // see AviationObligations), so they are chosen here, not funded. Exactly one
+                    // action is executed, observed and re-admitted per iteration.
+                    (MandatoryAviationKind Kind, ArmyData Actor) mandatory = MandatoryAviationOrder.Next(
+                        AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber),
+                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx));
+                    OperationalWorkKind work = OperationalWorkSelection.Select(
+                        mandatory.Kind, allocation.Funded.Count);
+                    if (work == OperationalWorkKind.MandatoryAviation)
                     {
-                        ArmyData rebaseWing = rebaseContinuations[0];
-                        WorldAnalysis.StepObservationStamp beforeRebase =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        bool rebaseMoved = false;
-                        yield return AviationRebasePlanner.ExecuteContinuation(
-                            player, root, ctx, rebaseWing, v => rebaseMoved = v);
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        WorldAnalysis.StepObservationStamp afterRebase =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                            beforeRebase, afterRebase, null);
-                        settledSteps++;
-                        ReservationInvariants.CheckBoundary(player, root, ctx,
-                            $"step {settledSteps} aviation-rebase #{rebaseWing.Id}");
-                        TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
-                            out StrategicInvalidationReason rebaseStrategicReasons,
-                            out HashSet<DesireAxis> rebaseDirtyAxes);
-                        yield return ReenterStrategicAxes(
-                            rebaseStrategicReasons, rebaseDirtyAxes);
-                        bool rebaseStrategicChanged = reentryStateChanged;
-                        bool rebaseProgress = rebaseMoved || rebaseStrategicChanged;
-                        noProgressCycles = rebaseProgress ? 0 : noProgressCycles + 1;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} aviation-rebase "
-                            + $"actor=#{rebaseWing.Id} progress={(rebaseProgress ? 1 : 0)} "
-                            + $"operationalTriggers={rebaseOperationalReasons} "
-                            + $"strategicTriggers={rebaseStrategicReasons}");
-                        if (!rebaseProgress)
-                        {
-                            // Recon audit B1 — the obligation is skipped for the rest of this turn;
-                            // it must not stop every mission's admission with it.
-                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, rebaseWing.Id);
-                            AiDebugLog.Write($"[AI][V2][Loop] aviation rebase #{rebaseWing.Id} could not take "
-                                + "a safe step — deferred to next turn, missions continue");
-                        }
-                        continue;
+                        yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor);
+                        yield break;
                     }
-
-                    // Lifecycle safety is admitted before strategic progress, but its must-return
-                    // predicate remains owned by ReconAirExecutor. Exactly one airborne action is
-                    // settled, observed and then re-admitted like every other step.
-                    if (recoveries.Count > 0)
+                    if (work == OperationalWorkKind.None)
                     {
-                        ArmyData recovery = recoveries[0];
-                        HexCoord? recoveryFocus =
-                            ReconPatrolStateRegistry.TryGet(player, recovery.Id, out ReconPatrolState recoveryState)
-                                ? recoveryState.StrategicAnchor : (HexCoord?)null;
-                        WorldAnalysis.StepObservationStamp beforeRecovery =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        var recoveryResult = new AirReconExecutionResult();
-                        var recoveryControl = new ReconAirExecutor.ActorStepControl();
-                        int recoveryApBefore = root.ActionPoints;
-                        yield return ReconAirExecutor.RunActorStep(player, root, ctx, snapshot,
-                            recovery, recoveryResult, recoveryApBefore, recoveryFocus,
-                            perMissionResult: null, control: recoveryControl);
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        WorldAnalysis.StepObservationStamp afterRecovery =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                            beforeRecovery, afterRecovery, null);
-                        settledSteps++;
-                        ReservationInvariants.CheckBoundary(player, root, ctx,
-                            $"step {settledSteps} recovery #{recovery.Id}");
-                        bool recoveryProgress = recoveryResult.Mutated;
-                        TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
-                            out StrategicInvalidationReason recoveryStrategicReasons,
-                            out HashSet<DesireAxis> recoveryDirtyAxes);
-                        yield return ReenterStrategicAxes(
-                            recoveryStrategicReasons, recoveryDirtyAxes);
-                        bool recoveryStrategicChanged = reentryStateChanged;
-                        // Reentry may publish another compound fact (for example, materializing a
-                        // Raid reinforcement changes Actor + Capability). Route that fact through
-                        // the same typed fan-out before consuming it so Economy/Development cannot
-                        // lose their share to an operational-axis follow-up.
-                        TakeTypedTriggers(
-                            out StrategicInvalidationReason recoveryFollowupOperational,
-                            out StrategicInvalidationReason recoveryFollowupStrategic,
-                            out HashSet<DesireAxis> recoveryFollowupAxes);
-                        recoveryOperationalReasons |= recoveryFollowupOperational;
-                        recoveryStrategicReasons |= recoveryFollowupStrategic;
-                        yield return ReenterStrategicAxes(
-                            recoveryFollowupStrategic, recoveryFollowupAxes);
-                        recoveryStrategicChanged |= reentryStateChanged;
-                        recoveryProgress |= recoveryStrategicChanged;
-                        noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
-                            + $"progress={(recoveryProgress ? 1 : 0)} "
-                            + $"operationalTriggers={recoveryOperationalReasons} "
-                            + $"strategicTriggers={recoveryStrategicReasons}");
-                        if (!recoveryProgress)
-                        {
-                            // Recon audit B1 — a recovery that changed nothing is skipped for the rest
-                            // of this turn; it must not stop every mission's admission with it.
-                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, recovery.Id);
-                            AiDebugLog.Write($"[AI][V2][Loop] recovery #{recovery.Id} made no progress — "
-                                + "deferred to next turn, missions continue");
-                        }
-                        continue;
-                    }
-
-                    if (allocation.Funded.Count == 0)
-                    {
-                        zeroRadarResidualWindow = true;
+                        loop.ResidualWindow = true;
                         AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
-                        break;
+                        stopPass(true);
+                        yield break;
                     }
 
                     ProvisionedMission selected = null;
@@ -876,9 +700,7 @@ namespace Game.Ai.V2
                             {
                                 assignmentReallocPass++;
                                 allocation = cycleSession.Pack();
-                                foreach (FundedEntry fe in allocation.Funded)
-                                    if (fe?.Mission != null)
-                                        fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                                RecordFunded(allocation);
                                 continue;
                             }
                         }
@@ -936,36 +758,32 @@ namespace Game.Ai.V2
                             break;
                         }
                         allocation = cycleSession.Pack();
-                        foreach (FundedEntry fe in allocation.Funded)
-                            if (fe?.Mission != null)
-                                fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                        RecordFunded(allocation);
                     }
 
                     if (selected == null)
                     {
                         cycleLedger.RecordDeferrals(allocation.Deferred);
-                        foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
-                                     .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                            turnSession.Settle(outcome, snapshot, reconObjectives);
-                        noProgressCycles++;
+                        turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
+                            snapshot, reconObjectives);
+                        loop.NoProgressCycles++;
                         // A rejected positive or durable mission must not be mistaken for
                         // an exhausted portfolio; zero-only rejections leave a residual window.
-                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
-                            && !fe.IsCommitment && fe.Mission != null
-                            && fe.Mission.EffectiveValue <= 0f);
+                        loop.ResidualWindow = ResidualWindowPolicy.AfterNoProvisionedTask(allocation.Funded);
                         AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
-                            + $"noProgress={noProgressCycles}");
+                            + $"noProgress={loop.NoProgressCycles}");
                         // No task command ran and no observation can differ. Repeating the same
                         // admission under a fresh session only reproduces the same rejection; stop
                         // this family without consuming the real bounded task-step budget.
-                        break;
+                        stopPass(true);
+                        yield break;
                     }
 
                     WorldAnalysis.StepObservationStamp beforeStep =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     var stepResults = new List<ExecutionResult>();
-                    if (selected.Kind == MissionKind.Scout
-                        && selected.ExecutorKind != ScoutExecutorKind.Ground)
+                    if (OperationalWorkSelection.RouteFor(selected.Kind, selected.ExecutorKind)
+                        == MissionRoute.AirRecon)
                     {
                         AirReconPlan plan = AirReconPlanner.Plan(player, root, ctx,
                             snapshot, new[] { selected });
@@ -979,13 +797,9 @@ namespace Game.Ai.V2
                             selected, stepResults, snapshot, enforceFreshPlan: true);
                     }
 
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
                     ExecutionResult settled = stepResults.FirstOrDefault();
-                    WorldAnalysis.StepObservationStamp afterStep =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeStep, afterStep, settled);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeStep, settled);
 
                     foreach (ExecutionResult er in stepResults)
                     {
@@ -996,100 +810,69 @@ namespace Game.Ai.V2
                     }
                     cycleLedger.RecordDeferrals(allocation.Deferred);
                     cycleLedger.RefreshObjectiveStatesLive(player);
-                    foreach (MissionStepResult outcome in cycleLedger.FinalizeSteps()
-                                 .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
-                        turnSession.Settle(outcome, snapshot, reconObjectives);
+                    turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
+                        snapshot, reconObjectives);
                     // A single atomic move may consume the last MP after Provisioning had
                     // legitimately reserved this owner's completion AP. Settle its stage now.
-                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                         player, root, hand, ctx);
 
-                    settledSteps++;
+                    loop.SettledSteps++;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
-                        $"step {settledSteps} task={selectedKey}");
+                        $"step {loop.SettledSteps} task={selectedKey}");
                     // Snapshot, mission ledger and reservation reconciliation now all describe
                     // the completed command; inspection never sees a half-settled action.
                     yield return ctx.WaitAtObserverActionBoundary();
-                    bool progressed = stepResults.Any(er =>
-                        er != null && er.Outcome.StateChanged);
-                    TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
-                        out StrategicInvalidationReason strategicReasons,
-                        out HashSet<DesireAxis> dirtyStrategicAxes);
-                    yield return ReenterStrategicAxes(
-                        strategicReasons, dirtyStrategicAxes);
-                    bool strategicChanged = reentryStateChanged;
-                    // A follow-up Phase A action may publish a reason shared by operational and
-                    // strategic families. Take one typed snapshot and acknowledge every affected
-                    // recipient before the registry clears that reason.
-                    TakeTypedTriggers(
-                        out StrategicInvalidationReason followupOperationalReasons,
-                        out StrategicInvalidationReason followupStrategicReasons,
-                        out HashSet<DesireAxis> followupDirtyAxes);
-                    operationalReasons |= followupOperationalReasons;
-                    strategicReasons |= followupStrategicReasons;
-                    yield return ReenterStrategicAxes(
-                        followupStrategicReasons, followupDirtyAxes);
-                    strategicChanged |= reentryStateChanged;
-                    progressed |= strategicChanged;
-                    noProgressCycles = progressed ? 0 : noProgressCycles + 1;
-                    AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
+                    yield return ResolveStepTriggers(StepTriggerSequence.StandardPairs);
+                    StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
+                    StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
+                    bool strategicChanged = stepTriggers.StrategicChanged;
+                    bool progressed = stepTriggers.Progressed(stepResults.Any(er =>
+                        er != null && er.Outcome.StateChanged));
+                    loop.NoProgressCycles = StepTriggerOutcome.NextNoProgress(loop.NoProgressCycles, progressed);
+                    AiDebugLog.Write($"[AI][V2][Loop] step={loop.SettledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
                         + $"operationalTriggers={operationalReasons} strategicTriggers={strategicReasons} "
-                        + $"noProgress={noProgressCycles}");
+                        + $"noProgress={loop.NoProgressCycles}");
                     if (operationalReasons == StrategicInvalidationReason.None && !strategicChanged)
                     {
                         // Ignore the task that JUST executed: only unfinished positive
                         // allocations should prevent residual admission.
-                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe?.Mission != null
-                            && (StableMissionKey.For(fe.Mission).Equals(selectedKey)
-                                || (!fe.IsCommitment && fe.Mission.EffectiveValue <= 0f)));
+                        loop.ResidualWindow = ResidualWindowPolicy.AfterSettledTask(
+                            allocation.Funded, selectedKey);
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
-                        break;
+                        stopPass(true);
                     }
-                    }
-
-                if (settledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
-                    AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
-                        + $"{AiConfigV2.maxMidTurnStepsPerTurn}");
-                if (noProgressCycles >= AiConfigV2.maxMidTurnNoProgressCycles)
-                    AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
-                        + $"{noProgressCycles}");
-                // Axes still waiting for aviation must not be lost when the loop ends first.
-                yield return ReenterStrategicAxes(StrategicInvalidationReason.None, null, force: true);
-
                 }
 
-                // A stand-alone Base level bought by the first Phase A opened a slot AFTER the admission
-                // baselines above were taken: its Facility demand was generated on the refreshed world but
-                // never judged, and an equal fingerprint would keep rejecting it as "settled". Forget the
-                // Development baseline and admit it now, before missions or Phase B spend what is left.
-                if (phaseA.CapacityUnlocks > 0 && demandAxes.Contains(DesireAxis.Development))
+                // Every admission pass ends with this: axes still waiting for aviation must not be
+                // lost when the pass ends first.
+                IEnumerator TerminalForceAdmission() =>
+                    ReenterStrategicAxes(ReadmissionCause.TerminalForce, StrategicInvalidationReason.None, null);
+
+                // The first Phase B: the first admission pass is over.
+                void SettleBeforeFirstPhaseB()
                 {
-                    lastStrategicAdmissionFingerprint.Remove(DesireAxis.Development);
-                    yield return ReenterStrategicAxes(
-                        StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
-                        new HashSet<DesireAxis> { DesireAxis.Development });
+                    // Also reconcile on bounded/no-progress exits where no additional typed
+                    // admission occurs: Phase B must see AP that no actor can spend on a build.
+                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
+                        player, root, hand, ctx);
+                    // Every build still deferred now cannot complete this turn: release the part of
+                    // its hold the next income tick covers, so Phase B may spend it.
+                    EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover(player, ctx);
+                    // Continuing Hard operations had their funding chance in the loop above; their
+                    // Phase-A protection ends here so Phase B sees every AP nobody will spend.
+                    OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 }
-                yield return RunTypedAdmissions();
-                // Also reconcile on bounded/no-progress exits where no additional typed
-                // admission occurs: Phase B must see AP that no actor can spend on a build.
-                InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
-                    player, root, hand, ctx);
-                // Every build still deferred now cannot complete this turn: release the part of
-                // its hold the next income tick covers, so Phase B may spend it.
-                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
-                // Continuing Hard operations had their funding chance in the loop above; their
-                // Phase-A protection ends here so Phase B sees every AP nobody will spend.
-                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
 
                 // Management/Development is another bounded task family, not the owner of the
                 // operational loop. Phase B settles until it either exhausts its candidates or
                 // publishes a capability-changing residual. Typed Analysis deltas then re-admit
                 // only the affected Development and/or Recon family, after which the same shared
-                // per-turn tempo budget may resume.
-                for (int managementRound = 0;
-                     managementRound <= AiConfigV2.maxEndOfTurnTempoReruns;
-                     managementRound++)
+                // per-turn tempo budget may resume (TurnLoop decides from the round's outcome).
+                // Execution can reveal contacts and alter map knowledge (especially aviation): each
+                // round consumes a coherent strategic snapshot, refreshed first.
+                IEnumerator RunTempoRound(int managementRound, System.Action<TempoRoundOutcome> done)
                 {
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
@@ -1101,102 +884,56 @@ namespace Game.Ai.V2
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     // A prior Phase B action may have spent AP or removed a build card.
                     // Revalidate each owner's stronger completion claim before the next pass.
-                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
                         player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                        postCommitments, phaseB.Reservation ?? phaseA.Reservation,
+                        postCommitments, CarriedReservation(),
                         phaseBRound, reconObjectives);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"phaseB round {managementRound + 1}");
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    WorldAnalysis.StepObservationStamp afterManagement =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeManagement, afterManagement, null);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeManagement, null);
                     phaseB.Accumulate(phaseBRound);
                     yield return ctx.WaitAtObserverActionBoundary();
-                    // Phase B has spent first; return legs now take what is left.
-                    bool releaseReturnsNow = !lifecycleReturnsReleased && lifecycleReturnsDeferred;
-                    lifecycleReturnsReleased = true;
 
-                    TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
-                        out StrategicInvalidationReason strategicReasons,
-                        out HashSet<DesireAxis> dirtyStrategicAxes);
+                    // Phase B reentry can itself publish a compound invalidation: the second pair
+                    // preserves its full typed fan-out before it is acknowledged.
+                    yield return ResolveStepTriggers(StepTriggerSequence.StandardPairs);
+                    StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
+                    StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
                     bool operationalDirty = operationalReasons != StrategicInvalidationReason.None;
                     bool strategicDirty = strategicReasons != StrategicInvalidationReason.None;
-                    yield return ReenterStrategicAxes(
-                        strategicReasons, dirtyStrategicAxes);
-                    bool strategicChanged = reentryStateChanged;
-                    // Phase B reentry can itself publish a compound invalidation. Preserve its
-                    // full typed fan-out before acknowledging it.
-                    TakeTypedTriggers(
-                        out StrategicInvalidationReason managementFollowupOperational,
-                        out StrategicInvalidationReason managementFollowupStrategic,
-                        out HashSet<DesireAxis> managementFollowupAxes);
-                    operationalReasons |= managementFollowupOperational;
-                    strategicReasons |= managementFollowupStrategic;
-                    operationalDirty |= managementFollowupOperational
-                        != StrategicInvalidationReason.None;
-                    strategicDirty |= managementFollowupStrategic
-                        != StrategicInvalidationReason.None;
-                    yield return ReenterStrategicAxes(
-                        managementFollowupStrategic, managementFollowupAxes);
-                    strategicChanged |= reentryStateChanged;
-                    if (operationalDirty || strategicChanged)
-                        noProgressCycles = 0;
+                    bool strategicChanged = stepTriggers.StrategicChanged;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
                         + $"strategicTriggers={strategicReasons} "
                         + $"operationalTriggers={operationalReasons} "
                         + $"operationalReadmit={(operationalDirty ? 1 : 0)}");
-
-                    if (operationalDirty)
-                    {
-                        noProgressCycles = 0;
-                        yield return RunTypedAdmissions();
-                    }
-
-                    // Phase B can change the hand or world without publishing a typed
-                    // operational trigger. Reuse the canonical bounded admission loop
-                    // on the settled state before admitting any zero-Radar residual.
-                    if (phaseBRound.StateChanged && !operationalDirty)
-                    {
-                        noProgressCycles = 0;
-                        yield return RunTypedAdmissions();
-                    }
-                    if (releaseReturnsNow && !operationalDirty && !phaseBRound.StateChanged)
-                    {
-                        AiDebugLog.Write("[AI][V2][Loop] lifecycle returns released after the tempo pass");
-                        noProgressCycles = 0;
-                        yield return RunTypedAdmissions();
-                    }
-                    if (!phaseBRound.StateChanged && !strategicChanged)
-                        break;
-                    if (!operationalDirty && !strategicDirty)
-                        break;
+                    // Phase B can change the hand or world without publishing a typed operational
+                    // trigger: TurnLoop then reuses the canonical bounded admission on the settled
+                    // state before admitting any zero-Radar residual.
+                    done(new TempoRoundOutcome(operationalDirty, strategicDirty, strategicChanged,
+                        phaseBRound.StateChanged));
                 }
-                phaseBHandled = true;
 
                 // A zero Radar is not a prohibition. Only AFTER the existing operational
                 // and tempo passes exhaust their actionable budgets may new cold-axis
                 // preparation use what is physically left. No new budget/scorer/executor:
                 // call the same Phase A owner with freshly regenerated cold demands.
-                var coldAxes = new HashSet<DesireAxis>(demandAxes.Where(a =>
-                    RadarValueScale.For(radar, a) <= 0f));
-                if (zeroRadarResidualWindow && coldAxes.Count > 0
-                    && settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
-                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                HashSet<DesireAxis> coldAxes = null;
+                int ColdAxisCount()
+                {
+                    coldAxes = new HashSet<DesireAxis>(demandAxes.Where(a =>
+                        RadarValueScale.For(radar, a) <= 0f));
+                    return coldAxes.Count;
+                }
+
+                IEnumerator RunColdResidual(System.Action<bool> stateChanged)
                 {
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
-                    yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                    OperationalFrame zeroRadarFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                    reconObjectives = zeroRadarFrame.Recon;
-                    aggressionObjectives = zeroRadarFrame.Aggression;
-                    activeIntents = zeroRadarFrame.Intents;
-                    actorCommitments = zeroRadarFrame.Commitments;
+                    yield return RefreshDecisionFrame();
                     List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
                             actorCommitments, player, ctx, root, demandAxes)
@@ -1205,7 +942,7 @@ namespace Game.Ai.V2
                     {
                         // Phase A owns one carried Reservation object. Its per-call residual
                         // rewrite must not erase still-unfulfilled positive-axis telemetry.
-                        List<AxisDemand> warmResidual = (phaseB.Reservation ?? phaseA.Reservation)
+                        List<AxisDemand> warmResidual = CarriedReservation()
                             .UnresolvedDemands.Where(d => d != null
                                 && RadarValueScale.For(radar, d.RequestingAxis) > 0f).ToList();
                         WorldAnalysis.StepObservationStamp beforeCold =
@@ -1213,7 +950,7 @@ namespace Game.Ai.V2
                         StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
                             snapshot, player, root, hand, ctx, apBudget, coldDemands,
                             actorCommitments, activeIntents, reconObjectives,
-                            phaseB.Reservation ?? phaseA.Reservation,
+                            CarriedReservation(),
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
                             radar: radar);
                         phaseA.Accumulate(coldPass);
@@ -1222,25 +959,17 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                                snapshot, player, root, hand, ctx);
-                            WorldAnalysis.StepObservationStamp afterCold =
-                                WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                            WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                                beforeCold, afterCold, null);
-                            yield return CombatOpportunityAnalyzer.WarmEstimates(snapshot);
-                            OperationalFrame coldFrame = RefreshOperationalFrame(turnSession, snapshot, assessment.Breakdown);
-                            reconObjectives = coldFrame.Recon;
-                            aggressionObjectives = coldFrame.Aggression;
-                            activeIntents = coldFrame.Intents;
-                            actorCommitments = coldFrame.Commitments;
+                            snapshot = WorldAnalysis.ObserveSettled(
+                                snapshot, player, root, hand, ctx, beforeCold, null);
+                            yield return RefreshDecisionFrame();
                             demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
                                 aggressionObjectives, activeIntents, actorCommitments,
                                 player, ctx, root, demandAxes);
                             ownershipFreshAfterPhaseA = true;
                             yield return ctx.WaitAtObserverActionBoundary();
-                            yield return RunTypedAdmissions();
+                            // TurnLoop opens the typed admission pass on this settled state.
+                            stateChanged(true);
                         }
                         else
                         {
@@ -1248,6 +977,30 @@ namespace Game.Ai.V2
                         }
                     }
                 }
+
+                // A stand-alone Base level bought by the first Phase A opened a slot AFTER the admission
+                // baselines above were taken: its Facility demand was generated on the refreshed world but
+                // never judged, and an equal fingerprint would keep rejecting it as "settled". Forget the
+                // Development baseline and admit it now, before missions or Phase B spend what is left.
+                if (phaseA.CapacityUnlocks > 0 && demandAxes.Contains(DesireAxis.Development))
+                {
+                    yield return ReenterStrategicAxes(ReadmissionCause.CapacityUnlock,
+                        StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
+                        new HashSet<DesireAxis> { DesireAxis.Development });
+                }
+
+                // The ONE main loop of the turn (TurnLoop): admission passes, Phase B rounds and the
+                // cold residual in their baseline order, each opened and closed by its single owner.
+                yield return TurnLoop.Run(loop, new TurnLoopWork
+                {
+                    OpenPass = OpenAdmissionPass,
+                    Iteration = RunAdmissionIteration,
+                    TerminalForce = TerminalForceAdmission,
+                    FirstPhaseBSettle = SettleBeforeFirstPhaseB,
+                    TempoRound = RunTempoRound,
+                    ColdAxisCount = ColdAxisCount,
+                    Cold = RunColdResidual,
+                });
 
                 // Air-support safety net: a wing still over its target that cannot safely end
                 // another turn there (its strike leg was not run, or found nothing) flies home now
@@ -1259,12 +1012,8 @@ namespace Game.Ai.V2
                     bool recallChanged = false;
                     yield return AviationRebasePlanner.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                    WorldAnalysis.StepObservationStamp afterRecall =
-                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
-                        beforeRecall, afterRecall, null);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"air-support recall #{unsafeWing.Id}");
                     yield return ctx.WaitAtObserverActionBoundary();
@@ -1280,29 +1029,6 @@ namespace Game.Ai.V2
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
                 turnSession.SettleAfterTurn(System.Array.Empty<MissionStepResult>());
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
-            }
-
-            // S5. Strategic Manager Phase B — Surplus Preparation. Spec §5/§13 — this runs in EVERY
-            //     cycle: it is hand/card lifecycle management, not an operational
-            //     mission family. Card type is never on its own a reason a legal card is left unplayed.
-            // Execution can reveal contacts and alter map knowledge (especially aviation). Phase B
-            // must consume a coherent strategic snapshot, not operational resources paired with
-            // the pre-execution Known/MapKnowledge layers.
-            if (!phaseBHandled)
-            {
-                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
-                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
-                snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                postCommitments = turnSession.RefreshActors(
-                    turnSession.PersistentState.All, snapshot, reconObjectives);
-                // Phase B is the single bounded end-of-turn tempo arbiter (coroutine).
-                yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
-                    postCommitments, phaseA.Reservation, phaseB, reconObjectives);
-                if (phaseB.StateChanged)
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                        snapshot, player, root, hand, ctx);
-                yield return ctx.WaitAtObserverActionBoundary();
             }
 
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
@@ -1489,80 +1215,10 @@ namespace Game.Ai.V2
                     actionableAtStart, unactivatedActionable, hadPotentialWork));
             AiMatchStats.RecordAiTurn(player, startAp, apSpent, endAp);
         }
-
-        // Armies whose POSITION/movement/activation can change an Economy decision (the Economy
-        // admission fingerprint above): every Economy intent's mover/builder/collector plus every
-        // army the Economy analysis advertises as a possible builder/collector.
-        internal static HashSet<int> EconomyRelevantArmyIds(WorldSnapshot snapshot,
-            IReadOnlyList<MissionIntent> activeIntents)
-        {
-            var ids = new HashSet<int>();
-            foreach (MissionIntent i in activeIntents ?? new List<MissionIntent>())
-            {
-                if (i == null || i.Status != IntentStatus.Active || i.Kind != MissionKind.Economy
-                    || i.Economy == null)
-                    continue;
-                if (i.PreferredMoverArmyId.HasValue) ids.Add(i.PreferredMoverArmyId.Value);
-                if (i.Economy.BuilderArmyId != null) ids.Add(i.Economy.BuilderArmyId.Value);
-                if (i.Economy.CollectorArmyId != null) ids.Add(i.Economy.CollectorArmyId.Value);
-            }
-            EconomyStanding eco = snapshot?.Economy;
-            if (eco != null)
-            {
-                void AddRoutes(IReadOnlyList<EconomyBuilderRouteSnapshot> routes)
-                {
-                    foreach (EconomyBuilderRouteSnapshot r in routes
-                                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
-                        ids.Add(r.ArmyId);
-                }
-                foreach (EconomyExtractionOpportunity x in eco.ExtractionOpportunities
-                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
-                    AddRoutes(x.BuilderRoutes);
-                foreach (EconomyExtractionOpportunity x in eco.CollectorSites
-                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
-                    AddRoutes(x.BuilderRoutes);
-                foreach (EconomyBaseOpportunity x in eco.BaseOpportunities
-                             ?? System.Array.Empty<EconomyBaseOpportunity>())
-                    AddRoutes(x.BuilderRoutes);
-                foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
-                             ?? System.Array.Empty<MobileCollectionOpportunity>())
-                    ids.Add(x.CollectorArmyId);
-            }
-            return ids;
-        }
     }
 
-    // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own
-    //      file. Signatures are deliberate seams; fill the bodies, don't reshape the flow.
-
-    // WorldAnalysis (build-order step 2) now lives in its own file, WorldAnalysis.cs.
-
-    // StrategyLayer (build-order step 3) now lives in its own file, DesireEvaluators.cs, together
-    // with ReconEvaluator / AggressionEvaluator, the AiRadarState cross-turn registry, and the
-    // RadarAssessment / DesireBreakdown contract it returns.
-
-    // MissionLayer (build-order step 4, + step 7.1 candidate beam) now lives in its own file,
-    // ReconMissionPlanner.cs, with ScoutCostModel (the shared AP/Energy/ETA estimator — risk 3).
-    // It reads the DesireBreakdown and emits a CANDIDATE BEAM of up to
-    // AiConfigV2.scoutCandidateBeamWidth Scout proposals (execution capacity K and mission
-    // conflicts are the allocator's job — MissionAdmissionPolicy); Raid is added in step 9.
-
-    // MissionContinuityLayer (build-order step 7) lives in MissionIntent.cs, with MissionIntent /
-    // MissionIntentKey / ScoutIntent / MissionIntentRegistry (durable intent state), CommitmentTier
-    // / IntentStatus (funding policy + suspension), and MissionOutcomeLedger / MissionStepResult
-    // (the ordered per-turn record ReconcileAfterTurn transitions on). ScoutObjectiveEvaluator (the
-    // shared completion / validity home) lives in ScoutObjectiveEvaluator.cs.
-
-    // ResourceAllocator (build-order step 5) lives in ResourceAllocator.cs. ProvisioningManager /
-    // ProvisioningSession / ProvisionedMission / ProvisionFailure / ProvisioningResult (build-order
-    // step 6a) live in ProvisioningManager.cs, with the shared ScoutMoverSelector. TaskExecutor /
-    // ExecutionResult / ExecutionStopReason (step 6a) live in TaskExecutor.cs. AiScoutStealthPolicy
-    // (the shared V1+V2 stealth-warrant primitive) lives in Assets/Scripts/Ai/AiScoutStealthPolicy.cs.
-
-    // HousekeepingManager (renamed from Manager) — build-order step 8C. A SEPARATE, post-mission
-    // system from StrategicManager: it owns deterministic same-hex army/garrison REORGANIZATION,
-    // not card play. NOT a radar axis — off-budget. It now lives in its own file,
-    // HousekeepingManager.cs, with LocalForceGroup / ArmyReorgProfile (ArmyReorgProfile.cs),
-    // ArmyReorgAnalyzer.cs, ArmyReorganizationPlanner.cs, ReorganizationPlan.cs and
-    // HousekeepingExecutor.cs. This orchestration file only calls it (stage 8 above).
+    // The stage owners (WorldAnalysis, StrategyLayer, the mission planners, MissionContinuityLayer,
+    // ResourceAllocator, ProvisioningManager, TaskExecutor / ReconAirExecutor, StrategicManager,
+    // HousekeepingManager) live in their own folders; Assets/Scripts/Ai/V2/ARCHITECTURE.md is the
+    // normative ownership map. This file only orders and calls them.
 }

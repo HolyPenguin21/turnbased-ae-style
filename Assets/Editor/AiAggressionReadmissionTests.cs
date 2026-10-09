@@ -34,7 +34,7 @@ namespace Game.EditorTests
         };
 
         private static string Key(WorldSnapshot snap, PlayerSetupData player) =>
-            Pipeline.AggressionAdmissionFingerprint(snap, player);
+            AggressionAdmission.Fingerprint(snap, player);
 
         private static Game.Cards.CardData Card(Game.Cards.CardType type, string name)
         {

@@ -228,17 +228,17 @@ namespace Game.EditorTests
             var otherKey = MissionIntentKey.ForEconomy(EconomyTaskKind.FoundBase, 0, new HexCoord(6, 3));
             var lease = session.Leases.For(key); var other = session.Leases.For(otherKey);
             var cost = new ResourceCost { materials = 3 };
-            InfrastructureFulfillment.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 9,
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 9,
                 StrategicReservationReason.EconomyDeferredBuild);
             other.Reserve(StrategicReservationReason.EconomyBuildCompletion, StrategicReservedResource.ActionPoints, 2);
             Assert.That(lease.ResourceClaims.Count, Is.EqualTo(1)); // no deferred AP
-            InfrastructureFulfillment.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 4);
-            InfrastructureFulfillment.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 4);
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 4);
+            EconomyReservationLifecycle.ReserveEconomyCost(p, 4, ReservationOwner.ForOperation(key), cost, 4);
             Assert.That(lease.ResourceClaims.Count, Is.EqualTo(2)); // idempotent, no double cost
             var intent = new MissionIntent { Kind = MissionKind.Economy, IntentKey = key,
                 LastAttemptKey = StableMissionKey.ForEconomy(EconomyTaskKind.FoundBase, 0, new HexCoord(2, 3)),
                 Objective = new EconomyIntent { Kind = EconomyTaskKind.FoundBase, BuildResourceCost = cost } };
-            InfrastructureFulfillment.ReconcileEconomyCompletionOwner(p, 4, ReservationOwner.ForOperation(key),
+            EconomyReservationLifecycle.ReconcileEconomyCompletionOwner(p, 4, ReservationOwner.ForOperation(key),
                 intent, durableValid: true, completionThisTurn: false);
             Assert.That(lease.ResourceClaims.Count, Is.EqualTo(1));
             Assert.That(lease.ResourceClaims[0].Reason, Is.EqualTo(StrategicReservationReason.EconomyDeferredBuild));

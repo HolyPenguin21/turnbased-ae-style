@@ -5,9 +5,8 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // T03 — Aggression-lane strategic-admission fingerprint. A mechanical partial of Pipeline,
-    // not a second admission owner: RunTurn (AiStrategyV2Pipeline.cs) is still the only caller,
-    // through StrategicAdmissionFingerprint.
+    // T03 — Aggression-lane strategic-admission fingerprint. The domain owner of the
+    // Aggression key; the common readmission (StrategicReadmission) only compares keys.
     //
     // Aggression re-enters the typed strategic loop on its existing invalidation mask
     // (DesireAxes.InvalidationMaskFor: Contact / Actor / EventState / Threat / Infrastructure).
@@ -29,9 +28,9 @@ namespace Game.Ai.V2
     // Resources are deliberately absent: money changes whether a chain is affordable, never the
     // measured shortage, and the existing funding path re-reads the ledger when it plays.
     // Intel ages (SeenTurn) only change at a turn boundary, which rebuilds everything anyway.
-    public static partial class Pipeline
+    internal static class AggressionAdmission
     {
-        internal static string AggressionAdmissionFingerprint(WorldSnapshot snapshot,
+        internal static string Fingerprint(WorldSnapshot snapshot,
             PlayerSetupData player)
         {
             if (snapshot?.Self == null)

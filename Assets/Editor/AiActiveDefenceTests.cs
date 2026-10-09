@@ -706,18 +706,18 @@ namespace Game.EditorTests
             state.Put(intent);
             try
             {
-                string first = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                string first = AggressionAdmission.Fingerprint(snap, snap.Observer);
                 intent.ActiveDefence.ReturnPurpose = ActiveDefenceReturnPurpose.RegroupForAsset;
-                string purpose = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                string purpose = AggressionAdmission.Fingerprint(snap, snap.Observer);
                 Assert.That(purpose, Is.Not.EqualTo(first));
                 intent.ActiveDefence.ProtectedAssetHex = Secondary;
-                string asset = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                string asset = AggressionAdmission.Fingerprint(snap, snap.Observer);
                 Assert.That(asset, Is.Not.EqualTo(purpose));
                 intent.ActiveDefence.ReturnHex = Home;
-                string destination = Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer);
+                string destination = AggressionAdmission.Fingerprint(snap, snap.Observer);
                 Assert.That(destination, Is.Not.EqualTo(asset));
                 snap.MapPathingVersion++;
-                Assert.That(Pipeline.AggressionAdmissionFingerprint(snap, snap.Observer), Is.Not.EqualTo(destination));
+                Assert.That(AggressionAdmission.Fingerprint(snap, snap.Observer), Is.Not.EqualTo(destination));
             }
             finally { MissionIntentRegistry.Clear(); }
         }
@@ -1408,12 +1408,12 @@ namespace Game.EditorTests
             MissionIntentRegistry.GetOrCreate(one).Put(intent);
             try
             {
-                string strategic = Pipeline.AggressionAdmissionFingerprint(snap, one);
+                string strategic = AggressionAdmission.Fingerprint(snap, one);
                 intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.ImmediateOpportunity;
-                string immediate = Pipeline.AggressionAdmissionFingerprint(snap, one);
+                string immediate = AggressionAdmission.Fingerprint(snap, one);
                 Assert.That(immediate, Is.Not.EqualTo(strategic));
                 intent.ActiveDefence.ImmediateTurn = 9;
-                Assert.That(Pipeline.AggressionAdmissionFingerprint(snap, one), Is.Not.EqualTo(immediate));
+                Assert.That(AggressionAdmission.Fingerprint(snap, one), Is.Not.EqualTo(immediate));
 
                 // The other player has no such intent and no claim: nothing carries over.
                 WorldSnapshot other = ImmediateWorld(two, new HexCoord(-2, 0), true, true,

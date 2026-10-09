@@ -207,6 +207,18 @@ capability fulfilment and surplus/tempo arbitration. They are re-entered only
 through bounded adapters and retain turn-scoped parking/reservation state; the
 terminal Phase-B/reaction path remains the final safety net.
 
+**One main loop (level 4).** `Orchestration/TurnLoop.Run` is the single owner of the turn's
+transitions after the first Phase A: it opens every operational admission pass (at the start,
+after a Phase B round that asks for it, after a cold residual that changed state), runs its
+iterations while `maxMidTurnStepsPerTurn` / `maxMidTurnNoProgressCycles` hold, closes it with the
+terminal force admission, then runs the Phase B rounds (first round preceded by the settle window,
+at most `maxEndOfTurnTempoReruns + 1`) and the zero-Radar residual once. An open pass always runs
+before the next round or the cold stage. `TurnLoopState` holds the control counters;
+`TempoRoundVerdict` decides what follows a round. The work bodies (admission iteration with
+mandatory aviation / mission selection, provisioning retry, execution, Phase B round, cold
+residual) stay in `Pipeline.RunTurn` with their own observation/settle order;
+`RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop.
+
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
 Every turn builds the real Desire evaluators, normalizes one Radar and runs all four
@@ -254,7 +266,7 @@ reactivate when important contact becomes stale or blind again.
 | Air support of a ground fight (wing options, strike estimate split back per defending army, second strike, landing base, leg requirements, wing provisioning, the flight step) | `Missions/GroundCombat/GroundCombatAirSupport` + `Execution/GroundCombatLegStep.AirStrikeSortie`. Raid (its AirSupport recovery phase) and Attack (a side leg) keep only their target identity, strike policy, win read and lifecycle. The held wing is `GroundCombatLegs.HeldAirSupportArmyId`; an airborne strike sortie no operation holds becomes a landing obligation (`ReleaseOrphanStrikes` → `AviationRebasePlanner.FindMandatoryContinuations`) |
 | Turns an army needs to cover a distance | `AiV2Util.TurnsToCover` |
 | Typed strategic invalidations | `State/StrategicInterruptRegistry` — factual reason mask plus per-reason payload; no second event bus |
-| Mid-turn strategic re-admission (demand regeneration + Phase-A follow-up) | `Pipeline.TakeTypedTriggers` / `ReenterStrategicAxes` for Economy, Development and Aggression, each on `DesireAxes.InvalidationMaskFor(axis)` and gated by its admission fingerprint (`DevelopmentAdmissionFingerprint`, `AggressionAdmissionFingerprint`, the Economy key) so an unchanged input set never re-runs the lane. Aggression's mask adds Hand (field cards decide deliverability); its baseline is taken after `ResolveActive`/`ActorCommitments`, before `Generate`, and each re-admission logs the family old→new by consumer identity (`DemandIdentityDigest`). Recon stays operational-only |
+| Mid-turn strategic re-admission (demand regeneration + Phase-A follow-up) | `Pipeline.TakeTypedSplit` → `StepTriggerSequence.Run` (rebase 1 pair, other work 2) / `ReenterStrategicAxes(ReadmissionCause, …)` for Economy, Development and Aggression, each on `DesireAxes.InvalidationMaskFor(axis)`. `Orchestration/StrategicReadmission` decides which axes run (deferred-for-aviation axes, unchanged-key filter, per-axis last-admitted key); the key itself comes from the axis' domain owner through `StrategicAdmissionFingerprints.For` (`DevelopmentAdmission`, `AggressionAdmission`, `EconomyAdmission`), so an unchanged input set never re-runs the lane. Aggression's mask adds Hand (field cards decide deliverability); its baseline is taken after `ResolveActive`/`ActorCommitments`, before `Generate`, and each re-admission logs the family old→new by consumer identity (`DemandIdentityDigest`). Recon stays operational-only |
 | Execution state-version counter | `State/WorldDeltaLifecycle` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |
 | Physical card / equipment / generation consumption | `Materialization/MaterializationConsumptionState` |

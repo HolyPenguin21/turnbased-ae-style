@@ -52,7 +52,14 @@ namespace Game.EditorTests
             // Physical before/after accounting, including AP spent by the local-refit handoff.
             ["Materialization/MaterializationExecutor.cs"] = 26,
             ["Missions/Raid/RaidRecoveryPlanner.cs"] = 1,
-            ["Orchestration/AiStrategyV2Pipeline.cs"] = 6,
+            // Pipeline.cs 6 -> 2: the admission-key reads moved with their owners (see the two files below).
+            ["Orchestration/AiStrategyV2Pipeline.cs"] = 2,
+            // Moved, not new: the Economy key reads the physical AP (it was inline in RunTurn).
+            ["Orchestration/EconomyAdmission.cs"] = 1,
+            // Moved, not new: the physical-stock digest and AP shared by the Development / Economy keys.
+            ["Orchestration/StrategicAdmissionFingerprints.cs"] = 2,
+            // Moved, not new: physical AP before the executor's step (was inline in RunTurn).
+            ["Orchestration/MandatoryAviationStep.cs"] = 1,
             // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
             ["Provisioning/AttackProvisioner.cs"] = 1,
             ["Provisioning/GroundCombatAssaultTransaction.cs"] = 3,
@@ -73,7 +80,10 @@ namespace Game.EditorTests
             ["State/StrategicSpendability.cs"] = 3,
             ["State/TurnResourceBook.cs"] = 8,
             ["Strategy/Demand/DevelopmentUpgradeFulfillment.cs"] = 3,
-            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 16,
+            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 15,
+            // Moved, not new: the one read of the Economy reservation transitions
+            // (was in InfrastructureFulfillment, 16 -> 15).
+            ["Strategy/Demand/EconomyReservationLifecycle.cs"] = 1,
             ["Strategy/PhaseA/MaterializationPortfolioSolver.cs"] = 1,
             ["Strategy/PhaseB/HoldEvaluator.cs"] = 1,
             ["Strategy/PhaseB/TempoCandidateProvider.cs"] = 1,

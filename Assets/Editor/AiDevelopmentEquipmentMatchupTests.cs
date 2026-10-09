@@ -587,12 +587,12 @@ namespace Game.EditorTests
                     new KnownEventGuardSnapshot(firstHex, new AiMapMemory.GuardStrength(4, 4, new[] { bio }), "bio", 1),
                     new KnownEventGuardSnapshot(secondHex, new AiMapMemory.GuardStrength(4, 4, new[] { mechanical }), "mechanical", 1) } };
                 var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
-                string before = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                string before = DevelopmentAdmission.Facts(snap, new[] { intent });
                 Assert.That(StrategicCardEvaluator.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
                 float bioOnly = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
                 Assert.That(bioOnly, Is.GreaterThan(0));
                 intent.Attack.Target = AttackTargetRef.For(secondHex, new PlayerSetupData(), AttackTargetKind.Base);
-                Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(before));
+                Assert.That(DevelopmentAdmission.Facts(snap, new[] { intent }), Is.Not.EqualTo(before));
                 Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
                 intent.Attack.Target = AttackTargetRef.None;
                 float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
@@ -612,12 +612,12 @@ namespace Game.EditorTests
             try
             {
                 MissionIntentRegistry.GetOrCreate(player).Put(intent);
-                string original = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                string original = DevelopmentAdmission.Facts(snap, new[] { intent });
                 snap.Self.Deck[0].defenseRating++;
-                string deckChanged = Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent });
+                string deckChanged = DevelopmentAdmission.Facts(snap, new[] { intent });
                 Assert.That(deckChanged, Is.Not.EqualTo(original));
                 intent.Scout.RequiresStealth = true;
-                Assert.That(Pipeline.DevelopmentAdmissionFacts(snap, new[] { intent }), Is.Not.EqualTo(deckChanged));
+                Assert.That(DevelopmentAdmission.Facts(snap, new[] { intent }), Is.Not.EqualTo(deckChanged));
             }
             finally { MissionIntentRegistry.Clear(); }
         }

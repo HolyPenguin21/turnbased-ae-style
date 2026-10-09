@@ -282,7 +282,7 @@ namespace Game.Ai.V2
                 // already approved for this one. A later stale/failure in Execution releases them
                 // through ReleaseEconomyReservation via ReservationOwner.
                 if (deferredPreparation.CompletionThisTurn)
-                    InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
+                    EconomyReservationLifecycle.ReserveEconomyCost(player, ctx.TurnNumber,
                         deferredPreparation.OwnerKey, target.BuildResourceCost, target.BuildApCost);
 
                 // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
@@ -404,7 +404,7 @@ namespace Game.Ai.V2
             // deferred garrison-extraction branch above) — whether or not composition/donor work is
             // still pending, this mission has committed to this build.
             if (directPrep.CompletionThisTurn)
-                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
+                EconomyReservationLifecycle.ReserveEconomyCost(player, ctx.TurnNumber,
                     directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
             else
             {
@@ -413,7 +413,7 @@ namespace Game.Ai.V2
                 // Hero-materialization path in CapabilityDeliveryEvaluator) so StrategicPhaseA's
                 // protectedActiveEconomyBuild protects the full H/E/M/T vector every later turn
                 // regardless of remaining travel — rather than
-                // InfrastructureFulfillment.ShouldReserveDeferredEconomyResources' one-turn horizon
+                // EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources' one-turn horizon
                 // protecting unconditionally on every turn of the walk and freezing resources too
                 // early.
                 MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand

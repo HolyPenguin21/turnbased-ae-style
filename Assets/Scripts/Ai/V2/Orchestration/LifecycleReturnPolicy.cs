@@ -44,6 +44,14 @@ namespace Game.Ai.V2
             byKey[key] = turn;
         }
 
+        // The proposals of this admission that wait for the tempo pass: deferrable return legs that
+        // did not already wait on the previous turn. The caller applies this only before the first
+        // Phase B round and while the home is not threatened.
+        internal static List<MissionProposal> SelectWaiting(IEnumerable<MissionProposal> missions,
+            IReadOnlyList<MissionIntent> activeIntents, Game.Players.PlayerSetupData player, int turn) =>
+            missions.Where(m => IsDeferrableReturn(m, activeIntents)
+                && MayWait(player, MissionIntentKey.For(m), turn)).ToList();
+
         internal static bool HomeThreatened(WorldSnapshot snap)
         {
             ThreatModel t = snap?.Threat;

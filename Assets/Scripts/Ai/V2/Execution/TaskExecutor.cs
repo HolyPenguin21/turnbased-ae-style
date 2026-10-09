@@ -741,7 +741,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
             }
-            // No InfrastructureFulfillment.ReserveEconomyCost call here: Provisioning already
+            // No EconomyReservationLifecycle.ReserveEconomyCost call here: Provisioning already
             // reserved it (see the deferred branch of ProvisionEconomy) the moment this mission
             // committed to being deferred, so the resource pool is honestly reduced for any OTHER
             // Economy mission provisioned later in the same batch pass. Reserving again here would
