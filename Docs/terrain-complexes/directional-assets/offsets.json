@@ -1,0 +1,572 @@
+{
+  "version": 3,
+  "asset_type": "pre-lit directional textures",
+  "uv_rotation_steps": 0,
+  "coordinate_system": "axial q,r; positive 60 deg counterclockwise from above",
+  "texture_padding": "opaque continuous source ground; clip with flat-top hex mesh",
+  "new_texture_size": [
+    512,
+    512
+  ],
+  "source_detail_note": "Square continuous sources; normalized nominal hex diameter 400/1024 of source width; resampled to 512 containers; palette matched using ImageGen before slicing",
+  "families": {
+    "Canyon": {
+      "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
+      "variants": [
+        {
+          "angle_degrees": 0,
+          "rotation_steps": 0,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot000_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                1254,
+                1254
+              ],
+              "sha256": "85fe2cc5af56093a8f86675e5f207fc24ac7a9f1d3a89e42564dd119e953a384",
+              "guid": "1011255dc30d4b6ab854e4c6d1075307"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot000_Part2.png",
+              "offset": {
+                "x": 1,
+                "y": 0
+              },
+              "size": [
+                1254,
+                1254
+              ],
+              "sha256": "9e6705988ec4b2f1a3544e5521e761cbbe45996bca1c67ce886b1f4ece659743",
+              "guid": "f3c15235661a40f3ae2db7b67ed8b6ed"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot000_Part3.png",
+              "offset": {
+                "x": 1,
+                "y": 1
+              },
+              "size": [
+                1254,
+                1254
+              ],
+              "sha256": "914fc75ac0492bdef8a26f873a5186e5d5252825cc17e0f701ae6cfb6c3a150d",
+              "guid": "a9c9786ccdf5432c87468a7451721d3c"
+            }
+          ],
+          "source_alignment": null,
+          "continuous_source": "original files unchanged"
+        },
+        {
+          "angle_degrees": 60,
+          "rotation_steps": 1,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot060_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "43ddb2e6f1e3624d9cf31ba46909369ade45dc739cfd85e0859f4655bd99f051",
+              "guid": "246364e3f627467aa8679e570d812ced"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot060_Part2.png",
+              "offset": {
+                "x": 0,
+                "y": 1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "870b7770c46b708dc2bbf946cf8df799f9b7e63fb471f9982bf2f8b14c6e7cc1",
+              "guid": "a4491ffc4c4c4c6ea6b72f04c6cce713"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot060_Part3.png",
+              "offset": {
+                "x": -1,
+                "y": 2
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "969a2b7013fc6304de9465e24927a6f905f7e62333289bd9e631f24d63081620",
+              "guid": "b437c7e4347e41ada954351572337108"
+            }
+          ],
+          "source_alignment": {
+            "dx": -32.86225730893919,
+            "dy": -99.64674865276804,
+            "scale": 0.6247106546650625,
+            "foreground_max_hex_norm": 0.9962802398094251
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+        },
+        {
+          "angle_degrees": 120,
+          "rotation_steps": 2,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot120_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "7a6d8aa6e083dbce48a3541709a45a97ff2059f3ede28286ab4721d2736967f6",
+              "guid": "ccef9edb6c6d49d2b13005f8afa5e5ad"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot120_Part2.png",
+              "offset": {
+                "x": -1,
+                "y": 1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "de5faa3ef772a6b095c34e719b053cb60d26ca016cd26ea7c4a371c79dea57a3",
+              "guid": "9cf161ea060f4d3b95de0bed4c42a86d"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot120_Part3.png",
+              "offset": {
+                "x": -2,
+                "y": 1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "113a3f643ff2998a0e62ff5ce9ae2fc6fc82c9519d8f2f4829ab16d67a6dc18e",
+              "guid": "e35421c74c10481cb5dce4aab2c24e1e"
+            }
+          ],
+          "source_alignment": {
+            "dx": 0.48302880834354944,
+            "dy": 2.4338096316150786,
+            "scale": 0.9416589329338232,
+            "foreground_max_hex_norm": 0.9950297591487574
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+        },
+        {
+          "angle_degrees": 180,
+          "rotation_steps": 3,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot180_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "f35e0d508b1a8cf2f90a2f828f7f57a14d410e013d94add3954008f0de76dbb5",
+              "guid": "6f2f2e149e6c4845835392c5003d5d42"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot180_Part2.png",
+              "offset": {
+                "x": -1,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "f3c9d9c801b2fe91a31028fe81c9253a9ea2a4f978408e62ad741379e6323f91",
+              "guid": "7a8d04acdf334601b302c99633f454b0"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot180_Part3.png",
+              "offset": {
+                "x": -1,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "60b692c011dc2645192019d9fdcdff821c10bf8150b452edbe4559fd69005a5e",
+              "guid": "0311492b44a74818b62cae7ff385006a"
+            }
+          ],
+          "source_alignment": {
+            "dx": 38.19168003618364,
+            "dy": 81.18635350154709,
+            "scale": 0.9879860335423319,
+            "foreground_max_hex_norm": 0.9976958618750462
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+        },
+        {
+          "angle_degrees": 240,
+          "rotation_steps": 4,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot240_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "9ab52b01429a987763e97d74c2c18c7567d09fe9403f875d4851bc721d0d0dd8",
+              "guid": "6ef40a8aa0394627867838c5e54dfe52"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot240_Part2.png",
+              "offset": {
+                "x": 0,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "39ea8d2e8863ec8c03e13465f7bef256aaab580ec92ceceb90c2467792c0959f",
+              "guid": "a170cd38b9d24a7f81a81bef18102a26"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot240_Part3.png",
+              "offset": {
+                "x": 1,
+                "y": -2
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "8b569c2ef2b571083348cd4e8a7f13896c48b8e64dc2e62b136a55ae4e167039",
+              "guid": "bd7e61ca78b440519a1180808e6ef68d"
+            }
+          ],
+          "source_alignment": {
+            "dx": 54.64020150496056,
+            "dy": 110.42716822916185,
+            "scale": 0.8852354329379547,
+            "foreground_max_hex_norm": 0.9979142716291286
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+        },
+        {
+          "angle_degrees": 300,
+          "rotation_steps": 5,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot300_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "74b62e307eae98bf1fe6b02fa1dddfb162a23ed188341ecae9fab0314f7fcce5",
+              "guid": "c01fc09238514f72bb6344698a5be34b"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot300_Part2.png",
+              "offset": {
+                "x": 1,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "72ca555fef6bfdabe7cbbbf858a4845e6756e9ec76a4c3467e341e3a358309aa",
+              "guid": "d17af52ac50c46d981fa76d5e6f1f540"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/Canyon_Rot300_Part3.png",
+              "offset": {
+                "x": 2,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "6cd49997eee7485c881f1a9f3ed3cac7ba2dcd2fbb9e418130be094167f0ffe0",
+              "guid": "8747d65d12654708b4d611f5050685b9"
+            }
+          ],
+          "source_alignment": {
+            "dx": -56.68693988951851,
+            "dy": 58.381294529906995,
+            "scale": 0.9426276802240869,
+            "foreground_max_hex_norm": 0.9966388293229619
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+        }
+      ]
+    },
+    "GiantMachineWreck": {
+      "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
+      "variants": [
+        {
+          "angle_degrees": 0,
+          "rotation_steps": 0,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot000_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "952126b4b6004657c852ab370cabfa8096ce4d05d973dfbf74fdec72e532215e",
+              "guid": "b746a7e4479c497a899c5f9ceeb3f2f0"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot000_Part2.png",
+              "offset": {
+                "x": 1,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "896270d607ead86a18536c997f2d8b2547f1e66aec590f2f441dda9620683abe",
+              "guid": "815b08ae9ea641ee992cdde25168c1d2"
+            }
+          ],
+          "source_alignment": null,
+          "continuous_source": "original files unchanged"
+        },
+        {
+          "angle_degrees": 60,
+          "rotation_steps": 1,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot060_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "633c9cd2e3eadf24fe5697310f8d97372efc63009f3006ada32794b5f930bcda",
+              "guid": "98e134ec9fb34878bec3a88afe12ada6"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot060_Part2.png",
+              "offset": {
+                "x": 0,
+                "y": 1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "90c81f04b1529cfd4dcff8598fa56b82ed4a245fa321f9f00e4a40ecbc16be25",
+              "guid": "ebb4c52dd1b449a4906046a6f4e0b6bc"
+            }
+          ],
+          "source_alignment": {
+            "dx": 0.9448206659829994,
+            "dy": 36.74039682987936,
+            "scale": 0.9089433403986998,
+            "foreground_max_hex_norm": 0.997857650311902
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+        },
+        {
+          "angle_degrees": 120,
+          "rotation_steps": 2,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot120_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "eb871c909f5de00cdf9aa61ceb3c651b1110bad67ec1ee3228efa6275ceef34c",
+              "guid": "975bd1f850334917a0460477c712208b"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot120_Part2.png",
+              "offset": {
+                "x": -1,
+                "y": 1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "99dc332f928cce2055c9dcc7d66911ea580f144516a73f0a7a034d349a680212",
+              "guid": "8bcc65a32f39426bab89bbad4a356821"
+            }
+          ],
+          "source_alignment": {
+            "dx": 35.94455348705045,
+            "dy": 25.083822137913575,
+            "scale": 0.5959080980805855,
+            "foreground_max_hex_norm": 0.9948889980486351
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+        },
+        {
+          "angle_degrees": 180,
+          "rotation_steps": 3,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot180_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "247adc1d330c699e30b44133cfc39e1ea97b37b942a3ed0e9bfba171f2f3532e",
+              "guid": "52c8a9dd84bd4d6cb0d14dca31721719"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot180_Part2.png",
+              "offset": {
+                "x": -1,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "bbfe270b55aca3a51faf8dfd32a698ae4bb3e1198d58688bc4525ebb9f6ff32d",
+              "guid": "a67e88fc5b424c42b52764f9f2c09169"
+            }
+          ],
+          "source_alignment": {
+            "dx": -38.598041636753535,
+            "dy": 0.8672229068850675,
+            "scale": 0.588069666930102,
+            "foreground_max_hex_norm": 0.9964055715228132
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+        },
+        {
+          "angle_degrees": 240,
+          "rotation_steps": 4,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot240_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "6e1faed50e38f01819ba9ed7e599e905cbccb2aed83f9fd646e18957377e19c2",
+              "guid": "8d822e2ed1a24ddc952d972eb7a676c8"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot240_Part2.png",
+              "offset": {
+                "x": 0,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "43023b2f27aef1a78e208fb872d0d0b5f90ece127731714dbd7d8a965f6ffcad",
+              "guid": "f559ab04cb874cb6a2a544dbc1435167"
+            }
+          ],
+          "source_alignment": {
+            "dx": -31.751282507585838,
+            "dy": 32.11700223217538,
+            "scale": 0.7637032738623313,
+            "foreground_max_hex_norm": 0.9982000339817635
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+        },
+        {
+          "angle_degrees": 300,
+          "rotation_steps": 5,
+          "uv_rotation_steps": 0,
+          "parts": [
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot300_Part1.png",
+              "offset": {
+                "x": 0,
+                "y": 0
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "984eb1c522c2845c06a8e0a3e2878a25e1b299a67133e14ea09b1ea58f0f6c77",
+              "guid": "6f16e039c6b843e6a3fc4ed4dc4fbb65"
+            },
+            {
+              "file": "Assets/Textures/Terrain/Desert/Complexes/Directional/GiantMachineWreck_Rot300_Part2.png",
+              "offset": {
+                "x": 1,
+                "y": -1
+              },
+              "size": [
+                512,
+                512
+              ],
+              "sha256": "991af72a1339b2ee3b581df64033bb4bfa0d457da0dffb40f358f3c6c2b6ebd3",
+              "guid": "8bc7bbc96d21410d997fec1974188269"
+            }
+          ],
+          "source_alignment": {
+            "dx": 3.4992437613207494,
+            "dy": -17.347016212991544,
+            "scale": 0.7157532604110779,
+            "foreground_max_hex_norm": 0.9958690836129649
+          },
+          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+        }
+      ]
+    }
+  }
+}

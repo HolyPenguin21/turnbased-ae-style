@@ -506,7 +506,7 @@ MonoBehaviour:
     - name: Arid canyon snake
       terrainName: Deep canyon
       useInGeneration: 1
-      randomizeRotation: 1
+      randomizeRotation: 0
       count: 1
       placementAttempts: 64
       exclusiveGroup: centerpiece
@@ -553,7 +553,7 @@ MonoBehaviour:
     - name: AridSteppe Giant machine wreck
       terrainName: Giant machine wreck
       useInGeneration: 1
-      randomizeRotation: 1
+      randomizeRotation: 0
       count: 1
       placementAttempts: 64
       exclusiveGroup: centerpiece
@@ -733,10 +733,10 @@ MonoBehaviour:
           - {fileID: 2800000, guid: ef23a7265c8f58e6beeaf02ec856da96, type: 3}
           - {fileID: 2800000, guid: 123a640688eb51e4ab51afcc2c7a8246, type: 3}
           - {fileID: 2800000, guid: 895acce0bd2d5a85be6acaed713ab69d, type: 3}
-      - name: Canyon snake
+      - name: Canyon snake directional 000
         terrainName: Deep canyon
         useInGeneration: 1
-        randomizeRotation: 1
+        randomizeRotation: 0
         count: 1
         placementAttempts: 64
         exclusiveGroup: centerpiece
@@ -750,13 +750,133 @@ MonoBehaviour:
         parts:
         - offset: {x: 0, y: 0}
           frames:
-          - {fileID: 2800000, guid: 3552ab8d62fa5637afcdd771ad69f833, type: 3}
+          - {fileID: 2800000, guid: 1011255dc30d4b6ab854e4c6d1075307, type: 3}
         - offset: {x: 1, y: 0}
           frames:
-          - {fileID: 2800000, guid: dd4dd410ae8c5662963b3bc248a7c0be, type: 3}
+          - {fileID: 2800000, guid: f3c15235661a40f3ae2db7b67ed8b6ed, type: 3}
         - offset: {x: 1, y: 1}
           frames:
-          - {fileID: 2800000, guid: a82257277d2f52bebdee123439bd0de7, type: 3}
+          - {fileID: 2800000, guid: a9c9786ccdf5432c87468a7451721d3c, type: 3}
+      - name: Canyon snake directional 060
+        terrainName: Deep canyon
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 246364e3f627467aa8679e570d812ced, type: 3}
+        - offset: {x: 0, y: 1}
+          frames:
+          - {fileID: 2800000, guid: a4491ffc4c4c4c6ea6b72f04c6cce713, type: 3}
+        - offset: {x: -1, y: 2}
+          frames:
+          - {fileID: 2800000, guid: b437c7e4347e41ada954351572337108, type: 3}
+      - name: Canyon snake directional 120
+        terrainName: Deep canyon
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: ccef9edb6c6d49d2b13005f8afa5e5ad, type: 3}
+        - offset: {x: -1, y: 1}
+          frames:
+          - {fileID: 2800000, guid: 9cf161ea060f4d3b95de0bed4c42a86d, type: 3}
+        - offset: {x: -2, y: 1}
+          frames:
+          - {fileID: 2800000, guid: e35421c74c10481cb5dce4aab2c24e1e, type: 3}
+      - name: Canyon snake directional 180
+        terrainName: Deep canyon
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 6f2f2e149e6c4845835392c5003d5d42, type: 3}
+        - offset: {x: -1, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 7a8d04acdf334601b302c99633f454b0, type: 3}
+        - offset: {x: -1, y: -1}
+          frames:
+          - {fileID: 2800000, guid: 0311492b44a74818b62cae7ff385006a, type: 3}
+      - name: Canyon snake directional 240
+        terrainName: Deep canyon
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 6ef40a8aa0394627867838c5e54dfe52, type: 3}
+        - offset: {x: 0, y: -1}
+          frames:
+          - {fileID: 2800000, guid: a170cd38b9d24a7f81a81bef18102a26, type: 3}
+        - offset: {x: 1, y: -2}
+          frames:
+          - {fileID: 2800000, guid: bd7e61ca78b440519a1180808e6ef68d, type: 3}
+      - name: Canyon snake directional 300
+        terrainName: Deep canyon
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: c01fc09238514f72bb6344698a5be34b, type: 3}
+        - offset: {x: 1, y: -1}
+          frames:
+          - {fileID: 2800000, guid: d17af52ac50c46d981fa76d5e6f1f540, type: 3}
+        - offset: {x: 2, y: -1}
+          frames:
+          - {fileID: 2800000, guid: 8747d65d12654708b4d611f5050685b9, type: 3}
       - name: Desert Boiling mud field
         terrainName: Boiling mud field
         useInGeneration: 0
@@ -780,10 +900,10 @@ MonoBehaviour:
           - {fileID: 2800000, guid: b631feff22bc444684bce4956664eb12, type: 3}
           - {fileID: 2800000, guid: c7a23af71157403ca5c758d26138785d, type: 3}
           - {fileID: 2800000, guid: e1d653c978fb44cfb72c99cc06e07592, type: 3}
-      - name: Desert Giant machine wreck
+      - name: Desert Giant machine wreck directional 000
         terrainName: Giant machine wreck
         useInGeneration: 1
-        randomizeRotation: 1
+        randomizeRotation: 0
         count: 1
         placementAttempts: 64
         exclusiveGroup: centerpiece
@@ -797,10 +917,115 @@ MonoBehaviour:
         parts:
         - offset: {x: 0, y: 0}
           frames:
-          - {fileID: 2800000, guid: b3a2244363c4470089994f9c51800d09, type: 3}
+          - {fileID: 2800000, guid: b746a7e4479c497a899c5f9ceeb3f2f0, type: 3}
         - offset: {x: 1, y: 0}
           frames:
-          - {fileID: 2800000, guid: 91f74070667640dfbbb3f9b054616d8d, type: 3}
+          - {fileID: 2800000, guid: 815b08ae9ea641ee992cdde25168c1d2, type: 3}
+      - name: Desert Giant machine wreck directional 060
+        terrainName: Giant machine wreck
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 98e134ec9fb34878bec3a88afe12ada6, type: 3}
+        - offset: {x: 0, y: 1}
+          frames:
+          - {fileID: 2800000, guid: ebb4c52dd1b449a4906046a6f4e0b6bc, type: 3}
+      - name: Desert Giant machine wreck directional 120
+        terrainName: Giant machine wreck
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 975bd1f850334917a0460477c712208b, type: 3}
+        - offset: {x: -1, y: 1}
+          frames:
+          - {fileID: 2800000, guid: 8bcc65a32f39426bab89bbad4a356821, type: 3}
+      - name: Desert Giant machine wreck directional 180
+        terrainName: Giant machine wreck
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 52c8a9dd84bd4d6cb0d14dca31721719, type: 3}
+        - offset: {x: -1, y: 0}
+          frames:
+          - {fileID: 2800000, guid: a67e88fc5b424c42b52764f9f2c09169, type: 3}
+      - name: Desert Giant machine wreck directional 240
+        terrainName: Giant machine wreck
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 8d822e2ed1a24ddc952d972eb7a676c8, type: 3}
+        - offset: {x: 0, y: -1}
+          frames:
+          - {fileID: 2800000, guid: f559ab04cb874cb6a2a544dbc1435167, type: 3}
+      - name: Desert Giant machine wreck directional 300
+        terrainName: Giant machine wreck
+        useInGeneration: 1
+        randomizeRotation: 0
+        count: 1
+        placementAttempts: 64
+        exclusiveGroup: centerpiece
+        minCenterFraction: 0.15
+        maxCenterFraction: 0.5
+        framesPerSecond: 3
+        allowedTerrainNames:
+        - Desert
+        - Sand dunes
+        - Rock desert
+        parts:
+        - offset: {x: 0, y: 0}
+          frames:
+          - {fileID: 2800000, guid: 6f16e039c6b843e6a3fc4ed4dc4fbb65, type: 3}
+        - offset: {x: 1, y: -1}
+          frames:
+          - {fileID: 2800000, guid: 8bc7bbc96d21410d997fec1974188269, type: 3}
       mountainsTerrainName: Mountains
       mountainRangeCount: 2
       mountainRangeLength: 3

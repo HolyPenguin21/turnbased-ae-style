@@ -1,0 +1,291 @@
+{
+  "method": "Median warm ground candidate RGB; Delta E76 of medians, diagnostic rather than pixel identity proof",
+  "families": {
+    "Canyon": [
+      {
+        "angle": 0,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            210.0,
+            166.0,
+            113.0
+          ],
+          [
+            215.0,
+            165.0,
+            111.0
+          ],
+          [
+            215.0,
+            165.0,
+            112.0
+          ]
+        ],
+        "median_delta_E76": 0.0
+      },
+      {
+        "angle": 60,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            221.0,
+            172.0,
+            115.0
+          ],
+          [
+            223.0,
+            174.0,
+            117.0
+          ],
+          [
+            222.0,
+            174.0,
+            117.0
+          ]
+        ],
+        "median_delta_E76": 3.626
+      },
+      {
+        "angle": 120,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            218.0,
+            171.0,
+            120.0
+          ],
+          [
+            218.0,
+            171.0,
+            120.0
+          ],
+          [
+            221.0,
+            174.0,
+            121.0
+          ]
+        ],
+        "median_delta_E76": 2.828
+      },
+      {
+        "angle": 180,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            221.0,
+            172.0,
+            118.0
+          ],
+          [
+            219.0,
+            170.0,
+            117.0
+          ],
+          [
+            223.0,
+            174.0,
+            119.0
+          ]
+        ],
+        "median_delta_E76": 2.539
+      },
+      {
+        "angle": 240,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            214.0,
+            169.0,
+            118.0
+          ],
+          [
+            217.0,
+            171.0,
+            120.0
+          ],
+          [
+            215.0,
+            170.0,
+            119.0
+          ]
+        ],
+        "median_delta_E76": 3.102
+      },
+      {
+        "angle": 300,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            215.0,
+            167.0,
+            114.0
+          ],
+          [
+            213.0,
+            165.0,
+            113.0
+          ],
+          [
+            213.0,
+            166.0,
+            113.0
+          ]
+        ],
+        "median_delta_E76": 1.354
+      }
+    ],
+    "GiantMachineWreck": [
+      {
+        "angle": 0,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            216.0,
+            169.0,
+            114.0
+          ],
+          [
+            215.0,
+            168.0,
+            114.0
+          ]
+        ],
+        "median_delta_E76": 0.0
+      },
+      {
+        "angle": 60,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            223.0,
+            169.0,
+            116.0
+          ],
+          [
+            222.0,
+            170.0,
+            117.0
+          ]
+        ],
+        "median_delta_E76": 2.75
+      },
+      {
+        "angle": 120,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            222.0,
+            170.0,
+            114.0
+          ],
+          [
+            226.0,
+            174.0,
+            115.0
+          ]
+        ],
+        "median_delta_E76": 3.206
+      },
+      {
+        "angle": 180,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            219.0,
+            166.0,
+            111.0
+          ],
+          [
+            220.0,
+            168.0,
+            112.0
+          ]
+        ],
+        "median_delta_E76": 2.609
+      },
+      {
+        "angle": 240,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            220.0,
+            165.0,
+            109.0
+          ],
+          [
+            219.0,
+            164.0,
+            109.0
+          ]
+        ],
+        "median_delta_E76": 3.866
+      },
+      {
+        "angle": 300,
+        "reference_ground_median_RGB": [
+          215.5,
+          168.5,
+          114.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            222.0,
+            170.0,
+            114.0
+          ],
+          [
+            221.0,
+            169.0,
+            113.0
+          ]
+        ],
+        "median_delta_E76": 2.529
+      }
+    ]
+  }
+}
