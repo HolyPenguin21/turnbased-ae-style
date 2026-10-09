@@ -68,6 +68,39 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void VisibleSoloHero_IsPreservedAsAContactTarget_WithoutCombatPower()
+        {
+            var observer = new PlayerSetupData { Nickname = "Observer" };
+            var enemyOwner = new PlayerSetupData { Nickname = "Enemy" };
+            HexCoord hex = new HexCoord(2, -1);
+            ArmyData own = Army(observer, hex, "Own", hp: 4);
+            ArmyData enemy = Army(enemyOwner, hex, "Hero", hp: 5);
+            enemy.Members[0].IsHero = true;
+            enemy.Members[0].FateMax = 3;
+            enemy.Members[0].Fate = 2;
+            ArmyRegistry.Register(own);
+            ArmyRegistry.Register(enemy);
+
+            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.KnownEnemySightingAt(observer, hex);
+            Assert.That(sighting.HasValue, Is.True);
+            Assert.That(sighting.Value.MemberCount, Is.EqualTo(1));
+            Assert.That(sighting.Value.Defenders.Count, Is.EqualTo(1));
+            Assert.That(sighting.Value.Defenders[0].IsHero, Is.True);
+            Assert.That(sighting.Value.Defenders[0].IsGroundCombatant, Is.False);
+            Assert.That(sighting.Value.Defenders[0].FateMax, Is.EqualTo(3));
+            Assert.That(sighting.Value.Commander.Fate, Is.EqualTo(2));
+            Assert.That(sighting.Value.AttackSum, Is.Zero);
+            Assert.That(sighting.Value.DefenseSum, Is.Zero);
+            Assert.That(AiMapMemory.KnownGroundArrival(observer, hex, false).Contact, Is.True);
+
+            ArmyRegistry.Unregister(own);
+            enemy.Members[0].FateMax = 10;
+            VisionSystem.NotifyContentChanged(hex);
+            Assert.That(AiMapMemory.KnownEnemySightingAt(observer, hex).Value.Defenders[0].FateMax,
+                Is.EqualTo(3), "out-of-view changes must not rewrite the remembered hero");
+        }
+
+        [Test]
         public void PostBattleHpWrite_RefreshesStrategicKnowledgeButNotRouteBlockers()
         {
             var observer = new PlayerSetupData { Nickname = "Observer" };

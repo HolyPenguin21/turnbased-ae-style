@@ -859,8 +859,9 @@ namespace Game.Ai
                 foreach (ArmyData enemy in observedArmies)
                 {
                     observedIds.Add(enemy.Id);
-                    List<UnitData> nonHero = enemy.Members.Where(m => m.IsGroundCombatant && !StealthSystem.IsHiddenFrom(m, player)).ToList();
-                    int visibleMemberCount = enemy.Members.Count(m => !StealthSystem.IsHiddenFrom(m, player));
+                    List<UnitData> visibleMembers = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player)).ToList();
+                    List<UnitData> nonHero = visibleMembers.Where(m => m.IsGroundCombatant).ToList();
+                    int visibleMemberCount = visibleMembers.Count;
                     // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
                     // same army was last recorded at a DIFFERENT hex, this overwrites that record in
                     // place instead of leaving it behind as an orphan under its old Hex.
@@ -905,11 +906,14 @@ namespace Game.Ai
                         // rule every other field here already follows for resource hexes/army sightings/event guards. There is no in-field HP regen in
                         // this game (only UnitRepair, base-side) for that assumption to have been
                         // protecting against.
-                        Defenders = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
+                        // Preserve contact targets as well as tactical actors. A lone hero is an
+                        // engageable Capture/Kill target, not an army with an unknown empty roster.
+                        // Combat sums remain body-only; WorthIt owns the actor/target distinction.
+                        Defenders = visibleMembers.Select(WorthIt.FromLiveUnit).ToList(),
                         // Scanned over the FULL roster (not just nonHero above) — nothing rules out
                         // a hero carrying an AA ability, and this flag only ever feeds a
                         // conservative "don't fly recon here" gate, never a combat estimate, so
-                        // there's no reason to narrow it the way the DefenderProfile list above does.
+                        // it follows the same visibility filter as the stored contact roster.
                         HasAntiAir = enemy.Members.Any(m => !StealthSystem.IsHiddenFrom(m, player) && AntiAirRules.TryGetRadius(m, out _)),
                         SeenTurn = _currentTurn,
                         IsGarrison = enemy.IsGarrison,

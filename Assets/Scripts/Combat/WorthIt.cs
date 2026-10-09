@@ -749,6 +749,60 @@ namespace Game.Combat
             public float DefenseBonus(float fallback) => DefenseBonusOverride ?? fallback;
         }
 
+        // Hero-only contacts have no tactical actors, but their Capture/Kill challenge is not a
+        // guaranteed success. Use the canonical pools, Fate policy/order and outcome resolver.
+        // Pure observed inputs, deterministic RNG and a separate exact cache mode; no live lookup.
+        public static BattleEstimate EstimateCaptureKill(IReadOnlyCollection<DefenderProfile> attackers,
+            SideCommander attackerCommander, IReadOnlyList<DefendingArmy> heroArmies)
+        {
+            int bodyCount = attackers?.Count(p => !p.IsHero && p.IsGroundCombatant) ?? 0;
+            if (bodyCount == 0)
+                return new BattleEstimate(0f, 0f, 0f);
+            var targets = new List<(int pool, int fate)>();
+            foreach (DefendingArmy army in heroArmies ?? System.Array.Empty<DefendingArmy>())
+            {
+                bool firstHero = true;
+                foreach (DefenderProfile hero in army.Units.Where(p => p.IsHero))
+                {
+                    targets.Add((hero.FateMax, firstHero && army.Commander.Present
+                        ? army.Commander.Fate : hero.FateMax));
+                    firstHero = false;
+                }
+            }
+            if (targets.Count == 0)
+                return new BattleEstimate(1f, 1f, 0f);
+            int hunterPool = BattleResolutionRules.CaptureKillHunterPool(bodyCount);
+            int hunterFate = attackerCommander.Present ? attackerCommander.Fate : 0;
+            int seed = unchecked(hunterPool * 397 + hunterFate);
+            foreach (var target in targets)
+                seed = unchecked((seed * 31 + target.pool) * 31 + target.fate);
+            return CachedEstimate(3, seed, AbilityMagnitudes.Default,
+                key =>
+                {
+                    key.Add(hunterPool); key.Add(hunterFate); key.Add(targets.Count);
+                    foreach (var target in targets) { key.Add(target.pool); key.Add(target.fate); }
+                },
+                () =>
+                {
+                    var rng = new System.Random(seed);
+                    int wins = 0;
+                    for (int trial = 0; trial < MonteCarloTrials; trial++)
+                    {
+                        int fate = hunterFate;
+                        bool won = true;
+                        foreach (var target in targets)
+                        {
+                            int heroFate = target.fate;
+                            if (BattleSimulationKernel.ResolveCaptureKill(hunterPool, target.pool,
+                                    ref fate, ref heroFate, rng) == CaptureKillOutcome.Escaped)
+                                won = false;
+                        }
+                        if (won) wins++;
+                    }
+                    return new BattleEstimate((float)wins / MonteCarloTrials, 1f, 0f);
+                });
+        }
+
         // A hex held by several armies is taken the way the real rules take it: one battle per
         // defending army, strongest defender first (BattleInitiator.FindEnemyAt — the army the
         // attacker is least likely to beat), the surviving attacker carrying its wounds into the

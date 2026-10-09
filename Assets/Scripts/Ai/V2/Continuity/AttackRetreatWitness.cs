@@ -21,7 +21,7 @@ namespace Game.Ai.V2
         public int OwnArmyId;
         public int EnemyArmyId;
         public HexCoord EnemyHex;
-        // CombatFingerprint of the whole package on the enemy's hex, and of our roster, as observed
+        // Fingerprints of the whole contact (including observed Fate) and our roster, as observed
         // when we withdrew (refreshed whenever the fight is re-evaluated and still unwinnable).
         public int EnemyFingerprint;
         public int OwnFingerprint;
@@ -54,7 +54,7 @@ namespace Game.Ai.V2
                 return false;
             }
             List<WorthIt.DefendingArmy> opposition = AttackTacticalOpportunity.OppositionOn(snap, enemy.Value.Hex);
-            int enemyFp = AttackTacticalOpportunity.CombatFingerprint(WorthIt.UnitsOf(opposition));
+            int enemyFp = AttackTacticalOpportunity.ContactFingerprint(opposition);
             int ownFp = OwnFingerprintOf(army);
             if (enemyFp == w.EnemyFingerprint && ownFp == w.OwnFingerprint)
             {
@@ -63,9 +63,9 @@ namespace Game.Ai.V2
             }
             // Something changed: the answer comes from the estimator, not from the change itself.
             float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, enemy.Value.Hex);
-            bool clears = GroundCombatFeasibility.Clears(army.Members.ToList(), army.Commander, opposition,
-                GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out float win, out _,
-                requireCoverage: false);
+            AttackTacticalOpportunity.ClearsContact(army.Members.ToList(), army.Commander, opposition,
+                bonus, out float win, out _);
+            bool clears = win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;
             if (clears)
             {
                 state.ClearRetreatWitness(target);

@@ -12,6 +12,61 @@ namespace Game.EditorTests
 {
     public sealed class CombatSystemAlignmentTests
     {
+        [TestCase(1)]
+        [TestCase(42)]
+        [TestCase(123)]
+        public void CaptureKillEstimateKernel_MatchesTheLiveChallengeSession(int seed)
+        {
+            var rng = new System.Random(seed);
+            var session = new BattleChallengeSession(BattleChallengeMode.CaptureKill,
+                null, null, 2, 3, 3, 3, AbilityMagnitudes.Default,
+                rollDice: count => BattleSimulationKernel.RollDice(count, rng));
+            session.Roll();
+            while (session.TryNextFateTurn(out bool defenderTurn))
+            {
+                bool spent = false;
+                while (session.ShouldAiSpend(defenderTurn))
+                {
+                    if (!session.TrySpend(defenderTurn, out _, out bool hit)) break;
+                    spent = true;
+                    if (!hit) break;
+                }
+                session.ReportFateTurn(spent);
+            }
+            int hunterFate = 3, heroFate = 3;
+            CaptureKillOutcome estimated = BattleSimulationKernel.ResolveCaptureKill(2, 3,
+                ref hunterFate, ref heroFate, new System.Random(seed));
+            Assert.That(estimated, Is.EqualTo(session.ResolveCaptureKillOutcome()));
+            Assert.That(hunterFate, Is.EqualTo(session.AttackerFateRemaining));
+            Assert.That(heroFate, Is.EqualTo(session.DefenderFateRemaining));
+        }
+
+        [Test]
+        public void CaptureKillEstimateCache_IsSeparatedFromTacticalCombat_AndKeysObservedFate()
+        {
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 4);
+            var bodies = new[] { new WorthIt.DefenderProfile(3, false, attack: 8, hitPoints: 4) };
+            WorthIt.BeginEstimateCacheScope();
+            try
+            {
+                var opposition = new[] { new WorthIt.DefendingArmy(new[] { hero }, new WorthIt.SideCommander(0, 4)) };
+                float first = WorthIt.EstimateCaptureKill(bodies, default, opposition).WinChance;
+                float again = WorthIt.EstimateCaptureKill(bodies, default, opposition).WinChance;
+                Assert.That(again, Is.EqualTo(first));
+                Assert.That(WorthIt.CurrentEstimateCacheStats.Misses, Is.EqualTo(1));
+                Assert.That(WorthIt.CurrentEstimateCacheStats.Hits, Is.EqualTo(1));
+                var spentFate = new[] { new WorthIt.DefendingArmy(new[] { hero }, new WorthIt.SideCommander(0, 0)) };
+                WorthIt.EstimateCaptureKill(bodies, default, spentFate);
+                WorthIt.EstimateCaptureKill(bodies, new WorthIt.SideCommander(0, 3), spentFate);
+                Assert.That(WorthIt.CurrentEstimateCacheStats.Misses, Is.EqualTo(3),
+                    "observed defender Fate and our current Fate are separate cache inputs");
+                Assert.That(WorthIt.EstimateSequential(bodies, default, opposition, 0).WinChance, Is.EqualTo(1f));
+                Assert.That(first, Is.LessThan(1f), "the empty tactical battle must not supply capture odds");
+            }
+            finally { WorthIt.EndEstimateCacheScope(); }
+        }
+
         [Test]
         public void EqualAttackDefense_HasPositiveExpectedDamage()
         {

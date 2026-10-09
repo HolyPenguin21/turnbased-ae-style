@@ -23,7 +23,7 @@ namespace Game.Ai.V2
         Intercept = 1,
         // Take an optional intermediate Base (AttackIntermediateBasePolicy) before going on.
         IntermediateBase = 2,
-        // A relevant, significant hostile army the army cannot beat: the attack goes home.
+        // A relevant hostile army on the path that the army cannot beat: the attack goes home.
         Retreat = 3,
     }
 
@@ -47,7 +47,7 @@ namespace Game.Ai.V2
         internal readonly bool FightsPathContact;
         // Why this was chosen / rejected — a log and test fact, never parsed.
         internal readonly string Reason;
-        // Retreat: the observed combat inputs of the contact (AttackTacticalOpportunity.CombatFingerprint).
+        // Retreat: the observed combat inputs of the contact (AttackTacticalOpportunity.ContactFingerprint).
         internal readonly int ContactFingerprint;
         internal readonly float EnemyPower;
 
@@ -83,7 +83,7 @@ namespace Game.Ai.V2
     //  identity (AttackIntent.Target never changes here) and decides, from honest knowledge only,
     //  what to do about the field around it. Priority, strongest first:
     //
-    //    0. Retreat   a relevant, significant hostile army on the path that it cannot beat
+    //    0. Retreat   a relevant hostile army on the path that it cannot beat
     //                 (estimator chance below AiConfigV2.attackLocalMinWinChance) — the attack ends
     //                 and the army walks home (Continuity: RecoveryReturn).
     //    1. Continue  the main target is reachable with the movement left now: go there.
@@ -103,13 +103,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class AttackTacticalOpportunity
     {
-        // The fog-honest "is this hex in sight right now" read. A sighting stamped with the current
-        // turn is NOT proof the army is still there (it may have left after an earlier step of the
-        // same turn); a voluntary fight and a retreat both need the contact to be in view now.
-        // A seam so tests can state their own view.
-        internal static System.Func<PlayerSetupData, HexCoord, bool> HexVisibleNow =
-            (player, hex) => VisionSystem.IsVisible(player, hex);
-
         // `main` is the operation's Base/Citadel. `lastLocalTurn` is the once-per-turn marker of
         // voluntary fights. `intermediateBaseAvailable` is the mission layer's already-proven
         // optional Base (AttackIntermediateBasePolicy.Select). `adObjectives` are the live
@@ -141,7 +134,8 @@ namespace Game.Ai.V2
 
             // ---- mandatory: a relevant contact on the path ------------------------------------
             // Independent of the voluntary-fight limit: a winnable contact is fought on the way, an
-            // unwinnable significant hostile army ends the attack, anything else is bypassed.
+            // unwinnable hostile army ends the attack, anything else is bypassed. Significance
+            // gates voluntary detours only, never an enemy already on this route.
             // Relevant = on the nearest path and within the movement window of today and one full
             // turn more — never a far, arbitrary army.
             int window = currentMovement + maxMovement;
@@ -155,27 +149,25 @@ namespace Game.Ai.V2
                 cumulative += StepCost(map, h);
                 if (cumulative > window || h.Equals(mainHex))
                     break;
-                List<AiMapMemory.KnownEnemySighting> bodies = ObservedBodiesOn(snap, player, h);
+                List<AiMapMemory.KnownEnemySighting> bodies = KnownBodiesOn(snap, player, h);
                 if (bodies.Count == 0)
                     continue;
                 List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, h);
                 float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, map, h);
-                bool fightable = GroundCombatFeasibility.Clears(attackers, army.Commander, opposition,
-                    GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out float win, out bool cover,
-                    GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage);
+                bool fightable = ClearsContact(attackers, army.Commander, opposition,
+                    bonus, out float win, out bool cover);
                 AiMapMemory.KnownEnemySighting? army0 = HostileFieldArmyOn(player, bodies);
                 if (!fightable)
                 {
-                    if (army0.HasValue && win < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate
-                        && IsSignificantHostile(army0.Value, opposition))
+                    if (army0.HasValue && win < GroundCombatAdmissionPolicy.AttackLocalWinChanceGate)
                     {
                         AiMapMemory.KnownEnemySighting e = army0.Value;
                         return new AttackLocalAction(AttackLocalActionKind.Retreat, h, e.ArmyId, e.Name,
                             cumulative, win, cover, "hostile_contact_below_threshold",
-                            contactFingerprint: CombatFingerprint(WorthIt.UnitsOf(opposition)),
+                            contactFingerprint: ContactFingerprint(opposition),
                             enemyPower: AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition), bonus));
                     }
-                    // Not a retreat: a neutral / insignificant contact, or one the estimator likes
+                    // Not a retreat: a neutral contact, or one the estimator likes
                     // but we cannot cover. The two stay distinct in the log.
                     pathContactBypassed = true;
                     AiDebugLog.WriteDeduped($"atk-path-{main.DiagnosticLabel}-{h.Q},{h.R}-{cover}",
@@ -270,8 +262,6 @@ namespace Game.Ai.V2
                     continue;
                 if (s.Hex.Equals(army.Hex) || s.Hex.Equals(mainHex))
                     continue;
-                if (!ObservedNow(snap, player, s))
-                    continue;
                 // A fight on a known foreign structure could destroy it: that is Attack's own
                 // target business, never a side fight.
                 if (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, s.Hex))
@@ -292,9 +282,8 @@ namespace Game.Ai.V2
                 if (contactCost == int.MaxValue || contactCost > currentMovement)
                     continue;
                 float bonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, snap.Map, s.Hex);
-                if (!GroundCombatFeasibility.Clears(attackers, army.Commander, opposition,
-                        GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out float win,
-                        out bool cover, GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage))
+                if (!ClearsContact(attackers, army.Commander, opposition,
+                        bonus, out float win, out bool cover))
                 {
                     AiDebugLog.WriteDeduped($"atk-int-{army.ArmyId}-{s.ArmyId}-{cover}",
                         $"[AI][V2][Attack][Local] decision=IGNORE enemy=#{s.ArmyId} at ({s.Hex.Q},{s.Hex.R}) "
@@ -343,14 +332,10 @@ namespace Game.Ai.V2
 
         // ---- knowledge ----------------------------------------------------------------------------
 
-        // The sighting is current: stamped this turn AND its hex is in view right now.
-        private static bool ObservedNow(WorldSnapshot snap, PlayerSetupData player,
-            AiMapMemory.KnownEnemySighting s) =>
-            s.SeenTurn >= snap.TurnNumber && HexVisibleNow(player, s.Hex);
-
-        // Every hostile body standing on `hex` that this player honestly sees right now: players'
-        // armies and garrisons, roaming neutrals. (Event guards ride along in OppositionOn.)
-        private static List<AiMapMemory.KnownEnemySighting> ObservedBodiesOn(WorldSnapshot snap,
+        // Every remembered contact is evaluated from its last observed roster, whether visible
+        // now or in FoW. Re-observation corrects memory before the next settled-step snapshot;
+        // no hidden live position, composition or HP is consulted here.
+        private static List<AiMapMemory.KnownEnemySighting> KnownBodiesOn(WorldSnapshot snap,
             PlayerSetupData player, HexCoord hex)
         {
             var bodies = new List<AiMapMemory.KnownEnemySighting>();
@@ -359,10 +344,9 @@ namespace Game.Ai.V2
                 .Concat(snap.Known.NeutralSightings
                     ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                 .OrderBy(x => x.ArmyId))
-                if (s.Hex.Equals(hex) && s.Owner != player && s.Defenders != null && s.Defenders.Count > 0
-                    && ObservedNow(snap, player, s))
+                if (s.Hex.Equals(hex) && s.Owner != player && s.Defenders != null && s.Defenders.Count > 0)
                     bodies.Add(s);
-            if (bodies.Count == 0 && HexVisibleNow(player, hex) && snap.Known.EventGuards != null)
+            if (bodies.Count == 0 && snap.Known.EventGuards != null)
                 foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
                     if (g.Hex.Equals(hex) && g.Defenders != null && g.Defenders.Count > 0)
                     {
@@ -418,11 +402,39 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // ActiveDefence's own significance bar for a hostile contact, on the whole stack there.
-        private static bool IsSignificantHostile(AiMapMemory.KnownEnemySighting army,
-            List<WorthIt.DefendingArmy> opposition) =>
-            ActiveDefenceObjectiveEvaluator.IsSignificantHostilePower(
-                AiPower.EffectiveArmyPowerFromProfiles(army.Defenders, 0f));
+        // Coverage applies to the actual fighting bodies. A standalone hero instead needs a
+        // Capture/Kill estimate; tactical combat's empty-defender shortcut must not grant 100%.
+        internal static bool ClearsContact(IReadOnlyList<WorthIt.DefenderProfile> attackers,
+            WorthIt.SideCommander commander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float bonus, out float win, out bool cover)
+        {
+            GroundCombatFeasibility.Clears(attackers, commander, opposition,
+                GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out win, out cover,
+                GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage);
+            List<WorthIt.DefendingArmy> heroOnly = opposition.Where(a =>
+                a.Units.Any(p => p.IsHero) && !a.Units.Any(p => !p.IsHero && p.IsGroundCombatant)).ToList();
+            if (heroOnly.Count > 0)
+                win *= WorthIt.EstimateCaptureKill(attackers.ToList(), commander, heroOnly).WinChance;
+            return (cover || !GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage)
+                && win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;
+        }
+
+        internal static int ContactFingerprint(IReadOnlyList<WorthIt.DefendingArmy> opposition)
+        {
+            unchecked
+            {
+                int hash = CombatFingerprint(WorthIt.UnitsOf(opposition));
+                foreach (WorthIt.DefendingArmy army in opposition)
+                {
+                    hash = hash * 31 + (army.Commander.Present ? 1 : 0);
+                    hash = hash * 31 + army.Commander.Initiative;
+                    hash = hash * 31 + army.Commander.Fate;
+                    foreach (WorthIt.DefenderProfile profile in army.Units)
+                        if (profile.IsHero) hash = hash * 31 + profile.FateMax;
+                }
+                return hash;
+            }
+        }
 
         // The inputs of the fight that decide who wins, folded into one number: roster, HP, armour
         // and initiative per body. Two reads of the same contact in the same state agree; any
