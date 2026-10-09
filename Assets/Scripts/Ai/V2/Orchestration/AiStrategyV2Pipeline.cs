@@ -529,6 +529,56 @@ namespace Game.Ai.V2
                     reentryStateChanged = followup.StateChanged;
                 }
 
+                // The one post-step protocol of a mandatory aviation obligation. Execution stays with
+                // the existing owners (MandatoryAviationStep); the kinds differ only in how many
+                // take -> re-enter pairs follow (rebase 1, recovery 2) and in their log text, which
+                // is baseline behaviour kept until the single trigger protocol (level 3). No ledger,
+                // Settle or observer boundary: the obligation was paid when the sortie launched.
+                IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor)
+                {
+                    string label = MandatoryAviationOrder.Label(kind);
+                    WorldAnalysis.StepObservationStamp beforeAviation =
+                        WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    bool actionChanged = false;
+                    yield return MandatoryAviationStep.Execute(kind, actor, player, root, ctx,
+                        snapshot, v => actionChanged = v);
+                    snapshot = WorldAnalysis.ObserveSettled(
+                        snapshot, player, root, hand, ctx, beforeAviation, null);
+                    settledSteps++;
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"step {settledSteps} {label} #{actor.Id}");
+                    StrategicInvalidationReason operationalReasons = StrategicInvalidationReason.None;
+                    StrategicInvalidationReason strategicReasons = StrategicInvalidationReason.None;
+                    bool strategicChanged = false;
+                    // Re-entry may publish another compound fact (for example, materializing a Raid
+                    // reinforcement changes Actor + Capability); a further pair routes it through the
+                    // same typed fan-out before it is consumed.
+                    for (int pair = 0; pair < MandatoryAviationOrder.TriggerPairs(kind); pair++)
+                    {
+                        TakeTypedTriggers(out StrategicInvalidationReason pairOperational,
+                            out StrategicInvalidationReason pairStrategic,
+                            out HashSet<DesireAxis> pairDirtyAxes);
+                        yield return ReenterStrategicAxes(pairStrategic, pairDirtyAxes);
+                        strategicChanged |= reentryStateChanged;
+                        operationalReasons |= pairOperational;
+                        strategicReasons |= pairStrategic;
+                    }
+                    bool progress = actionChanged || strategicChanged;
+                    noProgressCycles = progress ? 0 : noProgressCycles + 1;
+                    AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} {label} actor=#{actor.Id} "
+                        + $"progress={(progress ? 1 : 0)} "
+                        + $"operationalTriggers={operationalReasons} "
+                        + $"strategicTriggers={strategicReasons}");
+                    if (!progress)
+                    {
+                        // Recon audit B1 — skipped for the rest of this turn; it must not stop
+                        // every mission's admission with it.
+                        AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, actor.Id);
+                        AiDebugLog.Write("[AI][V2][Loop] "
+                            + MandatoryAviationOrder.StallMessage(kind, actor.Id));
+                    }
+                }
+
                 IEnumerator RunTypedAdmissions()
                 {
                     zeroRadarResidualWindow = false;
@@ -656,110 +706,17 @@ namespace Game.Ai.V2
                         if (fe?.Mission != null)
                             fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
 
-                    // A multi-turn rebase is already airborne and committed to landing. Resume
-                    // one such obligation before discretionary mission progress; no card was played
-                    // yet while it was pending (AviationObligations), so its activation resources
-                    // are still there. Route safety and destination validity are live-rechecked
-                    // inside ExecuteContinuation rather than trusting last turn's projection.
-                    List<ArmyData> rebaseContinuations =
-                        AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber);
-                    List<ArmyData> recoveries =
-                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
-                    bool rebaseFirst = MandatoryAviationOrder.RebaseFirst(
-                        rebaseContinuations.Count > 0 ? rebaseContinuations[0].Id : (int?)null,
-                        recoveries.Count > 0 ? recoveries[0].Id : (int?)null);
-                    if (rebaseFirst)
+                    // Airborne obligations are settled before discretionary mission progress: a
+                    // multi-turn rebase already committed to landing, and a recovery whose wing
+                    // must return. Both are already paid (no card was played while one was pending,
+                    // see AviationObligations), so they are chosen here, not funded. Exactly one
+                    // action is executed, observed and re-admitted per iteration.
+                    (MandatoryAviationKind Kind, ArmyData Actor) mandatory = MandatoryAviationOrder.Next(
+                        AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber),
+                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx));
+                    if (mandatory.Kind != MandatoryAviationKind.None)
                     {
-                        ArmyData rebaseWing = rebaseContinuations[0];
-                        WorldAnalysis.StepObservationStamp beforeRebase =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        bool rebaseMoved = false;
-                        yield return AviationRebasePlanner.ExecuteContinuation(
-                            player, root, ctx, rebaseWing, v => rebaseMoved = v);
-                        snapshot = WorldAnalysis.ObserveSettled(
-                            snapshot, player, root, hand, ctx, beforeRebase, null);
-                        settledSteps++;
-                        ReservationInvariants.CheckBoundary(player, root, ctx,
-                            $"step {settledSteps} aviation-rebase #{rebaseWing.Id}");
-                        TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
-                            out StrategicInvalidationReason rebaseStrategicReasons,
-                            out HashSet<DesireAxis> rebaseDirtyAxes);
-                        yield return ReenterStrategicAxes(
-                            rebaseStrategicReasons, rebaseDirtyAxes);
-                        bool rebaseStrategicChanged = reentryStateChanged;
-                        bool rebaseProgress = rebaseMoved || rebaseStrategicChanged;
-                        noProgressCycles = rebaseProgress ? 0 : noProgressCycles + 1;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} aviation-rebase "
-                            + $"actor=#{rebaseWing.Id} progress={(rebaseProgress ? 1 : 0)} "
-                            + $"operationalTriggers={rebaseOperationalReasons} "
-                            + $"strategicTriggers={rebaseStrategicReasons}");
-                        if (!rebaseProgress)
-                        {
-                            // Recon audit B1 — the obligation is skipped for the rest of this turn;
-                            // it must not stop every mission's admission with it.
-                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, rebaseWing.Id);
-                            AiDebugLog.Write($"[AI][V2][Loop] aviation rebase #{rebaseWing.Id} could not take "
-                                + "a safe step — deferred to next turn, missions continue");
-                        }
-                        continue;
-                    }
-
-                    // Lifecycle safety is admitted before strategic progress, but its must-return
-                    // predicate remains owned by ReconAirExecutor. Exactly one airborne action is
-                    // settled, observed and then re-admitted like every other step.
-                    if (recoveries.Count > 0)
-                    {
-                        ArmyData recovery = recoveries[0];
-                        HexCoord? recoveryFocus =
-                            ReconPatrolStateRegistry.TryGet(player, recovery.Id, out ReconPatrolState recoveryState)
-                                ? recoveryState.StrategicAnchor : (HexCoord?)null;
-                        WorldAnalysis.StepObservationStamp beforeRecovery =
-                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                        var recoveryResult = new AirReconExecutionResult();
-                        var recoveryControl = new ReconAirExecutor.ActorStepControl();
-                        int recoveryApBefore = root.ActionPoints;
-                        yield return ReconAirExecutor.RunActorStep(player, root, ctx, snapshot,
-                            recovery, recoveryResult, recoveryApBefore, recoveryFocus,
-                            perMissionResult: null, control: recoveryControl);
-                        snapshot = WorldAnalysis.ObserveSettled(
-                            snapshot, player, root, hand, ctx, beforeRecovery, null);
-                        settledSteps++;
-                        ReservationInvariants.CheckBoundary(player, root, ctx,
-                            $"step {settledSteps} recovery #{recovery.Id}");
-                        bool recoveryProgress = recoveryResult.Mutated;
-                        TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
-                            out StrategicInvalidationReason recoveryStrategicReasons,
-                            out HashSet<DesireAxis> recoveryDirtyAxes);
-                        yield return ReenterStrategicAxes(
-                            recoveryStrategicReasons, recoveryDirtyAxes);
-                        bool recoveryStrategicChanged = reentryStateChanged;
-                        // Reentry may publish another compound fact (for example, materializing a
-                        // Raid reinforcement changes Actor + Capability). Route that fact through
-                        // the same typed fan-out before consuming it so Economy/Development cannot
-                        // lose their share to an operational-axis follow-up.
-                        TakeTypedTriggers(
-                            out StrategicInvalidationReason recoveryFollowupOperational,
-                            out StrategicInvalidationReason recoveryFollowupStrategic,
-                            out HashSet<DesireAxis> recoveryFollowupAxes);
-                        recoveryOperationalReasons |= recoveryFollowupOperational;
-                        recoveryStrategicReasons |= recoveryFollowupStrategic;
-                        yield return ReenterStrategicAxes(
-                            recoveryFollowupStrategic, recoveryFollowupAxes);
-                        recoveryStrategicChanged |= reentryStateChanged;
-                        recoveryProgress |= recoveryStrategicChanged;
-                        noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
-                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
-                            + $"progress={(recoveryProgress ? 1 : 0)} "
-                            + $"operationalTriggers={recoveryOperationalReasons} "
-                            + $"strategicTriggers={recoveryStrategicReasons}");
-                        if (!recoveryProgress)
-                        {
-                            // Recon audit B1 — a recovery that changed nothing is skipped for the rest
-                            // of this turn; it must not stop every mission's admission with it.
-                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, recovery.Id);
-                            AiDebugLog.Write($"[AI][V2][Loop] recovery #{recovery.Id} made no progress — "
-                                + "deferred to next turn, missions continue");
-                        }
+                        yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor);
                         continue;
                     }
 
