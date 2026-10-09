@@ -146,19 +146,14 @@ flowchart TD
 
 Важно: `settledSteps`/`noProgressCycles` объявлены вне `RunTypedAdmissions` и **разделяются** всеми пятью входами (management обнуляет `noProgressCycles = 0` перед входом, `settledSteps` — нет). Это и есть «глобальные bounds» ТЗ.
 
-## 5. Баланс (банк) и кеши — инвентаризация (предварительно)
+## 5–6. Банк, кеши и список работ Уровня 0
 
-Банк: `AiTurnSession.Begin/Dispose`, `PhaseAApBudget` (carried follow-up), `StrategicManager.FulfillDemands(...reservation)` (carried Reservation: `phaseB.Reservation ?? phaseA.Reservation`), `InfrastructureFulfillment.ReconcileEconomyCompletionReservations` (3 вызова в Pipeline: L1004, L1076, L1104; плюс внутри Phase A/B), `ReleaseDeferredEconomyIncomeCover` (L1080 и L1293), `OperationContinuationWindow.Settle` (L1083 и L1293), `ReservationInvariants.CheckBoundary` (после каждого шага/фазы), `turnSession.CompleteReservations` (L1376). **TODO уровня 0:** таблица writer/lifetime по каждой точке.
+Полные таблицы банка — §11, кешей — §12, DRY/SRP — §13, сценарии — §14, сигнатуры — §15, проверка снизу вверх — §16. Статус пунктов:
 
-Кеши: `RefreshStrategicKnowledge` — 15 вызовов в RunTurn; `CombatOpportunityAnalyzer.WarmEstimates` — 7; `RefreshOperationalFrame` — 6; `CaptureStepObservation`/`PublishStepObservationDelta` — пары в rebase, recovery, ordinary, reentry, management, cold, recall (не в Phase A/formation — там публикуют сами действия). **TODO:** карта snapshot/knowledge/route/combat ключей.
-
-## 6. Остаётся сделать на Уровне 0
-
-- [ ] Baseline: тесты (`D:/aiv-work/run.sh l0-base fe2ccdf4` + patchrun) — запущено, результат ниже в §7.
-- [ ] `Tools/ai-verify/compile_check.sh --baseline` (Linux-инструмент; на этой машине — `run.sh` как compile+test gate; решить, нужен ли отдельный Linux baseline).
-- [ ] Трассы по сценариям раздела 12 (характеризационные тесты на порядок: rebase vs recovery tie-break по Id, delayed flush, previous-turn waited return, cold window, лимиты).
-- [ ] Таблицы bank/cache/DRY-SRP на ключевых стрелках (§5 — каркас).
-- [ ] Сигнатуры интерфейсов уровней 1–4 (до первого implementation patch).
+- [x] Baseline тестов (§7); `compile_check.sh` (Linux) и Unity не запускались.
+- [x] Карта переходов, банк, кеши, DRY/SRP, план разделения классов, сигнатуры.
+- [x] Characterization-тесты чистых единиц (§9); цепочка `RunTurn` — только нативно (§14).
+- [ ] Нативный эталон `[AI][V2][Loop]` (владелец, Unity).
 
 ## 7. Результаты baseline
 
