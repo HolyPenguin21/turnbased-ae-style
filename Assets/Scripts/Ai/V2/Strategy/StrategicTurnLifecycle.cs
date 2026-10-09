@@ -23,7 +23,7 @@ namespace Game.Ai.V2
         internal static void ObserveInitialForce(WorldSnapshot snapshot, PlayerSetupData player,
             AiTurnContext ctx)
         {
-            bool mobilizationOpen = AttackForceReadiness.MobilizationOpen(snapshot?.Self);
+            bool mobilizationOpen = AttackForceReadiness.MobilizationOpen(snapshot.Self);
             OperationContinuationWindow.SetMobilizationOpen(player, ctx.TurnNumber, mobilizationOpen);
             if (mobilizationOpen)
                 AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {player.Nickname}: gate open, Phase A plays around "
