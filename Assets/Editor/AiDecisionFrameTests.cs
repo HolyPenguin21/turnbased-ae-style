@@ -648,57 +648,78 @@ namespace Game.EditorTests
             Assert.That(reads, Is.GreaterThan(50000));
         }
 
-        // The wiring of RunTurn needs the engine, so the points where each moment of the turn names
-        // its frame operation are fixed at the source level: this is the order of the inline
-        // refreshes / assignments of the baseline (file order), each now a named operation.
+        // The wiring needs the engine, so the points where each moment of the turn names its frame
+        // operation are fixed at the source level: per file, the order of the inline refreshes /
+        // assignments of the baseline (file order), each now a named operation. The moments live in
+        // RunTurn (start, formation, recall, end) and in the components that took the work bodies.
         [Test]
-        public void RunTurnNamesEveryMomentOfTheFrameInTheBaselineOrder()
+        public void EveryMomentOfTheFrameIsNamedInTheBaselineOrder()
         {
             string root = AiTurnLoopTests.FindScriptsRoot();
             if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
-            string file = System.IO.Directory.GetFiles(root, "AiStrategyV2Pipeline.cs",
-                System.IO.SearchOption.AllDirectories).Single();
-            string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
-                .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
-            var calls = System.Text.RegularExpressions.Regex.Matches(code, @"frame\.(\w+)\(")
-                .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value)
-                .Where(n => n != "Snapshot").ToList();
-            string[] expected =
+            string[] Calls(string fileName)
+            {
+                string file = System.IO.Directory.GetFiles(root, fileName, System.IO.SearchOption.AllDirectories).Single();
+                string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
+                    .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));
+                return System.Text.RegularExpressions.Regex.Matches(code, @"_?frame\.(\w+)\(")
+                    .Cast<System.Text.RegularExpressions.Match>().Select(m => m.Groups[1].Value)
+                    .Where(n => n != "Snapshot").ToArray();
+            }
+            Assert.That(Calls("AiStrategyV2Pipeline.cs"), Is.EqualTo(new[]
             {
                 "EnumerateObjectives", "ResolveInitialOwnership", "RebuildDemands",       // the start
                 "AcceptChangedPhaseA", "RebuildDemands",                                   // the first Phase A changed
                 "RefreshAfterFormation",                                                   // a wing was formed
                 "StartWithCredit",                                                         // the loop block begins
-                "RefreshOperationalDecision", "GenerateDemands", "ReplaceDemandFamilies",  // a re-admission
-                "AcceptChangedReentry",                                                    //   ... that changed the world
-                "ObserveSettled",                                                          // mandatory aviation step
-                "PrepareAdmission", "ObserveSettled",                                      // an admission iteration
-                "PrepareTempoOwnership", "ObserveSettled",                                 // a Phase B round
-                "PrepareColdResidual", "GenerateDemands", "AcceptChangedCold",             // the cold residual
                 "ObserveSettled",                                                          // air-support recall
                 "RefreshFinalOwnership", "AcceptHousekeeping",                             // the end of the turn
-            };
-            Assert.That(calls.Where(n => n != "Aggression").ToArray(), Is.EqualTo(expected));
+            }));
+            Assert.That(Calls("StrategicReadmissionRunner.cs"), Is.EqualTo(new[]
+            {
+                "RefreshOperationalDecision", "GenerateDemands", "ReplaceDemandFamilies", // a re-admission
+                "AcceptChangedReentry",                                                    //   ... that changed the world
+            }));
+            Assert.That(Calls("AdmissionIteration.cs"), Is.EqualTo(new[]
+            {
+                "ObserveSettled",                                                          // mandatory aviation step
+                "PrepareAdmission", "ObserveSettled",                                      // an admission iteration
+            }));
+            Assert.That(Calls("TempoRound.cs"), Is.EqualTo(new[] { "PrepareTempoOwnership", "ObserveSettled" }));
+            Assert.That(Calls("ColdResidual.cs"), Is.EqualTo(new[]
+                { "PrepareColdResidual", "GenerateDemands", "AcceptChangedCold" }));
         }
 
         // The references of the frame are assigned only inside the frame, and the work bodies of
         // RunTurn no longer own the shared locals or the freshness flag.
         [Test]
-        public void RunTurnHoldsNoSharedFrameLocalsAndAssignsNothingOfTheFrame()
+        public void NothingOutsideTheFrameAssignsItsReferencesAndRunTurnHoldsNoSharedLocals()
         {
             string root = AiTurnLoopTests.FindScriptsRoot();
             if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
-            string file = System.IO.Directory.GetFiles(root, "AiStrategyV2Pipeline.cs",
-                System.IO.SearchOption.AllDirectories).Single();
-            var code = System.IO.File.ReadLines(file)
-                .Select((l, i) => (n: i + 1, l: l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0])).ToList();
+            string dir = System.IO.Directory.GetDirectories(root, "Orchestration", System.IO.SearchOption.AllDirectories).First();
             var locals = new System.Text.RegularExpressions.Regex(
                 "reconObjectives|aggressionObjectives|activeIntents|actorCommitments|postCommitments"
                 + "|ownershipFreshAfterPhaseA|RefreshDecisionFrame|RefreshOperationalFrame");
             var assigns = new System.Text.RegularExpressions.Regex(
                 @"frame\.(Snapshot|Recon|Aggression|Intents|Commitments|Demands|PostCommitments)\s*(=[^=]|\+=)");
-            var offenders = code.Where(x => locals.IsMatch(x.l) || assigns.IsMatch(x.l))
-                .Select(x => file.Substring(file.LastIndexOfAny(new[] { '/', '\\' }) + 1) + ":" + x.n + ": " + x.l.Trim()).ToList();
+            var offenders = new List<string>();
+            foreach (string file in System.IO.Directory.GetFiles(dir, "*.cs", System.IO.SearchOption.AllDirectories))
+            {
+                string name = System.IO.Path.GetFileName(file);
+                if (name == "DecisionFrame.cs")
+                    continue;
+                int n = 0;
+                foreach (string line in System.IO.File.ReadLines(file))
+                {
+                    n++;
+                    string code = line.Split(new[] { "//" }, 2, StringSplitOptions.None)[0];
+                    // the shared locals are only forbidden in RunTurn itself (other types name parameters freely)
+                    bool runTurn = name == "AiStrategyV2Pipeline.cs";
+                    if ((runTurn && locals.IsMatch(code)) || assigns.IsMatch(code))
+                        offenders.Add(name + ":" + n + ": " + code.Trim());
+                }
+            }
             Assert.That(offenders, Is.Empty, string.Join(Environment.NewLine, offenders));
         }
     }

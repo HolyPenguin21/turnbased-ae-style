@@ -179,23 +179,43 @@ namespace Game.Ai.V2
             : current;
     }
 
-    // The existing work bodies of the turn, owned by Pipeline.RunTurn. The loop only orders them.
-    internal struct TurnLoopWork
+    // The works the loop orders. Each is a component with explicit dependencies (AdmissionIteration,
+    // TempoRound, ColdResidual); the loop only decides which one runs next and applies their outcomes.
+    // The interfaces exist so the loop can be driven by scripted works in tests.
+    internal interface IAdmissionWork
     {
-        // Pass-scoped resets that live with the admission body (retry set, frame-pacing clock).
-        internal Action OpenPass;
+        // Pass-scoped resets (the parking of rejected jobs, the frame-pacing clock).
+        void OpenPass();
         // One admission iteration: reads the view, reports its ending in the outcome.
-        internal Func<TurnLoopView, AdmissionIterationOutcome, IEnumerator> Iteration;
+        IEnumerator Iteration(TurnLoopView view, AdmissionIterationOutcome outcome);
         // The deferred-axes force admission that ends every pass.
-        internal Func<IEnumerator> TerminalForce;
+        IEnumerator TerminalForce();
+    }
+
+    internal interface ITempoWork
+    {
         // The settlement window before the first Phase B round (income cover, continuation window).
-        internal Action FirstPhaseBSettle;
-        // One Phase B round (its index, outcome).
-        internal Func<int, Action<TempoRoundOutcome>, IEnumerator> TempoRound;
+        void SettleBeforeFirstRound();
+        // One Phase B round: its index; the outcome goes to the sink.
+        IEnumerator Round(int index, TempoRoundSink sink);
+    }
+
+    internal interface IColdWork
+    {
         // Number of zero-Radar axes (read when the cold stage is reached).
-        internal Func<int> ColdAxisCount;
-        // The cold residual body; reports whether it changed state.
-        internal Func<Action<bool>, IEnumerator> Cold;
+        int AxisCount();
+        // The cold residual body; the sink says whether it changed state.
+        IEnumerator Run(ColdSink sink);
+    }
+
+    internal sealed class TempoRoundSink
+    {
+        internal TempoRoundOutcome Outcome;
+    }
+
+    internal sealed class ColdSink
+    {
+        internal bool Changed;
     }
 
     // ===========================================================================================
@@ -220,9 +240,9 @@ namespace Game.Ai.V2
         internal static bool ColdEligible(TurnLoopState s, int coldAxisCount) =>
             s.ResidualWindow && coldAxisCount > 0 && s.WithinStepBounds;
 
-        internal static IEnumerator Run(TurnLoopState s, TurnLoopWork work)
+        internal static IEnumerator Run(TurnLoopState s, IAdmissionWork admission, ITempoWork tempo, IColdWork cold)
         {
-            OpenPass(s, work, AdmissionCause.Initial);
+            OpenPass(s, admission, AdmissionCause.Initial);
             while (true)
             {
                 switch (Phase(s))
@@ -230,23 +250,24 @@ namespace Game.Ai.V2
                     case TurnPhase.Ordinary:
                     {
                         var outcome = new AdmissionIterationOutcome();
-                        yield return work.Iteration(new TurnLoopView(s), outcome);
+                        yield return admission.Iteration(new TurnLoopView(s), outcome);
                         ApplyIterationOutcome(s, outcome);
                         if (outcome.StopPass)
-                            yield return ClosePass(s, work);
+                            yield return ClosePass(s, admission);
                         break;
                     }
                     case TurnPhase.CloseOrdinary:
-                        yield return ClosePass(s, work);
+                        yield return ClosePass(s, admission);
                         break;
                     case TurnPhase.Tempo:
                     {
                         // First Phase B: continuing Hard operations and deferred builds had their
                         // chance in the first pass; settle what they keep before Phase B spends.
                         if (s.PhaseBRounds == 0)
-                            work.FirstPhaseBSettle();
-                        TempoRoundOutcome round = default;
-                        yield return work.TempoRound(s.PhaseBRounds, o => round = o);
+                            tempo.SettleBeforeFirstRound();
+                        var roundSink = new TempoRoundSink();
+                        yield return tempo.Round(s.PhaseBRounds, roundSink);
+                        TempoRoundOutcome round = roundSink.Outcome;
                         // Phase B has spent first; return legs now take what is left.
                         bool releaseReturnsNow = s.PhaseBRounds == 0 && s.ReturnsDeferred;
                         s.PhaseBRounds++;
@@ -257,18 +278,18 @@ namespace Game.Ai.V2
                         if (verdict.Cause == AdmissionCause.ReturnsReleased)
                             AiDebugLog.Write("[AI][V2][Loop] lifecycle returns released after the tempo pass");
                         if (verdict.Cause != AdmissionCause.None)
-                            OpenPass(s, work, verdict.Cause);
+                            OpenPass(s, admission, verdict.Cause);
                         if (verdict.Closed)
                             s.Stage = TurnStage.Cold;
                         break;
                     }
                     case TurnPhase.Cold:
-                        if (ColdEligible(s, work.ColdAxisCount()))
+                        if (ColdEligible(s, cold.AxisCount()))
                         {
-                            bool changed = false;
-                            yield return work.Cold(v => changed = v);
-                            if (changed)
-                                OpenPass(s, work, AdmissionCause.ColdChanged);
+                            var coldSink = new ColdSink();
+                            yield return cold.Run(coldSink);
+                            if (coldSink.Changed)
+                                OpenPass(s, admission, AdmissionCause.ColdChanged);
                         }
                         s.Stage = TurnStage.Done;
                         break;
@@ -289,17 +310,17 @@ namespace Game.Ai.V2
                 s.ReturnsDeferred = true;
         }
 
-        private static void OpenPass(TurnLoopState s, TurnLoopWork work, AdmissionCause cause)
+        private static void OpenPass(TurnLoopState s, IAdmissionWork admission, AdmissionCause cause)
         {
             s.ResidualWindow = false;
             s.PassOpen = true;
             s.PassCause = cause;
             AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
             AiDebugLog.Write($"[AI][V2][Loop] admission pass opened — cause={cause}");
-            work.OpenPass();
+            admission.OpenPass();
         }
 
-        private static IEnumerator ClosePass(TurnLoopState s, TurnLoopWork work)
+        private static IEnumerator ClosePass(TurnLoopState s, IAdmissionWork admission)
         {
             if (s.SettledSteps >= AiConfigV2.maxMidTurnStepsPerTurn)
                 AiDebugLog.Write($"[AI][V2][Loop] bounded stop — max steps "
@@ -308,7 +329,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                     + $"{s.NoProgressCycles}");
             // Axes still waiting for aviation must not be lost when the pass ends first.
-            yield return work.TerminalForce();
+            yield return admission.TerminalForce();
             s.PassOpen = false;
         }
     }

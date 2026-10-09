@@ -214,9 +214,14 @@ iterations while `maxMidTurnStepsPerTurn` / `maxMidTurnNoProgressCycles` hold, c
 terminal force admission, then runs the Phase B rounds (first round preceded by the settle window,
 at most `maxEndOfTurnTempoReruns + 1`) and the zero-Radar residual once. An open pass always runs
 before the next round or the cold stage. `TurnLoopState` holds the control counters;
-`TempoRoundVerdict` decides what follows a round. The work bodies (admission iteration with
-mandatory aviation / mission selection, provisioning retry, execution, Phase B round, cold
-residual) stay in `Pipeline.RunTurn` with their own observation/settle order;
+`TempoRoundVerdict` decides what follows a round. The work bodies are components with explicit
+dependencies, ordered through narrow interfaces: `AdmissionIteration` (`IAdmissionWork`: one iteration with
+mandatory aviation / mission selection, provisioning, execution, and the terminal force admission),
+`TempoRound` (`ITempoWork`: the bank settlement before the first round and a Phase B round) and
+`ColdResidual` (`IColdWork`). Typed re-admission is `StrategicReadmissionRunner`; the settled-step trigger
+sequence (`StepTriggerSequence`) talks to the session, the `DecisionFrame` and the runner directly. Each
+work keeps its own observation/settle order. `Pipeline.RunTurn` assembles them: start of the turn, the
+loop, recall, final ownership, `SettleAfterTurn`, Housekeeping, audit and cleanup.
 `RecallUnsafeStrikes`, Housekeeping and Reaction stay outside the loop (the loop, not `RunTurn`: Reaction
 runs inside `RunTurn`, from Housekeeping, followed by one bounded Phase B rerun).
 `TurnLoop` is the single owner of the *transitions*; it is not yet the single *writer* of every field of

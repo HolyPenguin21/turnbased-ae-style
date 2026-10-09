@@ -329,7 +329,7 @@ namespace Game.EditorTests
         {
             string root = AiTurnLoopTests.FindScriptsRoot();
             if (root == null) Assert.Ignore("Assets/Scripts not found from the working directory");
-            string file = System.IO.Directory.GetFiles(root, "AiStrategyV2Pipeline.cs",
+            string file = System.IO.Directory.GetFiles(root, "AdmissionIteration.cs",
                 System.IO.SearchOption.AllDirectories).Single();
             string code = string.Join(Environment.NewLine, System.IO.File.ReadLines(file)
                 .Select(l => l.Split(new[] { "//" }, 2, StringSplitOptions.None)[0]));

@@ -189,22 +189,28 @@ namespace Game.EditorTests
             private static int B(bool v) => v ? 1 : 0;
         }
 
+        // The scripted works as the three components the loop orders (the interfaces exist for this).
+        private sealed class WorksAdapter : IAdmissionWork, ITempoWork, IColdWork
+        {
+            private readonly Works _w;
+            internal WorksAdapter(Works w) { _w = w; }
+            public void OpenPass() => _w.OpenPass();
+            public IEnumerator Iteration(TurnLoopView view, AdmissionIterationOutcome outcome) => _w.IterationOutcome(view, outcome);
+            public IEnumerator TerminalForce() => _w.TerminalForce();
+            public void SettleBeforeFirstRound() => _w.FirstPhaseBSettle();
+            public IEnumerator Round(int index, TempoRoundSink sink) => _w.TempoRound(index, o => sink.Outcome = o);
+            public int AxisCount() => _w.ColdAxisCount();
+            public IEnumerator Run(ColdSink sink) => _w.Cold(v => sink.Changed = v);
+        }
+
         // ---- The new loop -------------------------------------------------------------------
 
         private static List<string> RunNew(Scenario sc)
         {
             var st = new TurnLoopState { SettledSteps = sc.StartSettled, NoProgressCycles = sc.StartNoProgress };
             var w = new Works(sc, st, () => st.ReturnsMayWait, () => st.PassCause);
-            Drain(TurnLoop.Run(st, new TurnLoopWork
-            {
-                OpenPass = w.OpenPass,
-                Iteration = w.IterationOutcome,
-                TerminalForce = w.TerminalForce,
-                FirstPhaseBSettle = w.FirstPhaseBSettle,
-                TempoRound = w.TempoRound,
-                ColdAxisCount = w.ColdAxisCount,
-                Cold = w.Cold,
-            }));
+            var adapter = new WorksAdapter(w);
+            Drain(TurnLoop.Run(st, adapter, adapter, adapter));
             w.End();
             return w.Trace;
         }

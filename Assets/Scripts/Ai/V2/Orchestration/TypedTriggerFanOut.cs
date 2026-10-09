@@ -34,6 +34,12 @@ namespace Game.Ai.V2
         // fingerprint drops re-entries whose inputs did not change).
         // economyBuilderReady is asked only when Economy's sole reason is Actor movement: it is
         // actionable then only if continuity's committed builder reached its build hex.
+        // The production form: Continuity answers "has the committed builder reached its build hex",
+        // asked only when Economy's sole reason is Actor movement (so the answer is as lazy as before).
+        internal static TypedTriggerSplit Split(StrategicInvalidationReason pending,
+            IReadOnlyList<MissionIntent> intents, WorldSnapshot snapshot) =>
+            Split(pending, () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(intents, snapshot));
+
         internal static TypedTriggerSplit Split(StrategicInvalidationReason pending,
             Func<bool> economyBuilderReady)
         {

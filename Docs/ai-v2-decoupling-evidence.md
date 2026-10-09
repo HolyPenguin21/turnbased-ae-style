@@ -502,3 +502,107 @@ Managed (`e4-a-p`): 2162 теста, 1687 прошло, 475 упало, регр
 ### Итог проверок после доработки
 
 Managed (`e5fix-a-p`): 2176 тестов, 1700 прошло, 475 упало; регрессий 0 относительно исходного baseline `717871b8` (1649 → 1700, +51) и относительно первой версии Э5 (+2); 1 Inconclusive (реальный `ResolveActive`). Compile 28 = 28. Банковские трассы `S1/S4/S9` идентичны золотым. Матрица: 203 связи, `Orchestration` 122 типа, `Pipeline` 71.
+
+# Э6 — тела работ как компоненты
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Вход этапа — `e1bc54f5`.
+
+## Что изменено
+
+| Файл | Изменение |
+|---|---|
+| `Orchestration/StrategicReadmissionRunner.cs` (новый) | протокол повторного допуска (был `ReenterStrategicAxes`): ворота `StrategicReadmission`, обновление решения кадром, перегенерация грязных семейств, Phase A, публикация дельты, `Commit`; `Key(axis)` (прямой вызов `StrategicAdmissionFingerprints.For` на текущем кадре), `SeedKeys`, `DemandIdentityDigest`; результат — `ReadmissionOutcome`; интерфейс `IStrategicReadmission` (только для тестов) |
+| `Orchestration/AdmissionIteration.cs` (новый, `IAdmissionWork`) | итерация допуска, шаг обязательной авиации, `OpenPass` (парковка и пейсинг кадров), `TerminalForce` |
+| `Orchestration/TempoRound.cs` (новый, `ITempoWork`) | расчёт банка перед первым раундом и раунд Phase B |
+| `Orchestration/ColdResidual.cs` (новый, `IColdWork`) | cold-остаток (оси с нулевым Radar) |
+| `Orchestration/TurnPhaseState.cs` (новый) | `PhaseResults` (результаты Phase A/B, `Carried` читается в момент использования) и `TurnTelemetry` (то, что итерации накапливают для сводки хода) — явное состояние вместо переменных-замыканий |
+| `Orchestration/TurnLoop.cs` | `TurnLoopWork` (7 делегатов) заменён тремя узкими интерфейсами; результаты работ — одноразовые sink-объекты (`TempoRoundSink`, `ColdSink`) |
+| `Orchestration/StepTriggerSequence.cs` | форма для production: `Run(pairs, session, frame, readmission, sink)` — сессия, кадр и компонент допуска напрямую; делегатное ядро осталось (его гоняют тесты) |
+| `Orchestration/TypedTriggerFanOut.cs` | `Split(pending, intents, snapshot)`: готовность строителя спрашивается у Continuity лениво внутри, без замыкания `RunTurn` |
+| `Orchestration/AiStrategyV2Pipeline.cs` | остались: старт, сборка компонентов, `TurnLoop.Run`, recall, итоговое владение, `SettleAfterTurn`, Housekeeping, аудит, cleanup |
+| `Assets/Editor/AiTurnWorkIntegrationTests.cs` (новый), `AiTurnLoopTests`, `AiDecisionFrameTests`, `AiMissionPortfolioTests` | 9 новых тестов; существующие переведены на компоненты и новые файлы |
+
+Новый класс сверх перечня ТЗ — `TurnPhaseState.cs` (`PhaseResults`, `TurnTelemetry`): ТЗ требует «явные constructor dependencies … telemetry accumulator, phase results»; без него пришлось бы передавать `RunTurn`-переменные делегатами. `StrategicReadmission`, `StrategicAdmissionFingerprints`, `Development/Aggression/EconomyAdmission` не менялись — ТЗ оставляет их владельцами ключей (доменная связанность Orchestration, не заявлена как устранённая).
+
+## Объём
+
+`AiStrategyV2Pipeline.cs`: **1224 строки** (`717871b8`) → 439. В `RunTurn` нет локальных функций (было 14; 27 выражений `=>` на входе Э4); остались два обычных callback исполнителей (`formedWing`, `recallChanged`), которые ТЗ не относит к метрике.
+
+## Сверка с требованиями Э6
+
+| Требование ТЗ | Результат |
+|---|---|
+| Каждая корутина — компонент с явными зависимостями, без `TurnContext` со всеми сервисами | `TheComponentsTakeTheirDependenciesAsPlainConstructorParametersNotCallbacks` (в конструкторах и полях нет делегатов) |
+| Список семи closures и функции pending/key/reenter исчезают | `TurnLoopWork` удалён; `TheLoopOrdersThreeWorksThroughNarrowInterfaces` |
+| Нет ссылок компонентов на `RunTurn`/`Pipeline`, нет writable доступа к состоянию цикла | `TheComponentsDoNotReachBackIntoRunTurnAndRunTurnHoldsNoWorkBodies` (скан: нет `Pipeline.`, `TurnLoopState`, `TurnLoopWork`; нет локальных функций в `RunTurn`) |
+| Результаты `reentryStateChanged`/`stepTriggers` — outcome текущего вызова, не общий `LastResult` | `ReadmissionOutcome` на вызов (в `StepTriggerSequence` — новый на каждую пару); `StepTriggerSink` на вызов |
+| `Gate/pending/fingerprint` лениво; fingerprint — после refresh, до `Generate`; `Commit` входного ключа | тело перенесено без изменений (текстовый diff ниже) |
+| Pending snapshot consumed до reentry; новые факты не стираются consume старого | `TheSequenceFansOutOneSnapshotConsumesOnlyItAndTheSecondPairSeesTheCompoundFact` на **реальной** `AiTurnSession`: 2 пары — факт первого reentry попадает во вторую и потребляется; 1 пара (rebase) — остаётся pending |
+| Готовность строителя — предметный ответ Continuity, лениво | `TheBuilderReadinessIsAskedOfContinuityOnTheCurrentFrameAndOnlyForAnActorOnlyEconomyFact` (реальный `EconomyBuilderReadyForCompletion`, строитель на/вне клетки) |
+| Компоненты читают актуальный view после каждой операции кадра | все чтения — `_frame.X` в момент использования (текстовый diff: чтения по-прежнему идут через кадр) |
+| Carried reservation читается в момент использования | `TheCarriedReservationIsReadAtEveryUseNeverCached` |
+| `RunTurn` оставляет старт/сборку/цикл/recall/final ownership/`SettleAfterTurn`/Housekeeping/аудит/cleanup; Reaction не переносится за `CompleteReservations` | порядок хвоста не менялся (diff) |
+| Нет plug-and-play обещаний | порядок работ остаётся ответственностью `TurnLoop` |
+
+## Эквивалентность перенесённых тел
+
+Тела перенесены построчно скриптом, затем сверены текстовым diff с прежними локальными функциями (после обратного переименования полей и без отступов/комментариев). Расхождения — только ожидаемые:
+
+| Тело | Строк (было/стало) | Различающиеся строки |
+|---|---|---|
+| повторный допуск | 67 / 67 | сигнатура и `outcome.StateChanged` вместо `reentryStateChanged`; `Key` вместо `AdmissionKey`; `phases.Carried`/`phases.PhaseA` вместо `CarriedReservation()`/`phaseA` |
+| шаг обязательной авиации | 24 / 26 | сигнатура; вызов `StepTriggerSequence.Run(…, triggers)` и локаль `stepTriggers` вместо `ResolveStepTriggers` |
+| итерация допуска | 142 / 149 | локали `missions`/`allocation` + запись в `telemetry`; `runner.Run` вместо `ReenterStrategicAxes`; поля телеметрии вместо переменных `RunTurn` |
+| раунд Phase B | 28 / 30 | сигнатура и sink; `phases.*`; вызов последовательности триггеров |
+| cold | 40 / 40 | сигнатура и sink; `_coldAxes`; `phases.*` |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e6-a-p`) | 2185 тестов, 1709 прошло, 475 упало; регрессий 0 относительно исходного baseline `717871b8` (1649 → 1709, +60) и относительно Э5 (один тест порядка вызовов кадра переименован под файлы компонентов — `EveryMomentOfTheFrameIsNamedInTheBaselineOrder`; в сравнении с Э5 он показан как «пропал»; в исходном baseline его не было) |
+| Мутации | 5 из 5 пойманы: нет `ConsumeInvalidations`; результат повторного допуска теряется; `Carried` без Phase B; `using` сессии провижининга снят; готовность строителя всегда «да» |
+| Compile | 28 = 28, новых 0 |
+| Матрица зависимостей | 203 связи, `Orchestration` целиком 122 → 122 (типы переехали из `Pipeline` в компоненты той же папки). `Pipeline`: 13 → **10 папок**, 71 → **41** тип (ушли `Allocation`, `Execution`, `Provisioning`, `Missions`, `Continuity` по типам и др.). Межслойная связность этапом не уменьшена (ТЗ это предупреждало); уменьшено знание `RunTurn` о телах работ |
+| Банковские трассы | `golden/S1_bank`, `S4_bank`, `S9_bank`, `E5_frame_bank` на коде Э6 идентичны золотым |
+
+## Перепроверка: реализация снизу вверх
+
+1. Контракты (`PhaseResults`, `TurnTelemetry`, sink-и) — данные, не владеют резервами и не пишут состояние цикла.
+2. `StrategicReadmissionRunner` — тело идентично прежнему (diff), результат через outcome.
+3. `StepTriggerSequence` — production-форма обёрнута вокруг прежнего ядра; тест на реальной сессии подтверждает pairs rebase 1 / остальные 2 и consume только снятого снимка.
+4. Компоненты — построчный перенос; `using` сессии провижининга остался (скан), парковка пересоздаётся только в `OpenPass` (скан).
+5. `TurnLoop` — только интерфейсы; 20 000 сценариев транскрипции проходят через адаптер.
+6. `RunTurn` — только сборка и хвост; нет локальных функций.
+
+## Перепроверка: резервирование ресурсов через банк
+
+- Этап не добавляет и не переносит ни одной операции с резервами: перенесённые тела вызывают те же `StrategicManager.*`, `ProvisionNext`, `SettleStep`, `AfterMissionSettlement` с теми же аргументами в том же порядке (текстовый diff).
+- Sink-и и `TurnTelemetry` не владеют резервами; `PhaseResults.Carried` не кеширует reservation.
+- Жизненный цикл `ProvisioningSession` не сокращён: `using` на всю итерацию сохранён (скан); при отмене корутины он освобождается так же.
+- Банковские трассы S1/S4/S9 и `E5_frame_bank` (реальный путь retire через кадр) идентичны золотым.
+- Не проверено без движка: порядок строк при rollback канонической операции, Phase B после Reaction, совместные Economy + Attack preparation + Reaction (S8) — Unity-fixtures.
+
+## Перепроверка: кеширование на чтение и запись
+
+| Состояние | Писатель | Читатель | Область | Проверка |
+|---|---|---|---|---|
+| Ссылки кадра | `DecisionFrame` | компоненты через `_frame.X` в момент использования | ход | скан (нет присваиваний вне кадра), diff (чтения не кешируются в полях компонентов) |
+| Pending-факты | `StrategicInterruptRegistry` через `AiTurnSession` | `StepTriggerSequence.Run` (снимок → fan-out → consume снятого) | ход | интеграционный тест на реальной сессии |
+| Парковка прохода | `PassParking` в `AdmissionIteration` | фильтр следующего допуска | проход | создаётся в `OpenPass` (скан) |
+| Кредит свежести | `DecisionFrame` | `PrepareAdmission` | ход | не менялся (Э5, дифференциальный тест) |
+| Телеметрия хода | `AdmissionIteration` (`TurnTelemetry`) | `RunTurn` после цикла | ход | ключи funded считаются один раз; `Missions`/`Allocation` обновляются сразу после присваивания в итерации (как переменные `RunTurn`) |
+| Carried reservation | владельцы Phase A/B | `TempoRound`, `ColdResidual`, runner | вызов | читается через `PhaseResults.Carried` |
+| `ColdResidual._coldAxes` | `AxisCount()` (когда цикл достиг cold) | `Run` | cold-стадия | пересчитывается от Radar в момент достижения (`TheColdAxesAreTheZeroRadarAxesOfTheTurn`) |
+| Estimate-кеши, `KnowledgeVersion`, WorldDelta | не затронуты | — | — | этап их не менял |
+
+## Не выполнено
+
+- `AdmissionIteration.OpenPass` (использует `UnityEngine.Time`) и `TempoRound.SettleBeforeFirstRound` (реальные `PlayerRoot`) в managed-прогоне не исполняются; их поведение — Unity.
+- Сценарии S6 (Phase B меняет руку без operational trigger, потерянный второй reentry на реальном мире) и S7 (cold с изменением мира) — Unity-fixtures; логика цикла и последовательности триггеров покрыта транскрипцией и интеграционным тестом.
+- `StrategicReadmission` и ключи допуска остаются в Orchestration (по ТЗ); перенос policy owners в Strategy — отдельное расширение.
+- Unity EditMode/PlayMode, нативная партия — не выполнялись.
+
+## Цена изменения (до / после)
+
+Новый тип работы уровня хода: раньше — enum / `Phase` / ветка / делегат в `TurnLoopWork` / closure в `RunTurn` / проводка; теперь — enum / `Phase` / ветка / интерфейс работы и компонент с явными зависимостями, собираемый в `RunTurn` (одна строка). Новый тип факта: producer → typed reason mapping → доменный consumer; тела работ неизменны при прежних границах. Новое доменное последствие на прежнем событии — у своего владельца (Strategy / Continuity / Recon); компоненты порядка работ не меняются.
