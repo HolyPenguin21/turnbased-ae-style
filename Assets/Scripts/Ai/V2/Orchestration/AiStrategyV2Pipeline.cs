@@ -312,17 +312,13 @@ namespace Game.Ai.V2
                 // opportunity). Snapshot the aggregate once, derive every affected family, and
                 // only then consume the shared reasons so family order cannot erase a sibling's
                 // trigger.
-                void TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
-                    out StrategicInvalidationReason strategicReasons,
-                    out HashSet<DesireAxis> dirtyStrategicAxes)
+                TypedTriggerSplit TakeTypedSplit()
                 {
                     TypedTriggerSplit split = TypedTriggerFanOut.Split(
                         turnSession.PendingInvalidations.Reasons,
                         () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(activeIntents, snapshot));
-                    operationalReasons = split.Operational;
-                    strategicReasons = split.Strategic;
-                    dirtyStrategicAxes = split.DirtyAxes;
                     turnSession.ConsumeInvalidations(split.Consumed);
+                    return split;
                 }
 
                 // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
@@ -432,23 +428,10 @@ namespace Game.Ai.V2
                 // baseline behaviour per work kind and stays until the single trigger protocol
                 // (level 3). The result is a transient value (an iterator cannot return one).
                 StepTriggerOutcome stepTriggers = default;
-                IEnumerator ResolveStepTriggers(int pairs)
-                {
-                    StrategicInvalidationReason operationalReasons = StrategicInvalidationReason.None;
-                    StrategicInvalidationReason strategicReasons = StrategicInvalidationReason.None;
-                    bool strategicChanged = false;
-                    for (int pair = 0; pair < pairs; pair++)
-                    {
-                        TakeTypedTriggers(out StrategicInvalidationReason pairOperational,
-                            out StrategicInvalidationReason pairStrategic,
-                            out HashSet<DesireAxis> pairDirtyAxes);
-                        yield return ReenterStrategicAxes(ReadmissionCause.Trigger, pairStrategic, pairDirtyAxes);
-                        strategicChanged |= reentryStateChanged;
-                        operationalReasons |= pairOperational;
-                        strategicReasons |= pairStrategic;
-                    }
-                    stepTriggers = new StepTriggerOutcome(operationalReasons, strategicReasons, strategicChanged);
-                }
+                IEnumerator ResolveStepTriggers(int pairs) =>
+                    StepTriggerSequence.Run(pairs, TakeTypedSplit,
+                        (reasons, axes) => ReenterStrategicAxes(ReadmissionCause.Trigger, reasons, axes),
+                        () => reentryStateChanged, outcome => stepTriggers = outcome);
 
                 // A mandatory aviation obligation as a work step. Execution stays with the existing
                 // owners (MandatoryAviationStep). No ledger, Settle or observer boundary: the
@@ -817,7 +800,7 @@ namespace Game.Ai.V2
                     // Snapshot, mission ledger and reservation reconciliation now all describe
                     // the completed command; inspection never sees a half-settled action.
                     yield return ctx.WaitAtObserverActionBoundary();
-                    yield return ResolveStepTriggers(StepTriggerOutcome.StandardTriggerPairs);
+                    yield return ResolveStepTriggers(StepTriggerSequence.StandardPairs);
                     StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
                     StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
                     bool strategicChanged = stepTriggers.StrategicChanged;
@@ -909,7 +892,7 @@ namespace Game.Ai.V2
 
                     // Phase B reentry can itself publish a compound invalidation: the second pair
                     // preserves its full typed fan-out before it is acknowledged.
-                    yield return ResolveStepTriggers(StepTriggerOutcome.StandardTriggerPairs);
+                    yield return ResolveStepTriggers(StepTriggerSequence.StandardPairs);
                     StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
                     StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
                     bool operationalDirty = operationalReasons != StrategicInvalidationReason.None;

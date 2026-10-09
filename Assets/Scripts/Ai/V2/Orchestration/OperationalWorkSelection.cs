@@ -47,10 +47,6 @@ namespace Game.Ai.V2
         // The step made progress when its action changed the world or the re-admission did.
         internal bool Progressed(bool actionChanged) => actionChanged || StrategicChanged;
 
-        // Baseline: an ordinary mission step and a Phase B management round take the typed triggers and re-enters twice (the
-        // follow-up pair routes a compound fact published by the first re-entry).
-        internal const int StandardTriggerPairs = 2;
-
         // The no-progress counter: any progress resets it.
         internal static int NextNoProgress(int current, bool progressed) => progressed ? 0 : current + 1;
     }

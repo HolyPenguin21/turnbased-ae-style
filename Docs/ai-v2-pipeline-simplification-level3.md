@@ -13,8 +13,9 @@
 | `Orchestration/EconomyAdmission.cs` (новый, 131) | Ключ Economy (был inline в `RunTurn`, ~85 строк) и `RelevantArmyIds` (был в `Pipeline`) — перенос без изменений |
 | `Orchestration/DevelopmentAdmission.cs`, `AggressionAdmission.cs` | Были `partial`-файлами `Pipeline`; стали настоящими классами (`git mv`, `.meta`/GUID сохранены). Тела и состав ключей не менялись |
 | `Orchestration/AiStrategyV2Pipeline.cs` (1457 → 1278) | `ReenterStrategicAxes(cause, reasons, axes)` вместо `flush`/`force`; `Decide` вместо inline-ворот/слияния отложенных/фильтра неизменных ключей; management-раунд использует общий `ResolveStepTriggers`; шесть копий «Warm → Frame → 4 присваивания» → `RefreshDecisionFrame` |
-| `Orchestration/OperationalWorkSelection.cs` | `MissionTriggerPairs` → `StandardTriggerPairs` (теперь общая для шага миссии и management-раунда) |
-| Тесты | `AiStrategicReadmissionTests` (9), `AiEconomyAdmissionFingerprintTests` (8); ссылки существующих тестов переведены на новые классы (`Pipeline.X` → `DevelopmentAdmission.X` и т. п.) |
+| `Orchestration/StepTriggerSequence.cs` (новый) | Последовательность «take → reenter» × N с именованными константами `StandardPairs = 2` и `RebasePairs = 1` и объяснением различия; `ResolveStepTriggers` в `RunTurn` — тонкая обёртка; `TakeTypedTriggers(out …)` заменён на `TakeTypedSplit()` |
+| `Orchestration/OperationalWorkSelection.cs` | константа числа пар переехала в `StepTriggerSequence` |
+| Тесты | `AiStrategicReadmissionTests` (9), `AiEconomyAdmissionFingerprintTests` (8), `AiStepTriggerSequenceTests` (7); ссылки существующих тестов переведены на новые классы (`Pipeline.X` → `DevelopmentAdmission.X` и т. п.) |
 | `ARCHITECTURE.md` | строка про mid-turn re-admission описывает новых владельцев |
 
 ## 2. Все входы в повторный допуск (ТЗ §9, п. 1)
@@ -119,10 +120,10 @@ flowchart TD
 
 | Проверка | Результат |
 |---|---|
-| `compile_check.sh` (baseline `fe2ccdf4`: 28) на `8df4344b` | **passed**: 28 = 28, новых 0 |
-| `run.sh l3-b` | build errors 0; 2103 теста, 1428 прошло до патча Unity-null |
-| `patchrun.sh l3-b l3-b-p` | **1629 прошло**, 474 упало |
-| `regress.py l2-c-p l3-b-p` | **регрессий 0**, новых проходящих 16 |
+| `compile_check.sh` (baseline `fe2ccdf4`: 28) на коде Уровня 3 | **passed**: 28 = 28, новых 0 |
+| `run.sh l3-c` | build errors 0; 2110 тестов, 1435 прошло до патча Unity-null |
+| `patchrun.sh l3-c l3-c-p` (после `StepTriggerSequence`) | **1636 прошло**, 474 упало |
+| `regress.py l2-c-p l3-c-p` | **регрессий 0**, новых проходящих 23 |
 | 474 упавших | 472 прежних engine-bound + `MandatoryRebase_…` (Ур. 2) + `TheDispatcherRoutesEachAxis…` (читает `root == null`, Unity-object; выполнить в Unity) |
 | `test_regress.sh <sha>` | **not run** (нужен `mono` в PATH; использован эквивалент) |
 | Unity compile / EditMode / PlayMode | **not run** |
@@ -145,7 +146,7 @@ flowchart TD
 
 ## 10. Ограничения и зависимости
 
-1. **Решение владельца (не принято мной):** rebase по-прежнему делает 1 пару take→reenter, остальные — 2. Вторая пара для rebase безвредна, когда reentry не публикует новых фактов (take пуст → `Skip`), но при составном факте это изменит момент их обработки; baseline-прохода «лишним» я не доказал, а путь rebase нативно не наблюдался, поэтому различие оставлено и вынесено в одну константу (`TriggerPairs`). Если нужна унификация до 2 пар — это отдельная правка одной строки с нативной проверкой.
+1. **Решение владельца (принято):** rebase остаётся с одной парой take→reenter, остальные пути — с двумя; унификацию не делать. Различие названо и объяснено рядом с константами (`StepTriggerSequence.RebasePairs` / `StandardPairs`), см. §11.
 2. Критерий progress (action ∨ strategicChanged) уже единый по форме; источник «действие изменило мир» различается по виду работы — доменное свойство.
 3. Cold branch, фазы Phase B и operational loop остаются раздельными — Уровень 4.
 4. Engine-bound тесты (`MandatoryRebase_…`, `TheDispatcherRoutesEachAxis…`) выполнить в Unity EditMode.
@@ -153,3 +154,24 @@ flowchart TD
 6. Уровень 4 опирается на: `StrategicReadmission` (допуск как событие), `ResolveStepTriggers`, `RefreshDecisionFrame`, `OperationalWorkSelection`.
 
 Масштаб: изменение архитектуры оркестрации допуска (поведение, ключи, порядок и тексты сохранены).
+
+## 11. Две последовательности take→reenter: rebase (1 пара) и остальные (2 пары)
+
+Решение владельца: baseline сохраняется. Объяснение живёт рядом с константами в `StepTriggerSequence.cs`; ниже — его проверка.
+
+**Что происходит при составном факте, который публикует первый reentry** (например, материализация Raid-подкрепления меняет Actor + Capability):
+
+| | 2 пары (миссия, recovery, management) | 1 пара (rebase) |
+|---|---|---|
+| Кто получает факт | при второй паре — `TypedTriggerFanOut.Split` отдаёт его **всем** потребителям по маскам (Aggression по Actor, плюс остальные оси и операционные семейства по своим маскам) | те же потребители, по тем же маскам |
+| Когда обрабатывается | в том же шаге (второй `reenter`) | при **следующем** take: первой паре следующего рабочего шага либо management-раунду |
+| Почему не теряется после consume | `Consume` удаляет только причины переданного snapshot; факт, опубликованный позже, остаётся в `StrategicInterruptRegistry` | то же; для rebase он просто остаётся ждать |
+| Что ограничено | третьей пары нет: факт, опубликованный вторым reentry, ждёт следующей ограниченной итерации | — |
+
+Тесты (`AiStepTriggerSequenceTests`, проходят в managed-прогоне, на реальных `StepTriggerSequence.Run`, `TypedTriggerFanOut` и `StrategicInterruptRegistry`): две пары передают составной факт всем потребителям в том же шаге; одна пара оставляет его в pending, а следующий take отдаёт ровно тем же потребителям; обе последовательности обслуживают одних и тех же потребителей, различается только момент; без нового факта исходы обеих последовательностей совпадают; факт последнего reentry не поглощается; первый consume не трогает то, что ему не дали.
+
+**Банк.** Различие существенно именно тут. Второй reentry — это `FulfillDemands`, то есть возможная трата AP/карт/построек. При 2 парах эта трата происходит до следующего рабочего шага; при 1 паре — после него (на следующем take), поэтому следующая миссия может успеть потратить AP раньше. Это и есть изменение порядка решений, из-за которого rebase не унифицирован. Дублирования и потери резервов нет ни в одном варианте: факт потребляется один раз; `Reservation` (`phaseB.Reservation ?? phaseA.Reservation`) один и тот же объект; пересчёт completion/deferred внутри `StrategicPhaseA` не вызывается дважды; отложенные оси (`Deferred`) не теряются. Пока другое авиационное обязательство ещё pending, первый reentry откладывает (`Defer`) — тратить и публиковать нечего, и вторая пара ничего бы не изменила. Writers резервов не менялись.
+
+**Актуальность чтения.** Снимок мира свежий в обоих вариантах (`ObserveSettled`, а изнутри reentry — `RefreshStrategicKnowledge` и `RefreshDecisionFrame` при `StateChanged`). Различие — только спрос: при 1 паре `demands` по осям, затронутым составным фактом, не пересчитываются до следующего take, и ближайший `BuildMissionSet` использует их прежнюю редакцию — как в baseline. Ключи допуска сравниваются при следующем проходе с актуальным состоянием: изменившийся вход запускает проход, неизменный — нет (см. §7). Факт не воспроизводится повторно (consume один раз).
+
+**Что остаётся неподтверждённым.** `loopsig.py` (`violations=0`, нет `ERROR`) — необходимая, но недостаточная проверка: она не доказывает ни сохранение порядка действий, ни корректность банка и кешей. Обычный нативный лог проверит общий путь допуска, но не rebase. **Rebase нативно не подтверждён** и остаётся таким до отдельного сценария перебазирования wing; полная нативная приёмка по нему не заявляется.

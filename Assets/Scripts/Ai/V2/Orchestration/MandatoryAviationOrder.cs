@@ -34,11 +34,11 @@ namespace Game.Ai.V2
             return (MandatoryAviationKind.None, null);
         }
 
-        // Baseline difference kept for Level 3: a rebase takes the typed triggers and re-enters the
-        // strategic axes once; a recovery does it twice (the re-entry may publish a compound fact
-        // that must be fanned out before it is consumed).
+        // Baseline difference, kept deliberately (see StepTriggerSequence for the reasoning): a
+        // rebase takes the typed triggers and re-enters once, a recovery twice.
         internal static int TriggerPairs(MandatoryAviationKind kind) =>
-            kind == MandatoryAviationKind.Recovery ? 2 : 1;
+            kind == MandatoryAviationKind.Recovery
+                ? StepTriggerSequence.StandardPairs : StepTriggerSequence.RebasePairs;
 
         // Name used in the [Loop] step line and the invariant boundary label.
         internal static string Label(MandatoryAviationKind kind) =>
