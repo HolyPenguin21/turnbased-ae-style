@@ -19,7 +19,9 @@ for family,entry in manifest['families'].items():
   name=label+f' directional {variant["angle_degrees"]:03d}'
   body=next(body for n,body in centerpieces if n==name)
   assert 'randomizeRotation: 0' in body
-  counts[family]+=int(re.search(r'        count: (\d+)',body)[1])
+  weight=int(re.search(r'        count: (\d+)',body)[1])
+  assert weight==1, name
+  counts[family]+=weight
   actual=re.findall(r'offset: \{x: (-?\d+), y: (-?\d+)\}\n          frames:\n          - \{fileID: 2800000, guid: ([a-f0-9]{32}), type: 3\}',body)
   expected=[(str(p['offset']['x']),str(p['offset']['y']),p['guid']) for p in variant['parts']]
   assert actual==expected, name

@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "asset_type": "pre-lit directional textures",
   "uv_rotation_steps": 0,
   "coordinate_system": "axial q,r; positive 60 deg counterclockwise from above",
@@ -8,7 +8,7 @@
     512,
     512
   ],
-  "source_detail_note": "Square continuous sources; normalized nominal hex diameter 400/1024 of source width; resampled to 512 containers; palette matched using ImageGen before slicing",
+  "source_detail_note": "Original geometry rotated as a relighting reference; fixed normalized hex diameter 400/1024, no independent auto-fit; continuous sand-only scripted color/contrast correction before slicing.",
   "families": {
     "Canyon": {
       "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
@@ -76,7 +76,7 @@
                 512,
                 512
               ],
-              "sha256": "43ddb2e6f1e3624d9cf31ba46909369ade45dc739cfd85e0859f4655bd99f051",
+              "sha256": "7cb749884b626f9ecd6ceaa80e6af9443f074395faf4610b00e6a06f71f64c15",
               "guid": "246364e3f627467aa8679e570d812ced"
             },
             {
@@ -89,7 +89,7 @@
                 512,
                 512
               ],
-              "sha256": "870b7770c46b708dc2bbf946cf8df799f9b7e63fb471f9982bf2f8b14c6e7cc1",
+              "sha256": "a9a44e6e9e0f53da298544767b910338157bb5e353761022aae53ab9a8e951ae",
               "guid": "a4491ffc4c4c4c6ea6b72f04c6cce713"
             },
             {
@@ -102,17 +102,18 @@
                 512,
                 512
               ],
-              "sha256": "969a2b7013fc6304de9465e24927a6f905f7e62333289bd9e631f24d63081620",
+              "sha256": "877db732bf49a9b76e67b3e3925ccfd4eb34776e41de49edceba7613e22c581d",
               "guid": "b437c7e4347e41ada954351572337108"
             }
           ],
           "source_alignment": {
-            "dx": -32.86225730893919,
-            "dy": -99.64674865276804,
-            "scale": 0.6247106546650625,
-            "foreground_max_hex_norm": 0.9962802398094251
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "f79a43c837ad038432ac1f78ba7e24bd8b0dfc187ebdcc68fb2cbc8925b629a7"
         },
         {
           "angle_degrees": 120,
@@ -129,7 +130,7 @@
                 512,
                 512
               ],
-              "sha256": "7a6d8aa6e083dbce48a3541709a45a97ff2059f3ede28286ab4721d2736967f6",
+              "sha256": "efb3fd4e3971a3ac750da8fe72048537520b1ec12c42911a4effa45863dc07b5",
               "guid": "ccef9edb6c6d49d2b13005f8afa5e5ad"
             },
             {
@@ -142,7 +143,7 @@
                 512,
                 512
               ],
-              "sha256": "de5faa3ef772a6b095c34e719b053cb60d26ca016cd26ea7c4a371c79dea57a3",
+              "sha256": "7f71aecdd3bc2b722f45df8fca0426a41758ffec4841fa4848b4528a68c4fb93",
               "guid": "9cf161ea060f4d3b95de0bed4c42a86d"
             },
             {
@@ -155,17 +156,18 @@
                 512,
                 512
               ],
-              "sha256": "113a3f643ff2998a0e62ff5ce9ae2fc6fc82c9519d8f2f4829ab16d67a6dc18e",
+              "sha256": "73380526ee903976f5083e0656d5ac33d17c0c3465ed7fc9c8a1cec4693b67d1",
               "guid": "e35421c74c10481cb5dce4aab2c24e1e"
             }
           ],
           "source_alignment": {
-            "dx": 0.48302880834354944,
-            "dy": 2.4338096316150786,
-            "scale": 0.9416589329338232,
-            "foreground_max_hex_norm": 0.9950297591487574
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "b3e5cd4ad4457199ddd699a078de554fbc8f63509f4440e7a8e6dc4e6f12a7fb"
         },
         {
           "angle_degrees": 180,
@@ -182,7 +184,7 @@
                 512,
                 512
               ],
-              "sha256": "f35e0d508b1a8cf2f90a2f828f7f57a14d410e013d94add3954008f0de76dbb5",
+              "sha256": "290f164581cabaca384ba785b2bada2e6b2a5754c630b7fdbbe6f3fc9eb4dd0c",
               "guid": "6f2f2e149e6c4845835392c5003d5d42"
             },
             {
@@ -195,7 +197,7 @@
                 512,
                 512
               ],
-              "sha256": "f3c9d9c801b2fe91a31028fe81c9253a9ea2a4f978408e62ad741379e6323f91",
+              "sha256": "528eea01521762e4d6271fdc0598f309332f125957c9bf381ec133811ae8f734",
               "guid": "7a8d04acdf334601b302c99633f454b0"
             },
             {
@@ -208,17 +210,18 @@
                 512,
                 512
               ],
-              "sha256": "60b692c011dc2645192019d9fdcdff821c10bf8150b452edbe4559fd69005a5e",
+              "sha256": "3ed8ac52b88052d806be566391f466c6eab6edbf063071c775e336f6f98979b6",
               "guid": "0311492b44a74818b62cae7ff385006a"
             }
           ],
           "source_alignment": {
-            "dx": 38.19168003618364,
-            "dy": 81.18635350154709,
-            "scale": 0.9879860335423319,
-            "foreground_max_hex_norm": 0.9976958618750462
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "32103c492de4206e3f3472855437458bc29af53b7baaa66b87c6ac5a171230a8"
         },
         {
           "angle_degrees": 240,
@@ -235,7 +238,7 @@
                 512,
                 512
               ],
-              "sha256": "9ab52b01429a987763e97d74c2c18c7567d09fe9403f875d4851bc721d0d0dd8",
+              "sha256": "13bae81dd61f89d8eb6b44109cc3225c8be1069870bb8642bc14411ee7f6b592",
               "guid": "6ef40a8aa0394627867838c5e54dfe52"
             },
             {
@@ -248,7 +251,7 @@
                 512,
                 512
               ],
-              "sha256": "39ea8d2e8863ec8c03e13465f7bef256aaab580ec92ceceb90c2467792c0959f",
+              "sha256": "fc578211fe95732766672578c33241ef0ff7ab728fa14a9e45c6fed8224501c3",
               "guid": "a170cd38b9d24a7f81a81bef18102a26"
             },
             {
@@ -261,17 +264,18 @@
                 512,
                 512
               ],
-              "sha256": "8b569c2ef2b571083348cd4e8a7f13896c48b8e64dc2e62b136a55ae4e167039",
+              "sha256": "fce838cf386d23d4dd842c0f7f8537a5f0ca80bb7f268b2f091cc497c5d3f69f",
               "guid": "bd7e61ca78b440519a1180808e6ef68d"
             }
           ],
           "source_alignment": {
-            "dx": 54.64020150496056,
-            "dy": 110.42716822916185,
-            "scale": 0.8852354329379547,
-            "foreground_max_hex_norm": 0.9979142716291286
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "7debe1ea2156dc91d57fd6eb42d7579fbb35b354c63fd52090bedc3abbe31d51"
         },
         {
           "angle_degrees": 300,
@@ -288,7 +292,7 @@
                 512,
                 512
               ],
-              "sha256": "74b62e307eae98bf1fe6b02fa1dddfb162a23ed188341ecae9fab0314f7fcce5",
+              "sha256": "4f4a9f1f83d768fd04709d502e52e09bec528ad44d0339f9f19cfe22a7b74370",
               "guid": "c01fc09238514f72bb6344698a5be34b"
             },
             {
@@ -301,7 +305,7 @@
                 512,
                 512
               ],
-              "sha256": "72ca555fef6bfdabe7cbbbf858a4845e6756e9ec76a4c3467e341e3a358309aa",
+              "sha256": "00b9a37114824ebb8b829ef5e7f642e82a9d5777954ce38212fb4428d413ab82",
               "guid": "d17af52ac50c46d981fa76d5e6f1f540"
             },
             {
@@ -314,17 +318,18 @@
                 512,
                 512
               ],
-              "sha256": "6cd49997eee7485c881f1a9f3ed3cac7ba2dcd2fbb9e418130be094167f0ffe0",
+              "sha256": "7619a646a295f8fc1e3b9cb6c76ab85c0a70803b78f241edeb2d269b51989391",
               "guid": "8747d65d12654708b4d611f5050685b9"
             }
           ],
           "source_alignment": {
-            "dx": -56.68693988951851,
-            "dy": 58.381294529906995,
-            "scale": 0.9426276802240869,
-            "foreground_max_hex_norm": 0.9966388293229619
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original Canyon assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "9c037ad3de9a1123959cf6ad3567202dd8c00a65e947e98caa683543fc1a047a"
         }
       ]
     },
@@ -381,7 +386,7 @@
                 512,
                 512
               ],
-              "sha256": "633c9cd2e3eadf24fe5697310f8d97372efc63009f3006ada32794b5f930bcda",
+              "sha256": "2a176084fa68c5101e982a57c756f8ed5ab6c1008694be0e4361ca516834d95d",
               "guid": "98e134ec9fb34878bec3a88afe12ada6"
             },
             {
@@ -394,17 +399,18 @@
                 512,
                 512
               ],
-              "sha256": "90c81f04b1529cfd4dcff8598fa56b82ed4a245fa321f9f00e4a40ecbc16be25",
+              "sha256": "df951c579f37ebb67b6ca72cba0482f52e73135a36dcbb2ee0d91168e618b5ee",
               "guid": "ebb4c52dd1b449a4906046a6f4e0b6bc"
             }
           ],
           "source_alignment": {
-            "dx": 0.9448206659829994,
-            "dy": 36.74039682987936,
-            "scale": 0.9089433403986998,
-            "foreground_max_hex_norm": 0.997857650311902
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "7afc6b3ee70abf6bf33b388d9a4df8247aef6454f255715261b92b9f55a2b435"
         },
         {
           "angle_degrees": 120,
@@ -421,7 +427,7 @@
                 512,
                 512
               ],
-              "sha256": "eb871c909f5de00cdf9aa61ceb3c651b1110bad67ec1ee3228efa6275ceef34c",
+              "sha256": "f2c54f8fb0a9700b8bfb4419d1f63da7a932fa39ce009e72f73c5d3a4b7a4519",
               "guid": "975bd1f850334917a0460477c712208b"
             },
             {
@@ -434,17 +440,18 @@
                 512,
                 512
               ],
-              "sha256": "99dc332f928cce2055c9dcc7d66911ea580f144516a73f0a7a034d349a680212",
+              "sha256": "fa94ffe299117e3dcab7914ab2a7a5d4ba64eed673675b3458d37aa99a0669c3",
               "guid": "8bcc65a32f39426bab89bbad4a356821"
             }
           ],
           "source_alignment": {
-            "dx": 35.94455348705045,
-            "dy": 25.083822137913575,
-            "scale": 0.5959080980805855,
-            "foreground_max_hex_norm": 0.9948889980486351
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "73e12976f6e781b65116e747cc6d587f8753c4d07a5bb0305e91714bed96f38f"
         },
         {
           "angle_degrees": 180,
@@ -461,7 +468,7 @@
                 512,
                 512
               ],
-              "sha256": "247adc1d330c699e30b44133cfc39e1ea97b37b942a3ed0e9bfba171f2f3532e",
+              "sha256": "a8614acf91a358e5fa7bb8cc2862ef0ff09fdc8c1bb3f12c7e91d5ef52d84b88",
               "guid": "52c8a9dd84bd4d6cb0d14dca31721719"
             },
             {
@@ -474,17 +481,18 @@
                 512,
                 512
               ],
-              "sha256": "bbfe270b55aca3a51faf8dfd32a698ae4bb3e1198d58688bc4525ebb9f6ff32d",
+              "sha256": "1171fb020ccdbfd7bda7d9d79867c882e1a95c6d929acdbd93bb8229e13ba132",
               "guid": "a67e88fc5b424c42b52764f9f2c09169"
             }
           ],
           "source_alignment": {
-            "dx": -38.598041636753535,
-            "dy": 0.8672229068850675,
-            "scale": 0.588069666930102,
-            "foreground_max_hex_norm": 0.9964055715228132
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "7d0617ccffdc88b273dcbc3352a46d49239cad9965d8a41b5942f9c0900ca3f9"
         },
         {
           "angle_degrees": 240,
@@ -501,7 +509,7 @@
                 512,
                 512
               ],
-              "sha256": "6e1faed50e38f01819ba9ed7e599e905cbccb2aed83f9fd646e18957377e19c2",
+              "sha256": "86b4d954c92a57cfb5e3b97bfb642dc547ea880f6fd8e102e171b314620e05a3",
               "guid": "8d822e2ed1a24ddc952d972eb7a676c8"
             },
             {
@@ -514,17 +522,18 @@
                 512,
                 512
               ],
-              "sha256": "43023b2f27aef1a78e208fb872d0d0b5f90ece127731714dbd7d8a965f6ffcad",
+              "sha256": "6da5df46ad74afedbc7ee336ad2c6eb112d1397cb6e199e2a38b8fc7573d81f5",
               "guid": "f559ab04cb874cb6a2a544dbc1435167"
             }
           ],
           "source_alignment": {
-            "dx": -31.751282507585838,
-            "dy": 32.11700223217538,
-            "scale": 0.7637032738623313,
-            "foreground_max_hex_norm": 0.9982000339817635
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "c6332cc976859d5be070b23048d61bb0dc5bfd1d34183ff9491f2c96a12a43b6"
         },
         {
           "angle_degrees": 300,
@@ -541,7 +550,7 @@
                 512,
                 512
               ],
-              "sha256": "984eb1c522c2845c06a8e0a3e2878a25e1b299a67133e14ea09b1ea58f0f6c77",
+              "sha256": "2d0a08a61ad8d1577006546c7aa00bb89e02f5ce62168311fd329a8cfd102e0d",
               "guid": "6f16e039c6b843e6a3fc4ed4dc4fbb65"
             },
             {
@@ -554,17 +563,18 @@
                 512,
                 512
               ],
-              "sha256": "991af72a1339b2ee3b581df64033bb4bfa0d457da0dffb40f358f3c6c2b6ebd3",
+              "sha256": "c68837b45f013cf403c0a1a9fc91c2cdcc7ff4d452b9f00f464811d2e486e68c",
               "guid": "8bc7bbc96d21410d997fec1974188269"
             }
           ],
           "source_alignment": {
-            "dx": 3.4992437613207494,
-            "dy": -17.347016212991544,
-            "scale": 0.7157532604110779,
-            "foreground_max_hex_norm": 0.9958690836129649
+            "dx": 0.0,
+            "dy": 0.0,
+            "scale": 1.0,
+            "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen continuous composition; palette reference: original GiantMachineWreck assets"
+          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
+          "continuous_source_sha256": "233f7686eb55ed37d0493cffb07f0609dce977dbb3cd53f352097a5d4b678ce7"
         }
       ]
     }

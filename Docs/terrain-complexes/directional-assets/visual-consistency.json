@@ -1,0 +1,743 @@
+{
+  "method": "Actual flat-top face; warm ground mask identical across variants. Shared-edge foreground continuity and RGB sampling. Thresholds are diagnostics and do not replace image inspection.",
+  "rows": [
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "part": 1,
+      "ground_rgb_mean": [
+        208.43,
+        166.41,
+        114.2
+      ],
+      "ground_luma_mean": 171.57,
+      "ground_luma_percentiles": [
+        152.25,
+        172.1,
+        189.55
+      ],
+      "ground_luma_std": 14.23,
+      "broad_mottling_std": 16.16,
+      "dark_fraction_percent": 12.36
+    },
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "part": 2,
+      "ground_rgb_mean": [
+        213.55,
+        164.62,
+        112.06
+      ],
+      "ground_luma_mean": 171.23,
+      "ground_luma_percentiles": [
+        152.73,
+        172.01,
+        187.46
+      ],
+      "ground_luma_std": 13.93,
+      "broad_mottling_std": 17.41,
+      "dark_fraction_percent": 15.86
+    },
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "part": 3,
+      "ground_rgb_mean": [
+        214.04,
+        165.56,
+        112.9
+      ],
+      "ground_luma_mean": 172.07,
+      "ground_luma_percentiles": [
+        152.53,
+        172.16,
+        190.79
+      ],
+      "ground_luma_std": 14.91,
+      "broad_mottling_std": 16.05,
+      "dark_fraction_percent": 11.59
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.77,
+        165.28,
+        112.73
+      ],
+      "ground_luma_mean": 171.37,
+      "ground_luma_percentiles": [
+        151.11,
+        171.09,
+        191.3
+      ],
+      "ground_luma_std": 15.84,
+      "broad_mottling_std": 15.46,
+      "dark_fraction_percent": 14.0
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.81,
+        165.29,
+        112.73
+      ],
+      "ground_luma_mean": 171.39,
+      "ground_luma_percentiles": [
+        152.25,
+        171.52,
+        189.31
+      ],
+      "ground_luma_std": 15.04,
+      "broad_mottling_std": 16.14,
+      "dark_fraction_percent": 15.46
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.71,
+        165.22,
+        112.68
+      ],
+      "ground_luma_mean": 171.31,
+      "ground_luma_percentiles": [
+        151.74,
+        171.31,
+        190.16
+      ],
+      "ground_luma_std": 15.01,
+      "broad_mottling_std": 13.42,
+      "dark_fraction_percent": 11.95
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.77,
+        165.27,
+        112.72
+      ],
+      "ground_luma_mean": 171.36,
+      "ground_luma_percentiles": [
+        151.96,
+        172.16,
+        188.31
+      ],
+      "ground_luma_std": 14.5,
+      "broad_mottling_std": 13.62,
+      "dark_fraction_percent": 11.74
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.72,
+        165.23,
+        112.69
+      ],
+      "ground_luma_mean": 171.32,
+      "ground_luma_percentiles": [
+        152.45,
+        172.45,
+        186.87
+      ],
+      "ground_luma_std": 14.18,
+      "broad_mottling_std": 14.7,
+      "dark_fraction_percent": 15.0
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.68,
+        165.19,
+        112.66
+      ],
+      "ground_luma_mean": 171.28,
+      "ground_luma_percentiles": [
+        151.96,
+        172.45,
+        187.59
+      ],
+      "ground_luma_std": 14.3,
+      "broad_mottling_std": 11.92,
+      "dark_fraction_percent": 12.06
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.76,
+        165.26,
+        112.72
+      ],
+      "ground_luma_mean": 171.35,
+      "ground_luma_percentiles": [
+        151.05,
+        171.65,
+        190.52
+      ],
+      "ground_luma_std": 15.34,
+      "broad_mottling_std": 13.97,
+      "dark_fraction_percent": 14.43
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.68,
+        165.18,
+        112.66
+      ],
+      "ground_luma_mean": 171.27,
+      "ground_luma_percentiles": [
+        154.18,
+        171.59,
+        187.52
+      ],
+      "ground_luma_std": 13.25,
+      "broad_mottling_std": 14.52,
+      "dark_fraction_percent": 21.58
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.69,
+        165.19,
+        112.67
+      ],
+      "ground_luma_mean": 171.28,
+      "ground_luma_percentiles": [
+        152.46,
+        171.54,
+        189.1
+      ],
+      "ground_luma_std": 14.33,
+      "broad_mottling_std": 13.32,
+      "dark_fraction_percent": 13.74
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.74,
+        165.24,
+        112.7
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        151.6,
+        171.72,
+        189.95
+      ],
+      "ground_luma_std": 14.93,
+      "broad_mottling_std": 14.2,
+      "dark_fraction_percent": 11.79
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.76,
+        165.27,
+        112.72
+      ],
+      "ground_luma_mean": 171.36,
+      "ground_luma_percentiles": [
+        153.15,
+        171.8,
+        188.02
+      ],
+      "ground_luma_std": 14.08,
+      "broad_mottling_std": 14.35,
+      "dark_fraction_percent": 15.47
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.73,
+        165.24,
+        112.7
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        152.74,
+        171.45,
+        189.37
+      ],
+      "ground_luma_std": 14.44,
+      "broad_mottling_std": 12.1,
+      "dark_fraction_percent": 11.25
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.69,
+        165.19,
+        112.65
+      ],
+      "ground_luma_mean": 171.29,
+      "ground_luma_percentiles": [
+        152.01,
+        171.6,
+        189.17
+      ],
+      "ground_luma_std": 14.86,
+      "broad_mottling_std": 13.12,
+      "dark_fraction_percent": 11.57
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.72,
+        165.22,
+        112.67
+      ],
+      "ground_luma_mean": 171.31,
+      "ground_luma_percentiles": [
+        153.66,
+        171.53,
+        187.67
+      ],
+      "ground_luma_std": 14.09,
+      "broad_mottling_std": 13.77,
+      "dark_fraction_percent": 14.51
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.82,
+        165.3,
+        112.74
+      ],
+      "ground_luma_mean": 171.39,
+      "ground_luma_percentiles": [
+        149.25,
+        172.38,
+        190.37
+      ],
+      "ground_luma_std": 15.66,
+      "broad_mottling_std": 14.73,
+      "dark_fraction_percent": 11.58
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 0,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.48,
+        165.37,
+        113.92
+      ],
+      "ground_luma_mean": 171.46,
+      "ground_luma_percentiles": [
+        150.54,
+        173.81,
+        187.47
+      ],
+      "ground_luma_std": 14.21,
+      "broad_mottling_std": 20.74,
+      "dark_fraction_percent": 17.58
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 0,
+      "part": 2,
+      "ground_rgb_mean": [
+        209.8,
+        163.69,
+        113.54
+      ],
+      "ground_luma_mean": 169.87,
+      "ground_luma_percentiles": [
+        146.89,
+        172.23,
+        187.59
+      ],
+      "ground_luma_std": 15.3,
+      "broad_mottling_std": 24.62,
+      "dark_fraction_percent": 28.23
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 60,
+      "part": 1,
+      "ground_rgb_mean": [
+        210.65,
+        164.46,
+        113.5
+      ],
+      "ground_luma_mean": 170.6,
+      "ground_luma_percentiles": [
+        149.11,
+        171.75,
+        188.94
+      ],
+      "ground_luma_std": 15.19,
+      "broad_mottling_std": 21.23,
+      "dark_fraction_percent": 24.52
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 60,
+      "part": 2,
+      "ground_rgb_mean": [
+        210.72,
+        164.48,
+        113.43
+      ],
+      "ground_luma_mean": 170.62,
+      "ground_luma_percentiles": [
+        147.83,
+        171.59,
+        190.85
+      ],
+      "ground_luma_std": 16.28,
+      "broad_mottling_std": 25.77,
+      "dark_fraction_percent": 35.3
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 120,
+      "part": 1,
+      "ground_rgb_mean": [
+        210.62,
+        164.43,
+        113.48
+      ],
+      "ground_luma_mean": 170.58,
+      "ground_luma_percentiles": [
+        147.18,
+        172.8,
+        188.56
+      ],
+      "ground_luma_std": 15.49,
+      "broad_mottling_std": 20.92,
+      "dark_fraction_percent": 21.89
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 120,
+      "part": 2,
+      "ground_rgb_mean": [
+        210.57,
+        164.36,
+        113.37
+      ],
+      "ground_luma_mean": 170.5,
+      "ground_luma_percentiles": [
+        150.58,
+        170.9,
+        188.52
+      ],
+      "ground_luma_std": 15.18,
+      "broad_mottling_std": 22.01,
+      "dark_fraction_percent": 29.18
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 180,
+      "part": 1,
+      "ground_rgb_mean": [
+        210.44,
+        164.29,
+        113.38
+      ],
+      "ground_luma_mean": 170.42,
+      "ground_luma_percentiles": [
+        149.18,
+        172.14,
+        187.87
+      ],
+      "ground_luma_std": 14.81,
+      "broad_mottling_std": 21.55,
+      "dark_fraction_percent": 21.97
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 180,
+      "part": 2,
+      "ground_rgb_mean": [
+        210.51,
+        164.32,
+        113.36
+      ],
+      "ground_luma_mean": 170.46,
+      "ground_luma_percentiles": [
+        150.08,
+        171.78,
+        187.38
+      ],
+      "ground_luma_std": 14.72,
+      "broad_mottling_std": 24.82,
+      "dark_fraction_percent": 28.69
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 240,
+      "part": 1,
+      "ground_rgb_mean": [
+        210.55,
+        164.38,
+        113.46
+      ],
+      "ground_luma_mean": 170.52,
+      "ground_luma_percentiles": [
+        149.24,
+        172.39,
+        188.09
+      ],
+      "ground_luma_std": 15.02,
+      "broad_mottling_std": 24.38,
+      "dark_fraction_percent": 19.97
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 240,
+      "part": 2,
+      "ground_rgb_mean": [
+        210.7,
+        164.5,
+        113.52
+      ],
+      "ground_luma_mean": 170.64,
+      "ground_luma_percentiles": [
+        145.25,
+        172.18,
+        192.65
+      ],
+      "ground_luma_std": 17.86,
+      "broad_mottling_std": 29.41,
+      "dark_fraction_percent": 29.6
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 300,
+      "part": 1,
+      "ground_rgb_mean": [
+        210.43,
+        164.27,
+        113.36
+      ],
+      "ground_luma_mean": 170.41,
+      "ground_luma_percentiles": [
+        149.97,
+        172.16,
+        186.81
+      ],
+      "ground_luma_std": 14.31,
+      "broad_mottling_std": 22.01,
+      "dark_fraction_percent": 17.53
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 300,
+      "part": 2,
+      "ground_rgb_mean": [
+        210.68,
+        164.47,
+        113.46
+      ],
+      "ground_luma_mean": 170.61,
+      "ground_luma_percentiles": [
+        145.92,
+        173.59,
+        189.02
+      ],
+      "ground_luma_std": 16.2,
+      "broad_mottling_std": 28.01,
+      "dark_fraction_percent": 32.46
+    }
+  ],
+  "seams": [
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.151,
+      "p95_rgb_error": 4.189,
+      "connected_dark_edge_samples": 55
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.651,
+      "p95_rgb_error": 5.944,
+      "connected_dark_edge_samples": 52
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.305,
+      "p95_rgb_error": 4.181,
+      "connected_dark_edge_samples": 53
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.302,
+      "p95_rgb_error": 4.172,
+      "connected_dark_edge_samples": 50
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.371,
+      "p95_rgb_error": 4.704,
+      "connected_dark_edge_samples": 78
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.167,
+      "p95_rgb_error": 4.149,
+      "connected_dark_edge_samples": 78
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.092,
+      "p95_rgb_error": 3.875,
+      "connected_dark_edge_samples": 57
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.532,
+      "p95_rgb_error": 5.784,
+      "connected_dark_edge_samples": 70
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.115,
+      "p95_rgb_error": 3.583,
+      "connected_dark_edge_samples": 41
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.183,
+      "p95_rgb_error": 4.19,
+      "connected_dark_edge_samples": 65
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 60,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.153,
+      "p95_rgb_error": 4.223,
+      "connected_dark_edge_samples": 79
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 120,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.317,
+      "p95_rgb_error": 4.851,
+      "connected_dark_edge_samples": 52
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 180,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.33,
+      "p95_rgb_error": 4.925,
+      "connected_dark_edge_samples": 67
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 240,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.347,
+      "p95_rgb_error": 4.394,
+      "connected_dark_edge_samples": 67
+    },
+    {
+      "family": "GiantMachineWreck",
+      "angle": 300,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.072,
+      "p95_rgb_error": 4.404,
+      "connected_dark_edge_samples": 71
+    }
+  ],
+  "violations": []
+}
