@@ -273,10 +273,31 @@ namespace Game.Ai
         // SEEN while it still had an unconsumed guard — Агрессия's own "known event with guard"
         // half of RaidWeakerArmyTask's target pool (see that class's own FindTarget). Same
         // "видимость с памятью" honesty rule as everything else here: a hex only enters this once
-        // actually visible AND HexEventRegistry.HasActiveEvent(hex) AND it carries a real guard
+        // personally encountered (HexEventRegistry.MarkDiscovered) AND still active AND it carries a real guard
         // (an unguarded event is never a combat target, nothing to remember here for it).
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> KnownEventGuards =
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, GuardStrength>>();
+
+        // What a player knows about each Hex Event it has PERSONALLY encountered (its own ground
+        // army got the Explore/Skip choice - HexEventRegistry.MarkDiscovered); true = confirmed
+        // completed. Absent = unknown: being in vision range never adds a hex here, and a missing
+        // guard entry in KnownEventGuards is NOT proof of completion (the event may be unguarded).
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, bool>> KnownEventCompleted =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, bool>>();
+
+        public enum KnownEventState { Unknown, Active, Completed }
+
+        public static KnownEventState KnownEventStateAt(PlayerSetupData actor, HexCoord hex) =>
+            actor != null && KnownEventCompleted.TryGetValue(actor, out Dictionary<HexCoord, bool> states)
+                && states.TryGetValue(hex, out bool completed)
+                ? (completed ? KnownEventState.Completed : KnownEventState.Active)
+                : KnownEventState.Unknown;
+
+        // Every hex whose event this player knows to be active (guarded or not) / confirmed done.
+        public static IEnumerable<HexCoord> KnownEventHexes(PlayerSetupData actor, bool completed) =>
+            actor != null && KnownEventCompleted.TryGetValue(actor, out Dictionary<HexCoord, bool> states)
+                ? states.Where(kv => kv.Value == completed).Select(kv => kv.Key)
+                : Enumerable.Empty<HexCoord>();
 
         // Per-hex last-observed building snapshot (2026-08-24, "память тумана войны не
         // соответствует правилам 3.1–3.2" fix, section 3.2 — project owner's own report) — RaidWeaker
@@ -478,6 +499,8 @@ namespace Game.Ai
             // actually re-observing the hex later (see OnEventConsumed's own comment, 2026-08-24
             // fix).
             HexEventRegistry.EventConsumed += OnEventConsumed;
+            // The only way an event enters memory: this player's own ground army met it.
+            HexEventRegistry.EventDiscovered += OnEventDiscovered;
             _subscribed = true;
         }
 
@@ -544,6 +567,7 @@ namespace Game.Ai
             EnemySightings.Clear();
             AirSightings.Clear();
             KnownEventGuards.Clear();
+            KnownEventCompleted.Clear();
             KnownBuildings.Clear();
             RefutedStartingCitadels.Clear();
             ScoutDangerZones.Clear();
@@ -765,11 +789,6 @@ namespace Game.Ai
                 sightings = new Dictionary<int, EnemySighting>();
                 EnemySightings[player] = sightings;
             }
-            if (!KnownEventGuards.TryGetValue(player, out Dictionary<HexCoord, GuardStrength> eventGuards))
-            {
-                eventGuards = new Dictionary<HexCoord, GuardStrength>();
-                KnownEventGuards[player] = eventGuards;
-            }
             if (!KnownBuildings.TryGetValue(player, out Dictionary<HexCoord, BuildingSighting> buildings))
             {
                 buildings = new Dictionary<HexCoord, BuildingSighting>();
@@ -924,49 +943,13 @@ namespace Game.Ai
                     knowledgeChanged = true;
                 }
 
-                bool hadEventGuard = eventGuards.TryGetValue(hex, out GuardStrength previousEventGuard);
-                HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
-                if (eventEntry != null && eventEntry.ResolvedGuardMembers.Count > 0)
-                {
-                    // Same flat card-stat sum WorthIt/AiEventPlanner.ShouldExplore already use —
-                    // the guard is never a live ArmyData until Explore is chosen (see
-                    // HexEventRegistry.Entry's own comment), so card stats are all there is to
-                    // read.
-                    var guardMembers = eventEntry.ResolvedGuardMembers
-                        .Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
-                    float defense = guardMembers.Sum(g => g.card.defenseRating * g.count);
-                    float attack = guardMembers.Sum(g => g.card.attack * g.count);
-                    // One DefenderProfile per PHYSICAL copy (repeated by g.count), not one per
-                    // card type — a card's own stats are already fully known deterministically
-                    // (it's a static card-guard, not fog-of-war memory of a moving army), but
-                    // WorthIt's full-roster Monte Carlo needs one real combatant/HP-pool per copy
-                    // to actually play a "3 Grunts" guard out as three separate units, the same way
-                    // a real fight against them would. CanDamageAll's own coverage check doesn't
-                    // care about the duplication (it only asks "is there a counter for this profile
-                    // anywhere", repeats are harmless there).
-                    var defenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
-                        g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
-                        g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
-                        g.card.grantedAbilities, range: g.card.range), g.count)).ToList();
-                    eventGuards[hex] = new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName,
-                        HexEventGuardEstimate.GuardCommander(eventEntry), HexEventGuardEstimate.RewardTier(eventEntry));
-                }
-                else
-                {
-                    eventGuards.Remove(hex);
-                }
-                // A known event guard changes whether an otherwise undefended foreign
-                // structure is a safe transit hex (KnownGroundArrival).
-                bool hasEventGuardNow = eventGuards.TryGetValue(hex, out GuardStrength currentEventGuard);
-                if (hadEventGuard != hasEventGuardNow)
-                {
+                // Only an event this player already met in person is re-read (never a merely
+                // visible one) - see ApplyEventKnowledge. A known guard changes whether an otherwise
+                // undefended foreign structure is a safe transit hex (KnownGroundArrival).
+                if (ApplyEventKnowledge(player, hex, false, out bool guardPresenceChanged))
+                    knowledgeChanged = true;
+                if (guardPresenceChanged)
                     eventGuardsChanged = true;
-                    knowledgeChanged = true;
-                }
-                else if (hadEventGuard && !SameGuardStrength(previousEventGuard, currentEventGuard))
-                {
-                    knowledgeChanged = true;
-                }
 
                 // Building snapshot (2026-08-24, section 3.2 fix — see KnownBuildings' own class
                 // comment) — a real, direct read of BuildingRegistry, but only ever for a hex this
@@ -1064,12 +1047,111 @@ namespace Game.Ai
         // reason.
         private static void OnEventConsumed(HexCoord hex)
         {
-            foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> kv in KnownEventGuards)
-                if (VisionSystem.IsVisible(kv.Key, hex) && kv.Value.Remove(hex))
-                {
-                    BumpRouteMemoryVersion(kv.Key);
-                    BumpKnowledgeVersion(kv.Key);
-                }
+            // The claimant learns of its own completion at once, army or no army left after the
+            // fight; any other player only if it already knows this event AND sees the hex now.
+            PlayerSetupData consumer = HexEventRegistry.FindAt(hex)?.ConsumedBy;
+            var holders = new List<PlayerSetupData>(KnownEventCompleted.Keys);
+            if (consumer != null && !holders.Contains(consumer))
+                holders.Add(consumer);
+            foreach (PlayerSetupData player in holders)
+            {
+                if (player != consumer && !VisionSystem.IsVisible(player, hex))
+                    continue;
+                PublishEventKnowledge(player, hex, player == consumer);
+            }
+        }
+
+        // The authoritative handler recorded a personal encounter: remember the event (and its
+        // guard, if any) for exactly this player. Idempotent - a repeat changes nothing.
+        private static void OnEventDiscovered(HexCoord hex, PlayerSetupData player)
+        {
+            if (player == null || player.IsNeutral)
+                return;
+            PublishEventKnowledge(player, hex, true);
+        }
+
+        // A re-observation of a hex the player can currently see: confirms completion of, or
+        // refreshes, an event it already knows. No effect for an unknown event.
+        public static void ObserveEventAt(PlayerSetupData player, HexCoord hex)
+        {
+            if (player != null && VisionSystem.IsVisible(player, hex))
+                PublishEventKnowledge(player, hex, false);
+        }
+
+        private static void PublishEventKnowledge(PlayerSetupData player, HexCoord hex, bool discover)
+        {
+            if (!ApplyEventKnowledge(player, hex, discover, out bool guardPresenceChanged))
+                return;
+            BumpKnowledgeVersion(player);
+            if (guardPresenceChanged)
+                BumpRouteMemoryVersion(player);
+        }
+
+        // The single reader of the hidden event data on behalf of memory. It touches the registry
+        // only for an event `player` knows already (or is just discovering), so a hex that is merely
+        // visible never reveals its guard. Returns true when stored knowledge changed.
+        private static bool ApplyEventKnowledge(PlayerSetupData player, HexCoord hex, bool discover,
+            out bool guardPresenceChanged)
+        {
+            guardPresenceChanged = false;
+            if (!KnownEventCompleted.TryGetValue(player, out Dictionary<HexCoord, bool> states))
+                KnownEventCompleted[player] = states = new Dictionary<HexCoord, bool>();
+            if (!KnownEventGuards.TryGetValue(player, out Dictionary<HexCoord, GuardStrength> guards))
+                KnownEventGuards[player] = guards = new Dictionary<HexCoord, GuardStrength>();
+
+            bool known = states.TryGetValue(hex, out bool completed);
+            if (completed)
+                return false; // confirmed completion is final
+            if (!known && (!discover || !HexEventRegistry.IsKnownBy(hex, player)))
+                return false;
+
+            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+            bool hadGuard = guards.TryGetValue(hex, out GuardStrength previousGuard);
+            bool changed = !known;
+            if (entry == null || entry.Consumed)
+            {
+                states[hex] = true;
+                guards.Remove(hex);
+                guardPresenceChanged = hadGuard;
+                return true;
+            }
+
+            states[hex] = false;
+            if (entry.ResolvedGuardMembers.Count > 0)
+            {
+                GuardStrength guard = BuildEventGuard(entry);
+                guards[hex] = guard;
+                guardPresenceChanged = !hadGuard;
+                changed |= !hadGuard || !SameGuardStrength(previousGuard, guard);
+            }
+            else if (hadGuard)
+            {
+                guards.Remove(hex);
+                guardPresenceChanged = true;
+                changed = true;
+            }
+            return changed;
+        }
+
+        private static GuardStrength BuildEventGuard(HexEventRegistry.Entry eventEntry)
+        {
+            // Same flat card-stat sum WorthIt/AiEventPlanner.ShouldExplore already use - the guard
+            // is never a live ArmyData until Explore is chosen (see HexEventRegistry.Entry's own
+            // comment), so card stats are all there is to read.
+            var guardMembers = eventEntry.ResolvedGuardMembers
+                .Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
+            float defense = guardMembers.Sum(g => g.card.defenseRating * g.count);
+            float attack = guardMembers.Sum(g => g.card.attack * g.count);
+            // One DefenderProfile per PHYSICAL copy (repeated by g.count), not one per card type:
+            // WorthIt's full-roster Monte Carlo needs one real combatant/HP-pool per copy to play a
+            // "3 Grunts" guard out as three separate units. CanDamageAll's coverage check does not
+            // care about the duplication.
+            var defenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
+                g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor),
+                g.card.unitTypeTags, g.card.attack, g.card.hitPoints, g.card.initiative,
+                g.card.grantedAbilities, range: g.card.range), g.count)).ToList();
+            return new GuardStrength(defense, attack, defenders, eventEntry.GuardArmyName,
+                HexEventGuardEstimate.GuardCommander(eventEntry), HexEventGuardEstimate.RewardTier(eventEntry));
         }
 
         // Every known resource hex and its complete last-observed effective yield — the whole-map read

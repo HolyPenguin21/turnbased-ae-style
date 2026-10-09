@@ -117,6 +117,10 @@ namespace Game.Map
         private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip,
             bool allowAiExplore = true)
         {
+            // The mover's own ground army has reached the event and is being offered the choice: the
+            // owner now personally knows it (guard included), whichever branch is taken below. This is
+            // the only authoritative moment; fog vision, aviation and other players never get here.
+            HexEventRegistry.MarkDiscovered(hex, mover.Owner);
             if (mover.Owner != null && mover.Owner.IsHuman && eventChoicePopup != null)
             {
                 eventChoicePopup.Show(mover, entry,
@@ -207,6 +211,7 @@ namespace Game.Map
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
             if (mover == null || entry == null || entry.Consumed || entry.Triggered)
                 return false;
+            HexEventRegistry.MarkDiscovered(hex, mover.Owner);
             return ResolveEventExplore(mover, hex, entry);
         }
 
@@ -346,7 +351,7 @@ namespace Game.Map
                 grantedText.Add(card.displayName);
             }
 
-            HexEventRegistry.MarkConsumed(hex);
+            HexEventRegistry.MarkConsumed(hex, recipient.Owner);
 
             if (recipient.Owner.IsHuman)
             {

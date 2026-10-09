@@ -35,6 +35,8 @@ namespace Game.Ai.V2
                 NeutralSightings = AiMapMemory.AllKnownNeutralSightings(player).ToList(),
                 Buildings = AiMapMemory.AllKnownBuildings(player).ToList(),
                 EventGuardHexes = eventGuardHexes,
+                ActiveEventHexes = AiMapMemory.KnownEventHexes(player, completed: false).ToList(),
+                CompletedEventHexes = AiMapMemory.KnownEventHexes(player, completed: true).ToList(),
                 EventGuards = eventGuardHexes
                     .Select(h =>
                     {

@@ -56,9 +56,7 @@ namespace Game.Ai.V2
                     StrategicInvalidationReason.ReconKnowledge, hexes: reconHexes);
             }
 
-            HashSet<HexCoord> eventHexes = NewHexes(
-                before.Snapshot?.Known?.EventGuardHexes,
-                after.Snapshot?.Known?.EventGuardHexes);
+            HashSet<HexCoord> eventHexes = ChangedEventHexes(before.Snapshot, after.Snapshot);
             if (execution != null
                 && execution.StopReason == ExecutionStopReason.HexEventStarted)
                 eventHexes.Add(execution.FinalHex);
@@ -389,6 +387,37 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<DevelopmentFacility>())
                 .Select(x => $"dev:{x.Hex.Q},{x.Hex.R}:{x.Mode}:{x.HasHero}:{x.Contested}");
             return known.Concat(development).OrderBy(x => x).ToArray();
+        }
+
+        // Known-event facts per hex: guard present / active / completed. A hex appearing, losing its
+        // guard, or flipping to completed all count (NewHexes alone only saw additions).
+        private static HashSet<HexCoord> ChangedEventHexes(WorldSnapshot before, WorldSnapshot after)
+        {
+            Dictionary<HexCoord, int> old = EventFacts(before);
+            Dictionary<HexCoord, int> current = EventFacts(after);
+            var result = new HashSet<HexCoord>();
+            foreach (KeyValuePair<HexCoord, int> kv in current)
+                if (!old.TryGetValue(kv.Key, out int prior) || prior != kv.Value)
+                    result.Add(kv.Key);
+            foreach (HexCoord hex in old.Keys)
+                if (!current.ContainsKey(hex))
+                    result.Add(hex);
+            return result;
+        }
+
+        private static Dictionary<HexCoord, int> EventFacts(WorldSnapshot snapshot)
+        {
+            var facts = new Dictionary<HexCoord, int>();
+            KnownSnapshot known = snapshot?.Known;
+            if (known == null)
+                return facts;
+            foreach (HexCoord hex in known.ActiveEventHexes ?? System.Array.Empty<HexCoord>())
+                facts[hex] = 1;
+            foreach (HexCoord hex in known.CompletedEventHexes ?? System.Array.Empty<HexCoord>())
+                facts[hex] = 2;
+            foreach (HexCoord hex in known.EventGuardHexes ?? System.Array.Empty<HexCoord>())
+                facts[hex] = facts.TryGetValue(hex, out int state) ? state | 4 : 5;
+            return facts;
         }
 
         private static HashSet<HexCoord> NewHexes(

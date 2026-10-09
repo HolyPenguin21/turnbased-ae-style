@@ -302,8 +302,8 @@ namespace Game.Ai.V2
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
-            // positive live read (ours / another player's roster / honest map memory / event-guard
-            // Consumed state, per target kind).
+            // positive live read (ours / another player's roster / honest map memory / confirmed event-guard
+            // completion, per target kind).
             bool targetGone = ri.Target.HasValue
                 && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
                     || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target));
