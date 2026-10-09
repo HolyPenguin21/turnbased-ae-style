@@ -3,7 +3,7 @@ using Game.Map;
 
 namespace Game.Ai.V2
 {
-    internal enum MandatoryAviationKind { None, Rebase, Recovery }
+    public enum MandatoryAviationKind { None, Rebase, Recovery }
 
     // ===========================================================================================
     //  Which airborne obligation the operational loop settles next, and the per-kind facts the

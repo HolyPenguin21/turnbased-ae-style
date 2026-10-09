@@ -421,23 +421,23 @@ namespace Game.Ai.V2
                     reentryStateChanged = false;
                     bool triggered = reasons != StrategicInvalidationReason.None
                         && dirtyAxes != null && dirtyAxes.Count > 0;
-                    if (!triggered && !((flush || force) && deferredAdmission.HasAxes))
+                    // Pending is read only when the request could be admitted at all (as before).
+                    bool wanted = triggered || ((flush || force) && deferredAdmission.HasAxes);
+                    DeferredAdmissionGate gate = DeferredStrategicAdmission.Gate(triggered, flush, force,
+                        deferredAdmission.HasAxes,
+                        obligationsPending: wanted && AviationObligations.Pending(player, ctx));
+                    if (gate == DeferredAdmissionGate.Skip)
                         yield break;
-                    if (AviationObligations.Pending(player, ctx))
+                    if (gate == DeferredAdmissionGate.Defer)
                     {
-                        if (!force)
-                        {
-                            if (triggered)
-                            {
-                                deferredAdmission.Defer(dirtyAxes);
-                                AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
-                                    + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
-                            }
-                            yield break;
-                        }
+                        deferredAdmission.Defer(dirtyAxes);
+                        AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
+                            + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
+                        yield break;
+                    }
+                    if (gate == DeferredAdmissionGate.AdmitDespitePending)
                         AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
                             + "loop — admitting the deferred axes anyway");
-                    }
                     if (deferredAdmission.HasAxes)
                         dirtyAxes = deferredAdmission.TakeWith(triggered ? dirtyAxes : null);
 
@@ -529,11 +529,35 @@ namespace Game.Ai.V2
                     reentryStateChanged = followup.StateChanged;
                 }
 
-                // The one post-step protocol of a mandatory aviation obligation. Execution stays with
-                // the existing owners (MandatoryAviationStep); the kinds differ only in how many
-                // take -> re-enter pairs follow (rebase 1, recovery 2) and in their log text, which
-                // is baseline behaviour kept until the single trigger protocol (level 3). No ledger,
-                // Settle or observer boundary: the obligation was paid when the sortie launched.
+                // The shared outcome of a settled work step: take the typed triggers and re-enter the
+                // strategic axes `pairs` times, accumulating reasons and whether any re-admission
+                // changed state. Re-entry may publish another compound fact (for example,
+                // materializing a Raid reinforcement changes Actor + Capability); a further pair
+                // routes it through the same typed fan-out before it is consumed. The pair count is
+                // baseline behaviour per work kind and stays until the single trigger protocol
+                // (level 3). The result is a transient value (an iterator cannot return one).
+                StepTriggerOutcome stepTriggers = default;
+                IEnumerator ResolveStepTriggers(int pairs)
+                {
+                    StrategicInvalidationReason operationalReasons = StrategicInvalidationReason.None;
+                    StrategicInvalidationReason strategicReasons = StrategicInvalidationReason.None;
+                    bool strategicChanged = false;
+                    for (int pair = 0; pair < pairs; pair++)
+                    {
+                        TakeTypedTriggers(out StrategicInvalidationReason pairOperational,
+                            out StrategicInvalidationReason pairStrategic,
+                            out HashSet<DesireAxis> pairDirtyAxes);
+                        yield return ReenterStrategicAxes(pairStrategic, pairDirtyAxes);
+                        strategicChanged |= reentryStateChanged;
+                        operationalReasons |= pairOperational;
+                        strategicReasons |= pairStrategic;
+                    }
+                    stepTriggers = new StepTriggerOutcome(operationalReasons, strategicReasons, strategicChanged);
+                }
+
+                // A mandatory aviation obligation as a work step. Execution stays with the existing
+                // owners (MandatoryAviationStep). No ledger, Settle or observer boundary: the
+                // obligation was paid when the sortie launched.
                 IEnumerator RunMandatoryAviationStep(MandatoryAviationKind kind, ArmyData actor)
                 {
                     string label = MandatoryAviationOrder.Label(kind);
@@ -547,28 +571,13 @@ namespace Game.Ai.V2
                     settledSteps++;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
                         $"step {settledSteps} {label} #{actor.Id}");
-                    StrategicInvalidationReason operationalReasons = StrategicInvalidationReason.None;
-                    StrategicInvalidationReason strategicReasons = StrategicInvalidationReason.None;
-                    bool strategicChanged = false;
-                    // Re-entry may publish another compound fact (for example, materializing a Raid
-                    // reinforcement changes Actor + Capability); a further pair routes it through the
-                    // same typed fan-out before it is consumed.
-                    for (int pair = 0; pair < MandatoryAviationOrder.TriggerPairs(kind); pair++)
-                    {
-                        TakeTypedTriggers(out StrategicInvalidationReason pairOperational,
-                            out StrategicInvalidationReason pairStrategic,
-                            out HashSet<DesireAxis> pairDirtyAxes);
-                        yield return ReenterStrategicAxes(pairStrategic, pairDirtyAxes);
-                        strategicChanged |= reentryStateChanged;
-                        operationalReasons |= pairOperational;
-                        strategicReasons |= pairStrategic;
-                    }
-                    bool progress = actionChanged || strategicChanged;
-                    noProgressCycles = progress ? 0 : noProgressCycles + 1;
+                    yield return ResolveStepTriggers(MandatoryAviationOrder.TriggerPairs(kind));
+                    bool progress = stepTriggers.Progressed(actionChanged);
+                    noProgressCycles = StepTriggerOutcome.NextNoProgress(noProgressCycles, progress);
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} {label} actor=#{actor.Id} "
                         + $"progress={(progress ? 1 : 0)} "
-                        + $"operationalTriggers={operationalReasons} "
-                        + $"strategicTriggers={strategicReasons}");
+                        + $"operationalTriggers={stepTriggers.Operational} "
+                        + $"strategicTriggers={stepTriggers.Strategic}");
                     if (!progress)
                     {
                         // Recon audit B1 — skipped for the rest of this turn; it must not stop
@@ -714,13 +723,14 @@ namespace Game.Ai.V2
                     (MandatoryAviationKind Kind, ArmyData Actor) mandatory = MandatoryAviationOrder.Next(
                         AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber),
                         ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx));
-                    if (mandatory.Kind != MandatoryAviationKind.None)
+                    OperationalWorkKind work = OperationalWorkSelection.Select(
+                        mandatory.Kind, allocation.Funded.Count);
+                    if (work == OperationalWorkKind.MandatoryAviation)
                     {
                         yield return RunMandatoryAviationStep(mandatory.Kind, mandatory.Actor);
                         continue;
                     }
-
-                    if (allocation.Funded.Count == 0)
+                    if (work == OperationalWorkKind.None)
                     {
                         zeroRadarResidualWindow = true;
                         AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
@@ -876,8 +886,8 @@ namespace Game.Ai.V2
                     WorldAnalysis.StepObservationStamp beforeStep =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     var stepResults = new List<ExecutionResult>();
-                    if (selected.Kind == MissionKind.Scout
-                        && selected.ExecutorKind != ScoutExecutorKind.Ground)
+                    if (OperationalWorkSelection.RouteFor(selected.Kind, selected.ExecutorKind)
+                        == MissionRoute.AirRecon)
                     {
                         AirReconPlan plan = AirReconPlanner.Plan(player, root, ctx,
                             snapshot, new[] { selected });
@@ -917,28 +927,13 @@ namespace Game.Ai.V2
                     // Snapshot, mission ledger and reservation reconciliation now all describe
                     // the completed command; inspection never sees a half-settled action.
                     yield return ctx.WaitAtObserverActionBoundary();
-                    bool progressed = stepResults.Any(er =>
-                        er != null && er.Outcome.StateChanged);
-                    TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
-                        out StrategicInvalidationReason strategicReasons,
-                        out HashSet<DesireAxis> dirtyStrategicAxes);
-                    yield return ReenterStrategicAxes(
-                        strategicReasons, dirtyStrategicAxes);
-                    bool strategicChanged = reentryStateChanged;
-                    // A follow-up Phase A action may publish a reason shared by operational and
-                    // strategic families. Take one typed snapshot and acknowledge every affected
-                    // recipient before the registry clears that reason.
-                    TakeTypedTriggers(
-                        out StrategicInvalidationReason followupOperationalReasons,
-                        out StrategicInvalidationReason followupStrategicReasons,
-                        out HashSet<DesireAxis> followupDirtyAxes);
-                    operationalReasons |= followupOperationalReasons;
-                    strategicReasons |= followupStrategicReasons;
-                    yield return ReenterStrategicAxes(
-                        followupStrategicReasons, followupDirtyAxes);
-                    strategicChanged |= reentryStateChanged;
-                    progressed |= strategicChanged;
-                    noProgressCycles = progressed ? 0 : noProgressCycles + 1;
+                    yield return ResolveStepTriggers(2);
+                    StrategicInvalidationReason operationalReasons = stepTriggers.Operational;
+                    StrategicInvalidationReason strategicReasons = stepTriggers.Strategic;
+                    bool strategicChanged = stepTriggers.StrategicChanged;
+                    bool progressed = stepTriggers.Progressed(stepResults.Any(er =>
+                        er != null && er.Outcome.StateChanged));
+                    noProgressCycles = StepTriggerOutcome.NextNoProgress(noProgressCycles, progressed);
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
                         + $"operationalTriggers={operationalReasons} strategicTriggers={strategicReasons} "

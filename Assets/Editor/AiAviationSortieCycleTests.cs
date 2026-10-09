@@ -1376,6 +1376,55 @@ namespace Game.EditorTests
             }
         }
 
+        // Level 2: a stalled rebase wing stops counting as an obligation, the other wing still
+        // does, and the selection hands the turn back to the missions once none is left.
+        // Engine-bound (ArmyController is a MonoBehaviour): runs in the Unity editor only.
+        [Test]
+        public void MandatoryRebase_StalledWingsStopCounting_ForTheirTurnOnly()
+        {
+            var actors = new List<GameObject>();
+            AviationObligationStallRegistry.Clear();
+            try
+            {
+                var wings = new List<ArmyData>();
+                for (int i = 0; i < 2; i++)
+                {
+                    var actor = new GameObject("rebase-actor"); actors.Add(actor);
+                    ArmyData wing = Wing(new HexCoord(1, 0), Plane(1, 1));
+                    wing.Controller = actor.AddComponent<ArmyController>();
+                    AirSortieRegistry.Add(_owner, new AirSortie
+                        { Army = wing, Kind = AirSortieKind.Rebase, LandingHex = default });
+                    wings.Add(wing);
+                }
+                var ctx = new AiTurnContext { TurnNumber = 5 };
+                var all = AviationRebasePlanner.FindMandatoryContinuations(_owner, 5);
+                Assert.That(all, Is.EqualTo(wings.OrderBy(w => w.Id).ToList()));
+                Assert.That(AviationObligations.Pending(_owner, ctx), Is.True);
+                var first = MandatoryAviationOrder.Next(all,
+                    ReconAirExecutor.FindMandatoryRecoveryActors(_owner, ctx));
+                Assert.That(first.Kind, Is.EqualTo(MandatoryAviationKind.Rebase));
+                Assert.That(first.Actor, Is.SameAs(all[0]));
+
+                AviationObligationStallRegistry.MarkStalled(_owner, 5, all[0].Id);
+                var rest = AviationRebasePlanner.FindMandatoryContinuations(_owner, 5);
+                Assert.That(rest, Is.EqualTo(new[] { all[1] }));
+                Assert.That(MandatoryAviationOrder.Next(rest, new List<ArmyData>()).Actor, Is.SameAs(all[1]));
+
+                AviationObligationStallRegistry.MarkStalled(_owner, 5, all[1].Id);
+                Assert.That(AviationObligations.Pending(_owner, ctx), Is.False,
+                    "the last obligation stalled: Phase A and the deferred axes are released");
+                Assert.That(OperationalWorkSelection.Select(MandatoryAviationKind.None, 1),
+                    Is.EqualTo(OperationalWorkKind.Mission));
+                Assert.That(AviationRebasePlanner.FindMandatoryContinuations(_owner, 6).Count, Is.EqualTo(2),
+                    "the next turn re-tries both");
+            }
+            finally
+            {
+                AviationObligationStallRegistry.Clear();
+                foreach (var actor in actors) Object.DestroyImmediate(actor);
+            }
+        }
+
         private UnitData Plane(int ap, int energy) => new UnitData
         {
             Owner = _owner, IsAviation = true, ActivationApCost = ap, LaunchEnergyCost = energy,

@@ -43,8 +43,25 @@ namespace Game.Ai.V2
 
     // The strategic axes whose re-admission waited for aviation obligations. Pure bookkeeping so
     // the pipeline's defer / flush rule is testable on its own.
+    internal enum DeferredAdmissionGate { Skip, Defer, Admit, AdmitDespitePending }
+
     internal sealed class DeferredStrategicAdmission
     {
+        // What a re-admission request does, given only its own inputs. `triggered`: a typed fact
+        // names dirty axes. `flush`: admit waiting axes once nothing is pending (loop top).
+        // `force`: admit them even while an obligation is pending (the loop is over).
+        internal static DeferredAdmissionGate Gate(bool triggered, bool flush, bool force,
+            bool hasDeferredAxes, bool obligationsPending)
+        {
+            if (!triggered && !((flush || force) && hasDeferredAxes))
+                return DeferredAdmissionGate.Skip;
+            if (!obligationsPending)
+                return DeferredAdmissionGate.Admit;
+            if (force)
+                return DeferredAdmissionGate.AdmitDespitePending;
+            return triggered ? DeferredAdmissionGate.Defer : DeferredAdmissionGate.Skip;
+        }
+
         private readonly HashSet<DesireAxis> _axes = new HashSet<DesireAxis>();
 
         internal bool HasAxes => _axes.Count > 0;
