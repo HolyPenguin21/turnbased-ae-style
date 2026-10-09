@@ -125,6 +125,14 @@ flowchart TD
 6. **Raw resource ratchet:** `Assets/Editor/AiRawResourceReadRatchetTests.cs:55` допускает ровно 6 raw-чтений в `Orchestration/AiStrategyV2Pipeline.cs` — перенос fingerprint (Уровень 3) должен учесть ratchet.
 7. `LifecycleReturnPolicy.LastWait` — статический словарь без привязки к ходу, чистится `ClearAll()`; граница «ждал вчера» = `last == turn-1`.
 
+## 3a. Покрытие тестами оркестрации и размеры классов
+
+**Покрытие `RunTurn`.** Ни один тест в `Assets/Editor` не вызывает `Pipeline.RunTurn`, `RunTypedAdmissions`, `ReenterStrategicAxes` или `TakeTypedTriggers` (это локальные функции внутри корутины). Тестируются только вынесенные статические куски: `DevelopmentAdmissionFacts/Fingerprint`, `AggressionAdmissionFingerprint`, `StrategicAdmissionNeeded`, `RefreshDevelopmentOpportunities`, `LifecycleReturnPolicy`. Вывод: **порядок действий в самом цикле сейчас не защищён тестами**. Любой уровень, меняющий порядок, сначала обязан вынести проверяемую единицу (класс с явными входами/выходами) и добавить на неё характеризационные тесты на baseline. Это совпадает с требованием владельца разнести крупные классы: выделение классов — предпосылка тестируемости, а не косметика.
+
+Размеры самых крупных файлов `Ai/V2` (строки): StrategicCardEvaluator 2090; DemandLayer.Economy 1723; **AiStrategyV2Pipeline 1568**; ReconAssignmentPlanner 1499; StrategicEffectRegistry 1437; MissionContinuityLayer.Attack 1409; InfrastructureFulfillment 1219; DevelopmentOpportunityEvaluator 1213; WorldSnapshot 1161; StrategicPhaseA 1144; ResourceAllocator 1072; GroundCombatAssaultTransaction 1021; TaskExecutor 1004; MissionContinuityLayer 977. В объём этой задачи входят только файлы из таблицы ТЗ §1 (Pipeline, InfrastructureFulfillment, StrategicPhaseA, ResourceAllocator, TaskExecutor, MissionContinuityLayer*); остальные крупные классы — вне объёма, пока владелец не скажет иначе.
+
+Сопоставление сценариев §12 с существующими fixtures (имена файлов подтверждены): AiReconAirLifecycleTests, AiAviationSortieCycleTests, AiWorldDeltaTests, AiLifecycleIngressTests, AiMissionLeaseLifecycleTests, AiEconomyReservationLifecycleTests, AiAggressionReadmissionTests, AiDevelopmentReadmissionTests, AiLifecycleReturnPolicyTests, AiRouteCacheIsolationTests, AiCombatCacheLifecycleTests, AiObserverPauseTests, AiTurnSessionIsolationTests, AiHousekeepingMissionContractTests. Fixture для bounded-loop и для порядка rebase/recovery отсутствует — создаётся.
+
 ## 4. Bounds (читать из `AiConfigV2`)
 
 | Константа | Значение |
