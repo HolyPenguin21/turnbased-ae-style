@@ -485,25 +485,10 @@ namespace Game.Ai.V2
                             + MandatoryAviationOrder.StallMessage(kind, actor.Id));
                 }
 
-                // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
-                // running THIS turn" — ResourceAllocator.cs:172, covers MoverContended AND
-                // NoExecutableStep alike) carry that verdict, but nothing enforced it across
-                // settled steps: BuildMissionSet re-proposed the same losing job every
-                // micro-step, re-running the full batch solve only to reach the identical
-                // rejection again (same busy/unreachable movers, nothing changed). Originally
-                // this set only recorded MoverContended, so a NoExecutableStep rejection (a
-                // scout physically can't reach its target this turn) kept re-entering the
-                // batch solve every settled step for no reason — same churn, different kind.
-                // Recorded live as each RetryNextTurn failure is seen below (NOT by reading
-                // ProvisioningSession.AssignmentRejections after the step settles — a later
-                // intra-step realloc pass drops an already-rejected mission out of Funded
-                // entirely, and ProvisioningSession.SetAssignment clears+refills that dict on
-                // every pass, so by settle time it only ever held the last pass's leftovers,
-                // almost always empty). Consumed only at the NEXT settled step's BuildMissionSet
-                // filter below, so this step's own remaining realloc passes still see the full
-                // candidate set — the existing intra-step "chance within the batch" is untouched.
-                // Scoped to one admission pass: OpenAdmissionPass starts it empty.
-                HashSet<StableMissionKey> retryNextTurnThisPass = null;
+                // Jobs the provisioning of this pass found out of the running for the rest of the
+                // turn (RetryNextTurn). Owned by Provisioning (PassParking); the loop opens a new one
+                // with every admission pass.
+                PassParking passParking = null;
 
                 // Perf: an AI turn can run dozens of settled steps back-to-back with no other
                 // yield in between (each step's own yields resolve synchronously — see the
@@ -519,7 +504,7 @@ namespace Game.Ai.V2
                 // The pass-scoped resets of an admission pass (TurnLoop opens every pass).
                 void OpenAdmissionPass()
                 {
-                    retryNextTurnThisPass = new HashSet<StableMissionKey>();
+                    passParking = new PassParking();
                     lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
                 }
 
@@ -574,30 +559,10 @@ namespace Game.Ai.V2
                                 + string.Join(", ", waiting.Select(m => StableMissionKey.For(m).ToString())));
                         }
                     }
-                    if (missions.Count > 0)
-                    {
-                        var retained = new List<MissionProposal>(missions.Count);
-                        foreach (MissionProposal mission in missions)
-                        {
-                            // The set is per admission; the registry carries the same verdict to a
-                            // later admission of this turn while it still provably holds.
-                            if (mission != null
-                                && (retryNextTurnThisPass.Contains(StableMissionKey.For(mission))
-                                    || CapabilityPoolExhaustionRegistry.ShouldSkipRetried(
-                                        player, mission, snapshot)))
-                            {
-                                // A durable leg at tier None (a Raid's fresh-decision return
-                                // fallback) still belongs to an intent that is funded: dropping
-                                // it here without a reason made BindFunding warn.
-                                if (mission.FromDurableIntent)
-                                    missionDeferrals[MissionIntentKey.For(mission)] =
-                                        "retry_next_turn_after_provision_failure";
-                                continue;
-                            }
-                            retained.Add(mission);
-                        }
-                        missions = retained;
-                    }
+                    PassParkingResult parked = passParking.Filter(missions, snapshot, player);
+                    foreach (KeyValuePair<MissionIntentKey, string> parkedLeg in parked.Deferrals)
+                        missionDeferrals[parkedLeg.Key] = parkedLeg.Value;
+                    missions = parked.Retained;
                     List<Commitment> cycleCommitments =
                         MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot,
                             missionDeferrals);
@@ -633,130 +598,32 @@ namespace Game.Ai.V2
                         yield break;
                     }
 
-                    ProvisionedMission selected = null;
-                    bool selectedIsCommitment = false;
-                    StableMissionKey selectedKey = default;
-                    var attemptedKeys = new HashSet<StableMissionKey>();
-                    // Two independent bounded budgets, not one shared counter: a Scout batch that
-                    // keeps failing (assignmentReallocPass) must not be able to consume every
-                    // realloc this cycle had, starving the single-mission repack
-                    // (repriceReallocPass) that a mandatory Economy EnvelopeTooSmall/
-                    // RepriceThisTurn depends on to ever see a corrected envelope this turn.
-                    int assignmentReallocPass = 0;
-                    int repriceReallocPass = 0;
-                    bool provisioningSettled = false;
-                    while (!provisioningSettled)
+                    // Which funded mission becomes executable: the retry / reprice protocol and the
+                    // parking of rejected jobs belong to Provisioning (ProvisionNext).
+                    ProvisioningSelectionOutcome pick = ProvisioningManager.ProvisionNext(player, root,
+                        hand, ctx, snapshot, actorCommitments, cycleSession, cycleProvisioning,
+                        passParking, allocation);
+                    allocation = pick.FinalAllocation;
+                    foreach (StableMissionKey fundedKey in pick.FundedKeysAcrossPacks)
+                        fundedKeysThisTurn.Add(fundedKey);
+                    // The attempts reach the mission ledger and the turn telemetry in the order they
+                    // happened, before the step executes (nothing in between reads the ledger).
+                    foreach (ProvisionEvent attempt in pick.Events)
                     {
-                        ProvisioningManager.PreparePass(player, root, ctx,
-                            cycleProvisioning, allocation, actorCommitments);
-                        IReadOnlyList<(FundedEntry Funded, ProvisionFailure Failure)> scoutFailures =
-                            ProvisioningManager.ScoutAssignmentFailures(cycleProvisioning, allocation);
-                        if (scoutFailures.Count > 0)
+                        if (attempt.Kind == ProvisionEventKind.Success)
                         {
-                            foreach ((FundedEntry failedFunding, ProvisionFailure failure) in scoutFailures)
-                            {
-                                StableMissionKey failedKey = StableMissionKey.For(failedFunding.Mission);
-                                attemptedKeys.Add(failedKey);
-                                provisioningFailures.TryGetValue(failure.Kind, out int scoutFailureCount);
-                                provisioningFailures[failure.Kind] = scoutFailureCount + 1;
-                                CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
-                                    player, failedFunding.Mission, failure);
-                                cycleSession.RegisterProvisionFailure(failedFunding, failure);
-                                cycleLedger.RecordProvisionFailure(failedFunding.Mission, failure);
-                                // Record any RetryNextTurn failure here (during the pass, before the
-                                // next realloc's repack can drop this mission out of Funded entirely
-                                // and erase it from cycleProvisioning.AssignmentRejections) — reading
-                                // the rejection dict only after the whole step settles was catching
-                                // just the last realloc pass's leftovers, near-always empty by then.
-                                if (failure.Disposition == ProvisionDisposition.RetryNextTurn)
-                                {
-                                    retryNextTurnThisPass.Add(failedKey);
-                                    CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(
-                                        player, failedFunding.Mission);
-                                }
-                                AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
-                                    + $"[{AiV2Trace.FormatCorrelation(failedFunding.Mission)}] {failedKey} — FAIL "
-                                    + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
-                            }
-
-                            List<FundedEntry> openScouts = allocation.Funded.Where(fe =>
-                                fe?.Mission?.Kind == MissionKind.Scout
-                                && !cycleProvisioning.AlreadyProvisioned(
-                                    StableMissionKey.For(fe.Mission))).ToList();
-                            Dictionary<StableMissionKey, ProvisionFailure> scoutFailureByKey =
-                                scoutFailures.ToDictionary(
-                                    f => StableMissionKey.For(f.Funded.Mission), f => f.Failure);
-                            CapabilityPoolExhaustionRegistry.SettleScoutBatch(snapshot, player,
-                                openScouts.Select(fe => fe.Mission), scoutFailureByKey,
-                                cycleProvisioning.Successful.Values.Select(m => m?.Mission));
-
-                            // One batch means one re-pack. The allocator now sees every impossible
-                            // Scout at once, so released AP can admit Economy/Development immediately.
-                            if (cycleSession.HasNewFailures && !cycleSession.Converged
-                                && assignmentReallocPass < AiConfigV2.maxReallocIterations)
-                            {
-                                assignmentReallocPass++;
-                                allocation = cycleSession.Pack();
-                                RecordFunded(allocation);
-                                continue;
-                            }
+                            cycleLedger.RecordProvisionSuccess(attempt.Proposal, attempt.Provisioned);
+                            provisioned.Add(attempt.Provisioned);
+                            continue;
                         }
-                        FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
-                            fe?.Mission != null
-                            && CapabilityPoolExhaustionRegistry.CanAttempt(
-                                player, fe.Mission, snapshot));
-                        if (selectedFunding == null)
-                            break;
-
-                        selectedKey = StableMissionKey.For(selectedFunding.Mission);
-                        attemptedKeys.Add(selectedKey);
-                        ProvisioningResult provisionResult = ProvisioningManager.Provision(
-                            player, root, hand, ctx, cycleProvisioning, selectedFunding);
-                        if (provisionResult.Success)
-                        {
-                            selected = provisionResult.Provisioned;
-                            selectedIsCommitment = selectedFunding.IsCommitment;
-                            cycleProvisioning.RegisterSuccess(selectedKey, selected);
-                            cycleSession.RegisterProvisionSuccess(selectedFunding,
-                                selected.ClaimedAp, selected.ClaimedPhysical);
-                            cycleLedger.RecordProvisionSuccess(selectedFunding.Mission, selected);
-                            provisioned.Add(selected);
-                            AiV2Trace.CheckProvisionEnvelope(selectedFunding.Mission.AttemptId,
-                                selected.ClaimedAp, selectedFunding.Tentative.Ap);
-                            provisioningSettled = true;
-                            break;
-                        }
-
-                        provisioningFailures.TryGetValue(provisionResult.Failure.Kind,
-                            out int failureCount);
-                        provisioningFailures[provisionResult.Failure.Kind] = failureCount + 1;
-                        CapabilityPoolExhaustionRegistry.RecordProvisionFailure(snapshot, player,
-                            selectedFunding.Mission, provisionResult.Failure);
-                        cycleSession.RegisterProvisionFailure(selectedFunding, provisionResult.Failure);
-                        cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
-                            provisionResult.Failure);
-                        if (provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
-                        {
-                            retryNextTurnThisPass.Add(selectedKey);
-                            CapabilityPoolExhaustionRegistry.CarryRetryNextTurn(
-                                player, selectedFunding.Mission);
-                        }
-                        AiDebugLog.Write($"[AI][V2][Loop] provision [{AiV2Trace.FormatCorrelation(selectedFunding.Mission)}] "
-                            + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
-                            + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
-
-                        // A non-repricing failure rejects this key; repack can consider other missions.
-                        // Count only a retry of the SAME key with a repriced envelope.
-                        if (!cycleSession.HasNewFailures || cycleSession.Converged
-                            || (provisionResult.Failure.Disposition == ProvisionDisposition.RepriceThisTurn
-                                && ++repriceReallocPass >= AiConfigV2.maxReallocIterations))
-                        {
-                            provisioningSettled = true;
-                            break;
-                        }
-                        allocation = cycleSession.Pack();
-                        RecordFunded(allocation);
+                        provisioningFailures.TryGetValue(attempt.Failure.Kind, out int failureCount);
+                        provisioningFailures[attempt.Failure.Kind] = failureCount + 1;
+                        cycleLedger.RecordProvisionFailure(attempt.Proposal, attempt.Failure);
                     }
+                    ProvisionedMission selected = pick.Selected;
+                    bool selectedIsCommitment = pick.SelectedIsCommitment;
+                    StableMissionKey selectedKey = pick.SelectedKey;
+                    HashSet<StableMissionKey> attemptedKeys = pick.AttemptedKeys;
 
                     if (selected == null)
                     {

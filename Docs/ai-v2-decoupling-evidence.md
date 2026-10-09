@@ -165,3 +165,53 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 ## Цена изменения (до / после)
 
 Новая удерживаемая до первого tempo резервация: раньше — вызов в `SettleBeforeFirstPhaseB` (`Orchestration`) + Strategy/State; теперь — `StrategicTurnLifecycle.BeforeFirstTempo` + Strategy/State, событие то же. Новый авиационный исход: раньше ветка stall в `RunTurn`; теперь `AviationObligations.RecordSettledStep` (Recon). Новый тип глобального факта по-прежнему проходит старые точки fan-out — Э2 их не устраняет.
+
+# Э3 — Provisioning владеет подбором исполнимой миссии и парковкой прохода
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Вход этапа — `19c80a86`.
+
+## Что изменено
+
+| Файл | Изменение |
+|---|---|
+| `Provisioning/ProvisioningManager.Selection.cs` (partial существующего класса) | `ProvisionNext(...)` — протокол подбора: Prepare → пакет отказов Scout → один re-pack на пакет (`assignmentReallocPass < max`) → выбор первой допустимой миссии → отказ/успех → re-pack (`++repriceReallocPass >= max` только для `RepriceThisTurn`). Перенесён из `RunAdmissionIteration` построчно. `SelectionSteps` — три мировые операции (`PreparePass`, `ScoutAssignmentFailures`, `Provision`) как шов для тестов; в production привязаны к методам класса |
+| `Provisioning/PassParking.cs` | парковка прохода: `Park` (множество прохода + `CarryRetryNextTurn`), `Filter` (+причина `retry_next_turn_after_provision_failure` для durable-ноги); создаётся при открытии прохода |
+| `Provisioning/ProvisioningSelectionOutcome.cs` | результат: `Selected`, `SelectedKey`, `SelectedIsCommitment`, `FinalAllocation`, `AttemptedKeys`, журнал `Events` (`ScoutBatchFailure` / `Failure` / `Success`), `FundedKeysAcrossPacks` — транзитный журнал одного вызова, не ledger |
+| `Orchestration/AiStrategyV2Pipeline.cs` | вызов `ProvisionNext`; журнал проигрывается в `MissionOutcomeLedger` и телеметрию сразу после вызова (до исполнения шага); `retryNextTurnThisPass` заменён `PassParking`; фильтр парковки — `passParking.Filter` в прежней точке (после ожидания возвратов, до `BindFunding`) |
+| `Assets/Editor/AiProvisioningSelectionTests.cs` | 11 тестов (ниже) |
+
+Начальный `Pack` и выбор обязательной авиации остались в оркестраторе до первого вызова (иначе меняется порядок регистрации funded). `ProvisioningSession` по-прежнему открывается `using` на всю итерацию и не закрывается в `ProvisionNext`: выбранная миссия исполняется, наблюдается и повторно допускается под её claim-ами.
+
+## Решения и сверка с требованиями Э3
+
+| Требование ТЗ | Результат |
+|---|---|
+| Последовательности: batch reject → один repack; reprice; no-new-failures; Converged; RetryNextTurn; успех после отказа; два бюджета на пределе | тесты на **реальном** `AllocationSession` и реестре (Hard-commitments дают детерминированные funded без мира): успех с первой попытки; RetryNextTurn → парковка → следующая миссия; reprice ровно `max` попыток; non-reprice без других миссий; бесконечный Scout-пакет = ровно `max` re-pack и `max + 1` отказов, затем выбор; **бюджеты независимы** (3 пакета не съедают reprice) |
+| Журнал в порядке, все попытки и ключи | `Events` в порядке попыток, `AttemptedKeys` — все ключи (включая отказы пакета) |
+| Парковку записывать в момент отказа | `Park` вызывается сразу после регистрации отказа, до следующего `PreparePass` |
+| Логи попыток синхронно внутри provisioning | строки `[Loop] assignment-batch …` и `[Loop] provision … — FAIL` не отложены; текст не менялся |
+| Телеметрия: каждая попытка и все funded-паки | `provisioningFailures` считает каждое событие-отказ; `fundedKeysThisTurn` получает `FundedKeysAcrossPacks`; `provisioned.Add` для успеха |
+| ledger не читается в цикле | проверено поиском: в `RunAdmissionIteration` между старым и новым местом записи `cycleLedger` не читается; `RecordProvisionFailure` пишет только `PendingFailure`, `RecordProvisionSuccess` обнуляет его (`MissionOutcomeLedger.cs`) |
+| `CapabilityPoolExhaustionRegistry` и retry-цикл исчезают из Orchestration | `OrchestrationDoesNotRunTheProvisioningProtocol` (скан всей папки: реестр, оба счётчика, `maxReallocIterations`, `PreparePass`, `ScoutAssignmentFailures`, `RegisterProvision*`) |
+| Pass-reset и turn-reset различаются | `ANewPassForgetsTheSetButTheRegistryKeepsTheVerdictWhileThePoolIsProvenEmpty` |
+| `ProvisionNext` не закрывает session | `ProvisioningSession` не получает `Dispose` в методе (проверка чтением); `using` остался в итерации |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e3-a-p`) | 2148 тестов, 1673 прошло, 475 упало; регрессий 0 относительно `e2-a-p`, 11 новых прошедших (упавшие — те же 475) |
+| Мутации `ProvisionNext` | 5 из 5 пойманы: общий счётчик вместо двух; batch-граница `<=`; reprice-граница `>`; снятая парковка одиночного отказа |
+| Compile | 28 = 28, новых 0 |
+| Матрица зависимостей | 203 связи. `Pipeline`: 14 → 13 папок, 80 типов. **`Orchestration` целиком: 124 → 125 типов — рост на 1**: ушли `CapabilityPoolExhaustionRegistry`, `ProvisionFailure`, `ProvisioningResult`, `ProvisionDisposition` (4), добавились 5 типов контракта (`PassParking`, `PassParkingResult`, `ProvisionEvent`, `ProvisionEventKind`, `ProvisioningSelectionOutcome`). Счёт ссылок — вспомогательная метрика по ТЗ; знание протокола (реестр, бюджеты, порядок попыток) перешло к Provisioning, у `Provisioning` появились связи на `Allocation` (`AllocationSession`), `State`, `Diagnostics` |
+| Банк | tentative claims (`ProvisioningSession`), `AllocationSession` и их порядок не менялись; durable claims по-прежнему через ledger → `SettleStep` на той же точке шага |
+| Кеши | `ShouldSkipRetried` читает тот же снапшот; реестр инвалидируется `AiTurnSession`, второй кеш не создан |
+| Unity EditMode/PlayMode, native | не выполнялись; S3 на реальных `Provision*` (мировая часть) — Unity-fixture |
+
+## Наблюдение вне объёма этапа
+
+`ReactionRoundExecutor` содержит собственный цикл повторного подбора с тем же реестром и ledger (`reallocPass`, L199–228). Он не менялся и остаётся прежним потребителем; общий протокол с `ProvisionNext` — возможное продолжение вне этой задачи.
+
+## Цена изменения (до / после)
+
+Новая provisioning disposition («повторить после следующего pack»): раньше — правка `while` и обоих хвостов учёта отказа в `RunAdmissionIteration` + Provisioning + State; теперь — `ProvisionNext` (+ реестр State), потребитель исхода (цикл `Events` в оркестраторе) не получает новой ветки. Новый факт, снимающий исчерпание пула, обрабатывает прежний реестр State; оркестратор его доказательств не знает.
