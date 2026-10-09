@@ -454,10 +454,6 @@ namespace Game.Ai.V2
             raid.RecoveryBaseHex = null;
         }
 
-        private static string RefitDecision(RaidRefitActionKind kind) =>
-            kind == RaidRefitActionKind.RepairUnit ? "REPAIR"
-            : kind == RaidRefitActionKind.TransferUnit ? "TRANSFER" : "SWAP";
-
         private static MissionIntent RaidIntentOfPrimary(PlayerSetupData player, int primaryArmyId) =>
             MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i => i?.Raid != null
                 && i.Raid.PrimaryArmyId == primaryArmyId);

@@ -176,9 +176,6 @@ namespace Game.Ai.V2
             return list;
         }
 
-        public static RaidObjective ForTrackedArmy(WorldSnapshot snap, CombatOpportunityReport report,
-            int trackedArmyId) => ForTrackedTarget(snap, report, RaidTargetRef.ForNeutralArmy(trackedArmyId));
-
         public static RaidObjective ForTrackedTarget(WorldSnapshot snap, CombatOpportunityReport report,
             RaidTargetRef target)
         {

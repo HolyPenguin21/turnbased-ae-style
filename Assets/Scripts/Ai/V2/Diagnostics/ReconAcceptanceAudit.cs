@@ -144,24 +144,6 @@ namespace Game.Ai.V2
                 $"actor=#{armyId} target=#{targetArmyId} win={winChance:0.00} battle={(battleOccurred ? 1 : 0)}");
         }
 
-        public static void RecordHiddenFacilityCapture(PlayerSetupData player, int turn, int armyId,
-            HexCoord hex, bool startedHidden, bool worldChanged)
-        {
-            Record(player, turn, HiddenFacilityCapture, startedHidden && worldChanged,
-                $"actor=#{armyId} hex=({hex.Q},{hex.R}) hiddenEntry={(startedHidden ? 1 : 0)} "
-                + $"resolved={(worldChanged ? 1 : 0)}");
-        }
-
-        public static void RecordHiddenFacilityCancel(PlayerSetupData player, int turn, int armyId,
-            HexCoord hex, bool startedHidden, ReconReactionAction afterDecloak)
-        {
-            bool danger = afterDecloak == ReconReactionAction.Flee
-                || afterDecloak == ReconReactionAction.EvadeDetector
-                || afterDecloak == ReconReactionAction.StopAndReplan;
-            Record(player, turn, HiddenFacilityCancel, startedHidden && danger,
-                $"actor=#{armyId} hex=({hex.Q},{hex.R}) hiddenEntry={(startedHidden ? 1 : 0)} afterDecloak={afterDecloak}");
-        }
-
         public static void RecordMostlyExploredPressure(PlayerSetupData player, int turn,
             float explorableUnknownFrac, float explorePressure, float refreshPressure)
         {

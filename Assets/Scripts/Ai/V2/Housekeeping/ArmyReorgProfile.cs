@@ -235,9 +235,6 @@ namespace Game.Ai.V2
             return units.Select(u => new AiPower.PowerUnit(u.Power, u.TypeTags, u.Range, u.IsHero)).ToList();
         }
 
-        public static float StackPower(IEnumerable<ReorgUnit> units) =>
-            units == null ? 0f : units.Sum(u => u.Power);
-
         // Shared V2 strength/composition model — no second Housekeeping-only tactical scalar.
         public static float EffectivePower(IReadOnlyList<ReorgUnit> units) =>
             units == null || units.Count == 0 ? 0f : AiPower.EffectiveArmyPower(ToPowerUnits(units));

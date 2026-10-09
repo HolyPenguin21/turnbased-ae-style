@@ -57,13 +57,6 @@ namespace Game.Audio
             foreach (var popup in root.GetComponentsInChildren<PopupPanelUI>(true))
                 BindHumanTurnPopup(popup);
         }
-        public void BindButton(Button button)
-        {
-            if (button == null) return;
-            var sound = button.GetComponent<UIButtonSound>();
-            if (sound == null) sound = button.gameObject.AddComponent<UIButtonSound>();
-            sound.Bind(button);
-        }
         private static void BindButtons(GameObject root)
         {
             foreach (var button in root.GetComponentsInChildren<Button>(true))

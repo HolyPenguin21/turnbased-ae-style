@@ -197,13 +197,5 @@ namespace Game.Map
                 && KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings)
                 && buildings.Contains(hex);
         }
-
-        public static IEnumerable<HexCoord> BuildingsKnownBy(PlayerSetupData viewer)
-        {
-            return Tracks(viewer)
-                && KnownBuildingHexes.TryGetValue(viewer, out HashSet<HexCoord> buildings)
-                ? buildings
-                : EmptyHexes;
-        }
     }
 }

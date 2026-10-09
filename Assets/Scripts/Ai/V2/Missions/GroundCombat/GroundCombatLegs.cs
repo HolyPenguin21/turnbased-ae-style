@@ -151,10 +151,6 @@ namespace Game.Ai.V2
             return intent?.Attack?.AirSupportArmyId;
         }
 
-        internal static HashSet<int> HeldAirSupportArmyIdsOf(IEnumerable<MissionIntent> intents) =>
-            new HashSet<int>((intents ?? System.Linq.Enumerable.Empty<MissionIntent>())
-                .Select(HeldAirSupportArmyId).Where(id => id.HasValue).Select(id => id.Value));
-
         // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,
         // a convoy, a gather): one activation this turn unless already paid, and the mover's own
         // travel time to `destination`. The leg's execution priority is its durable commitment.

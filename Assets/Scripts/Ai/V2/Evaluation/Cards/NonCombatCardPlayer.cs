@@ -154,26 +154,6 @@ namespace Game.Ai.V2
             }
         }
 
-        public static NonCombatPlay BestPlay(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, out List<string> blocked, PlayKind? onlyKind = null,
-            MaterializationReservation reservation = null, float? witnessedUsefulApDemand = null)
-        {
-            blocked = new List<string>();
-            NonCombatPlay best = null;
-            foreach (NonCombatPlay p in EnumeratePlays(snap, player, root, hand, ctx, blocked, reservation,
-                         witnessedUsefulApDemand))
-                if ((onlyKind == null || p.Kind == onlyKind.Value)
-                    && (best == null || p.Score > best.Score
-                        || (System.Math.Abs(p.Score - best.Score) <= 0.0001f
-                            && string.CompareOrdinal(p.StableKey, best.StableKey) < 0)))
-                    best = p;
-            if (best?.Kind == PlayKind.Aviation)
-                AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={best.Card.Definition.displayName} "
-                    + $"airfield=({best.TargetHex.Q},{best.TargetHex.R}) decision=SELECT "
-                    + $"score={best.Score:0.00} detail=\"{best.Explain}\"");
-            return best;
-        }
-
         // Every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
         // BestPlay is a convenience caller; Phase-B arbitration and reaction probes consume the whole set

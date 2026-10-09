@@ -348,8 +348,6 @@ namespace Game.Map
         // A hidden unit itself takes no offensive action (§5). Mixed armies still act through
         // their VISIBLE members — this is per-unit, never "the whole army is frozen".
 
-        public static bool CanActOffensively(UnitData unit) => unit == null || !unit.IsHidden;
-
         // ---------------------------------------------------------- the hidden challenge ----
 
         // stealthLevel + terrain bump (ordinary hex +0, move-cost 2 +1, cost 3 / mountains +2).

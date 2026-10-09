@@ -351,18 +351,6 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Exact feasibility for one ALREADY ASSIGNED actor. Fresh actor admission is performed by
-        // Plan() above at the strict raidMinViableWinChance. Provisioning calls this method only
-        // after its batch assignment has picked a concrete actor; GroundCombatAdmissionRegistry additionally
-        // uses it for the PreferredMover of a durable Hard Raid. That incumbent gets bounded
-        // continuation hysteresis so a valid multi-turn operation is not destroyed by the stricter
-        // start gate on every subsequent turn.
-        public static GroundCombatAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId,
-            float defenderHexDefenseBonus = 0f) =>
-            PlanForArmyAtThreshold(snap, opposition, armyId,
-                GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
-
         // The exact gate the Aggression demand layer re-runs against the NEXT
         // objective before it may call an active Raid "covered". Threshold is explicit: a fresh
         // target is a fresh start decision even for an incumbent army.

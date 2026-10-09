@@ -55,11 +55,6 @@ namespace Game.Combat
             (_cells[rowA, colA], _cells[rowB, colB]) = (_cells[rowB, colB], _cells[rowA, colA]);
         }
 
-        public static bool IsHeroSlot(int row, int col) => (row == DefenderBackRow || row == AttackerBackRow) && col == HeroColumn;
-
-        public static bool IsAttackerSideRow(int row) => row == AttackerFrontRow || row == AttackerBackRow;
-        public static bool IsDefenderSideRow(int row) => row == DefenderFrontRow || row == DefenderBackRow;
-
         // Up/down/left/right only, no diagonals — the Round phase's own movement step (see
         // BattleScreenUI.OnCellClicked/BattleAi.ChooseAction), distinct from IsInRange's
         // Chebyshev/square check used for attack Range.

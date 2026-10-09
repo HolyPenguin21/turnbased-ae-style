@@ -951,11 +951,6 @@ namespace Game.Ai.V2
                 x.Hex.Equals(hex) && x.ResourceType == type
                 && x.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
 
-        public float MarginalExtractionGainAt(HexCoord hex, ResourceType type) =>
-            ExtractionOpportunities == null ? 0f : ExtractionOpportunities
-                .Where(x => x.Hex.Equals(hex) && x.ResourceType == type)
-                .Select(x => (float)x.MarginalIncomeGain).DefaultIfEmpty(0f).Max();
-
         // Single owner of the project's "income below target" predicate. Demand emission and the
         // post-step resource-site trigger both call this, so discovery cannot use a second,
         // drifting definition of a deficient resource.

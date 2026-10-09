@@ -94,12 +94,6 @@ namespace Game.Combat
                 card.grantedAbilities, card.hitPoints, isGroundCombatant: true, isSummoned: true,
                 range: card.range);
 
-        // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
-        // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is
-        // what a REAL fight on this hex would actually roll against, not just the army's own raw
-        // stats.
-        public static float DefenseAt(ArmyData defender, HexCoord hex, HexMap map) => DefenseSum(defender) + HexDefenseBonus(hex, map);
-
         // Number of simulated exchanges Score/WinChance each run per call — capped at 100 per the
         // project owner's own explicit call (2026-08-22: "ограничиваемся сотней вызовов"),
         // lowered to 25 (2026-09-19) once profiling showed CombatOpportunityAnalyzer actually
@@ -175,27 +169,6 @@ namespace Game.Combat
                     hash = hash * 31 + ch;
                 return hash * 31 + 7;
             }
-        }
-
-        // One die-pool's worth of successes, same 50/50-per-die mechanic the real battle actually
-        // rolls with (ChallengeResolver.RollDice — half the faces are a miss, same odds). `diceCount`
-        // is always an aggregate Attack/Defense sum, already integer-valued in practice —
-        // RoundToInt only guards against float drift from summing. `rng` — this evaluation's own
-        // local System.Random (see BuildSeed's own comment), never UnityEngine.Random.
-        //
-        // Public since 2026-08-26 (AirStrike/Raid coordination spec, project owner's own report) —
-        // AviationCombatEstimator's own one-sided air-strike simulation needs this exact same die
-        // mechanic but plays it out in a different battle SHAPE (sequential single-target aircraft
-        // attacks, no return fire) that doesn't fit SimulateOneBattle's round-robin structure, so it
-        // reuses this one primitive rather than rolling its own copy of the 50/50 mechanic.
-        public static int RollSuccesses(float diceCount, System.Random rng)
-        {
-            int count = Mathf.Max(0, Mathf.RoundToInt(diceCount));
-            int successes = 0;
-            for (int i = 0; i < count; i++)
-                if (rng.NextDouble() < 0.5)
-                    successes++;
-            return successes;
         }
 
         // A side's battle commander (ArmyData.Commander — the army's first hero). Heroes never
@@ -422,14 +395,6 @@ namespace Game.Combat
             u.Attack = attack;
             u.Defense = defense;
             list[idx] = u;
-        }
-
-        private static bool AnyAlive(List<BattleUnit> units)
-        {
-            foreach (BattleUnit u in units)
-                if (u.Hp > 0f)
-                    return true;
-            return false;
         }
 
         private static bool AnyCombatantAlive(List<BattleUnit> units)

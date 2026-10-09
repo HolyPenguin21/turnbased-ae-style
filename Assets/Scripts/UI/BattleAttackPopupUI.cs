@@ -445,55 +445,6 @@ namespace Game.UI
                 titleText.text = "CAPTURE/KILL CHALLENGE";
         }
 
-        // A plain single-screen announcement — no roll, no dice, no attacker/defender rows —
-        // reusing just this popup's Result state (rollStateRoot skipped entirely) for a message
-        // that isn't really a Challenge at all, e.g. "Your army retreats." after a hero-only
-        // army's Capture Kill Challenge ends in Escaped (see BattleScreenUI.Combat.cs's
-        // HandleCaptureKillOutcome) — same panel the user asked for (BattleAttackPopupUI's own
-        // ResultStateRoot) rather than a brand new popup for what's a one-line acknowledgement.
-        public void ShowAnnouncement(string message, Action onAcknowledged, bool automateHumanSides = false)
-        {
-            CleanupResearchProduction();
-            _automateHumanSides = automateHumanSides;
-            _kind = ChallengeKind.Announcement;
-            _onAnnouncementAcknowledged = onAcknowledged;
-            // Never goes through Begin (no attacker/defender roll of its own) — the ONE other
-            // place that puts up a fresh closeable screen, so it needs its own reset of the
-            // OnOkClicked re-entrancy guard (see _okAlreadyHandled's own comment: _phase alone
-            // can't do this job here, since it never leaves Resolved across an Announcement).
-            _okAlreadyHandled = false;
-            // Resolved, not NotRolled/InProgress — this IS the result screen already, there's no
-            // roll to wait for; OnOkClicked's own guard expects Resolved to mean "a result is up".
-            _phase = Phase.Resolved;
-
-            if (panelRoot != null)
-            {
-                panelRoot.SetActive(true);
-                panelRoot.transform.SetAsLastSibling();
-            }
-            VisibilityChanged?.Invoke();
-            if (rollStateRoot != null)
-                rollStateRoot.SetActive(false);
-            if (resultStateRoot != null)
-                resultStateRoot.SetActive(true);
-
-            if (resultArtImage != null)
-                resultArtImage.gameObject.SetActive(false);
-            if (resultTargetArtImage != null)
-                resultTargetArtImage.gameObject.SetActive(false);
-            if (resultTargetNameText != null)
-                resultTargetNameText.text = string.Empty;
-            if (resultTargetHpText != null)
-                resultTargetHpText.text = string.Empty;
-            if (destroyedStamp != null)
-                destroyedStamp.SetActive(false);
-            if (resultSummaryText != null)
-                resultSummaryText.text = message;
-
-            if (RunsAutomatically || IsAutoCloseResultEnabled)
-                StartCoroutine(AutoCloseResultIfNoHuman());
-        }
-
         // ============================ Research / Production Challenge ============================
         // A new, separate entry point (per the spec): it does NOT go through Begin(), never runs
         // RunRollAndDuel/RunDuel/Resolve, and never touches Ground Combat / Capture Kill / Aviation
@@ -891,12 +842,6 @@ namespace Game.UI
         // BeginCaptureKill's own note) still has nothing to SPEND, but still clicked Roll Die and
         // still needs to see the result and click Accept themselves.
         private bool CanSpend(UnitData hero) => !_automateHumanSides && IsHumanSide(hero);
-
-        // Whether `hero` has any Fate left to POSSIBLY spend at all — used only to decide whether
-        // the whole duel phase is worth entering in the first place (see RunDuel's own skip
-        // check), not whether THIS turn specifically has anything to do (that's canSpend/
-        // shouldSpend inside RunHumanTurn/RunAiTurn, which also need a miss on the dice).
-        private static bool HasFateToSpend(UnitData hero) => hero != null && hero.Fate > 0;
 
         // The Fate duel itself. Defender's Prerogative: the defender always goes first. Declining
         // (Accept, or an AI/no-Fate side auto-declining — see RunHumanTurn/RunAiTurn) hands the

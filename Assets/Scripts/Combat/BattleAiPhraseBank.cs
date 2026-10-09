@@ -438,18 +438,5 @@ namespace Game.Combat
             string phrase = index < plainCount ? plain[index] : named[index - plainCount];
             return phrase.Contains("{0}") ? string.Format(phrase, unitName) : phrase;
         }
-
-        // Total phrase count across every category — reported once, not meant for runtime use.
-        public static int TotalPhraseCount()
-        {
-            int total = 0;
-            foreach (string[] options in Phrases.Values)
-                total += options.Length;
-            foreach (string[] options in NoHeroPhrases.Values)
-                total += options.Length;
-            foreach (string[] options in NamedPhrases.Values)
-                total += options.Length;
-            return total;
-        }
     }
 }

@@ -26,24 +26,6 @@ namespace Game.Ai.V2
             garrison != null && garrison.IsGarrison
             && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
 
-        // Pure FEASIBILITY query: "which owned airfield can this aviation card physically be
-        // deposited at right now?" A query, not a decision — WHETHER an aviation card is worth
-        // playing stays entirely with StrategicCardEvaluator / Phase-B arbitration. Uses only
-        // canonical gameplay APIs: CardCostRules (thin wrapper over
-        // ArmyActions.EffectiveDeployApCost / card.EffectivePlayResourceCost), the shared
-        // AiAirSortiePlanner.OwnedAirfieldHexes primitive (citadel + every airfield-capable Base, in
-        // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact
-        // STORED-container figure ArmyActions.DeployUnitFromCard itself gates on).
-        public static bool TryFindAviationPlacement(WorldSnapshot snapshot, PlayerSetupData player,
-            PlayerRoot root, CardData card, out HexCoord target, out string reason,
-            bool requireCurrentAp = true)
-        {
-            List<HexCoord> options = EnumerateAviationPlacements(snapshot, player, root, card,
-                out reason, requireCurrentAp);
-            target = options.Count > 0 ? options[0] : default;
-            return options.Count > 0;
-        }
-
         // Pure feasibility owner: enumerate every legal owned airfield slot. Ordering is stable
         // only; it is not a strategic preference. NonCombatCardPlayer compares these placements
         // through the canonical current-objective TaskScore.

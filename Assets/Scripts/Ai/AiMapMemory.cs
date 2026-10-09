@@ -722,39 +722,6 @@ namespace Game.Ai
             targets[hex] = turnNumber;
         }
 
-        // True if an AirRecon sortie was last sent toward `hex` fewer than `cooldownTurns` turns
-        // ago (relative to `currentTurn`). AirReconTask.FindReconHex uses this to stop re-proposing
-        // the same stale hex over and over — the caller still applies the "unless a known enemy
-        // army/building is there" exception itself.
-        public static bool WasAirReconnedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
-        {
-            return AirReconTargets.TryGetValue(actor, out Dictionary<HexCoord, int> targets)
-                && targets.TryGetValue(hex, out int turn)
-                && currentTurn - turn < cooldownTurns;
-        }
-
-        // Stamps `hex` as a from-scratch raid target that failed AiAggressionPlanner's own
-        // pre-allocation viability gate this turn — see RaidPlanRejected's own comment.
-        public static void MarkRaidPlanRejected(PlayerSetupData actor, HexCoord hex, int turnNumber)
-        {
-            if (actor == null)
-                return;
-            if (!RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes))
-                RaidPlanRejected[actor] = hexes = new Dictionary<HexCoord, int>();
-            hexes[hex] = turnNumber;
-        }
-
-        // True if a fresh raid assembly against `hex` was rejected as non-viable fewer than
-        // `cooldownTurns` turns ago (relative to `currentTurn`). TryRaidAssembleCandidates checks
-        // this before re-projecting the target, so it doesn't re-run the same doomed math (and
-        // re-log it) every Decide step within the cooldown window.
-        public static bool WasRaidPlanRejectedWithin(PlayerSetupData actor, HexCoord hex, int currentTurn, int cooldownTurns)
-        {
-            return RaidPlanRejected.TryGetValue(actor, out Dictionary<HexCoord, int> hexes)
-                && hexes.TryGetValue(hex, out int turn)
-                && currentTurn - turn < cooldownTurns;
-        }
-
         private static bool SameEnemySighting(EnemySighting a, EnemySighting b)
         {
             if (a == null || b == null) return a == b;
@@ -1144,14 +1111,6 @@ namespace Game.Ai
                 }
         }
 
-        // A hex's resource bonus counts as "known" the moment it's ever been merely VISIBLE, not
-        // necessarily visited — matches how AiScoutPlanner's own isUndiscoveredResource bonus
-        // already treats discovery (fogged vs visible, not visited vs unvisited).
-        public static bool IsResourceHexKnown(PlayerSetupData actor, HexCoord hex)
-        {
-            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, KnownResourceHex> set) && set.ContainsKey(hex);
-        }
-
         // Every known resource hex and its complete last-observed effective yield — the whole-map read
         // behind IsResourceHexKnown, for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
         // needs the set itself (opportunity map + per-resource economy weighting), not just a
@@ -1239,16 +1198,6 @@ namespace Game.Ai
             return null;
         }
 
-        public static float KnownGarrisonDefenseAt(PlayerSetupData actor, HexCoord hex)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                return 0f;
-            foreach (EnemySighting sighting in sightings.Values)
-                if (sighting.Hex.Equals(hex))
-                    return sighting.DefenseSum;
-            return 0f;
-        }
-
         // Null = no known active guarded event at this hex (never seen one, or it's since been
         // consumed — see OnEventConsumed). RaidWeakerArmyTask's own event-guard half of a target's
         // required strength (see that class's own FindTarget/RequiredStrengthAt — takes the max of
@@ -1262,12 +1211,6 @@ namespace Game.Ai
                 ? strength
                 : (GuardStrength?)null;
         }
-
-        public static float? KnownEventGuardDefenseAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Defense;
-
-        // Same guard, its own card-stat Attack sum instead of Defense — WorthIt.Score's own "how
-        // hard would the guard hit back" half (see RaidWeakerArmyTask.RequiredStrengthAt).
-        public static float? KnownEventGuardAttackAt(PlayerSetupData actor, HexCoord hex) => KnownEventGuardStrengthAt(actor, hex)?.Attack;
 
         // Every hex this player has ever seen an active guarded event on — RaidWeakerArmyTask's
         // own candidate-gatherer needs to enumerate these the same way it enumerates
@@ -1471,31 +1414,6 @@ namespace Game.Ai
                     sighting.IsStartingCitadel, sighting.FacilityAbilities,
                     sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
                     sighting.Defense, sighting.SeenTurn);
-        }
-
-        // How many individual non-hero members, across every currently-known ARMY sighting for
-        // `actor` (physical armies only — EnemySightings, not KnownEventGuards' own card-stat
-        // guards, which aren't really "an enemy army" in the sense this counts), carry `tag` —
-        // AiManagementPlanner's own counter-tech PlayCard scoring reads this (Hyperkinetic once
-        // enough known Armored targets are on record, Pyrokinetic for Bio — see that class's own
-        // comment) to prefer a card that would actually counter what's already been scouted.
-        // Same "видимость с памятью" honesty as every other read here — only ever counts a
-        // sighting this player has actually observed, corrected/overwritten the same way
-        // DefenseSum/AttackSum already are, never the true enemy roster.
-        public static int KnownEnemyTypeTagCount(PlayerSetupData actor, UnitTypeTag tag)
-        {
-            if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
-                return 0;
-            int count = 0;
-            foreach (EnemySighting sighting in sightings.Values)
-            {
-                if (sighting.Defenders == null)
-                    continue;
-                foreach (WorthIt.DefenderProfile defender in sighting.Defenders)
-                    if (defender.TypeTags.Contains(tag))
-                        count++;
-            }
-            return count;
         }
     }
 }
