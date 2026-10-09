@@ -1460,7 +1460,7 @@ namespace Game.Ai.V2
                     purpose?.Attack?.Target.HasValue == true ? purpose.Attack.Target.ExpectedOwner : null)
                 : 0f;
             EquipmentEfficiency.ApplyMission(ctx, purpose?.Kind, hexBonus);
-            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex);
+            ApplyKnownRouteAndCoverage(ctx, snap, army, hostUnit, targetHex, purpose);
 
             // ONE unit boundary: U is card score over the reserve horizon; EquipmentDelta stores
             // U / equipmentUpgradePersistence so EquipmentUpgradeValue (x persistence) returns U exactly.
@@ -1559,14 +1559,33 @@ namespace Game.Ai.V2
         // (AiV2Util.TravelCost — the same route the mission planners price), the army's activation AP is
         // the sum of its members, and the map-knowledge owner supplies the unexplored fraction. Anything
         // not known stays at the context default (speed proxy, 0.5 dark, no detection relevance).
-        private static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
-            UnitData hostUnit, HexCoord? targetHex)
+        internal static void ApplyKnownRouteAndCoverage(EfficiencyContext ctx, WorldSnapshot snap, ArmyData army,
+            UnitData hostUnit, HexCoord? targetHex, MissionIntent purpose = null)
         {
             if (snap?.MapKnowledge != null)
                 ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
-            if (army?.Members == null || hostUnit == null || !targetHex.HasValue || army.Hex.Equals(targetHex.Value))
+            if (army?.Members == null || hostUnit == null)
                 return;
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
+            if (purpose?.Kind == MissionKind.Scout && purpose.Scout != null
+                && !ReconScoutKinds.IsAirSweep(purpose.Scout.Kind)
+                && !ReconScoutKinds.IsCapture(purpose.Scout.Kind))
+            {
+                var target = new ScoutMissionTarget { Kind = purpose.Scout.Kind,
+                    FocusHex = purpose.Scout.FocusHex,
+                    Stealth = purpose.Scout.RequiresStealth ? StealthRequirement.Required : StealthRequirement.None };
+                ScoutCostEstimate route = ScoutCostModel.Estimate(snap, target,
+                    preferredMoverArmyId: army.Id, requirePreferredMover: true);
+                if (!route.MoverKnown || !route.ExecutionHex.HasValue) return;
+                // The same honest risk owner used by objective/vantage scoring. A detector's
+                // presence does not invent a hidden TARGET: DetectionRelevance stays unchanged.
+                ctx.StealthRisk = ScoutRiskModel.DetectorRisk(snap, route.ExecutionHex.Value);
+                ctx.RouteLength = Mathf.Max(0, Mathf.RoundToInt(route.EstimatedDistance));
+                ctx.OtherArmyActivationAp = ArmyData.ComputeActivationApCost(
+                    army.Members.Where(m => m != null && !ReferenceEquals(m, hostUnit)));
+                return;
+            }
+            if (!targetHex.HasValue || army.Hex.Equals(targetHex.Value)) return;
             int cost = actor != null ? AiV2Util.TravelCost(snap, actor, targetHex.Value, terrainOnly: true)
                 : HexGridMath.Distance(army.Hex, targetHex.Value);
             if (cost <= 0 || cost == int.MaxValue)

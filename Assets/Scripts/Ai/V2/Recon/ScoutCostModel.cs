@@ -37,6 +37,9 @@ namespace Game.Ai.V2
         public float EnergyMinimum, EnergyDesired, EnergyMaximum;
         public int EtaTurns;
         public float EstimatedDistance;
+        // The actual observation position chosen by the shared ground planner (Refresh may
+        // stop short of FocusHex). Null for an unbound/notional or aviation estimate.
+        public HexCoord? ExecutionHex;
 
         // Full-operation comparison fact only. Never part of MissionRequirements/current-turn
         // resource packing.
@@ -106,12 +109,14 @@ namespace Game.Ai.V2
         {
             public readonly ArmySnapshot Mover;
             public readonly ScoutPairCost Cost;
+            public readonly HexCoord ExecutionHex;
             public readonly float FullOperationAp;
 
-            public PlannedGroundCost(ArmySnapshot mover, ScoutPairCost cost)
+            public PlannedGroundCost(ArmySnapshot mover, ScoutPairCost cost, HexCoord executionHex)
             {
                 Mover = mover;
                 Cost = cost;
+                ExecutionHex = executionHex;
                 FullOperationAp = cost.RequiredAp
                     + Mathf.Max(0, mover?.ActivationApCost ?? 0) * Mathf.Max(0, cost.EtaTurns - 1);
             }
@@ -124,7 +129,8 @@ namespace Game.Ai.V2
         // remains the final assignment authority and can invalidate/replace the plan if live route,
         // vantage or contention facts changed.
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target,
-            int? preferredMoverArmyId = null, ScoutExecutionCandidate? plannedAir = null)
+            int? preferredMoverArmyId = null, ScoutExecutionCandidate? plannedAir = null,
+            bool requirePreferredMover = false)
         {
             if (ReconScoutKinds.IsAirSweep(target.Kind) && plannedAir.HasValue)
             {
@@ -189,7 +195,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId);
+            PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId, requirePreferredMover);
             if (planned.HasValue)
             {
                 PlannedGroundCost p = planned.Value;
@@ -207,6 +213,7 @@ namespace Game.Ai.V2
                     EnergyMaximum = 0f,
                     EtaTurns = p.Cost.EtaTurns,
                     EstimatedDistance = p.Cost.Distance,
+                    ExecutionHex = p.ExecutionHex,
                     // Even when already activated THIS turn, later turns reactivate at the actor's
                     // real activation AP. This is comparison-only future cost, never a reservation.
                     RecurringActivationAp = Mathf.Max(0, p.Mover.ActivationApCost),
@@ -217,12 +224,15 @@ namespace Game.Ai.V2
         }
 
         private static PlannedGroundCost? PlanGroundCost(WorldSnapshot snap, ScoutMissionTarget target,
-            int? preferredMoverArmyId)
+            int? preferredMoverArmyId, bool requirePreferredMover = false)
         {
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
             var candidates = new List<PlannedGroundCost>();
             foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
             {
+                // A recipient's upgrade must never borrow another scout's route or price.
+                // Ordinary proposal planning keeps its existing cheapest-actor fallback.
+                if (requirePreferredMover && mover.ArmyId != preferredMoverArmyId) continue;
                 HexCoord executionHex = target.FocusHex;
                 if (ObservationVantageSelector.UsesVantage(snap, target))
                 {
@@ -237,7 +247,7 @@ namespace Game.Ai.V2
                     ? CapturePairCost(snap, mover, executionHex)
                     : PairCost(snap, mover, executionHex, stealthRequired);
                 if (pair.Distance == int.MaxValue) continue;
-                candidates.Add(new PlannedGroundCost(mover, pair));
+                candidates.Add(new PlannedGroundCost(mover, pair, executionHex));
             }
 
             if (candidates.Count == 0)
