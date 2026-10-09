@@ -48,7 +48,7 @@
 
 ## 4a. Матрица зависимостей на `717871b8`
 
-Скрипт `Tools/ai-v2-decoupling-verify/coupling_matrix.py --rev 717871b8` (в репозитории; метод тот же, что у `deps.py`): 289 файлов, **203** связи между папками `Ai/V2` — историческое число воспроизведено. `AiStrategyV2Pipeline.cs`: 14 папок, **84** внешних типа (как в отчёте сравнения). Вся папка `Orchestration/`: 16 папок, **122** внешних типа (в сравнении было 116→118 «без файлов моделей»; методика отличается — для сравнения этапов использовать только значения этого скрипта на одной и той же методике). Полный вывод: `D:/aiv-work/coupling/d0-717871b8.txt`. Это счёт ссылок на типы, не граф вызовов; вспомогательная метрика.
+Скрипт `Tools/ai-v2-decoupling-verify/coupling_matrix.py --rev 717871b8` (в репозитории; метод тот же, что у `deps.py`): 289 файлов, **203** связи между папками `Ai/V2` — историческое число воспроизведено. `AiStrategyV2Pipeline.cs`: 14 папок, **84** внешних типа (как в отчёте сравнения). Вся папка `Orchestration/`: 16 папок, **122** внешних типа в первой версии скрипта. В Э2 обнаружено, что скрипт отбрасывал выражения внутри интерполированных строк (`$"…{AttackForceReadiness.MobilizationOpen(x)}…"` — это код); исправлено, на `717871b8` теперь **127** типов, `Pipeline` по-прежнему 84. В сравнении отчёта было 116→118 «без файлов моделей» — другая методика; для сравнения этапов использовать только значения скрипта одной версии (исправленной). Полный вывод: `D:/aiv-work/coupling/d0-717871b8.txt`. Это счёт ссылок на типы, не граф вызовов; вспомогательная метрика.
 
 ## 5. Коррекции документов
 
@@ -120,3 +120,48 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 ## Цена изменения (до / после)
 
 Изменить правило no-progress (например, считать раунд Phase B без изменений шагом без прогресса): раньше — `TurnLoop` + три тела (авиация, миссия, отказ provisioning) + вердикт; теперь — `AdmissionIterationOutcome.NoProgressAfter`/`ApplyIterationOutcome` и вердикт в `TurnLoop`; тела сообщают только факт исхода. Межуровневая цена этапом не уменьшена (честная граница по ТЗ).
+
+# Э2 — банк узнаёт о моментах хода
+
+Статус: **реализован — проверены доступными средствами (managed, compile); Unity и native не выполнялись.** Вход этапа — `95e5eac2`.
+
+## Решение о новом классе
+
+Перед созданием проверены все файлы `Strategy/` и вызывающие стороны стадий: координатора, который соединяет Economy-стадии (`EconomyReservationLifecycle`, Strategy/Demand) и окно продолжения (`OperationContinuationWindow`, State), нет (`grep` по `Ai/V2`: оркестратор был единственным вызывающим). `StrategicManager` по собственному заголовку — тонкий фасад без логики, поэтому правила стадий в него не кладутся. Создан `Strategy/StrategicTurnLifecycle.cs` (ТЗ Э2) — без состояния и формул, только порядок вызовов существующих владельцев; `StrategicManager` получил четыре делегирующих входа.
+
+## Таблица «событие → операции» (до и после)
+
+| Событие (вход `StrategicManager`) | До: вызовы из `RunTurn` (строки на `95e5eac2`) | После: реализация `StrategicTurnLifecycle` | Точка в ходе |
+|---|---|---|---|
+| `ObserveInitialForce` | `AttackForceReadiness.MobilizationOpen(snapshot.Self)` → `SetMobilizationOpen` → строка лога (L136–141) | то же, тот же порядок и текст лога | после первого Scan/Warm, до Phase A |
+| `AfterMissionSettlement` | `ReconcileEconomyCompletionReservations` (L817) | то же | после `SettleStep` шага миссии, до `CheckBoundary` |
+| `BeforeFirstTempo` | `Reconcile…` → `ReleaseDeferredEconomyIncomeCover` → `OperationContinuationWindow.Settle` (L858–865) | то же, тот же порядок; вызывается только при `PhaseBRounds == 0` (условие остаётся в `TurnLoop`) | после `TerminalForce` последнего прохода, до первого раунда |
+| `BeforeTempoSpend` | `Reconcile…` (L887) | то же | в каждом раунде Phase B, перед `UseSurplus` |
+| авиация: stall | `AviationObligationStallRegistry.MarkStalled` внутри `RunMandatoryAviationStep` при `!progress` (L485) | `AviationObligations.RecordSettledStep(player, ctx, actorId, progressed)` в той же точке — после `ResolveStepTriggers` и расчёта `Progressed`; возвращает `true`, когда отметил stall, строка лога остаётся в точке вызова | после reentry-пар шага |
+
+## Сверка с требованиями Э2
+
+| Требование | Результат |
+|---|---|
+| Оркестратор не называет `EconomyReservationLifecycle`, `OperationContinuationWindow`, `AviationObligationStallRegistry` в исполняемом коде **всей папки** | `OrchestrationDoesNotNameTheBankStageOwners` (скан `Orchestration/*.cs`, комментарии игнорируются) проходит; **мутация** (возврат прямого вызова в `RunTurn`) тест ловит |
+| Порядок стадий внутри момента | `TheFirstTempoMomentKeepsTheStageOrder` (индексы вызовов в `BeforeFirstTempo`: reconcile < release < settle; release ровно один); мутация (убрать `Settle`) пойманa |
+| `Settle` только на закрытии обычных проходов; `AfterMissionSettlement` / `BeforeTempoSpend` окно не закрывают | `OnlyTheClosingOfTheOrdinaryPassesSettlesTheContinuationWindow` — **требует движок** (`PlayerRoot` — `UnityEngine.Object`): в managed-прогоне падает как engine-bound (`TypeInitializationException`), проверяется в Unity; мутации ловит |
+| Метка mobilization на ходу и перезапись следующим сканом | `TheInitialScanStampsTheMobilizationGateOfThatTurnOnly` проходит |
+| stall только на свой ход; прогресс не отмечает stall | `AnObligationThatDidNotProgressIsStalledForItsTurnOnly` проходит; мутация (stall при progress) поймана |
+| Income cover освобождается ровно один раз, даже если `TerminalForce` изменил мир | порядок вызовов не менялся (`TurnLoop` вызывает `FirstPhaseBSettle` один раз при `PhaseBRounds == 0`); поведение на реальном `ctx.Map` — Unity-fixture S1/S8 |
+| Диагностика mobilization: порядок и текст логов | не менялись (строка перенесена как есть) |
+| Writers банка не менялись, lease API не обходятся | изменений в ledger / `MissionLeaseBook` / `AiTurnSession` нет |
+
+## Проверки
+
+| Проверка | Результат |
+|---|---|
+| Managed (`e2-a-p`) | 2137 тестов, 1662 прошло, 475 упало; регрессий 0 относительно `e1-a-p`, 4 новых прошедших; 475-й — новый engine-bound тест из таблицы выше (на baseline его не было) |
+| Compile | 28 = 28, новых 0 |
+| Матрица зависимостей (`coupling_matrix.py`, исправленный скрипт) | 203 связи (не изменились); `Orchestration` целиком: **127 → 124** внешних типа, убраны именно `EconomyReservationLifecycle`, `OperationContinuationWindow`, `AviationObligationStallRegistry`; `Pipeline`: 84 → 80 (ещё `AttackForceReadiness`, он остался в `DevelopmentAdmission` как владелец ключа допуска). Появились связи `Strategy → State (OperationContinuationWindow)` и `Recon → State (AviationObligationStallRegistry)` — знание переехало к владельцам правил |
+| Банк / кеши | вызовы стадий в тех же точках и в том же порядке; ключ допуска Economy читает `ReasonDigest` после тех же refresh/reconcile; stall остаётся turn-scoped (`AiTurnSession` вызывает `EndTurn`) |
+| Unity EditMode/PlayMode, native | не выполнялись; S1/S5/S8/S9 на реальных `root`/`ctx.Map` — Unity-fixtures |
+
+## Цена изменения (до / после)
+
+Новая удерживаемая до первого tempo резервация: раньше — вызов в `SettleBeforeFirstPhaseB` (`Orchestration`) + Strategy/State; теперь — `StrategicTurnLifecycle.BeforeFirstTempo` + Strategy/State, событие то же. Новый авиационный исход: раньше ветка stall в `RunTurn`; теперь `AviationObligations.RecordSettledStep` (Recon). Новый тип глобального факта по-прежнему проходит старые точки fan-out — Э2 их не устраняет.

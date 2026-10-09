@@ -17,7 +17,8 @@ namespace Game.Ai.V2
     //   persistent-resource hold policy .. HoldEvaluator
     //   strategic spendability ........... StrategicSpendability
     // This forwarder just keeps the two stable entry points the orchestrator, StrategicReactionPass
-    // and HousekeepingManager call. No logic lives here.
+    // and HousekeepingManager call, plus the named moments of the turn (the orchestrator reports
+    // them, StrategicTurnLifecycle decides what the bank does). No logic lives here.
     public static class StrategicManager
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
@@ -38,5 +39,23 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> reconObjectives = null)
             => StrategicPhaseB.UseSurplus(snap, player, root, hand, ctx, commitments,
                 carriedReservation, result, reconObjectives);
+
+        // ---- Moments of the turn (see StrategicTurnLifecycle) ----
+
+        internal static void ObserveInitialForce(WorldSnapshot snapshot, PlayerSetupData player,
+            AiTurnContext ctx)
+            => StrategicTurnLifecycle.ObserveInitialForce(snapshot, player, ctx);
+
+        internal static void AfterMissionSettlement(PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.AfterMissionSettlement(player, root, hand, ctx);
+
+        internal static void BeforeFirstTempo(PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.BeforeFirstTempo(player, root, hand, ctx);
+
+        internal static void BeforeTempoSpend(PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.BeforeTempoSpend(player, root, hand, ctx);
     }
 }

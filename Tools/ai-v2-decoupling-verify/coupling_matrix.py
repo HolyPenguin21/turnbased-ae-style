@@ -23,10 +23,16 @@ IDENT = re.compile(r'\b[A-Z]\w*\b')
 V2 = 'Assets/Scripts/Ai/V2'
 
 
+INTERP = re.compile(r'\$@?"(?:[^"\\\n]|\\.)*"')
+HOLE = re.compile(r'\{[^{}]*\}')
+
+
 def strip(src):
     src = re.sub(r'//[^\n]*', '', src)
     src = re.sub(r'/\*.*?\*/', '', src, flags=re.S)
-    src = re.sub(r'@?\$?"(?:[^"\\\n]|\\.)*"', '""', src)
+    # Interpolated strings: the text is dropped, the {expressions} are code and are kept.
+    src = INTERP.sub(lambda m: ' ' + ' '.join(HOLE.findall(m.group(0))) + ' ', src)
+    src = re.sub(r'@?"(?:[^"\\\n]|\\.)*"', '""', src)
     return src
 
 

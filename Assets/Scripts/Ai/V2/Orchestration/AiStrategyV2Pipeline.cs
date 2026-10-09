@@ -133,11 +133,7 @@ namespace Game.Ai.V2
             AiFrameLog.WorldAnalysis(snapshot);
             ApBudgetTelemetry.Begin(player, ctx.TurnNumber, initiativeStartAp, snapshot);
             // The first Attack preparation step's AP hold reads this turn's mobilization gate.
-            bool mobilizationOpen = AttackForceReadiness.MobilizationOpen(snapshot.Self);
-            OperationContinuationWindow.SetMobilizationOpen(player, ctx.TurnNumber, mobilizationOpen);
-            if (mobilizationOpen)
-                AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {player.Nickname}: gate open, Phase A plays around "
-                    + "the AP of the next preparation step (strike-force cards excepted)");
+            StrategicManager.ObserveInitialForce(snapshot, player, ctx);
 
             // 3. Strategy: independent raw desires -> normalize once -> radar. StrategyLayer writes
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
@@ -481,14 +477,12 @@ namespace Game.Ai.V2
                         + $"progress={(progress ? 1 : 0)} "
                         + $"operationalTriggers={stepTriggers.Operational} "
                         + $"strategicTriggers={stepTriggers.Strategic}");
-                    if (!progress)
-                    {
-                        // Recon audit B1 — skipped for the rest of this turn; it must not stop
-                        // every mission's admission with it.
-                        AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, actor.Id);
+                    // Recon audit B1 — an obligation that did not progress is skipped for the rest of
+                    // this turn (the owner of the obligations records it); it must not stop every
+                    // mission's admission with it.
+                    if (AviationObligations.RecordSettledStep(player, ctx, actor.Id, progress))
                         AiDebugLog.Write("[AI][V2][Loop] "
                             + MandatoryAviationOrder.StallMessage(kind, actor.Id));
-                    }
                 }
 
                 // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
@@ -815,9 +809,8 @@ namespace Game.Ai.V2
                     turnSession.SettleStep(cycleLedger.FinalizeSteps(), attemptedKeys,
                         snapshot, reconObjectives);
                     // A single atomic move may consume the last MP after Provisioning had
-                    // legitimately reserved this owner's completion AP. Settle its stage now.
-                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
-                        player, root, hand, ctx);
+                    // legitimately reserved this owner's completion AP: the bank settles its stage.
+                    StrategicManager.AfterMissionSettlement(player, root, hand, ctx);
 
                     int taskStepNumber = view.SettledSteps + 1;
                     ReservationInvariants.CheckBoundary(player, root, ctx,
@@ -854,16 +847,9 @@ namespace Game.Ai.V2
                 // The first Phase B: the first admission pass is over.
                 void SettleBeforeFirstPhaseB()
                 {
-                    // Also reconcile on bounded/no-progress exits where no additional typed
-                    // admission occurs: Phase B must see AP that no actor can spend on a build.
-                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
-                        player, root, hand, ctx);
-                    // Every build still deferred now cannot complete this turn: release the part of
-                    // its hold the next income tick covers, so Phase B may spend it.
-                    EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover(player, ctx);
-                    // Continuing Hard operations had their funding chance in the loop above; their
-                    // Phase-A protection ends here so Phase B sees every AP nobody will spend.
-                    OperationContinuationWindow.Settle(player, ctx.TurnNumber);
+                    // The ordinary passes are closed (also on bounded/no-progress exits): the bank
+                    // settles what it holds before Phase B spends (StrategicTurnLifecycle).
+                    StrategicManager.BeforeFirstTempo(player, root, hand, ctx);
                 }
 
                 // Management/Development is another bounded task family, not the owner of the
@@ -883,10 +869,9 @@ namespace Game.Ai.V2
 
                     WorldAnalysis.StepObservationStamp beforeManagement =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
-                    // A prior Phase B action may have spent AP or removed a build card.
-                    // Revalidate each owner's stronger completion claim before the next pass.
-                    EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(
-                        player, root, hand, ctx);
+                    // A prior Phase B action may have spent AP or removed a build card: the bank
+                    // revalidates its holds before the next pass.
+                    StrategicManager.BeforeTempoSpend(player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, CarriedReservation(),

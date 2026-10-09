@@ -685,7 +685,7 @@ namespace Game.EditorTests
             Assert.IsEmpty(offenders, "TurnLoopState is written outside TurnLoop.cs:" + System.Environment.NewLine + string.Join(System.Environment.NewLine, offenders));
         }
 
-        private static string FindScriptsRoot()
+        internal static string FindScriptsRoot()
         {
             foreach (string start in new[] { System.IO.Directory.GetCurrentDirectory(), AppDomain.CurrentDomain.BaseDirectory })
             {
