@@ -230,6 +230,31 @@ and `ResidualWindow` with the loop). Removing that shared write, and moving doma
 owners, is the decoupling task: `Docs/ai-v2-decoupling-plan.md`, evidence and tools in
 `Docs/ai-v2-decoupling-evidence.md` and `Tools/ai-v2-decoupling-verify/`.
 
+**Responsibility map after the decoupling (stages E1-E6).** What changes where. The control flow
+stays with `TurnLoop`; every domain rule lives with its owner; the orchestrator only reports its own
+moments and assembles components. Evidence: `Docs/ai-v2-decoupling-evidence.md`, final report:
+`Docs/ai-v2-decoupling-final-report.md`.
+
+| Rule / state | Owner | The orchestrator's contract |
+|---|---|---|
+| Turn transitions; the control counters (`SettledSteps`, `NoProgressCycles`, `ResidualWindow`, `ReturnsDeferred`, `PhaseBRounds`) | `TurnLoop` (the only writer of `TurnLoopState`) | a work reads `TurnLoopView`, reports an `AdmissionIterationOutcome`, `TempoRoundSink`, `ColdSink` |
+| Which work runs next; the three works | `TurnLoop` orders `IAdmissionWork` / `ITempoWork` / `IColdWork`; `AdmissionIteration`, `TempoRound`, `ColdResidual` implement them | explicit constructor dependencies, no reach back into `RunTurn` |
+| The settled snapshot, Recon / Aggression objectives, intents, actor claims, demands, freshness credit | `DecisionFrame` (the only writer; 17 named operations, one per moment of the turn; no skip by revision) | the works read `frame.X` at the moment of use |
+| Typed re-admission (gate, fingerprints, Phase A follow-up, delta publication, commit) | `StrategicReadmissionRunner` over `StrategicReadmission`; keys from the axis owners (`*Admission`) | `Run(cause, reasons, axes, ReadmissionOutcome)` |
+| Settled-step triggers (snapshot -> fan-out -> consume -> re-enter, rebase 1 pair, others 2) | `StepTriggerSequence` + `TypedTriggerFanOut` (builder readiness asked of Continuity) | `Run(pairs, session, frame, readmission, sink)` |
+| Bank stages around the turn (completion reconcile, income cover release, continuation window, mobilization gate) | `StrategicTurnLifecycle` via `StrategicManager` -> `EconomyReservationLifecycle` / `OperationContinuationWindow` | four named moments: `ObserveInitialForce`, `AfterMissionSettlement`, `BeforeFirstTempo`, `BeforeTempoSpend` |
+| Stalled aviation obligations | `AviationObligations.RecordSettledStep` (Recon) | reports the outcome of the step after the re-entry pairs |
+| Selection of the executable mission (retry / reprice budgets, parking of a pass) | `ProvisioningManager.ProvisionNext`, `PassParking` (Provisioning), packing by `AllocationSession` | one call per iteration; a journal of attempts replayed into `MissionOutcomeLedger.RecordProvisionAttempt` |
+| Mission portfolio (planners, `EffectiveValue`, preparation priority) | `MissionPortfolio.Build` (Missions) | `Build(...)` returns proposals and planner deferrals |
+| Deferral of return legs before the first Phase B round | `MissionContinuityLayer.DeferReturnsBeforeTempo`, `LifecycleReturnPolicy` (Continuity) | the loop only says `ReturnsMayWait` |
+| Physical resources, leases, turn lifetime | canonical game endpoints; `MissionLeaseBook` + `StrategicResourceReservationLedger` + `AiTurnSession` | unchanged |
+| Facts and revisions | `WorldDeltaLifecycle`, `StrategicInterruptRegistry` | unchanged |
+
+Remaining by design: the axis admission keys and `AttackForceReadiness` / `RadarValueScale` in Orchestration,
+the delegates inside `StrategicReadmission.Decide` and the builder-readiness lambda in `TypedTriggerFanOut`
+(both for laziness), Housekeeping -> Reaction -> `UseSurplus`, and `ReactionRoundExecutor` with its own copy of
+the frame recipe and the re-provisioning loop.
+
 **Rollout is complete, not partial.** The bounded typed loop is the single production
 execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
 Every turn builds the real Desire evaluators, normalizes one Radar and runs all four
