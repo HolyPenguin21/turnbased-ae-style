@@ -31,6 +31,14 @@ namespace Game.Campaign
         public CampaignOutcome Outcome;
         public double AttackerScore, DefenderScore, WinChance, Roll;
         public string AttackerDeckName, DefenderDeckName;
+        // Unity's inline serializer represents a null custom class as its default
+        // field values. Recognize only that exact placeholder, never a real receipt.
+        internal bool IsEmptyInlineValue => string.IsNullOrEmpty(OperationId) && string.IsNullOrEmpty(MatchId)
+            && string.IsNullOrEmpty(SelectedHumanDeckId) && string.IsNullOrEmpty(AttackerDeckName) && string.IsNullOrEmpty(DefenderDeckName)
+            && AttackerFaction == default(Faction) && DefenderFaction == default(Faction)
+            && SourceRegionId == 0 && TargetRegionId == 0 && RandomSeed == 0
+            && !Manual && !TestAutoResolve && !ResultRecorded && !OwnershipApplied && !RewardAcknowledged
+            && Outcome == default(CampaignOutcome) && AttackerScore == 0 && DefenderScore == 0 && WinChance == 0 && Roll == 0;
     }
     [Serializable] public sealed class CampaignBattleRecord
     {
@@ -55,7 +63,14 @@ namespace Game.Campaign
         public string PendingNotification;
         // Compact records, no card definitions. Retained for accurate lifetime campaign statistics.
         public List<CampaignBattleRecord> BattleHistory = new List<CampaignBattleRecord>();
-        public CampaignState Copy() => JsonUtility.FromJson<CampaignState>(JsonUtility.ToJson(this));
+        internal static CampaignState Deserialize(string json)
+        {
+            var state = JsonUtility.FromJson<CampaignState>(json);
+            if (state != null && (state.Phase == CampaignPhase.AwaitingFactionAction || state.Phase == CampaignPhase.CampaignFinished)
+                && state.PendingOperation?.IsEmptyInlineValue == true) state.PendingOperation = null;
+            return state;
+        }
+        public CampaignState Copy() => Deserialize(JsonUtility.ToJson(this));
         public Faction CurrentFaction => TurnOrder[CurrentTurnIndex];
     }
     // Explicit RNG algorithm gives cross-runtime replay. Never reads UnityEngine.Random.
