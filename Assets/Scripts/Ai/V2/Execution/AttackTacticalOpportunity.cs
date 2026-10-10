@@ -402,22 +402,14 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Coverage applies to the actual fighting bodies. A standalone hero instead needs a
-        // Capture/Kill estimate; tactical combat's empty-defender shortcut must not grant 100%.
+        // The local-contact gate of the one ground-combat check. A standalone hero is priced as a
+        // Capture/Kill inside the estimator itself (WorthIt), so this needs no hero rule of its own.
         internal static bool ClearsContact(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             WorthIt.SideCommander commander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
-            float bonus, out float win, out bool cover)
-        {
+            float bonus, out float win, out bool cover) =>
             GroundCombatFeasibility.Clears(attackers, commander, opposition,
                 GroundCombatAdmissionPolicy.AttackLocalWinChanceGate, bonus, out win, out cover,
                 GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage);
-            List<WorthIt.DefendingArmy> heroOnly = opposition.Where(a =>
-                a.Units.Any(p => p.IsHero) && !a.Units.Any(p => !p.IsHero && p.IsGroundCombatant)).ToList();
-            if (heroOnly.Count > 0)
-                win *= WorthIt.EstimateCaptureKill(attackers.ToList(), commander, heroOnly).WinChance;
-            return (cover || !GroundCombatAdmissionPolicy.AttackLocalArmyRequiresCoverage)
-                && win >= GroundCombatAdmissionPolicy.AttackLocalWinChanceGate;
-        }
 
         internal static int ContactFingerprint(IReadOnlyList<WorthIt.DefendingArmy> opposition)
         {

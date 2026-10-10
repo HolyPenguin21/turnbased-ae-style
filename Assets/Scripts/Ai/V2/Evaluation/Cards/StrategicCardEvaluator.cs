@@ -1564,7 +1564,8 @@ namespace Game.Ai.V2
         {
             if (snap?.MapKnowledge != null)
                 ctx.UsefulDarkFraction = Mathf.Clamp01(snap.MapKnowledge.ExplorableUnknownFrac);
-            if (army?.Members == null || hostUnit == null)
+            // No snapshot = the reference context (Self equipment-reserve estimate): no known route.
+            if (snap == null || army?.Members == null || hostUnit == null)
                 return;
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == army.Id);
             if (purpose?.Kind == MissionKind.Scout && purpose.Scout != null

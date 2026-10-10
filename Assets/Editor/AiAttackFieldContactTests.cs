@@ -174,6 +174,20 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void SoloHero_IsPricedAsCaptureKillByTheSharedGate_NotOnlyByTheLocalContactWrapper()
+        {
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 10);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { hero }, new WorthIt.SideCommander(0, 10)) };
+            GroundCombatFeasibility.Clears(new[] { Body(900, 900, 900) }, default, opposition,
+                0f, 0f, out float shared, out _);
+            AttackTacticalOpportunity.ClearsContact(new[] { Body(900, 900, 900) }, default, opposition,
+                0f, out float local, out _);
+            Assert.That(shared, Is.LessThan(0.40f), "preparation / Raid / ActiveDefence read the same odds");
+            Assert.That(shared, Is.EqualTo(local));
+        }
+
+        [Test]
         public void LastKnownContact_StillRequiresCoverageOfEveryFightingDefender()
         {
             ArmySnapshot us = Army(7, Origin, new[] { Body(1, 1, 500) });
