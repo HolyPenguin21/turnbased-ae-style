@@ -23,6 +23,27 @@ public sealed class CampaignCollectionIntegrationTests
         Assert.IsTrue(collection.Transact(collection.InitializeStarters, out string error), error);
     }
     [TearDown] public void Cleanup() { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    [Test] public void BuiltMapGraphicsHaveCanvasRenderersAndCanRebuild()
+    {
+        var root = new UnityEngine.GameObject("CampaignMapTest", typeof(UnityEngine.RectTransform));
+        try
+        {
+            var state = new CampaignMapGenerator().Generate(851, Faction.Ashen);
+            var map = root.AddComponent<CampaignMapView>();
+            map.Build(state.Regions, _ => { }, _ => { });
+            map.Refresh(state, null, null, true);
+            var graphics = root.GetComponentsInChildren<UnityEngine.UI.Graphic>();
+            Assert.AreEqual(state.Regions.Count * 2 + 1, graphics.Length);
+            Assert.AreEqual(state.Regions.Count * 2, graphics.OfType<CampaignRegionGraphic>().Count());
+            Assert.AreEqual(1, graphics.OfType<CampaignArrowGraphic>().Count());
+            foreach (var graphic in graphics)
+            {
+                Assert.IsNotNull(graphic.GetComponent<UnityEngine.CanvasRenderer>(), graphic.name);
+                Assert.DoesNotThrow(() => graphic.Rebuild(UnityEngine.UI.CanvasUpdate.PreRender), graphic.name);
+            }
+        }
+        finally { UnityEngine.Object.DestroyImmediate(root); }
+    }
     [Test] public void GeneratedRegionsCanBeTriangulatedAfterVisualProjection()
     {
         for (int seed = 0; seed < 100; seed++)
