@@ -1,17 +1,40 @@
 {
   "files": 30,
-  "originals_byte_identical": true,
+  "original_wreck_parts_byte_identical": true,
+  "canyon_original_parts_redrawn": true,
   "seams": [
     {
       "family": "Canyon",
+      "angle": 0,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.097,
+      "p95_rgb_error": 4.167,
+      "connected_dark_edge_samples": 28
+    },
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.267,
+      "p95_rgb_error": 5.381,
+      "connected_dark_edge_samples": 33
+    },
+    {
+      "family": "Canyon",
       "angle": 60,
       "parts": [
         1,
         2
       ],
-      "mean_rgb_error": 1.151,
-      "p95_rgb_error": 4.189,
-      "connected_dark_edge_samples": 55
+      "mean_rgb_error": 1.069,
+      "p95_rgb_error": 4.214,
+      "connected_dark_edge_samples": 37
     },
     {
       "family": "Canyon",
@@ -20,9 +43,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.651,
-      "p95_rgb_error": 5.944,
-      "connected_dark_edge_samples": 52
+      "mean_rgb_error": 0.86,
+      "p95_rgb_error": 2.886,
+      "connected_dark_edge_samples": 26
     },
     {
       "family": "Canyon",
@@ -31,9 +54,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.305,
-      "p95_rgb_error": 4.181,
-      "connected_dark_edge_samples": 53
+      "mean_rgb_error": 1.306,
+      "p95_rgb_error": 4.296,
+      "connected_dark_edge_samples": 28
     },
     {
       "family": "Canyon",
@@ -42,9 +65,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.302,
-      "p95_rgb_error": 4.172,
-      "connected_dark_edge_samples": 50
+      "mean_rgb_error": 1.357,
+      "p95_rgb_error": 3.969,
+      "connected_dark_edge_samples": 30
     },
     {
       "family": "Canyon",
@@ -53,9 +76,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.371,
-      "p95_rgb_error": 4.704,
-      "connected_dark_edge_samples": 78
+      "mean_rgb_error": 1.076,
+      "p95_rgb_error": 3.608,
+      "connected_dark_edge_samples": 30
     },
     {
       "family": "Canyon",
@@ -64,9 +87,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.167,
-      "p95_rgb_error": 4.149,
-      "connected_dark_edge_samples": 78
+      "mean_rgb_error": 1.046,
+      "p95_rgb_error": 4.049,
+      "connected_dark_edge_samples": 43
     },
     {
       "family": "Canyon",
@@ -75,9 +98,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.092,
-      "p95_rgb_error": 3.875,
-      "connected_dark_edge_samples": 57
+      "mean_rgb_error": 1.186,
+      "p95_rgb_error": 4.642,
+      "connected_dark_edge_samples": 27
     },
     {
       "family": "Canyon",
@@ -86,9 +109,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.532,
-      "p95_rgb_error": 5.784,
-      "connected_dark_edge_samples": 70
+      "mean_rgb_error": 1.042,
+      "p95_rgb_error": 4.031,
+      "connected_dark_edge_samples": 24
     },
     {
       "family": "Canyon",
@@ -97,9 +120,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.115,
-      "p95_rgb_error": 3.583,
-      "connected_dark_edge_samples": 41
+      "mean_rgb_error": 1.075,
+      "p95_rgb_error": 4.196,
+      "connected_dark_edge_samples": 28
     },
     {
       "family": "Canyon",
@@ -108,9 +131,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.183,
-      "p95_rgb_error": 4.19,
-      "connected_dark_edge_samples": 65
+      "mean_rgb_error": 0.982,
+      "p95_rgb_error": 3.138,
+      "connected_dark_edge_samples": 20
     },
     {
       "family": "GiantMachineWreck",

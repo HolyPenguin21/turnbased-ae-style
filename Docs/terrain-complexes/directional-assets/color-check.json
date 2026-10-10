@@ -11,113 +11,9 @@
         ],
         "parts_ground_median_RGB": [
           [
-            210.0,
+            214.0,
             166.0,
-            113.0
-          ],
-          [
-            215.0,
-            165.0,
-            111.0
-          ],
-          [
-            215.0,
-            165.0,
             112.0
-          ]
-        ],
-        "median_delta_E76": 0.0
-      },
-      {
-        "angle": 60,
-        "reference_ground_median_RGB": [
-          215.0,
-          165.0,
-          112.0
-        ],
-        "parts_ground_median_RGB": [
-          [
-            212.0,
-            164.0,
-            111.0
-          ],
-          [
-            212.0,
-            165.0,
-            111.0
-          ],
-          [
-            213.0,
-            165.0,
-            111.0
-          ]
-        ],
-        "median_delta_E76": 1.366
-      },
-      {
-        "angle": 120,
-        "reference_ground_median_RGB": [
-          215.0,
-          165.0,
-          112.0
-        ],
-        "parts_ground_median_RGB": [
-          [
-            213.0,
-            165.0,
-            112.0
-          ],
-          [
-            213.0,
-            165.0,
-            112.0
-          ],
-          [
-            213.0,
-            165.0,
-            112.0
-          ]
-        ],
-        "median_delta_E76": 0.898
-      },
-      {
-        "angle": 180,
-        "reference_ground_median_RGB": [
-          215.0,
-          165.0,
-          112.0
-        ],
-        "parts_ground_median_RGB": [
-          [
-            212.0,
-            164.0,
-            111.0
-          ],
-          [
-            212.0,
-            164.0,
-            110.0
-          ],
-          [
-            212.0,
-            164.0,
-            111.0
-          ]
-        ],
-        "median_delta_E76": 1.009
-      },
-      {
-        "angle": 240,
-        "reference_ground_median_RGB": [
-          215.0,
-          165.0,
-          112.0
-        ],
-        "parts_ground_median_RGB": [
-          [
-            212.0,
-            164.0,
-            111.0
           ],
           [
             213.0,
@@ -133,6 +29,110 @@
         "median_delta_E76": 0.964
       },
       {
+        "angle": 60,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            212.0,
+            164.0,
+            111.0
+          ],
+          [
+            213.0,
+            165.0,
+            111.0
+          ],
+          [
+            214.0,
+            165.0,
+            111.0
+          ]
+        ],
+        "median_delta_E76": 0.964
+      },
+      {
+        "angle": 120,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            214.0,
+            166.0,
+            111.0
+          ],
+          [
+            212.0,
+            165.0,
+            111.0
+          ],
+          [
+            213.0,
+            165.0,
+            111.0
+          ]
+        ],
+        "median_delta_E76": 0.964
+      },
+      {
+        "angle": 180,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            213.0,
+            165.0,
+            111.0
+          ],
+          [
+            213.0,
+            165.0,
+            112.0
+          ],
+          [
+            213.0,
+            165.0,
+            112.0
+          ]
+        ],
+        "median_delta_E76": 0.898
+      },
+      {
+        "angle": 240,
+        "reference_ground_median_RGB": [
+          215.0,
+          165.0,
+          112.0
+        ],
+        "parts_ground_median_RGB": [
+          [
+            213.0,
+            165.0,
+            111.0
+          ],
+          [
+            213.0,
+            165.0,
+            111.0
+          ],
+          [
+            215.0,
+            167.0,
+            112.0
+          ]
+        ],
+        "median_delta_E76": 0.964
+      },
+      {
         "angle": 300,
         "reference_ground_median_RGB": [
           215.0,
@@ -142,21 +142,21 @@
         "parts_ground_median_RGB": [
           [
             213.0,
-            164.0,
-            110.0
+            165.0,
+            111.0
           ],
           [
             213.0,
             165.0,
-            112.0
+            111.0
           ],
           [
-            214.0,
-            166.0,
-            112.0
+            212.0,
+            165.0,
+            111.0
           ]
         ],
-        "median_delta_E76": 0.898
+        "median_delta_E76": 0.964
       }
     ],
     "GiantMachineWreck": [

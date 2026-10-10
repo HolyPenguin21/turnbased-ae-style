@@ -1,0 +1,14 @@
+{
+  "scene": "Assets/Scenes/Game.unity",
+  "scene_git_blob_sha": "ac863a5cd0e4008a36f0b7d654f9b2e5a4793a73",
+  "orthographic": true,
+  "pitch_degrees": 74.99999047020411,
+  "yaw_degrees": 0,
+  "ground_screen_y_scale": 0.9659257832406368,
+  "depth_texture_drop_per_world_height": 0.26794937069913816,
+  "depth_texture_direction_xy": [
+    0,
+    1
+  ],
+  "scope": "Scene camera and all six asset contracts checked; wall visibility reviewed visually; Unity not run."
+}

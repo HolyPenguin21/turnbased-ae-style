@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "asset_type": "pre-lit directional textures",
   "uv_rotation_steps": 0,
   "coordinate_system": "axial q,r; positive 60 deg counterclockwise from above",
@@ -8,7 +8,7 @@
     512,
     512
   ],
-  "source_detail_note": "Original geometry rotated as a relighting reference; fixed normalized hex diameter 400/1024, no independent auto-fit; continuous sand-only scripted color/contrast correction before slicing.",
+  "source_detail_note": "Canyon v5: separate camera-aware renders (orthographic scene camera pitch75/yaw0), fixed shared grid, continuous sand normalization. All six canyon views redrawn; wrecks unchanged.",
   "families": {
     "Canyon": {
       "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
@@ -25,10 +25,10 @@
                 "y": 0
               },
               "size": [
-                1254,
-                1254
+                512,
+                512
               ],
-              "sha256": "85fe2cc5af56093a8f86675e5f207fc24ac7a9f1d3a89e42564dd119e953a384",
+              "sha256": "aaa0f3fd28afd3d87a73969ae0fad12ed8d13cc23a0f74b4cc67098831396026",
               "guid": "1011255dc30d4b6ab854e4c6d1075307"
             },
             {
@@ -38,10 +38,10 @@
                 "y": 0
               },
               "size": [
-                1254,
-                1254
+                512,
+                512
               ],
-              "sha256": "9e6705988ec4b2f1a3544e5521e761cbbe45996bca1c67ce886b1f4ece659743",
+              "sha256": "13d0a326cf8a622ec7c742767952a665290f4ac24142fab72b97a0dc80fda5a1",
               "guid": "f3c15235661a40f3ae2db7b67ed8b6ed"
             },
             {
@@ -51,15 +51,32 @@
                 "y": 1
               },
               "size": [
-                1254,
-                1254
+                512,
+                512
               ],
-              "sha256": "914fc75ac0492bdef8a26f873a5186e5d5252825cc17e0f701ae6cfb6c3a150d",
+              "sha256": "77e0c8b1ab01b2f7e668f550f539c946decfdead5285c506c6141be3d2825749",
               "guid": "a9c9786ccdf5432c87468a7451721d3c"
             }
           ],
-          "source_alignment": null,
-          "continuous_source": "original files unchanged"
+          "source_alignment": {
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
+            "fixed_reference_grid": true
+          },
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "a072b417db1ac75775b3bc6271d910f688c1bd7f955bb4a11ccca681f4998b91",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         },
         {
           "angle_degrees": 60,
@@ -76,7 +93,7 @@
                 512,
                 512
               ],
-              "sha256": "7cb749884b626f9ecd6ceaa80e6af9443f074395faf4610b00e6a06f71f64c15",
+              "sha256": "2aa4bfd74900ebd8b9d3f7367582568bae13356dc93ab31bcf022f495b9dfae4",
               "guid": "246364e3f627467aa8679e570d812ced"
             },
             {
@@ -89,7 +106,7 @@
                 512,
                 512
               ],
-              "sha256": "a9a44e6e9e0f53da298544767b910338157bb5e353761022aae53ab9a8e951ae",
+              "sha256": "01026b7d96eec8a9961ee3e7cdac77f95ae423e041d173e3cb020db057a15f80",
               "guid": "a4491ffc4c4c4c6ea6b72f04c6cce713"
             },
             {
@@ -102,18 +119,29 @@
                 512,
                 512
               ],
-              "sha256": "877db732bf49a9b76e67b3e3925ccfd4eb34776e41de49edceba7613e22c581d",
+              "sha256": "a579f9f542070d2440e4d1d053b9c442f57eacf4239992302d6744ef52673220",
               "guid": "b437c7e4347e41ada954351572337108"
             }
           ],
           "source_alignment": {
-            "dx": 0.0,
-            "dy": 0.0,
-            "scale": 1.0,
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "f79a43c837ad038432ac1f78ba7e24bd8b0dfc187ebdcc68fb2cbc8925b629a7"
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "161f957b202ad794503c06c58862d3b994adbf81105a1795d710c17ce250c9be",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         },
         {
           "angle_degrees": 120,
@@ -130,7 +158,7 @@
                 512,
                 512
               ],
-              "sha256": "efb3fd4e3971a3ac750da8fe72048537520b1ec12c42911a4effa45863dc07b5",
+              "sha256": "e8d64ea1d08bacc9d9c2c171dbb82d472f08339984bb9326980ccb205ad5fd7b",
               "guid": "ccef9edb6c6d49d2b13005f8afa5e5ad"
             },
             {
@@ -143,7 +171,7 @@
                 512,
                 512
               ],
-              "sha256": "7f71aecdd3bc2b722f45df8fca0426a41758ffec4841fa4848b4528a68c4fb93",
+              "sha256": "d064d4a34a08949ca4d271b2829855336bd59fbd072c119d4cc4bcb222c72b2c",
               "guid": "9cf161ea060f4d3b95de0bed4c42a86d"
             },
             {
@@ -156,18 +184,29 @@
                 512,
                 512
               ],
-              "sha256": "73380526ee903976f5083e0656d5ac33d17c0c3465ed7fc9c8a1cec4693b67d1",
+              "sha256": "03051a9fc4f0e4d3029fa24970dff77a6bbf052fcb4804ec346282986667feff",
               "guid": "e35421c74c10481cb5dce4aab2c24e1e"
             }
           ],
           "source_alignment": {
-            "dx": 0.0,
-            "dy": 0.0,
-            "scale": 1.0,
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "b3e5cd4ad4457199ddd699a078de554fbc8f63509f4440e7a8e6dc4e6f12a7fb"
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "5de9f0899db5999366c43cc2ed21840a772f65d1f35b010c414dd8a5a9a393e3",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         },
         {
           "angle_degrees": 180,
@@ -184,7 +223,7 @@
                 512,
                 512
               ],
-              "sha256": "290f164581cabaca384ba785b2bada2e6b2a5754c630b7fdbbe6f3fc9eb4dd0c",
+              "sha256": "621cb1a5e33d1e7352a94c2e07e8bc68de7171b217584da1c32ee2b9fc37d637",
               "guid": "6f2f2e149e6c4845835392c5003d5d42"
             },
             {
@@ -197,7 +236,7 @@
                 512,
                 512
               ],
-              "sha256": "528eea01521762e4d6271fdc0598f309332f125957c9bf381ec133811ae8f734",
+              "sha256": "d938b8c80f43b20c8fe3d4d77f5db078c84fc77ecfc9d3650d96b5ef96bf7e02",
               "guid": "7a8d04acdf334601b302c99633f454b0"
             },
             {
@@ -210,18 +249,29 @@
                 512,
                 512
               ],
-              "sha256": "3ed8ac52b88052d806be566391f466c6eab6edbf063071c775e336f6f98979b6",
+              "sha256": "4d025fb34efec276e14f65771aa57436d24fd7a3ec39257d5ff0d446a610051c",
               "guid": "0311492b44a74818b62cae7ff385006a"
             }
           ],
           "source_alignment": {
-            "dx": 0.0,
-            "dy": 0.0,
-            "scale": 1.0,
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "32103c492de4206e3f3472855437458bc29af53b7baaa66b87c6ac5a171230a8"
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "2286a5de0e6c77791331b7dbbfdd80052be91bb3f376400df94d3129a7379853",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         },
         {
           "angle_degrees": 240,
@@ -238,7 +288,7 @@
                 512,
                 512
               ],
-              "sha256": "13bae81dd61f89d8eb6b44109cc3225c8be1069870bb8642bc14411ee7f6b592",
+              "sha256": "33463f02fad111a1211add0ae68dccbf54fb38ea28e62fd89715997629b508cc",
               "guid": "6ef40a8aa0394627867838c5e54dfe52"
             },
             {
@@ -251,7 +301,7 @@
                 512,
                 512
               ],
-              "sha256": "fc578211fe95732766672578c33241ef0ff7ab728fa14a9e45c6fed8224501c3",
+              "sha256": "dfa372666f2a16520be4929519851a01a1a85a5eed967d2cf5be62582399782d",
               "guid": "a170cd38b9d24a7f81a81bef18102a26"
             },
             {
@@ -264,18 +314,29 @@
                 512,
                 512
               ],
-              "sha256": "fce838cf386d23d4dd842c0f7f8537a5f0ca80bb7f268b2f091cc497c5d3f69f",
+              "sha256": "fa72e1c6db1f5438ad62ce2e9b5daed49bb1a905cdb81c129b2c93efdf9d540d",
               "guid": "bd7e61ca78b440519a1180808e6ef68d"
             }
           ],
           "source_alignment": {
-            "dx": 0.0,
-            "dy": 0.0,
-            "scale": 1.0,
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "7debe1ea2156dc91d57fd6eb42d7579fbb35b354c63fd52090bedc3abbe31d51"
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "9dfd76b953c98729b297c2db6e945d95600722da240ecca74bf52e3c283d3066",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         },
         {
           "angle_degrees": 300,
@@ -292,7 +353,7 @@
                 512,
                 512
               ],
-              "sha256": "4f4a9f1f83d768fd04709d502e52e09bec528ad44d0339f9f19cfe22a7b74370",
+              "sha256": "2ae888cde959d2bb552f4db8f4feb77d58a0cffaa4ece61327d3975c5e073b0e",
               "guid": "c01fc09238514f72bb6344698a5be34b"
             },
             {
@@ -305,7 +366,7 @@
                 512,
                 512
               ],
-              "sha256": "00b9a37114824ebb8b829ef5e7f642e82a9d5777954ce38212fb4428d413ab82",
+              "sha256": "006f56206e37659b5f8f1617ea1ce843cf120f291f92616f1f7378367156c81b",
               "guid": "d17af52ac50c46d981fa76d5e6f1f540"
             },
             {
@@ -318,20 +379,40 @@
                 512,
                 512
               ],
-              "sha256": "7619a646a295f8fc1e3b9cb6c76ab85c0a70803b78f241edeb2d269b51989391",
+              "sha256": "6af3cbd20279b63409ef49c26eebee899727371f71c4e221bbdc356290508fd9",
               "guid": "8747d65d12654708b4d611f5050685b9"
             }
           ],
           "source_alignment": {
-            "dx": 0.0,
-            "dy": 0.0,
-            "scale": 1.0,
+            "dx": 0,
+            "dy": 0,
+            "scale": 1,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "9c037ad3de9a1123959cf6ad3567202dd8c00a65e947e98caa683543fc1a047a"
+          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
+          "continuous_source_sha256": "c888d301049052796927a816e1e4af0f13b14d5e3862faa443c178459ac116b4",
+          "camera_projection": {
+            "orthographic": true,
+            "scene_pitch_degrees": 75,
+            "scene_yaw_degrees": 0,
+            "depth_projection_direction_texture_xy": [
+              0,
+              1
+            ],
+            "far_wall": "upper-facing rim visible",
+            "near_wall": "lower-facing rim occludes inner face"
+          }
         }
-      ]
+      ],
+      "original_ground_reference": {
+        "rgb_mean": [
+          212.00666666666666,
+          165.53,
+          113.05333333333333
+        ],
+        "luma_mean": 171.6233333333333,
+        "source": "Immutable statistics of the three original supplied canyon parts before v5 perspective correction"
+      }
     },
     "GiantMachineWreck": {
       "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
@@ -409,8 +490,7 @@
             "scale": 1.0,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "7afc6b3ee70abf6bf33b388d9a4df8247aef6454f255715261b92b9f55a2b435"
+          "continuous_source": "/workspace/scratch/e7e68fa9e442/asset-tools/corrected-sources-v4/GiantMachineWreck_1.png"
         },
         {
           "angle_degrees": 120,
@@ -450,8 +530,7 @@
             "scale": 1.0,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "73e12976f6e781b65116e747cc6d587f8753c4d07a5bb0305e91714bed96f38f"
+          "continuous_source": "/workspace/scratch/e7e68fa9e442/asset-tools/corrected-sources-v4/GiantMachineWreck_2.png"
         },
         {
           "angle_degrees": 180,
@@ -491,8 +570,7 @@
             "scale": 1.0,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "7d0617ccffdc88b273dcbc3352a46d49239cad9965d8a41b5942f9c0900ca3f9"
+          "continuous_source": "/workspace/scratch/e7e68fa9e442/asset-tools/corrected-sources-v4/GiantMachineWreck_3.png"
         },
         {
           "angle_degrees": 240,
@@ -532,8 +610,7 @@
             "scale": 1.0,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "c6332cc976859d5be070b23048d61bb0dc5bfd1d34183ff9491f2c96a12a43b6"
+          "continuous_source": "/workspace/scratch/e7e68fa9e442/asset-tools/corrected-sources-v4/GiantMachineWreck_4.png"
         },
         {
           "angle_degrees": 300,
@@ -573,8 +650,7 @@
             "scale": 1.0,
             "fixed_reference_grid": true
           },
-          "continuous_source": "ImageGen relighting of rotated original; continuous scripted sand correction before slicing",
-          "continuous_source_sha256": "233f7686eb55ed37d0493cffb07f0609dce977dbb3cd53f352097a5d4b678ce7"
+          "continuous_source": "/workspace/scratch/e7e68fa9e442/asset-tools/corrected-sources-v4/GiantMachineWreck_5.png"
         }
       ]
     }
