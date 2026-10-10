@@ -12,7 +12,7 @@ namespace Game.UI
         [SerializeField] private GameObject settingsPanel;
         [SerializeField] private Button settingsButton;
         [SerializeField] private Game.Core.GameConfig gameConfig;
-        private CollectionScreensUI collectionScreens;
+        [SerializeField] private CollectionScreensUI collectionScreens;
         private RectTransform campaignSetup;
         private Button continueCampaignButton;
         private void Awake()
@@ -25,9 +25,9 @@ namespace Game.UI
                     if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
             bool canContinue = Game.Campaign.CampaignMatchBridge.Load(out _);
             if (continueCampaignButton != null) continueCampaignButton.interactable = canContinue;
-            if (gameConfig == null || gameConfig.playerRowPrefab == null) return;
-            collectionScreens = gameObject.AddComponent<CollectionScreensUI>();
-            collectionScreens.Configure(gameConfig, gameConfig.playerRowPrefab.FactionTemplate, gameConfig.playerRowPrefab.NicknameTemplate);
+            if (gameConfig == null) return;
+            if (collectionScreens != null) collectionScreens.Configure(gameConfig);
+            else Debug.LogError("MainMenuController: CollectionWindow is not assigned. Run Tools/UI/Build Collection Window.", this);
             if (Game.Core.GameSession.SetupError != null)
             {
                 OnNewGameClicked();

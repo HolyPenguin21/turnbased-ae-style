@@ -5,6 +5,13 @@ using Game.Players;
 
 namespace Game.Progression
 {
+    public readonly struct DeckSummary
+    {
+        public readonly string DeckId, Name;
+        public readonly bool IsStarter;
+        public DeckSummary(string deckId, string name, bool isStarter) { DeckId = deckId; Name = name; IsStarter = isStarter; }
+    }
+
     public sealed class CollectionService
     {
         public DeckRules Rules { get; }
@@ -31,6 +38,18 @@ namespace Game.Progression
             string selected = profile.selectedDeckByFaction.Find(s => s.faction == faction)?.deckId;
             var deck = selected != null ? profile.savedDecks.Find(d => d.faction == faction && d.deckId == selected)
                 : profile.savedDecks.Find(d => d.faction == faction);
+            return deck == null ? null : CollectionProfile.CopyDeck(deck);
+        }
+        // Lightweight list for pickers: avoids copying the whole profile just to read deck names.
+        public System.Collections.Generic.List<DeckSummary> DeckSummaries(Faction faction)
+        {
+            var list = new System.Collections.Generic.List<DeckSummary>();
+            foreach (var d in profile.savedDecks) if (d.faction == faction) list.Add(new DeckSummary(d.deckId, d.name, d.isStarter));
+            return list;
+        }
+        public SavedDeck GetDeck(string id)
+        {
+            var deck = profile.savedDecks.Find(d => d.deckId == id);
             return deck == null ? null : CollectionProfile.CopyDeck(deck);
         }
         public SavedDeck Starter(Faction faction)
