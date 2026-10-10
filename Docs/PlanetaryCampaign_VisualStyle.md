@@ -51,6 +51,10 @@ The screen uses a 1920×1080 reference Canvas and retains proportional scaling f
 16:9 resolutions. The right column contains owner counts, selected region,
 surface thumbnail, owner, scrollable neighbors and the existing attack action.
 The shorter footer shows status/history and the existing End Turn action.
+Up to four recent battles use two rows and two columns, with ellipsis for long
+entries. The baked End Turn text is not duplicated; action buttons use dark ink
+on their existing light artwork. Selected map names have a parchment nameplate
+for contrast against terrain.
 Attack confirmation, deck selection and result/error dialogs use the same skin.
 The neighbor list scrolls for regions with many neighbors.
 
@@ -95,3 +99,19 @@ The AI/backend suite was not rerun because its production files are unchanged.
    must not block input.
 7. Compare the running scene against the approved reference. Native Unity visual
    parity can only be confirmed with that rendered scene, not the concept image.
+
+## Asset overlay review
+
+`Campaign_Asset_Composite.jpg` is a deterministic CPU composition of the committed
+terrain/paper/metal/frame assets, original game sprites and Liberation Sans source
+font used by GameMenuFont. Panel coordinates and 128-pixel nine-slice borders
+(multiplier 4) match the UI code. It uses actual seed-7 generated polygons and
+ownership; round 4, the human turn and four history entries are review fixtures.
+It is not a Unity screenshot: shader interpolation, TMP bold/line positioning,
+scrollbars and native antialiasing still need verification in the scene.
+
+The overlay review found and fixed duplicated End Turn lettering, insufficient
+contrast on the light button artwork and terrain labels, and the four-line
+history extending below its intended area. Reference-DLL compilation passed
+again after those UI fixes. The scene and all procedural/backend data remain
+unchanged by this follow-up.

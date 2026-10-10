@@ -162,9 +162,17 @@ namespace Game.Campaign
                 : s.PendingOperation != null ? "Pending battle — " + s.Phase : s.CurrentFaction == s.HumanFaction ? "Your turn: attack an adjacent enemy region or end turn." : "AI faction is choosing an attack.";
             Label(footer, status, 28, 17, s.Phase == CampaignPhase.CampaignFinished ? 880 : 1510, 32, 23).fontStyle = FontStyles.Bold;
             Rule(footer, 28, 54, 1570);
-            string history = string.Join("\n", s.BattleHistory.AsEnumerable().Reverse().Take(4).Select(h => "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · " + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended")));
+            var history = s.BattleHistory.AsEnumerable().Reverse().Take(4).ToList();
             Label(footer, "RECENT BATTLES", 28, 70, 205, 40, 20).fontStyle = FontStyles.Bold;
-            Label(footer, history, 244, 65, 1330, 74, 17);
+            for (int i = 0; i < history.Count; i++)
+            {
+                var h = history[i];
+                var entry = Label(footer, "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · "
+                    + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended"),
+                    244 + (i % 2) * 665, 65 + (i / 2) * 30, 650, 27, 17);
+                entry.textWrappingMode = TextWrappingModes.NoWrap;
+                entry.overflowMode = TextOverflowModes.Ellipsis;
+            }
             if (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction)
                 EndTurnButton(footer, () => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
             else if (s.PendingOperation?.Manual == true && !s.PendingOperation.ResultRecorded)
@@ -312,14 +320,17 @@ namespace Game.Campaign
         {
             var button = CollectionUIElements.Button(parent, value, x, y, w, h, action, size);
             var image = button.GetComponent<Image>(); image.sprite = actionButtonSprite; image.color = Color.white;
-            var text = button.GetComponentInChildren<TMP_Text>(); text.color = Cream; text.fontStyle = FontStyles.Bold;
+            var text = button.GetComponentInChildren<TMP_Text>(); text.color = PaperInk; text.fontStyle = FontStyles.Bold;
             var colors = button.colors; colors.highlightedColor = new Color(1.12f, 1.08f, .95f);
             colors.pressedColor = new Color(.75f, .68f, .57f); colors.disabledColor = new Color(.48f, .46f, .42f);
             button.colors = colors; return button;
         }
         private void EndTurnButton(Transform parent, Action action)
         {
-            var button = Button(parent, "END TURN", 1679, 8, 130, 130, action, 22);
+            var button = Button(parent, "", 1688, 19, 112, 112, action, 22);
+            button.gameObject.name = "EndTurn";
+            // This sprite already contains the action text.
+            if (endTurnSprite == null) button.GetComponentInChildren<TMP_Text>().text = "END TURN";
             var image = button.GetComponent<Image>(); image.sprite = endTurnSprite; image.preserveAspect = true;
         }
         private void Logo(Transform parent, Faction faction, float x, float y, float size)

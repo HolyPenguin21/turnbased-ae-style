@@ -52,7 +52,10 @@ namespace Game.Campaign
             var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
             arrow = ar.AddComponent<CampaignArrowGraphic>(); arrow.raycastTarget = false;
             var labelRect = Game.UI.CollectionUIElements.Rect(transform, "SelectedRegionName");
-            var text = Game.UI.CollectionUIElements.Label(labelRect, "", 0, 0, 230, 36, 22);
+            var nameplate = labelRect.gameObject.AddComponent<Image>();
+            nameplate.sprite = Resources.Load<Sprite>("Campaign/Parchment");
+            nameplate.color = new Color(.98f, .92f, .78f, .92f); nameplate.raycastTarget = false;
+            var text = Game.UI.CollectionUIElements.Label(labelRect, "", 8, 0, 214, 36, 22);
             text.alignment = TMPro.TextAlignmentOptions.Center;
             text.color = new Color(.13f, .105f, .075f);
             text.fontStyle = TMPro.FontStyles.Bold;
