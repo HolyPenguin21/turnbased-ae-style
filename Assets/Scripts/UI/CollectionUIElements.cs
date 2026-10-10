@@ -24,7 +24,7 @@ namespace Game.UI
             var text = r.gameObject.AddComponent<TextMeshProUGUI>();
             text.font = Resources.Load<TMP_FontAsset>("Fonts/GameMenuFont") ?? TMP_Settings.defaultFontAsset;
             text.text = value; text.fontSize = size; text.color = new Color(.82f, .85f, .8f);
-            text.raycastTarget = false; text.enableWordWrapping = true; return text;
+            text.raycastTarget = false; text.textWrappingMode = TextWrappingModes.Normal; return text;
         }
         internal static Button Button(Transform parent, string value, float x, float y, float w, float h, Action action, int size = 16)
         {

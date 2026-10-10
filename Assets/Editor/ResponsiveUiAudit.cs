@@ -10,8 +10,8 @@ public static class ResponsiveUiAudit
     [MenuItem("Tools/UI/Audit Responsive Layout")]
     private static void Audit()
     {
-        var scalers = Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        var rects = Object.FindObjectsByType<RectTransform>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        var scalers = Object.FindObjectsByType<CanvasScaler>(FindObjectsInactive.Include);
+        var rects = Object.FindObjectsByType<RectTransform>(FindObjectsInactive.Include);
         int warnings = 0;
         int overflowWarnings = 0;
         foreach (var scaler in scalers)
