@@ -13,9 +13,17 @@ namespace Game.Core
         public static string MatchId { get; private set; }
         public static bool RewardsEligible { get; private set; }
         public static string SetupError;
+        public static Game.Campaign.CampaignMatchContext CampaignContext { get; private set; }
+        public static Game.Campaign.CompletedMatchResult? FinalResult { get; private set; }
+        public static void SetCampaignContext(Game.Campaign.CampaignMatchContext context)
+        { CampaignContext = context; MatchId = context.MatchId; FinalResult = null; }
+        public static void CompleteMatch(Game.Campaign.CompletedMatchResult result)
+        { if (!FinalResult.HasValue && result.MatchId == MatchId) FinalResult = result; }
+
         public static bool TryPrepareMatch(List<PlayerSetupData> players, GameConfig config, out string error)
         {
             error = null;
+            CampaignContext = null; FinalResult = null;
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one local human profile is supported."; return false; }
             if (!players.Exists(p => p.IsHuman))
@@ -51,7 +59,7 @@ namespace Game.Core
         }
         public static void EndRewardEligibility() => RewardsEligible = false;
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetCollectionSession() { MatchId = null; RewardsEligible = false; SetupError = null; }
+        private static void ResetCollectionSession() { MatchId = null; RewardsEligible = false; SetupError = null; CampaignContext = null; FinalResult = null; }
 
         public static List<PlayerSetupData> Players { get; set; } = new List<PlayerSetupData>();
 

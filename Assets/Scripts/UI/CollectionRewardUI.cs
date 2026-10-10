@@ -19,33 +19,64 @@ namespace Game.UI
         private ParticipantResult? retryResult;
         private string error;
         private bool returnToMenu;
+        private System.Action resumedOnClosed;
+        private string failedDismissMatchId;
         public void Configure(GameTurnController controller, GameConfig gameConfig)
         { turns = controller; config = gameConfig; turns.ParticipantFinished += OnResult; returnToMenu = true; }
-        public void Resume(GameConfig gameConfig)
+        public void Resume(GameConfig gameConfig, System.Action onClosed = null)
         {
-            config = gameConfig;
+            config = gameConfig; resumedOnClosed = onClosed;
             if (!ProgressionContext.Initialize(config)) { CollectionScreensUI.ShowMessage(transform, ProgressionContext.Error); return; }
             if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) Draw();
-            if (!string.IsNullOrWhiteSpace(ProgressionContext.Notice)) CollectionScreensUI.ShowMessage(transform, ProgressionContext.Notice);
+            if (onClosed == null && !string.IsNullOrWhiteSpace(ProgressionContext.Notice)) CollectionScreensUI.ShowMessage(transform, ProgressionContext.Notice);
         }
         private void OnResult(ParticipantResult result)
         {
-            if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; retryResult = result; }
+            if (!Game.Campaign.CampaignMatchBridge.RecordFinalResult(out error)) retryResult = result;
+            else if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; retryResult = result; }
             else if (!ProgressionContext.Rewards.Record(result, out error)) retryResult = result;
             else retryResult = null;
             selection.Clear(); Draw();
         }
         private void Draw()
         {
-            if (canvas == null) { canvas = CollectionUIElements.Canvas("CollectionRewards"); root = CollectionUIElements.Panel(canvas, "Rewards"); CollectionUIElements.Stretch(root); }
+            if (canvas == null)
+            {
+                bool campaignLayout = GameSession.CampaignContext != null || resumedOnClosed != null;
+                canvas = CollectionUIElements.Canvas("CollectionRewards", campaignLayout ? new Vector2(1920, 1080) : (Vector2?)null);
+                var backdrop = CollectionUIElements.Panel(canvas, "RewardBackdrop"); CollectionUIElements.Stretch(backdrop);
+                root = CollectionUIElements.Panel(backdrop, "Rewards");
+                if (campaignLayout)
+                {
+                    // Preserve the existing reward controls, centered in a fixed readable panel
+                    // inside the campaign's Full HD canvas; no bottom button is cropped at 16:9.
+                    root.anchorMin = root.anchorMax = new Vector2(.5f, .5f); root.pivot = new Vector2(.5f, .5f);
+                    root.anchoredPosition = Vector2.zero; root.sizeDelta = new Vector2(1024, 768);
+                }
+                else CollectionUIElements.Stretch(root);
+            }
             UIFocusUtility.SetOverlay(this, true); CollectionUIElements.Clear(root);
             if (retryResult.HasValue)
             {
                 CollectionUIElements.Label(root, "Cannot save the match reward.\n" + error, 160, 200, 704, 160, 22);
                 CollectionUIElements.Button(root, "Retry", 412, 400, 200, 40, () => OnResult(retryResult.Value)); return;
             }
+            if (failedDismissMatchId != null)
+            {
+                CollectionUIElements.Label(root, "Cannot save campaign continuation.\n" + error, 160, 200, 704, 160, 22);
+                CollectionUIElements.Button(root, "Retry", 412, 400, 200, 40, () => FinishDismiss(failedDismissMatchId)); return;
+            }
             var reward = ProgressionContext.Collection.Snapshot.pendingRewards.FirstOrDefault();
-            if (reward == null) { Close(); return; }
+            if (reward == null)
+            {
+                if (returnToMenu && GameSession.CampaignContext != null)
+                {
+                    if (!Game.Campaign.CampaignMatchBridge.RecoverReward(config, out error))
+                    { retryResult = new ParticipantResult(GameSession.MatchId, GameSession.FindHumanPlayer(), MatchOutcome.Draw); Draw(); return; }
+                    Close(); GameSession.EndRewardEligibility(); SceneManager.LoadScene(SceneNames.Campaign); return;
+                }
+                Close(); var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); return;
+            }
             var keys = reward.claimed ? reward.acquiredKeys : ProgressionContext.Rewards.AvailableOffers(reward);
             if (!reward.claimed) selection.RemoveWhere(key => !keys.Contains(key));
             int required = Mathf.Min(2, keys.Count);
@@ -74,7 +105,18 @@ namespace Game.UI
                 button.interactable = selection.Count == required;
             }
             else CollectionUIElements.Button(root, "Continue", 412, 656, 200, 40, () =>
-            { if (!ProgressionContext.Rewards.Dismiss(reward.matchId, out error)) { Draw(); return; } if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) Draw(); else { Close(); if (returnToMenu) { GameSession.EndRewardEligibility(); SceneManager.LoadScene(SceneNames.MainMenu); } } });
+            { if (!ProgressionContext.Rewards.Dismiss(reward.matchId, out error)) { Draw(); return; } FinishDismiss(reward.matchId); });
+        }
+        private void FinishDismiss(string matchId)
+        {
+            string destination = Game.Campaign.CampaignMatchBridge.ReturnScene(matchId);
+            if (!Game.Campaign.CampaignMatchBridge.RewardDismissed(matchId, out error))
+            { failedDismissMatchId = matchId; Draw(); return; }
+            failedDismissMatchId = null;
+            if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) { Draw(); return; }
+            Close();
+            if (returnToMenu) { GameSession.EndRewardEligibility(); SceneManager.LoadScene(destination); }
+            else { var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); }
         }
         private void Close() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) Destroy(canvas.gameObject); canvas = null; root = null; }
         private void OnDestroy() { if (turns != null) turns.ParticipantFinished -= OnResult; Close(); }
