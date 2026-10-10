@@ -152,6 +152,18 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void CombatOpportunityAnalyzer_LoneHeroTarget_IsNotAFreeWinForTheReadyArmy()
+        {
+            var hero = new WorthIt.DefenderProfile(0, false, hitPoints: 4,
+                isGroundCombatant: false, isHero: true, fateMax: 10);
+            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 3, hex: new HexCoord(3, 0),
+                defenders: new List<WorthIt.DefenderProfile> { hero }, withOwnArmy: true);
+
+            CombatOpportunity opp = CombatOpportunityAnalyzer.Analyze(snap).NeutralOpportunities.Single();
+
+            Assert.That(opp.ReadyWinChance, Is.LessThan(1f), "an empty tactical battle is not a Capture/Kill");        }
+
+        [Test]
         public void CombatOpportunityAnalyzer_KnownEventGuard_AppearsInNeutralOpportunities()
         {
             var hex = new HexCoord(4, 4);
