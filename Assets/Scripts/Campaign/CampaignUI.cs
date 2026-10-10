@@ -20,6 +20,7 @@ namespace Game.Campaign
         private CampaignMapView map;
         private int? selected, hovered;
         private string selectedDeckId;
+        private Action cancelModal;
         private bool rewardOpen, defenceDeferred, acting;
         private readonly CampaignBattleResolver resolver = new CampaignBattleResolver();
         private CampaignController Controller => CampaignMatchBridge.Controller;
@@ -57,12 +58,7 @@ namespace Game.Campaign
                 return;
             }
             if (Controller.Snapshot.Phase == CampaignPhase.ShowingResult) ShowResult();
-            else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred)
-            {
-                if (op.TestAutoResolve)
-                    OpenDeckSelection();
-                else OpenDeckSelection();
-            }
+            else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
             else if (op != null && !op.Manual && !op.ResultRecorded)
                 Attempt(() => { Controller.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, ProgressionContext.Collection.Rules), CampaignDeck.Standard(op.DefenderFaction, ProgressionContext.Collection.Rules), resolver); Render(); ShowResult(); });
         }
@@ -72,9 +68,9 @@ namespace Game.Campaign
             if (escape && modal == null && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
             if (escape && modal != null)
             {
-                var s = Controller?.Snapshot;
-                if (s?.PendingOperation != null && !s.PendingOperation.ResultRecorded) CancelDeck();
+                cancelModal?.Invoke();
                 // Results require explicit Continue; ESC never acknowledges an operation.
+                return;
             }
             if (Controller == null || modal != null || rewardOpen || acting) return;
             if (Controller.Phase != CampaignPhase.AwaitingFactionAction || !Controller.IsAiTurn) return;
@@ -125,8 +121,8 @@ namespace Game.Campaign
             }
             string status = s.Phase == CampaignPhase.CampaignFinished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? "CAMPAIGN DEFEAT — your faction has been eliminated." : "PLANET CONQUERED — campaign completed.")
                 : s.PendingOperation != null ? "Pending battle — " + s.Phase : s.CurrentFaction == s.HumanFaction ? "Your turn: attack an adjacent enemy region or end turn." : "AI faction is choosing an attack.";
-            CollectionUIElements.Label(footer, status, 24, 15, 1500, 40, 21);
-            string history = string.Join("\n", s.BattleHistory.AsEnumerable().Reverse().Take(4).Select(h => "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · " + (h.Captured ? "captured" : "defended")));
+            CollectionUIElements.Label(footer, status, 24, 15, s.Phase == CampaignPhase.CampaignFinished ? 900 : 1500, 40, 21);
+            string history = string.Join("\n", s.BattleHistory.AsEnumerable().Reverse().Take(4).Select(h => "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · " + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended")));
             CollectionUIElements.Label(footer, history, 24, 60, 1410, 136, 18);
             if (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction)
                 CollectionUIElements.Button(footer, "End Turn", 1530, 120, 270, 54, () => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
@@ -136,7 +132,7 @@ namespace Game.Campaign
             {
                 var h = s.BattleHistory.Where(b => b.Attacker == s.HumanFaction || b.Defender == s.HumanFaction).ToList();
                 int wins = h.Count(b => b.Outcome != CampaignOutcome.Draw && (b.Outcome == CampaignOutcome.AttackerVictory ? b.Attacker : b.Defender) == s.HumanFaction);
-                CollectionUIElements.Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 1000, 15, 795, 72, 18);
+                CollectionUIElements.Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 950, 15, 850, 40, 18);
             }
             RefreshMap();
         }
@@ -147,28 +143,30 @@ namespace Game.Campaign
             bool enabled = modal == null && !rewardOpen && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
             map.Refresh(s, selected, hovered, enabled);
         }
-        private void Modal(string title)
+        private void Modal(string title, Action onCancel = null)
         {
             CloseModal(); modal = CollectionUIElements.Panel(canvas, "ModalBackdrop"); CollectionUIElements.Stretch(modal);
+            cancelModal = onCancel;
             modal.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
             modalContent = CollectionUIElements.Panel(modal, title); CollectionUIElements.Place(modalContent, 485, 190, 950, 700);
             CollectionUIElements.Label(modalContent, title, 35, 25, 880, 58, 30); UIFocusUtility.SetOverlay(this, true); RefreshMap();
         }
         private void CloseModal()
-        { UIFocusUtility.SetOverlay(this, false); if (modal != null) { modal.gameObject.SetActive(false); Destroy(modal.gameObject); } modal = modalContent = null; }
+        { UIFocusUtility.SetOverlay(this, false); if (modal != null) { modal.gameObject.SetActive(false); Destroy(modal.gameObject); } modal = modalContent = null; cancelModal = null; }
+        private void CancelAttackConfirmation() { CloseModal(); RefreshMap(); }
         private void ConfirmAttack(int from, int target)
         {
             var s = Controller.Snapshot; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
-            Modal("CONFIRM ATTACK");
+            Modal("CONFIRM ATTACK", CancelAttackConfirmation);
             CollectionUIElements.Label(modalContent, s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name, 35, 110, 880, 90, 26);
             CollectionUIElements.Button(modalContent, "Choose Deck", 35, 570, 400, 56, () => Attempt(() => { Controller.BeginAttack(from, target, true); OpenDeckSelection(); }));
-            CollectionUIElements.Button(modalContent, "Cancel", 490, 570, 400, 56, () => { CloseModal(); RefreshMap(); });
+            CollectionUIElements.Button(modalContent, "Cancel", 490, 570, 400, 56, CancelAttackConfirmation);
         }
         private void OpenDeckSelection()
         {
             var s = Controller.Snapshot; var op = s.PendingOperation;
             if (op == null || !op.Manual || op.ResultRecorded) return;
-            Modal("CAMPAIGN BATTLE");
+            Modal("CAMPAIGN BATTLE", CancelDeck);
             bool attack = op.AttackerFaction == s.HumanFaction;
             string message = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);

@@ -48,8 +48,17 @@ namespace Game.Campaign
         }
         public void RecordManualResult(string campaignId, string operationId, string matchId, CampaignOutcome outcome)
         {
+            if (state.CampaignId != campaignId) throw new InvalidOperationException("Result identity mismatch.");
+            // Continue clears the pending slot, but the durable receipt still identifies a
+            // late duplicate callback. It must not interrupt the next faction's operation.
+            var completed = state.BattleHistory.Find(h => h.OperationId == operationId);
+            if (completed != null)
+            {
+                if (!completed.Manual || completed.MatchId != matchId || completed.Outcome != outcome) throw new InvalidOperationException("Conflicting completed match result.");
+                return;
+            }
             var op = state.PendingOperation;
-            if (state.CampaignId != campaignId || op == null || !op.Manual || op.OperationId != operationId || op.MatchId != matchId) throw new InvalidOperationException("Result identity mismatch.");
+            if (op == null || !op.Manual || op.OperationId != operationId || op.MatchId != matchId) throw new InvalidOperationException("Result identity mismatch.");
             if (op.ResultRecorded) { if (op.Outcome != outcome) throw new InvalidOperationException("Conflicting match result."); return; }
             if (state.Phase != CampaignPhase.BattleInProgress) throw new InvalidOperationException("Battle has not started.");
             Transact(s => { s.PendingOperation.Outcome = outcome; s.PendingOperation.ResultRecorded = true; s.Phase = CampaignPhase.BattleResolved; });

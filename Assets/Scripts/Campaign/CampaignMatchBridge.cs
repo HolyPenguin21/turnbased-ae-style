@@ -82,7 +82,23 @@ namespace Game.Campaign
                 var final = GameSession.FinalResult ?? throw new InvalidOperationException("Match has not finished.");
                 if (final.MatchId != context.MatchId) throw new InvalidOperationException("Match identity mismatch.");
                 if (Controller == null && !Load(out error)) return false;
+                var state = Controller.Snapshot; var op = state.PendingOperation;
+                if (state.CampaignId != context.CampaignId || state.HumanFaction != context.HumanFaction) throw new InvalidOperationException("Campaign context mismatch.");
+                if (op?.OperationId == context.OperationId)
+                {
+                    if (op.MatchId != context.MatchId || op.AttackerFaction != context.AttackerFaction || op.DefenderFaction != context.DefenderFaction
+                        || op.SourceRegionId != context.SourceRegionId || op.TargetRegionId != context.TargetRegionId || op.SelectedHumanDeckId != context.SelectedHumanDeckId)
+                        throw new InvalidOperationException("Pending battle context mismatch.");
+                }
+                else
+                {
+                    var receipt = state.BattleHistory.Find(h => h.OperationId == context.OperationId);
+                    if (receipt == null || !receipt.Manual || receipt.MatchId != context.MatchId || receipt.Attacker != context.AttackerFaction
+                        || receipt.Defender != context.DefenderFaction || receipt.TargetRegionId != context.TargetRegionId) throw new InvalidOperationException("Completed battle context mismatch.");
+                }
                 if (!final.Draw && final.WinnerFaction != context.AttackerFaction && final.WinnerFaction != context.DefenderFaction) throw new InvalidOperationException("Winner is not a participant.");
+                if (final.Draw ? final.WinnerFaction != Faction.None : final.LoserFaction != (final.WinnerFaction == context.AttackerFaction ? context.DefenderFaction : context.AttackerFaction))
+                    throw new InvalidOperationException("Inconsistent whole-match outcome.");
                 var outcome = final.Draw ? CampaignOutcome.Draw : final.WinnerFaction == context.AttackerFaction ? CampaignOutcome.AttackerVictory : CampaignOutcome.DefenderVictory;
                 Controller.RecordManualResult(context.CampaignId, context.OperationId, context.MatchId, outcome); return true;
             }

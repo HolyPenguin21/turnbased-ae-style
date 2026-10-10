@@ -41,6 +41,61 @@ public sealed class CampaignSystemTests
         s = Planet(); s.Regions[0].PolygonVertices[0] = new Vector2(float.NaN, 1); Assert.Throws<InvalidDataException>(() => CampaignGeometry.Validate(s.Regions));
         s = Planet(); s.Regions[0].NeighborIds.Clear(); Assert.Throws<InvalidDataException>(() => CampaignGeometry.Validate(s.Regions));
     }
+    [Test] public void PolygonTouchingItsOwnNonAdjacentEdgeIsRejected()
+    {
+        // The notch at (.5, 0) touches the first edge; every vertex is distinct,
+        // areas are positive and there is no strict edge crossing.
+        var regions = new List<RegionState>
+        {
+            new RegionState { RegionId = 0, Name = "Pinched", OwnerFaction = Faction.Ashen,
+                PolygonVertices = new List<Vector2> { new Vector2(0, 0), new Vector2(1, 0), new Vector2(1, 1), new Vector2(.5f, 0), new Vector2(0, 1) }, NeighborIds = new List<int> { 1 } },
+            new RegionState { RegionId = 1, Name = "Middle", OwnerFaction = Faction.IronConcord,
+                PolygonVertices = new List<Vector2> { new Vector2(1, 0), new Vector2(1.5f, 0), new Vector2(1.5f, 1), new Vector2(1, 1) }, NeighborIds = new List<int> { 0, 2 } },
+            new RegionState { RegionId = 2, Name = "Right", OwnerFaction = Faction.Vessels,
+                PolygonVertices = new List<Vector2> { new Vector2(1.5f, 0), new Vector2(2, 0), new Vector2(2, 1), new Vector2(1.5f, 1) }, NeighborIds = new List<int> { 1 } }
+        };
+        Assert.Throws<InvalidDataException>(() => CampaignGeometry.Validate(regions));
+    }
+    [TestCase(1f)] [TestCase(.0001f)]
+    public void CrossingDetectionDoesNotLoseShortEdges(float size)
+    {
+        Assert.IsTrue(CampaignGeometry.ProperIntersection(new Vector2(0, 0), new Vector2(size, size), new Vector2(0, size), new Vector2(size, 0)));
+        Assert.IsFalse(CampaignGeometry.ProperIntersection(new Vector2(0, 0), new Vector2(size, 0), new Vector2(size, 0), new Vector2(size, size)));
+    }
+    [TestCase("early reward")] [TestCase("missing deck")] [TestCase("fast in Game")]
+    public void ImpossiblePendingOperationPhaseIsRejected(string corruption)
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s);
+        var pair = CampaignRules.LegalAttacks(s).First(); c.BeginAttack(pair.Source, pair.Target, true);
+        if (corruption == "missing deck") c.RegisterMatch("deck", "Human", "AI");
+        var invalid = c.Snapshot;
+        if (corruption == "early reward") invalid.PendingOperation.RewardAcknowledged = true;
+        else if (corruption == "missing deck") invalid.PendingOperation.SelectedHumanDeckId = null;
+        else
+        {
+            s = Planet(); var aiPair = s.Regions.SelectMany(r => r.NeighborIds.Select(id => (Source: r, Target: s.Regions.Find(x => x.RegionId == id))))
+                .First(p => p.Source.OwnerFaction != s.HumanFaction && p.Target.OwnerFaction != s.HumanFaction && p.Source.OwnerFaction != p.Target.OwnerFaction);
+            s.CurrentTurnIndex = s.TurnOrder.IndexOf(aiPair.Source.OwnerFaction); c = Controller(s);
+            c.BeginAttack(aiPair.Source.RegionId, aiPair.Target.RegionId, false); invalid = c.Snapshot;
+            invalid.Phase = CampaignPhase.BattleInProgress;
+        }
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(invalid));
+    }
+    [TestCase("different outcome")] [TestCase("duplicate match")]
+    public void CorruptHistoryReceiptIsRejected(string corruption)
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s); var pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true); c.RegisterMatch("deck", "Human", "AI"); var op = c.Snapshot.PendingOperation;
+        c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.AttackerVictory); c.AcknowledgeReward(op.MatchId);
+        var invalid = c.Snapshot;
+        if (corruption == "different outcome") { invalid.BattleHistory[0].Outcome = CampaignOutcome.DefenderVictory; invalid.BattleHistory[0].Captured = false; }
+        else
+        {
+            var receipt = JsonUtility.FromJson<CampaignBattleRecord>(JsonUtility.ToJson(invalid.BattleHistory[0]));
+            receipt.OperationId = Guid.NewGuid().ToString("N"); invalid.BattleHistory.Add(receipt);
+        }
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(invalid));
+    }
     [Test] public void C01_C03_OnlyAdjacentEnemyOwnedByActiveFactionCanBeAttacked()
     {
         var s = HumanTurn(Planet()); var pairs = CampaignRules.LegalAttacks(s).ToList(); Assert.IsNotEmpty(pairs);
@@ -74,6 +129,54 @@ public sealed class CampaignSystemTests
         Assert.Throws<InvalidOperationException>(() => c.RecordManualResult(s.CampaignId, op.OperationId, Guid.NewGuid().ToString("N"), CampaignOutcome.AttackerVictory));
         c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.Draw);
         Assert.Throws<InvalidOperationException>(() => c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.AttackerVictory));
+    }
+    [Test] public void CompletedManualReceiptRemainsIdempotentAfterContinue()
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s); var pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true); c.RegisterMatch("deck", "Human", "AI"); var op = c.Snapshot.PendingOperation;
+        c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.AttackerVictory); c.AcknowledgeReward(op.MatchId); c.Continue(op.OperationId);
+        string before = JsonUtility.ToJson(c.Snapshot);
+        Assert.DoesNotThrow(() => c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.AttackerVictory));
+        Assert.AreEqual(before, JsonUtility.ToJson(c.Snapshot));
+        Assert.Throws<InvalidOperationException>(() => c.RecordManualResult(s.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.DefenderVictory));
+    }
+    [TestCase("loser")] [TestCase("context")] [TestCase("late")] [TestCase("draw")] [TestCase("normal")]
+    public void MatchBridgeChecksAuthoritativeContextAndLateReplay(string corruption)
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s); var pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true); c.RegisterMatch("deck", "Human", "AI"); var op = c.Snapshot.PendingOperation;
+        var priorController = CampaignMatchBridge.Controller;
+        string priorMatch = Game.Core.GameSession.MatchId;
+        var priorContext = Game.Core.GameSession.CampaignContext; var priorResult = Game.Core.GameSession.FinalResult;
+        try
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, c);
+            Game.Core.GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId, MatchId = op.MatchId,
+                AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction, SourceRegionId = op.SourceRegionId,
+                TargetRegionId = corruption == "context" ? op.SourceRegionId : op.TargetRegionId, SelectedHumanDeckId = "deck" });
+            Game.Core.GameSession.CompleteMatch(new CompletedMatchResult(op.MatchId, corruption == "draw" ? Faction.None : op.AttackerFaction,
+                corruption == "loser" ? op.AttackerFaction : op.DefenderFaction, corruption == "draw"));
+            if (corruption == "normal")
+            {
+                typeof(Game.Core.GameSession).GetProperty("CampaignContext").SetValue(null, null);
+                Assert.IsTrue(CampaignMatchBridge.RecordFinalResult(out _)); Assert.IsFalse(c.Snapshot.PendingOperation.ResultRecorded);
+            }
+            else if (corruption == "loser" || corruption == "context")
+            { Assert.IsFalse(CampaignMatchBridge.RecordFinalResult(out _)); Assert.IsFalse(c.Snapshot.PendingOperation.ResultRecorded); }
+            else
+            {
+                Assert.IsTrue(CampaignMatchBridge.RecordFinalResult(out _)); c.AcknowledgeReward(op.MatchId); c.Continue(op.OperationId);
+                string before = JsonUtility.ToJson(c.Snapshot);
+                Assert.IsTrue(CampaignMatchBridge.RecordFinalResult(out _)); Assert.AreEqual(before, JsonUtility.ToJson(c.Snapshot));
+            }
+        }
+        finally
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, priorController);
+            typeof(Game.Core.GameSession).GetProperty("MatchId").SetValue(null, priorMatch);
+            typeof(Game.Core.GameSession).GetProperty("CampaignContext").SetValue(null, priorContext);
+            typeof(Game.Core.GameSession).GetProperty("FinalResult").SetValue(null, priorResult);
+        }
     }
     [Test] public void CancelAttackDoesNotConsumeTurnAndDefenceCannotBeCancelled()
     {

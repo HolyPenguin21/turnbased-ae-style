@@ -43,24 +43,36 @@ namespace Game.Campaign
             CampaignGeometry.Validate(s.Regions);
             foreach (var f in s.Factions) if (f.Eliminated == s.Regions.Any(r => r.OwnerFaction == f.Faction)) throw new InvalidDataException("Elimination mismatch.");
             if (s.BattleHistory.Any(h => h == null || !Guid.TryParseExact(h.OperationId, "N", out _) || h.Round < 1 || h.Round > s.RoundNumber
+                || (h.Manual ? !Guid.TryParseExact(h.MatchId, "N", out _) : h.MatchId != null)
+                || string.IsNullOrWhiteSpace(h.RegionName) || string.IsNullOrWhiteSpace(h.AttackerDeckName) || string.IsNullOrWhiteSpace(h.DefenderDeckName)
                 || !s.Regions.Any(r => r.RegionId == h.TargetRegionId) || !CampaignRules.IsPlayable(h.Attacker) || !CampaignRules.IsPlayable(h.Defender)
                 || h.Attacker == h.Defender || !Enum.IsDefined(typeof(CampaignOutcome), h.Outcome) || h.Captured != (h.Outcome == CampaignOutcome.AttackerVictory)
                 || double.IsNaN(h.WinChance) || double.IsInfinity(h.WinChance) || h.WinChance < 0 || h.WinChance > 1)
-                || s.BattleHistory.Select(h => h.OperationId).Distinct().Count() != s.BattleHistory.Count) throw new InvalidDataException("Invalid history.");
+                || s.BattleHistory.Select(h => h.OperationId).Distinct().Count() != s.BattleHistory.Count
+                || s.BattleHistory.Where(h => h.Manual).Select(h => h.MatchId).Distinct().Count() != s.BattleHistory.Count(h => h.Manual)) throw new InvalidDataException("Invalid history.");
             bool finished = CampaignRules.HumanFinished(s);
             if ((s.Phase == CampaignPhase.CampaignFinished && !finished)
+                || (finished && s.Phase != CampaignPhase.ShowingResult && s.Phase != CampaignPhase.CampaignFinished)
                 || (s.Phase == CampaignPhase.AwaitingFactionAction && (finished || s.Factions.Find(f => f.Faction == s.CurrentFaction).Eliminated)))
                 throw new InvalidDataException("Campaign completion/turn mismatch.");
             var op = s.PendingOperation;
             bool pendingPhase = s.Phase != CampaignPhase.AwaitingFactionAction && s.Phase != CampaignPhase.CampaignFinished;
             if (pendingPhase != (op != null)) throw new InvalidDataException("Phase/operation mismatch.");
-            if (op == null) return;
+            if (op == null)
+            {
+                if (!string.IsNullOrEmpty(s.PendingNotification)) throw new InvalidDataException("Notification has no operation.");
+                return;
+            }
             var source = s.Regions.Find(r => r.RegionId == op.SourceRegionId); var target = s.Regions.Find(r => r.RegionId == op.TargetRegionId);
-            if (!Guid.TryParseExact(op.OperationId, "N", out _) || (op.Manual && !Guid.TryParseExact(op.MatchId, "N", out _))
+            if (!Guid.TryParseExact(op.OperationId, "N", out _) || (op.Manual ? !Guid.TryParseExact(op.MatchId, "N", out _) : op.MatchId != null)
                 || !CampaignRules.IsPlayable(op.AttackerFaction) || !CampaignRules.IsPlayable(op.DefenderFaction) || op.AttackerFaction == op.DefenderFaction
                 || source == null || target == null || source.OwnerFaction != op.AttackerFaction || !source.NeighborIds.Contains(target.RegionId)
                 || op.AttackerFaction != s.CurrentFaction || (op.TestAutoResolve && (!op.Manual || string.IsNullOrWhiteSpace(op.SelectedHumanDeckId))) || op.Manual != (op.AttackerFaction == s.HumanFaction || op.DefenderFaction == s.HumanFaction)
                 || !Enum.IsDefined(typeof(CampaignOutcome), op.Outcome) || (op.OwnershipApplied && !op.ResultRecorded)
+                || (op.RewardAcknowledged && !op.ResultRecorded)
+                || (s.Phase == CampaignPhase.BattleInProgress && (!op.Manual || op.TestAutoResolve || string.IsNullOrWhiteSpace(op.SelectedHumanDeckId)
+                    || string.IsNullOrWhiteSpace(op.AttackerDeckName) || string.IsNullOrWhiteSpace(op.DefenderDeckName)))
+                || (op.OwnershipApplied && s.Phase != CampaignPhase.ShowingResult)
                 || target.OwnerFaction != (op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory ? op.AttackerFaction : op.DefenderFaction)
                 || (op.ResultRecorded && (double.IsNaN(op.WinChance) || double.IsInfinity(op.WinChance) || op.WinChance < 0 || op.WinChance > 1 || double.IsNaN(op.Roll) || op.Roll < 0 || op.Roll >= 1
                     || double.IsNaN(op.AttackerScore) || double.IsInfinity(op.AttackerScore) || double.IsNaN(op.DefenderScore) || double.IsInfinity(op.DefenderScore)
@@ -69,6 +81,11 @@ namespace Game.Campaign
                 || (s.Phase == CampaignPhase.ShowingResult && (string.IsNullOrWhiteSpace(s.PendingNotification) || !op.OwnershipApplied || (op.Manual && !op.RewardAcknowledged)))
                 || ((s.Phase == CampaignPhase.PreparingBattle || s.Phase == CampaignPhase.BattleInProgress) && op.ResultRecorded)
                 || (s.Phase == CampaignPhase.BattleResolved && !op.ResultRecorded)) throw new InvalidDataException("Invalid pending operation.");
+            var receipt = s.BattleHistory.Find(h => h.OperationId == op.OperationId);
+            if (receipt != null && (receipt.MatchId != op.MatchId || receipt.Round != s.RoundNumber || receipt.TargetRegionId != op.TargetRegionId
+                || receipt.Attacker != op.AttackerFaction || receipt.Defender != op.DefenderFaction || receipt.Outcome != op.Outcome
+                || receipt.Manual != op.Manual || receipt.WinChance != op.WinChance || receipt.RegionName != target.Name
+                || receipt.AttackerDeckName != op.AttackerDeckName || receipt.DefenderDeckName != op.DefenderDeckName)) throw new InvalidDataException("History/operation receipt mismatch.");
         }
         public void Save(CampaignState s)
         {

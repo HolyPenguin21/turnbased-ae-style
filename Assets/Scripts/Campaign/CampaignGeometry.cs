@@ -8,7 +8,7 @@ namespace Game.Campaign
 {
     public static class CampaignGeometry
     {
-        public static double Cross(Vector2 a, Vector2 b, Vector2 c) => (double)(b.x - a.x) * (c.y - a.y) - (double)(b.y - a.y) * (c.x - a.x);
+        public static double Cross(Vector2 a, Vector2 b, Vector2 c) => ((double)b.x - a.x) * ((double)c.y - a.y) - ((double)b.y - a.y) * ((double)c.x - a.x);
         public static double Area(IReadOnlyList<Vector2> p)
         { double a = 0; for (int i = 0; i < p.Count; i++) { var b = p[(i + 1) % p.Count]; a += (double)p[i].x * b.y - (double)b.x * p[i].y; } return a / 2; }
         public static bool Contains(IReadOnlyList<Vector2> p, Vector2 v)
@@ -56,7 +56,17 @@ namespace Game.Campaign
         internal static string EdgeKey(Vector2 a, Vector2 b)
         { string x = VertexKey(a), y = VertexKey(b); return string.CompareOrdinal(x, y) < 0 ? x + "/" + y : y + "/" + x; }
         public static bool ProperIntersection(Vector2 a, Vector2 b, Vector2 c, Vector2 d)
-            => Cross(a, b, c) * Cross(a, b, d) < -1e-12 && Cross(c, d, a) * Cross(c, d, b) < -1e-12;
+        {
+            // Test orientation signs directly: multiplying tiny cross products loses short
+            // crossings to an absolute area threshold, even inside a large valid region.
+            double ac = Cross(a, b, c), ad = Cross(a, b, d), ca = Cross(c, d, a), cb = Cross(c, d, b);
+            return ((ac > 0 && ad < 0) || (ac < 0 && ad > 0)) && ((ca > 0 && cb < 0) || (ca < 0 && cb > 0));
+        }
+        private static bool OnSegment(Vector2 p, Vector2 a, Vector2 b)
+            => Math.Abs(Cross(a, b, p)) <= 1e-10 && p.x >= Math.Min(a.x, b.x) - 1e-7 && p.x <= Math.Max(a.x, b.x) + 1e-7
+                && p.y >= Math.Min(a.y, b.y) - 1e-7 && p.y <= Math.Max(a.y, b.y) + 1e-7;
+        private static bool SamePoint(Vector2 a, Vector2 b) => a.x == b.x && a.y == b.y;
+        private static bool InteriorTouch(Vector2 p, Vector2 a, Vector2 b) => !SamePoint(p, a) && !SamePoint(p, b) && OnSegment(p, a, b);
         public static void Validate(IReadOnlyList<RegionState> regions, bool initialOwnership = false)
         {
             if (regions == null || regions.Count < 3 || regions.Count > 256 || regions.Any(r => r == null)) throw new InvalidDataException("Invalid regions.");
@@ -64,6 +74,7 @@ namespace Game.Campaign
             if (ids.Count != regions.Count || ids.Any(id => id < 0)) throw new InvalidDataException("Invalid region identities.");
             var edges = new Dictionary<string, List<int>>();
             var directions = new Dictionary<string, string>();
+            var vertices = new Dictionary<string, Vector2>();
             foreach (var r in regions)
             {
                 var p = r.PolygonVertices;
@@ -74,8 +85,18 @@ namespace Game.Campaign
                 {
                     var b = p[(i + 1) % p.Count];
                     if ((p[i] - b).sqrMagnitude < 1e-12) throw new InvalidDataException("Zero length edge.");
+                    string vertexKey = VertexKey(p[i]);
+                    if (vertices.TryGetValue(vertexKey, out var existing) && !SamePoint(existing, p[i])) throw new InvalidDataException("Shared vertices do not coincide.");
+                    vertices[vertexKey] = p[i];
+                    var next = p[(i + 2) % p.Count];
+                    if (Math.Abs(Cross(p[i], b, next)) <= 1e-10 && Vector2.Dot(b - p[i], next - b) < 0) throw new InvalidDataException("Boundary doubles back.");
                     for (int j = i + 1; j < p.Count; j++)
-                        if (ProperIntersection(p[i], b, p[j], p[(j + 1) % p.Count])) throw new InvalidDataException("Self intersection.");
+                    {
+                        if (j == i + 1 || (i == 0 && j == p.Count - 1)) continue;
+                        var d = p[(j + 1) % p.Count];
+                        if (ProperIntersection(p[i], b, p[j], d) || OnSegment(p[i], p[j], d) || OnSegment(b, p[j], d)
+                            || OnSegment(p[j], p[i], b) || OnSegment(d, p[i], b)) throw new InvalidDataException("Self intersection or boundary touch.");
+                    }
                     string key = EdgeKey(p[i], b);
                     string direction = VertexKey(p[i]) + "/" + VertexKey(b);
                     if (!edges.TryGetValue(key, out var owners)) { edges[key] = owners = new List<int>(); directions[key] = direction; }
@@ -94,7 +115,11 @@ namespace Game.Campaign
             {
                 var a = regions[i].PolygonVertices; var b = regions[j].PolygonVertices;
                 for (int x = 0; x < a.Count; x++) for (int y = 0; y < b.Count; y++)
-                    if (ProperIntersection(a[x], a[(x + 1) % a.Count], b[y], b[(y + 1) % b.Count])) throw new InvalidDataException("Region intersection.");
+                {
+                    var an = a[(x + 1) % a.Count]; var bn = b[(y + 1) % b.Count];
+                    if (ProperIntersection(a[x], an, b[y], bn) || InteriorTouch(a[x], b[y], bn) || InteriorTouch(an, b[y], bn)
+                        || InteriorTouch(b[y], a[x], an) || InteriorTouch(bn, a[x], an)) throw new InvalidDataException("Region intersection or unmatched boundary junction.");
+                }
                 // Boundary vertices do not count; an interior point detects containment.
                 if (Contains(a, interiors[j]) || Contains(b, interiors[i])) throw new InvalidDataException("Overlapping regions.");
             }
