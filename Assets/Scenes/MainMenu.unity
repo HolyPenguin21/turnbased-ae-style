@@ -2584,6 +2584,7 @@ MonoBehaviour:
   gameSetupPanel: {fileID: 759005951}
   settingsPanel: {fileID: 1950000000}
   settingsButton: {fileID: 1950000089}
+  gameConfig: {fileID: 11400000, guid: 7eb9ac8d630ddb848b7ffe51f03f4b75, type: 2}
 --- !u!4 &1007785364
 Transform:
   m_ObjectHideFlags: 0
@@ -4972,3 +4973,4 @@ SceneRoots:
   - {fileID: 1007785364}
   - {fileID: 532284554}
   - {fileID: 391000798}
+

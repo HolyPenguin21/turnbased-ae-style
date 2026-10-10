@@ -164,6 +164,14 @@ namespace Game.Cards
         public static List<CardDefinition> OfferedCards(ResearchProductionCatalog catalog, ResearchProductionMode mode, Faction faction)
             => catalog != null ? catalog.ResolveFor(mode, faction) : new List<CardDefinition>();
 
+        public static List<CardDefinition> OfferedCards(ResearchProductionCatalog catalog, ResearchProductionMode mode, PlayerSetupData player)
+        {
+            var cards = OfferedCards(catalog, mode, player != null ? player.Faction : Faction.None);
+            if (player != null && player.IsHuman && player.MatchLoadout != null)
+                cards.RemoveAll(c => player.BlueprintQuota?.Available(c.authoredKey) != true);
+            return cards;
+        }
+
         public static bool Offers(ResearchProductionCatalog catalog, ResearchProductionMode mode, Faction faction, CardDefinition card)
             => card != null && OfferedCards(catalog, mode, faction).Contains(card);
 
@@ -188,6 +196,16 @@ namespace Game.Cards
             HexCoord hex, ResearchProductionMode mode, CardDefinition card,
             ResearchProductionCatalog catalog, out string reason)
         {
+            if (player?.MatchLoadout != null)
+            { reason = "A tracked Research/Production attempt is required."; return false; }
+            return TryStartAttempt(player, root, hero, hex, mode, card, catalog, out reason, out _);
+        }
+
+        public static bool TryStartAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
+            HexCoord hex, ResearchProductionMode mode, CardDefinition card,
+            ResearchProductionCatalog catalog, out string reason, out ProductionAttempt attempt)
+        {
+            attempt = null;
             reason = null;
             if (player == null || root == null || hero == null || card == null || catalog == null)
             {
@@ -218,8 +236,12 @@ namespace Game.Cards
                 return false;
             }
 
-            ApplyResearchReveal(mode, hero);
-            PayCardCost(root, card);
+            var quota = player.IsHuman && player.MatchLoadout != null ? player.BlueprintQuota : null;
+            if (player.IsHuman && player.MatchLoadout != null && (quota == null || !quota.TryReserve(card.authoredKey)))
+            { reason = "Blueprint is not selected, exhausted, or already in use."; return false; }
+            attempt = new ProductionAttempt(card, quota);
+            try { ApplyResearchReveal(mode, hero); PayCardCost(root, card); }
+            catch { attempt.Dispose(); throw; }
             return true;
         }
 
@@ -347,3 +369,4 @@ namespace Game.Cards
             => card != null ? new CardData(card) { ResearchProductionCreated = true } : null;
     }
 }
+

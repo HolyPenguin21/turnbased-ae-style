@@ -20,279 +20,280 @@ MonoBehaviour:
   armies:
   - name: Dune Wanderers
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
   - name: Inhabitants
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: The Well-Keepers
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 3
   - name: Ridge Patrol
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: 'Scrap-Haulers '
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 2
   - name: Deserters
     members:
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 2
   - name: Deserters squad
     members:
-    - cardKey: Iron Concord/AA Crawler
+    - cardKey: concord.card.crawler
       count: 1
-    - cardKey: Iron Concord/Flamer
+    - cardKey: concord.card.flamer
       count: 1
   - name: 'Brutes '
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 2
   - name: Dust-Breathers
     members:
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
   - name: Cactus-Pickers
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 1
   - name: Wrecker
     members:
-    - cardKey: Neutral/Wrecker
+    - cardKey: neutral.card.wrecker
       count: 1
   - name: Sand Fin
     members:
-    - cardKey: Neutral/AA Relic Crawler
+    - cardKey: neutral.card.aa-relic-crawler
       count: 1
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
   - name: Event Light 01
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
   - name: Event Light 02
     eventOnly: 1
     members:
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 2
   - name: Event Light 03
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
   - name: Event Light 04
     eventOnly: 1
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Light 05
     eventOnly: 1
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: Event Light 06
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
   - name: Event Light 07
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Iron Concord/Light Infantry
+    - cardKey: concord.card.light-infantry
       count: 1
   - name: Event Light 08
     eventOnly: 1
     members:
-    - cardKey: Neutral/AA Relic Crawler
+    - cardKey: neutral.card.aa-relic-crawler
       count: 1
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
   - name: Event Light 09
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: The Vessels/Shard Wanderer
+    - cardKey: vessels.14.shard-wanderer
       count: 1
   - name: Event Light 10
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 1
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
   - name: Event Medium 01
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 3
   - name: Event Medium 02
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 2
   - name: Event Medium 03
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Medium 04
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
   - name: Event Medium 05
     eventOnly: 1
     members:
-    - cardKey: Neutral/Wrecker
+    - cardKey: neutral.card.wrecker
       count: 1
   - name: Event Medium 06
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: Event Medium 07
     eventOnly: 1
     members:
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 2
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
   - name: Event Medium 08
     eventOnly: 1
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 2
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: Event Medium 09
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
-    - cardKey: Iron Concord/Light Infantry
+    - cardKey: concord.card.light-infantry
       count: 1
   - name: Event Medium 10
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
   - name: Event Heavy 01
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 2
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
   - name: Event Heavy 02
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 1
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
   - name: Event Heavy 03
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Heavy 04
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 3
-    - cardKey: Neutral/Trapper
+    - cardKey: neutral.card.trapper
       count: 1
   - name: Event Heavy 05
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 3
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Heavy 06
     eventOnly: 1
     members:
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 3
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
   - name: Event Heavy 07
     eventOnly: 1
     members:
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 2
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Heavy 08
     eventOnly: 1
     members:
-    - cardKey: Neutral/Slasher
+    - cardKey: neutral.card.slasher
       count: 2
-    - cardKey: Neutral/Scav
+    - cardKey: neutral.card.scav
       count: 1
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
   - name: Event Heavy 09
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 2
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
   - name: Event Heavy 10
     eventOnly: 1
     members:
-    - cardKey: Neutral/Brute
+    - cardKey: neutral.card.brute
       count: 2
-    - cardKey: Neutral/Gunner
+    - cardKey: neutral.card.gunner
       count: 1
+

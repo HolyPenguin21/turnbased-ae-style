@@ -11,6 +11,44 @@ namespace Game.UI
         [SerializeField] private GameObject gameSetupPanel;
         [SerializeField] private GameObject settingsPanel;
         [SerializeField] private Button settingsButton;
+        [SerializeField] private Game.Core.GameConfig gameConfig;
+        private CollectionScreensUI collectionScreens;
+        private void Awake()
+        {
+            Game.Core.GameSession.EndRewardEligibility();
+            if (gameConfig == null || gameConfig.playerRowPrefab == null) return;
+            collectionScreens = gameObject.AddComponent<CollectionScreensUI>();
+            collectionScreens.Configure(gameConfig, gameConfig.playerRowPrefab.FactionTemplate, gameConfig.playerRowPrefab.NicknameTemplate);
+            AddCollectionButton("Collection", -5, () => collectionScreens.Show(false, mainMenuPanel));
+            AddCollectionButton("My Decks", -60, () => collectionScreens.Show(true, mainMenuPanel));
+            if (Game.Core.GameSession.SetupError != null)
+            {
+                OnNewGameClicked();
+                CollectionScreensUI.ShowMessage(transform, Game.Core.GameSession.SetupError);
+                Game.Core.GameSession.SetupError = null;
+            }
+            else gameObject.AddComponent<CollectionRewardUI>().Resume(gameConfig);
+        }
+        private void AddCollectionButton(string label, float y, System.Action action)
+        {
+            if (settingsButton == null) return;
+            var button = Instantiate(settingsButton, settingsButton.transform.parent);
+            button.onClick = new Button.ButtonClickedEvent();
+            button.onClick.AddListener(() => action());
+            var rect = (RectTransform)button.transform;
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, y);
+            button.GetComponentInChildren<TMPro.TMP_Text>().text = label;
+            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
+        }
+        public void OpenDeckBuilderFromSetup(System.Action onClosed)
+        {
+            if (!Game.Progression.ProgressionContext.Initialize(gameConfig))
+            { CollectionScreensUI.ShowMessage(transform, Game.Progression.ProgressionContext.Error); return; }
+            // Hide interaction without disabling the setup model: OnEnable normally resets it.
+            var group = gameSetupPanel.GetComponent<CanvasGroup>() ?? gameSetupPanel.AddComponent<CanvasGroup>();
+            group.interactable = false; group.blocksRaycasts = false;
+            collectionScreens.Show(true, null, () => { group.interactable = true; group.blocksRaycasts = true; onClosed(); });
+        }
 
         private void Update()
         {
@@ -66,3 +104,4 @@ namespace Game.UI
         }
     }
 }
+

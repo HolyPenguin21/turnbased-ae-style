@@ -99,6 +99,8 @@ namespace Game.UI
         private bool _previewMode;
         private CardDefinition _previewCard;
         private Action<CardDefinition> _previewClick;
+        private Action<CardDefinition> _previewHover;
+        private Func<bool> _previewInputAllowed;
 
         private ArmyViewerModalUI _modal;
         private Vector2 _homeSlot;
@@ -208,7 +210,8 @@ namespace Game.UI
         // ResearchProductionModalUI's grid — the shared armyUnitCardPrefab, none of the Army
         // Viewer flow. `onClick` is invoked with `card` on a left click; every drag/hover action
         // is inert while _previewMode is set.
-        public void SetupPreview(CardDefinition card, GameConfig config, Action<CardDefinition> onClick)
+        public void SetupPreview(CardDefinition card, GameConfig config, Action<CardDefinition> onClick,
+            Func<bool> inputAllowed = null, Action<CardDefinition> onHover = null)
         {
             _actionHoverText?.Restore();
             equipmentArtToggle?.Revert();
@@ -216,6 +219,8 @@ namespace Game.UI
             _previewMode = true;
             _previewCard = card;
             _previewClick = onClick;
+            _previewInputAllowed = inputAllowed;
+            _previewHover = onHover;
             _modal = null;
             Unit = null;
 
@@ -427,15 +432,17 @@ namespace Game.UI
 
         public void OnPointerClick(PointerEventData eventData)
         {
-            if (UIFocusUtility.IsGameplayInputBlocked) return;
             // Preview mode: a left click just reports the card back to the owning modal; no
             // detail view, no equipment-attach routing.
             if (_previewMode)
             {
-                if (eventData.button == PointerEventData.InputButton.Left)
+                if ((_previewInputAllowed?.Invoke() ?? !UIFocusUtility.IsGameplayInputBlocked)
+                    && eventData.button == PointerEventData.InputButton.Left)
                     _previewClick?.Invoke(_previewCard);
                 return;
             }
+
+            if (UIFocusUtility.IsGameplayInputBlocked) return;
 
             // Equipment attach mode (see CardHandUI): right-click cancels a pending attach,
             // left-click makes this unit the host. Either consumes the click instead of the
@@ -459,7 +466,10 @@ namespace Game.UI
         public void OnPointerEnter(PointerEventData eventData)
         {
             if (_previewMode)
+            {
+                if (_previewInputAllowed?.Invoke() ?? !UIFocusUtility.IsGameplayInputBlocked) _previewHover?.Invoke(_previewCard);
                 return;
+            }
             bool repair = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
             repairButton?.gameObject.SetActive(repair);
 
@@ -610,3 +620,4 @@ namespace Game.UI
         }
     }
 }
+

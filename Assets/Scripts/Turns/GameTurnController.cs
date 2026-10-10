@@ -202,7 +202,7 @@ namespace Game.Turns
                     popupPanel.ShowForOther(CurrentPlayer);
             }
 
-            bool newInputBlocked = (gameMenu != null && gameMenu.IsShowing)
+            bool newInputBlocked = UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
@@ -210,7 +210,7 @@ namespace Game.Turns
                 || combatShowing
                 || (eventChoicePopup != null && eventChoicePopup.IsShowing)
                 || (eventRewardPopup != null && eventRewardPopup.IsShowing);
-            bool newCardDraggingBlocked = (gameMenu != null && gameMenu.IsShowing)
+            bool newCardDraggingBlocked = UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
@@ -290,9 +290,18 @@ namespace Game.Turns
         // HandleBuildingOnArmyDefeat — rather than destroyed; see the user's own Siege spec).
         // Blocks any further turn advancement once true.
         private bool _gameOver;
+        public event System.Action<Game.Progression.ParticipantResult> ParticipantFinished;
+        private void PublishOutcome(PlayerSetupData player, Game.Progression.MatchOutcome outcome)
+        {
+            if (player == null || !player.IsHuman || !GameSession.RewardsEligible || debugWatchAiTurns) return;
+            ParticipantFinished?.Invoke(new Game.Progression.ParticipantResult(GameSession.MatchId, player, outcome));
+        }
 
         private void OnEnable()
         {
+            UIFocusUtility.BlockingChanged += RecomputeBlockedState;
+            if (GetComponent<CollectionRewardUI>() == null)
+                gameObject.AddComponent<CollectionRewardUI>().Configure(this, gameConfig);
             // OnValidate already applies this on every Inspector edit, but that never fires on a
             // plain scene load/Play Mode entry with the checkbox left untouched — this covers
             // that startup case too.
@@ -315,6 +324,7 @@ namespace Game.Turns
 
         private void OnDisable()
         {
+            UIFocusUtility.BlockingChanged -= RecomputeBlockedState;
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
             if (gameMenu != null) gameMenu.VisibilityChanged -= RecomputeBlockedState;
             if (popupPanel != null) popupPanel.VisibilityChanged -= RecomputeBlockedState;
@@ -357,6 +367,7 @@ namespace Game.Turns
                 return;
             player.IsEliminated = true;
             Game.Ai.AiMatchStats.RecordElimination(player);
+            PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
 
             // Resource facilities go with their owner; Bases and the Citadel stay (capturable).
             BuildingRegistry.DestroyFacilitiesOf(player, hexSelectionController);
@@ -373,6 +384,7 @@ namespace Game.Turns
                 return;
 
             _gameOver = true;
+            if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
             Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");
         }
@@ -1187,3 +1199,4 @@ namespace Game.Turns
         }
     }
 }
+

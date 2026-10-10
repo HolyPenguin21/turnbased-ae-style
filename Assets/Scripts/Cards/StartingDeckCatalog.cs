@@ -37,6 +37,11 @@ namespace Game.Cards
         public List<FactionCardCatalog> catalogs = new List<FactionCardCatalog>();
         public List<StartingDeck> decks = new List<StartingDeck>();
 
+        // Data-driven initial shared blueprints; they never enter the ordinary draw pool.
+        public List<StartingDeck> collectionBlueprints = new List<StartingDeck>();
+        public IEnumerable<DeckCardEntry> GetCollectionBlueprints(Faction faction)
+            => collectionBlueprints.Find(d => d.faction == faction)?.cards ?? new List<DeckCardEntry>();
+
         public FactionCardCatalog GetCatalog(Faction faction) =>
             catalogs.FirstOrDefault(c => c != null && c.faction == faction);
 
@@ -46,40 +51,24 @@ namespace Game.Cards
         // Reuse the catalog's existing card lookup. Prefer stable identity across catalogs,
         // then accept the legacy qualified display name for decks that have not migrated yet.
         public CardDefinition ResolveCard(string cardKey)
+            => FactionCardCatalog.ResolveAcross(catalogs, cardKey, true, this);
+
+        // Strict expansion for a validated custom loadout. Legacy callers retain their safe skip.
+        public bool TryBuildDeckPool(IEnumerable<DeckCardEntry> entries,
+            out List<CardDefinition> pool, out string error)
         {
-            if (string.IsNullOrWhiteSpace(cardKey) || catalogs == null)
-                return null;
-
-            CardDefinition stableMatch = null;
-            foreach (FactionCardCatalog catalog in catalogs)
+            pool = new List<CardDefinition>(); error = null;
+            foreach (var entry in entries)
             {
-                CardDefinition card = catalog?.ResolveCard(cardKey);
-                if (card == null || card.authoredKey != cardKey)
-                    continue;
-                if (stableMatch != null && !ReferenceEquals(stableMatch, card))
-                {
-                    Debug.LogError($"StartingDeckCatalog '{name}' cannot resolve duplicate "
-                        + $"authoredKey '{cardKey}'.", this);
-                    return null;
-                }
-                stableMatch = card;
+                var card = entry == null ? null : ResolveCard(entry.cardKey);
+                if (entry == null || entry.count < 0 || card == null)
+                { pool = null; error = "Cannot resolve the complete deck."; return false; }
+                AppendCopies(pool, card, entry.count);
             }
-            if (stableMatch != null)
-                return stableMatch;
-
-            foreach (FactionCardCatalog catalog in catalogs)
-            {
-                if (catalog == null)
-                    continue;
-                string prefix = catalog.displayName + "/";
-                if (!cardKey.StartsWith(prefix, System.StringComparison.Ordinal))
-                    continue;
-                CardDefinition match = catalog.ResolveCard(cardKey.Substring(prefix.Length));
-                if (match != null)
-                    return match;
-            }
-            return null;
+            return true;
         }
+        private static void AppendCopies(List<CardDefinition> pool, CardDefinition card, int count)
+        { for (int i = 0; i < count; i++) pool.Add(card); }
 
         // Expands `faction`'s deck (card+count rows) into the flat pool CardHandUI/AiHandData
         // draw from without replacement — what deckIndices used to be, just CardDefinitions
@@ -104,10 +93,10 @@ namespace Game.Cards
                         + $"unresolved cardKey '{entry.cardKey}' (count {entry.count}).", this);
                     continue;
                 }
-                for (int i = 0; i < entry.count; i++)
-                    pool.Add(card);
+                AppendCopies(pool, card, entry.count);
             }
             return pool;
         }
     }
 }
+

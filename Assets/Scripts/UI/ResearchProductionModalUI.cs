@@ -94,6 +94,7 @@ namespace Game.UI
         public UnitData Hero => _hero;
         public ResearchProductionMode Mode => _mode;
 
+        private PlayerSetupData _player;
         private ResearchProductionMode _mode;
         private UnitData _hero;
         // The faction-filtered card list (filter applied in ResearchProductionCatalog.ResolveFor,
@@ -129,12 +130,11 @@ namespace Game.UI
         {
             bool wasShowing = IsShowing;
 
+            _player = player;
             _mode = mode;
             _hero = hero;
             Faction viewerFaction = player != null ? player.Faction : Faction.None;
-            _cards = catalog != null
-                ? catalog.ResolveFor(mode, viewerFaction)
-                : new List<CardDefinition>();
+            _cards = ResearchProductionSystem.OfferedCards(catalog, mode, player);
             _page = 0;
             _selected = null;
             _busy = false;
@@ -213,6 +213,13 @@ namespace Game.UI
         public void SetBusy(bool busy)
         {
             _busy = busy;
+            if (!busy)
+            {
+                _cards = ResearchProductionSystem.OfferedCards(catalog, _mode, _player);
+                if (!_cards.Contains(_selected)) _selected = null;
+                _page = Mathf.Min(_page, PageCount - 1);
+                RefreshGrid();
+            }
             if (closeButton != null)
                 closeButton.interactable = !busy;
             RefreshResultPanel();
@@ -361,6 +368,8 @@ namespace Game.UI
         {
             var sb = new StringBuilder();
             sb.AppendLine(card.displayName);
+            if (_player?.BlueprintQuota != null)
+                sb.AppendLine($"Blueprints remaining: {_player.BlueprintQuota.Remaining(card.authoredKey)}");
 
             // The upcoming Research/Production Challenge's difficulty — the SAME value the
             // Challenge itself uses as the card's fixed defender successes (see
@@ -416,3 +425,4 @@ namespace Game.UI
         }
     }
 }
+

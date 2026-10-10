@@ -10,6 +10,49 @@ namespace Game.Core
     // without needing a DontDestroyOnLoad object.
     public static class GameSession
     {
+        public static string MatchId { get; private set; }
+        public static bool RewardsEligible { get; private set; }
+        public static string SetupError;
+        public static bool TryPrepareMatch(List<PlayerSetupData> players, GameConfig config, out string error)
+        {
+            error = null;
+            if (players.FindAll(p => p.IsHuman).Count > 1)
+            { error = "Only one local human profile is supported."; return false; }
+            if (!players.Exists(p => p.IsHuman))
+            {
+                foreach (var player in players) { player.MatchLoadout = null; player.BlueprintQuota = null; }
+                MatchId = System.Guid.NewGuid().ToString("N"); RewardsEligible = false;
+                return true;
+            }
+            if (!Game.Progression.ProgressionContext.Initialize(config))
+            { error = Game.Progression.ProgressionContext.Error; return false; }
+            var collection = Game.Progression.ProgressionContext.Collection;
+            Game.Progression.SavedDeck selectedHumanDeck = null;
+            var snapshots = new Dictionary<PlayerSetupData, Game.Cards.MatchLoadout>();
+            foreach (var player in players)
+            {
+                if (!player.IsHuman) continue;
+                var deck = string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
+                    : collection.Snapshot.savedDecks.Find(d => d.deckId == player.SelectedDeckId && d.faction == player.Faction);
+                if (deck == null) { error = "Select a saved deck for " + player.Faction; return false; }
+                selectedHumanDeck = deck;
+                try { snapshots[player] = new Game.Cards.MatchLoadout(deck, collection.Rules, collection.Owned); }
+                catch (System.Exception ex) { error = ex.Message; return false; }
+            }
+            if (!collection.SelectDeck(selectedHumanDeck, out error)) return false;
+            foreach (var player in players)
+            {
+                player.MatchLoadout = snapshots.TryGetValue(player, out var snapshot) ? snapshot : null;
+                player.BlueprintQuota = player.MatchLoadout == null ? null : new Game.Cards.BlueprintQuota(player.MatchLoadout);
+            }
+            MatchId = System.Guid.NewGuid().ToString("N");
+            RewardsEligible = players.Exists(p => p.IsHuman);
+            return true;
+        }
+        public static void EndRewardEligibility() => RewardsEligible = false;
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetCollectionSession() { MatchId = null; RewardsEligible = false; SetupError = null; }
+
         public static List<PlayerSetupData> Players { get; set; } = new List<PlayerSetupData>();
 
         // Null until the pre-game setup panel actually sets them (GameSetupController.
@@ -41,3 +84,4 @@ namespace Game.Core
         }
     }
 }
+

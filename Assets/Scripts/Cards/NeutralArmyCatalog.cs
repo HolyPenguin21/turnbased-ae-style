@@ -46,26 +46,10 @@ namespace Game.Cards
         // stale key left over from a rename/removal), same fallback StartingDeckCatalog.
         // ResolveCard uses.
         public CardDefinition ResolveCard(string cardKey)
-        {
-            if (string.IsNullOrEmpty(cardKey) || cardCatalogs == null)
-                return null;
-
-            foreach (FactionCardCatalog catalog in cardCatalogs)
-            {
-                if (catalog == null)
-                    continue;
-                string prefix = catalog.displayName + "/";
-                if (!cardKey.StartsWith(prefix))
-                    continue;
-                string cardName = cardKey.Substring(prefix.Length);
-                CardDefinition match = catalog.cards.FirstOrDefault(c => c != null && c.displayName == cardName);
-                if (match != null)
-                    return match;
-            }
-            return null;
-        }
+            => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, true, this);
 
         public ArmyDefinition GetArmy(string armyName) =>
             armies?.FirstOrDefault(a => a != null && a.name == armyName);
     }
 }
+
