@@ -34,6 +34,26 @@ namespace Game.UI
         private Vector2 _authoredSpacing;
         private bool _gridLayoutSizeCaptured;
 
+        private void RevealCurrentTurnIcon()
+        {
+            if (!(turnQueueContainer is RectTransform content))
+                return;
+            ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
+            if (scroll == null || scroll.content != content || scroll.viewport == null)
+                return;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            float overflow = Mathf.Max(0f, content.rect.height - scroll.viewport.rect.height);
+            float offset = 0f;
+            if (_turnIndex >= 0 && _turnIndex < _queueIcons.Count)
+            {
+                RectTransform current = _queueIcons[_turnIndex].transform as RectTransform;
+                if (current != null)
+                    offset = Mathf.Clamp(-current.anchoredPosition.y, 0f, overflow);
+            }
+            scroll.StopMovement();
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, offset);
+        }
+
         private void FitBattleGrid()
         {
             if (gridContainer == null || _isAnimatingMove)
@@ -86,6 +106,7 @@ namespace Game.UI
             if (gridContainer == null || _isAnimatingMove)
                 return;
             FitBattleGrid();
+            RevealCurrentTurnIcon();
         }
 
         private void RefreshGrid()
@@ -274,3 +295,4 @@ namespace Game.UI
         }
     }
 }
+
