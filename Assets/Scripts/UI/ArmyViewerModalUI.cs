@@ -681,6 +681,10 @@ namespace Game.UI
                 return null;
 
             var gridRect = (RectTransform)grid.transform;
+            ScrollRect scroll = gridRect.GetComponentInParent<ScrollRect>();
+            if (scroll != null && scroll.content == gridRect && scroll.viewport != null &&
+                !RectTransformUtility.RectangleContainsScreenPoint(scroll.viewport, screenPosition, ResolveEventCamera()))
+                return null;
             if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(gridRect, screenPosition, ResolveEventCamera(), out Vector2 local))
                 return null;
 
@@ -824,6 +828,7 @@ namespace Game.UI
 
             List<UnitData> shown = VisibleMembers();
             int slots = System.Math.Max(EffectiveCapacityFor(shown), shown.Count);
+            FitGridContent(slots);
             for (int i = 0; i < slots; i++)
             {
                 UnitData member = i < shown.Count ? shown[i] : null;
@@ -836,6 +841,27 @@ namespace Game.UI
         }
 
         private void ClearGrid() => UIListUtility.DestroyAndClear(_cards);
+
+        private void FitGridContent(int slots)
+        {
+            // Cards deliberately ignore GridLayoutGroup: this class already owns their
+            // animated slots. Use those same metrics for scroll extent, never a competing
+            // ContentSizeFitter that cannot see ignoreLayout children.
+            if (!(gridContainer is RectTransform content) || grid == null)
+                return;
+            ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
+            if (scroll == null || scroll.content != content || scroll.viewport == null)
+                return;
+            int rows = Mathf.CeilToInt(slots / (float)Mathf.Max(1, grid.constraintCount));
+            float height = grid.padding.vertical + rows * grid.cellSize.y
+                + Mathf.Max(0, rows - 1) * grid.spacing.y;
+            content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical,
+                Mathf.Max(scroll.viewport.rect.height, height));
+            scroll.StopMovement();
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x,
+                Mathf.Clamp(content.anchoredPosition.y, 0f,
+                    Mathf.Max(0f, content.rect.height - scroll.viewport.rect.height)));
+        }
 
         // Default detail-panel state — the army's own aggregate stats, shown whenever nothing
         // is selected (on open, on switching army, after a drag-and-drop move).
@@ -943,4 +969,5 @@ namespace Game.UI
         }
     }
 }
+
 

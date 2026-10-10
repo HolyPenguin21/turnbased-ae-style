@@ -17,14 +17,13 @@ public class HexInfoDrawerTests
     public void SetUp()
     {
         canvas = new GameObject("Canvas", typeof(RectTransform), typeof(Canvas));
-        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1024f, 768f);
+        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1280f, 720f);
         root = new GameObject("Drawer", typeof(RectTransform));
         root.transform.SetParent(canvas.transform, false);
         rect = (RectTransform)root.transform;
-        rect.anchorMin = new Vector2(.85f, .23739585f);
-        rect.anchorMax = new Vector2(1f, .5453959f);
-        rect.pivot = new Vector2(.5f, 0f);
-        rect.sizeDelta = Vector2.zero;
+        rect.anchorMin = rect.anchorMax = new Vector2(1f, .28f);
+        rect.pivot = new Vector2(1f, 0f);
+        rect.sizeDelta = new Vector2(192f, 236.544f);
         rect.anchoredPosition = new Vector2(13f, -107f);
         panel = root.AddComponent<HexInfoPanelUI>();
         Set("panelRoot", root);
@@ -85,7 +84,7 @@ public class HexInfoDrawerTests
     {
         panel.ShowHex(1);
         panel.RefreshDrawer(false);
-        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1024f, 1536f);
+        ((RectTransform)canvas.transform).sizeDelta = new Vector2(1280f, 1440f);
         panel.RefreshDrawer(false);
         Assert.AreEqual(-162f, rect.anchoredPosition.y, .01f);
     }
@@ -114,7 +113,7 @@ public class HexInfoDrawerTests
         Assert.Less(corners[1].y, ((RectTransform)canvas.transform).rect.yMin);
         panel.RefreshDrawer(false);
         Assert.AreEqual(-107f, rect.anchoredPosition.y, .01f);
-        Assert.AreEqual(Vector2.zero, rect.sizeDelta);
+        Assert.AreEqual(new Vector2(192f, 236.544f), rect.sizeDelta);
     }
 
     [Test]
@@ -194,3 +193,4 @@ public class HexInfoDrawerTests
     }
 }
 #endif
+

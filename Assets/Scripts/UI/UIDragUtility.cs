@@ -4,9 +4,8 @@ using UnityEngine.EventSystems;
 namespace Game.UI
 {
     // Shared by every draggable UI element that should track the pointer 1:1 (CardUI,
-    // ArmyUnitCardUI) — screen-space pointer delta has to be divided by the Canvas's scale
-    // factor before it's a valid anchoredPosition delta, or dragged elements drift at
-    // non-1:1 UI scales.
+    // ArmyUnitCardUI, battle ghosts). Resolve the delta in the actual parent's coordinates
+    // so nested scales cannot make an element drift away from the pointer.
     public static class UIDragUtility
     {
         public static void ApplyScreenDelta(RectTransform rectTransform, PointerEventData eventData, Canvas canvas)
