@@ -340,12 +340,11 @@ namespace Game.Ai.V2
                     yield return null;
                     lastYield = System.Diagnostics.Stopwatch.GetTimestamp();
                 }
-                using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
-                    WorthIt.WinChance(readyRoster,
-                        (IReadOnlyCollection<WorthIt.DefenderProfile>)target.Defenders,
-                        target.HexBonus, readyCommander, target.Commander);
                 var opposition = new[] { new WorthIt.DefendingArmy(target.Defenders,
                     target.Commander, target.HexBonus) };
+                // The same opposition estimate Analyze reads (a lone hero is a Capture/Kill, not free).
+                using (new Game.Core.ProfileScope("AI/CombatOpportunity.Warm"))
+                    WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, target.HexBonus);
                 if (commanders.Count == 0)
                 {
                     if (BudgetExpired())
@@ -413,10 +412,10 @@ namespace Game.Ai.V2
                 // The target defends on its own hex: terrain (and any known structure) counts.
                 float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
                     snap.Observer, t.Hex, t.Owner);
-                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
-                    readyCommander, t.Commander);
+                var opposition = new[] { new WorthIt.DefendingArmy(defenders, t.Commander, hexBonus) };
+                float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander, hexBonus) }, hexBonus);
+                    opposition, hexBonus);
                 float asmWin = assembly.WinChance;
                 bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
@@ -462,10 +461,10 @@ namespace Game.Ai.V2
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
                     float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
                         snap.Observer, g.Hex, defendingOwner: null);
-                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
-                        readyCommander, g.Commander);
+                    var opposition = new[] { new WorthIt.DefendingArmy(defenders, g.Commander, hexBonus) };
+                    float readyWin = WorthIt.EstimateSequential(readyRoster, readyCommander, opposition, hexBonus).WinChance;
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander, hexBonus) }, hexBonus);
+                        opposition, hexBonus);
                     float asmWin = assembly.WinChance;
                     bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
