@@ -20,6 +20,8 @@ do not imply gameplay bonuses, resources or extra campaign mechanics.
 - `Parchment.jpg`, `ConsoleMetal.jpg`: readable light paper and dark console material.
 - `CampaignSurface.shader`: UI stencil/clip-compatible surface rendering.
   TEXCOORD1.x distinguishes textured terrain from solid borders and markers.
+  TEXCOORD1.zw carries original map coordinates for horizon fading, separately
+  from texture scale.
   TEXCOORD2.x carries the selected region's inward contour glow.
 - The campaign scene references the existing End Turn/action button sprites and
   Iron Concord/Ashen/Vessels logos by their original GUIDs; they are not duplicated.
@@ -35,20 +37,23 @@ surface; procedural region geometry and ownership remain campaign data.
 ## Rendering and input
 
 `CampaignMapView` owns the shared material and one map-to-pixel conversion.
-`CampaignRegionGraphic` samples the same map-space texture coordinates across
+`CampaignRegionGraphic` samples the same projected texture coordinates across
 all cells. Its cached triangle subdivision gives the edge lighting enough interior
 vertices instead of shading only polygon corners. Region boundaries remain actual
 generated vertices. Raycasting uses the same projected polygons and pixel
 conversion as rendering, including the inherited CanvasGroup/mask filters.
 
 Markers and selected labels use an interior point for concave regions. A bounded
-projection using tanh (horizontal 1.65, vertical 1.45) broadens the disk into a
+projection using tanh (horizontal 1.35, vertical 1.10) broadens the disk into a
 rounded rectangle while retaining all regions inside the viewport. Regions are
 triangulated after projection; screen triangles subdivide linearly alongside
-map-space UV triangles. Fill, contour and raycast therefore share exactly the
+map-space lighting coordinates. Terrain UVs interpolate linearly in screen space,
+so central features are no longer enlarged by the projection and more of the
+texture's outer objects are visible. Weaker central expansion leaves larger
+displayed cells at the rim. Fill, contour and raycast therefore share exactly the
 same displayed polygon. The 20-unit viewport inset and 48-unit edge fade remain;
 lighting darkens the lower rim and a 12-unit shadow adds depth. Surface bounds
-follow RectTransform size changes. Borders and markers carry shared map UVs so
+follow RectTransform size changes. Borders and markers carry original map coordinates so
 they fade with the terrain rather than leaving a hard outline.
 
 `VisibleCenter` chooses a point inside both the saved region and its displayed
@@ -144,10 +149,13 @@ on TEXCOORD2; deselection sends zero weights, so the shader removes the glow. Ma
 
 New region borders use one cached angular contour per shared Voronoi edge. Both
 neighbors reuse exactly identical points in reverse order. Samples are spaced
-according to edge length, up to six segments; very short edges stay unsplit to
+according to edge length, up to ten segments at approximately .035 map units;
+edges no longer than .05 units stay unsplit to
 avoid near-collinear triangles. A triangular-wave displacement replaces the smooth
 warp. Unequal segment lengths and independent, bounded lateral offsets add local
 corners without a repeating zigzag; offsets fade to zero at shared junctions.
+Maximum lateral displacement is .018 units times border irregularity, also
+limited to 12% of edge length.
 Existing minimum area/width, shared-vertex,
 intersection, adjacency and connected ownership checks remain active.
 
@@ -159,7 +167,8 @@ The composite uses actual seed-7 generated geometry, production `VisibleCenter`
 output, committed textures and original game sprites/font. The square source
 frame is assembled as nine slices: its 128-pixel corner patches display at 32
 canvas units; only the rails stretch. The resulting 1400×780 map frame is
-rectangular. The CPU rendering approximates nonlinear UV interpolation and
+rectangular. The CPU rendering uses the same linear terrain UV mapping and approximates
+the map-space lighting/horizon interpolation and
 native shader/TMP antialiasing; it is not a Unity screenshot.
 
 Validation for the palette/contour/density change: targeted reference-DLL UI and
@@ -177,3 +186,5 @@ concave-notch case. Native mesh tests also check intermediate glow weights and
 zero weights after deselection; those EditMode tests compile but were not run
 in Unity. The refreshed composite demonstrates 48 actual generated regions and
 the contour-to-center gradient using the same shader blend and falloff formula.
+The mesh regression also checks that texture UVs remain linear in screen space
+through subdivision and that original coordinates are present for horizon fading.

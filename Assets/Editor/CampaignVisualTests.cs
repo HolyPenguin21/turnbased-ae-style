@@ -105,6 +105,17 @@ public sealed class CampaignVisualTests
             Assert.That(mesh.vertexCount, Is.GreaterThan(100));
             Assert.True(mesh.uv2.Any(v => v.x == 1)); Assert.True(mesh.uv2.Any(v => v.x == 0));
             Assert.True(mesh.uv.All(v => v.x >= 0 && v.x <= 1 && v.y >= 0 && v.y <= 1));
+            var surfaceData = new System.Collections.Generic.List<Vector4>(); mesh.GetUVs(1, surfaceData);
+            Assert.True(surfaceData.Any(v => Mathf.Abs(v.z) + Mathf.Abs(v.w) > .1f));
+            var positions = mesh.vertices; var textureUVs = mesh.uv;
+            for (int i = 0; i < positions.Length; i++)
+            {
+                if (surfaceData[i].x != 1) continue;
+                // Texture coordinates must stay linear in screen space through subdivision.
+                var expected = new Vector2(.5f + positions[i].x / rect.rect.width * (.96f / .98f),
+                    .5f + positions[i].y / rect.rect.height * (.96f / .98f));
+                Assert.That((textureUVs[i] - expected).sqrMagnitude, Is.LessThan(1e-10f));
+            }
             Assert.True(mesh.uv3.Any(v => v.x > .9f));
             Assert.True(mesh.uv3.Any(v => v.x > .01f && v.x < .99f));
             graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, false, true);

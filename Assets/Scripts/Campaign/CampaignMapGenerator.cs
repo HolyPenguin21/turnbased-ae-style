@@ -123,8 +123,8 @@ namespace Game.Campaign
                         edge = new List<Vector2>();
                         float length = (b - a).magnitude;
                         var normal = new Vector2(-(b - a).y / length, (b - a).x / length);
-                        float amplitude = Math.Min(.012f, length * .10f) * s.BorderIrregularity;
-                        int segments = Math.Max(1, Math.Min(6, (int)Math.Ceiling(length / .05f)));
+                        float amplitude = Math.Min(.018f, length * .12f) * s.BorderIrregularity;
+                        int segments = length <= .05f ? 1 : Math.Min(10, (int)Math.Ceiling(length / .035f));
                         for (int step = 0; step <= segments; step++)
                         {
                             if (step == 0 || step == segments) { edge.Add(Warp(step == 0 ? a : b)); continue; }

@@ -17,10 +17,12 @@ namespace Game.Campaign
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
         // Rounded rectangular projection keeps the complete disk visible. Saves stay in map space.
-        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * 1.65) / Math.Tanh(1.65)) * .98f, (float)(Math.Tanh(p.y * 1.45) / Math.Tanh(1.45)) * .98f);
+        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * 1.35) / Math.Tanh(1.35)) * .98f, (float)(Math.Tanh(p.y * 1.10) / Math.Tanh(1.10)) * .98f);
         public static Vector2 ToPixel(Rect rect, Vector2 projected) => rect.center + new Vector2(projected.x * rect.width * .50f, projected.y * rect.height * .50f);
         public static Vector2 FromPixel(Rect rect, Vector2 pixel) => new Vector2((pixel.x - rect.center.x) / (rect.width * .50f), (pixel.y - rect.center.y) / (rect.height * .50f));
-        public static Vector2 SurfaceUV(Vector2 point) => new Vector2(point.x * .48f + .5f, point.y * .48f + .5f);
+        // Terrain follows the displayed surface, avoiding enlarged central features.
+        public static Vector2 SurfaceUV(Vector2 point) => ProjectedSurfaceUV(Project(point));
+        public static Vector2 ProjectedSurfaceUV(Vector2 projected) => projected * (.48f / .98f) + new Vector2(.5f, .5f);
         public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered)
         {
             foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }

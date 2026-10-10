@@ -47,7 +47,7 @@ Shader "Game/UI/CampaignSurface"
                 float4 vertex : POSITION;
                 fixed4 color : COLOR;
                 float2 texcoord : TEXCOORD0;
-                float2 surface : TEXCOORD1;
+                float4 surface : TEXCOORD1;
                 float2 selection : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -57,7 +57,7 @@ Shader "Game/UI/CampaignSurface"
                 fixed4 color : COLOR;
                 float2 texcoord : TEXCOORD0;
                 float4 localPosition : TEXCOORD1;
-                float2 surface : TEXCOORD2;
+                float4 surface : TEXCOORD2;
                 float selection : TEXCOORD3;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
@@ -96,9 +96,8 @@ Shader "Game/UI/CampaignSurface"
                 float2 edge = min(i.localPosition.xy - _SurfaceRect.xy, _SurfaceRect.zw - i.localPosition.xy);
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
                 // The rounded rectangular projection retains a soft map-space horizon.
-                // Borders and markers carry map UVs so the whole silhouette fades together.
-                float2 mapPoint = (i.texcoord - .5) / .48;
-                float horizon = 1 - smoothstep(.90, 1.04, length(mapPoint));
+                // Original map coordinates keep the horizon independent of terrain UV scale.
+                float horizon = 1 - smoothstep(.90, 1.04, length(i.surface.zw));
                 color.a *= horizon;
                 #ifdef UNITY_UI_CLIP_RECT
                 color.a *= UnityGet2DClipping(i.localPosition.xy, _ClipRect);

@@ -159,11 +159,14 @@ namespace Game.Campaign
                 for (int j = 0; j < 3; j++)
                 {
                     var p = surfaceTriangles[i + j];
-                    // Shared map coordinates produce continuous shading and UVs across every cell.
+                    // Shared map coordinates produce continuous lighting and horizon fading.
                     float radius = Mathf.Clamp01(p.sqrMagnitude);
                     float shade = .99f + .11f * p.y - .49f * radius * radius;
                     var tint = silhouette ? color : ownership; tint.a = 1;
-                    AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade, selected && !silhouette ? glowWeights[i + j] : 0);
+                    // Linear screen UVs preserve texture scale inside subdivided triangles.
+                    AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint,
+                        CampaignMapView.ProjectedSurfaceUV(screenTriangles[i + j]), !silhouette,
+                        shade, selected && !silhouette ? glowWeights[i + j] : 0, p);
                 }
                 vh.AddTriangle(start, start + 1, start + 2);
             }
@@ -178,27 +181,28 @@ namespace Game.Campaign
                 int start = vh.currentVertCount;
                 var uvA = CampaignMapView.SurfaceUV(polygon[i]);
                 var uvB = CampaignMapView.SurfaceUV(polygon[(i + 1) % polygon.Count]);
-                AddVertex(vh, a - n, border, uvA, false); AddVertex(vh, a + n, border, uvA, false);
-                AddVertex(vh, b + n, border, uvB, false); AddVertex(vh, b - n, border, uvB, false);
+                AddVertex(vh, a - n, border, uvA, false, mapPoint: polygon[i]); AddVertex(vh, a + n, border, uvA, false, mapPoint: polygon[i]);
+                AddVertex(vh, b + n, border, uvB, false, mapPoint: polygon[(i + 1) % polygon.Count]); AddVertex(vh, b - n, border, uvB, false, mapPoint: polygon[(i + 1) % polygon.Count]);
                 vh.AddTriangle(start, start + 1, start + 2); vh.AddTriangle(start, start + 2, start + 3);
             }
-            Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f), CampaignMapView.SurfaceUV(marker));
-            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(.88f, .53f, .15f) : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), CampaignMapView.SurfaceUV(marker));
+            Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f), marker);
+            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(.88f, .53f, .15f) : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), marker);
         }
-        private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, float glow = 0)
+        private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, float glow = 0, Vector2 mapPoint = default)
         {
             var vertex = UIVertex.simpleVert; vertex.position = position; vertex.color = tint;
-            vertex.uv0 = uv; vertex.uv1 = new Vector2(textured ? 1 : 0, lighting);
+            vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : 0, lighting, mapPoint.x, mapPoint.y);
             vertex.uv2 = new Vector2(glow, 0); vh.AddVert(vertex);
         }
-        private static void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 uv)
+        private static void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 mapPoint)
         {
-            int start = vh.currentVertCount; AddVertex(vh, center, tint, uv, false);
+            var uv = CampaignMapView.SurfaceUV(mapPoint);
+            int start = vh.currentVertCount; AddVertex(vh, center, tint, uv, false, mapPoint: mapPoint);
             const int sides = 16;
             for (int i = 0; i <= sides; i++)
             {
                 float angle = i * Mathf.PI * 2 / sides;
-                AddVertex(vh, center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius, tint, uv, false);
+                AddVertex(vh, center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius, tint, uv, false, mapPoint: mapPoint);
                 if (i > 0) vh.AddTriangle(start, start + i, start + i + 1);
             }
         }
