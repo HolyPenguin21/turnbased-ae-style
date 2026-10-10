@@ -35,7 +35,7 @@ namespace Game.Progression
         }
         public SavedDeck Starter(Faction faction)
         {
-            var deck = new SavedDeck { deckId = Guid.NewGuid().ToString("N"), name = Rules.Starting.GetDeck(faction)?.deckName ?? "Starter", faction = faction };
+            var deck = new SavedDeck { isStarter = true, deckId = Guid.NewGuid().ToString("N"), name = Rules.Starting.GetDeck(faction)?.deckName ?? "Starter", faction = faction };
             var source = Rules.Starting.GetDeck(faction);
             if (source?.cards != null)
                 foreach (var e in source.cards.Where(e => e != null && e.count > 0))
@@ -65,14 +65,42 @@ namespace Game.Progression
                 target.selectedDeckByFaction.Add(new DeckSelection { faction = faction, deckId = starter.deckId });
             }
         }
-        // Catalog updates grant new starter blueprints without changing any saved composition.
-        // This also keeps the existing Starter action usable for profiles created before the update.
-        public bool EnsureStarterBlueprintOwnership(out string error)
+        public SavedDeck StarterDeck(Faction faction)
         {
-            var rows = DeckRules.PlayableFactions.SelectMany(Rules.Starting.GetCollectionBlueprints).ToList();
+            var deck = profile.savedDecks.Find(d => d.faction == faction && d.isStarter);
+            return deck == null ? null : CollectionProfile.CopyDeck(deck);
+        }
+        public bool IsStarter(string id) => profile.savedDecks.Any(d => d.deckId == id && d.isStarter);
+        // Upgrade legacy starters once: ownership alone did not populate their saved blueprint lists.
+        // Match old defaults by name AND main composition, so customized decks remain untouched.
+        public bool EnsureStarterDecks(out string error)
+        {
+            var starters = DeckRules.PlayableFactions.Select(Starter).ToList();
             error = null;
-            if (rows.All(e => Owned(e.cardKey) >= e.count)) return true;
-            return Transact(p => GrantInitialCards(p, rows), out error);
+            if (starters.All(s => profile.savedDecks.Any(d => d.faction == s.faction && d.isStarter)
+                && s.mainCards.Concat(s.equipment).Concat(s.mutators).All(e => Owned(e.cardKey) >= e.count))) return true;
+            return Transact(p =>
+            {
+                foreach (var starter in starters)
+                {
+                    GrantInitialCards(p, starter.mainCards.Concat(starter.equipment).Concat(starter.mutators));
+                    var saved = p.savedDecks.Find(d => d.faction == starter.faction && d.isStarter)
+                        ?? p.savedDecks.Where(d => d.faction == starter.faction && d.name == starter.name
+                            && d.mainCards.Count == starter.mainCards.Count
+                            && d.mainCards.All(e => starter.mainCards.Any(s => s.cardKey == e.cardKey && s.count == e.count)))
+                            .OrderByDescending(d => p.selectedDeckByFaction.Any(s => s.faction == starter.faction && s.deckId == d.deckId)).FirstOrDefault();
+                    if (saved == null) { saved = starter; p.savedDecks.Add(saved); }
+                    else if (!saved.isStarter)
+                    {
+                        saved.isStarter = true;
+                        saved.equipment = starter.equipment;
+                        saved.mutators = starter.mutators;
+                    }
+                    var selection = p.selectedDeckByFaction.Find(s => s.faction == starter.faction);
+                    if (selection == null) p.selectedDeckByFaction.Add(new DeckSelection { faction = starter.faction, deckId = saved.deckId });
+                    else if (!p.savedDecks.Any(d => d.faction == starter.faction && d.deckId == selection.deckId)) selection.deckId = saved.deckId;
+                }
+            }, out error);
         }
         private static void GrantInitialCards(CollectionProfile target, System.Collections.Generic.IEnumerable<DeckCardEntry> rows)
         {
@@ -88,14 +116,23 @@ namespace Game.Progression
             var validation = Rules.Validate(draft, Owned);
             if (!validation.IsValid) { error = string.Join("\n", validation.Errors); return false; }
             if (string.IsNullOrWhiteSpace(draft.name) || string.IsNullOrWhiteSpace(draft.deckId)) { error = "Deck needs a name and identity."; return false; }
+            bool starter = IsStarter(draft.deckId) || draft.isStarter;
+            if (starter && profile.savedDecks.Any(d => d.isStarter && d.faction == draft.faction && d.deckId != draft.deckId))
+            { error = "This faction already has a starter deck."; return false; }
             return Transact(p =>
             {
                 p.savedDecks.RemoveAll(d => d.deckId == draft.deckId);
-                p.savedDecks.Add(CollectionProfile.CopyDeck(draft));
+                var saved = CollectionProfile.CopyDeck(draft);
+                saved.isStarter = starter;
+                p.savedDecks.Add(saved);
             }, out error);
         }
-        public bool DeleteDeck(string id, out string error) => Transact(p =>
-        { p.savedDecks.RemoveAll(d => d.deckId == id); p.selectedDeckByFaction.RemoveAll(s => s.deckId == id); }, out error);
+        public bool DeleteDeck(string id, out string error)
+        {
+            if (IsStarter(id)) { error = "Starter decks cannot be deleted."; return false; }
+            return Transact(p =>
+            { p.savedDecks.RemoveAll(d => d.deckId == id); p.selectedDeckByFaction.RemoveAll(s => s.deckId == id); }, out error);
+        }
         public bool SelectDeck(SavedDeck deck, out string error)
         {
             if (deck == null) { error = "Select a saved deck."; return false; }

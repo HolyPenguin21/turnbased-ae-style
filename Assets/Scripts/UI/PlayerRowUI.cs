@@ -78,7 +78,8 @@ namespace Game.UI
                     var menu = UnityEngine.Object.FindAnyObjectByType<MainMenuController>();
                     if (menu != null) menu.OpenDeckBuilderFromSetup(RefreshDeckOptions);
                 });
-                var element = GetComponent<LayoutElement>() ?? gameObject.AddComponent<LayoutElement>();
+                var element = GetComponent<LayoutElement>();
+                if (element == null) element = gameObject.AddComponent<LayoutElement>();
                 element.preferredHeight = 76; element.minHeight = 76;
             }
             RefreshDeckOptions();
@@ -229,4 +230,3 @@ namespace Game.UI
         }
     }
 }
-

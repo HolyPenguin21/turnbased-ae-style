@@ -1,6 +1,6 @@
 # Default collection decks
 
-Each default deck includes three randomly chosen inexpensive Equipment and three Mutators. The choices are authored in StartingDeckCatalog and remain stable across launches. New profiles receive the authored cards; existing profiles receive any missing starter blueprints once without changing saved decks. Main-card counts and combat rules are unchanged. Vessels also selects three Mutators, although its Mechanical starter units cannot host them under the existing Bio rule.
+Each default deck includes three randomly chosen inexpensive Equipment and three Mutators. The choices are authored in StartingDeckCatalog and remain stable across launches. New profiles receive the authored cards; legacy default decks receive their three Equipment and three Mutators in the saved composition, retain their identities and selections, and become protected starters. Customized decks are preserved; a missing starter is restored separately. A serialized starter flag prevents deletion even after renaming. Copies remain ordinary deletable decks. Main-card counts and combat rules are unchanged. Vessels also selects three Mutators, although its Mechanical starter units cannot host them under the existing Bio rule.
 
 ## The Vessels Starter: 56/100
 
