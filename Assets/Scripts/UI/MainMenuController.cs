@@ -29,12 +29,7 @@ namespace Game.UI
         }
         public void OnCollectionClicked()
         {
-            collectionScreens?.Show(false, mainMenuPanel);
-        }
-
-        public void OnMyDecksClicked()
-        {
-            collectionScreens?.Show(true, mainMenuPanel);
+            collectionScreens?.Show(mainMenuPanel);
         }
         public void OpenDeckBuilderFromSetup(System.Action onClosed)
         {
@@ -43,7 +38,7 @@ namespace Game.UI
             // Hide interaction without disabling the setup model: OnEnable normally resets it.
             var group = gameSetupPanel.GetComponent<CanvasGroup>() ?? gameSetupPanel.AddComponent<CanvasGroup>();
             group.interactable = false; group.blocksRaycasts = false;
-            collectionScreens.Show(true, null, () => { group.interactable = true; group.blocksRaycasts = true; onClosed(); });
+            collectionScreens.Show(null, () => { group.interactable = true; group.blocksRaycasts = true; onClosed(); });
         }
 
         private void Update()
@@ -100,4 +95,3 @@ namespace Game.UI
         }
     }
 }
-

@@ -26,12 +26,12 @@ namespace Game.UI
             text.text = value; text.fontSize = size; text.color = new Color(.82f, .85f, .8f);
             text.raycastTarget = false; text.enableWordWrapping = true; return text;
         }
-        internal static Button Button(Transform parent, string value, float x, float y, float w, float h, Action action)
+        internal static Button Button(Transform parent, string value, float x, float y, float w, float h, Action action, int size = 16)
         {
             var r = Panel(parent, value); Place(r, x, y, w, h);
             r.GetComponent<Image>().color = new Color(.16f, .2f, .17f);
             var button = r.gameObject.AddComponent<Button>(); button.targetGraphic = r.GetComponent<Image>();
-            var label = Label(r, value, 5, 1, w - 10, h - 2); label.alignment = TextAlignmentOptions.Center;
+            var label = Label(r, value, 5, 1, w - 10, h - 2, size); label.alignment = TextAlignmentOptions.Center;
             button.onClick.AddListener(() => action());
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
             return button;
@@ -47,12 +47,12 @@ namespace Game.UI
         }
         internal static void Clear(Transform root)
         { foreach (Transform child in root) { child.gameObject.SetActive(false); UnityEngine.Object.Destroy(child.gameObject); } }
-        internal static RectTransform Canvas(string name)
+        internal static RectTransform Canvas(string name, Vector2? referenceResolution = null)
         {
             var root = Rect(null, name);
             var canvas = root.gameObject.AddComponent<Canvas>(); canvas.renderMode = RenderMode.ScreenSpaceOverlay; canvas.sortingOrder = 200;
             var scaler = root.gameObject.AddComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1024, 768); scaler.matchWidthOrHeight = .5f;
+            scaler.referenceResolution = referenceResolution ?? new Vector2(1024, 768); scaler.matchWidthOrHeight = .5f;
             root.gameObject.AddComponent<GraphicRaycaster>();
             return root;
         }
