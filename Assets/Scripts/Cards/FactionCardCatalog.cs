@@ -96,6 +96,36 @@ namespace Game.Cards
                 ?? cards.FirstOrDefault(c => c != null && c.displayName == key);
         }
 
+        // Shared cross-catalog identity resolution. Persistence callers disable legacy names;
+        // legacy gameplay fixtures retain qualified display-name lookup during migration.
+        public static CardDefinition ResolveAcross(IEnumerable<FactionCardCatalog> catalogs,
+            string key, bool allowLegacy, UnityEngine.Object context = null)
+        {
+            if (catalogs == null || string.IsNullOrWhiteSpace(key)) return null;
+            CardDefinition match = null;
+            foreach (var catalog in catalogs)
+            {
+                if (catalog?.cards == null) continue;
+                foreach (var card in catalog.cards)
+                {
+                    if (card == null || card.authoredKey != key) continue;
+                    if (match != null && !ReferenceEquals(match, card))
+                    { Debug.LogError("Duplicate authoredKey: " + key, context); return null; }
+                    match = card;
+                }
+            }
+            if (match != null || !allowLegacy) return match;
+            foreach (var catalog in catalogs)
+            {
+                if (catalog == null) continue;
+                string prefix = catalog.displayName + "/";
+                if (!key.StartsWith(prefix, System.StringComparison.Ordinal)) continue;
+                var card = catalog.ResolveCard(key.Substring(prefix.Length));
+                if (card != null) return card;
+            }
+            return null;
+        }
+
         // Used by ArmyViewerModalUI's Create Army button. takenNames is whichever names are
         // already in use (see ArmyRegistry.AllForOwner) — a fresh army must never collide with
         // one of those; ordering beyond that is still random. Falls back to a numbered suffix
@@ -127,3 +157,4 @@ namespace Game.Cards
         }
     }
 }
+

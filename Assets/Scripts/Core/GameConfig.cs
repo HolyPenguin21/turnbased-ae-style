@@ -18,6 +18,9 @@ namespace Game.Core
     [CreateAssetMenu(fileName = "GameConfig", menuName = "Game/Game Config")]
     public class GameConfig : ScriptableObject
     {
+        [Header("Collection content")]
+        public Game.Cards.StartingDeckCatalog collectionDeckCatalog;
+        public Game.Cards.ResearchProductionCatalog collectionResearchCatalog;
         [Header("Map Objects")]
         // The event's own picture (see EventDefinition.image), shown standalone on a hex once
         // its Hex Event has been left unresolved via Skip — never shown before that (an
@@ -281,3 +284,4 @@ namespace Game.Core
         public FogOfWarStyle fogOfWarStyle = new FogOfWarStyle();
     }
 }
+

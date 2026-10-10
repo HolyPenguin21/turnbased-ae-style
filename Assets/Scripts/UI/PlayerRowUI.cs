@@ -51,6 +51,64 @@ namespace Game.UI
         private readonly List<int> _colorOptionIndices = new List<int>();
         private Action _onChanged;
 
+        internal TMP_Dropdown FactionTemplate => factionDropdown;
+        internal TMP_InputField NicknameTemplate => nicknameField;
+        private TMP_Dropdown deckDropdown;
+        private Game.Core.GameConfig deckConfig;
+        private bool refreshingDecks;
+        public void ConfigureDeckSelection(Game.Core.GameConfig config)
+        {
+            deckConfig = config;
+            if (deckDropdown == null)
+            {
+                var strip = CollectionUIElements.Rect(transform, "DeckSelection");
+                strip.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+                CollectionUIElements.Place(strip, 0, 38, 700, 32);
+                deckDropdown = Instantiate(factionDropdown, strip);
+                CollectionUIElements.Place((RectTransform)deckDropdown.transform, 0, 0, 525, 30);
+                deckDropdown.onValueChanged.RemoveAllListeners();
+                deckDropdown.onValueChanged.AddListener(index =>
+                {
+                    if (refreshingDecks) return;
+                    var decks = Game.Progression.ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
+                    if (index >= 0 && index < decks.Count) Data.SelectedDeckId = decks[index].deckId;
+                });
+                CollectionUIElements.Button(strip, "Edit Decks", 535, 0, 155, 30, () =>
+                {
+                    var menu = UnityEngine.Object.FindAnyObjectByType<MainMenuController>();
+                    if (menu != null) menu.OpenDeckBuilderFromSetup(RefreshDeckOptions);
+                });
+                var element = GetComponent<LayoutElement>() ?? gameObject.AddComponent<LayoutElement>();
+                element.preferredHeight = 76; element.minHeight = 76;
+            }
+            RefreshDeckOptions();
+        }
+        internal void RefreshResolvedFaction()
+        {
+            factionDropdown?.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(SelectableFactions, Data.Faction)));
+            RefreshFactionLogo(); RefreshDeckOptions();
+        }
+        public void RefreshDeckOptions()
+        {
+            if (deckDropdown == null) return;
+            refreshingDecks = true;
+            deckDropdown.transform.parent.gameObject.SetActive(Data.IsHuman);
+            deckDropdown.ClearOptions();
+            if (!Data.IsHuman) { refreshingDecks = false; return; }
+            if (Data.Faction == Faction.Random)
+            { Data.SelectedDeckId = null; deckDropdown.AddOptions(new List<string> { "Default deck after Random faction resolves" }); deckDropdown.interactable = false; refreshingDecks = false; return; }
+            if (!Game.Progression.ProgressionContext.Initialize(deckConfig))
+            { deckDropdown.AddOptions(new List<string> { Game.Progression.ProgressionContext.Error }); refreshingDecks = false; return; }
+            var collection = Game.Progression.ProgressionContext.Collection;
+            var decks = collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
+            if (!decks.Any(d => d.deckId == Data.SelectedDeckId)) Data.SelectedDeckId = collection.DefaultDeck(Data.Faction)?.deckId;
+            deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks — open editor" } : decks.Select(d =>
+            { var validation = collection.Rules.Validate(d, collection.Owned); return d.name + " — " + validation.Points + "/100" + (validation.IsValid ? "" : " — " + string.Join("; ", validation.Errors)); }).ToList());
+            deckDropdown.SetValueWithoutNotify(Mathf.Max(0, decks.FindIndex(d => d.deckId == Data.SelectedDeckId)));
+            deckDropdown.interactable = decks.Count > 0;
+            refreshingDecks = false;
+        }
+
         public PlayerSetupData Data { get; private set; }
 
         public void Bind(PlayerSetupData data, Action onChanged, Action<PlayerRowUI> onRemoveRequested)
@@ -136,6 +194,7 @@ namespace Game.UI
                 if (value < 0 || value >= SelectableFactions.Length) return;
                 Data.Faction = SelectableFactions[value];
                 RefreshFactionLogo();
+                Data.SelectedDeckId = null; RefreshDeckOptions();
                 _onChanged?.Invoke();
             });
         }
@@ -158,6 +217,7 @@ namespace Game.UI
             controllerDropdown.onValueChanged.AddListener(value =>
             {
                 Data.IsHuman = value == 0;
+                RefreshDeckOptions();
                 _onChanged?.Invoke();
             });
         }
@@ -169,3 +229,4 @@ namespace Game.UI
         }
     }
 }
+

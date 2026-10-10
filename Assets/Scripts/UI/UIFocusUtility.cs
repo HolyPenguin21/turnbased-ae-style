@@ -12,7 +12,19 @@ namespace Game.UI
     // check this explicitly instead.
     public static class UIFocusUtility
     {
-        public static bool IsGameplayInputBlocked => GameMenuPanelUI.GameplayInputBlocked;
+        private static readonly System.Collections.Generic.HashSet<UnityEngine.Object> overlays = new System.Collections.Generic.HashSet<UnityEngine.Object>();
+        private static int blockedThroughFrame = -1;
+        public static event System.Action BlockingChanged;
+        public static bool HasOverlay { get { overlays.RemoveWhere(o => o == null); return overlays.Count > 0; } }
+        public static void SetOverlay(UnityEngine.Object owner, bool showing)
+        {
+            bool changed = showing ? overlays.Add(owner) : overlays.Remove(owner);
+            if (!showing) blockedThroughFrame = Time.frameCount;
+            if (changed) BlockingChanged?.Invoke();
+        }
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetOverlays() { overlays.Clear(); BlockingChanged = null; blockedThroughFrame = -1; }
+        public static bool IsGameplayInputBlocked => HasOverlay || blockedThroughFrame == Time.frameCount || GameMenuPanelUI.GameplayInputBlocked;
         public static bool IsGameplayShortcutBlocked => IsGameplayInputBlocked || GameMenuPanelUI.OwnsKeyboardSelection;
         public static bool IsTextFieldFocused()
         {
@@ -28,3 +40,4 @@ namespace Game.UI
         public static bool WasSpacePressed() => !IsGameplayShortcutBlocked && Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
     }
 }
+

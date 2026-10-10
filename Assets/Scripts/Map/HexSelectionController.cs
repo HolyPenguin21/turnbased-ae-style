@@ -148,7 +148,10 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed += OnBaseModalClosed;
             if (researchProductionModal != null)
+            {
                 researchProductionModal.CreateRequested += OnResearchProductionCreateRequested;
+                researchProductionModal.VisibilityChanged += OnResearchProductionVisibilityChanged;
+            }
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
             StealthSystem.StealthChanged += OnStealthChanged;
@@ -158,6 +161,7 @@ namespace Game.Map
 
         private void OnDisable()
         {
+            _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false;
             if (turnController != null)
             {
                 turnController.TurnChanging -= Deselect;
@@ -169,7 +173,10 @@ namespace Game.Map
             if (baseViewerModal != null)
                 baseViewerModal.Closed -= OnBaseModalClosed;
             if (researchProductionModal != null)
+            {
                 researchProductionModal.CreateRequested -= OnResearchProductionCreateRequested;
+                researchProductionModal.VisibilityChanged -= OnResearchProductionVisibilityChanged;
+            }
             VisionSystem.VisibilityChanged -= OnVisibilityChanged;
             VisionSystem.VisibleContentChanged -= OnVisibleContentChanged;
             StealthSystem.StealthChanged -= OnStealthChanged;
@@ -915,11 +922,19 @@ namespace Game.Map
         // Captured when the modal opens, re-validated (not trusted) when Create is pressed. The
         // mode alone identifies the rule set now — ResearchProductionSystem derives the Facility/
         // role abilities from it, so the two ability strings this used to also stash are gone.
+        private ProductionAttempt _rpAttempt;
         private bool _rpTransactionActive;
         private HexCoord _rpHex;
         private ResearchProductionMode _rpMode;
         private UnitData _rpHero;
-        private CardDefinition _rpPendingCard;
+
+        private void OnResearchProductionVisibilityChanged()
+        {
+            if (researchProductionModal.IsShowing || !_rpTransactionActive) return;
+            // Existing popup teardown restores Fate and reports failure exactly once.
+            attackPopup?.Hide();
+            _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false;
+        }
 
         private void OpenResearchProductionModal(HexCoord hex, ResearchProductionMode mode)
         {
@@ -948,7 +963,6 @@ namespace Game.Map
             _rpHex = hex;
             _rpMode = mode;
             _rpHero = hero;
-            _rpPendingCard = null;
 
             // The three hex-side modals are mutually exclusive — same funnelling as
             // ShowArmyModal / ShowBaseModal.
@@ -984,7 +998,7 @@ namespace Game.Map
             // Produced cards may intentionally overflow the hand cap, so capacity is not part of
             // this attempt-start transaction.
             if (!ResearchProductionSystem.TryStartAttempt(human, root, _rpHero, _rpHex, _rpMode,
-                    card, researchProductionModal.Catalog, out string startFail))
+                    card, researchProductionModal.Catalog, out string startFail, out _rpAttempt))
             {
                 turnController?.ShowSpawnHint(startFail);
                 return;
@@ -992,12 +1006,12 @@ namespace Game.Map
 
             // Lock the presentation only after the shared transaction commits.
             _rpTransactionActive = true;
-            _rpPendingCard = card;
             researchProductionModal.SetBusy(true);
 
             // Start the animated Challenge through its dedicated presentation entry point.
             Sprite logo = ResolveFactionLogo(human);
-            attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art, OnResearchProductionResolved);
+            try { attackPopup.BeginResearchProduction(_rpHero, card, _rpMode, logo, card.art, OnResearchProductionResolved); }
+            catch { _rpAttempt?.Dispose(); _rpAttempt = null; _rpTransactionActive = false; researchProductionModal.SetBusy(false); throw; }
         }
 
         private Sprite ResolveFactionLogo(PlayerSetupData player) =>
@@ -1010,12 +1024,12 @@ namespace Game.Map
         // Either way the modal reopens for interaction and stays open — the player closes it.
         private void OnResearchProductionResolved(bool success)
         {
-            CardDefinition card = _rpPendingCard;
-            _rpPendingCard = null;
+            var attempt = _rpAttempt;
+            _rpAttempt = null;
             _rpTransactionActive = false;
 
-            if (success && card != null)
-                cardHandUI?.AddProducedCardToHand(ResearchProductionSystem.MintCard(card));
+            var produced = attempt?.Complete(success);
+            if (produced != null) cardHandUI?.AddProducedCardToHand(produced);
 
             researchProductionModal?.SetBusy(false);
         }
@@ -1157,5 +1171,6 @@ namespace Game.Map
         // moved to HexSelectionController.Visuals.cs — see that file's own class-level comment.
     }
 }
+
 
 

@@ -26,6 +26,12 @@ namespace Game.Cards
         // never referenced externally; ResearchProductionCatalog exposes only non-empty keys.
         public string authoredKey;
 
+        [Header("Deck building")]
+        public int deckPointCost;
+        public int deckCopyLimit = 4;
+        // Only exceptions; type/slot define all normal categories.
+        public bool deckBuilderExcluded;
+
         public string displayName;
         public Sprite art;
         // Shown in a unit's detail panel (ArmyViewerModalUI/BattleScreenUI.ShowUnitDetail) —
@@ -150,3 +156,4 @@ namespace Game.Cards
         public EquipmentGrant equipment = new EquipmentGrant();
     }
 }
+

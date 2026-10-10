@@ -9,6 +9,9 @@ namespace Game.Players
         public int ColorIndex;
         public Faction Faction;
         public bool IsHuman;
+        public string SelectedDeckId;
+        public Game.Cards.MatchLoadout MatchLoadout;
+        public Game.Cards.BlueprintQuota BlueprintQuota;
         // True only for CitadelSetupController's single shared _neutralPlayer instance — never
         // set on a real player profile. Explicit flag rather than inferring it from ColorIndex/
         // Faction.None elsewhere (see BattleScreenUI.TryAssessSideRetreat's own "neutrals never
@@ -30,3 +33,4 @@ namespace Game.Players
         public bool IsEliminated;
     }
 }
+

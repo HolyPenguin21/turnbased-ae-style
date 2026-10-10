@@ -88,63 +88,63 @@ MonoBehaviour:
   - deckName: The Ashen Starter
     faction: 4
     cards:
-    - cardKey: The Ashen/Ashen Citadel
+    - cardKey: ashen.card.ashen-citadel
       count: 0
-    - cardKey: The Ashen/Ashen Base
+    - cardKey: ashen.card.ashen-base
       count: 1
-    - cardKey: The Ashen/Miller Hayes
+    - cardKey: ashen.card.miller-hayes
       count: 1
-    - cardKey: The Ashen/Hank Mercer
+    - cardKey: ashen.card.hank-mercer
       count: 1
-    - cardKey: The Ashen/Rusty Miller
+    - cardKey: ashen.card.rusty-miller
       count: 1
-    - cardKey: The Ashen/Nora Blackwell
+    - cardKey: ashen.card.nora-blackwell
       count: 1
-    - cardKey: The Ashen/Vera Sterling
+    - cardKey: ashen.card.vera-sterling
       count: 1
-    - cardKey: The Ashen/Elena Hayes
+    - cardKey: ashen.card.elena-hayes
       count: 1
-    - cardKey: The Ashen/Nova Sterling
+    - cardKey: ashen.card.nova-sterling
       count: 1
-    - cardKey: The Ashen/Iri Vane
+    - cardKey: ashen.card.iri-vane
       count: 1
-    - cardKey: The Ashen/Hooded
+    - cardKey: ashen.card.hooded
       count: 2
-    - cardKey: The Ashen/Dust Runner
+    - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: The Ashen/Tech Scrapper
+    - cardKey: ashen.card.tech-scrapper
       count: 1
-    - cardKey: The Ashen/Rad Hunter
+    - cardKey: ashen.card.rad-hunter
       count: 1
-    - cardKey: The Ashen/Ash Drifter
+    - cardKey: ashen.unit.ashdrifter
       count: 4
-    - cardKey: The Ashen/Ash Runner
+    - cardKey: ashen.card.ash-runner
       count: 3
-    - cardKey: The Ashen/Iron Husk
+    - cardKey: ashen.card.iron-husk
       count: 2
-    - cardKey: The Ashen/Scav Carrier
+    - cardKey: ashen.card.scav-carrier
       count: 1
-    - cardKey: The Ashen/Rad Brute
+    - cardKey: ashen.card.rad-brute
       count: 0
-    - cardKey: The Ashen/Ash Walker
+    - cardKey: ashen.card.ash-walker
       count: 1
-    - cardKey: The Ashen/Grave Engine
+    - cardKey: ashen.card.grave-engine
       count: 1
-    - cardKey: The Ashen/Rust Tank
+    - cardKey: ashen.card.rust-tank
       count: 2
-    - cardKey: The Ashen/Boomstick
+    - cardKey: ashen.card.boomstick
       count: 1
-    - cardKey: The Ashen/Leviathan
+    - cardKey: ashen.card.leviathan
       count: 0
-    - cardKey: The Ashen/Scrap Mortar
+    - cardKey: ashen.card.scrap-mortar
       count: 1
-    - cardKey: The Ashen/Colossus
+    - cardKey: ashen.card.colossus
       count: 0
-    - cardKey: The Ashen/Ash Howitzer
+    - cardKey: ashen.card.ash-howitzer
       count: 0
-    - cardKey: The Ashen/Striker
+    - cardKey: ashen.card.striker
       count: 1
-    - cardKey: The Ashen/Scrapwing
+    - cardKey: ashen.card.scrapwing
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -155,67 +155,108 @@ MonoBehaviour:
   - deckName: Iron Concord Starter
     faction: 0
     cards:
-    - cardKey: Iron Concord/Concord Citadel
+    - cardKey: concord.card.concord-citadel
       count: 0
-    - cardKey: Iron Concord/Concord Base
+    - cardKey: concord.card.concord-base
       count: 1
-    - cardKey: Iron Concord/Dorian Kesh
+    - cardKey: concord.card.dorian-kesh
       count: 1
-    - cardKey: Iron Concord/Aldric Voss
+    - cardKey: concord.card.aldric-voss
       count: 1
-    - cardKey: Iron Concord/Vector Vance
+    - cardKey: concord.card.vector-vance
       count: 1
-    - cardKey: Iron Concord/Bolt Jax
+    - cardKey: concord.card.bolt-jax
       count: 1
-    - cardKey: Iron Concord/Nadia Thorne
+    - cardKey: concord.card.nadia-thorne
       count: 1
-    - cardKey: Iron Concord/Kessa Vrail
+    - cardKey: concord.card.kessa-vrail
       count: 1
-    - cardKey: Iron Concord/Lira Sable
+    - cardKey: concord.card.lira-sable
       count: 1
-    - cardKey: Iron Concord/Tessa Rourke
+    - cardKey: concord.card.tessa-rourke
       count: 1
-    - cardKey: Iron Concord/Scout
+    - cardKey: concord.card.scout
       count: 1
-    - cardKey: Iron Concord/RC Vehicle
+    - cardKey: concord.card.rc-vehicle
       count: 1
-    - cardKey: Iron Concord/Scrapper
+    - cardKey: concord.card.scrapper
       count: 1
-    - cardKey: Iron Concord/Crawler
+    - cardKey: concord.card.crawler
       count: 1
-    - cardKey: Iron Concord/Light Infantry
+    - cardKey: concord.card.light-infantry
       count: 2
-    - cardKey: Iron Concord/Medium infantry
+    - cardKey: concord.card.medium-infantry
       count: 2
-    - cardKey: Iron Concord/Flamer
+    - cardKey: concord.card.flamer
       count: 1
-    - cardKey: Iron Concord/AT Infantry
+    - cardKey: concord.card.at-infantry
       count: 1
-    - cardKey: Iron Concord/Heavy Infantry
+    - cardKey: concord.card.heavy-infantry
       count: 0
-    - cardKey: Iron Concord/Light Tank
+    - cardKey: concord.card.light-tank
       count: 3
-    - cardKey: Iron Concord/Medium Tank
+    - cardKey: concord.card.medium-tank
       count: 2
-    - cardKey: Iron Concord/Heavy Tank
+    - cardKey: concord.card.heavy-tank
       count: 1
-    - cardKey: Iron Concord/Artillery Cannon
+    - cardKey: concord.card.artillery-cannon
       count: 1
-    - cardKey: Iron Concord/AT Cannon
+    - cardKey: concord.card.at-cannon
       count: 0
-    - cardKey: Iron Concord/Artillery Tank
+    - cardKey: concord.card.artillery-tank
       count: 0
-    - cardKey: Iron Concord/Pulse Cannon
+    - cardKey: concord.card.pulse-cannon
       count: 0
-    - cardKey: Iron Concord/Watcher Drone
+    - cardKey: concord.card.watcher-drone
       count: 2
-    - cardKey: Iron Concord/Wasp
+    - cardKey: concord.card.wasp
       count: 1
-    - cardKey: Iron Concord/Rusty Vulture
+    - cardKey: concord.card.rusty-vulture
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
+      count: 1
+
+  collectionBlueprints:
+  - deckName: Initial blueprints
+    faction: 0
+    cards:
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+  - deckName: Initial blueprints
+    faction: 4
+    cards:
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
+      count: 1
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
+    - cardKey: neutral.mutator.adrenal-surge
+      count: 1
+    - cardKey: neutral.mutator.enhanced-senses
+      count: 1
+  - deckName: Initial blueprints
+    faction: 5
+    cards:
+    - cardKey: neutral.equipment.infantry.ballistic-shield
+      count: 1
+    - cardKey: neutral.equipment.infantry.optical-scope
+      count: 1
+    - cardKey: neutral.equipment.mechanical.armor-plate
       count: 1

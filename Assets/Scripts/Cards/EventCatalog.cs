@@ -75,23 +75,7 @@ namespace Game.Cards
         // displayName>") — null if the catalog or the card inside it can no longer be found,
         // same fallback StartingDeckCatalog.ResolveCard/NeutralArmyCatalog.ResolveCard use.
         public CardDefinition ResolveCard(string cardKey)
-        {
-            if (string.IsNullOrEmpty(cardKey) || cardCatalogs == null)
-                return null;
-
-            foreach (FactionCardCatalog catalog in cardCatalogs)
-            {
-                if (catalog == null)
-                    continue;
-                string prefix = catalog.displayName + "/";
-                if (!cardKey.StartsWith(prefix))
-                    continue;
-                string cardName = cardKey.Substring(prefix.Length);
-                CardDefinition match = catalog.cards.FirstOrDefault(c => c != null && c.displayName == cardName);
-                if (match != null)
-                    return match;
-            }
-            return null;
-        }
+            => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, true, this);
     }
 }
+
