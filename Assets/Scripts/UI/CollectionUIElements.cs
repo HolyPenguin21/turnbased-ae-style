@@ -43,6 +43,7 @@ namespace Game.UI
             if (showScrollbar) viewport.offsetMax = new Vector2(-18, 0);
             var content = Rect(viewport, "Content"); Place(content, 0, 0, w - (showScrollbar ? 22 : 14), 1);
             var scroll = root.gameObject.AddComponent<ScrollRect>(); scroll.viewport = viewport; scroll.content = content;
+            scroll.scrollSensitivity *= 1.3f;
             scroll.horizontal = false; scroll.vertical = true; scroll.movementType = ScrollRect.MovementType.Clamped;
             if (showScrollbar)
             {

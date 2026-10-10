@@ -25,6 +25,7 @@ namespace Game.Progression
                 var loaded = store.Load(out string notice);
                 var service = new CollectionService(new DeckRules(config.collectionDeckCatalog, config.collectionResearchCatalog), store, loaded ?? new CollectionProfile());
                 if (loaded == null && !service.Transact(service.InitializeStarters, out string failure)) throw new InvalidOperationException(failure);
+                if (loaded != null && !service.EnsureStarterBlueprintOwnership(out string blueprintFailure)) throw new InvalidOperationException(blueprintFailure);
                 Collection = service; Rewards = new RewardService(service);
                 var obsolete = service.Snapshot.ownedCards.Where(e => service.Rules.Resolve(e.cardKey) == null).Select(e => e.cardKey).ToList();
                 Notice = notice;

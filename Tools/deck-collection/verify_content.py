@@ -28,6 +28,10 @@ for d,o in zip(starting['decks'],old['decks']):
   assert e['cardKey']==legacy.get(oe['cardKey'],oe['cardKey'])
  entries=[e for e in d['cards'] if e['count']>0]+next(x['cards'] for x in starting['collectionBlueprints'] if x['faction']==d['faction'])
  assert len({e['cardKey'] for e in entries})==len(entries)
+ blueprints=next(x['cards'] for x in starting['collectionBlueprints'] if x['faction']==d['faction'])
+ assert sum(e['count'] for e in blueprints if keys[e['cardKey']]['attachmentSlot']==0)==3
+ assert sum(e['count'] for e in blueprints if keys[e['cardKey']]['attachmentSlot']==1)==3
+ assert all(keys[e['cardKey']]['deckPointCost']==1 for e in blueprints)
  assert all(not keys[e['cardKey']]['deckBuilderExcluded'] and e['count']<=keys[e['cardKey']]['deckCopyLimit'] for e in entries)
  total=sum(keys[e['cardKey']]['deckPointCost']*e['count'] for e in entries);assert total<=100
  assert sum(keys[e['cardKey']]['cardType']==0 for e in entries)==8
@@ -51,5 +55,6 @@ for d in starting['decks']:
  hosts=[keys[e['cardKey']] for e in d['cards'] if e['count']>0 and keys[e['cardKey']]['cardType'] in [0,1]]
  for b in next(x['cards'] for x in starting['collectionBlueprints'] if x['faction']==d['faction']):
   e=keys[b['cardKey']]
+  if d['faction']==5 and e['attachmentSlot']==1:continue # Authored Vessels Mutators remain Bio-only in play.
   assert any((1 if h['cardType']==0 else 0) in e['hostKinds'] and (e['attachmentSlot']!=1 or 0 in h['tags']) and (not e['hostTags'] or set(e['hostTags'])&set(h['tags'])) for h in hosts),b
-print(json.dumps(dict(uniqueDefinitions=checks,starters=starter_totals,researchEntries=len(rp['researchCards']),productionEntries=len(rp['productionCards']),combatDataUnchanged=True,aiStarterCountsUnchanged=True,seedCompatibilityOffline=True),ensure_ascii=False,indent=2))
+print(json.dumps(dict(uniqueDefinitions=checks,starters=starter_totals,researchEntries=len(rp['researchCards']),productionEntries=len(rp['productionCards']),combatDataUnchanged=True,aiStarterCountsUnchanged=True,seedCompatibilityOfflineExceptVesselsMutators=True),ensure_ascii=False,indent=2))

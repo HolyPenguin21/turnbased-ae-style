@@ -22,6 +22,8 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer circle;
         [SerializeField] private TMP_Text amountText;
 
+        public Sprite Icon => circle != null ? circle.sprite : null;
+
         private int _amount;
 
         // Lets other UI (e.g. the initiative dice buy panel) match these same per-resource
@@ -48,3 +50,4 @@ namespace Game.Map
         }
     }
 }
+

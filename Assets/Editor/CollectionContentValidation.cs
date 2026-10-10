@@ -4,6 +4,7 @@ using System.Linq;
 using Game.Cards;
 using Game.Core;
 using Game.Progression;
+using Game.Players;
 using UnityEditor;
 using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
@@ -61,7 +62,9 @@ namespace Game.EditorTools
                 foreach (var deck in profile.savedDecks)
                 {
                     foreach (var row in deck.equipment.Concat(deck.mutators))
-                        if (!deck.mainCards.Select(e => rules.Resolve(e.cardKey)).Any(host => EquipmentSystem.FitsHost(rules.Resolve(row.cardKey), host, out _)))
+                        // Vessels intentionally receives Mutators too; Bio host requirements still apply in play.
+                        if (!(deck.faction == Faction.Vessels && DeckRules.Category(rules.Resolve(row.cardKey)) == DeckCategory.Mutator)
+                            && !deck.mainCards.Select(e => rules.Resolve(e.cardKey)).Any(host => EquipmentSystem.FitsHost(rules.Resolve(row.cardKey), host, out _)))
                             throw new BuildFailedException("Initial blueprint has no compatible starter host: " + row.cardKey);
                 }
             }

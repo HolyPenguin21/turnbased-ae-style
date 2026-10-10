@@ -128,9 +128,15 @@ namespace Game.UI
             gameObject.SetActive(true);
         }
 
+        private void OnDestroy()
+        {
+            if (_material != null) Destroy(_material);
+        }
+
         public void Hide()
         {
             gameObject.SetActive(false);
         }
     }
 }
+

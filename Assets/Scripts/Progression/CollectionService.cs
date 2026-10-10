@@ -58,16 +58,29 @@ namespace Game.Progression
             foreach (var faction in DeckRules.PlayableFactions)
             {
                 var starter = Starter(faction);
-                foreach (var e in starter.mainCards.Concat(starter.equipment).Concat(starter.mutators))
-                {
-                    var owned = target.ownedCards.Find(o => o.cardKey == e.cardKey);
-                    if (owned == null) target.ownedCards.Add(new DeckCardEntry { cardKey = e.cardKey, count = e.count });
-                    else owned.count = Math.Max(owned.count, e.count); // shared definitions seeded once
-                }
+                GrantInitialCards(target, starter.mainCards.Concat(starter.equipment).Concat(starter.mutators));
                 var validation = Rules.Validate(starter, target.Owned);
                 if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
                 target.savedDecks.Add(starter);
                 target.selectedDeckByFaction.Add(new DeckSelection { faction = faction, deckId = starter.deckId });
+            }
+        }
+        // Catalog updates grant new starter blueprints without changing any saved composition.
+        // This also keeps the existing Starter action usable for profiles created before the update.
+        public bool EnsureStarterBlueprintOwnership(out string error)
+        {
+            var rows = DeckRules.PlayableFactions.SelectMany(Rules.Starting.GetCollectionBlueprints).ToList();
+            error = null;
+            if (rows.All(e => Owned(e.cardKey) >= e.count)) return true;
+            return Transact(p => GrantInitialCards(p, rows), out error);
+        }
+        private static void GrantInitialCards(CollectionProfile target, System.Collections.Generic.IEnumerable<DeckCardEntry> rows)
+        {
+            foreach (var e in rows)
+            {
+                var owned = target.ownedCards.Find(o => o.cardKey == e.cardKey);
+                if (owned == null) target.ownedCards.Add(new DeckCardEntry { cardKey = e.cardKey, count = e.count });
+                else owned.count = Math.Max(owned.count, e.count); // shared definitions seeded once
             }
         }
         public bool SaveDeck(SavedDeck draft, out string error)

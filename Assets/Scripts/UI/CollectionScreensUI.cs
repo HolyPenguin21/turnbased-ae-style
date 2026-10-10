@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Core;
+using Game.Economy;
+using Game.Map;
+using Game.Styles;
 using Game.Players;
 using Game.Progression;
 using TMPro;
@@ -26,6 +29,7 @@ namespace Game.UI
         private int category, ownership;
         private string status = "";
         private CardDefinition selected;
+        private UIRaggedGlowUI selectionGlow;
         private Action closed;
         private GameObject hiddenPanel;
         private RectTransform modal;
@@ -77,15 +81,14 @@ namespace Game.UI
         }
         private void RefreshCards()
         {
+            selectionGlow = null;
             CollectionUIElements.Clear(grid);
             var cards = collection.Rules.Cards(faction).Where(c =>
                 (ownership == 0 || (ownership == 1 ? collection.Owned(c.authoredKey) > 0 : collection.Owned(c.authoredKey) == 0))
                 && (category == 0 || category == 1 && c.cardType == CardType.Hero || category == 2 && c.cardType == CardType.Unit
                     || category == 3 && (c.cardType == CardType.Base || c.cardType == CardType.Facility)
                     || category == 4 && DeckRules.Category(c) == DeckCategory.Equipment || category == 5 && DeckRules.Category(c) == DeckCategory.Mutator));
-            cards = cards.OrderBy(c => c.cardType == CardType.Base || c.cardType == CardType.Facility ? 0
-                : c.cardType == CardType.Hero ? 1 : c.cardType == CardType.Unit ? 2
-                : DeckRules.Category(c) == DeckCategory.Equipment ? 3 : 4).ThenBy(c => c.displayName);
+            cards = OrderCards(cards, c => c);
             int index = 0;
             foreach (var card in cards)
             {
@@ -103,7 +106,35 @@ namespace Game.UI
                 index++;
             }
             grid.sizeDelta = new Vector2(grid.sizeDelta.x, Mathf.Max(1, (index + 3) / 4 * 310));
+            UpdateSelectionGlow();
             grid.GetComponentInParent<ScrollRect>().verticalNormalizedPosition = 1f;
+        }
+        private static int CollectionOrder(CardDefinition card)
+            => card == null ? 5 : card.cardType == CardType.Base || card.cardType == CardType.Facility ? 0
+                : card.cardType == CardType.Hero ? 1 : card.cardType == CardType.Unit ? 2
+                : DeckRules.Category(card) == DeckCategory.Equipment ? 3 : 4;
+        private static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
+            => rows.OrderBy(row => CollectionOrder(resolve(row)))
+                .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
+                .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);
+        private void UpdateSelectionGlow()
+        {
+            var cell = selected == null ? null : grid.Find(selected.authoredKey) as RectTransform;
+            if (cell == null) { selectionGlow?.Hide(); return; }
+            if (selectionGlow == null)
+            {
+                var rect = CollectionUIElements.Rect(grid, "SelectedCardGlow");
+                rect.gameObject.AddComponent<Image>().raycastTarget = false;
+                selectionGlow = rect.gameObject.AddComponent<UIRaggedGlowUI>();
+            }
+            var glowRect = (RectTransform)selectionGlow.transform;
+            glowRect.anchorMin = glowRect.anchorMax = new Vector2(0, 1);
+            glowRect.pivot = new Vector2(.5f, .5f);
+            glowRect.anchoredPosition = cell.anchoredPosition + new Vector2(108, -116);
+            selectionGlow.ApplyStyle(config.battleActingUnitHighlightStyle);
+            selectionGlow.SetColor(TechnicalColors.BattleActingUnit);
+            selectionGlow.ShowAt(new Vector2(208, 232));
+            glowRect.SetAsLastSibling();
         }
         private int Used(string key) => draft == null ? 0 : draft.mainCards.Concat(draft.equipment).Concat(draft.mutators).Where(e => e.cardKey == key).Sum(e => e.count);
         private void Change(string key, int delta)
@@ -111,7 +142,7 @@ namespace Game.UI
         private void SelectCard(CardDefinition card)
         {
             if (selected == card) return;
-            selected = card; RefreshDetails();
+            selected = card; RefreshDetails(); UpdateSelectionGlow();
             Canvas.ForceUpdateCanvases();
             details.GetComponentInParent<ScrollRect>().verticalNormalizedPosition = 1f;
         }
@@ -148,7 +179,7 @@ namespace Game.UI
             CollectionUIElements.Button(deckPanel, "Save Deck", 14, 222, 500, 44, () => { Save(); Draw(); }, 20);
             var validation = collection.Rules.Validate(draft, collection.Owned);
             CollectionUIElements.Label(deckPanel, $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " — unsaved" : ""), 14, 278, 500, 30, 22);
-            CollectionUIElements.Label(deckPanel, TotalCostText(), 14, 316, 500, 72, 18);
+            DrawTotalCost();
             var bar = CollectionUIElements.Panel(deckPanel, "Budget"); CollectionUIElements.Place(bar, 14, 394, 500, 8);
             var fill = CollectionUIElements.Panel(bar, "Fill"); CollectionUIElements.Place(fill, 0, 0, 500 * Mathf.Clamp01(validation.Points / (float)DeckRules.MaximumPoints), 8);
             fill.GetComponent<Image>().color = validation.Points > 100 ? Color.red : new Color(.36f, .55f, .3f);
@@ -161,7 +192,7 @@ namespace Game.UI
                 var entries = DeckRules.Entries(draft, c);
                 if (entries.Count == 0) continue;
                 CollectionUIElements.Label(deckCards, c.ToString(), 0, y, 478, 28, 18); y += 32;
-                foreach (var entry in entries)
+                foreach (var entry in OrderCards(entries, e => collection.Rules.Resolve(e.cardKey)))
                 {
                     var card = collection.Rules.Resolve(entry.cardKey); string key = entry.cardKey;
                     var row = CollectionUIElements.Panel(deckCards, key); CollectionUIElements.Place(row, 0, y, 478, 78);
@@ -182,21 +213,36 @@ namespace Game.UI
             float h = info.GetPreferredValues(checks, 478, 10000).y; ((RectTransform)info.transform).sizeDelta = new Vector2(478, h);
             deckCards.sizeDelta = new Vector2(deckCards.sizeDelta.x, y + h + 12);
         }
-        private string TotalCostText()
+        private long[] TotalCost()
         {
-            long ap = 0, human = 0, energy = 0, materials = 0, tech = 0;
+            var total = new long[5]; // AP, Human, Energy, Materials, Tech — existing card badge order.
             foreach (var entry in draft.mainCards.Concat(draft.equipment).Concat(draft.mutators))
             {
                 var card = collection.Rules.Resolve(entry.cardKey);
                 if (card == null) continue;
                 long count = entry.count;
-                ap += count * card.apCost;
-                human += count * (card.resourceCost?.human ?? 0);
-                energy += count * (card.resourceCost?.energy ?? 0);
-                materials += count * (card.resourceCost?.materials ?? 0);
-                tech += count * (card.resourceCost?.tech ?? 0);
+                total[0] += count * card.apCost;
+                total[1] += count * (card.resourceCost?.human ?? 0);
+                total[2] += count * (card.resourceCost?.energy ?? 0);
+                total[3] += count * (card.resourceCost?.materials ?? 0);
+                total[4] += count * (card.resourceCost?.tech ?? 0);
             }
-            return $"Total cost — AP {ap}\nHuman {human} | Energy {energy}\nMaterials {materials} | Tech {tech}";
+            return total;
+        }
+        private void DrawTotalCost()
+        {
+            var total = TotalCost();
+            CollectionUIElements.Label(deckPanel, $"Total cost — AP {total[0]}", 14, 316, 500, 26, 18);
+            for (int i = 0; i < 4; i++)
+            {
+                var type = (ResourceType)i;
+                var badge = CollectionUIElements.Rect(deckPanel, type.ToString());
+                CollectionUIElements.Place(badge, 14 + i * 125, 352, 30, 30);
+                var image = badge.gameObject.AddComponent<Image>();
+                image.sprite = config.resourceIconPrefab != null ? config.resourceIconPrefab.Icon : null;
+                image.color = ResourceIconVisual.GetColor(type); image.preserveAspect = true; image.raycastTarget = false;
+                CollectionUIElements.Label(deckPanel, total[i + 1].ToString(), 50 + i * 125, 352, 86, 30, 20);
+            }
         }
         private void RemoveEntry(string key)
         { foreach (var rows in new[] { draft.mainCards, draft.equipment, draft.mutators }) rows.RemoveAll(e => e.cardKey == key); dirty = true; Draw(); }

@@ -222,41 +222,47 @@ MonoBehaviour:
 
   collectionBlueprints:
   - deckName: Initial blueprints
-    faction: 0
+    faction: 5
     cards:
-    - cardKey: neutral.equipment.infantry.ballistic-shield
+    - cardKey: neutral.equipment.infantry.shotgun
       count: 1
-    - cardKey: neutral.equipment.infantry.optical-scope
+    - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.mechanical.armor-plate
+    - cardKey: neutral.equipment.mechanical.nuclear-engine
       count: 1
-    - cardKey: neutral.mutator.dermal-plating
+    - cardKey: neutral.mutator.chameleon-tissue
       count: 1
-    - cardKey: neutral.mutator.adrenal-surge
+    - cardKey: neutral.mutator.rapid-synapse
       count: 1
-    - cardKey: neutral.mutator.enhanced-senses
+    - cardKey: neutral.mutator.pain-suppression
       count: 1
   - deckName: Initial blueprints
     faction: 4
     cards:
-    - cardKey: neutral.equipment.infantry.ballistic-shield
+    - cardKey: neutral.equipment.vehicle.aa-mount
       count: 1
-    - cardKey: neutral.equipment.infantry.optical-scope
+    - cardKey: neutral.equipment.mechanical.reactive-armor
       count: 1
-    - cardKey: neutral.equipment.mechanical.armor-plate
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
       count: 1
-    - cardKey: neutral.mutator.dermal-plating
+    - cardKey: neutral.mutator.hunter-genome
       count: 1
-    - cardKey: neutral.mutator.adrenal-surge
+    - cardKey: neutral.mutator.rapid-synapse
       count: 1
-    - cardKey: neutral.mutator.enhanced-senses
+    - cardKey: neutral.mutator.wanderer-strain
       count: 1
   - deckName: Initial blueprints
-    faction: 5
+    faction: 0
     cards:
-    - cardKey: neutral.equipment.infantry.ballistic-shield
+    - cardKey: neutral.equipment.mechanical.reinforced-chassis
       count: 1
-    - cardKey: neutral.equipment.infantry.optical-scope
+    - cardKey: neutral.equipment.infantry.ceramic-vest
       count: 1
-    - cardKey: neutral.equipment.mechanical.armor-plate
+    - cardKey: neutral.equipment.vehicle.siege-ram
+      count: 1
+    - cardKey: neutral.mutator.reflex-genome
+      count: 1
+    - cardKey: neutral.mutator.reinforced-skeleton
+      count: 1
+    - cardKey: neutral.mutator.wanderer-strain
       count: 1

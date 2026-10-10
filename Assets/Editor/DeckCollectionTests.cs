@@ -100,13 +100,53 @@ namespace Game.EditorTools
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             Assert.That(DeckCalibrationReport.CreateStrategyDecks(rules).Count, Is.EqualTo(18));
         }
-        [Test] public void VesselsStarterKeepsMutatorsInCollectionButNotInLoadout()
+        [Test] public void EveryStarterIncludesThreeCheapEquipmentAndMutators()
         {
             var rules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
                 AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
             var p = new CollectionProfile(); new CollectionService(rules, null, p).InitializeStarters(p);
-            Assert.That(p.savedDecks.Single(d => d.faction == Faction.Vessels).mutators, Is.Empty);
-            Assert.That(p.ownedCards.Any(e => rules.Resolve(e.cardKey)?.attachmentSlot == AttachmentSlot.Mutator), Is.True);
+            foreach (var deck in p.savedDecks)
+            {
+                Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(3));
+                Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(3));
+                Assert.That(deck.equipment.Concat(deck.mutators).Select(e => e.cardKey).Distinct().Count(), Is.EqualTo(6));
+                Assert.That(deck.equipment.Concat(deck.mutators).All(e => rules.Resolve(e.cardKey).deckPointCost == 1), Is.True);
+                Assert.That(rules.Validate(deck, p.Owned).IsValid, Is.True);
+            }
+            var vessels = p.savedDecks.Single(d => d.faction == Faction.Vessels);
+            Assert.That(vessels.mutators.All(e => !vessels.mainCards.Any(h => EquipmentSystem.FitsHost(rules.Resolve(e.cardKey), rules.Resolve(h.cardKey), out _))), Is.True);
+        }
+        [Test] public void StarterBlueprintUpdatePreservesSavedDeckAndDoesNotGrantTwice()
+        {
+            var blueprint = new CardDefinition { authoredKey = "starter.equipment", cardType = CardType.Equipment };
+            catalog.cards.Add(blueprint);
+            starting.collectionBlueprints.Add(new StartingDeck { faction = Faction.IronConcord,
+                cards = new List<DeckCardEntry> { new DeckCardEntry { cardKey = blueprint.authoredKey, count = 2 } } });
+            var initial = new CollectionProfile(); initial.savedDecks.Add(Deck(1));
+            var store = new CollectionProfileStore(directory);
+            var service = new CollectionService(rules, store, initial);
+            Assert.That(service.EnsureStarterBlueprintOwnership(out _), Is.True);
+            Assert.That(service.Owned(blueprint.authoredKey), Is.EqualTo(2));
+            Assert.That(service.Snapshot.savedDecks.Single().mainCards.Single().count, Is.EqualTo(1));
+            int changes = 0; service.Changed += () => changes++;
+            Assert.That(service.EnsureStarterBlueprintOwnership(out _), Is.True);
+            Assert.That(changes, Is.Zero);
+            Assert.That(service.Owned(blueprint.authoredKey), Is.EqualTo(2));
+        }
+        [Test] public void CollectionAndDeckRowsUseCategoryThenPerCopyCost()
+        {
+            var cheap = new CardDefinition { authoredKey = "cheap", displayName = "Zulu", cardType = CardType.Unit, deckPointCost = 1 };
+            var expensive = new CardDefinition { authoredKey = "expensive", displayName = "Alpha", cardType = CardType.Unit, deckPointCost = 3 };
+            var hero = new CardDefinition { authoredKey = "hero", displayName = "Hero", cardType = CardType.Hero, deckPointCost = 10 };
+            var cards = new[] { expensive, cheap, hero };
+            var method = typeof(Game.UI.CollectionScreensUI).GetMethod("OrderCards", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var collectionOrder = (IEnumerable<CardDefinition>)method.MakeGenericMethod(typeof(CardDefinition)).Invoke(null,
+                new object[] { cards, new Func<CardDefinition, CardDefinition>(c => c) });
+            var rows = new[] { new DeckCardEntry { cardKey = "expensive", count = 1 }, new DeckCardEntry { cardKey = "cheap", count = 4 }, new DeckCardEntry { cardKey = "hero", count = 1 } };
+            var deckOrder = (IEnumerable<DeckCardEntry>)method.MakeGenericMethod(typeof(DeckCardEntry)).Invoke(null,
+                new object[] { rows, new Func<DeckCardEntry, CardDefinition>(e => cards.Single(c => c.authoredKey == e.cardKey)) });
+            Assert.That(collectionOrder.Select(c => c.authoredKey), Is.EqualTo(new[] { "hero", "cheap", "expensive" }));
+            Assert.That(deckOrder.Select(e => e.cardKey), Is.EqualTo(collectionOrder.Select(c => c.authoredKey)));
         }
         [Test] public void CollectionPreviewRemainsClickableWhileGameplayIsBlocked()
         {
@@ -231,8 +271,8 @@ namespace Game.EditorTools
                 const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
                 typeof(Game.UI.CollectionScreensUI).GetField("collection", flags).SetValue(view, new CollectionService(rules, null, new CollectionProfile()));
                 typeof(Game.UI.CollectionScreensUI).GetField("draft", flags).SetValue(view, deck);
-                string text = (string)typeof(Game.UI.CollectionScreensUI).GetMethod("TotalCostText", flags).Invoke(view, null);
-                Assert.That(text, Is.EqualTo("Total cost — AP 17\nHuman 8 | Energy 13\nMaterials 18 | Tech 23"));
+                long[] total = (long[])typeof(Game.UI.CollectionScreensUI).GetMethod("TotalCost", flags).Invoke(view, null);
+                Assert.That(total, Is.EqualTo(new long[] { 17, 8, 13, 18, 23 }));
             }
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }
@@ -246,6 +286,7 @@ namespace Game.EditorTools
                 var method = type.GetMethod("Scroll", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 var content = (RectTransform)method.Invoke(null, new object[] { go.transform, "Cards", 0f, 0f, 500f, 448f, true });
                 var scroll = content.GetComponentInParent<UnityEngine.UI.ScrollRect>();
+                Assert.That(scroll.scrollSensitivity, Is.EqualTo(1.3f).Within(.001f));
                 Assert.That(scroll.verticalScrollbar, Is.Not.Null);
                 Assert.That(scroll.verticalScrollbar.direction, Is.EqualTo(UnityEngine.UI.Scrollbar.Direction.BottomToTop));
                 Assert.That(scroll.verticalScrollbarVisibility, Is.EqualTo(UnityEngine.UI.ScrollRect.ScrollbarVisibility.Permanent));
