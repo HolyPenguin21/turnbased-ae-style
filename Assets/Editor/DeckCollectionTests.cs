@@ -195,14 +195,14 @@ namespace Game.EditorTools
             offers.Add(entry);
             var deck = Deck(0); deck.mainCards.Clear();
             DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 });
-            Assert.That(rules.Cards(Faction.IronConcord), Does.Not.Contain(card));
+            Assert.That(rules.Cards(Faction.IronConcord), Has.None.EqualTo(card));
             Assert.That(rules.Cards(Faction.Ashen), Does.Contain(card));
             Assert.That(rules.Validate(deck, _ => 1).IsValid, Is.False);
             entry.factionRestriction = Faction.None;
             Assert.That(rules.Cards(Faction.IronConcord), Does.Contain(card));
             Assert.That(rules.Validate(deck, _ => 1).IsValid, Is.True);
             offers.Clear();
-            Assert.That(rules.Cards(Faction.IronConcord), Does.Not.Contain(card));
+            Assert.That(rules.Cards(Faction.IronConcord), Has.None.EqualTo(card));
         }
         [Test]
         public void SelectedLoadoutDrawsNoOtherOwnedCards()
@@ -212,7 +212,7 @@ namespace Game.EditorTools
             var loadout = new MatchLoadout(Deck(2), rules, _ => 4);
             Assert.That(loadout.TryBuildPool(rules, out var pool, out _), Is.True);
             Assert.That(pool, Is.EqualTo(new[] { card, card }));
-            Assert.That(pool, Does.Not.Contain(other));
+            Assert.That(pool, Has.None.EqualTo(other));
         }
         [Test]
         public void DeckTotalCostIncludesEveryCopyAndBlueprintCategory()
