@@ -17,7 +17,7 @@ namespace Game.Campaign
         {
             foreach (var region in regions)
             {
-                var shadow = new GameObject("PlanetDepth_" + region.RegionId, typeof(RectTransform)); shadow.transform.SetParent(transform, false);
+                var shadow = new GameObject("PlanetDepth_" + region.RegionId, typeof(RectTransform), typeof(CanvasRenderer)); shadow.transform.SetParent(transform, false);
                 var rect = (RectTransform)shadow.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
                 rect.offsetMin = rect.offsetMax = new Vector2(0, -12);
                 var graphic = shadow.AddComponent<CampaignRegionGraphic>(); graphic.Configure(region, null, null, true);
@@ -25,12 +25,12 @@ namespace Game.Campaign
             }
             foreach (var region in regions)
             {
-                var go = new GameObject("Region_" + region.RegionId + "_" + region.Name, typeof(RectTransform)); go.transform.SetParent(transform, false);
+                var go = new GameObject("Region_" + region.RegionId + "_" + region.Name, typeof(RectTransform), typeof(CanvasRenderer)); go.transform.SetParent(transform, false);
                 var rect = (RectTransform)go.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
                 var graphic = go.AddComponent<CampaignRegionGraphic>();
                 graphic.Configure(region, () => clicked(region.RegionId), active => hovered(active ? (int?)region.RegionId : null)); graphics.Add(region.RegionId, graphic);
             }
-            var ar = new GameObject("AttackDirection", typeof(RectTransform)); ar.transform.SetParent(transform, false);
+            var ar = new GameObject("AttackDirection", typeof(RectTransform), typeof(CanvasRenderer)); ar.transform.SetParent(transform, false);
             var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
             arrow = ar.AddComponent<CampaignArrowGraphic>(); arrow.raycastTarget = false;
         }
