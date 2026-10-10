@@ -39,8 +39,7 @@ public static class ResponsiveUiAudit
             if (rect.parent is RectTransform parentRect &&
                 parentRect.GetComponent<Canvas>() is Canvas parentCanvas &&
                 parentCanvas.isRootCanvas &&
-                parentCanvas.renderMode != RenderMode.WorldSpace &&
-                rect.gameObject.activeInHierarchy)
+                parentCanvas.renderMode != RenderMode.WorldSpace)
             {
                 var corners = new Vector3[4];
                 var canvasCorners = new Vector3[4];
@@ -83,3 +82,4 @@ public static class ResponsiveUiAudit
     }
 }
 #endif
+
