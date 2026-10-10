@@ -142,11 +142,13 @@ concave notches. Weights are cached per subdivided mesh vertex and recalculated
 only when geometry or the display rectangle size changes. They are transmitted
 on TEXCOORD2; deselection sends zero weights, so the shader removes the glow. Markers use darkened versions of the same ownership palette.
 
-New region borders use one cached sampled curve per shared Voronoi edge. Both
+New region borders use one cached angular contour per shared Voronoi edge. Both
 neighbors reuse exactly identical points in reverse order. Samples are spaced
 according to edge length, up to six segments; very short edges stay unsplit to
-avoid near-collinear triangles. The warp has smooth low-frequency displacement
-with a smaller secondary wave. Existing minimum area/width, shared-vertex,
+avoid near-collinear triangles. A triangular-wave displacement replaces the smooth
+warp. Unequal segment lengths and independent, bounded lateral offsets add local
+corners without a repeating zigzag; offsets fade to zero at shared junctions.
+Existing minimum area/width, shared-vertex,
 intersection, adjacency and connected ownership checks remain active.
 
 Saved polygons are loaded directly and are not regenerated: previous 24- and 36-region
@@ -162,7 +164,7 @@ native shader/TMP antialiasing; it is not a Unity screenshot.
 
 Validation for the palette/contour/density change: targeted reference-DLL UI and
 visual-test compilation passed. A managed check generated 1000 default planets
-(48000 regions) and validated shared curved boundaries, balanced connected
+(48000 regions) and validated shared angular boundaries, balanced connected
 ownership, projected triangulation area, visible interior markers and mesh
 vertex limits. Custom counts 3/7/24/31/36/48 and seed reproducibility passed. A map
 created by the previous generator retained its original 24 regions and exact

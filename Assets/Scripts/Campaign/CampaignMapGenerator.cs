@@ -104,12 +104,13 @@ namespace Game.Campaign
             }
             foreach (var owners in edges.Values.Where(e => e.Count == 2))
             { regions[owners[0]].NeighborIds.Add(owners[1]); regions[owners[1]].NeighborIds.Add(owners[0]); }
-            // One sampled curve per shared edge; both cells reuse the exact same vertices.
+            // One angular contour per shared edge; both cells reuse the exact same vertices.
             var contours = new Dictionary<string, List<Vector2>>();
             double phase = rng.Value() * Math.PI * 2;
+            float AngularWave(double value) => (float)(2 / Math.PI * Math.Asin(Math.Sin(value)));
             Vector2 Warp(Vector2 p) => p + new Vector2(
-                (float)(Math.Sin(p.y * 9 + phase) + .22 * Math.Sin(p.y * 23 - phase)),
-                (float)(Math.Sin(p.x * 8 + phase) + .22 * Math.Sin(p.x * 21 - phase))) * (.030f * s.BorderIrregularity);
+                AngularWave(p.y * 11 + phase) + .35f * AngularWave(p.y * 23 - phase),
+                AngularWave(p.x * 10 + phase) + .35f * AngularWave(p.x * 21 - phase)) * (.026f * s.BorderIrregularity);
             foreach (var r in regions)
             {
                 var p = r.PolygonVertices; var shaped = new List<Vector2>();
@@ -120,9 +121,18 @@ namespace Game.Campaign
                     if (!contours.TryGetValue(key, out var edge))
                     {
                         edge = new List<Vector2>();
-                        int segments = Math.Max(1, Math.Min(6, (int)Math.Ceiling((b - a).magnitude / .05f)));
+                        float length = (b - a).magnitude;
+                        var normal = new Vector2(-(b - a).y / length, (b - a).x / length);
+                        float amplitude = Math.Min(.012f, length * .10f) * s.BorderIrregularity;
+                        int segments = Math.Max(1, Math.Min(6, (int)Math.Ceiling(length / .05f)));
                         for (int step = 0; step <= segments; step++)
-                            edge.Add(Warp(step == 0 ? a : step == segments ? b : a + (b - a) * (step / (float)segments)));
+                        {
+                            if (step == 0 || step == segments) { edge.Add(Warp(step == 0 ? a : b)); continue; }
+                            // Unequal segment lengths and independent offsets avoid a regular zigzag.
+                            float t = (step + (float)(rng.Value() * .44 - .22) * s.BorderIrregularity) / segments;
+                            float offset = (float)((rng.Value() * 2 - 1) * Math.Sin(t * Math.PI)) * amplitude;
+                            edge.Add(Warp(a + (b - a) * t) + normal * offset);
+                        }
                         contours[key] = edge;
                     }
                     bool forward = (edge[0] - Warp(a)).sqrMagnitude < 1e-10f;
