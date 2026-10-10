@@ -12,14 +12,31 @@ namespace Game.Campaign
     {
         private readonly Dictionary<int, CampaignRegionGraphic> graphics = new Dictionary<int, CampaignRegionGraphic>();
         private CampaignArrowGraphic arrow;
-        public static Vector2 Project(Vector2 p) => new Vector2(p.x * (.87f + .10f * p.y), p.y * .73f + p.x * .035f);
+        private Material surfaceMaterial;
+        private RectTransform selectedLabelRoot;
+        private TMPro.TMP_Text selectedLabel;
+        public Texture2D SurfaceTexture { get; private set; }
+        // One projection for mesh, input, labels and operation arrows. Save polygons stay in map space.
+        public static Vector2 Project(Vector2 p) => new Vector2(p.x * .98f, p.y * .97f + p.x * .006f);
+        public static Vector2 ToPixel(Rect rect, Vector2 projected) => rect.center + new Vector2(projected.x * rect.width * .47f, projected.y * rect.height * .48f);
+        public static Vector2 FromPixel(Rect rect, Vector2 pixel) => new Vector2((pixel.x - rect.center.x) / (rect.width * .47f), (pixel.y - rect.center.y) / (rect.height * .48f));
+        public static Vector2 SurfaceUV(Vector2 point) => new Vector2(point.x * .48f + .5f, point.y * .48f + .5f);
         public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered)
         {
+            foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
+            graphics.Clear();
+            SurfaceTexture = Resources.Load<Texture2D>("Campaign/WastelandSurface");
+            var shader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            if (SurfaceTexture == null || shader == null) throw new InvalidOperationException("Campaign surface assets are missing.");
+            if (surfaceMaterial != null) Destroy(surfaceMaterial);
+            surfaceMaterial = new Material(shader) { name = "CampaignSurface (runtime)" };
+            var canvas = GetComponentInParent<Canvas>();
+            if (canvas != null) canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
             foreach (var region in regions)
             {
                 var shadow = new GameObject("PlanetDepth_" + region.RegionId, typeof(RectTransform), typeof(CanvasRenderer)); shadow.transform.SetParent(transform, false);
                 var rect = (RectTransform)shadow.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
-                rect.offsetMin = rect.offsetMax = new Vector2(0, -12);
+                rect.offsetMin = rect.offsetMax = new Vector2(0, -5);
                 var graphic = shadow.AddComponent<CampaignRegionGraphic>(); graphic.Configure(region, null, null, true);
                 graphic.Refresh(new Color(.023f, .027f, .027f), false, false, false, false, false, false);
             }
@@ -28,11 +45,20 @@ namespace Game.Campaign
                 var go = new GameObject("Region_" + region.RegionId + "_" + region.Name, typeof(RectTransform), typeof(CanvasRenderer)); go.transform.SetParent(transform, false);
                 var rect = (RectTransform)go.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one; rect.offsetMin = rect.offsetMax = Vector2.zero;
                 var graphic = go.AddComponent<CampaignRegionGraphic>();
+                graphic.SetSurface(SurfaceTexture, surfaceMaterial);
                 graphic.Configure(region, () => clicked(region.RegionId), active => hovered(active ? (int?)region.RegionId : null)); graphics.Add(region.RegionId, graphic);
             }
             var ar = new GameObject("AttackDirection", typeof(RectTransform), typeof(CanvasRenderer)); ar.transform.SetParent(transform, false);
             var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
             arrow = ar.AddComponent<CampaignArrowGraphic>(); arrow.raycastTarget = false;
+            var labelRect = Game.UI.CollectionUIElements.Rect(transform, "SelectedRegionName");
+            var text = Game.UI.CollectionUIElements.Label(labelRect, "", 0, 0, 230, 36, 22);
+            text.alignment = TMPro.TextAlignmentOptions.Center;
+            text.color = new Color(.13f, .105f, .075f);
+            text.fontStyle = TMPro.FontStyles.Bold;
+            text.enableAutoSizing = true; text.fontSizeMin = 13; text.fontSizeMax = 22;
+            text.textWrappingMode = TMPro.TextWrappingModes.NoWrap; text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
+            selectedLabelRoot = labelRect; selectedLabel = text;
         }
         public void Refresh(CampaignState state, int? selected, int? hovered, bool inputEnabled)
         {
@@ -45,10 +71,25 @@ namespace Game.Campaign
                     op?.TargetRegionId == r.RegionId, op?.TargetRegionId == r.RegionId && op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory, inputEnabled);
             }
             var operation = state.PendingOperation;
-            arrow?.Set(operation == null ? (Vector2?)null : Project(CampaignGeometry.Center(state.Regions.Find(r => r.RegionId == operation.SourceRegionId))),
-                operation == null ? (Vector2?)null : Project(CampaignGeometry.Center(state.Regions.Find(r => r.RegionId == operation.TargetRegionId))));
+            arrow?.Set(operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.InteriorCenter(state.Regions.Find(r => r.RegionId == operation.SourceRegionId))),
+                operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.InteriorCenter(state.Regions.Find(r => r.RegionId == operation.TargetRegionId))));
+            if (selectedLabelRoot == null) return;
+            var labelRegion = selected.HasValue ? state.Regions.Find(r => r.RegionId == selected.Value) : null;
+            selectedLabelRoot.gameObject.SetActive(labelRegion != null);
+            if (labelRegion != null)
+            {
+                var rect = (RectTransform)transform;
+                var position = ToPixel(rect.rect, Project(CampaignRegionGraphic.InteriorCenter(labelRegion)));
+                selectedLabelRoot.anchorMin = selectedLabelRoot.anchorMax = new Vector2(.5f, .5f);
+                selectedLabelRoot.pivot = new Vector2(.5f, .5f);
+                selectedLabelRoot.sizeDelta = new Vector2(230, 36);
+                selectedLabelRoot.anchoredPosition = position - rect.rect.center + new Vector2(0, -22);
+                selectedLabel.text = labelRegion.Name.ToUpperInvariant();
+            }
         }
         public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.37f, .47f, .53f)
             : faction == Game.Players.Faction.Ashen ? new Color(.64f, .37f, .24f) : new Color(.39f, .51f, .34f);
+        private void OnDestroy() { if (surfaceMaterial != null) Destroy(surfaceMaterial); }
     }
 }
+
