@@ -108,7 +108,7 @@ flowchart TD
 | `Assets/Scripts/Turns/GameTurnController.cs` | Типизированный окончательный исход участника и блокировка overlay |
 | `Assets/Editor/CollectionContentValidation.cs` | Build gate: ключи, метаданные, ссылки, валидность и совместимость starter |
 | `Assets/Editor/DeckCalibrationReport.cs` | Offline Unity-отчёт через канонические модели и 18 strategy fixtures |
-| `Assets/Editor/DeckCollectionTests.cs` | 29 новых EditMode-тестов профиля, правил, наград, снимков и UI preview |
+| `Assets/Editor/DeckCollectionTests.cs` | 33 новых EditMode-тестов профиля, правил, наград, снимков и UI preview |
 | `Assets/Editor/ResearchProductionAttemptTransactionTests.cs` | Регрессия оплаты, прямого обхода и расхода квоты человека |
 | `Assets/Cards/IronConcord/CardCatalog_IronConcord.asset` | Стабильные ключи и метаданные Concord |
 | `Assets/Cards/TheAshen/CardCatalog_TheAshen.asset` | Стабильные ключи и метаданные Ashen |
@@ -137,7 +137,7 @@ flowchart TD
 | `verify_types.js` на тех же файлах | PASS |
 | `git diff --check` | PASS |
 | Python syntax для migration/audit | PASS |
-| 29 новых collection tests + 1 regression в существующем transaction fixture | ДОБАВЛЕНЫ, НЕ ЗАПУСКАЛИСЬ |
+| 33 новых collection tests + 1 regression в существующем transaction fixture | ДОБАВЛЕНЫ, НЕ ЗАПУСКАЛИСЬ |
 | Baseline вспомогательного C# compile_check | НЕДОСТУПЕН: dotnet отсутствует; сообщение скрипта «0 errors» не доказательство компиляции |
 | Unity compile / EditMode / PlayMode / UI | НЕ ЗАПУСКАЛИСЬ |
 
@@ -152,3 +152,10 @@ flowchart TD
 На 1024×768 и поддерживаемых других соотношениях сторон проверить сетку, отсутствие перекрытия колонок, card text/art, hover/click, scrolling/dropdown, Back/ESC/Save-Discard-Cancel, фокус, возврат к Game Setup, Missing Script и ссылки. Затем пройти без debug обходов: первый запуск → коллекция → новая колода → сохранение → выбор → матч → добор/развёртывание → Research/Production (success/fail/cancel/exhaustion) → победа/поражение → награда → перезапуск → коллекция → следующая колода/матч. Отдельно проверить backup recovery, write failure, interrupted victory selection, human elimination в multiplayer, AI vs AI и отсутствие награды при выходе.
 
 Commit/PR публикуются отдельной веткой; ссылки и ограничения находятся в описании draft PR. Merge не выполняется до Unity-приёмки.
+
+
+## Повторный аудит снизу вверх
+
+Повторно проверены данные → DeckRules → профиль → runtime снимки → R/P оплата и квоты → награды → UI → AI/resource/cache границы. Найдены и исправлены четыре пропуска: (1) ошибки/backup notice загрузки профиля теперь показаны сразу в главном меню; (2) ожидающие награды корректно завершаются после удаления карты/изменения лимита, исходные ключи предложений сохраняются без случайной подмены; (3) некорректные duplicate/claimed reward identities и дубли выбора фракции отвергаются как повреждённый формат; (4) изменение количества в длинной колоде больше не сбрасывает прокрутку всех колонок.
+
+Добавлены четыре регрессии, всего 33 новых Collection tests + 1 transaction test. Они не выполнялись без Unity. Read-only content audit и оба YAML verifier повторно прошли. Итоги и оставшиеся проверки: [re-audit.md](re-audit.md).

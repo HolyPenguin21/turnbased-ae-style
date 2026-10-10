@@ -47,8 +47,19 @@ namespace Game.Progression
                 || d.mainCards.Concat(d.equipment).Concat(d.mutators).Any(e => e == null || string.IsNullOrWhiteSpace(e.cardKey)))
                 || p.savedDecks.Select(d => d.deckId).Distinct().Count() != p.savedDecks.Count)
                 throw new InvalidDataException("Invalid deck identities.");
-            if (p.selectedDeckByFaction.Any(s => s == null)) throw new InvalidDataException("Invalid deck selections.");
-            if (p.pendingRewards.Any(r => r == null || string.IsNullOrWhiteSpace(r.matchId) || r.offeredKeys == null || r.acquiredKeys == null)
+            if (p.selectedDeckByFaction.Any(s => s == null || string.IsNullOrWhiteSpace(s.deckId))
+                || p.selectedDeckByFaction.Select(s => s.faction).Distinct().Count() != p.selectedDeckByFaction.Count)
+                throw new InvalidDataException("Invalid deck selections.");
+            if (p.claimedMatchIds.Any(string.IsNullOrWhiteSpace) || p.claimedMatchIds.Distinct().Count() != p.claimedMatchIds.Count)
+                throw new InvalidDataException("Invalid claimed match identities.");
+            if (p.pendingRewards.Any(r => r == null || string.IsNullOrWhiteSpace(r.matchId) || r.offeredKeys == null || r.acquiredKeys == null
+                || r.offeredKeys.Any(string.IsNullOrWhiteSpace) || r.acquiredKeys.Any(string.IsNullOrWhiteSpace)
+                || r.offeredKeys.Distinct().Count() != r.offeredKeys.Count || r.acquiredKeys.Distinct().Count() != r.acquiredKeys.Count
+                || r.acquiredKeys.Any(k => !r.offeredKeys.Contains(k))
+                || (r.outcome != MatchOutcome.Victory && r.outcome != MatchOutcome.Defeat)
+                || r.offeredKeys.Count > (r.outcome == MatchOutcome.Victory ? 5 : 1)
+                || r.acquiredKeys.Count > (r.outcome == MatchOutcome.Victory ? 2 : 1)
+                || r.claimed != p.claimedMatchIds.Contains(r.matchId) || (!r.claimed && r.acquiredKeys.Count > 0))
                 || p.pendingRewards.Select(r => r.matchId).Distinct().Count() != p.pendingRewards.Count)
                 throw new InvalidDataException("Invalid pending rewards.");
         }

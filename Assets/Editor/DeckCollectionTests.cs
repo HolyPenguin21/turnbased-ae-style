@@ -140,6 +140,50 @@ namespace Game.EditorTools
             Assert.That(rewards.Claim("three", pending.offeredKeys.Take(2), out _), Is.True);
             Assert.That(service.Snapshot.ownedCards.Sum(e => e.count), Is.EqualTo(2));
         }
+        [Test] public void PendingRewardSurvivesRemovedOffersWithoutRandomSubstitution()
+        {
+            var other = new CardDefinition { authoredKey = "other", cardType = CardType.Unit, deckCopyLimit = 4 };
+            catalog.cards.Add(other);
+            var service = new CollectionService(rules, new CollectionProfileStore(directory), new CollectionProfile());
+            var rewards = new RewardService(service);
+            rewards.Record(new ParticipantResult("updated", new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord }, MatchOutcome.Victory), out _);
+            catalog.cards.Remove(card);
+            var pending = service.Snapshot.pendingRewards.Single();
+            Assert.That(rewards.AvailableOffers(pending), Is.EqualTo(new[] { other.authoredKey }));
+            Assert.That(pending.offeredKeys, Does.Contain(card.authoredKey), "Original offer identity must remain in the receipt.");
+            Assert.That(rewards.Claim("updated", new[] { other.authoredKey }, out _), Is.True);
+            Assert.That(service.Owned(other.authoredKey), Is.EqualTo(1));
+            Assert.That(service.Owned(card.authoredKey), Is.Zero);
+        }
+        [Test] public void PendingRewardCanFinishWhenUpdatedLimitsLeaveNoEligibleOffers()
+        {
+            var service = new CollectionService(rules, new CollectionProfileStore(directory), new CollectionProfile());
+            var rewards = new RewardService(service);
+            rewards.Record(new ParticipantResult("empty-update", new PlayerSetupData { IsHuman = true, Faction = Faction.IronConcord }, MatchOutcome.Victory), out _);
+            card.deckCopyLimit = 0;
+            Assert.That(rewards.AvailableOffers(service.Snapshot.pendingRewards.Single()), Is.Empty);
+            Assert.That(rewards.Claim("empty-update", Array.Empty<string>(), out _), Is.True);
+            Assert.That(rewards.Dismiss("empty-update", out _), Is.True);
+            Assert.That(service.Owned(card.authoredKey), Is.Zero);
+            Assert.That(service.Snapshot.claimedMatchIds, Does.Contain("empty-update"));
+        }
+        [Test] public void DuplicateRewardIdentitiesAreRejectedAsCorruptShape()
+        {
+            var p = new CollectionProfile();
+            p.pendingRewards.Add(new PendingReward { matchId = "duplicate", outcome = MatchOutcome.Victory,
+                offeredKeys = new List<string> { card.authoredKey, card.authoredKey } });
+            Assert.Throws<InvalidDataException>(() => CollectionProfileStore.ValidateShape(p));
+        }
+        [Test] public void FutureSchemaDoesNotFallBackOrOverwriteTheCurrentFile()
+        {
+            var store = new CollectionProfileStore(directory); var p = new CollectionProfile();
+            store.Save(p); store.Save(p); p.schemaVersion = 2;
+            string path = Path.Combine(directory, "collection-v1.json");
+            string future = JsonUtility.ToJson(p); File.WriteAllText(path, future);
+            Assert.Throws<NotSupportedException>(() => store.Load(out _));
+            Assert.That(File.ReadAllText(path), Is.EqualTo(future));
+            Assert.That(File.Exists(path + ".bak"), Is.True);
+        }
         [Test] public void AuthoredCatalogsHaveStableUniqueKeysAndCompatibleStarters() { CollectionContentValidation.Validate(); }
     }
 }

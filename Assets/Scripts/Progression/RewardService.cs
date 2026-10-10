@@ -18,7 +18,7 @@ namespace Game.Progression
             var current = collection.Snapshot;
             if (current.claimedMatchIds.Contains(result.MatchId) || current.pendingRewards.Any(r => r.matchId == result.MatchId)) return true;
             var keys = collection.Rules.Cards(result.Faction)
-                .Where(c => c.deckCopyLimit > current.Owned(c.authoredKey)).Select(c => c.authoredKey).Distinct().ToList();
+                .Where(c => CanGrant(c, result.Faction, current)).Select(c => c.authoredKey).Distinct().ToList();
             // Uniform sampling without replacement; no weighting by count or rarity.
             for (int i = keys.Count - 1; i > 0; i--) { int j = random.Next(i + 1); var k = keys[i]; keys[i] = keys[j]; keys[j] = k; }
             var pending = new PendingReward { matchId = result.MatchId, faction = result.Faction, outcome = result.Outcome,
@@ -30,6 +30,13 @@ namespace Game.Progression
                 if (result.Outcome == MatchOutcome.Defeat) Apply(p, pending, pending.offeredKeys);
             }, out error);
         }
+        // Keep the original persisted offer identities; updates never substitute random cards.
+        public List<string> AvailableOffers(PendingReward reward)
+            => AvailableOffers(reward, collection.Snapshot);
+        private List<string> AvailableOffers(PendingReward reward, CollectionProfile profile)
+            => reward.offeredKeys.Where(key => CanGrant(collection.Rules.Resolve(key), reward.faction, profile)).ToList();
+        private bool CanGrant(CardDefinition card, Game.Players.Faction faction, CollectionProfile profile)
+            => card != null && collection.Rules.Permitted(card, faction) && profile.Owned(card.authoredKey) < card.deckCopyLimit;
         public bool Claim(string matchId, IEnumerable<string> selected, out string error)
         {
             var keys = selected?.ToList() ?? new List<string>();
@@ -38,8 +45,9 @@ namespace Game.Progression
                 var reward = p.pendingRewards.Find(r => r.matchId == matchId);
                 if (reward == null) throw new InvalidOperationException("Reward is not pending.");
                 if (reward.claimed || p.claimedMatchIds.Contains(matchId)) return;
-                int required = Math.Min(2, reward.offeredKeys.Count);
-                if (keys.Count != required || keys.Distinct().Count() != keys.Count || keys.Any(k => !reward.offeredKeys.Contains(k)))
+                var available = AvailableOffers(reward, p);
+                int required = Math.Min(2, available.Count);
+                if (keys.Count != required || keys.Distinct().Count() != keys.Count || keys.Any(k => !available.Contains(k)))
                     throw new InvalidOperationException("Select the required distinct offered cards.");
                 Apply(p, reward, keys);
             }, out error);
@@ -50,7 +58,7 @@ namespace Game.Progression
             foreach (string key in granted)
             {
                 var card = collection.Rules.Resolve(key);
-                if (card == null || !collection.Rules.Permitted(card, reward.faction) || p.Owned(key) >= card.deckCopyLimit)
+                if (!CanGrant(card, reward.faction, p))
                     throw new InvalidOperationException("Reward is no longer eligible: " + key);
             }
             foreach (string key in granted)

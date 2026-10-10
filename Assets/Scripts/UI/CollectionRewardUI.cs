@@ -22,7 +22,12 @@ namespace Game.UI
         public void Configure(GameTurnController controller, GameConfig gameConfig)
         { turns = controller; config = gameConfig; turns.ParticipantFinished += OnResult; returnToMenu = true; }
         public void Resume(GameConfig gameConfig)
-        { config = gameConfig; if (ProgressionContext.Initialize(config) && ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) Draw(); }
+        {
+            config = gameConfig;
+            if (!ProgressionContext.Initialize(config)) { CollectionScreensUI.ShowMessage(transform, ProgressionContext.Error); return; }
+            if (ProgressionContext.Collection.Snapshot.pendingRewards.Count > 0) Draw();
+            if (!string.IsNullOrWhiteSpace(ProgressionContext.Notice)) CollectionScreensUI.ShowMessage(transform, ProgressionContext.Notice);
+        }
         private void OnResult(ParticipantResult result)
         {
             if (!ProgressionContext.Initialize(config)) { error = ProgressionContext.Error; retryResult = result; }
@@ -41,8 +46,11 @@ namespace Game.UI
             }
             var reward = ProgressionContext.Collection.Snapshot.pendingRewards.FirstOrDefault();
             if (reward == null) { Close(); return; }
-            var keys = reward.claimed ? reward.acquiredKeys : reward.offeredKeys;
-            int required = Mathf.Min(2, reward.offeredKeys.Count);
+            var keys = reward.claimed ? reward.acquiredKeys : ProgressionContext.Rewards.AvailableOffers(reward);
+            if (!reward.claimed) selection.RemoveWhere(key => !keys.Contains(key));
+            int required = Mathf.Min(2, keys.Count);
+            string notice = !reward.claimed && keys.Count < reward.offeredKeys.Count
+                ? $"{reward.offeredKeys.Count - keys.Count} offers unavailable after a content/limit update. Original identities retained; no replacements." : "";
             string title = reward.outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
             CollectionUIElements.Label(root, title, 200, 30, 624, 48, 30);
             CollectionUIElements.Label(root, keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "Reward acquired" : $"Choose {required} rewards — selected {selection.Count}/{required}", 200, 84, 624, 42, 22);
@@ -58,7 +66,7 @@ namespace Game.UI
                 { if (reward.claimed) return; if (!selection.Remove(key) && selection.Count < required) selection.Add(key); Draw(); });
                 if (selection.Contains(key)) cell.GetComponent<Image>().color = new Color(.28f, .4f, .24f);
             }
-            CollectionUIElements.Label(root, error ?? "", 140, 596, 744, 45);
+            CollectionUIElements.Label(root, string.IsNullOrEmpty(error) ? notice : error, 140, 596, 744, 45);
             if (!reward.claimed)
             {
                 var button = CollectionUIElements.Button(root, "Confirm", 412, 656, 200, 40, () =>

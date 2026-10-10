@@ -53,9 +53,12 @@ namespace Game.UI
         }
         private SavedDeck NewDeck() => new SavedDeck { deckId = Guid.NewGuid().ToString("N"), name = "New Deck", faction = faction };
         private void OnCollectionChanged() { if (root != null) Draw(); }
-        private void Draw()
+        private void Draw(bool preserveScroll = true)
         {
             if (root == null) return;
+            float navigation = preserveScroll && left != null ? left.GetComponentInParent<ScrollRect>().verticalNormalizedPosition : 1f;
+            float cards = preserveScroll && grid != null ? grid.GetComponentInParent<ScrollRect>().verticalNormalizedPosition : 1f;
+            float details = preserveScroll && right != null ? right.GetComponentInParent<ScrollRect>().verticalNormalizedPosition : 1f;
             CollectionUIElements.Clear(root);
             CollectionUIElements.Label(root, editing ? "DECK BUILDER" : "COLLECTION", 24, 12, 500, 40, 28);
             CollectionUIElements.Button(root, "Back", 890, 16, 110, 34, () => Guard(Close));
@@ -63,14 +66,14 @@ namespace Game.UI
             grid = CollectionUIElements.Scroll(root, "Cards", 232, 164, 494, 530);
             right = CollectionUIElements.Scroll(root, "Details", 738, 66, 270, 628);
             var f = Dropdown(left, DeckRules.PlayableFactions.Select(LabelFaction).ToList(), Array.IndexOf(DeckRules.PlayableFactions, faction), 0, 0, 186, value => Guard(() =>
-            { faction = DeckRules.PlayableFactions[value]; selected = null; draft = editing ? collection.DefaultDeck(faction) ?? NewDeck() : null; Draw(); }));
+            { faction = DeckRules.PlayableFactions[value]; selected = null; draft = editing ? collection.DefaultDeck(faction) ?? NewDeck() : null; Draw(false); }));
             float y = 45;
             if (editing)
             {
                 foreach (var deck in collection.Snapshot.savedDecks.Where(d => d.faction == faction))
                 {
                     var copy = deck;
-                    CollectionUIElements.Button(left, deck.name, 0, y, 186, 32, () => Guard(() => { draft = copy; dirty = false; Draw(); })); y += 37;
+                    CollectionUIElements.Button(left, deck.name, 0, y, 186, 32, () => Guard(() => { draft = copy; dirty = false; Draw(false); })); y += 37;
                 }
                 CollectionUIElements.Button(left, "New", 0, y, 90, 30, () => Guard(() => { draft = NewDeck(); dirty = true; Draw(); }));
                 CollectionUIElements.Button(left, "Starter", 96, y, 90, 30, () => Guard(() => { draft = collection.Starter(faction); dirty = true; Draw(); })); y += 38;
@@ -80,13 +83,17 @@ namespace Game.UI
                 Input(left, draft.name, 0, y, 186, value => { draft.name = value; dirty = true; }); y += 44;
             }
             string[] categories = { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" };
-            for (int i = 0; i < categories.Length; i++) { int index = i; CollectionUIElements.Button(left, categories[i], 0, y, 186, 32, () => { category = index; Draw(); }); y += 38; }
+            for (int i = 0; i < categories.Length; i++) { int index = i; CollectionUIElements.Button(left, categories[i], 0, y, 186, 32, () => { category = index; Draw(false); }); y += 38; }
             left.sizeDelta = new Vector2(left.sizeDelta.x, y);
             Input(root, search, 232, 70, 260, value => { search = value; RefreshCards(); });
             Dropdown(root, new List<string> { "Все", "Мои карты", "Не получены" }, ownership, 500, 70, 226, value => { ownership = value; RefreshCards(); });
             Dropdown(root, new List<string> { "Name", "Points", "Type", "Owned" }, sort, 232, 116, 494, value => { sort = value; RefreshCards(); });
             CollectionUIElements.Label(root, status ?? "", 232, 704, 770, 52, 15);
             RefreshCards(); RefreshRight();
+            Canvas.ForceUpdateCanvases();
+            left.GetComponentInParent<ScrollRect>().verticalNormalizedPosition = navigation;
+            grid.GetComponentInParent<ScrollRect>().verticalNormalizedPosition = cards;
+            right.GetComponentInParent<ScrollRect>().verticalNormalizedPosition = details;
         }
         private void RefreshCards()
         {
@@ -136,7 +143,7 @@ namespace Game.UI
                 var label = CollectionUIElements.Label(right, text, 0, 260, 244, 1, 16);
                 float height = Mathf.Max(300, label.GetPreferredValues(text, 244, 10000).y);
                 ((RectTransform)label.transform).sizeDelta = new Vector2(244, height);
-                CollectionUIElements.Button(right, "My Decks", 0, 270 + height, 244, 34, () => { editing = true; ownership = 1; draft = collection.DefaultDeck(faction) ?? NewDeck(); Draw(); });
+                CollectionUIElements.Button(right, "My Decks", 0, 270 + height, 244, 34, () => { editing = true; ownership = 1; draft = collection.DefaultDeck(faction) ?? NewDeck(); Draw(false); });
                 right.sizeDelta = new Vector2(244, 315 + height); return;
             }
             var validation = collection.Rules.Validate(draft, collection.Owned);
