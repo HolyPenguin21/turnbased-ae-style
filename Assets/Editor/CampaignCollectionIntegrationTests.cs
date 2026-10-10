@@ -86,6 +86,35 @@ public sealed class CampaignCollectionIntegrationTests
         campaign.AcknowledgeReward(op.MatchId); campaign.ApplyResult();
         Assert.AreEqual(1, campaign.Snapshot.BattleHistory.Count); Assert.AreEqual(before + acquired, collection.Snapshot.ownedCards.Sum(c => c.count));
     }
+    [Test] public void AcknowledgedRewardRecoveryBridgeDoesNotGrantAgain()
+    {
+        var state = new CampaignMapGenerator().Generate(851, Faction.Ashen); state.CurrentTurnIndex = state.TurnOrder.IndexOf(state.HumanFaction);
+        var store = new CampaignStore(directory); var campaign = new CampaignController(state, store);
+        var attack = CampaignRules.LegalAttacks(state).First(); campaign.BeginAttack(attack.Source, attack.Target, true);
+        campaign.RegisterMatch(collection.DefaultDeck(state.HumanFaction).deckId, "Human", "AI"); var op = campaign.Snapshot.PendingOperation;
+        campaign.RecordManualResult(state.CampaignId, op.OperationId, op.MatchId, CampaignOutcome.AttackerVictory);
+        var interrupted = campaign.Snapshot; interrupted.PendingOperation.RewardAcknowledged = true;
+        store.Save(interrupted); campaign = new CampaignController(store.Load(out _), store);
+        var previous = CampaignMatchBridge.Controller;
+        var previousCollection = ProgressionContext.Collection; var previousRewards = ProgressionContext.Rewards;
+        string collectionBefore = UnityEngine.JsonUtility.ToJson(collection.Snapshot);
+        try
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, campaign);
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, collection);
+            typeof(ProgressionContext).GetProperty("Rewards").SetValue(null, new RewardService(collection));
+            Assert.IsTrue(CampaignMatchBridge.RecoverReward(null, out string error), error);
+            Assert.IsTrue(CampaignMatchBridge.RecoverReward(null, out error), error);
+            Assert.AreEqual(1, campaign.Snapshot.BattleHistory.Count); Assert.AreEqual(CampaignPhase.ShowingResult, campaign.Phase);
+            Assert.AreEqual(collectionBefore, UnityEngine.JsonUtility.ToJson(collection.Snapshot));
+        }
+        finally
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, previous);
+            typeof(ProgressionContext).GetProperty("Collection").SetValue(null, previousCollection);
+            typeof(ProgressionContext).GetProperty("Rewards").SetValue(null, previousRewards);
+        }
+    }
     [Test] public void ActualUnitStatImprovementsNeverReduceDeckScoreOrAttackChance()
     {
         var resolver = new CampaignBattleResolver();

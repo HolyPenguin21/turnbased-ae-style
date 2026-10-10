@@ -78,6 +78,7 @@ namespace Game.Campaign
                     || double.IsNaN(op.AttackerScore) || double.IsInfinity(op.AttackerScore) || double.IsNaN(op.DefenderScore) || double.IsInfinity(op.DefenderScore)
                     || string.IsNullOrWhiteSpace(op.AttackerDeckName) || string.IsNullOrWhiteSpace(op.DefenderDeckName)))
                 || op.OwnershipApplied != s.BattleHistory.Any(h => h.OperationId == op.OperationId)
+                || (op.Manual && s.BattleHistory.Any(h => h.MatchId == op.MatchId && h.OperationId != op.OperationId))
                 || (s.Phase == CampaignPhase.ShowingResult && (string.IsNullOrWhiteSpace(s.PendingNotification) || !op.OwnershipApplied || (op.Manual && !op.RewardAcknowledged)))
                 || ((s.Phase == CampaignPhase.PreparingBattle || s.Phase == CampaignPhase.BattleInProgress) && op.ResultRecorded)
                 || (s.Phase == CampaignPhase.BattleResolved && !op.ResultRecorded)) throw new InvalidDataException("Invalid pending operation.");

@@ -268,6 +268,71 @@ public sealed class CampaignSystemTests
         var s = Planet(); string file = Path.Combine(directory, "file"); File.WriteAllText(file, "x"); var c = new CampaignController(s, new CampaignStore(file));
         Assert.Throws<IOException>(() => c.EndTurn()); Assert.AreEqual(s.CurrentTurnIndex, c.Snapshot.CurrentTurnIndex); Assert.AreEqual(s.RoundNumber, c.Snapshot.RoundNumber);
     }
+    [TestCase(null, false)] [TestCase("", false)] [TestCase(null, true)] [TestCase("", true)]
+    public void MissingMatchIdDoesNotRouteToCampaignOrAcknowledgeAnything(string matchId, bool aiPending)
+    {
+        var priorController = CampaignMatchBridge.Controller; var priorContext = Game.Core.GameSession.CampaignContext;
+        try
+        {
+            CampaignController c = null;
+            if (aiPending)
+            {
+                var s = Planet(); var pair = s.Regions.SelectMany(r => r.NeighborIds.Select(id => (Source: r, Target: s.Regions.Find(x => x.RegionId == id))))
+                    .First(p => p.Source.OwnerFaction != s.HumanFaction && p.Target.OwnerFaction != s.HumanFaction && p.Source.OwnerFaction != p.Target.OwnerFaction);
+                s.CurrentTurnIndex = s.TurnOrder.IndexOf(pair.Source.OwnerFaction); c = Controller(s);
+                c.BeginAttack(pair.Source.RegionId, pair.Target.RegionId, false);
+            }
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, c);
+            typeof(Game.Core.GameSession).GetProperty("CampaignContext").SetValue(null, null);
+            string before = c == null ? null : JsonUtility.ToJson(c.Snapshot);
+            Assert.AreEqual(Game.Core.SceneNames.MainMenu, CampaignMatchBridge.ReturnScene(matchId));
+            Assert.IsTrue(CampaignMatchBridge.RewardDismissed(matchId, out string error), error);
+            Assert.AreEqual(before, c == null ? null : JsonUtility.ToJson(c.Snapshot));
+        }
+        finally
+        {
+            typeof(CampaignMatchBridge).GetProperty("Controller").SetValue(null, priorController);
+            typeof(Game.Core.GameSession).GetProperty("CampaignContext").SetValue(null, priorContext);
+        }
+    }
+    [TestCase("manual")] [TestCase("AI")] [TestCase("test")]
+    public void RewardAcknowledgedBeforeCaptureRecoversOnce(string mode)
+    {
+        var s = HumanTurn(Planet()); var pair = CampaignRules.LegalAttacks(s).First();
+        if (mode == "AI")
+        {
+            var ai = s.Regions.SelectMany(r => r.NeighborIds.Select(id => (Source: r, Target: s.Regions.Find(x => x.RegionId == id))))
+                .First(p => p.Source.OwnerFaction != s.HumanFaction && p.Target.OwnerFaction != s.HumanFaction && p.Source.OwnerFaction != p.Target.OwnerFaction);
+            s.CurrentTurnIndex = s.TurnOrder.IndexOf(ai.Source.OwnerFaction); pair = (ai.Source.RegionId, ai.Target.RegionId);
+        }
+        var store = new CampaignStore(directory); var c = new CampaignController(s, store);
+        c.BeginAttack(pair.Source, pair.Target, mode != "AI");
+        if (mode == "manual")
+        {
+            c.RegisterMatch("deck", "Human", "AI"); var p = c.Snapshot.PendingOperation;
+            c.RecordManualResult(s.CampaignId, p.OperationId, p.MatchId, CampaignOutcome.AttackerVictory);
+        }
+        var interrupted = c.Snapshot; var op = interrupted.PendingOperation;
+        op.RewardAcknowledged = true; op.ResultRecorded = true; op.Outcome = CampaignOutcome.AttackerVictory;
+        op.AttackerDeckName = "Attacker"; op.DefenderDeckName = "Defender";
+        if (mode == "test") { op.TestAutoResolve = true; op.SelectedHumanDeckId = "deck"; }
+        interrupted.Phase = CampaignPhase.BattleResolved;
+        store.Save(interrupted); c = new CampaignController(store.Load(out _), store);
+        c.ApplyResult(); Assert.AreEqual(CampaignPhase.ShowingResult, c.Phase); Assert.AreEqual(1, c.Snapshot.BattleHistory.Count);
+        string before = JsonUtility.ToJson(c.Snapshot); c.ApplyResult(); Assert.AreEqual(before, JsonUtility.ToJson(c.Snapshot));
+        Assert.AreEqual(op.AttackerFaction, store.Load(out _).Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction);
+    }
+    [Test] public void PendingManualMatchCannotReuseAnEarlierCompletedMatchId()
+    {
+        var s = HumanTurn(Planet()); var c = Controller(s); var pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true); c.RegisterMatch("deck", "Human", "AI"); var first = c.Snapshot.PendingOperation;
+        c.RecordManualResult(s.CampaignId, first.OperationId, first.MatchId, CampaignOutcome.DefenderVictory);
+        c.AcknowledgeReward(first.MatchId); c.Continue(first.OperationId);
+        s = HumanTurn(c.Snapshot); c = Controller(s); pair = CampaignRules.LegalAttacks(s).First();
+        c.BeginAttack(pair.Source, pair.Target, true); var invalid = c.Snapshot;
+        invalid.PendingOperation.MatchId = first.MatchId;
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(invalid));
+    }
     [Test] public void B01_B03_B04_B08_B09_ResolverIsSymmetricBoundedAndDeterministic()
     {
         var r = new CampaignBattleResolver(); var a = Deck(); var b = Deck(9);
