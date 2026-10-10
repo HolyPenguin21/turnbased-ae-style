@@ -23,8 +23,8 @@ namespace Game.UI
         private Faction faction = Faction.IronConcord;
         private SavedDeck draft;
         private bool dirty;
-        private int category, ownership, sort;
-        private string search = "", status = "";
+        private int category, ownership;
+        private string status = "";
         private CardDefinition selected;
         private Action closed;
         private GameObject hiddenPanel;
@@ -40,7 +40,7 @@ namespace Game.UI
             if (active != null && active != this) return;
             active = this; collection = ProgressionContext.Collection;
             hiddenPanel = panel; hiddenPanel?.SetActive(false); closed = onClosed;
-            ownership = 0; dirty = false;
+            ownership = 0; dirty = false; selected = null;
             status = ProgressionContext.Notice ?? "";
             draft = collection.DefaultDeck(faction) ?? NewDeck();
             canvas = CollectionUIElements.Canvas("CollectionCanvas", new Vector2(1920, 1080));
@@ -60,15 +60,13 @@ namespace Game.UI
             CollectionUIElements.Clear(root);
             CollectionUIElements.Label(root, "COLLECTION & DECKS", 24, 18, 1000, 48, 30);
             CollectionUIElements.Button(root, "Back", 1746, 20, 150, 44, () => Guard(Close), 20);
-            var filters = CollectionUIElements.Panel(root, "Filters"); CollectionUIElements.Place(filters, 24, 88, 360, 266);
+            var filters = CollectionUIElements.Panel(root, "Filters"); CollectionUIElements.Place(filters, 24, 88, 360, 166);
             Dropdown(filters, DeckRules.PlayableFactions.Select(LabelFaction).ToList(), Array.IndexOf(DeckRules.PlayableFactions, faction), 14, 10, 332, value => Guard(() =>
             { faction = DeckRules.PlayableFactions[value]; selected = null; draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; Draw(false); }));
             Dropdown(filters, new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" }, category, 14, 60, 332, value => { category = value; RefreshCards(); });
-            Dropdown(filters, new List<string> { "Все", "Мои карты", "Не получены" }, ownership, 14, 110, 332, value => { ownership = value; RefreshCards(); });
-            Dropdown(filters, new List<string> { "Name", "Points", "Type", "Owned" }, sort, 14, 160, 332, value => { sort = value; RefreshCards(); });
-            Input(filters, search, 14, 210, 332, value => { search = value; RefreshCards(); }, "Search cards");
-            details = CollectionUIElements.Scroll(root, "CardDetails", 24, 370, 360, 638);
-            grid = CollectionUIElements.Scroll(root, "Cards", 408, 88, 936, 920);
+            Dropdown(filters, new List<string> { "All Cards", "Owned Cards", "Not Owned" }, ownership, 14, 110, 332, value => { ownership = value; RefreshCards(); });
+            details = CollectionUIElements.Scroll(root, "CardDetails", 24, 270, 360, 738);
+            grid = CollectionUIElements.Scroll(root, "Cards", 408, 88, 936, 920, true);
             deckPanel = CollectionUIElements.Panel(root, "Deck"); CollectionUIElements.Place(deckPanel, 1368, 88, 528, 920);
             RefreshCards(); RefreshDetails(); RefreshDeck();
             CollectionUIElements.Label(root, status ?? "", 408, 1020, 1488, 48, 18);
@@ -81,22 +79,20 @@ namespace Game.UI
         {
             CollectionUIElements.Clear(grid);
             var cards = collection.Rules.Cards(faction).Where(c =>
-                (search.Length == 0 || c.displayName.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
-                && (ownership == 0 || (ownership == 1 ? collection.Owned(c.authoredKey) > 0 : collection.Owned(c.authoredKey) == 0))
+                (ownership == 0 || (ownership == 1 ? collection.Owned(c.authoredKey) > 0 : collection.Owned(c.authoredKey) == 0))
                 && (category == 0 || category == 1 && c.cardType == CardType.Hero || category == 2 && c.cardType == CardType.Unit
                     || category == 3 && (c.cardType == CardType.Base || c.cardType == CardType.Facility)
                     || category == 4 && DeckRules.Category(c) == DeckCategory.Equipment || category == 5 && DeckRules.Category(c) == DeckCategory.Mutator));
-            cards = sort == 1 ? cards.OrderBy(c => c.deckPointCost).ThenBy(c => c.displayName)
-                : sort == 2 ? cards.OrderBy(c => DeckRules.Category(c)).ThenBy(c => c.cardType).ThenBy(c => c.displayName)
-                : sort == 3 ? cards.OrderByDescending(c => collection.Owned(c.authoredKey)).ThenBy(c => c.displayName) : cards.OrderBy(c => c.displayName);
+            cards = cards.OrderBy(c => c.cardType == CardType.Base || c.cardType == CardType.Facility ? 0
+                : c.cardType == CardType.Hero ? 1 : c.cardType == CardType.Unit ? 2
+                : DeckRules.Category(c) == DeckCategory.Equipment ? 3 : 4).ThenBy(c => c.displayName);
             int index = 0;
             foreach (var card in cards)
             {
                 float x = index % 4 * 226, y = index / 4 * 310;
                 var cell = CollectionUIElements.Panel(grid, card.authoredKey); CollectionUIElements.Place(cell, x, y, 216, 300);
                 var view = Instantiate(config.armyUnitCardPrefab, cell); view.SetupPreview(card, config, SelectCard,
-                    () => modal == null && !CollectionMessageUI.IsShowing,
-                    SelectCard);
+                    () => modal == null && !CollectionMessageUI.IsShowing);
                 var rt = (RectTransform)view.transform;
                 float scale = Mathf.Min(208f / Mathf.Max(1, rt.rect.width), 232f / Mathf.Max(1, rt.rect.height)); rt.localScale = Vector3.one * scale;
                 rt.anchorMin = rt.anchorMax = new Vector2(.5f, 1); rt.pivot = new Vector2(.5f, 1); rt.anchoredPosition = Vector2.zero;
@@ -123,13 +119,12 @@ namespace Game.UI
         {
             CollectionUIElements.Clear(details);
             float y = 12;
-            if (selected != null)
-            {
-                var art = CollectionUIElements.Rect(details, "Art"); CollectionUIElements.Place(art, 12, y, 322, 280);
-                var image = art.gameObject.AddComponent<Image>(); image.sprite = selected.detailArt ?? selected.art;
-                image.preserveAspect = true; image.raycastTarget = false; y += 292;
-            }
-            string text = CollectionCardDetail.Describe(selected, config, selected == null ? 0 : collection.Owned(selected.authoredKey));
+            var art = CollectionUIElements.Rect(details, selected == null ? "FactionLogo" : "Art"); CollectionUIElements.Place(art, 12, y, 322, 280);
+            var image = art.gameObject.AddComponent<Image>();
+            image.sprite = selected == null ? collection.Rules.Starting.GetCatalog(faction)?.logo : selected.detailArt ?? selected.art;
+            image.enabled = image.sprite != null; image.preserveAspect = true; image.raycastTarget = false; y += 292;
+            string text = selected == null ? LabelFaction(faction) + "\nSelect a card."
+                : CollectionCardDetail.Describe(selected, config, collection.Owned(selected.authoredKey));
             var label = CollectionUIElements.Label(details, text, 12, y, 322, 1, 20);
             float height = label.GetPreferredValues(text, 322, 10000).y;
             ((RectTransform)label.transform).sizeDelta = new Vector2(322, height);
@@ -143,46 +138,65 @@ namespace Game.UI
             var names = decks.Select(d => d.deckId == draft.deckId ? draft.name + (dirty ? " *" : "") : d.name).ToList();
             Dropdown(deckPanel, names, index, 14, 10, 500, value => Guard(() =>
             { draft = CollectionProfile.CopyDeck(decks[value]); dirty = false; Draw(false); }));
-            CollectionUIElements.Button(deckPanel, "Create", 14, 64, 244, 44, () => Guard(() => { draft = NewDeck(); dirty = true; Draw(false); }), 20);
-            CollectionUIElements.Button(deckPanel, "Delete", 270, 64, 244, 44, () => Guard(() => Confirm("Delete this deck?", () =>
-            { if (collection.DeleteDeck(draft.deckId, out status)) { draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; } Draw(false); })), 20);
+            CollectionUIElements.Button(deckPanel, "Create", 14, 64, 500, 44, () => Guard(() => { draft = NewDeck(); dirty = true; Draw(false); }), 20);
             Input(deckPanel, draft.name, 14, 118, 500, value => { draft.name = value; dirty = true; }, "Deck name");
-            CollectionUIElements.Button(deckPanel, "Starter", 14, 172, 244, 40, () => Guard(() => { draft = collection.Starter(faction); dirty = true; Draw(false); }), 20);
-            CollectionUIElements.Button(deckPanel, "Copy", 270, 172, 244, 40, () =>
+            CollectionUIElements.Button(deckPanel, "Starter", 14, 172, 154, 40, () => Guard(() => { draft = collection.Starter(faction); dirty = true; Draw(false); }), 20);
+            CollectionUIElements.Button(deckPanel, "Copy", 178, 172, 154, 40, () =>
             { draft = CollectionProfile.CopyDeck(draft); draft.deckId = Guid.NewGuid().ToString("N"); draft.name += " Copy"; dirty = true; Draw(false); }, 20);
+            CollectionUIElements.Button(deckPanel, "Delete", 342, 172, 172, 40, () => Confirm("Delete this deck? Unsaved changes will be discarded.", () =>
+            { if (collection.DeleteDeck(draft.deckId, out status)) { draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; } Draw(false); }), 20);
             CollectionUIElements.Button(deckPanel, "Save Deck", 14, 222, 500, 44, () => { Save(); Draw(); }, 20);
             var validation = collection.Rules.Validate(draft, collection.Owned);
             CollectionUIElements.Label(deckPanel, $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " — unsaved" : ""), 14, 278, 500, 30, 22);
-            var bar = CollectionUIElements.Panel(deckPanel, "Budget"); CollectionUIElements.Place(bar, 14, 316, 500, 8);
+            CollectionUIElements.Label(deckPanel, TotalCostText(), 14, 316, 500, 72, 18);
+            var bar = CollectionUIElements.Panel(deckPanel, "Budget"); CollectionUIElements.Place(bar, 14, 394, 500, 8);
             var fill = CollectionUIElements.Panel(bar, "Fill"); CollectionUIElements.Place(fill, 0, 0, 500 * Mathf.Clamp01(validation.Points / (float)DeckRules.MaximumPoints), 8);
             fill.GetComponent<Image>().color = validation.Points > 100 ? Color.red : new Color(.36f, .55f, .3f);
-            CollectionUIElements.Label(deckPanel, "Cards", 14, 340, 390, 28, 20);
-            CollectionUIElements.Label(deckPanel, "Count", 424, 340, 90, 28, 20);
-            deckCards = CollectionUIElements.Scroll(deckPanel, "DeckCards", 14, 378, 500, 528);
+            CollectionUIElements.Label(deckPanel, "Cards", 14, 420, 390, 28, 20);
+            CollectionUIElements.Label(deckPanel, "Count", 404, 420, 110, 28, 20);
+            deckCards = CollectionUIElements.Scroll(deckPanel, "DeckCards", 14, 458, 500, 448, true);
             float y = 0;
             foreach (var c in new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator })
             {
                 var entries = DeckRules.Entries(draft, c);
                 if (entries.Count == 0) continue;
-                CollectionUIElements.Label(deckCards, c.ToString(), 0, y, 486, 28, 18); y += 32;
+                CollectionUIElements.Label(deckCards, c.ToString(), 0, y, 478, 28, 18); y += 32;
                 foreach (var entry in entries)
                 {
                     var card = collection.Rules.Resolve(entry.cardKey); string key = entry.cardKey;
-                    var row = CollectionUIElements.Panel(deckCards, key); CollectionUIElements.Place(row, 0, y, 486, 78);
+                    var row = CollectionUIElements.Panel(deckCards, key); CollectionUIElements.Place(row, 0, y, 478, 78);
                     var thumbnail = CollectionUIElements.Rect(row, "Art"); CollectionUIElements.Place(thumbnail, 4, 4, 52, 70);
-                    var image = thumbnail.gameObject.AddComponent<Image>(); image.sprite = card?.art; image.preserveAspect = true; image.raycastTarget = false;
+                    var image = thumbnail.gameObject.AddComponent<Image>(); image.sprite = card?.detailArt ?? card?.art; image.preserveAspect = true; image.raycastTarget = false;
                     CollectionUIElements.Button(row, card?.displayName ?? key, 64, 4, 276, 40, () => SelectCard(card), 20);
                     CollectionUIElements.Label(row, $"{(long)(card?.deckPointCost ?? 0) * entry.count} pt", 69, 48, 230, 24, 18);
                     CollectionUIElements.Button(row, "−", 352, 24, 34, 34, () => Change(key, -1), 20);
                     var count = CollectionUIElements.Label(row, entry.count.ToString(), 390, 24, 40, 34, 22); count.alignment = TextAlignmentOptions.Center;
-                    CollectionUIElements.Button(row, "+", 434, 24, 34, 34, () => Change(key, 1), 20);
+                    if (card != null && collection.Rules.Permitted(card, faction)
+                        && Used(key) < Math.Min(collection.Owned(key), card.deckCopyLimit))
+                        CollectionUIElements.Button(row, "+", 434, 24, 34, 34, () => Change(key, 1), 20);
                     CollectionUIElements.Button(row, "×", 310, 48, 30, 26, () => RemoveEntry(key), 20); y += 84;
                 }
             }
             string checks = string.Join("\n", validation.Errors.Concat(validation.Warnings));
-            var info = CollectionUIElements.Label(deckCards, checks, 0, y, 486, 1, 18);
-            float h = info.GetPreferredValues(checks, 486, 10000).y; ((RectTransform)info.transform).sizeDelta = new Vector2(486, h);
+            var info = CollectionUIElements.Label(deckCards, checks, 0, y, 478, 1, 18);
+            float h = info.GetPreferredValues(checks, 478, 10000).y; ((RectTransform)info.transform).sizeDelta = new Vector2(478, h);
             deckCards.sizeDelta = new Vector2(deckCards.sizeDelta.x, y + h + 12);
+        }
+        private string TotalCostText()
+        {
+            long ap = 0, human = 0, energy = 0, materials = 0, tech = 0;
+            foreach (var entry in draft.mainCards.Concat(draft.equipment).Concat(draft.mutators))
+            {
+                var card = collection.Rules.Resolve(entry.cardKey);
+                if (card == null) continue;
+                long count = entry.count;
+                ap += count * card.apCost;
+                human += count * (card.resourceCost?.human ?? 0);
+                energy += count * (card.resourceCost?.energy ?? 0);
+                materials += count * (card.resourceCost?.materials ?? 0);
+                tech += count * (card.resourceCost?.tech ?? 0);
+            }
+            return $"Total cost — AP {ap}\nHuman {human} | Energy {energy}\nMaterials {materials} | Tech {tech}";
         }
         private void RemoveEntry(string key)
         { foreach (var rows in new[] { draft.mainCards, draft.equipment, draft.mutators }) rows.RemoveAll(e => e.cardKey == key); dirty = true; Draw(); }
@@ -199,9 +213,9 @@ namespace Game.UI
         private void Confirm(string text, Action action)
         {
             modal = CollectionUIElements.Panel(canvas, "Confirm"); CollectionUIElements.Stretch(modal);
-            CollectionUIElements.Label(modal, text, 660, 420, 600, 48, 28);
-            CollectionUIElements.Button(modal, "Delete", 660, 492, 285, 48, () => { CloseModal(); action(); }, 20);
-            CollectionUIElements.Button(modal, "Cancel", 975, 492, 285, 48, CloseModal, 20);
+            CollectionUIElements.Label(modal, text, 660, 420, 600, 80, 28);
+            CollectionUIElements.Button(modal, "Delete", 660, 532, 285, 48, () => { CloseModal(); action(); }, 20);
+            CollectionUIElements.Button(modal, "Cancel", 975, 532, 285, 48, CloseModal, 20);
         }
         private void CloseModal() { if (modal != null) Destroy(modal.gameObject); modal = null; }
         private void Update() { if (CollectionMessageUI.IsShowing || root == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame) return; if (modal != null) { CloseModal(); Draw(); } else Guard(Close); }

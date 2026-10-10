@@ -36,13 +36,27 @@ namespace Game.UI
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
             return button;
         }
-        internal static RectTransform Scroll(Transform parent, string name, float x, float y, float w, float h)
+        internal static RectTransform Scroll(Transform parent, string name, float x, float y, float w, float h, bool showScrollbar = false)
         {
             var root = Panel(parent, name); Place(root, x, y, w, h);
             var viewport = Rect(root, "Viewport"); Stretch(viewport); viewport.gameObject.AddComponent<RectMask2D>();
-            var content = Rect(viewport, "Content"); Place(content, 0, 0, w - 14, 1);
+            if (showScrollbar) viewport.offsetMax = new Vector2(-18, 0);
+            var content = Rect(viewport, "Content"); Place(content, 0, 0, w - (showScrollbar ? 22 : 14), 1);
             var scroll = root.gameObject.AddComponent<ScrollRect>(); scroll.viewport = viewport; scroll.content = content;
             scroll.horizontal = false; scroll.vertical = true; scroll.movementType = ScrollRect.MovementType.Clamped;
+            if (showScrollbar)
+            {
+                var track = Panel(root, "Scrollbar"); Place(track, w - 16, 2, 14, h - 4);
+                track.GetComponent<Image>().color = new Color(.1f, .13f, .11f);
+                var area = Rect(track, "SlidingArea"); Stretch(area);
+                var handle = Panel(area, "Handle"); Stretch(handle);
+                handle.GetComponent<Image>().color = new Color(.36f, .48f, .34f);
+                var scrollbar = track.gameObject.AddComponent<Scrollbar>();
+                scrollbar.direction = Scrollbar.Direction.BottomToTop;
+                scrollbar.handleRect = handle; scrollbar.targetGraphic = handle.GetComponent<Image>();
+                scroll.verticalScrollbar = scrollbar;
+                scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            }
             return content;
         }
         internal static void Clear(Transform root)

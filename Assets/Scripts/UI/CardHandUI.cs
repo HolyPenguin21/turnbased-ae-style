@@ -204,20 +204,16 @@ namespace Game.UI
             PlayerSetupData human = FindHumanPlayer();
             if (human != null)
             {
-                if (human.MatchLoadout != null)
+                var rules = new DeckRules(startingDeckCatalog, Game.Progression.ProgressionContext.Collection?.Rules.Research);
+                if (human.MatchLoadout == null || human.MatchLoadout.Faction != human.Faction
+                    || !human.MatchLoadout.TryBuildPool(rules, out var pool, out var error))
                 {
-                    var rules = new DeckRules(startingDeckCatalog, Game.Progression.ProgressionContext.Collection?.Rules.Research);
-                    if (human.MatchLoadout.Faction != human.Faction || !human.MatchLoadout.TryBuildPool(rules, out var pool, out var error))
-                    {
-                        GameSession.SetupError = "Cannot load the selected deck. Return to Deck Builder.";
-                        GameSession.EndRewardEligibility();
-                        UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.MainMenu);
-                        return;
-                    }
-                    _remainingDeck.AddRange(pool);
+                    GameSession.SetupError = "Cannot load the selected deck. Select a saved deck in Collection & Decks.";
+                    GameSession.EndRewardEligibility();
+                    UnityEngine.SceneManagement.SceneManager.LoadScene(Game.Core.SceneNames.MainMenu);
+                    return;
                 }
-                else if (startingDeckCatalog != null)
-                    _remainingDeck.AddRange(startingDeckCatalog.BuildDeckPool(human.Faction));
+                _remainingDeck.AddRange(pool);
 
                 for (int i = 0; i < startingHandSize; i++)
                 {
@@ -1323,4 +1319,3 @@ namespace Game.UI
         }
     }
 }
-

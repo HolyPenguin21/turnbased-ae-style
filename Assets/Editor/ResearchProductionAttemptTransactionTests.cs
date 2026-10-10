@@ -323,6 +323,53 @@ namespace Game.EditorTests
             Assert.That(_root.ActionPoints, Is.EqualTo(5));
             Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
         }
+        [TestCase(ResearchProductionMode.Research)]
+        [TestCase(ResearchProductionMode.Production)]
+        public void HumanWithoutSelectedLoadoutHasNoOffersAndCannotPay(ResearchProductionMode mode)
+        {
+            _player.IsHuman = true;
+            _catalog.productionCards.Add(new ResearchProductionEntry { cardKey = _card.authoredKey });
+            HideHeroWithoutChangingFinalBudget(); _root.AddResource(ResourceType.Human, 2);
+            Assert.That(ResearchProductionSystem.OfferedCards(_catalog, mode, _player), Is.Empty);
+            Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site, mode,
+                _card, _catalog, out var reason, out var attempt), Is.False);
+            Assert.That(reason, Does.Contain("Select a saved deck")); Assert.That(attempt, Is.Null);
+            Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site, mode,
+                _card, _catalog, out _), Is.False);
+            Assert.That(_root.ActionPoints, Is.EqualTo(5));
+            Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
+            Assert.That(_hero.IsHidden, Is.True);
+        }
+
+        [TestCase(ResearchProductionMode.Research)]
+        [TestCase(ResearchProductionMode.Production)]
+        public void UnselectedBlueprintCannotBeOfferedOrPaidInEitherFacility(ResearchProductionMode mode)
+        {
+            _player.IsHuman = true; _player.Faction = Faction.IronConcord;
+            _card.cardType = CardType.Equipment; _card.deckPointCost = 1; _card.deckCopyLimit = 4;
+            _catalog.productionCards.Add(new ResearchProductionEntry { cardKey = _card.authoredKey });
+            BuildingRegistry.FindAt(Site).FacilitySlots[0].Abilities.Add(UnitAbilities.Production);
+            _hero.Abilities.Add(UnitAbilities.Assembler);
+            var starting = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            try
+            {
+                starting.catalogs.Add(_factionCatalog);
+                var deck = new Game.Progression.SavedDeck { deckId = "empty", name = "Empty", faction = _player.Faction };
+                _player.MatchLoadout = new MatchLoadout(deck, new DeckRules(starting, _catalog), _ => 4);
+                _player.BlueprintQuota = new BlueprintQuota(_player.MatchLoadout);
+                HideHeroWithoutChangingFinalBudget(); _root.AddResource(ResourceType.Human, 2);
+                Assert.That(ResearchProductionSystem.OfferedCards(_catalog, mode, _player), Is.Empty);
+                Assert.That(ResearchProductionSystem.IsEligible(_player, Site, mode, out _), Is.True);
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site, mode,
+                    _card, _catalog, out var reason, out var attempt), Is.False);
+                Assert.That(reason, Does.Contain("Blueprint is not selected")); Assert.That(attempt, Is.Null);
+                Assert.That(_root.ActionPoints, Is.EqualTo(5));
+                Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
+                Assert.That(_hero.IsHidden, Is.True);
+            }
+            finally { Object.DestroyImmediate(starting); }
+        }
+
         [Test]
         public void HumanBlueprintQuotaRejectsDirectBypassAndDebitsOnlyEachRealAttempt()
         {
@@ -359,4 +406,3 @@ namespace Game.EditorTests
     }
 }
 #endif
-

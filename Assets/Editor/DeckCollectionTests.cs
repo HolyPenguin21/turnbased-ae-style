@@ -184,6 +184,76 @@ namespace Game.EditorTools
             Assert.That(File.ReadAllText(path), Is.EqualTo(future));
             Assert.That(File.Exists(path + ".bak"), Is.True);
         }
+        [TestCase(ResearchProductionMode.Research, AttachmentSlot.Mutator)]
+        [TestCase(ResearchProductionMode.Production, AttachmentSlot.Equipment)]
+        public void CatalogFactionRestrictionsDriveCollectionAndDeckValidation(ResearchProductionMode mode, AttachmentSlot slot)
+        {
+            card.cardType = CardType.Equipment; card.attachmentSlot = slot;
+            research.cardCatalogs.Add(catalog);
+            var entry = new ResearchProductionEntry { cardKey = card.authoredKey, factionRestriction = Faction.Ashen };
+            var offers = mode == ResearchProductionMode.Research ? research.researchCards : research.productionCards;
+            offers.Add(entry);
+            var deck = Deck(0); deck.mainCards.Clear();
+            DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 });
+            Assert.That(rules.Cards(Faction.IronConcord), Does.Not.Contain(card));
+            Assert.That(rules.Cards(Faction.Ashen), Does.Contain(card));
+            Assert.That(rules.Validate(deck, _ => 1).IsValid, Is.False);
+            entry.factionRestriction = Faction.None;
+            Assert.That(rules.Cards(Faction.IronConcord), Does.Contain(card));
+            Assert.That(rules.Validate(deck, _ => 1).IsValid, Is.True);
+            offers.Clear();
+            Assert.That(rules.Cards(Faction.IronConcord), Does.Not.Contain(card));
+        }
+        [Test]
+        public void SelectedLoadoutDrawsNoOtherOwnedCards()
+        {
+            var other = new CardDefinition { authoredKey = "not-selected", cardType = CardType.Unit, deckCopyLimit = 4 };
+            catalog.cards.Add(other);
+            var loadout = new MatchLoadout(Deck(2), rules, _ => 4);
+            Assert.That(loadout.TryBuildPool(rules, out var pool, out _), Is.True);
+            Assert.That(pool, Is.EqualTo(new[] { card, card }));
+            Assert.That(pool, Does.Not.Contain(other));
+        }
+        [Test]
+        public void DeckTotalCostIncludesEveryCopyAndBlueprintCategory()
+        {
+            card.apCost = 2; card.resourceCost = new ResourceCost(1, 2, 3, 4);
+            var equipment = new CardDefinition { authoredKey = "cost.equipment", cardType = CardType.Equipment, apCost = 3, resourceCost = new ResourceCost(2, 3, 4, 5) };
+            var mutator = new CardDefinition { authoredKey = "cost.mutator", cardType = CardType.Equipment, attachmentSlot = AttachmentSlot.Mutator, apCost = 4, resourceCost = null };
+            catalog.cards.Add(equipment); catalog.cards.Add(mutator);
+            var deck = Deck(2);
+            deck.equipment.Add(new DeckCardEntry { cardKey = equipment.authoredKey, count = 3 });
+            deck.mutators.Add(new DeckCardEntry { cardKey = mutator.authoredKey, count = 1 });
+            var go = new GameObject("cost view");
+            try
+            {
+                var view = go.AddComponent<Game.UI.CollectionScreensUI>();
+                const System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                typeof(Game.UI.CollectionScreensUI).GetField("collection", flags).SetValue(view, new CollectionService(rules, null, new CollectionProfile()));
+                typeof(Game.UI.CollectionScreensUI).GetField("draft", flags).SetValue(view, deck);
+                string text = (string)typeof(Game.UI.CollectionScreensUI).GetMethod("TotalCostText", flags).Invoke(view, null);
+                Assert.That(text, Is.EqualTo("Total cost — AP 17\nHuman 8 | Energy 13\nMaterials 18 | Tech 23"));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+        [Test]
+        public void VisibleCollectionScrollbarReservesSpaceOutsideContent()
+        {
+            var go = new GameObject("scroll owner", typeof(RectTransform));
+            try
+            {
+                var type = typeof(Game.UI.CollectionScreensUI).Assembly.GetType("Game.UI.CollectionUIElements");
+                var method = type.GetMethod("Scroll", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+                var content = (RectTransform)method.Invoke(null, new object[] { go.transform, "Cards", 0f, 0f, 500f, 448f, true });
+                var scroll = content.GetComponentInParent<UnityEngine.UI.ScrollRect>();
+                Assert.That(scroll.verticalScrollbar, Is.Not.Null);
+                Assert.That(scroll.verticalScrollbar.direction, Is.EqualTo(UnityEngine.UI.Scrollbar.Direction.BottomToTop));
+                Assert.That(scroll.verticalScrollbarVisibility, Is.EqualTo(UnityEngine.UI.ScrollRect.ScrollbarVisibility.Permanent));
+                Assert.That(scroll.viewport.offsetMax.x, Is.EqualTo(-18));
+                Assert.That(content.sizeDelta.x, Is.EqualTo(478));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
         [Test] public void AuthoredCatalogsHaveStableUniqueKeysAndCompatibleStarters() { CollectionContentValidation.Validate(); }
     }
 }

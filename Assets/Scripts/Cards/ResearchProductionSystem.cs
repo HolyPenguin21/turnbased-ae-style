@@ -167,8 +167,8 @@ namespace Game.Cards
         public static List<CardDefinition> OfferedCards(ResearchProductionCatalog catalog, ResearchProductionMode mode, PlayerSetupData player)
         {
             var cards = OfferedCards(catalog, mode, player != null ? player.Faction : Faction.None);
-            if (player != null && player.IsHuman && player.MatchLoadout != null)
-                cards.RemoveAll(c => player.BlueprintQuota?.Available(c.authoredKey) != true);
+            if (player != null && player.IsHuman)
+                cards.RemoveAll(c => player.MatchLoadout == null || player.BlueprintQuota?.Available(c.authoredKey) != true);
             return cards;
         }
 
@@ -196,7 +196,7 @@ namespace Game.Cards
             HexCoord hex, ResearchProductionMode mode, CardDefinition card,
             ResearchProductionCatalog catalog, out string reason)
         {
-            if (player?.MatchLoadout != null)
+            if (player?.IsHuman == true || player?.MatchLoadout != null)
             { reason = "A tracked Research/Production attempt is required."; return false; }
             return TryStartAttempt(player, root, hero, hex, mode, card, catalog, out reason, out _);
         }
@@ -210,6 +210,11 @@ namespace Game.Cards
             if (player == null || root == null || hero == null || card == null || catalog == null)
             {
                 reason = "missing Research/Production attempt data";
+                return false;
+            }
+            if (player.IsHuman && player.MatchLoadout == null)
+            {
+                reason = "Select a saved deck before starting Research/Production.";
                 return false;
             }
             if (!object.ReferenceEquals(root, PlayerRootRegistry.FindFor(player))
@@ -369,4 +374,3 @@ namespace Game.Cards
             => card != null ? new CardData(card) { ResearchProductionCreated = true } : null;
     }
 }
-
