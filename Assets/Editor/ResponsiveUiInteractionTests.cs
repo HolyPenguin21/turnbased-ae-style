@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Game.UI;
 using NUnit.Framework;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -87,6 +88,42 @@ public class ResponsiveUiInteractionTests
             Assert.That(card.anchoredPosition.y - card.rect.height * card.localScale.y,
                 Is.GreaterThanOrEqualTo(-height - .01f));
         }
+    }
+
+    [Test]
+    public void PlayerStatisticsGrowAndClampScrollWhenTextShrinks()
+    {
+        RectTransform root = Rect("Statistics panel");
+        PlayerDataPanelUI panel = root.gameObject.AddComponent<PlayerDataPanelUI>();
+        RectTransform viewport = Rect("Viewport", root);
+        viewport.sizeDelta = new Vector2(620f, 290f);
+        RectTransform content = Rect("Statistics", viewport);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = new Vector2(1f, 1f);
+        content.pivot = new Vector2(.5f, 1f);
+        content.sizeDelta = new Vector2(0f, 290f);
+        TMP_Text text = content.gameObject.AddComponent<TextMeshProUGUI>();
+        text.font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
+        Assert.That(text.font, Is.Not.Null);
+        text.fontSize = 16f;
+        text.enableAutoSizing = false;
+        ScrollRect scroll = root.gameObject.AddComponent<ScrollRect>();
+        scroll.viewport = viewport;
+        scroll.content = content;
+        Set(panel, "dataTmpText", text);
+        Set(panel, "contentPanel", root.gameObject);
+        var lines = new string[100];
+        for (int i = 0; i < lines.Length; i++) lines[i] = "Player statistics and army readiness";
+        text.text = string.Join("\n", lines);
+        Call(panel, "FitTextContent");
+        Assert.That(content.rect.height, Is.GreaterThan(viewport.rect.height));
+        content.anchoredPosition = new Vector2(0f, 100f);
+        Call(panel, "FitTextContent");
+        Assert.That(content.anchoredPosition.y, Is.EqualTo(100f));
+        text.text = "One player";
+        Call(panel, "FitTextContent");
+        Assert.That(content.rect.height, Is.EqualTo(viewport.rect.height).Within(.01f));
+        Assert.That(content.anchoredPosition.y, Is.EqualTo(0f));
     }
 
     [Test]

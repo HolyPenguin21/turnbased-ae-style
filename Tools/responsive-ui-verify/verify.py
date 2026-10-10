@@ -163,6 +163,15 @@ def check_layout(game, menu, assets):
                 assert contains((0, 0, *logical), options.box(1950000001))
 
         g, m = Scene(game, logical), Scene(menu, logical)
+        stats_viewport = g.box(8880000000000001102)
+        assert contains(g.box(1456844806), stats_viewport)
+        stats_content = g.data(1505820716)
+        assert stats_content["m_Father"]["fileID"] == 8880000000000001102
+        assert stats_content["m_AnchorMin"] == {"x": 0, "y": 1}
+        assert stats_content["m_AnchorMax"] == {"x": 1, "y": 1}
+        assert game[1505820717][1]["m_enableAutoSizing"] == 0
+        assert game[1505820717][1]["m_fontSize"] == 16
+        assert game[1505820717][1]["m_Maskable"] == 1
         battlefield = g.box(8880000000000000070)
         required = grid_extent(g.data(8880000000000000071), 25)
         fitted = min(battlefield[2] / required[0], battlefield[3] / required[1])
@@ -211,8 +220,10 @@ def check_layout(game, menu, assets):
         viewport_go = game[viewport][1]["m_GameObject"]["fileID"]
         components = [game[c["component"]["fileID"]][1] for c in game[viewport_go][1]["m_Component"]]
         assert any("RectMask2D" in c.get("m_EditorClassIdentifier", "") for c in components)
-    card = assets["Assets/Prefabs/UI/Card_Army.prefab"]
-    assert all(obj["m_Maskable"] == 1 for _, obj in card.values() if "m_Maskable" in obj)
+    for path in ["Assets/Prefabs/UI/Card_Army.prefab", "Assets/Prefabs/UI/ArmyButton_Map.prefab",
+                 "Assets/Prefabs/UI/ArmyButton_Modal.prefab",
+                 "Assets/Prefabs/UI/BattleScreen/BattleTurnOrderIcon.prefab"]:
+        assert all(obj["m_Maskable"] == 1 for _, obj in assets[path].values() if "m_Maskable" in obj), path
     dice = assets["Assets/Prefabs/UI/DiceRow.prefab"][5551000000000103][1]
     assert dice["m_ChildControlWidth"] == 1 and dice["m_ChildControlHeight"] == 1
 

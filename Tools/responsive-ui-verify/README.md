@@ -12,7 +12,8 @@ The Python check parses every scene and prefab, checks duplicate YAML keys, loca
 integrity, component ownership and bidirectional hierarchy. It evaluates the serialized anchors
 at 1280x720, 1600x900, 1920x1080 and 2560x1440 with the authored 1280x720 CanvasScaler.
 It checks root bounds, the 5x5 battle grid, production/base grids, six hand slots, all five
-resource-drawer states, six player setup rows, scroll wiring and maskable army cards.
+resource-drawer states, six player setup rows, scroll wiring, maskable army cards and the
+statistics text viewport with a readable fixed font size.
 It also checks player resolution defaults, the project's Unity version and the audio
 settings prefab's root bounds and scene override targets.
 
@@ -24,7 +25,8 @@ manually changed prefab too.
 In Unity 6000.5.4f1:
 
 1. Run the full EditMode suite, including `ResponsiveUiInteractionTests` (nested drag scales,
-   four tactic cards in constrained areas and clipped army-grid drop targets).
+   four tactic cards in constrained areas, clipped army-grid drop targets and statistics
+   text growth with scroll-position preservation/clamping).
 2. Run `Tools > UI > Audit Responsive Layout` in both scenes.
 3. At each listed Game View size, open main menu, six-player setup, audio options, all HUD
    modals, encounter selection, event reward, challenge/result and the battle states.
@@ -33,7 +35,8 @@ In Unity 6000.5.4f1:
 5. Inspect a 12-slot army/garrison, scroll it and reorder visible cards; reject drops outside
    its viewport. Test transfers into another army, deployment from the hand, hover actions,
    card paging and animation after closing/reopening modals.
-6. Exercise 0..4 resource actions, many armies on one hex, long player/unit names, many dice,
+6. Open Panel_Data with six AI players; scroll to the last player and confirm refreshes keep
+   the reading position. Exercise 0..4 resource actions, many armies on one hex, long player/unit names, many dice,
    and window resizing during an animation/drag. Confirm no masked entries remain clickable.
 
 The canvas reference remains 1280x720 intentionally: at Full HD its scale is 1.5, preserving
