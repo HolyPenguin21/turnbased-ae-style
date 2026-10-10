@@ -10,10 +10,10 @@ namespace Game.Campaign
 {
     [Serializable] public sealed class CampaignGenerationSettings
     {
-        public int RegionCount = 24;
+        public int RegionCount = 48;
         public float MinimumRegionArea = .018f;
         public float MinimumRegionWidth = .07f;
-        public float BorderIrregularity = .6f;
+        public float BorderIrregularity = .85f;
         public float PointSpacing = .19f;
     }
     public sealed class CampaignMapGenerator
@@ -104,18 +104,39 @@ namespace Game.Campaign
             }
             foreach (var owners in edges.Values.Where(e => e.Count == 2))
             { regions[owners[0]].NeighborIds.Add(owners[1]); regions[owners[1]].NeighborIds.Add(owners[0]); }
-            // Each shared edge is split/deformed once; both cells reuse exactly the same midpoint.
-            var mids = new Dictionary<string, Vector2>();
+            // One angular contour per shared edge; both cells reuse the exact same vertices.
+            var contours = new Dictionary<string, List<Vector2>>();
             double phase = rng.Value() * Math.PI * 2;
-            Vector2 Warp(Vector2 p) => p + new Vector2((float)Math.Sin(p.y * 7 + phase), (float)Math.Sin(p.x * 6 + phase)) * (.014f * s.BorderIrregularity);
+            float AngularWave(double value) => (float)(2 / Math.PI * Math.Asin(Math.Sin(value)));
+            Vector2 Warp(Vector2 p) => p + new Vector2(
+                AngularWave(p.y * 11 + phase) + .35f * AngularWave(p.y * 23 - phase),
+                AngularWave(p.x * 10 + phase) + .35f * AngularWave(p.x * 21 - phase)) * (.026f * s.BorderIrregularity);
             foreach (var r in regions)
             {
                 var p = r.PolygonVertices; var shaped = new List<Vector2>();
                 for (int i = 0; i < p.Count; i++)
                 {
-                    var b = p[(i + 1) % p.Count]; string key = CampaignGeometry.EdgeKey(p[i], b);
-                    if (!mids.TryGetValue(key, out var mid)) mids[key] = mid = Warp((p[i] + b) / 2);
-                    shaped.Add(Warp(p[i])); shaped.Add(mid);
+                    var a = p[i]; var b = p[(i + 1) % p.Count];
+                    string key = CampaignGeometry.EdgeKey(a, b);
+                    if (!contours.TryGetValue(key, out var edge))
+                    {
+                        edge = new List<Vector2>();
+                        float length = (b - a).magnitude;
+                        var normal = new Vector2(-(b - a).y / length, (b - a).x / length);
+                        float amplitude = Math.Min(.018f, length * .12f) * s.BorderIrregularity;
+                        int segments = length <= .05f ? 1 : Math.Min(10, (int)Math.Ceiling(length / .035f));
+                        for (int step = 0; step <= segments; step++)
+                        {
+                            if (step == 0 || step == segments) { edge.Add(Warp(step == 0 ? a : b)); continue; }
+                            // Unequal segment lengths and independent offsets avoid a regular zigzag.
+                            float t = (step + (float)(rng.Value() * .44 - .22) * s.BorderIrregularity) / segments;
+                            float offset = (float)((rng.Value() * 2 - 1) * Math.Sin(t * Math.PI)) * amplitude;
+                            edge.Add(Warp(a + (b - a) * t) + normal * offset);
+                        }
+                        contours[key] = edge;
+                    }
+                    bool forward = (edge[0] - Warp(a)).sqrMagnitude < 1e-10f;
+                    for (int step = 0; step < edge.Count - 1; step++) shaped.Add(edge[forward ? step : edge.Count - 1 - step]);
                 }
                 if (CampaignGeometry.Area(shaped) < s.MinimumRegionArea) throw new InvalidDataException("Deformed region too small.");
                 for (int i = 0; i < shaped.Count; i++)
@@ -171,3 +192,4 @@ namespace Game.Campaign
         private static readonly string[] Names = { "Dust Scar Basin", "Red Hollow", "Iron Mesa", "Ashfall Reach", "Salt Crown", "Broken Horizon", "Cinder Vale", "Silent Crater", "Rust Expanse", "Glass Wastes", "Pale Ridge", "Deadwater", "Black Dunes", "Copper Rift", "Storm Shelf", "Scorched Delta", "Bone Plateau", "Ember Coast", "Dry Meridian", "Wreck Fields", "Shattered Plain", "Grey Frontier", "Deep Scar", "Last Oasis" };
     }
 }
+

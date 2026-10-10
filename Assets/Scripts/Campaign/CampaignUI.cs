@@ -15,6 +15,11 @@ namespace Game.Campaign
     {
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private bool enableHumanTestAutoResolve;
+        [SerializeField] private Sprite endTurnSprite, actionButtonSprite;
+        [SerializeField] private Sprite ironConcordLogo, ashenLogo, vesselsLogo;
+        private Sprite frameSprite, paperSprite, metalSprite;
+        private static readonly Color PaperInk = new Color(.17f, .135f, .095f);
+        private static readonly Color Cream = new Color(.90f, .83f, .67f);
         private RectTransform canvas, sidebar, footer, modal, modalContent;
         private TMP_Text heading, hoverLabel;
         private CampaignMapView map;
@@ -27,17 +32,28 @@ namespace Game.Campaign
         private void Start()
         {
             canvas = CollectionUIElements.Canvas("PlanetaryCampaign", new Vector2(1920, 1080));
+            frameSprite = Resources.Load<Sprite>("Campaign/MetalFrame");
+            paperSprite = Resources.Load<Sprite>("Campaign/Parchment");
+            metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
-            background.GetComponent<Image>().color = new Color(.035f, .047f, .052f);
-            heading = CollectionUIElements.Label(canvas, "PLANETARY CAMPAIGN", 48, 26, 1490, 64, 30);
-            CollectionUIElements.Button(canvas, "Menu", 1715, 34, 155, 50, () => SceneManager.LoadScene(SceneNames.MainMenu));
-            var surface = CollectionUIElements.Panel(canvas, "PlanetSurface"); CollectionUIElements.Place(surface, 35, 115, 1390, 700);
-            surface.GetComponent<Image>().color = new Color(.065f, .073f, .071f);
+            Skin(background, false, false);
+            var header = CollectionUIElements.Panel(canvas, "CampaignHeader"); CollectionUIElements.Place(header, 26, 18, 1868, 82);
+            Skin(header, false);
+            heading = Label(header, "PLANETARY CAMPAIGN", 28, 16, 1530, 50, 31);
+            heading.color = Cream; heading.fontStyle = FontStyles.Bold;
+            Button(header, "MENU", 1678, 17, 164, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
+            var surface = CollectionUIElements.Panel(canvas, "PlanetSurface"); CollectionUIElements.Place(surface, 26, 112, 1400, 780);
+            Skin(surface, false);
+            surface.GetComponent<Image>().raycastTarget = false;
             var mapRect = CollectionUIElements.Rect(surface, "Regions"); CollectionUIElements.Stretch(mapRect);
+            mapRect.offsetMin = new Vector2(20, 20); mapRect.offsetMax = new Vector2(-20, -20);
+            mapRect.gameObject.AddComponent<RectMask2D>();
             map = mapRect.gameObject.AddComponent<CampaignMapView>();
-            sidebar = CollectionUIElements.Panel(canvas, "RegionInformation"); CollectionUIElements.Place(sidebar, 1450, 115, 430, 700);
-            footer = CollectionUIElements.Panel(canvas, "CampaignHistory"); CollectionUIElements.Place(footer, 35, 830, 1845, 215);
-            hoverLabel = CollectionUIElements.Label(surface, "", 20, 15, 1100, 38, 18);
+            sidebar = CollectionUIElements.Panel(canvas, "RegionInformation"); CollectionUIElements.Place(sidebar, 1440, 112, 454, 780);
+            Skin(sidebar, true);
+            footer = CollectionUIElements.Panel(canvas, "CampaignHistory"); CollectionUIElements.Place(footer, 26, 907, 1868, 150);
+            Skin(footer, true);
+            hoverLabel = Label(surface, "", 30, 24, 1310, 34, 19); hoverLabel.color = Cream;
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             try { map.Build(Controller.Snapshot.Regions, ClickRegion, HoverRegion); }
             catch (Exception ex) { Failure(ex.Message, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
@@ -100,39 +116,73 @@ namespace Game.Campaign
             var s = Controller.Snapshot;
             heading.text = s.PlanetName + "  ·  Round " + s.RoundNumber + "  ·  " + FactionName(s.CurrentFaction);
             CollectionUIElements.Clear(sidebar); CollectionUIElements.Clear(footer);
-            CollectionUIElements.Label(sidebar, "TERRITORIES", 24, 24, 380, 42, 24);
-            int y = 80;
+            Skin(sidebar, true); Skin(footer, true);
+            var title = Label(sidebar, "TERRITORIES", 28, 26, 398, 36, 26); title.fontStyle = FontStyles.Bold;
+            int y = 78;
             foreach (var f in s.Factions)
             {
-                var label = CollectionUIElements.Label(sidebar, FactionName(f.Faction) + "  " + s.Regions.Count(r => r.OwnerFaction == f.Faction) + (f.Eliminated ? " — eliminated" : ""), 24, y, 380, 38, 20);
-                label.color = Color.Lerp(CampaignMapView.ColorFor(f.Faction), Color.white, .35f); y += 43;
+                Logo(sidebar, f.Faction, 30, y, 42);
+                Label(sidebar, FactionName(f.Faction) + (f.Eliminated ? " — eliminated" : ""), 85, y + 4, 276, 36, 23);
+                var count = Label(sidebar, s.Regions.Count(r => r.OwnerFaction == f.Faction).ToString(), 360, y + 4, 62, 36, 25);
+                count.alignment = TextAlignmentOptions.Right; y += 55;
             }
+            Rule(sidebar, 28, 249, 398);
             var region = selected.HasValue ? s.Regions.Find(r => r.RegionId == selected.Value) : null;
-            CollectionUIElements.Label(sidebar, region == null ? "Select a region" : region.Name, 24, 244, 380, 65, 26);
+            var regionTitle = Label(sidebar, region == null ? "SELECT A REGION" : region.Name.ToUpperInvariant(), 28, 269, 398, 64, 28);
+            regionTitle.fontStyle = FontStyles.Bold;
             if (region != null)
             {
-                CollectionUIElements.Label(sidebar, "Owner: " + FactionName(region.OwnerFaction), 24, 318, 380, 45, 20);
-                CollectionUIElements.Label(sidebar, "Neighbors:\n" + string.Join("\n", region.NeighborIds.Select(id => s.Regions.Find(r => r.RegionId == id).Name)), 24, 378, 380, 200, 18);
+                var preview = CollectionUIElements.Rect(sidebar, "RegionTerrainPreview"); CollectionUIElements.Place(preview, 30, 340, 394, 126);
+                var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.texture = map.SurfaceTexture; terrain.raycastTarget = false;
+                var center = CampaignMapView.SurfaceUV(CampaignRegionGraphic.VisibleCenter(region));
+                terrain.uvRect = new Rect(Mathf.Clamp(center.x - .16f, 0, .68f), Mathf.Clamp(center.y - .10f, 0, .80f), .32f, .20f);
+                Frame(preview);
+                Label(sidebar, "OWNER", 30, 482, 98, 34, 20);
+                Logo(sidebar, region.OwnerFaction, 132, 478, 36);
+                Label(sidebar, FactionName(region.OwnerFaction), 179, 482, 245, 34, 23);
+                Label(sidebar, "NEIGHBORING REGIONS", 30, 530, 394, 32, 20).fontStyle = FontStyles.Bold;
+                var neighbors = CollectionUIElements.Scroll(sidebar, "Neighbors", 28, 565, 396, 118, true);
+                neighbors.parent.parent.GetComponent<Image>().color = new Color(0, 0, 0, .055f);
+                int row = 0;
+                foreach (int id in region.NeighborIds)
+                {
+                    var neighbor = s.Regions.Find(r => r.RegionId == id);
+                    var dot = CollectionUIElements.Panel(neighbors, "OwnerColor"); CollectionUIElements.Place(dot, 12, row * 30 + 10, 8, 8);
+                    dot.GetComponent<Image>().color = CampaignMapView.ColorFor(neighbor.OwnerFaction); dot.GetComponent<Image>().raycastTarget = false;
+                    Label(neighbors, neighbor.Name, 30, row * 30, 330, 30, 20); row++;
+                }
+                neighbors.sizeDelta = new Vector2(neighbors.sizeDelta.x, Math.Max(118, row * 30));
                 bool can = s.Regions.Where(r => r.OwnerFaction == s.HumanFaction).Any(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId));
                 if (can)
-                    CollectionUIElements.Button(sidebar, "Attack " + region.Name, 24, 600, 382, 50, () =>
+                    Button(sidebar, "ATTACK REGION", 28, 708, 398, 50, () =>
                     { int from = s.Regions.First(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId)).RegionId; ConfirmAttack(from, region.RegionId); });
-                else CollectionUIElements.Label(sidebar, region.OwnerFaction == s.HumanFaction ? "Select a highlighted enemy neighbor." : "Attack unavailable this turn.", 24, 602, 380, 70, 18);
+                else Label(sidebar, region.OwnerFaction == s.HumanFaction ? "Select a highlighted enemy neighbor." : "Attack unavailable this turn.", 30, 707, 394, 54, 19);
             }
+            else Label(sidebar, "Select a territory to see its owner and neighboring regions.\n\nSelect your territory to highlight available attacks.", 30, 358, 394, 200, 23);
             string status = s.Phase == CampaignPhase.CampaignFinished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? "CAMPAIGN DEFEAT — your faction has been eliminated." : "PLANET CONQUERED — campaign completed.")
                 : s.PendingOperation != null ? "Pending battle — " + s.Phase : s.CurrentFaction == s.HumanFaction ? "Your turn: attack an adjacent enemy region or end turn." : "AI faction is choosing an attack.";
-            CollectionUIElements.Label(footer, status, 24, 15, s.Phase == CampaignPhase.CampaignFinished ? 900 : 1500, 40, 21);
-            string history = string.Join("\n", s.BattleHistory.AsEnumerable().Reverse().Take(4).Select(h => "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · " + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended")));
-            CollectionUIElements.Label(footer, history, 24, 60, 1410, 136, 18);
+            Label(footer, status, 28, 17, s.Phase == CampaignPhase.CampaignFinished ? 880 : 1510, 32, 23).fontStyle = FontStyles.Bold;
+            Rule(footer, 28, 54, 1570);
+            var history = s.BattleHistory.AsEnumerable().Reverse().Take(4).ToList();
+            Label(footer, "RECENT BATTLES", 28, 70, 205, 40, 20).fontStyle = FontStyles.Bold;
+            for (int i = 0; i < history.Count; i++)
+            {
+                var h = history[i];
+                var entry = Label(footer, "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · "
+                    + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended"),
+                    244 + (i % 2) * 665, 65 + (i / 2) * 30, 650, 27, 17);
+                entry.textWrappingMode = TextWrappingModes.NoWrap;
+                entry.overflowMode = TextOverflowModes.Ellipsis;
+            }
             if (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction)
-                CollectionUIElements.Button(footer, "End Turn", 1530, 120, 270, 54, () => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
+                EndTurnButton(footer, () => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
             else if (s.PendingOperation?.Manual == true && !s.PendingOperation.ResultRecorded)
-                CollectionUIElements.Button(footer, "Resume battle", 1530, 120, 270, 54, () => { defenceDeferred = false; OpenDeckSelection(); });
+                Button(footer, "RESUME BATTLE", 1620, 56, 220, 56, () => { defenceDeferred = false; OpenDeckSelection(); });
             if (s.Phase == CampaignPhase.CampaignFinished)
             {
                 var h = s.BattleHistory.Where(b => b.Attacker == s.HumanFaction || b.Defender == s.HumanFaction).ToList();
                 int wins = h.Count(b => b.Outcome != CampaignOutcome.Draw && (b.Outcome == CampaignOutcome.AttackerVictory ? b.Attacker : b.Defender) == s.HumanFaction);
-                CollectionUIElements.Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 950, 15, 850, 40, 18);
+                Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 950, 17, 850, 34, 18);
             }
             RefreshMap();
         }
@@ -148,8 +198,8 @@ namespace Game.Campaign
             CloseModal(); modal = CollectionUIElements.Panel(canvas, "ModalBackdrop"); CollectionUIElements.Stretch(modal);
             cancelModal = onCancel;
             modal.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
-            modalContent = CollectionUIElements.Panel(modal, title); CollectionUIElements.Place(modalContent, 485, 190, 950, 700);
-            CollectionUIElements.Label(modalContent, title, 35, 25, 880, 58, 30); UIFocusUtility.SetOverlay(this, true); RefreshMap();
+            modalContent = CollectionUIElements.Panel(modal, title); CollectionUIElements.Place(modalContent, 485, 190, 950, 700); Skin(modalContent, true);
+            Label(modalContent, title, 35, 25, 880, 58, 30); UIFocusUtility.SetOverlay(this, true); RefreshMap();
         }
         private void CloseModal()
         { UIFocusUtility.SetOverlay(this, false); if (modal != null) { modal.gameObject.SetActive(false); Destroy(modal.gameObject); } modal = modalContent = null; cancelModal = null; }
@@ -158,9 +208,9 @@ namespace Game.Campaign
         {
             var s = Controller.Snapshot; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
             Modal("CONFIRM ATTACK", CancelAttackConfirmation);
-            CollectionUIElements.Label(modalContent, s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name, 35, 110, 880, 90, 26);
-            CollectionUIElements.Button(modalContent, "Choose Deck", 35, 570, 400, 56, () => Attempt(() => { Controller.BeginAttack(from, target, true); OpenDeckSelection(); }));
-            CollectionUIElements.Button(modalContent, "Cancel", 490, 570, 400, 56, CancelAttackConfirmation);
+            Label(modalContent, s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name, 35, 110, 880, 90, 26);
+            Button(modalContent, "Choose Deck", 35, 570, 400, 56, () => Attempt(() => { Controller.BeginAttack(from, target, true); OpenDeckSelection(); }));
+            Button(modalContent, "Cancel", 490, 570, 400, 56, CancelAttackConfirmation);
         }
         private void OpenDeckSelection()
         {
@@ -171,8 +221,9 @@ namespace Game.Campaign
             string message = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name + "\nOperation: " + (attack ? "ATTACK" : "DEFENCE")
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  Defender: " + FactionName(op.DefenderFaction);
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
-            CollectionUIElements.Label(modalContent, message, 35, 92, 880, 125, 20);
+            Label(modalContent, message, 35, 92, 880, 125, 20);
             var list = CollectionUIElements.Scroll(modalContent, "SavedDecks", 35, 232, 880, 310, true);
+            list.parent.parent.GetComponent<Image>().color = new Color(0, 0, 0, .07f);
             var decks = ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == s.HumanFaction).ToList();
             if (!decks.Any(d => d.deckId == selectedDeckId))
                 selectedDeckId = decks.Find(d => d.deckId == op.SelectedHumanDeckId)?.deckId
@@ -182,24 +233,24 @@ namespace Game.Campaign
             {
                 var validation = ProgressionContext.Collection.Rules.Validate(deck, ProgressionContext.Collection.Owned);
                 string value = (selectedDeckId == deck.deckId ? "Selected: " : "") + deck.name + "  ·  " + validation.Points + " / 100";
-                var button = CollectionUIElements.Button(list, value, 8, i * 105 + 6, 830, 42, () =>
+                var button = Button(list, value, 8, i * 105 + 6, 830, 42, () =>
                 { selectedDeckId = deck.deckId; OpenDeckSelection(); }, 20);
                 button.interactable = validation.IsValid;
 
-                CollectionUIElements.Label(list, validation.IsValid ? "Valid saved deck" : string.Join("; ", validation.Errors), 12, i * 105 + 50, 820, 52, 16); i++;
+                Label(list, validation.IsValid ? "Valid saved deck" : string.Join("; ", validation.Errors), 12, i * 105 + 50, 820, 52, 16); i++;
             }
             list.sizeDelta = new Vector2(list.sizeDelta.x, Math.Max(310, i * 105));
-            if (decks.Count == 0) CollectionUIElements.Label(modalContent, "No saved decks for this faction. Create one in Collection / Decks.", 35, 240, 880, 70, 20);
+            if (decks.Count == 0) Label(modalContent, "No saved decks for this faction. Create one in Collection / Decks.", 35, 240, 880, 70, 20);
             var selectedDeck = decks.Find(d => d.deckId == selectedDeckId);
-            var start = CollectionUIElements.Button(modalContent, attack ? "Start Battle" : "Defend Region", 35, 584, 415, 52, () =>
+            var start = Button(modalContent, attack ? "Start Battle" : "Defend Region", 35, 584, 415, 52, () =>
             {
                 if (!CampaignMatchBridge.PrepareMatch(gameConfig, selectedDeckId, out string error)) { Failure(error, OpenDeckSelection); return; }
                 SceneManager.LoadScene(SceneNames.Game);
             }, 22);
             start.interactable = !op.TestAutoResolve && selectedDeck != null && ProgressionContext.Collection.Rules.Validate(selectedDeck, ProgressionContext.Collection.Owned).IsValid;
-            CollectionUIElements.Button(modalContent, "Cancel", 490, 584, 415, 52, CancelDeck);
+            Button(modalContent, "Cancel", 490, 584, 415, 52, CancelDeck);
             if (enableHumanTestAutoResolve || op.TestAutoResolve)
-                CollectionUIElements.Button(modalContent, "Test Auto Resolve (no collection rewards)", 35, 648, 870, 36,
+                Button(modalContent, "Test Auto Resolve (no collection rewards)", 35, 648, 870, 36,
                     () => Attempt(() => ResolveTest(selectedDeckId)), 16);
         }
         private void ResolveTest(string deckId)
@@ -236,16 +287,67 @@ namespace Game.Campaign
                 + "\nDefender: " + FactionName(op.DefenderFaction) + "  ·  " + op.DefenderDeckName;
             if (!op.Manual || op.TestAutoResolve) text += $"\nPredicted chances: {op.WinChance:P0} / {1 - op.WinChance:P0}\nDeck scores: {op.AttackerScore:F1} / {op.DefenderScore:F1}";
             text += "\n\n" + s.PendingNotification;
-            CollectionUIElements.Label(modalContent, text, 35, 120, 880, 390, 25);
-            CollectionUIElements.Button(modalContent, "Continue", 35, 580, 880, 58, () => Attempt(() => { Controller.Continue(op.OperationId); CloseModal(); selected = null; Recover(); }));
+            Label(modalContent, text, 35, 120, 880, 390, 25);
+            Button(modalContent, "Continue", 35, 580, 880, 58, () => Attempt(() => { Controller.Continue(op.OperationId); CloseModal(); selected = null; Recover(); }));
         }
         private void Failure(string error, Action retry)
         {
-            Modal("CAMPAIGN ERROR"); CollectionUIElements.Label(modalContent, error, 35, 120, 880, 360, 23);
-            CollectionUIElements.Button(modalContent, "Retry", 35, 570, 420, 56, () => { CloseModal(); retry(); });
-            CollectionUIElements.Button(modalContent, "Main Menu", 485, 570, 420, 56, () => SceneManager.LoadScene(SceneNames.MainMenu));
+            Modal("CAMPAIGN ERROR"); Label(modalContent, error, 35, 120, 880, 360, 23);
+            Button(modalContent, "Retry", 35, 570, 420, 56, () => { CloseModal(); retry(); });
+            Button(modalContent, "Main Menu", 485, 570, 420, 56, () => SceneManager.LoadScene(SceneNames.MainMenu));
         }
         public static string FactionName(Faction f) => f == Faction.IronConcord ? "Iron Concord" : f == Faction.Ashen ? "The Ashen" : "The Vessels";
+        // Campaign-only skin. Collection/deck screens keep their existing helper behaviour.
+        private TMP_Text Label(Transform parent, string value, float x, float y, float w, float h, int size = 16)
+        {
+            var label = CollectionUIElements.Label(parent, value, x, y, w, h, size);
+            label.color = PaperInk; return label;
+        }
+        private void Skin(RectTransform rect, bool paper, bool framed = true)
+        {
+            var image = rect.GetComponent<Image>(); image.sprite = paper ? paperSprite : metalSprite;
+            image.color = paper ? Color.white : new Color(.82f, .82f, .82f);
+            if (framed) Frame(rect);
+        }
+        private void Frame(RectTransform parent)
+        {
+            if (frameSprite == null) return;
+            var rect = CollectionUIElements.Rect(parent, "MetalBorder"); CollectionUIElements.Stretch(rect);
+            var image = rect.gameObject.AddComponent<Image>(); image.sprite = frameSprite;
+            image.type = Image.Type.Sliced; image.fillCenter = false; image.pixelsPerUnitMultiplier = 4;
+            image.raycastTarget = false;
+        }
+        private Button Button(Transform parent, string value, float x, float y, float w, float h, Action action, int size = 22)
+        {
+            var button = CollectionUIElements.Button(parent, value, x, y, w, h, action, size);
+            var image = button.GetComponent<Image>(); image.sprite = actionButtonSprite; image.color = Color.white;
+            var text = button.GetComponentInChildren<TMP_Text>(); text.color = PaperInk; text.fontStyle = FontStyles.Bold;
+            var colors = button.colors; colors.highlightedColor = new Color(1.12f, 1.08f, .95f);
+            colors.pressedColor = new Color(.75f, .68f, .57f); colors.disabledColor = new Color(.48f, .46f, .42f);
+            button.colors = colors; return button;
+        }
+        private void EndTurnButton(Transform parent, Action action)
+        {
+            var button = Button(parent, "", 1688, 19, 112, 112, action, 22);
+            button.gameObject.name = "EndTurn";
+            // This sprite already contains the action text.
+            if (endTurnSprite == null) button.GetComponentInChildren<TMP_Text>().text = "END TURN";
+            var image = button.GetComponent<Image>(); image.sprite = endTurnSprite; image.preserveAspect = true;
+        }
+        private void Logo(Transform parent, Faction faction, float x, float y, float size)
+        {
+            var rect = CollectionUIElements.Rect(parent, "FactionLogo"); CollectionUIElements.Place(rect, x, y, size, size);
+            var image = rect.gameObject.AddComponent<Image>();
+            image.sprite = faction == Faction.IronConcord ? ironConcordLogo : faction == Faction.Ashen ? ashenLogo : vesselsLogo;
+            image.preserveAspect = true; image.raycastTarget = false;
+            if (image.sprite == null) image.color = CampaignMapView.ColorFor(faction);
+        }
+        private static void Rule(Transform parent, float x, float y, float width)
+        {
+            var rect = CollectionUIElements.Panel(parent, "Divider"); CollectionUIElements.Place(rect, x, y, width, 1);
+            var image = rect.GetComponent<Image>(); image.color = new Color(.27f, .20f, .12f, .55f); image.raycastTarget = false;
+        }
         private void OnDestroy() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) Destroy(canvas.gameObject); }
     }
 }
+
