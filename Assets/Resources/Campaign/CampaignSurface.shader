@@ -85,12 +85,12 @@ Shader "Game/UI/CampaignSurface"
                 // Normalizing by the brightest channel keeps faction colors equally readable.
                 fixed luminance = dot(sample.rgb, fixed3(.299,.587,.114));
                 fixed peak = max(max(i.color.r, i.color.g), max(i.color.b, .001));
-                fixed3 terrain = lerp(sample.rgb, luminance * i.color.rgb / peak, .70) * i.surface.y;
+                fixed3 terrain = lerp(sample.rgb, luminance * i.color.rgb / peak, .45) * i.surface.y;
                 fixed4 color = lerp(i.color, fixed4(terrain, sample.a * i.color.a), i.surface.x);
                 // Feather the actual viewport, including its clipped sides and bottom.
                 float2 edge = min(i.localPosition.xy - _SurfaceRect.xy, _SurfaceRect.zw - i.localPosition.xy);
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
-                // The enlarged disk remains round in the corners; soften its horizon too.
+                // The rounded rectangular projection retains a soft map-space horizon.
                 // Borders and markers carry map UVs so the whole silhouette fades together.
                 float2 mapPoint = (i.texcoord - .5) / .48;
                 float horizon = 1 - smoothstep(.90, 1.04, length(mapPoint));

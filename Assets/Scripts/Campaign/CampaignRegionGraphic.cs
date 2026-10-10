@@ -10,6 +10,7 @@ namespace Game.Campaign
     {
         private List<Vector2> polygon, projected;
         private readonly List<Vector2> surfaceTriangles = new List<Vector2>();
+        private readonly List<Vector2> screenTriangles = new List<Vector2>();
         private Vector2 marker;
         private Texture2D surface;
         private Action clicked;
@@ -26,10 +27,11 @@ namespace Game.Campaign
             silhouette = isShadow; raycastTarget = !isShadow;
             polygon = new List<Vector2>(region.PolygonVertices);
             projected = polygon.ConvertAll(CampaignMapView.Project);
-            surfaceTriangles.Clear();
-            var indices = CampaignGeometry.Triangulate(polygon);
+            surfaceTriangles.Clear(); screenTriangles.Clear();
+            var indices = CampaignGeometry.Triangulate(projected);
             for (int i = 0; i < indices.Count; i += 3)
-                Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]], isShadow ? 0 : 3);
+                Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]],
+                    projected[indices[i]], projected[indices[i + 1]], projected[indices[i + 2]], isShadow ? 0 : 3);
             marker = VisibleCenter(region);
             clicked = click; hovered = onHover; SetVerticesDirty();
         }
@@ -51,12 +53,13 @@ namespace Game.Campaign
             return result;
         }
 
-        // Enlarging the surface crops the outer rim. Keep each marker in its own visible cell.
+        // Keep each marker in its original cell and its displayed polygon.
         public static Vector2 VisibleCenter(RegionState region)
         {
             var center = InteriorCenter(region);
             var projectedCenter = CampaignMapView.Project(center);
-            if (Math.Abs(projectedCenter.x) <= .90f && Math.Abs(projectedCenter.y) <= .80f) return center;
+            var displayedPolygon = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
+            if (Math.Abs(projectedCenter.x) <= .90f && Math.Abs(projectedCenter.y) <= .80f && CampaignGeometry.Contains(displayedPolygon, projectedCenter)) return center;
             var vertices = region.PolygonVertices;
             var triangles = CampaignGeometry.Triangulate(vertices);
             var best = center; double bestScore = double.MaxValue;
@@ -67,6 +70,7 @@ namespace Game.Campaign
                         var point = (vertices[triangles[t]] * a + vertices[triangles[t + 1]] * b
                             + vertices[triangles[t + 2]] * (12 - a - b)) / 12f;
                         var projectedPoint = CampaignMapView.Project(point);
+                        if (!CampaignGeometry.Contains(displayedPolygon, projectedPoint)) continue;
                         double overflow = Math.Max(0, Math.Abs(projectedPoint.x) - .90f)
                             + Math.Max(0, Math.Abs(projectedPoint.y) - .80f);
                         double score = overflow * 100 + (point - center).sqrMagnitude;
@@ -75,12 +79,19 @@ namespace Game.Campaign
             return best;
         }
 
-        private void Subdivide(Vector2 a, Vector2 b, Vector2 c, int depth)
+        private void Subdivide(Vector2 a, Vector2 b, Vector2 c, Vector2 screenA, Vector2 screenB, Vector2 screenC, int depth)
         {
-            if (depth == 0) { surfaceTriangles.Add(a); surfaceTriangles.Add(b); surfaceTriangles.Add(c); return; }
+            if (depth == 0)
+            {
+                surfaceTriangles.Add(a); surfaceTriangles.Add(b); surfaceTriangles.Add(c);
+                screenTriangles.Add(screenA); screenTriangles.Add(screenB); screenTriangles.Add(screenC); return;
+            }
             var ab = (a + b) / 2; var bc = (b + c) / 2; var ca = (c + a) / 2;
-            Subdivide(a, ab, ca, depth - 1); Subdivide(ab, b, bc, depth - 1);
-            Subdivide(ca, bc, c, depth - 1); Subdivide(ab, bc, ca, depth - 1);
+            var screenAB = (screenA + screenB) / 2; var screenBC = (screenB + screenC) / 2; var screenCA = (screenC + screenA) / 2;
+            Subdivide(a, ab, ca, screenA, screenAB, screenCA, depth - 1);
+            Subdivide(ab, b, bc, screenAB, screenB, screenBC, depth - 1);
+            Subdivide(ca, bc, c, screenCA, screenBC, screenC, depth - 1);
+            Subdivide(ab, bc, ca, screenAB, screenBC, screenCA, depth - 1);
         }
 
         public void Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool capture, bool input)
@@ -108,7 +119,7 @@ namespace Game.Campaign
         {
             vh.Clear(); if (polygon == null) return;
             var ownership = color;
-            if (hover || selected) ownership = Color.Lerp(ownership, new Color(1f, .86f, .59f), selected ? .23f : .10f);
+            if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .35f : .10f);
             if (captured && Time.unscaledTime - changedTime < .6f)
                 ownership = Color.Lerp(ownership, Color.white, .18f * (1 - (Time.unscaledTime - changedTime) / .6f));
             for (int i = 0; i < surfaceTriangles.Count; i += 3)
@@ -121,14 +132,14 @@ namespace Game.Campaign
                     float radius = Mathf.Clamp01(p.sqrMagnitude);
                     float shade = .99f + .11f * p.y - .49f * radius * radius;
                     var tint = silhouette ? color : ownership; tint.a = 1;
-                    AddVertex(vh, Pixel(p), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade);
+                    AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade);
                 }
                 vh.AddTriangle(start, start + 1, start + 2);
             }
             if (silhouette) return;
-            var border = selected ? new Color(1f, .78f, .32f) : attacked ? new Color(.94f, .47f, .24f)
+            var border = selected ? new Color(1f, .70f, .25f) : attacked ? new Color(.94f, .47f, .24f)
                 : attackable ? new Color(.85f, .68f, .36f) : new Color(.16f, .145f, .115f, .8f);
-            float width = selected || attacked ? 2f : hover || attackable ? 1.2f : .55f;
+            float width = selected || attacked ? .90f : hover || attackable ? .65f : .45f;
             for (int i = 0; i < polygon.Count; i++)
             {
                 var a = Pixel(polygon[i]); var b = Pixel(polygon[(i + 1) % polygon.Count]);
@@ -141,7 +152,7 @@ namespace Game.Campaign
                 vh.AddTriangle(start, start + 1, start + 2); vh.AddTriangle(start, start + 2, start + 3);
             }
             Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f), CampaignMapView.SurfaceUV(marker));
-            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(1f, .69f, .24f) : color, CampaignMapView.SurfaceUV(marker));
+            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(.88f, .53f, .15f) : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), CampaignMapView.SurfaceUV(marker));
         }
         private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1)
         {

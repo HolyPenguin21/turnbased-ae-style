@@ -40,20 +40,20 @@ vertices instead of shading only polygon corners. Region boundaries remain actua
 generated vertices. Raycasting uses the same projected polygons and pixel
 conversion as rendering, including the inherited CanvasGroup/mask filters.
 
-Markers and selected labels use an interior point for concave regions. The
-surface is enlarged horizontally (1.20) and vertically (1.13) in the same affine
-projection used for rendering and input. A RectMask2D viewport, inset 20 canvas
-units from the panel edges, crops the outer rim into a broad rounded rectangle.
-The shader fades both the viewport edges (48 units) and the map-space horizon;
+Markers and selected labels use an interior point for concave regions. A bounded
+projection using tanh (horizontal 1.65, vertical 1.45) broadens the disk into a
+rounded rectangle while retaining all regions inside the viewport. Regions are
+triangulated after projection; screen triangles subdivide linearly alongside
+map-space UV triangles. Fill, contour and raycast therefore share exactly the
+same displayed polygon. The 20-unit viewport inset and 48-unit edge fade remain;
 lighting darkens the lower rim and a 12-unit shadow adds depth. Surface bounds
 follow RectTransform size changes. Borders and markers carry shared map UVs so
 they fade with the terrain rather than leaving a hard outline.
 
-For a cell near the cropped rim, `VisibleCenter` chooses a point inside one of
-its existing triangles and inside the viewport where possible. Marker, selected
-name, terrain preview and operation arrows use that same point. Save vertices,
-region adjacency and click polygons are not changed. Operation arrows use the
-same pixel space. Decorative frames/images/text
+`VisibleCenter` chooses a point inside both the saved region and its displayed
+polygon, away from the frame where possible. Marker, selected name, terrain
+preview and operation arrows use that same point. Projection does not modify
+saved vertices or adjacency. Decorative frames/images/text
 do not intercept region clicks. Owner/selection/hover changes update the existing
 meshes; no map regeneration or save mutation occurs. The shared runtime material
 is released when the view is destroyed.
@@ -70,7 +70,7 @@ for contrast against terrain.
 Attack confirmation, deck selection and result/error dialogs use the same skin.
 The neighbor list scrolls for regions with many neighbors.
 
-Campaign generation, adjacency, faction turns, legal attacks, battle resolution,
+Faction turns, legal attacks, battle resolution,
 deck validation, collection rewards, saving and recovery logic are unchanged.
 No AI resource/bank reservation or tactical map code is touched.
 
@@ -81,7 +81,7 @@ No AI resource/bank reservation or tactical map code is touched.
   tests against Unity reference DLLs and explicit dependency/TMPro stubs: baseline
   and changed sources both compiled with zero errors.
 - Managed geometry check using current generator/geometry/rules and extracted
-  presentation math: 35 generated maps, 840 regions; interior/visible markers, UV bounds,
+  presentation math: 35 generated maps, 1260 regions; interior/visible markers, UV bounds,
   pixel conversion at 1280×720 / 1920×1080 / 2560×1440, unchanged region data, and
   the concave-marker regression passed. This uses the existing verification
   approach of managed vector copies, not the native Unity renderer.
@@ -128,14 +128,37 @@ history extending below its intended area. Reference-DLL compilation passed
 again after those UI fixes. The scene and all procedural/backend data remain
 unchanged by this follow-up.
 
-### Wider surface and frame-edge review
+### Reference palette, contours and density
 
-The composite was rebuilt after the viewport/lighting changes using the same
-actual assets, original source font, generated seed-7 geometry and production
-`VisibleCenter` output. The square source frame is assembled as nine slices: its
-128-pixel corner patches display at 32 canvas units; only the rails stretch.
-The resulting 1400×780 map frame is rectangular. The terrain now fills that
-frame up to its inner bottom edge and fades into its metal backing.
-Reference-DLL compilation passed again; the managed 35-map/840-region check also
-confirmed visible interior markers after enlargement and unchanged save geometry.
-The composite remains a CPU approximation, not a native Unity render.
+New campaigns now default to 36 regions, balanced at 12 per faction. The three
+ownership tints are muted blue-gray, terracotta and olive. Terrain retains 55%
+of its original color rather than being dominated by a 70% faction wash. Normal
+borders are thin dark lines; selection uses a thin warm amber contour and a
+stronger warm fill. Markers use darkened versions of the same ownership palette.
+
+New region borders use one cached sampled curve per shared Voronoi edge. Both
+neighbors reuse exactly identical points in reverse order. Samples are spaced
+according to edge length, up to six segments; very short edges stay unsplit to
+avoid near-collinear triangles. The warp has smooth low-frequency displacement
+with a smaller secondary wave. Existing minimum area/width, shared-vertex,
+intersection, adjacency and connected ownership checks remain active.
+
+Saved polygons are loaded directly and are not regenerated: previous 24-region
+campaigns retain their region count and boundaries. Only a newly created campaign
+uses the 36-region default and revised contours.
+
+The composite uses actual seed-7 generated geometry, production `VisibleCenter`
+output, committed textures and original game sprites/font. The square source
+frame is assembled as nine slices: its 128-pixel corner patches display at 32
+canvas units; only the rails stretch. The resulting 1400×780 map frame is
+rectangular. The CPU rendering approximates nonlinear UV interpolation and
+native shader/TMP antialiasing; it is not a Unity screenshot.
+
+Validation for the palette/contour/density change: targeted reference-DLL UI and
+visual-test compilation passed. A managed check generated 1000 default planets
+(36000 regions) and validated shared curved boundaries, balanced connected
+ownership, projected triangulation area, visible interior markers and mesh
+vertex limits. Custom counts 3/7/24/31/36 and seed reproducibility passed. A map
+created by the previous generator retained its original 24 regions and exact
+geometry through a managed JSON roundtrip and current geometry validation.
+These checks do not execute native Unity JsonUtility or the full EditMode suite.

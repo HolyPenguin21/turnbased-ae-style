@@ -25,16 +25,24 @@ public sealed class CampaignSystemTests
     }
     private static CampaignState HumanTurn(CampaignState s)
     { int index = s.TurnOrder.IndexOf(s.HumanFaction); s.CurrentTurnIndex = index; return s; }
+    [Test] public void G00_DefaultCampaignUsesThirtySixRegions()
+    {
+        var s = new CampaignMapGenerator().Generate(37, Faction.Ashen);
+        Assert.AreEqual(36, s.Regions.Count);
+        CampaignGeometry.Validate(s.Regions, true);
+        foreach (var faction in s.Factions)
+            Assert.AreEqual(12, s.Regions.Count(r => r.OwnerFaction == faction.Faction));
+    }
     [Test] public void G01_SeedReproducesGeometryAndInitialOwnership() => Assert.AreEqual(Geometry(Planet()), Geometry(Planet()));
     [Test] public void G02_DifferentSeedsChangeGeometry() => Assert.AreNotEqual(Geometry(Planet(11)), Geometry(Planet(12)));
-    [TestCase(3)] [TestCase(7)] [TestCase(24)] [TestCase(31)]
+    [TestCase(3)] [TestCase(7)] [TestCase(24)] [TestCase(31)] [TestCase(36)]
     public void G03_RegionCountAndBalancedConnectedOwnership(int count)
     {
         var s = Planet(31, count); Assert.AreEqual(count, s.Regions.Count); CampaignGeometry.Validate(s.Regions, true);
         foreach (var f in s.Factions) Assert.That(s.Regions.Count(r => r.OwnerFaction == f.Faction), Is.InRange(count / 3, (count + 2) / 3));
     }
     [Test] public void G12_ThousandSeedsHaveValidSharedGeometryAndConnectedBalancedTerritories()
-    { for (int seed = 0; seed < 1000; seed++) { var s = Planet(seed); CampaignGeometry.Validate(s.Regions, true); } }
+    { for (int seed = 0; seed < 1000; seed++) { var s = Planet(seed, 36); CampaignGeometry.Validate(s.Regions, true); } }
     [Test] public void InvalidGeometryAndAdjacencyAreRejected()
     {
         var s = Planet(); s.Regions[0].NeighborIds.Add(s.Regions[0].RegionId); Assert.Throws<InvalidDataException>(() => CampaignGeometry.Validate(s.Regions));
@@ -405,3 +413,4 @@ public sealed class CampaignSystemTests
     }
 }
 #endif
+

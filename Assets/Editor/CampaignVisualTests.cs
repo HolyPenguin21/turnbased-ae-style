@@ -33,6 +33,7 @@ public sealed class CampaignVisualTests
     }
     [TestCase(1)]
     [TestCase(37)]
+    [TestCase(94)]
     [TestCase(20261011)]
     public void GeneratedRegionsKeepTheirTopologyAndHaveInteriorMarkers(int seed)
     {
@@ -44,8 +45,14 @@ public sealed class CampaignVisualTests
             var visible = CampaignRegionGraphic.VisibleCenter(region);
             var projected = CampaignMapView.Project(visible);
             Assert.True(CampaignGeometry.Contains(region.PolygonVertices, visible));
-            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.97f));
-            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.97f));
+            var displayed = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
+            Assert.True(CampaignGeometry.Contains(displayed, projected));
+            var triangles = CampaignGeometry.Triangulate(displayed); double triangleArea = 0;
+            for (int t = 0; t < triangles.Count; t += 3)
+                triangleArea += CampaignGeometry.Cross(displayed[triangles[t]], displayed[triangles[t + 1]], displayed[triangles[t + 2]]) / 2;
+            Assert.That(triangleArea, Is.EqualTo(CampaignGeometry.Area(displayed)).Within(1e-7));
+            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.995f));
+            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.995f));
             foreach (var vertex in region.PolygonVertices)
             {
                 var uv = CampaignMapView.SurfaceUV(vertex);
@@ -66,8 +73,14 @@ public sealed class CampaignVisualTests
             var visible = CampaignRegionGraphic.VisibleCenter(region);
             var projected = CampaignMapView.Project(visible);
             Assert.True(CampaignGeometry.Contains(region.PolygonVertices, visible));
-            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.97f));
-            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.97f));
+            var displayed = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
+            Assert.True(CampaignGeometry.Contains(displayed, projected));
+            var triangles = CampaignGeometry.Triangulate(displayed); double triangleArea = 0;
+            for (int t = 0; t < triangles.Count; t += 3)
+                triangleArea += CampaignGeometry.Cross(displayed[triangles[t]], displayed[triangles[t + 1]], displayed[triangles[t + 2]]) / 2;
+            Assert.That(triangleArea, Is.EqualTo(CampaignGeometry.Area(displayed)).Within(1e-7));
+            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.995f));
+            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.995f));
     }
     [Test]
     public void RegionMeshSeparatesTexturedTerrainFromSolidBordersAndMarkers()

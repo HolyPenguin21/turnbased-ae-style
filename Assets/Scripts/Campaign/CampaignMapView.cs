@@ -16,8 +16,8 @@ namespace Game.Campaign
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
-        // One projection for mesh, input, labels and operation arrows. Save polygons stay in map space.
-        public static Vector2 Project(Vector2 p) => new Vector2(p.x * 1.20f, p.y * 1.13f + p.x * .006f);
+        // Rounded rectangular projection keeps the complete disk visible. Saves stay in map space.
+        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * 1.65) / Math.Tanh(1.65)) * .98f, (float)(Math.Tanh(p.y * 1.45) / Math.Tanh(1.45)) * .98f);
         public static Vector2 ToPixel(Rect rect, Vector2 projected) => rect.center + new Vector2(projected.x * rect.width * .50f, projected.y * rect.height * .50f);
         public static Vector2 FromPixel(Rect rect, Vector2 pixel) => new Vector2((pixel.x - rect.center.x) / (rect.width * .50f), (pixel.y - rect.center.y) / (rect.height * .50f));
         public static Vector2 SurfaceUV(Vector2 point) => new Vector2(point.x * .48f + .5f, point.y * .48f + .5f);
@@ -91,8 +91,8 @@ namespace Game.Campaign
                 selectedLabel.text = labelRegion.Name.ToUpperInvariant();
             }
         }
-        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.37f, .47f, .53f)
-            : faction == Game.Players.Faction.Ashen ? new Color(.64f, .37f, .24f) : new Color(.39f, .51f, .34f);
+        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.53f, .59f, .64f)
+            : faction == Game.Players.Faction.Ashen ? new Color(.73f, .55f, .42f) : new Color(.57f, .58f, .43f);
         private void OnRectTransformDimensionsChange()
         {
             if (surfaceMaterial == null) return;
