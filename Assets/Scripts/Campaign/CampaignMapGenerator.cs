@@ -10,7 +10,7 @@ namespace Game.Campaign
 {
     [Serializable] public sealed class CampaignGenerationSettings
     {
-        public int RegionCount = 36;
+        public int RegionCount = 48;
         public float MinimumRegionArea = .018f;
         public float MinimumRegionWidth = .07f;
         public float BorderIrregularity = .85f;

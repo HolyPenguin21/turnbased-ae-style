@@ -11,7 +11,8 @@ namespace Game.Campaign
         private List<Vector2> polygon, projected;
         private readonly List<Vector2> surfaceTriangles = new List<Vector2>();
         private readonly List<Vector2> screenTriangles = new List<Vector2>();
-        private Vector2 marker;
+        private Vector2 marker, glowSize;
+        private readonly List<float> glowWeights = new List<float>();
         private Texture2D surface;
         private Action clicked;
         private Action<bool> hovered;
@@ -27,7 +28,7 @@ namespace Game.Campaign
             silhouette = isShadow; raycastTarget = !isShadow;
             polygon = new List<Vector2>(region.PolygonVertices);
             projected = polygon.ConvertAll(CampaignMapView.Project);
-            surfaceTriangles.Clear(); screenTriangles.Clear();
+            surfaceTriangles.Clear(); screenTriangles.Clear(); glowWeights.Clear();
             var indices = CampaignGeometry.Triangulate(projected);
             for (int i = 0; i < indices.Count; i += 3)
                 Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]],
@@ -79,6 +80,21 @@ namespace Game.Campaign
             return best;
         }
 
+        // Distance to the actual displayed contour, including concave notches.
+        public static float SelectionGlow(Vector2 point, IReadOnlyList<Vector2> boundary, float width)
+        {
+            float distance = float.MaxValue;
+            for (int i = 0; i < boundary.Count; i++)
+            {
+                var a = boundary[i]; var direction = boundary[(i + 1) % boundary.Count] - a;
+                float t = direction.sqrMagnitude > 1e-12f
+                    ? Math.Max(0f, Math.Min(1f, Vector2.Dot(point - a, direction) / direction.sqrMagnitude)) : 0;
+                distance = Math.Min(distance, (point - a - direction * t).magnitude);
+            }
+            float progress = Math.Max(0f, Math.Min(1f, distance / Math.Max(.001f, width)));
+            return 1 - progress * progress * (3 - 2 * progress);
+        }
+
         private void Subdivide(Vector2 a, Vector2 b, Vector2 c, Vector2 screenA, Vector2 screenB, Vector2 screenC, int depth)
         {
             if (depth == 0)
@@ -115,11 +131,26 @@ namespace Game.Campaign
         }
         private Vector2 Pixel(Vector2 p) => CampaignMapView.ToPixel(rectTransform.rect, CampaignMapView.Project(p));
 
+        private void CacheSelectionGlow()
+        {
+            var rect = rectTransform.rect; var size = new Vector2(rect.width, rect.height);
+            if (glowWeights.Count == screenTriangles.Count && (glowSize - size).sqrMagnitude == 0) return;
+            glowWeights.Clear(); glowSize = size;
+            var boundary = projected.ConvertAll(p => CampaignMapView.ToPixel(rect, p));
+            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
+            foreach (var point in boundary)
+            { minX = Math.Min(minX, point.x); minY = Math.Min(minY, point.y); maxX = Math.Max(maxX, point.x); maxY = Math.Max(maxY, point.y); }
+            float width = Math.Max(12f, Math.Min(38f, Math.Min(maxX - minX, maxY - minY) * .22f));
+            foreach (var point in screenTriangles)
+                glowWeights.Add(SelectionGlow(CampaignMapView.ToPixel(rect, point), boundary, width));
+        }
+
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear(); if (polygon == null) return;
+            if (selected && !silhouette) CacheSelectionGlow();
             var ownership = color;
-            if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .35f : .10f);
+            if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .18f : .10f);
             if (captured && Time.unscaledTime - changedTime < .6f)
                 ownership = Color.Lerp(ownership, Color.white, .18f * (1 - (Time.unscaledTime - changedTime) / .6f));
             for (int i = 0; i < surfaceTriangles.Count; i += 3)
@@ -132,14 +163,14 @@ namespace Game.Campaign
                     float radius = Mathf.Clamp01(p.sqrMagnitude);
                     float shade = .99f + .11f * p.y - .49f * radius * radius;
                     var tint = silhouette ? color : ownership; tint.a = 1;
-                    AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade);
+                    AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade, selected && !silhouette ? glowWeights[i + j] : 0);
                 }
                 vh.AddTriangle(start, start + 1, start + 2);
             }
             if (silhouette) return;
             var border = selected ? new Color(1f, .70f, .25f) : attacked ? new Color(.94f, .47f, .24f)
-                : attackable ? new Color(.85f, .68f, .36f) : new Color(.16f, .145f, .115f, .8f);
-            float width = selected || attacked ? .90f : hover || attackable ? .65f : .45f;
+                : attackable ? new Color(.85f, .68f, .36f) : new Color(.12f, .105f, .075f, .94f);
+            float width = selected || attacked ? 1.15f : hover || attackable ? .85f : .70f;
             for (int i = 0; i < polygon.Count; i++)
             {
                 var a = Pixel(polygon[i]); var b = Pixel(polygon[(i + 1) % polygon.Count]);
@@ -154,10 +185,11 @@ namespace Game.Campaign
             Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f), CampaignMapView.SurfaceUV(marker));
             Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(.88f, .53f, .15f) : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), CampaignMapView.SurfaceUV(marker));
         }
-        private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1)
+        private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, float glow = 0)
         {
             var vertex = UIVertex.simpleVert; vertex.position = position; vertex.color = tint;
-            vertex.uv0 = uv; vertex.uv1 = new Vector2(textured ? 1 : 0, lighting); vh.AddVert(vertex);
+            vertex.uv0 = uv; vertex.uv1 = new Vector2(textured ? 1 : 0, lighting);
+            vertex.uv2 = new Vector2(glow, 0); vh.AddVert(vertex);
         }
         private static void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 uv)
         {

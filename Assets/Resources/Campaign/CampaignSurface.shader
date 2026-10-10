@@ -48,6 +48,7 @@ Shader "Game/UI/CampaignSurface"
                 fixed4 color : COLOR;
                 float2 texcoord : TEXCOORD0;
                 float2 surface : TEXCOORD1;
+                float2 selection : TEXCOORD2;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
             struct v2f
@@ -57,6 +58,7 @@ Shader "Game/UI/CampaignSurface"
                 float2 texcoord : TEXCOORD0;
                 float4 localPosition : TEXCOORD1;
                 float2 surface : TEXCOORD2;
+                float selection : TEXCOORD3;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
             sampler2D _MainTex;
@@ -74,6 +76,7 @@ Shader "Game/UI/CampaignSurface"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.texcoord = v.texcoord;
                 o.surface = v.surface;
+                o.selection = v.selection.x;
                 o.color = v.color * _Color;
                 return o;
             }
@@ -86,6 +89,8 @@ Shader "Game/UI/CampaignSurface"
                 fixed luminance = dot(sample.rgb, fixed3(.299,.587,.114));
                 fixed peak = max(max(i.color.r, i.color.g), max(i.color.b, .001));
                 fixed3 terrain = lerp(sample.rgb, luminance * i.color.rgb / peak, .45) * i.surface.y;
+                // Contour glow fades inward; its distance weights are cached on the region mesh.
+                terrain = lerp(terrain, fixed3(1,.72,.28), i.selection * .42);
                 fixed4 color = lerp(i.color, fixed4(terrain, sample.a * i.color.a), i.surface.x);
                 // Feather the actual viewport, including its clipped sides and bottom.
                 float2 edge = min(i.localPosition.xy - _SurfaceRect.xy, _SurfaceRect.zw - i.localPosition.xy);

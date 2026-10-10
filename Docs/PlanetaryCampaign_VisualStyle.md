@@ -4,7 +4,7 @@
 
 The campaign screen now uses the accepted second visual direction: a softly lit,
 wide wasteland surface with continuous terrain, translucent ownership colors,
-fine borders, faction markers and an amber selected region. Worn steel frames,
+clear dark borders, faction markers and an amber selected region. Worn steel frames,
 parchment information panels and the existing game font/buttons/logos complete
 the console. This is a presentation change, not a new campaign architecture.
 
@@ -20,6 +20,7 @@ do not imply gameplay bonuses, resources or extra campaign mechanics.
 - `Parchment.jpg`, `ConsoleMetal.jpg`: readable light paper and dark console material.
 - `CampaignSurface.shader`: UI stencil/clip-compatible surface rendering.
   TEXCOORD1.x distinguishes textured terrain from solid borders and markers.
+  TEXCOORD2.x carries the selected region's inward contour glow.
 - The campaign scene references the existing End Turn/action button sprites and
   Iron Concord/Ashen/Vessels logos by their original GUIDs; they are not duplicated.
 - All new assets have committed Unity import metadata and load from Resources in
@@ -81,7 +82,7 @@ No AI resource/bank reservation or tactical map code is touched.
   tests against Unity reference DLLs and explicit dependency/TMPro stubs: baseline
   and changed sources both compiled with zero errors.
 - Managed geometry check using current generator/geometry/rules and extracted
-  presentation math: 35 generated maps, 1260 regions; interior/visible markers, UV bounds,
+  presentation math: 35 generated maps, 1680 regions; interior/visible markers, UV bounds,
   pixel conversion at 1280×720 / 1920×1080 / 2560×1440, unchanged region data, and
   the concave-marker regression passed. This uses the existing verification
   approach of managed vector copies, not the native Unity renderer.
@@ -130,11 +131,16 @@ unchanged by this follow-up.
 
 ### Reference palette, contours and density
 
-New campaigns now default to 36 regions, balanced at 12 per faction. The three
+New campaigns now default to 48 regions, balanced at 16 per faction. The three
 ownership tints are muted blue-gray, terracotta and olive. Terrain retains 55%
 of its original color rather than being dominated by a 70% faction wash. Normal
-borders are thin dark lines; selection uses a thin warm amber contour and a
-stronger warm fill. Markers use darkened versions of the same ownership palette.
+borders are darker and more visible (1.4 canvas units wide). Selection uses a
+2.3-unit amber contour, a restrained warm fill and an inward amber gradient:
+strongest at the boundary, fading smoothly over 12–38 canvas units according to
+region size. `SelectionGlow` measures distance to actual segments, including
+concave notches. Weights are cached per subdivided mesh vertex and recalculated
+only when geometry or the display rectangle size changes. They are transmitted
+on TEXCOORD2; deselection sends zero weights, so the shader removes the glow. Markers use darkened versions of the same ownership palette.
 
 New region borders use one cached sampled curve per shared Voronoi edge. Both
 neighbors reuse exactly identical points in reverse order. Samples are spaced
@@ -143,9 +149,9 @@ avoid near-collinear triangles. The warp has smooth low-frequency displacement
 with a smaller secondary wave. Existing minimum area/width, shared-vertex,
 intersection, adjacency and connected ownership checks remain active.
 
-Saved polygons are loaded directly and are not regenerated: previous 24-region
+Saved polygons are loaded directly and are not regenerated: previous 24- and 36-region
 campaigns retain their region count and boundaries. Only a newly created campaign
-uses the 36-region default and revised contours.
+uses the 48-region default and revised contours.
 
 The composite uses actual seed-7 generated geometry, production `VisibleCenter`
 output, committed textures and original game sprites/font. The square source
@@ -156,9 +162,16 @@ native shader/TMP antialiasing; it is not a Unity screenshot.
 
 Validation for the palette/contour/density change: targeted reference-DLL UI and
 visual-test compilation passed. A managed check generated 1000 default planets
-(36000 regions) and validated shared curved boundaries, balanced connected
+(48000 regions) and validated shared curved boundaries, balanced connected
 ownership, projected triangulation area, visible interior markers and mesh
-vertex limits. Custom counts 3/7/24/31/36 and seed reproducibility passed. A map
+vertex limits. Custom counts 3/7/24/31/36/48 and seed reproducibility passed. A map
 created by the previous generator retained its original 24 regions and exact
 geometry through a managed JSON roundtrip and current geometry validation.
 These checks do not execute native Unity JsonUtility or the full EditMode suite.
+
+Managed glow checks confirm maximum brightness at the contour, half brightness
+halfway through the falloff, zero at the interior beyond the falloff, and the
+concave-notch case. Native mesh tests also check intermediate glow weights and
+zero weights after deselection; those EditMode tests compile but were not run
+in Unity. The refreshed composite demonstrates 48 actual generated regions and
+the contour-to-center gradient using the same shader blend and falloff formula.

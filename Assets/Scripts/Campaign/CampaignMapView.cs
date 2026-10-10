@@ -32,7 +32,7 @@ namespace Game.Campaign
             surfaceMaterial = new Material(shader) { name = "CampaignSurface (runtime)" };
             OnRectTransformDimensionsChange();
             var canvas = GetComponentInParent<Canvas>();
-            if (canvas != null) canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1;
+            if (canvas != null) canvas.additionalShaderChannels |= AdditionalCanvasShaderChannels.TexCoord1 | AdditionalCanvasShaderChannels.TexCoord2;
             foreach (var region in regions)
             {
                 var shadow = new GameObject("PlanetDepth_" + region.RegionId, typeof(RectTransform), typeof(CanvasRenderer)); shadow.transform.SetParent(transform, false);

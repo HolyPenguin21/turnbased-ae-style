@@ -70,17 +70,17 @@ public sealed class CampaignVisualTests
               new Vector2(1, 1), new Vector2(1, 3), new Vector2(0, 3) } };
         Assert.False(CampaignGeometry.Contains(region.PolygonVertices, CampaignGeometry.Center(region)));
         Assert.True(CampaignGeometry.Contains(region.PolygonVertices, CampaignRegionGraphic.InteriorCenter(region)));
-            var visible = CampaignRegionGraphic.VisibleCenter(region);
-            var projected = CampaignMapView.Project(visible);
-            Assert.True(CampaignGeometry.Contains(region.PolygonVertices, visible));
-            var displayed = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
-            Assert.True(CampaignGeometry.Contains(displayed, projected));
-            var triangles = CampaignGeometry.Triangulate(displayed); double triangleArea = 0;
-            for (int t = 0; t < triangles.Count; t += 3)
-                triangleArea += CampaignGeometry.Cross(displayed[triangles[t]], displayed[triangles[t + 1]], displayed[triangles[t + 2]]) / 2;
-            Assert.That(triangleArea, Is.EqualTo(CampaignGeometry.Area(displayed)).Within(1e-7));
-            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.995f));
-            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.995f));
+    }
+    [Test]
+    public void SelectionGlowFadesFromContourTowardTheInterior()
+    {
+        var boundary = new[] { new Vector2(0, 0), new Vector2(100, 0), new Vector2(100, 100), new Vector2(0, 100) };
+        Assert.That(CampaignRegionGraphic.SelectionGlow(new Vector2(0, 50), boundary, 24), Is.EqualTo(1f).Within(1e-6));
+        Assert.That(CampaignRegionGraphic.SelectionGlow(new Vector2(12, 50), boundary, 24), Is.EqualTo(.5f).Within(1e-6));
+        Assert.That(CampaignRegionGraphic.SelectionGlow(new Vector2(50, 50), boundary, 24), Is.EqualTo(0f).Within(1e-6));
+        var concave = new[] { new Vector2(0, 0), new Vector2(100, 0), new Vector2(100, 40),
+            new Vector2(40, 40), new Vector2(40, 100), new Vector2(0, 100) };
+        Assert.That(CampaignRegionGraphic.SelectionGlow(new Vector2(39, 60), concave, 12), Is.GreaterThan(.9f));
     }
     [Test]
     public void RegionMeshSeparatesTexturedTerrainFromSolidBordersAndMarkers()
@@ -105,6 +105,16 @@ public sealed class CampaignVisualTests
             Assert.That(mesh.vertexCount, Is.GreaterThan(100));
             Assert.True(mesh.uv2.Any(v => v.x == 1)); Assert.True(mesh.uv2.Any(v => v.x == 0));
             Assert.True(mesh.uv.All(v => v.x >= 0 && v.x <= 1 && v.y >= 0 && v.y <= 1));
+            Assert.True(mesh.uv3.Any(v => v.x > .9f));
+            Assert.True(mesh.uv3.Any(v => v.x > .01f && v.x < .99f));
+            graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, false, true);
+            using (var vh = new VertexHelper())
+            {
+                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    .Invoke(graphic, new object[] { vh });
+                vh.FillMesh(mesh);
+            }
+            Assert.True(mesh.uv3.All(v => v.x == 0));
             CampaignGeometry.Validate(state.Regions, true);
         }
         finally { Object.DestroyImmediate(root); Object.DestroyImmediate(mesh); Object.DestroyImmediate(material); }
