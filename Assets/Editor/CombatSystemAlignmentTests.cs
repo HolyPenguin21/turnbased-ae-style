@@ -61,8 +61,9 @@ namespace Game.EditorTests
                 WorthIt.EstimateCaptureKill(bodies, new WorthIt.SideCommander(0, 3), spentFate);
                 Assert.That(WorthIt.CurrentEstimateCacheStats.Misses, Is.EqualTo(3),
                     "observed defender Fate and our current Fate are separate cache inputs");
-                Assert.That(WorthIt.EstimateSequential(bodies, default, opposition, 0).WinChance, Is.EqualTo(1f));
                 Assert.That(first, Is.LessThan(1f), "the empty tactical battle must not supply capture odds");
+                Assert.That(WorthIt.EstimateSequential(bodies, default, opposition, 0).WinChance, Is.EqualTo(first),
+                    "a hero-only opposition is priced by its capture odds, not by the empty tactical battle");
             }
             finally { WorthIt.EndEstimateCacheScope(); }
         }
