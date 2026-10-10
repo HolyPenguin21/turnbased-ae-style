@@ -166,16 +166,20 @@ namespace Game.UI
             var decks = collection.Snapshot.savedDecks.Where(d => d.faction == faction).ToList();
             int index = decks.FindIndex(d => d.deckId == draft.deckId);
             if (index < 0) { decks.Add(CollectionProfile.CopyDeck(draft)); index = decks.Count - 1; }
-            var names = decks.Select(d => d.deckId == draft.deckId ? draft.name + (dirty ? " *" : "") : d.name).ToList();
+            var names = decks.Select(d => (d.deckId == draft.deckId ? draft.name + (dirty ? " *" : "") : d.name)
+                + (d.isStarter ? " [Starter]" : "")).ToList();
             Dropdown(deckPanel, names, index, 14, 10, 500, value => Guard(() =>
             { draft = CollectionProfile.CopyDeck(decks[value]); dirty = false; Draw(false); }));
             CollectionUIElements.Button(deckPanel, "Create", 14, 64, 500, 44, () => Guard(() => { draft = NewDeck(); dirty = true; Draw(false); }), 20);
             Input(deckPanel, draft.name, 14, 118, 500, value => { draft.name = value; dirty = true; }, "Deck name");
-            CollectionUIElements.Button(deckPanel, "Starter", 14, 172, 154, 40, () => Guard(() => { draft = collection.Starter(faction); dirty = true; Draw(false); }), 20);
+            CollectionUIElements.Button(deckPanel, "Starter", 14, 172, 154, 40, () => Guard(() => { var starter = collection.Starter(faction);
+                starter.deckId = collection.StarterDeck(faction)?.deckId ?? starter.deckId;
+                draft = starter; dirty = true; Draw(false); }), 20);
             CollectionUIElements.Button(deckPanel, "Copy", 178, 172, 154, 40, () =>
-            { draft = CollectionProfile.CopyDeck(draft); draft.deckId = Guid.NewGuid().ToString("N"); draft.name += " Copy"; dirty = true; Draw(false); }, 20);
-            CollectionUIElements.Button(deckPanel, "Delete", 342, 172, 172, 40, () => Confirm("Delete this deck? Unsaved changes will be discarded.", () =>
+            { draft = CollectionProfile.CopyDeck(draft); draft.deckId = Guid.NewGuid().ToString("N"); draft.isStarter = false; draft.name += " Copy"; dirty = true; Draw(false); }, 20);
+            var delete = CollectionUIElements.Button(deckPanel, "Delete", 342, 172, 172, 40, () => Confirm("Delete this deck? Unsaved changes will be discarded.", () =>
             { if (collection.DeleteDeck(draft.deckId, out status)) { draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; } Draw(false); }), 20);
+            delete.interactable = !draft.isStarter && !collection.IsStarter(draft.deckId);
             CollectionUIElements.Button(deckPanel, "Save Deck", 14, 222, 500, 44, () => { Save(); Draw(); }, 20);
             var validation = collection.Rules.Validate(draft, collection.Owned);
             CollectionUIElements.Label(deckPanel, $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " — unsaved" : ""), 14, 278, 500, 30, 22);
@@ -232,18 +236,20 @@ namespace Game.UI
         private void DrawTotalCost()
         {
             var total = TotalCost();
-            CollectionUIElements.Label(deckPanel, $"Total cost — AP {total[0]}", 14, 316, 500, 26, 18);
-            for (int i = 0; i < 4; i++)
+            CollectionUIElements.Label(deckPanel, "Total cost", 14, 316, 500, 26, 18);
+            var ap = config.armyUnitCardPrefab != null ? config.armyUnitCardPrefab.ActionPointBadge : null;
+            for (int i = 0; i < total.Length; i++)
             {
-                var type = (ResourceType)i;
-                var badge = CollectionUIElements.Rect(deckPanel, type.ToString());
-                CollectionUIElements.Place(badge, 14 + i * 125, 352, 30, 30);
+                var badge = CollectionUIElements.Rect(deckPanel, i == 0 ? "AP" : ((ResourceType)(i - 1)).ToString());
+                CollectionUIElements.Place(badge, 14 + i * 100, 352, 28, 28);
                 var image = badge.gameObject.AddComponent<Image>();
-                image.sprite = config.resourceIconPrefab != null ? config.resourceIconPrefab.Icon : null;
-                image.color = ResourceIconVisual.GetColor(type); image.preserveAspect = true; image.raycastTarget = false;
-                CollectionUIElements.Label(deckPanel, total[i + 1].ToString(), 50 + i * 125, 352, 86, 30, 20);
+                image.sprite = i == 0 ? ap?.sprite : config.resourceIconPrefab != null ? config.resourceIconPrefab.Icon : null;
+                image.color = i == 0 ? ap != null ? ap.color : Color.white : ResourceIconVisual.GetColor((ResourceType)(i - 1));
+                image.preserveAspect = true; image.raycastTarget = false;
+                CollectionUIElements.Label(deckPanel, total[i].ToString(), 48 + i * 100, 352, 66, 28, 20);
             }
         }
+
         private void RemoveEntry(string key)
         { foreach (var rows in new[] { draft.mainCards, draft.equipment, draft.mutators }) rows.RemoveAll(e => e.cardKey == key); dirty = true; Draw(); }
         private bool Save() { bool ok = collection.SaveDeck(draft, out status); if (ok) { dirty = false; status = "Deck saved."; } return ok; }

@@ -33,12 +33,20 @@ namespace Game.UI
         }
         public void OpenDeckBuilderFromSetup(System.Action onClosed)
         {
+            if (collectionScreens == null || gameSetupPanel == null || UIFocusUtility.HasOverlay) return;
             if (!Game.Progression.ProgressionContext.Initialize(gameConfig))
             { CollectionScreensUI.ShowMessage(transform, Game.Progression.ProgressionContext.Error); return; }
             // Hide interaction without disabling the setup model: OnEnable normally resets it.
-            var group = gameSetupPanel.GetComponent<CanvasGroup>() ?? gameSetupPanel.AddComponent<CanvasGroup>();
+            var group = gameSetupPanel.GetComponent<CanvasGroup>();
+            // Unity objects can be missing without being CLR-null; do not use ?? here.
+            if (group == null) group = gameSetupPanel.AddComponent<CanvasGroup>();
+            bool interactable = group.interactable, blocksRaycasts = group.blocksRaycasts;
             group.interactable = false; group.blocksRaycasts = false;
-            collectionScreens.Show(null, () => { group.interactable = true; group.blocksRaycasts = true; onClosed(); });
+            collectionScreens.Show(null, () =>
+            {
+                if (group != null) { group.interactable = interactable; group.blocksRaycasts = blocksRaycasts; }
+                onClosed?.Invoke();
+            });
         }
 
         private void Update()

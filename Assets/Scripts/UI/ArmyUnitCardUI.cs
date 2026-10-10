@@ -89,6 +89,8 @@ namespace Game.UI
         // the normal Army Viewer flow so that view is unchanged. Optional prefab ref.
         [SerializeField] private TMP_Text skillsText;
 
+        public Image ActionPointBadge => costBadgeIcons != null && costBadgeIcons.Length > 0 ? costBadgeIcons[0] : null;
+
         public UnitData Unit { get; private set; }
         public bool IsDragging { get; private set; }
 
@@ -620,4 +622,3 @@ namespace Game.UI
         }
     }
 }
-

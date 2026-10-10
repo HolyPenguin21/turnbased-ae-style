@@ -9,6 +9,7 @@ namespace Game.Progression
     [Serializable] public sealed class SavedDeck
     {
         public string deckId;
+        public bool isStarter;
         public string name;
         public Faction faction;
         public List<DeckCardEntry> mainCards = new List<DeckCardEntry>();

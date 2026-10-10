@@ -116,22 +116,122 @@ namespace Game.EditorTools
             var vessels = p.savedDecks.Single(d => d.faction == Faction.Vessels);
             Assert.That(vessels.mutators.All(e => !vessels.mainCards.Any(h => EquipmentSystem.FitsHost(rules.Resolve(e.cardKey), rules.Resolve(h.cardKey), out _))), Is.True);
         }
-        [Test] public void StarterBlueprintUpdatePreservesSavedDeckAndDoesNotGrantTwice()
+        private CollectionService AuthoredCollection(CollectionProfile profile)
         {
-            var blueprint = new CardDefinition { authoredKey = "starter.equipment", cardType = CardType.Equipment };
-            catalog.cards.Add(blueprint);
-            starting.collectionBlueprints.Add(new StartingDeck { faction = Faction.IronConcord,
-                cards = new List<DeckCardEntry> { new DeckCardEntry { cardKey = blueprint.authoredKey, count = 2 } } });
-            var initial = new CollectionProfile(); initial.savedDecks.Add(Deck(1));
-            var store = new CollectionProfileStore(directory);
-            var service = new CollectionService(rules, store, initial);
-            Assert.That(service.EnsureStarterBlueprintOwnership(out _), Is.True);
-            Assert.That(service.Owned(blueprint.authoredKey), Is.EqualTo(2));
-            Assert.That(service.Snapshot.savedDecks.Single().mainCards.Single().count, Is.EqualTo(1));
+            var authoredRules = new DeckRules(AssetDatabase.LoadAssetAtPath<StartingDeckCatalog>("Assets/Cards/StartingDeckCatalog.asset"),
+                AssetDatabase.LoadAssetAtPath<ResearchProductionCatalog>("Assets/Cards/ResearchProductionCatalog.asset"));
+            return new CollectionService(authoredRules, new CollectionProfileStore(directory), profile);
+        }
+        [Test] public void LegacyStartersGainSavedBlueprintsWithoutChangingIdentityOrCustomDecks()
+        {
+            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            var ids = legacy.savedDecks.Select(d => d.deckId).ToArray();
+            foreach (var deck in legacy.savedDecks) { deck.isStarter = false; deck.equipment.Clear(); deck.mutators.Clear(); }
+            var custom = CollectionProfile.CopyDeck(legacy.savedDecks[0]); custom.deckId = "custom"; custom.name = "My deck";
+            custom.mainCards[0].count++; legacy.savedDecks.Add(custom);
+            string customJson = JsonUtility.ToJson(custom);
+            var service = AuthoredCollection(legacy);
+            Assert.That(service.EnsureStarterDecks(out _), Is.True);
+            var upgraded = service.Snapshot;
+            Assert.That(upgraded.savedDecks.Where(d => d.isStarter).Select(d => d.deckId), Is.EqualTo(ids));
+            foreach (var deck in upgraded.savedDecks.Where(d => d.isStarter))
+            {
+                Assert.That(deck.equipment.Sum(e => e.count), Is.EqualTo(3));
+                Assert.That(deck.mutators.Sum(e => e.count), Is.EqualTo(3));
+                Assert.That(service.Rules.Validate(deck, service.Owned).IsValid, Is.True);
+                Assert.That(upgraded.selectedDeckByFaction.Single(s => s.faction == deck.faction).deckId, Is.EqualTo(deck.deckId));
+            }
+            Assert.That(JsonUtility.ToJson(upgraded.savedDecks.Single(d => d.deckId == "custom")), Is.EqualTo(customJson));
             int changes = 0; service.Changed += () => changes++;
-            Assert.That(service.EnsureStarterBlueprintOwnership(out _), Is.True);
-            Assert.That(changes, Is.Zero);
-            Assert.That(service.Owned(blueprint.authoredKey), Is.EqualTo(2));
+            Assert.That(service.EnsureStarterDecks(out _), Is.True); Assert.That(changes, Is.Zero);
+            var loaded = new CollectionProfileStore(directory).Load(out _);
+            Assert.That(loaded.savedDecks.Count(d => d.isStarter), Is.EqualTo(3));
+            Assert.That(loaded.savedDecks.Where(d => d.isStarter).All(d => d.equipment.Count == 3 && d.mutators.Count == 3), Is.True);
+        }
+        [Test] public void SelectedLegacyStarterDuplicateIsUpgradedInPlace()
+        {
+            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            foreach (var deck in legacy.savedDecks) { deck.isStarter = false; deck.equipment.Clear(); deck.mutators.Clear(); }
+            var duplicate = CollectionProfile.CopyDeck(legacy.savedDecks[0]); duplicate.deckId = "selected-duplicate";
+            legacy.savedDecks.Add(duplicate);
+            legacy.selectedDeckByFaction.Single(s => s.faction == duplicate.faction).deckId = duplicate.deckId;
+            var service = AuthoredCollection(legacy);
+            Assert.That(service.EnsureStarterDecks(out _), Is.True);
+            Assert.That(service.StarterDeck(duplicate.faction).deckId, Is.EqualTo(duplicate.deckId));
+            Assert.That(service.DefaultDeck(duplicate.faction).equipment.Count, Is.EqualTo(3));
+            Assert.That(service.DefaultDeck(duplicate.faction).mutators.Count, Is.EqualTo(3));
+        }
+        [Test] public void MissingStarterIsRestoredWithoutPromotingCustomizedDeck()
+        {
+            var legacy = new CollectionProfile(); AuthoredCollection(legacy).InitializeStarters(legacy);
+            var modified = legacy.savedDecks[0]; modified.isStarter = false; modified.mainCards[0].count++;
+            var service = AuthoredCollection(legacy);
+            Assert.That(service.EnsureStarterDecks(out _), Is.True);
+            var starter = service.StarterDeck(modified.faction);
+            Assert.That(starter.deckId, Is.Not.EqualTo(modified.deckId));
+            Assert.That(service.Snapshot.savedDecks.Single(d => d.deckId == modified.deckId).isStarter, Is.False);
+            Assert.That(starter.equipment.Count, Is.EqualTo(3)); Assert.That(starter.mutators.Count, Is.EqualTo(3));
+        }
+        [Test] public void StarterCannotBeDeletedAfterRenameOrClearingDraftFlagButCopyCan()
+        {
+            var profile = new CollectionProfile(); AuthoredCollection(profile).InitializeStarters(profile);
+            var service = AuthoredCollection(profile); var starter = service.StarterDeck(Faction.IronConcord);
+            starter.name = "Renamed"; starter.isStarter = false;
+            Assert.That(service.SaveDeck(starter, out _), Is.True);
+            Assert.That(service.DeleteDeck(starter.deckId, out var error), Is.False);
+            Assert.That(error, Is.EqualTo("Starter decks cannot be deleted."));
+            Assert.That(service.StarterDeck(starter.faction).deckId, Is.EqualTo(starter.deckId));
+            var copy = CollectionProfile.CopyDeck(starter); copy.deckId = "copy"; copy.isStarter = false;
+            Assert.That(service.SaveDeck(copy, out _), Is.True);
+            Assert.That(service.DeleteDeck(copy.deckId, out _), Is.True);
+            Assert.That(service.SaveDeck(service.Starter(starter.faction), out _), Is.False);
+        }
+        [TestCase(false)] [TestCase(true)]
+        public void EditDecksCreatesMissingCanvasGroupAndRestoresSetupInteraction(bool existingGroup)
+        {
+            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var context = typeof(ProgressionContext).GetField("<Collection>k__BackingField", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+            var previous = context.GetValue(null);
+            var go = new GameObject("menu"); var setup = new GameObject("GameSetupPanel", typeof(RectTransform));
+            var dropdown = new GameObject("dropdown", typeof(RectTransform)).AddComponent<TMPro.TMP_Dropdown>();
+            var input = new GameObject("input", typeof(RectTransform)).AddComponent<TMPro.TMP_InputField>();
+            var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
+            var empty = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            Game.UI.CollectionScreensUI screens = null; GameObject canvas = null;
+            try
+            {
+                context.SetValue(null, new CollectionService(new DeckRules(empty, research), null, new CollectionProfile()));
+                var menu = go.AddComponent<Game.UI.MainMenuController>(); screens = go.AddComponent<Game.UI.CollectionScreensUI>();
+                screens.Configure(config, dropdown, input);
+                typeof(Game.UI.MainMenuController).GetField("gameConfig", fields).SetValue(menu, config);
+                typeof(Game.UI.MainMenuController).GetField("gameSetupPanel", fields).SetValue(menu, setup);
+                typeof(Game.UI.MainMenuController).GetField("collectionScreens", fields).SetValue(menu, screens);
+                if (existingGroup) { var initial = setup.AddComponent<UnityEngine.CanvasGroup>(); initial.interactable = false; initial.blocksRaycasts = true; }
+                int closed = 0; menu.OpenDeckBuilderFromSetup(() => closed++);
+                var group = setup.GetComponent<UnityEngine.CanvasGroup>();
+                Assert.That(group, Is.Not.Null); Assert.That(setup.GetComponents<UnityEngine.CanvasGroup>().Length, Is.EqualTo(1));
+                Assert.That(group.interactable, Is.False); Assert.That(group.blocksRaycasts, Is.False);
+                Assert.That(setup.activeSelf, Is.True); // setup model must not receive another OnEnable
+                var rect = (RectTransform)typeof(Game.UI.CollectionScreensUI).GetField("canvas", fields).GetValue(screens);
+                Assert.That(rect, Is.Not.Null); canvas = rect.gameObject;
+                ((Action)typeof(Game.UI.CollectionScreensUI).GetField("closed", fields).GetValue(screens))();
+                Assert.That(group.interactable, Is.EqualTo(!existingGroup)); Assert.That(group.blocksRaycasts, Is.True);
+                Assert.That(closed, Is.EqualTo(1)); Assert.That(setup.activeSelf, Is.True);
+            }
+            finally
+            {
+                if (screens != null)
+                {
+                    Game.UI.UIFocusUtility.SetOverlay(screens, false);
+                    typeof(Game.UI.CollectionScreensUI).GetField("canvas", fields).SetValue(screens, null);
+                    typeof(Game.UI.CollectionScreensUI).GetField("root", fields).SetValue(screens, null);
+                }
+                if (canvas != null) UnityEngine.Object.DestroyImmediate(canvas);
+                UnityEngine.Object.DestroyImmediate(go); UnityEngine.Object.DestroyImmediate(setup);
+                UnityEngine.Object.DestroyImmediate(dropdown.gameObject); UnityEngine.Object.DestroyImmediate(input.gameObject);
+                UnityEngine.Object.DestroyImmediate(config); UnityEngine.Object.DestroyImmediate(empty);
+                context.SetValue(null, previous);
+            }
         }
         [Test] public void CollectionAndDeckRowsUseCategoryThenPerCopyCost()
         {
@@ -286,7 +386,7 @@ namespace Game.EditorTools
                 var method = type.GetMethod("Scroll", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 var content = (RectTransform)method.Invoke(null, new object[] { go.transform, "Cards", 0f, 0f, 500f, 448f, true });
                 var scroll = content.GetComponentInParent<UnityEngine.UI.ScrollRect>();
-                Assert.That(scroll.scrollSensitivity, Is.EqualTo(1.3f).Within(.001f));
+                Assert.That(scroll.scrollSensitivity, Is.EqualTo(1.69f).Within(.001f));
                 Assert.That(scroll.verticalScrollbar, Is.Not.Null);
                 Assert.That(scroll.verticalScrollbar.direction, Is.EqualTo(UnityEngine.UI.Scrollbar.Direction.BottomToTop));
                 Assert.That(scroll.verticalScrollbarVisibility, Is.EqualTo(UnityEngine.UI.ScrollRect.ScrollbarVisibility.Permanent));
