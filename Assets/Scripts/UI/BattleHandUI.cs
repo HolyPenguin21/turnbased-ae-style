@@ -28,6 +28,32 @@ namespace Game.UI
         private readonly List<CardData> _cards = new List<CardData>();
         private readonly List<BattleTacticCardUI> _visible = new List<BattleTacticCardUI>();
         private int _scrollOffset;
+        private Vector2 _lastContainerSize;
+
+        private void LateUpdate()
+        {
+            if (cardContainer != null && cardContainer.rect.size != _lastContainerSize)
+                FitVisibleCards();
+        }
+
+        private void FitVisibleCards()
+        {
+            if (cardContainer == null || cardPrefab == null)
+                return;
+            _lastContainerSize = cardContainer.rect.size;
+            RectTransform prefabRect = cardPrefab.transform as RectTransform;
+            if (prefabRect == null || prefabRect.rect.width <= 0f || prefabRect.rect.height <= 0f)
+                return;
+            float step = cardHeight * (1f - overlapFraction);
+            float requiredHeight = prefabRect.rect.height + (MaxVisible - 1) * step;
+            float scale = Mathf.Clamp01(Mathf.Min(_lastContainerSize.x / prefabRect.rect.width,
+                _lastContainerSize.y / Mathf.Max(1f, requiredHeight)));
+            for (int i = 0; i < _visible.Count; i++)
+            {
+                _visible[i].transform.localScale = Vector3.one * scale;
+                _visible[i].SetSlot(new Vector2(0f, -i * step * scale));
+            }
+        }
 
         private void Awake()
         {
@@ -76,6 +102,8 @@ namespace Game.UI
                 card.SetSlot(new Vector2(0f, -(i - _scrollOffset) * step));
                 _visible.Add(card);
             }
+            FitVisibleCards();
         }
     }
 }
+

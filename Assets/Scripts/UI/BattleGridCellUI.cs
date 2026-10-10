@@ -90,6 +90,7 @@ namespace Game.UI
         private bool _draggable;
         private Canvas _rootCanvas;
         private RectTransform _ghost;
+        private bool _isActingUnit;
 
         private void Awake()
         {
@@ -157,6 +158,7 @@ namespace Game.UI
 
         private void RefreshActingHighlight(bool isActingUnit)
         {
+            _isActingUnit = isActingUnit;
             if (actingHighlight == null)
                 return;
             if (!isActingUnit)
@@ -166,7 +168,15 @@ namespace Game.UI
             }
             actingHighlight.ApplyStyle(_screen != null ? _screen.ActingHighlightStyle : null);
             actingHighlight.SetColor(TechnicalColors.BattleActingUnit);
-            actingHighlight.ShowAt(cellSize);
+            GridLayoutGroup layout = transform.parent != null
+                ? transform.parent.GetComponent<GridLayoutGroup>() : null;
+            actingHighlight.ShowAt(layout != null ? layout.cellSize : cellSize);
+        }
+
+        private void OnRectTransformDimensionsChange()
+        {
+            if (_isActingUnit)
+                RefreshActingHighlight(true);
         }
 
         private void RefreshStatsRow(UnitData unit)
@@ -271,7 +281,7 @@ namespace Game.UI
 
             RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 (RectTransform)_rootCanvas.transform, eventData.position, eventData.pressEventCamera, out Vector2 localPoint);
-            _ghost.anchoredPosition = localPoint;
+            _ghost.anchoredPosition = localPoint - ((RectTransform)_rootCanvas.transform).rect.center;
         }
 
         public void OnDrag(PointerEventData eventData)
@@ -327,3 +337,4 @@ namespace Game.UI
         }
     }
 }
+

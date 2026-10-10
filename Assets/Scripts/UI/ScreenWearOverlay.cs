@@ -33,7 +33,8 @@ namespace Game.UI
         private Texture2D _texture;
         private RectTransform _rect;
         private RawImage _image;
-        private bool _anchoredToHandPanel;
+        private RectTransform _handPanelRect;
+        private float _lastHandPanelHeight = -1f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -114,22 +115,33 @@ namespace Game.UI
 
         private void Update()
         {
-            if (_anchoredToHandPanel)
+            // Resolve the hand lazily because the Game scene initializes it after this overlay.
+            // Once resolved, track its current RectTransform height: proportional anchors and
+            // CanvasScaler can change that height when the window is resized.
+            if (_handPanelRect == null)
+            {
+                GameObject handPanelObject = FindInScene(gameObject.scene, HandPanelName);
+                if (handPanelObject == null)
+                    return;
+                _handPanelRect = handPanelObject.GetComponent<RectTransform>();
+            }
+
+            if (_handPanelRect == null || !_handPanelRect.gameObject.activeInHierarchy)
+            {
+                if (_image != null)
+                    _image.enabled = false;
                 return;
+            }
 
-            GameObject handPanelObject = FindInScene(gameObject.scene, HandPanelName);
-            if (handPanelObject == null || !handPanelObject.activeInHierarchy)
-                return;
+            float handPanelHeight = _handPanelRect.rect.height;
+            if (!Mathf.Approximately(_lastHandPanelHeight, handPanelHeight))
+            {
+                _rect.offsetMin = new Vector2(0f, handPanelHeight);
+                _lastHandPanelHeight = handPanelHeight;
+            }
 
-            // Anchored from the top of CardHandPanel up to the top of the screen — the hand
-            // itself sits below the overlay, not under it. CardHandPanel is bottom-anchored with
-            // a fixed pixel height (see its own RectTransform), so pushing this rect's bottom
-            // edge up by that same height lines the two up exactly, in the same canvas space.
-            float handPanelHeight = ((RectTransform)handPanelObject.transform).rect.height;
-            _rect.offsetMin = new Vector2(0f, handPanelHeight);
-
-            _anchoredToHandPanel = true;
-            _image.enabled = true;
+            if (_image != null && !_image.enabled)
+                _image.enabled = true;
         }
 
         private void OnValidate()

@@ -677,6 +677,9 @@ namespace Game.UI
             if (roundText != null)
                 roundText.text = $"Round {_round}";
 
+            // Destroy is deferred. Retire old entries before a synchronous layout rebuild.
+            foreach (BattleTurnOrderIconUI oldIcon in _queueIcons)
+                if (oldIcon != null) oldIcon.gameObject.SetActive(false);
             UIListUtility.DestroyAndClear(_queueIcons);
             if (turnQueueContainer != null && turnQueueIconPrefab != null && _turnOrder != null)
                 for (int i = 0; i < _turnOrder.Count; i++)
@@ -689,6 +692,7 @@ namespace Game.UI
                     _queueIcons.Add(icon);
                 }
 
+            RevealCurrentTurnIcon();
             UnitData current = _turnOrder != null && _turnIndex < _turnOrder.Count ? _turnOrder[_turnIndex] : null;
             ShowUnitDetail(current);
             // Drives BattleGridCellUI's own yellow acting-unit ring — rebuilding the whole grid
@@ -909,3 +913,4 @@ namespace Game.UI
         }
     }
 }
+

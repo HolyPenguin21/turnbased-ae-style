@@ -232,6 +232,13 @@ namespace Game.UI
                 }
             }
             BlockButtons(animated);
+            ScrollRect scroll = buttonContainer != null
+                ? buttonContainer.GetComponentInParent<ScrollRect>() : null;
+            if (scroll != null && scroll.content == buttonContainer)
+            {
+                scroll.StopMovement();
+                scroll.content.anchoredPosition = Vector2.zero;
+            }
             if (animated)
             {
                 // Hide before yielding to the animator: no one-frame flash at the resting position.
@@ -311,4 +318,5 @@ namespace Game.UI
         }
     }
 }
+
 

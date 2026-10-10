@@ -19,8 +19,6 @@ namespace Game.UI
             if (gameConfig == null || gameConfig.playerRowPrefab == null) return;
             collectionScreens = gameObject.AddComponent<CollectionScreensUI>();
             collectionScreens.Configure(gameConfig, gameConfig.playerRowPrefab.FactionTemplate, gameConfig.playerRowPrefab.NicknameTemplate);
-            AddCollectionButton("Collection", -5, () => collectionScreens.Show(false, mainMenuPanel));
-            AddCollectionButton("My Decks", -60, () => collectionScreens.Show(true, mainMenuPanel));
             if (Game.Core.GameSession.SetupError != null)
             {
                 OnNewGameClicked();
@@ -29,16 +27,14 @@ namespace Game.UI
             }
             else gameObject.AddComponent<CollectionRewardUI>().Resume(gameConfig);
         }
-        private void AddCollectionButton(string label, float y, System.Action action)
+        public void OnCollectionClicked()
         {
-            if (settingsButton == null) return;
-            var button = Instantiate(settingsButton, settingsButton.transform.parent);
-            button.onClick = new Button.ButtonClickedEvent();
-            button.onClick.AddListener(() => action());
-            var rect = (RectTransform)button.transform;
-            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, y);
-            button.GetComponentInChildren<TMPro.TMP_Text>().text = label;
-            Game.Audio.SceneUIAudioBinder.BindCreatedRoot(button);
+            collectionScreens?.Show(false, mainMenuPanel);
+        }
+
+        public void OnMyDecksClicked()
+        {
+            collectionScreens?.Show(true, mainMenuPanel);
         }
         public void OpenDeckBuilderFromSetup(System.Action onClosed)
         {
