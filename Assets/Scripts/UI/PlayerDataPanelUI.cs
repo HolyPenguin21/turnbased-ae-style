@@ -118,6 +118,28 @@ namespace Game.UI
             }
             string value = output.Length > 0 ? output.ToString() : "No players yet.";
             if (dataTmpText.text != value) dataTmpText.text = value;
+            FitTextContent();
+        }
+
+        private void OnRectTransformDimensionsChange()
+        {
+            if (dataTmpText != null && contentPanel != null && contentPanel.activeInHierarchy)
+                FitTextContent();
+        }
+
+        private void FitTextContent()
+        {
+            RectTransform content = dataTmpText.rectTransform;
+            ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
+            if (scroll == null || scroll.content != content || scroll.viewport == null)
+                return;
+            float height = Mathf.Max(scroll.viewport.rect.height,
+                dataTmpText.GetPreferredValues(dataTmpText.text, content.rect.width, Mathf.Infinity).y);
+            // This class owns only its text extent; ScrollRect owns scrolling. Updating the
+            // statistics must preserve the reader's position unless the new text is shorter.
+            content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height);
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x,
+                Mathf.Clamp(content.anchoredPosition.y, 0f, height - scroll.viewport.rect.height));
         }
 
         // The percent comes from the raw values (PlayerForceAnalysis), never from the rounded text.
@@ -127,3 +149,4 @@ namespace Game.UI
             + percent.ToString("0.00", CultureInfo.InvariantCulture) + "%)";
     }
 }
+

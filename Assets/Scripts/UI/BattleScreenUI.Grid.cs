@@ -26,11 +26,96 @@ namespace Game.UI
     {
         private bool IsLocalRow(int row) => _localArmy != null && (row == _localFrontRow || row == _localBackRow);
 
+        // Keep the existing GridLayoutGroup authoritative for cell placement. Only its
+        // cell size and spacing are adapted to the available battle area; no second
+        // layout system or changes to drag/move animation coordinates are introduced.
+        private GridLayoutGroup _responsiveGridLayout;
+        private Vector2 _authoredCellSize;
+        private Vector2 _authoredSpacing;
+        private bool _gridLayoutSizeCaptured;
+
+        private void RevealCurrentTurnIcon()
+        {
+            if (!(turnQueueContainer is RectTransform content))
+                return;
+            ScrollRect scroll = content.GetComponentInParent<ScrollRect>();
+            if (scroll == null || scroll.content != content || scroll.viewport == null)
+                return;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            float overflow = Mathf.Max(0f, content.rect.height - scroll.viewport.rect.height);
+            float offset = 0f;
+            if (_turnIndex >= 0 && _turnIndex < _queueIcons.Count)
+            {
+                RectTransform current = _queueIcons[_turnIndex].transform as RectTransform;
+                if (current != null)
+                    offset = Mathf.Clamp(-current.anchoredPosition.y, 0f, overflow);
+            }
+            scroll.StopMovement();
+            content.anchoredPosition = new Vector2(content.anchoredPosition.x, offset);
+        }
+
+        private void FitBattleGrid()
+        {
+            if (gridContainer == null || _isAnimatingMove)
+                return;
+
+            if (_responsiveGridLayout == null)
+                _responsiveGridLayout = gridContainer.GetComponent<GridLayoutGroup>();
+            if (_responsiveGridLayout == null)
+                return;
+
+            if (!_gridLayoutSizeCaptured)
+            {
+                _authoredCellSize = _responsiveGridLayout.cellSize;
+                _authoredSpacing = _responsiveGridLayout.spacing;
+                _gridLayoutSizeCaptured = true;
+            }
+
+            RectTransform area = gridContainer as RectTransform;
+            if (area == null || area.rect.width <= 0f || area.rect.height <= 0f)
+                return;
+
+            float requiredWidth = BattleGrid.Columns * _authoredCellSize.x
+                + (BattleGrid.Columns - 1) * _authoredSpacing.x
+                + _responsiveGridLayout.padding.horizontal;
+            float requiredHeight = BattleGrid.Rows * _authoredCellSize.y
+                + (BattleGrid.Rows - 1) * _authoredSpacing.y
+                + _responsiveGridLayout.padding.vertical;
+            if (requiredWidth <= 0f || requiredHeight <= 0f)
+                return;
+
+            float scale = Mathf.Min(
+                (area.rect.width - _responsiveGridLayout.padding.horizontal) /
+                (requiredWidth - _responsiveGridLayout.padding.horizontal),
+                (area.rect.height - _responsiveGridLayout.padding.vertical) /
+                (requiredHeight - _responsiveGridLayout.padding.vertical));
+            // Preserve authored proportions, avoid giant cards on ultrawide displays.
+            scale = Mathf.Clamp(scale, 0.25f, 1.35f);
+            Vector2 cellSize = _authoredCellSize * scale;
+            Vector2 spacing = _authoredSpacing * scale;
+            if (_responsiveGridLayout.cellSize != cellSize ||
+                _responsiveGridLayout.spacing != spacing)
+            {
+                _responsiveGridLayout.cellSize = cellSize;
+                _responsiveGridLayout.spacing = spacing;
+            }
+        }
+
+        private void OnRectTransformDimensionsChange()
+        {
+            if (gridContainer == null || _isAnimatingMove)
+                return;
+            FitBattleGrid();
+            RevealCurrentTurnIcon();
+        }
+
         private void RefreshGrid()
         {
             UIListUtility.DestroyAndClear(_cells);
             if (gridContainer == null || gridCellPrefab == null || _grid == null)
                 return;
+
+            FitBattleGrid();
 
             // Legal-target hints only make sense once a real round is underway (not Arranging)
             // and only for the local human's own current unit — an AI turn has no player input to
@@ -210,3 +295,4 @@ namespace Game.UI
         }
     }
 }
+

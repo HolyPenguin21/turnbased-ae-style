@@ -17,8 +17,9 @@ namespace Game.UI
         [SerializeField] private RectTransform drawerRect;
         [SerializeField] private ResourceActionRowUI resourceActions;
         [Tooltip("Downward offsets as fractions of screen height, for 0 through 4 unextracted resources.")]
-        [SerializeField] private float[] resourceScreenOffsets =
-            { 107f / 768f, 81f / 768f, 56f / 768f, 31f / 768f, 0f };
+        [SerializeField] private float[] resourceScreenOffsets = (float[])DefaultResourceScreenOffsets.Clone();
+        private static readonly float[] DefaultResourceScreenOffsets =
+            { 107f / 720f, 81f / 720f, 56f / 720f, 31f / 720f, 0f };
         [SerializeField, Min(0.01f)] private float motionSmoothTime = 0.06f;
 
         private int _resourceCount;
@@ -61,14 +62,7 @@ namespace Game.UI
 
         private static float DefaultScreenOffset(int count)
         {
-            switch (count)
-            {
-                case 1: return 81f / 768f;
-                case 2: return 56f / 768f;
-                case 3: return 31f / 768f;
-                case 4: return 0f;
-                default: return 107f / 768f;
-            }
+            return DefaultResourceScreenOffsets[Mathf.Clamp(count, 0, 4)];
         }
 
         private float ScreenHeightInParentUnits()
@@ -80,7 +74,7 @@ namespace Game.UI
                 return drawerRect.parent != null
                     ? Mathf.Abs(drawerRect.parent.InverseTransformVector(height).y) : height.magnitude;
             }
-            return drawerRect.parent is RectTransform parent ? parent.rect.height : 768f;
+            return drawerRect.parent is RectTransform parent ? parent.rect.height : 720f;
         }
 
         private float HiddenPositionY()
@@ -156,3 +150,4 @@ namespace Game.UI
         public void SetProductionButtonVisible(bool visible, Action onClick) => SetButton(productionButton, visible, onClick);
     }
 }
+
