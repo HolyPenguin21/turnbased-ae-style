@@ -291,9 +291,10 @@ namespace Game.Turns
         // Blocks any further turn advancement once true.
         private bool _gameOver;
         public event System.Action<Game.Progression.ParticipantResult> ParticipantFinished;
+        public event System.Action<Game.Campaign.CompletedMatchResult> MatchFinished;
         private void PublishOutcome(PlayerSetupData player, Game.Progression.MatchOutcome outcome)
         {
-            if (player == null || !player.IsHuman || !GameSession.RewardsEligible || debugWatchAiTurns) return;
+            if (player == null || !player.IsHuman || !GameSession.RewardsEligible || (debugWatchAiTurns && GameSession.CampaignContext == null)) return;
             ParticipantFinished?.Invoke(new Game.Progression.ParticipantResult(GameSession.MatchId, player, outcome));
         }
 
@@ -367,7 +368,7 @@ namespace Game.Turns
                 return;
             player.IsEliminated = true;
             Game.Ai.AiMatchStats.RecordElimination(player);
-            PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
+            if (GameSession.CampaignContext == null) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
 
             // Resource facilities go with their owner; Bases and the Citadel stay (capturable).
             BuildingRegistry.DestroyFacilitiesOf(player, hexSelectionController);
@@ -384,6 +385,18 @@ namespace Game.Turns
                 return;
 
             _gameOver = true;
+            var finalResult = new Game.Campaign.CompletedMatchResult(GameSession.MatchId,
+                survivors.Count == 1 ? survivors[0].Faction : Faction.None, player.Faction, survivors.Count == 0);
+            GameSession.CompleteMatch(finalResult);
+            MatchFinished?.Invoke(finalResult);
+            // Record the whole-match outcome before the existing human reward transaction.
+            // Reward UI retries a failed campaign write before it can grant/dismiss anything.
+            if (GameSession.CampaignContext != null)
+            {
+                Game.Campaign.CampaignMatchBridge.RecordFinalResult(out _);
+                if (survivors.Count == 0) PublishOutcome(GameSession.FindHumanPlayer(), Game.Progression.MatchOutcome.Draw);
+                else if (player.IsHuman) PublishOutcome(player, Game.Progression.MatchOutcome.Defeat);
+            }
             if (survivors.Count == 1) PublishOutcome(survivors[0], Game.Progression.MatchOutcome.Victory);
             Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");

@@ -6,5 +6,6 @@ namespace Game.Core
     {
         public const string MainMenu = "MainMenu";
         public const string Game = "Game";
+        public const string Campaign = "Campaign";
     }
 }
