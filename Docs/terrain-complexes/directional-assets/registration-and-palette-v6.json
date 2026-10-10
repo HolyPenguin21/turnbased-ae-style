@@ -1,0 +1,284 @@
+[
+  {
+    "angle": 0,
+    "alignment": {
+      "translation_normalized_xy": [
+        2.0024763704071304,
+        7.596829280584943
+      ],
+      "uniform_scale": 0.9303006125939507,
+      "center_inset_normalized_pixels": [
+        25.597396021220458,
+        25.53658460801748,
+        25.53658382118618
+      ],
+      "outer_foreground_margin_normalized_pixels": 13.232999592623763,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        211.45281319853427,
+        165.89085119241903,
+        107.32424675037906
+      ],
+      "ground_rgb_after": [
+        212.0332694490169,
+        165.5502885375095,
+        113.07486942646494
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.0138256617771,
+          165.53828880611886,
+          113.07855489646082
+        ],
+        [
+          212.04343146980105,
+          165.5639540324543,
+          113.0767935016564
+        ],
+        [
+          212.0425512154726,
+          165.54862277395537,
+          113.06925988127762
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  },
+  {
+    "angle": 60,
+    "alignment": {
+      "translation_normalized_xy": [
+        -43.3165164625979,
+        62.97093527134765
+      ],
+      "uniform_scale": 0.9871409879034788,
+      "center_inset_normalized_pixels": [
+        22.582323675242865,
+        36.657901480505316,
+        22.58261153692712
+      ],
+      "outer_foreground_margin_normalized_pixels": 16.936167720637748,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        216.46878903303198,
+        167.50167899305356,
+        110.93592345075062
+      ],
+      "ground_rgb_after": [
+        212.02621903395706,
+        165.5639460944112,
+        113.09191425981011
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.00886564944722,
+          165.6084405508502,
+          113.10582207280015
+        ],
+        [
+          211.99656059395522,
+          165.53307870686126,
+          113.07810277296022
+        ],
+        [
+          212.0732308584687,
+          165.55031902552204,
+          113.09181793366999
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  },
+  {
+    "angle": 120,
+    "alignment": {
+      "translation_normalized_xy": [
+        -12.401856195423628,
+        35.32991751919671
+      ],
+      "uniform_scale": 1.0395930447990287,
+      "center_inset_normalized_pixels": [
+        24.297111700833078,
+        28.92313275291168,
+        24.29800064516332
+      ],
+      "outer_foreground_margin_normalized_pixels": 28.298572683901757,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        215.79981834665682,
+        165.66784745796824,
+        108.23969672939256
+      ],
+      "ground_rgb_after": [
+        212.05120386116857,
+        165.571742422832,
+        113.09188017413702
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.0687663531718,
+          165.60525569677677,
+          113.09088920751415
+        ],
+        [
+          211.99902454580413,
+          165.52140840578895,
+          113.09617603196489
+        ],
+        [
+          212.0858206845298,
+          165.58856316593022,
+          113.088575282932
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  },
+  {
+    "angle": 180,
+    "alignment": {
+      "translation_normalized_xy": [
+        -13.383149069248379,
+        81.19508295324296
+      ],
+      "uniform_scale": 0.9751271050693913,
+      "center_inset_normalized_pixels": [
+        26.000000013896514,
+        36.09279148180838,
+        26.004721668233607
+      ],
+      "outer_foreground_margin_normalized_pixels": 40.795047479467485,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        214.42100960471666,
+        165.22793284547262,
+        101.37640750638211
+      ],
+      "ground_rgb_after": [
+        212.05690325130948,
+        165.58489175107562,
+        113.10110855467504
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.04847393704617,
+          165.5813715368141,
+          113.09412356971595
+        ],
+        [
+          212.06116953668572,
+          165.58656661613927,
+          113.10360313709245
+        ],
+        [
+          212.06106628019654,
+          165.58673710027355,
+          113.10559895721673
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  },
+  {
+    "angle": 240,
+    "alignment": {
+      "translation_normalized_xy": [
+        -7.089659660575311,
+        32.06182441291124
+      ],
+      "uniform_scale": 1.11719362463367,
+      "center_inset_normalized_pixels": [
+        31.114385886074338,
+        22.84693179172917,
+        22.21520779004591
+      ],
+      "outer_foreground_margin_normalized_pixels": 12.009803773346803,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        214.70809655625703,
+        166.18422892859468,
+        108.19613667764445
+      ],
+      "ground_rgb_after": [
+        212.07416544262801,
+        165.61422360056392,
+        113.19930855583793
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.04068161434978,
+          165.60652914798206,
+          113.15149775784754
+        ],
+        [
+          212.09002768678437,
+          165.63997038629657,
+          113.16540064703914
+        ],
+        [
+          212.09178702674984,
+          165.59617126741304,
+          113.28102726262712
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  },
+  {
+    "angle": 300,
+    "alignment": {
+      "translation_normalized_xy": [
+        -10.865896723168314,
+        81.37910181733365
+      ],
+      "uniform_scale": 0.9862473692665027,
+      "center_inset_normalized_pixels": [
+        25.999999997692736,
+        26.215457510962814,
+        26.048391611960604
+      ],
+      "outer_foreground_margin_normalized_pixels": 36.281841418740356,
+      "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
+    },
+    "palette": {
+      "ground_rgb_before": [
+        212.1448529518456,
+        163.51759161896595,
+        106.36972084373058
+      ],
+      "ground_rgb_after": [
+        212.02831562459673,
+        165.5582562760383,
+        113.08075084950495
+      ],
+      "parts_ground_rgb_after": [
+        [
+          212.02610600718015,
+          165.55330342936188,
+          113.08325937297609
+        ],
+        [
+          212.03449511770825,
+          165.5675259849816,
+          113.0784051471681
+        ],
+        [
+          212.02434574890174,
+          165.5539394137714,
+          113.08058802837066
+        ]
+      ],
+      "shadows_unchanged": true
+    }
+  }
+]

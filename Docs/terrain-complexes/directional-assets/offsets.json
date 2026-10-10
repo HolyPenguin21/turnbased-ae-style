@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "asset_type": "pre-lit directional textures",
   "uv_rotation_steps": 0,
   "coordinate_system": "axial q,r; positive 60 deg counterclockwise from above",
@@ -8,7 +8,7 @@
     512,
     512
   ],
-  "source_detail_note": "Canyon v5: separate camera-aware renders (orthographic scene camera pitch75/yaw0), fixed shared grid, continuous sand normalization. All six canyon views redrawn; wrecks unchanged.",
+  "source_detail_note": "v6: six ImageGen redraws with broader natural canyon, readable shadow detail and soft sand integration. One whole-source registration per view; original ground statistics restored before continuous slicing. Runtime internal edge fade is NOT changed by this texture package.",
   "families": {
     "Canyon": {
       "selection_weight_policy": "Choose family once with original weight; then choose one of six variants. Never multiply family weight by number of orientations.",
@@ -28,7 +28,7 @@
                 512,
                 512
               ],
-              "sha256": "aaa0f3fd28afd3d87a73969ae0fad12ed8d13cc23a0f74b4cc67098831396026",
+              "sha256": "51fc41ae5c420d9cb981fb6698e2f58ad5ea8760aa380bff743dd7eda6fca482",
               "guid": "1011255dc30d4b6ab854e4c6d1075307"
             },
             {
@@ -41,7 +41,7 @@
                 512,
                 512
               ],
-              "sha256": "13d0a326cf8a622ec7c742767952a665290f4ac24142fab72b97a0dc80fda5a1",
+              "sha256": "bb2aee080b4ef63c6eddae20f8e7b072520d4c0a7f6af52cfb9ee52e484f71bf",
               "guid": "f3c15235661a40f3ae2db7b67ed8b6ed"
             },
             {
@@ -54,18 +54,26 @@
                 512,
                 512
               ],
-              "sha256": "77e0c8b1ab01b2f7e668f550f539c946decfdead5285c506c6141be3d2825749",
+              "sha256": "715b5dbc59003b541ac6a96e1371850f224dca384f5e64ca6d7ea24e7209848f",
               "guid": "a9c9786ccdf5432c87468a7451721d3c"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              2.0024763704071304,
+              7.596829280584943
+            ],
+            "uniform_scale": 0.9303006125939507,
+            "center_inset_normalized_pixels": [
+              25.597396021220458,
+              25.53658460801748,
+              25.53658382118618
+            ],
+            "outer_foreground_margin_normalized_pixels": 13.232999592623763,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "a072b417db1ac75775b3bc6271d910f688c1bd7f955bb4a11ccca681f4998b91",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "b397cc6b199681c7d3a0e7ef5658be50842b22d4762fdd8e1e0eaafb682e671f",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
@@ -93,7 +101,7 @@
                 512,
                 512
               ],
-              "sha256": "2aa4bfd74900ebd8b9d3f7367582568bae13356dc93ab31bcf022f495b9dfae4",
+              "sha256": "ebaa238fd596e20ea8a48dfb72a1017dee8430743bb018b1e02cecd122206584",
               "guid": "246364e3f627467aa8679e570d812ced"
             },
             {
@@ -106,7 +114,7 @@
                 512,
                 512
               ],
-              "sha256": "01026b7d96eec8a9961ee3e7cdac77f95ae423e041d173e3cb020db057a15f80",
+              "sha256": "6c13bcedfc2a6a4f79e17ba8e0df50f705b782e05a14266ff1321b9d16266663",
               "guid": "a4491ffc4c4c4c6ea6b72f04c6cce713"
             },
             {
@@ -119,18 +127,26 @@
                 512,
                 512
               ],
-              "sha256": "a579f9f542070d2440e4d1d053b9c442f57eacf4239992302d6744ef52673220",
+              "sha256": "87f1046f84730aa4be56cea10311a742c78f2e2f01fac9aab3acb9171b5b6d0d",
               "guid": "b437c7e4347e41ada954351572337108"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              -43.3165164625979,
+              62.97093527134765
+            ],
+            "uniform_scale": 0.9871409879034788,
+            "center_inset_normalized_pixels": [
+              22.582323675242865,
+              36.657901480505316,
+              22.58261153692712
+            ],
+            "outer_foreground_margin_normalized_pixels": 16.936167720637748,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "161f957b202ad794503c06c58862d3b994adbf81105a1795d710c17ce250c9be",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "8f185e8bb8629fe4ccd02d2a9fb364e1d0b9f4210da638d793064870c30e82d8",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
@@ -158,7 +174,7 @@
                 512,
                 512
               ],
-              "sha256": "e8d64ea1d08bacc9d9c2c171dbb82d472f08339984bb9326980ccb205ad5fd7b",
+              "sha256": "64bc9a6b1b09e99d7e1ed60f1cbdea391e601a2b0410515b3f1fc020a18c6da6",
               "guid": "ccef9edb6c6d49d2b13005f8afa5e5ad"
             },
             {
@@ -171,7 +187,7 @@
                 512,
                 512
               ],
-              "sha256": "d064d4a34a08949ca4d271b2829855336bd59fbd072c119d4cc4bcb222c72b2c",
+              "sha256": "4c2de19ea3d8c15e70b5bd152243d5d60bdaa92cacf33dba0e542f61787ac58f",
               "guid": "9cf161ea060f4d3b95de0bed4c42a86d"
             },
             {
@@ -184,18 +200,26 @@
                 512,
                 512
               ],
-              "sha256": "03051a9fc4f0e4d3029fa24970dff77a6bbf052fcb4804ec346282986667feff",
+              "sha256": "10efa477a0c520a43640acc23999d433787e627a635a83400dbe825f5f1e4111",
               "guid": "e35421c74c10481cb5dce4aab2c24e1e"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              -12.401856195423628,
+              35.32991751919671
+            ],
+            "uniform_scale": 1.0395930447990287,
+            "center_inset_normalized_pixels": [
+              24.297111700833078,
+              28.92313275291168,
+              24.29800064516332
+            ],
+            "outer_foreground_margin_normalized_pixels": 28.298572683901757,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "5de9f0899db5999366c43cc2ed21840a772f65d1f35b010c414dd8a5a9a393e3",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "5f9566ac1aa87f5e29f0a721320fcf4443246c33676e024f32f54cc697061619",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
@@ -223,7 +247,7 @@
                 512,
                 512
               ],
-              "sha256": "621cb1a5e33d1e7352a94c2e07e8bc68de7171b217584da1c32ee2b9fc37d637",
+              "sha256": "b3536ffd3832629caa496f9b52ee235c6cb5359c8b605dcedd118a78518cbd50",
               "guid": "6f2f2e149e6c4845835392c5003d5d42"
             },
             {
@@ -236,7 +260,7 @@
                 512,
                 512
               ],
-              "sha256": "d938b8c80f43b20c8fe3d4d77f5db078c84fc77ecfc9d3650d96b5ef96bf7e02",
+              "sha256": "71d5813962512661ea5f249dae5454386b90cec16832b31c7c8fcffbf729477d",
               "guid": "7a8d04acdf334601b302c99633f454b0"
             },
             {
@@ -249,18 +273,26 @@
                 512,
                 512
               ],
-              "sha256": "4d025fb34efec276e14f65771aa57436d24fd7a3ec39257d5ff0d446a610051c",
+              "sha256": "d21223a8f819ef7237c9f1ba849c820bbe3e53aca72e57c5aea78364b8f90dfa",
               "guid": "0311492b44a74818b62cae7ff385006a"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              -13.383149069248379,
+              81.19508295324296
+            ],
+            "uniform_scale": 0.9751271050693913,
+            "center_inset_normalized_pixels": [
+              26.000000013896514,
+              36.09279148180838,
+              26.004721668233607
+            ],
+            "outer_foreground_margin_normalized_pixels": 40.795047479467485,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "2286a5de0e6c77791331b7dbbfdd80052be91bb3f376400df94d3129a7379853",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "3460970f4d34819fa63028e5b12ec3bd7fd39fe5dc33108cc9af915c2f9cb26c",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
@@ -288,7 +320,7 @@
                 512,
                 512
               ],
-              "sha256": "33463f02fad111a1211add0ae68dccbf54fb38ea28e62fd89715997629b508cc",
+              "sha256": "d9dc55416506106bf018c5b10b8ec1cbdaa434a9982447d6ca24387dc54dd817",
               "guid": "6ef40a8aa0394627867838c5e54dfe52"
             },
             {
@@ -301,7 +333,7 @@
                 512,
                 512
               ],
-              "sha256": "dfa372666f2a16520be4929519851a01a1a85a5eed967d2cf5be62582399782d",
+              "sha256": "26089fc81edae2fc9cd7b4353a0cd9a1edeed26af5bf97ecc55bde5e0a89984f",
               "guid": "a170cd38b9d24a7f81a81bef18102a26"
             },
             {
@@ -314,18 +346,26 @@
                 512,
                 512
               ],
-              "sha256": "fa72e1c6db1f5438ad62ce2e9b5daed49bb1a905cdb81c129b2c93efdf9d540d",
+              "sha256": "8d121cab65f5e6f108d0969fc925efdf6228a44102cb6655634d946fd74f47b7",
               "guid": "bd7e61ca78b440519a1180808e6ef68d"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              -7.089659660575311,
+              32.06182441291124
+            ],
+            "uniform_scale": 1.11719362463367,
+            "center_inset_normalized_pixels": [
+              31.114385886074338,
+              22.84693179172917,
+              22.21520779004591
+            ],
+            "outer_foreground_margin_normalized_pixels": 12.009803773346803,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "9dfd76b953c98729b297c2db6e945d95600722da240ecca74bf52e3c283d3066",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "b99323c280e5d854a6a405e1821e1f8673ae0055ba5b692422604449b9a33f17",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
@@ -353,7 +393,7 @@
                 512,
                 512
               ],
-              "sha256": "2ae888cde959d2bb552f4db8f4feb77d58a0cffaa4ece61327d3975c5e073b0e",
+              "sha256": "f9bc9ffe6b7c34117d0c1b13cc7bd325db535c9b04b8a69366fdfc120166061c",
               "guid": "c01fc09238514f72bb6344698a5be34b"
             },
             {
@@ -366,7 +406,7 @@
                 512,
                 512
               ],
-              "sha256": "006f56206e37659b5f8f1617ea1ce843cf120f291f92616f1f7378367156c81b",
+              "sha256": "dace08f120e799bff4dba52f01ddcfdb6e75e5f42e2c61337bfb5af0f4087e6a",
               "guid": "d17af52ac50c46d981fa76d5e6f1f540"
             },
             {
@@ -379,18 +419,26 @@
                 512,
                 512
               ],
-              "sha256": "6af3cbd20279b63409ef49c26eebee899727371f71c4e221bbdc356290508fd9",
+              "sha256": "903506458a3c4892b64fc5ab2b52046d7fc176775e586895775009d837433ce3",
               "guid": "8747d65d12654708b4d611f5050685b9"
             }
           ],
           "source_alignment": {
-            "dx": 0,
-            "dy": 0,
-            "scale": 1,
-            "fixed_reference_grid": true
+            "translation_normalized_xy": [
+              -10.865896723168314,
+              81.37910181733365
+            ],
+            "uniform_scale": 0.9862473692665027,
+            "center_inset_normalized_pixels": [
+              25.999999997692736,
+              26.215457510962814,
+              26.048391611960604
+            ],
+            "outer_foreground_margin_normalized_pixels": 36.281841418740356,
+            "method": "One affine registration for the whole continuous source, all three hex centers inside canyon; no per-tile alignment or UV rotation."
           },
-          "continuous_source": "Camera-aware ImageGen render, continuous scripted sand normalization",
-          "continuous_source_sha256": "c888d301049052796927a816e1e4af0f13b14d5e3862faa443c178459ac116b4",
+          "continuous_source": "ImageGen v6 whole-source redraw; registered and palette-matched before slicing; source archive Canyon_Desert_v6.zip",
+          "continuous_source_sha256": "30542efa567c702168b2a603750a0dbf1f35c0715d9b9a800294ce58fe9edbbe",
           "camera_projection": {
             "orthographic": true,
             "scene_pitch_degrees": 75,
