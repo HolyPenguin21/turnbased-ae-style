@@ -197,12 +197,15 @@ namespace Game.EditorTools
             var input = new GameObject("input", typeof(RectTransform)).AddComponent<TMPro.TMP_InputField>();
             var config = ScriptableObject.CreateInstance<Game.Core.GameConfig>();
             var empty = ScriptableObject.CreateInstance<StartingDeckCatalog>();
-            Game.UI.CollectionScreensUI screens = null; GameObject canvas = null;
+            Game.UI.CollectionScreensUI screens = null;
+            var canvas = new GameObject("canvas", typeof(RectTransform));
+            var cell = CollectionWindowBuilder.BuildCell(null); var row = CollectionWindowBuilder.BuildRow(null);
             try
             {
                 context.SetValue(null, new CollectionService(new DeckRules(empty, research), null, new CollectionProfile()));
-                var menu = go.AddComponent<Game.UI.MainMenuController>(); screens = go.AddComponent<Game.UI.CollectionScreensUI>();
-                screens.Configure(config, dropdown, input);
+                var menu = go.AddComponent<Game.UI.MainMenuController>();
+                screens = CollectionWindowBuilder.BuildWindow(canvas.transform, cell, row, dropdown, input, null);
+                screens.Configure(config);
                 typeof(Game.UI.MainMenuController).GetField("gameConfig", fields).SetValue(menu, config);
                 typeof(Game.UI.MainMenuController).GetField("gameSetupPanel", fields).SetValue(menu, setup);
                 typeof(Game.UI.MainMenuController).GetField("collectionScreens", fields).SetValue(menu, screens);
@@ -212,21 +215,17 @@ namespace Game.EditorTools
                 Assert.That(group, Is.Not.Null); Assert.That(setup.GetComponents<UnityEngine.CanvasGroup>().Length, Is.EqualTo(1));
                 Assert.That(group.interactable, Is.False); Assert.That(group.blocksRaycasts, Is.False);
                 Assert.That(setup.activeSelf, Is.True); // setup model must not receive another OnEnable
-                var rect = (RectTransform)typeof(Game.UI.CollectionScreensUI).GetField("canvas", fields).GetValue(screens);
-                Assert.That(rect, Is.Not.Null); canvas = rect.gameObject;
-                ((Action)typeof(Game.UI.CollectionScreensUI).GetField("closed", fields).GetValue(screens))();
+                Assert.That(screens.gameObject.activeSelf, Is.True, "The window is a scene object that Show() activates.");
+                typeof(Game.UI.CollectionScreensUI).GetMethod("Close", fields).Invoke(screens, null);
+                Assert.That(screens.gameObject.activeSelf, Is.False);
                 Assert.That(group.interactable, Is.EqualTo(!existingGroup)); Assert.That(group.blocksRaycasts, Is.True);
                 Assert.That(closed, Is.EqualTo(1)); Assert.That(setup.activeSelf, Is.True);
             }
             finally
             {
-                if (screens != null)
-                {
-                    Game.UI.UIFocusUtility.SetOverlay(screens, false);
-                    typeof(Game.UI.CollectionScreensUI).GetField("canvas", fields).SetValue(screens, null);
-                    typeof(Game.UI.CollectionScreensUI).GetField("root", fields).SetValue(screens, null);
-                }
-                if (canvas != null) UnityEngine.Object.DestroyImmediate(canvas);
+                if (screens != null) Game.UI.UIFocusUtility.SetOverlay(screens, false);
+                UnityEngine.Object.DestroyImmediate(canvas);
+                UnityEngine.Object.DestroyImmediate(cell.gameObject); UnityEngine.Object.DestroyImmediate(row.gameObject);
                 UnityEngine.Object.DestroyImmediate(go); UnityEngine.Object.DestroyImmediate(setup);
                 UnityEngine.Object.DestroyImmediate(dropdown.gameObject); UnityEngine.Object.DestroyImmediate(input.gameObject);
                 UnityEngine.Object.DestroyImmediate(config); UnityEngine.Object.DestroyImmediate(empty);
