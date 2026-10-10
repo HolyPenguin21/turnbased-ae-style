@@ -6,114 +6,114 @@
       "angle": 0,
       "part": 1,
       "ground_rgb_mean": [
-        208.43,
-        166.41,
-        114.2
+        211.74,
+        165.23,
+        112.67
       ],
-      "ground_luma_mean": 171.57,
+      "ground_luma_mean": 171.32,
       "ground_luma_percentiles": [
-        152.25,
+        151.89,
+        172.29,
+        188.24
+      ],
+      "ground_luma_std": 14.46,
+      "broad_mottling_std": 11.96,
+      "dark_fraction_percent": 8.85
+    },
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.76,
+        165.25,
+        112.69
+      ],
+      "ground_luma_mean": 171.35,
+      "ground_luma_percentiles": [
+        152.1,
         172.1,
-        189.55
+        188.17
       ],
-      "ground_luma_std": 14.23,
-      "broad_mottling_std": 16.16,
-      "dark_fraction_percent": 12.36
-    },
-    {
-      "family": "Canyon",
-      "angle": 0,
-      "part": 2,
-      "ground_rgb_mean": [
-        213.55,
-        164.62,
-        112.06
-      ],
-      "ground_luma_mean": 171.23,
-      "ground_luma_percentiles": [
-        152.73,
-        172.01,
-        187.46
-      ],
-      "ground_luma_std": 13.93,
-      "broad_mottling_std": 17.41,
-      "dark_fraction_percent": 15.86
+      "ground_luma_std": 14.65,
+      "broad_mottling_std": 13.35,
+      "dark_fraction_percent": 13.69
     },
     {
       "family": "Canyon",
       "angle": 0,
       "part": 3,
       "ground_rgb_mean": [
-        214.04,
-        165.56,
-        112.9
-      ],
-      "ground_luma_mean": 172.07,
-      "ground_luma_percentiles": [
-        152.53,
-        172.16,
-        190.79
-      ],
-      "ground_luma_std": 14.91,
-      "broad_mottling_std": 16.05,
-      "dark_fraction_percent": 11.59
-    },
-    {
-      "family": "Canyon",
-      "angle": 60,
-      "part": 1,
-      "ground_rgb_mean": [
-        211.77,
-        165.28,
-        112.73
-      ],
-      "ground_luma_mean": 171.37,
-      "ground_luma_percentiles": [
-        151.11,
-        171.09,
-        191.3
-      ],
-      "ground_luma_std": 15.84,
-      "broad_mottling_std": 15.46,
-      "dark_fraction_percent": 14.0
-    },
-    {
-      "family": "Canyon",
-      "angle": 60,
-      "part": 2,
-      "ground_rgb_mean": [
-        211.81,
-        165.29,
-        112.73
-      ],
-      "ground_luma_mean": 171.39,
-      "ground_luma_percentiles": [
-        152.25,
-        171.52,
-        189.31
-      ],
-      "ground_luma_std": 15.04,
-      "broad_mottling_std": 16.14,
-      "dark_fraction_percent": 15.46
-    },
-    {
-      "family": "Canyon",
-      "angle": 60,
-      "part": 3,
-      "ground_rgb_mean": [
-        211.71,
+        211.73,
         165.22,
         112.68
       ],
       "ground_luma_mean": 171.31,
       "ground_luma_percentiles": [
-        151.74,
-        171.31,
-        190.16
+        152.03,
+        172.02,
+        188.24
       ],
-      "ground_luma_std": 15.01,
-      "broad_mottling_std": 13.42,
-      "dark_fraction_percent": 11.95
+      "ground_luma_std": 14.53,
+      "broad_mottling_std": 12.3,
+      "dark_fraction_percent": 10.21
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.74,
+        165.22,
+        112.65
+      ],
+      "ground_luma_mean": 171.31,
+      "ground_luma_percentiles": [
+        153.53,
+        171.74,
+        187.45
+      ],
+      "ground_luma_std": 13.65,
+      "broad_mottling_std": 12.44,
+      "dark_fraction_percent": 10.95
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.84,
+        165.33,
+        112.73
+      ],
+      "ground_luma_mean": 171.42,
+      "ground_luma_percentiles": [
+        151.91,
+        171.52,
+        189.6
+      ],
+      "ground_luma_std": 15.12,
+      "broad_mottling_std": 15.35,
+      "dark_fraction_percent": 18.85
+    },
+    {
+      "family": "Canyon",
+      "angle": 60,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.76,
+        165.23,
+        112.66
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        152.61,
+        171.52,
+        188.8
+      ],
+      "ground_luma_std": 14.44,
+      "broad_mottling_std": 12.0,
+      "dark_fraction_percent": 10.48
     },
     {
       "family": "Canyon",
@@ -121,227 +121,227 @@
       "part": 1,
       "ground_rgb_mean": [
         211.77,
-        165.27,
-        112.72
+        165.26,
+        112.69
       ],
-      "ground_luma_mean": 171.36,
+      "ground_luma_mean": 171.35,
       "ground_luma_percentiles": [
-        151.96,
+        151.65,
         172.16,
-        188.31
+        188.88
       ],
-      "ground_luma_std": 14.5,
-      "broad_mottling_std": 13.62,
-      "dark_fraction_percent": 11.74
+      "ground_luma_std": 14.63,
+      "broad_mottling_std": 10.4,
+      "dark_fraction_percent": 7.5
     },
     {
       "family": "Canyon",
       "angle": 120,
       "part": 2,
       "ground_rgb_mean": [
+        211.83,
+        165.31,
+        112.73
+      ],
+      "ground_luma_mean": 171.41,
+      "ground_luma_percentiles": [
+        151.39,
+        172.09,
+        189.35
+      ],
+      "ground_luma_std": 15.05,
+      "broad_mottling_std": 13.31,
+      "dark_fraction_percent": 12.72
+    },
+    {
+      "family": "Canyon",
+      "angle": 120,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.76,
+        165.24,
+        112.68
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        152.1,
+        172.24,
+        188.31
+      ],
+      "ground_luma_std": 14.31,
+      "broad_mottling_std": 10.84,
+      "dark_fraction_percent": 6.8
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 1,
+      "ground_rgb_mean": [
         211.72,
+        165.21,
+        112.69
+      ],
+      "ground_luma_mean": 171.31,
+      "ground_luma_percentiles": [
+        151.02,
+        172.23,
+        189.17
+      ],
+      "ground_luma_std": 14.87,
+      "broad_mottling_std": 13.2,
+      "dark_fraction_percent": 9.67
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.7,
+        165.23,
+        112.67
+      ],
+      "ground_luma_mean": 171.32,
+      "ground_luma_percentiles": [
+        151.82,
+        172.16,
+        188.8
+      ],
+      "ground_luma_std": 14.65,
+      "broad_mottling_std": 15.27,
+      "dark_fraction_percent": 14.51
+    },
+    {
+      "family": "Canyon",
+      "angle": 180,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.65,
+        165.21,
+        112.65
+      ],
+      "ground_luma_mean": 171.29,
+      "ground_luma_percentiles": [
+        152.75,
+        172.58,
+        187.03
+      ],
+      "ground_luma_std": 13.48,
+      "broad_mottling_std": 12.07,
+      "dark_fraction_percent": 7.27
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.73,
+        165.23,
+        112.66
+      ],
+      "ground_luma_mean": 171.32,
+      "ground_luma_percentiles": [
+        152.52,
+        172.23,
+        187.53
+      ],
+      "ground_luma_std": 14.07,
+      "broad_mottling_std": 11.78,
+      "dark_fraction_percent": 7.83
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.75,
+        165.25,
+        112.69
+      ],
+      "ground_luma_mean": 171.34,
+      "ground_luma_percentiles": [
+        152.11,
+        171.95,
+        188.32
+      ],
+      "ground_luma_std": 14.6,
+      "broad_mottling_std": 12.33,
+      "dark_fraction_percent": 10.2
+    },
+    {
+      "family": "Canyon",
+      "angle": 240,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.68,
+        165.19,
+        112.64
+      ],
+      "ground_luma_mean": 171.28,
+      "ground_luma_percentiles": [
+        152.82,
+        171.74,
+        188.02
+      ],
+      "ground_luma_std": 14.09,
+      "broad_mottling_std": 10.43,
+      "dark_fraction_percent": 6.92
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 1,
+      "ground_rgb_mean": [
+        211.75,
+        165.24,
+        112.68
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        152.25,
+        171.87,
+        188.48
+      ],
+      "ground_luma_std": 14.52,
+      "broad_mottling_std": 11.59,
+      "dark_fraction_percent": 9.15
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 2,
+      "ground_rgb_mean": [
+        211.73,
+        165.23,
+        112.69
+      ],
+      "ground_luma_mean": 171.33,
+      "ground_luma_percentiles": [
+        152.1,
+        171.59,
+        189.31
+      ],
+      "ground_luma_std": 14.74,
+      "broad_mottling_std": 11.29,
+      "dark_fraction_percent": 7.97
+    },
+    {
+      "family": "Canyon",
+      "angle": 300,
+      "part": 3,
+      "ground_rgb_mean": [
+        211.73,
         165.23,
         112.69
       ],
       "ground_luma_mean": 171.32,
       "ground_luma_percentiles": [
-        152.45,
-        172.45,
-        186.87
+        152.81,
+        171.94,
+        187.88
       ],
       "ground_luma_std": 14.18,
-      "broad_mottling_std": 14.7,
-      "dark_fraction_percent": 15.0
-    },
-    {
-      "family": "Canyon",
-      "angle": 120,
-      "part": 3,
-      "ground_rgb_mean": [
-        211.68,
-        165.19,
-        112.66
-      ],
-      "ground_luma_mean": 171.28,
-      "ground_luma_percentiles": [
-        151.96,
-        172.45,
-        187.59
-      ],
-      "ground_luma_std": 14.3,
-      "broad_mottling_std": 11.92,
-      "dark_fraction_percent": 12.06
-    },
-    {
-      "family": "Canyon",
-      "angle": 180,
-      "part": 1,
-      "ground_rgb_mean": [
-        211.76,
-        165.26,
-        112.72
-      ],
-      "ground_luma_mean": 171.35,
-      "ground_luma_percentiles": [
-        151.05,
-        171.65,
-        190.52
-      ],
-      "ground_luma_std": 15.34,
-      "broad_mottling_std": 13.97,
-      "dark_fraction_percent": 14.43
-    },
-    {
-      "family": "Canyon",
-      "angle": 180,
-      "part": 2,
-      "ground_rgb_mean": [
-        211.68,
-        165.18,
-        112.66
-      ],
-      "ground_luma_mean": 171.27,
-      "ground_luma_percentiles": [
-        154.18,
-        171.59,
-        187.52
-      ],
-      "ground_luma_std": 13.25,
-      "broad_mottling_std": 14.52,
-      "dark_fraction_percent": 21.58
-    },
-    {
-      "family": "Canyon",
-      "angle": 180,
-      "part": 3,
-      "ground_rgb_mean": [
-        211.69,
-        165.19,
-        112.67
-      ],
-      "ground_luma_mean": 171.28,
-      "ground_luma_percentiles": [
-        152.46,
-        171.54,
-        189.1
-      ],
-      "ground_luma_std": 14.33,
-      "broad_mottling_std": 13.32,
-      "dark_fraction_percent": 13.74
-    },
-    {
-      "family": "Canyon",
-      "angle": 240,
-      "part": 1,
-      "ground_rgb_mean": [
-        211.74,
-        165.24,
-        112.7
-      ],
-      "ground_luma_mean": 171.33,
-      "ground_luma_percentiles": [
-        151.6,
-        171.72,
-        189.95
-      ],
-      "ground_luma_std": 14.93,
-      "broad_mottling_std": 14.2,
-      "dark_fraction_percent": 11.79
-    },
-    {
-      "family": "Canyon",
-      "angle": 240,
-      "part": 2,
-      "ground_rgb_mean": [
-        211.76,
-        165.27,
-        112.72
-      ],
-      "ground_luma_mean": 171.36,
-      "ground_luma_percentiles": [
-        153.15,
-        171.8,
-        188.02
-      ],
-      "ground_luma_std": 14.08,
-      "broad_mottling_std": 14.35,
-      "dark_fraction_percent": 15.47
-    },
-    {
-      "family": "Canyon",
-      "angle": 240,
-      "part": 3,
-      "ground_rgb_mean": [
-        211.73,
-        165.24,
-        112.7
-      ],
-      "ground_luma_mean": 171.33,
-      "ground_luma_percentiles": [
-        152.74,
-        171.45,
-        189.37
-      ],
-      "ground_luma_std": 14.44,
-      "broad_mottling_std": 12.1,
-      "dark_fraction_percent": 11.25
-    },
-    {
-      "family": "Canyon",
-      "angle": 300,
-      "part": 1,
-      "ground_rgb_mean": [
-        211.69,
-        165.19,
-        112.65
-      ],
-      "ground_luma_mean": 171.29,
-      "ground_luma_percentiles": [
-        152.01,
-        171.6,
-        189.17
-      ],
-      "ground_luma_std": 14.86,
-      "broad_mottling_std": 13.12,
-      "dark_fraction_percent": 11.57
-    },
-    {
-      "family": "Canyon",
-      "angle": 300,
-      "part": 2,
-      "ground_rgb_mean": [
-        211.72,
-        165.22,
-        112.67
-      ],
-      "ground_luma_mean": 171.31,
-      "ground_luma_percentiles": [
-        153.66,
-        171.53,
-        187.67
-      ],
-      "ground_luma_std": 14.09,
-      "broad_mottling_std": 13.77,
-      "dark_fraction_percent": 14.51
-    },
-    {
-      "family": "Canyon",
-      "angle": 300,
-      "part": 3,
-      "ground_rgb_mean": [
-        211.82,
-        165.3,
-        112.74
-      ],
-      "ground_luma_mean": 171.39,
-      "ground_luma_percentiles": [
-        149.25,
-        172.38,
-        190.37
-      ],
-      "ground_luma_std": 15.66,
-      "broad_mottling_std": 14.73,
-      "dark_fraction_percent": 11.58
+      "broad_mottling_std": 11.71,
+      "dark_fraction_percent": 8.39
     },
     {
       "family": "GiantMachineWreck",
@@ -575,14 +575,36 @@
   "seams": [
     {
       "family": "Canyon",
+      "angle": 0,
+      "parts": [
+        1,
+        2
+      ],
+      "mean_rgb_error": 1.097,
+      "p95_rgb_error": 4.167,
+      "connected_dark_edge_samples": 28
+    },
+    {
+      "family": "Canyon",
+      "angle": 0,
+      "parts": [
+        2,
+        3
+      ],
+      "mean_rgb_error": 1.267,
+      "p95_rgb_error": 5.381,
+      "connected_dark_edge_samples": 33
+    },
+    {
+      "family": "Canyon",
       "angle": 60,
       "parts": [
         1,
         2
       ],
-      "mean_rgb_error": 1.151,
-      "p95_rgb_error": 4.189,
-      "connected_dark_edge_samples": 55
+      "mean_rgb_error": 1.069,
+      "p95_rgb_error": 4.214,
+      "connected_dark_edge_samples": 37
     },
     {
       "family": "Canyon",
@@ -591,9 +613,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.651,
-      "p95_rgb_error": 5.944,
-      "connected_dark_edge_samples": 52
+      "mean_rgb_error": 0.86,
+      "p95_rgb_error": 2.886,
+      "connected_dark_edge_samples": 26
     },
     {
       "family": "Canyon",
@@ -602,9 +624,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.305,
-      "p95_rgb_error": 4.181,
-      "connected_dark_edge_samples": 53
+      "mean_rgb_error": 1.306,
+      "p95_rgb_error": 4.296,
+      "connected_dark_edge_samples": 28
     },
     {
       "family": "Canyon",
@@ -613,9 +635,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.302,
-      "p95_rgb_error": 4.172,
-      "connected_dark_edge_samples": 50
+      "mean_rgb_error": 1.357,
+      "p95_rgb_error": 3.969,
+      "connected_dark_edge_samples": 30
     },
     {
       "family": "Canyon",
@@ -624,9 +646,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.371,
-      "p95_rgb_error": 4.704,
-      "connected_dark_edge_samples": 78
+      "mean_rgb_error": 1.076,
+      "p95_rgb_error": 3.608,
+      "connected_dark_edge_samples": 30
     },
     {
       "family": "Canyon",
@@ -635,9 +657,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.167,
-      "p95_rgb_error": 4.149,
-      "connected_dark_edge_samples": 78
+      "mean_rgb_error": 1.046,
+      "p95_rgb_error": 4.049,
+      "connected_dark_edge_samples": 43
     },
     {
       "family": "Canyon",
@@ -646,9 +668,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.092,
-      "p95_rgb_error": 3.875,
-      "connected_dark_edge_samples": 57
+      "mean_rgb_error": 1.186,
+      "p95_rgb_error": 4.642,
+      "connected_dark_edge_samples": 27
     },
     {
       "family": "Canyon",
@@ -657,9 +679,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.532,
-      "p95_rgb_error": 5.784,
-      "connected_dark_edge_samples": 70
+      "mean_rgb_error": 1.042,
+      "p95_rgb_error": 4.031,
+      "connected_dark_edge_samples": 24
     },
     {
       "family": "Canyon",
@@ -668,9 +690,9 @@
         1,
         2
       ],
-      "mean_rgb_error": 1.115,
-      "p95_rgb_error": 3.583,
-      "connected_dark_edge_samples": 41
+      "mean_rgb_error": 1.075,
+      "p95_rgb_error": 4.196,
+      "connected_dark_edge_samples": 28
     },
     {
       "family": "Canyon",
@@ -679,9 +701,9 @@
         2,
         3
       ],
-      "mean_rgb_error": 1.183,
-      "p95_rgb_error": 4.19,
-      "connected_dark_edge_samples": 65
+      "mean_rgb_error": 0.982,
+      "p95_rgb_error": 3.138,
+      "connected_dark_edge_samples": 20
     },
     {
       "family": "GiantMachineWreck",

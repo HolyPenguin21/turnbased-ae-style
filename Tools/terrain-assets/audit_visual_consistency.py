@@ -31,7 +31,7 @@ for family,entry in manifest['families'].items():
     'ground_luma_std':round(float(luma[warm].std()),2),
     'broad_mottling_std':round(float(low[warm].std()),2),
     'dark_fraction_percent':round(float(dark.sum()/face.sum()*100),2)})
-  if variant['angle_degrees']:
+  if variant['angle_degrees'] or variant.get('camera_projection'):
    xy=np.array([(p['offset']['x']*300,-np.sqrt(3)*200*(p['offset']['y']+p['offset']['x']/2)) for p in variant['parts']])
    for i in range(len(xy)):
     for j in range(i+1,len(xy)):
@@ -51,9 +51,9 @@ for s in seams:
  if s['mean_rgb_error']>3 or s['p95_rgb_error']>12:violations.append(f'{s["family"]} {s["angle"]} parts {s["parts"]}: seam RGB mismatch')
 for family in manifest['families']:
  ref=[r for r in rows if r['family']==family and r['angle']==0]
- rgb=np.mean([r['ground_rgb_mean'] for r in ref],axis=0)
- lum=np.mean([r['ground_luma_mean'] for r in ref])
- for r in [r for r in rows if r['family']==family and r['angle']]:
+ rgb=manifest['families'][family].get('original_ground_reference',{}).get('rgb_mean',np.mean([r['ground_rgb_mean'] for r in ref],axis=0))
+ lum=manifest['families'][family].get('original_ground_reference',{}).get('luma_mean',np.mean([r['ground_luma_mean'] for r in ref]))
+ for r in [r for r in rows if r['family']==family and (r['angle'] or manifest['families'][family].get('original_ground_reference'))]:
   if family=='Canyon' and not 6<=r['dark_fraction_percent']<=23:
    violations.append(f'{family} {r["angle"]} part {r["part"]}: dark fraction {r["dark_fraction_percent"]}%')
   if family=='GiantMachineWreck' and not 8<=r['dark_fraction_percent']<=45:
