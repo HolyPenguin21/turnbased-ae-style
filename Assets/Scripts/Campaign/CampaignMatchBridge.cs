@@ -128,6 +128,7 @@ namespace Game.Campaign
         public static bool RewardDismissed(string matchId, out string error)
         {
             error = null;
+            if (string.IsNullOrWhiteSpace(matchId)) return true;
             try
             {
                 if (Controller?.Snapshot.PendingOperation?.MatchId == matchId) Controller.AcknowledgeReward(matchId);
@@ -135,6 +136,7 @@ namespace Game.Campaign
             }
             catch (Exception ex) { error = ex.Message; return false; }
         }
-        public static string ReturnScene(string matchId) => Controller?.Snapshot.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId ? SceneNames.Campaign : SceneNames.MainMenu;
+        public static string ReturnScene(string matchId) => !string.IsNullOrWhiteSpace(matchId)
+            && (Controller?.Snapshot.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId) ? SceneNames.Campaign : SceneNames.MainMenu;
     }
 }
