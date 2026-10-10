@@ -315,7 +315,8 @@ namespace Game.UI
             equipmentArtToggle?.Revert();
             mutatorArtToggle?.Revert();
             Retarget(animated: true);
-            _hand.RestoreSiblingOrder();
+            if (_hand != null)
+                _hand.RestoreSiblingOrder();
         }
 
         // Right/left click routing for equipment attach mode (see CardHandUI, and the project
