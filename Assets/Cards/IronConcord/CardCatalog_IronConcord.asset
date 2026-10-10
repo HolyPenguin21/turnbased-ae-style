@@ -17,7 +17,10 @@ MonoBehaviour:
   logo: {fileID: 21300000, guid: 2073e2d5ba390b0409dbcb0ba48612b7, type: 3}
   cards:
   - id: 0
-    authoredKey: 
+    authoredKey: concord.card.concord-citadel
+    deckPointCost: 0
+    deckCopyLimit: 0
+    deckBuilderExcluded: 1
     displayName: Concord Citadel
     art: {fileID: 21300000, guid: ee9bba1b59a0cbe42b0299ac88d4b713, type: 3}
     detailArt: {fileID: 21300000, guid: ac46749229f16aa4f8e2b037497e767c, type: 3}
@@ -65,7 +68,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 1
-    authoredKey: 
+    authoredKey: concord.card.concord-base
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Concord Base
     art: {fileID: 21300000, guid: abbe1dd2ee9c82e4b82eb07a0e3192b9, type: 3}
     detailArt: {fileID: 21300000, guid: c90ef1d7bc8095444924933ba937132f, type: 3}
@@ -114,7 +120,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 2
-    authoredKey: 
+    authoredKey: concord.card.dorian-kesh
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Dorian Kesh
     art: {fileID: 21300000, guid: 81e76679aeae3504d92152a36584c601, type: 3}
     detailArt: {fileID: 21300000, guid: 19d85eabae409024aadc1ec15d7790c7, type: 3}
@@ -158,7 +167,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 3
-    authoredKey: 
+    authoredKey: concord.card.aldric-voss
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Aldric Voss
     art: {fileID: 21300000, guid: 4f3b2dda16ebdf54ab56eefc909d531a, type: 3}
     detailArt: {fileID: 21300000, guid: bfe432bc43014f542b498e1346e00ea2, type: 3}
@@ -201,7 +213,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 4
-    authoredKey: 
+    authoredKey: concord.card.vector-vance
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Vector Vance
     art: {fileID: 21300000, guid: 1ee024c8651845945a0fc99d9a00b216, type: 3}
     detailArt: {fileID: 21300000, guid: 0631deb5f60ad604688ab66e3f212eda, type: 3}
@@ -245,7 +260,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 5
-    authoredKey: 
+    authoredKey: concord.card.bolt-jax
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Bolt Jax
     art: {fileID: 21300000, guid: 062378205ca3d4d49951c7547900e907, type: 3}
     detailArt: {fileID: 21300000, guid: 8784b0b760c09ba4285276bdc1d66ae6, type: 3}
@@ -289,7 +307,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 6
-    authoredKey: 
+    authoredKey: concord.card.nadia-thorne
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Nadia Thorne
     art: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
     detailArt: {fileID: 21300000, guid: 61636f53d0b54db47a62f6fbffe2b9c8, type: 3}
@@ -333,7 +354,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 7
-    authoredKey: 
+    authoredKey: concord.card.kessa-vrail
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Kessa Vrail
     art: {fileID: 21300000, guid: cc4787e37aa8ed04eb111dcd564de512, type: 3}
     detailArt: {fileID: 21300000, guid: 7141bd2242b632c469a3c81ee250382c, type: 3}
@@ -376,7 +400,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 8
-    authoredKey: 
+    authoredKey: concord.card.lira-sable
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Lira Sable
     art: {fileID: 21300000, guid: 36aa1715422b00c47995b2a802d4b470, type: 3}
     detailArt: {fileID: 21300000, guid: 2bfbdbfe359d3f542b8c19b3c77fd3a8, type: 3}
@@ -421,7 +448,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 9
-    authoredKey: 
+    authoredKey: concord.card.tessa-rourke
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Tessa Rourke
     art: {fileID: 21300000, guid: 8a3f4d19c983c894d9e724a358cb96e3, type: 3}
     detailArt: {fileID: 21300000, guid: 5146f4b2d378d034c927b9175f79eefe, type: 3}
@@ -465,7 +495,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 10
-    authoredKey: 
+    authoredKey: concord.card.scout
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Scout
     art: {fileID: 21300000, guid: ae599b6d5cb137f4881d5bacf72afc38, type: 3}
     detailArt: {fileID: 21300000, guid: da5a5866dbe867d4386251a8b9147e63, type: 3}
@@ -510,7 +543,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 11
-    authoredKey: 
+    authoredKey: concord.card.rc-vehicle
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: RC Vehicle
     art: {fileID: 21300000, guid: ec740b73693f73c4c80d7cc9193d533a, type: 3}
     detailArt: {fileID: 21300000, guid: a8e0a294aa9960e4486fdf6bfb1a4691, type: 3}
@@ -554,7 +590,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 12
-    authoredKey: 
+    authoredKey: concord.card.watcher-drone
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Watcher Drone
     art: {fileID: 21300000, guid: cb6dcbc650638cb47b9d8f239d85be43, type: 3}
     detailArt: {fileID: 21300000, guid: f41ff7aaaf676d945aa33217453c5338, type: 3}
@@ -599,7 +638,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 13
-    authoredKey: 
+    authoredKey: concord.card.scrapper
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Scrapper
     art: {fileID: 21300000, guid: 9c7b525310f95be4f8cd65388473244e, type: 3}
     detailArt: {fileID: 21300000, guid: 1038189a8d04c9a4fab8eead630c6c89, type: 3}
@@ -643,7 +685,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 14
-    authoredKey: 
+    authoredKey: concord.card.crawler
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Crawler
     art: {fileID: 21300000, guid: efb68c3e009a0c3449c7a7c1c139bba4, type: 3}
     detailArt: {fileID: 21300000, guid: b2aae6c570e9b8c4da5a1c04314666ed, type: 3}
@@ -687,7 +732,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 15
-    authoredKey: 
+    authoredKey: concord.card.light-infantry
+    deckPointCost: 1
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Light Infantry
     art: {fileID: 21300000, guid: 2041e4a4aa26a50458f4c061b7125f9b, type: 3}
     detailArt: {fileID: 21300000, guid: 9e8b61860a53d9045a793adeb2bda763, type: 3}
@@ -730,7 +778,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 16
-    authoredKey: 
+    authoredKey: concord.card.medium-infantry
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Medium infantry
     art: {fileID: 21300000, guid: f84d75a21baefb54186695b4b8b70eac, type: 3}
     detailArt: {fileID: 21300000, guid: f5d5a338fc909d1448e8c396629781d9, type: 3}
@@ -773,7 +824,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 17
-    authoredKey: 
+    authoredKey: concord.card.flamer
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Flamer
     art: {fileID: 21300000, guid: f8a79dcc921c6d64fa8692ce9618af67, type: 3}
     detailArt: {fileID: 21300000, guid: dfd70ff37136ca241a283125bbc6d839, type: 3}
@@ -818,7 +872,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 18
-    authoredKey: 
+    authoredKey: concord.card.at-infantry
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: AT Infantry
     art: {fileID: 21300000, guid: b6fdd0c5ffebcdc44b29c772f2c1413c, type: 3}
     detailArt: {fileID: 21300000, guid: ecfc07428f64ab64bb9cff02eb048e24, type: 3}
@@ -862,7 +919,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 19
-    authoredKey: 
+    authoredKey: concord.card.heavy-infantry
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Heavy Infantry
     art: {fileID: 21300000, guid: 042bfba921c84424aadfbdfd3b29c9dd, type: 3}
     detailArt: {fileID: 21300000, guid: 0f35dac589f9dd843b865822680ec531, type: 3}
@@ -906,7 +966,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 20
-    authoredKey: 
+    authoredKey: concord.card.light-tank
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Light Tank
     art: {fileID: 21300000, guid: f404364e79cfd0248bae269dc3997004, type: 3}
     detailArt: {fileID: 21300000, guid: 7bdf80a4c79a5d84589eefcdb957142b, type: 3}
@@ -949,7 +1012,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 21
-    authoredKey: 
+    authoredKey: concord.card.medium-tank
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Medium Tank
     art: {fileID: 21300000, guid: d2f14ef1403276a499eef8959e3c8cee, type: 3}
     detailArt: {fileID: 21300000, guid: e484f72d2b47f2a4a9c1baf55e16c711, type: 3}
@@ -992,7 +1058,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 22
-    authoredKey: 
+    authoredKey: concord.card.heavy-tank
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Heavy Tank
     art: {fileID: 21300000, guid: 1f6e0fb1b03202840980d81a993a79b7, type: 3}
     detailArt: {fileID: 21300000, guid: 82a1eb01826c5fe48a356c9d606bb610, type: 3}
@@ -1036,7 +1105,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 23
-    authoredKey: 
+    authoredKey: concord.card.artillery-cannon
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Artillery Cannon
     art: {fileID: 21300000, guid: 8bee7943fe7c30a489fc96518362a5f7, type: 3}
     detailArt: {fileID: 21300000, guid: ba5bb2c74bc68e2438906abee131e7bd, type: 3}
@@ -1080,7 +1152,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 24
-    authoredKey: 
+    authoredKey: concord.card.at-cannon
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: AT Cannon
     art: {fileID: 21300000, guid: fd60c9277a2c8984ba5a57441dbd1c12, type: 3}
     detailArt: {fileID: 21300000, guid: 9a3822a26cb6dcc4f907d483b86d8668, type: 3}
@@ -1124,7 +1199,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 25
-    authoredKey: 
+    authoredKey: concord.card.artillery-tank
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Artillery Tank
     art: {fileID: 21300000, guid: 9fa4995b6ddf22940b0441796514f9af, type: 3}
     detailArt: {fileID: 21300000, guid: 1e08c58e4b42d0642a06fd5d0cd0bb59, type: 3}
@@ -1168,7 +1246,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 26
-    authoredKey: 
+    authoredKey: concord.card.pulse-cannon
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Pulse Cannon
     art: {fileID: 21300000, guid: 922554905e778d64aa9735b3060079e2, type: 3}
     detailArt: {fileID: 21300000, guid: ed24d56984537524a9b3f15b51c757ee, type: 3}
@@ -1212,7 +1293,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 27
-    authoredKey: 
+    authoredKey: concord.card.wasp
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Wasp
     art: {fileID: 21300000, guid: 84d9c85f5603102449c7e9dd75ca7676, type: 3}
     detailArt: {fileID: 21300000, guid: 9ff958975ba2145429be228d6e50c7cf, type: 3}
@@ -1256,7 +1340,10 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 28
-    authoredKey: 
+    authoredKey: concord.card.rusty-vulture
+    deckPointCost: 2
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
     displayName: Rusty Vulture
     art: {fileID: 21300000, guid: cb7141a8b0c93e04fb581e4e232fcb06, type: 3}
     detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
@@ -1326,3 +1413,4 @@ MonoBehaviour:
   - Grit Wolves
   - Steel Locusts
   - Nomads
+

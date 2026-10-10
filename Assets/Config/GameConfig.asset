@@ -12,6 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5b1afee3e364ca4943bf350e7f4b360, type: 3}
   m_Name: GameConfig
   m_EditorClassIdentifier: Assembly-CSharp::Game.Core.GameConfig
+  collectionDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
+  collectionResearchCatalog: {fileID: 11400000, guid: d4e5f60718192a3b4c5d6e7f80911223, type: 2}
   eventMarkerPrefab: {fileID: 1514539978742884714, guid: 55c207a3e28f969499cd6921199964be, type: 3}
   eventIconOffset: {x: 0.4, y: -0.5}
   buildingIconOffset: {x: -0.25, y: -0.15}
@@ -1075,4 +1077,5 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
+
 

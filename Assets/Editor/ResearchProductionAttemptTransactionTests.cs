@@ -323,6 +323,40 @@ namespace Game.EditorTests
             Assert.That(_root.ActionPoints, Is.EqualTo(5));
             Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(2));
         }
+        [Test]
+        public void HumanBlueprintQuotaRejectsDirectBypassAndDebitsOnlyEachRealAttempt()
+        {
+            _player.IsHuman = true; _player.Faction = Faction.IronConcord;
+            _card.cardType = CardType.Equipment; _card.deckPointCost = 1; _card.deckCopyLimit = 4;
+            var starting = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+            try
+            {
+                starting.catalogs.Add(_factionCatalog);
+                var deck = new Game.Progression.SavedDeck { deckId = "quota", name = "Quota", faction = _player.Faction };
+                deck.equipment.Add(new DeckCardEntry { cardKey = _card.authoredKey, count = 1 });
+                _player.MatchLoadout = new MatchLoadout(deck, new DeckRules(starting, _catalog), _ => 1);
+                _player.BlueprintQuota = new BlueprintQuota(_player.MatchLoadout);
+                _root.ActionPoints = 10; _root.AddResource(ResourceType.Human, 5);
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _), Is.False, "Untracked human call must not debit.");
+                Assert.That(_root.ActionPoints, Is.EqualTo(10));
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _, out var failed), Is.True);
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _, out _), Is.False, "Pending duplicate must not debit.");
+                failed.Complete(false);
+                Assert.That(_player.BlueprintQuota.Remaining(_card.authoredKey), Is.EqualTo(1));
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _, out var succeeded), Is.True);
+                Assert.That(succeeded.Complete(true), Is.Not.Null); Assert.That(succeeded.Complete(true), Is.Null);
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _, out _), Is.False, "Exhausted quota must not debit.");
+                Assert.That(_root.ActionPoints, Is.EqualTo(6));
+                Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(3));
+            }
+            finally { Object.DestroyImmediate(starting); }
+        }
     }
 }
 #endif
+

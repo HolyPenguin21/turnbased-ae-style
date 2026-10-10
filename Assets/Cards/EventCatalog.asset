@@ -83,7 +83,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Iron Concord/Scrapper
+        cardKey: concord.card.scrapper
     - guardArmyName: Event Medium 08
       resourceCount: 3
       rewards:
@@ -93,7 +93,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Heavy MG
+        cardKey: neutral.equipment.bio.heavy-mg
     - guardArmyName: Event Heavy 02
       resourceCount: 4
       rewards:
@@ -103,7 +103,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Ashen/Iron Husk
+        cardKey: ashen.card.iron-husk
   - name: Concrete bunker
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
     description: A reinforced logistics bunker hides beneath a ruined highway. Its supply vaults are occupied.
@@ -143,7 +143,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Iron Concord/RC Vehicle
+        cardKey: concord.card.rc-vehicle
     - guardArmyName: Event Medium 01
       resourceCount: 3
       rewards:
@@ -153,7 +153,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Armor Plate
+        cardKey: neutral.equipment.mechanical.armor-plate
     - guardArmyName: Event Heavy 05
       resourceCount: 4
       rewards:
@@ -163,7 +163,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Vessels/Bastion Frame
+        cardKey: vessels.18.bastion-frame
   - name: Nuclear silo
     image: {fileID: 21300000, guid: 26e3f7db440643843a22bba89cad625f, type: 3}
     description: A sunken missile silo opens into a dry lakebed. Scavengers have fortified the surviving service tunnels.
@@ -177,7 +177,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it AT Launcher
+        cardKey: neutral.equipment.bio.at-launcher
     - guardArmyName: Event Medium 02
       resourceCount: 3
       rewards:
@@ -187,7 +187,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Vessels/Bulwark Vessel
+        cardKey: vessels.16.bulwark-vessel
     - guardArmyName: Event Heavy 06
       resourceCount: 4
       rewards:
@@ -197,7 +197,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Nuclear Engine
+        cardKey: neutral.equipment.mechanical.nuclear-engine
   - name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: A disguised research bunker lies under a treatment station. Its sealed laboratories remain under guard.
@@ -211,7 +211,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Plasma Gun
+        cardKey: neutral.equipment.bio.plasma-gun
     - guardArmyName: Event Medium 03
       resourceCount: 3
       rewards:
@@ -221,7 +221,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Vessels/Arc Sentry
+        cardKey: vessels.13.arc-sentry
     - guardArmyName: Event Heavy 07
       resourceCount: 4
       rewards:
@@ -231,7 +231,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/Wrecker
+        cardKey: neutral.card.wrecker
   - name: Factory
     image: {fileID: 21300000, guid: 5b8041f5d35ba1445b31169b8b12c6e0, type: 3}
     description: The dead smokestacks of a manufacturing plant rise above the sand. Its assembly floor still contains recoverable machinery.
@@ -284,7 +284,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Iron Concord/Scout
+        cardKey: concord.card.scout
     - guardArmyName: Event Medium 07
       resourceCount: 3
       rewards:
@@ -294,7 +294,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Double Barrel
+        cardKey: neutral.equipment.armored.double-barrel
     - guardArmyName: Event Heavy 01
       resourceCount: 4
       rewards:
@@ -304,7 +304,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Ashen/Scav Carrier
+        cardKey: ashen.card.scav-carrier
   - name: Oil refinery
     image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
     description: Pipelines and storage tanks mark an abandoned refinery. The remaining fuel stores have drawn a local patrol.
@@ -344,7 +344,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Vessels/Whisper Scout
+        cardKey: vessels.10.whisper-scout
     - guardArmyName: Event Medium 10
       resourceCount: 3
       rewards:
@@ -354,7 +354,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Plasma Cannon
+        cardKey: neutral.equipment.armored.plasma-cannon
     - guardArmyName: Event Heavy 04
       resourceCount: 4
       rewards:
@@ -364,7 +364,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Iron Concord/Watcher Drone
+        cardKey: concord.card.watcher-drone
   - name: Water purification plant
     image: {fileID: 21300000, guid: 437b6d78e5d54b548e524634ef384cd9, type: 3}
     description: A water purification plant stands behind cracked settling pools. Its filters and reserve tanks have become valuable territory.
@@ -404,7 +404,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Ashen/Dust Runner
+        cardKey: ashen.card.dust-runner
     - guardArmyName: Event Medium 03
       resourceCount: 3
       rewards:
@@ -414,7 +414,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: Neutral/it Armor Plate
+        cardKey: neutral.equipment.mechanical.armor-plate
     - guardArmyName: Event Heavy 07
       resourceCount: 4
       rewards:
@@ -424,4 +424,4 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: The Vessels/Heavy Sentinel
+        cardKey: vessels.19.heavy-sentinel

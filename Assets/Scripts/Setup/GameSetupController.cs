@@ -69,6 +69,12 @@ namespace Game.Setup
         public void OnStartGameClicked()
         {
             ResolveRandomFactions();
+            if (!GameSession.TryPrepareMatch(_model.Players, gameConfig, out var error))
+            {
+                Game.UI.CollectionScreensUI.ShowMessage(transform.root, error);
+                foreach (var row in _rows) row.RefreshResolvedFaction();
+                return;
+            }
             GameSession.Players = _model.Players;
             GameSession.SelectedMapSize = _model.MapSize;
             GameSession.SelectedBiome = _model.Biome;
@@ -134,6 +140,8 @@ namespace Game.Setup
             PlayerRowUI row = Instantiate(gameConfig.playerRowPrefab, playerListContainer);
             Game.Audio.SceneUIAudioBinder.BindCreatedRoot(row);
             row.Bind(data, RefreshButtons, OnRemoveRowClicked);
+            row.ConfigureDeckSelection(gameConfig);
+
             _rows.Add(row);
             RefreshButtons();
         }
@@ -175,3 +183,4 @@ namespace Game.Setup
         }
     }
 }
+

@@ -19,7 +19,7 @@ namespace Game.UI
         [SerializeField] private Button loadButton;
         [SerializeField] private Button continueButton;
         private Game.Turns.GameTurnController turnController;
-        private bool MenuAvailable => !BattleActive && turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
+        private bool MenuAvailable => !UIFocusUtility.HasOverlay && !BattleActive && turnController != null && turnController.CurrentPlayer != null && turnController.CurrentPlayer.IsHuman;
         private struct GroupState
         {
             public CanvasGroup Group;
@@ -164,3 +164,4 @@ namespace Game.UI
         }
     }
 }
+

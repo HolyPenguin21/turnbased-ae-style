@@ -46,30 +46,7 @@ namespace Game.Cards
         // rejected instead of silently selecting the first card; displayName and numeric id never
         // participate in identity.
         public CardDefinition ResolveCard(string cardKey)
-        {
-            if (string.IsNullOrWhiteSpace(cardKey) || cardCatalogs == null)
-                return null;
-
-            CardDefinition match = null;
-            foreach (FactionCardCatalog catalog in cardCatalogs)
-            {
-                if (catalog?.cards == null)
-                    continue;
-                foreach (CardDefinition card in catalog.cards)
-                {
-                    if (card == null || card.authoredKey != cardKey)
-                        continue;
-                    if (match != null && !ReferenceEquals(match, card))
-                    {
-                        Debug.LogError($"ResearchProductionCatalog '{name}' cannot resolve duplicate "
-                            + $"authoredKey '{cardKey}'.", this);
-                        return null;
-                    }
-                    match = card;
-                }
-            }
-            return match;
-        }
+            => FactionCardCatalog.ResolveAcross(cardCatalogs, cardKey, false, this);
 
         // Every resolvable CardDefinition for `mode`, in list order, after applying each entry's
         // own faction gate against `viewerFaction`. A null/unresolvable cardKey is simply skipped.
@@ -107,3 +84,4 @@ namespace Game.Cards
         Production
     }
 }
+
