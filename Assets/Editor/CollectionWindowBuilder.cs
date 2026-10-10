@@ -280,6 +280,9 @@ public static class CollectionWindowBuilder
     {
         var copy = Object.Instantiate(template.gameObject, parent, false); copy.name = name; copy.SetActive(true);
         var dropdown = copy.GetComponent<TMP_Dropdown>();
+        // The PlayerRow template carries a faction-logo icon that only PlayerRowUI fills in; here it would be a blank square.
+        var logo = copy.transform.Find("FactionLogo");
+        if (logo != null) Object.DestroyImmediate(logo.gameObject);
         Place((RectTransform)copy.transform, x, y, w, 30);
         dropdown.onValueChanged = new TMP_Dropdown.DropdownEvent(); dropdown.ClearOptions();
         if (dropdown.captionText != null) dropdown.captionText.fontSize = 14;

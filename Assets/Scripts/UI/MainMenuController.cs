@@ -38,7 +38,7 @@ namespace Game.UI
         }
         public void OnCollectionClicked()
         {
-            collectionScreens?.Show(mainMenuPanel);
+            if (collectionScreens != null) collectionScreens.Show(mainMenuPanel);
         }
         public void OpenDeckBuilderFromSetup(System.Action onClosed)
         {

@@ -85,7 +85,7 @@ namespace Game.UI
             draft = collection.DefaultDeck(faction) ?? NewDeck();
             UIFocusUtility.SetOverlay(this, true);
             collection.Changed += OnCollectionChanged;
-            RefreshAll();
+            RefreshAll(true);
         }
         private SavedDeck NewDeck() => new SavedDeck { deckId = Guid.NewGuid().ToString("N"), name = "New Deck", faction = faction };
         private void OnCollectionChanged() { if (open && !busy) RefreshAll(); }
@@ -98,9 +98,9 @@ namespace Game.UI
             categoryDropdown.ClearOptions(); categoryDropdown.AddOptions(new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" });
             ownershipDropdown.ClearOptions(); ownershipDropdown.AddOptions(new List<string> { "All Cards", "Owned Cards", "Not Owned" });
             factionDropdown.onValueChanged.AddListener(value => Guard(() =>
-            { faction = DeckRules.PlayableFactions[value]; selected = null; draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; RefreshAll(); }));
-            categoryDropdown.onValueChanged.AddListener(value => { category = value; RefreshCards(); });
-            ownershipDropdown.onValueChanged.AddListener(value => { ownership = value; RefreshCards(); });
+            { faction = DeckRules.PlayableFactions[value]; selected = null; draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; RefreshAll(true); }));
+            categoryDropdown.onValueChanged.AddListener(value => { category = value; RefreshCards(true); });
+            ownershipDropdown.onValueChanged.AddListener(value => { ownership = value; RefreshCards(true); });
             deckDropdown.onValueChanged.AddListener(value => Guard(() =>
             {
                 var loaded = value < deckList.Count ? collection.GetDeck(deckList[value].DeckId) : null;
@@ -147,16 +147,17 @@ namespace Game.UI
             unsavedModal.SetActive(false); confirmModal.SetActive(false);
         }
 
-        private void RefreshAll()
+        // Filters and faction changes start the grid from the top; deck edits keep the scroll position.
+        private void RefreshAll(bool resetCardScroll = false)
         {
             if (!open) return;
             factionDropdown.SetValueWithoutNotify(Mathf.Max(0, Array.IndexOf(DeckRules.PlayableFactions, faction)));
             categoryDropdown.SetValueWithoutNotify(category);
             ownershipDropdown.SetValueWithoutNotify(ownership);
             RebuildUsed();
-            RefreshCards(); RefreshDetails(); RefreshDeck();
+            RefreshCards(resetCardScroll); RefreshDetails(); RefreshDeck();
         }
-        private void RefreshCards()
+        private void RefreshCards(bool resetScroll)
         {
             visible.Clear();
             var cards = collection.Rules.Cards(faction).Where(c =>
@@ -179,7 +180,7 @@ namespace Game.UI
             for (int i = visible.Count; i < cells.Count; i++) cells[i].gameObject.SetActive(false);
             RefreshCardCounters();
             UpdateSelectionGlow();
-            cardsScroll.verticalNormalizedPosition = 1f;
+            if (resetScroll) cardsScroll.verticalNormalizedPosition = 1f;
         }
         private bool CardInputAllowed() => modal == null && !CollectionMessageUI.IsShowing;
         private void RefreshCardCounters()
