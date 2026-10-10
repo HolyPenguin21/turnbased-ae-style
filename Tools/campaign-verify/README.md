@@ -17,7 +17,10 @@ DOTNET_BIN=/path/to/dotnet CAMPAIGN_VERIFY_WORK=/tmp/campaign-verify python Tool
 
 Runs the same campaign backend C# and `CampaignSystemTests` in a disposable source
 copy. Unity reference DLLs have non-executable vector/native JSON bodies; ONLY that
-copy substitutes a managed value vector and fields-only JSON. Old reference API
+copy substitutes a managed value vector and fields-only JSON. The JSON adapter
+models Unity's empty inline `CampaignOperation` and null-string representation by
+default; `CAMPAIGN_JSON_INLINE_NULLS=0` also checks a null-preserving representation.
+This is a targeted regression model, not native serialization coverage. Old reference API
 and Mathf stubs are also confined to this tool. No adapter is imported into Unity.
 This verifies rules, reproducibility, file transitions and logical transactions;
 it does **not** prove native JsonUtility, scene rendering, input, tactical matches,

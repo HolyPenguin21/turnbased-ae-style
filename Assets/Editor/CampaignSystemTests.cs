@@ -194,6 +194,58 @@ public sealed class CampaignSystemTests
         Assert.AreEqual(CampaignPhase.BattleInProgress, persisted.Phase); Assert.IsFalse(persisted.PendingOperation.ResultRecorded);
         Assert.AreEqual("selected-deck", persisted.PendingOperation.SelectedHumanDeckId); Assert.AreEqual(s.CurrentTurnIndex, persisted.CurrentTurnIndex);
     }
+    [TestCase(CampaignPhase.AwaitingFactionAction)] [TestCase(CampaignPhase.CampaignFinished)]
+    public void NoOperationSurvivesNativeJsonCopyAndReload(CampaignPhase phase)
+    {
+        var s = HumanTurn(Planet());
+        if (phase == CampaignPhase.CampaignFinished)
+        {
+            foreach (var r in s.Regions) r.OwnerFaction = s.HumanFaction;
+            foreach (var f in s.Factions) f.Eliminated = f.Faction != s.HumanFaction;
+            s.Phase = phase;
+        }
+        Assert.IsNull(s.Copy().PendingOperation);
+        var store = new CampaignStore(directory); store.Save(s);
+        var restored = store.Load(out _); Assert.IsNull(restored.PendingOperation); CampaignStore.Validate(restored);
+        if (phase == CampaignPhase.AwaitingFactionAction) Assert.DoesNotThrow(() => Controller(restored).EndTurn());
+    }
+    [Test] public void ExistingUnitySaveWithEmptyInlineOperationLoadsWithoutReset()
+    {
+        var s = HumanTurn(Planet()); s.PendingOperation = new CampaignOperation();
+        File.WriteAllText(Path.Combine(directory, "campaign-v1.json"), JsonUtility.ToJson(s));
+        var restored = new CampaignStore(directory).Load(out var notice);
+        Assert.IsNull(notice); Assert.IsNull(restored.PendingOperation);
+        Assert.AreEqual(s.CampaignId, restored.CampaignId); Assert.AreEqual(Geometry(s), Geometry(restored));
+        Assert.AreEqual(s.CurrentTurnIndex, restored.CurrentTurnIndex); CollectionAssert.AreEqual(s.TurnOrder, restored.TurnOrder);
+    }
+    [TestCase("id")] [TestCase("flag")] [TestCase("deck")] [TestCase("score")] [TestCase("region")]
+    public void UnexpectedNonEmptyOperationIsNotSilentlyDiscarded(string field)
+    {
+        var s = HumanTurn(Planet()); s.PendingOperation = new CampaignOperation();
+        if (field == "id") s.PendingOperation.OperationId = Guid.NewGuid().ToString("N");
+        else if (field == "flag") s.PendingOperation.ResultRecorded = true;
+        else if (field == "deck") s.PendingOperation.AttackerDeckName = "Unexpected deck";
+        else if (field == "score") s.PendingOperation.AttackerScore = 1;
+        else s.PendingOperation.TargetRegionId = 1;
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(s.Copy()));
+    }
+    [Test] public void BattlePhaseWithEmptyInlineOperationIsStillRejected()
+    {
+        var s = HumanTurn(Planet()); s.Phase = CampaignPhase.PreparingBattle; s.PendingOperation = new CampaignOperation();
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(s.Copy()));
+    }
+    [Test] public void AiOperationAndHistoryAcceptEmptyMatchIdFromUnityJson()
+    {
+        var s = Planet(); var pair = s.Regions.SelectMany(r => r.NeighborIds.Select(id => (Source: r, Target: s.Regions.Find(x => x.RegionId == id))))
+            .First(p => p.Source.OwnerFaction != s.HumanFaction && p.Target.OwnerFaction != s.HumanFaction && p.Source.OwnerFaction != p.Target.OwnerFaction);
+        s.CurrentTurnIndex = s.TurnOrder.IndexOf(pair.Source.OwnerFaction); var c = Controller(s);
+        c.BeginAttack(pair.Source.RegionId, pair.Target.RegionId, false);
+        var pending = c.Snapshot; pending.PendingOperation.MatchId = ""; CampaignStore.Validate(pending);
+        c = Controller(pending); c.ResolveFast(Deck(), Deck(), new CampaignBattleResolver());
+        var result = c.Snapshot; result.PendingOperation.MatchId = ""; result.BattleHistory[0].MatchId = "";
+        CampaignStore.Validate(result); var id = result.PendingOperation.OperationId;
+        c = Controller(result); c.Continue(id); Assert.IsNull(c.Snapshot.PendingOperation);
+    }
     [Test] public void S07_S11_FastResultAndNotificationReplayWithoutReroll()
     {
         var s = Planet(); var pair = s.Regions.SelectMany(r => r.NeighborIds.Select(id => (Source: r, Target: s.Regions.Find(x => x.RegionId == id))))

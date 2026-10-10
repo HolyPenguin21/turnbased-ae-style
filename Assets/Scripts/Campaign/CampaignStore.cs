@@ -28,7 +28,7 @@ namespace Game.Campaign
         private static CampaignState Read(string file)
         {
             if (new FileInfo(file).Length > 16 * 1024 * 1024) throw new InvalidDataException("Campaign file too large.");
-            var state = JsonUtility.FromJson<CampaignState>(File.ReadAllText(file)); Validate(state); return state;
+            var state = CampaignState.Deserialize(File.ReadAllText(file)); Validate(state); return state;
         }
         public static void Validate(CampaignState s)
         {
@@ -43,7 +43,7 @@ namespace Game.Campaign
             CampaignGeometry.Validate(s.Regions);
             foreach (var f in s.Factions) if (f.Eliminated == s.Regions.Any(r => r.OwnerFaction == f.Faction)) throw new InvalidDataException("Elimination mismatch.");
             if (s.BattleHistory.Any(h => h == null || !Guid.TryParseExact(h.OperationId, "N", out _) || h.Round < 1 || h.Round > s.RoundNumber
-                || (h.Manual ? !Guid.TryParseExact(h.MatchId, "N", out _) : h.MatchId != null)
+                || (h.Manual ? !Guid.TryParseExact(h.MatchId, "N", out _) : !string.IsNullOrEmpty(h.MatchId))
                 || string.IsNullOrWhiteSpace(h.RegionName) || string.IsNullOrWhiteSpace(h.AttackerDeckName) || string.IsNullOrWhiteSpace(h.DefenderDeckName)
                 || !s.Regions.Any(r => r.RegionId == h.TargetRegionId) || !CampaignRules.IsPlayable(h.Attacker) || !CampaignRules.IsPlayable(h.Defender)
                 || h.Attacker == h.Defender || !Enum.IsDefined(typeof(CampaignOutcome), h.Outcome) || h.Captured != (h.Outcome == CampaignOutcome.AttackerVictory)
@@ -64,7 +64,7 @@ namespace Game.Campaign
                 return;
             }
             var source = s.Regions.Find(r => r.RegionId == op.SourceRegionId); var target = s.Regions.Find(r => r.RegionId == op.TargetRegionId);
-            if (!Guid.TryParseExact(op.OperationId, "N", out _) || (op.Manual ? !Guid.TryParseExact(op.MatchId, "N", out _) : op.MatchId != null)
+            if (!Guid.TryParseExact(op.OperationId, "N", out _) || (op.Manual ? !Guid.TryParseExact(op.MatchId, "N", out _) : !string.IsNullOrEmpty(op.MatchId))
                 || !CampaignRules.IsPlayable(op.AttackerFaction) || !CampaignRules.IsPlayable(op.DefenderFaction) || op.AttackerFaction == op.DefenderFaction
                 || source == null || target == null || source.OwnerFaction != op.AttackerFaction || !source.NeighborIds.Contains(target.RegionId)
                 || op.AttackerFaction != s.CurrentFaction || (op.TestAutoResolve && (!op.Manual || string.IsNullOrWhiteSpace(op.SelectedHumanDeckId))) || op.Manual != (op.AttackerFaction == s.HumanFaction || op.DefenderFaction == s.HumanFaction)
