@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Combat;
 
 namespace Game.Ai.V2
@@ -40,6 +41,9 @@ namespace Game.Ai.V2
                 float defenderPower = 0f;
                 foreach (WorthIt.DefendingArmy defendingArmy in opposition)
                 {
+                    // A hero-only army is a Capture/Kill, not a fight: it carries no combat power.
+                    if (!defendingArmy.Units.Any(p => p.IsGroundCombatant))
+                        continue;
                     float bonus = System.Math.Max(0f,
                         defendingArmy.DefenseBonus(defenderHexDefenseBonus));
                     foreach (WorthIt.DefenderProfile profile in defendingArmy.Units)

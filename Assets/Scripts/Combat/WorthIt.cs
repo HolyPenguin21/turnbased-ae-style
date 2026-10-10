@@ -818,9 +818,10 @@ namespace Game.Combat
             // Hero-only armies are no battle, they are Capture/Kill challenges taken after the fights.
             // The opposition-based AI estimate only: the flat Estimate overloads stay as they are, since
             // BattleInitiator.FindEnemyAt ranks real defenders through them.
+            // Judged after summons exactly like the fights filter, so a summoning hero is never both.
             List<DefendingArmy> heroOnly = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Where(a => a.Units != null && a.Units.Any(p => p.IsHero)
-                    && !a.Units.Any(p => p.IsGroundCombatant)).ToList();
+                    && !WithBattleSummons(a.Units).Any(p => p.IsGroundCombatant)).ToList();
             if (heroOnly.Count == 0)
                 return fights;
             BattleEstimate capture = EstimateCaptureKill(attackerUnits, attackerCommander, heroOnly);
@@ -832,7 +833,7 @@ namespace Game.Combat
             SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
             float hexDefenseBonus, AbilityMagnitudes? magnitudes)
         {
-            var armies =(defendingArmies ?? System.Array.Empty<DefendingArmy>())
+            var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
                 .Select(a => new DefendingArmy(WithBattleSummons(a.Units), a.Commander,
                     a.DefenseBonusOverride, a.ArmyId))
                 .Where(a => a.Units.Any(p => p.IsGroundCombatant))
