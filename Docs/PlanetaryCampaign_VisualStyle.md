@@ -3,7 +3,7 @@
 ## Scope
 
 The campaign screen now uses the accepted second visual direction: a softly lit,
-tilted wasteland surface with continuous terrain, translucent ownership colors,
+wide wasteland surface with continuous terrain, translucent ownership colors,
 fine borders, faction markers and an amber selected region. Worn steel frames,
 parchment information panels and the existing game font/buttons/logos complete
 the console. This is a presentation change, not a new campaign architecture.
@@ -40,8 +40,20 @@ vertices instead of shading only polygon corners. Region boundaries remain actua
 generated vertices. Raycasting uses the same projected polygons and pixel
 conversion as rendering, including the inherited CanvasGroup/mask filters.
 
-Markers and selected labels use an interior point for concave regions. Operation
-arrows use the same interior points and pixel space. Decorative frames/images/text
+Markers and selected labels use an interior point for concave regions. The
+surface is enlarged horizontally (1.20) and vertically (1.13) in the same affine
+projection used for rendering and input. A RectMask2D viewport, inset 20 canvas
+units from the panel edges, crops the outer rim into a broad rounded rectangle.
+The shader fades both the viewport edges (48 units) and the map-space horizon;
+lighting darkens the lower rim and a 12-unit shadow adds depth. Surface bounds
+follow RectTransform size changes. Borders and markers carry shared map UVs so
+they fade with the terrain rather than leaving a hard outline.
+
+For a cell near the cropped rim, `VisibleCenter` chooses a point inside one of
+its existing triangles and inside the viewport where possible. Marker, selected
+name, terrain preview and operation arrows use that same point. Save vertices,
+region adjacency and click polygons are not changed. Operation arrows use the
+same pixel space. Decorative frames/images/text
 do not intercept region clicks. Owner/selection/hover changes update the existing
 meshes; no map regeneration or save mutation occurs. The shared runtime material
 is released when the view is destroyed.
@@ -69,7 +81,7 @@ No AI resource/bank reservation or tactical map code is touched.
   tests against Unity reference DLLs and explicit dependency/TMPro stubs: baseline
   and changed sources both compiled with zero errors.
 - Managed geometry check using current generator/geometry/rules and extracted
-  presentation math: 35 generated maps, 840 regions; interior markers, UV bounds,
+  presentation math: 35 generated maps, 840 regions; interior/visible markers, UV bounds,
   pixel conversion at 1280×720 / 1920×1080 / 2560×1440, unchanged region data, and
   the concave-marker regression passed. This uses the existing verification
   approach of managed vector copies, not the native Unity renderer.
@@ -115,3 +127,15 @@ contrast on the light button artwork and terrain labels, and the four-line
 history extending below its intended area. Reference-DLL compilation passed
 again after those UI fixes. The scene and all procedural/backend data remain
 unchanged by this follow-up.
+
+### Wider surface and frame-edge review
+
+The composite was rebuilt after the viewport/lighting changes using the same
+actual assets, original source font, generated seed-7 geometry and production
+`VisibleCenter` output. The square source frame is assembled as nine slices: its
+128-pixel corner patches display at 32 canvas units; only the rails stretch.
+The resulting 1400×780 map frame is rectangular. The terrain now fills that
+frame up to its inner bottom edge and fades into its metal backing.
+Reference-DLL compilation passed again; the managed 35-map/840-region check also
+confirmed visible interior markers after enlargement and unchanged save geometry.
+The composite remains a CPU approximation, not a native Unity render.

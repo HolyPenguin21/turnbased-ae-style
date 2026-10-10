@@ -41,6 +41,11 @@ public sealed class CampaignVisualTests
         foreach (var region in state.Regions)
         {
             Assert.True(CampaignGeometry.Contains(region.PolygonVertices, CampaignRegionGraphic.InteriorCenter(region)));
+            var visible = CampaignRegionGraphic.VisibleCenter(region);
+            var projected = CampaignMapView.Project(visible);
+            Assert.True(CampaignGeometry.Contains(region.PolygonVertices, visible));
+            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.97f));
+            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.97f));
             foreach (var vertex in region.PolygonVertices)
             {
                 var uv = CampaignMapView.SurfaceUV(vertex);
@@ -58,6 +63,11 @@ public sealed class CampaignVisualTests
               new Vector2(1, 1), new Vector2(1, 3), new Vector2(0, 3) } };
         Assert.False(CampaignGeometry.Contains(region.PolygonVertices, CampaignGeometry.Center(region)));
         Assert.True(CampaignGeometry.Contains(region.PolygonVertices, CampaignRegionGraphic.InteriorCenter(region)));
+            var visible = CampaignRegionGraphic.VisibleCenter(region);
+            var projected = CampaignMapView.Project(visible);
+            Assert.True(CampaignGeometry.Contains(region.PolygonVertices, visible));
+            Assert.That(Mathf.Abs(projected.x), Is.LessThan(.97f));
+            Assert.That(Mathf.Abs(projected.y), Is.LessThan(.97f));
     }
     [Test]
     public void RegionMeshSeparatesTexturedTerrainFromSolidBordersAndMarkers()

@@ -46,7 +46,8 @@ namespace Game.Campaign
             Skin(surface, false);
             surface.GetComponent<Image>().raycastTarget = false;
             var mapRect = CollectionUIElements.Rect(surface, "Regions"); CollectionUIElements.Stretch(mapRect);
-            mapRect.offsetMin = new Vector2(26, 28); mapRect.offsetMax = new Vector2(-26, -28);
+            mapRect.offsetMin = new Vector2(20, 20); mapRect.offsetMax = new Vector2(-20, -20);
+            mapRect.gameObject.AddComponent<RectMask2D>();
             map = mapRect.gameObject.AddComponent<CampaignMapView>();
             sidebar = CollectionUIElements.Panel(canvas, "RegionInformation"); CollectionUIElements.Place(sidebar, 1440, 112, 454, 780);
             Skin(sidebar, true);
@@ -133,7 +134,7 @@ namespace Game.Campaign
             {
                 var preview = CollectionUIElements.Rect(sidebar, "RegionTerrainPreview"); CollectionUIElements.Place(preview, 30, 340, 394, 126);
                 var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.texture = map.SurfaceTexture; terrain.raycastTarget = false;
-                var center = CampaignMapView.SurfaceUV(CampaignRegionGraphic.InteriorCenter(region));
+                var center = CampaignMapView.SurfaceUV(CampaignRegionGraphic.VisibleCenter(region));
                 terrain.uvRect = new Rect(Mathf.Clamp(center.x - .16f, 0, .68f), Mathf.Clamp(center.y - .10f, 0, .80f), .32f, .20f);
                 Frame(preview);
                 Label(sidebar, "OWNER", 30, 482, 98, 34, 20);

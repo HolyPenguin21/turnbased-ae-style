@@ -30,7 +30,7 @@ namespace Game.Campaign
             var indices = CampaignGeometry.Triangulate(polygon);
             for (int i = 0; i < indices.Count; i += 3)
                 Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]], isShadow ? 0 : 3);
-            marker = InteriorCenter(region);
+            marker = VisibleCenter(region);
             clicked = click; hovered = onHover; SetVerticesDirty();
         }
 
@@ -49,6 +49,30 @@ namespace Game.Campaign
                 if (area > largest) { largest = area; result = (a + b + c) / 3; }
             }
             return result;
+        }
+
+        // Enlarging the surface crops the outer rim. Keep each marker in its own visible cell.
+        public static Vector2 VisibleCenter(RegionState region)
+        {
+            var center = InteriorCenter(region);
+            var projectedCenter = CampaignMapView.Project(center);
+            if (Math.Abs(projectedCenter.x) <= .90f && Math.Abs(projectedCenter.y) <= .80f) return center;
+            var vertices = region.PolygonVertices;
+            var triangles = CampaignGeometry.Triangulate(vertices);
+            var best = center; double bestScore = double.MaxValue;
+            for (int t = 0; t < triangles.Count; t += 3)
+                for (int a = 1; a < 12; a++)
+                    for (int b = 1; a + b < 12; b++)
+                    {
+                        var point = (vertices[triangles[t]] * a + vertices[triangles[t + 1]] * b
+                            + vertices[triangles[t + 2]] * (12 - a - b)) / 12f;
+                        var projectedPoint = CampaignMapView.Project(point);
+                        double overflow = Math.Max(0, Math.Abs(projectedPoint.x) - .90f)
+                            + Math.Max(0, Math.Abs(projectedPoint.y) - .80f);
+                        double score = overflow * 100 + (point - center).sqrMagnitude;
+                        if (score < bestScore) { bestScore = score; best = point; }
+                    }
+            return best;
         }
 
         private void Subdivide(Vector2 a, Vector2 b, Vector2 c, int depth)
@@ -95,7 +119,7 @@ namespace Game.Campaign
                     var p = surfaceTriangles[i + j];
                     // Shared map coordinates produce continuous shading and UVs across every cell.
                     float radius = Mathf.Clamp01(p.sqrMagnitude);
-                    float shade = .94f + .06f * p.y - .34f * radius * radius;
+                    float shade = .99f + .11f * p.y - .49f * radius * radius;
                     var tint = silhouette ? color : ownership; tint.a = 1;
                     AddVertex(vh, Pixel(p), tint, CampaignMapView.SurfaceUV(p), !silhouette, shade);
                 }
@@ -110,26 +134,28 @@ namespace Game.Campaign
                 var a = Pixel(polygon[i]); var b = Pixel(polygon[(i + 1) % polygon.Count]);
                 var direction = (b - a).normalized; var n = new Vector2(-direction.y, direction.x) * width;
                 int start = vh.currentVertCount;
-                AddVertex(vh, a - n, border, Vector2.zero, false); AddVertex(vh, a + n, border, Vector2.zero, false);
-                AddVertex(vh, b + n, border, Vector2.zero, false); AddVertex(vh, b - n, border, Vector2.zero, false);
+                var uvA = CampaignMapView.SurfaceUV(polygon[i]);
+                var uvB = CampaignMapView.SurfaceUV(polygon[(i + 1) % polygon.Count]);
+                AddVertex(vh, a - n, border, uvA, false); AddVertex(vh, a + n, border, uvA, false);
+                AddVertex(vh, b + n, border, uvB, false); AddVertex(vh, b - n, border, uvB, false);
                 vh.AddTriangle(start, start + 1, start + 2); vh.AddTriangle(start, start + 2, start + 3);
             }
-            Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f));
-            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(1f, .69f, .24f) : color);
+            Circle(vh, Pixel(marker), 5.5f, new Color(.11f, .10f, .085f), CampaignMapView.SurfaceUV(marker));
+            Circle(vh, Pixel(marker), selected ? 4.1f : 3.9f, selected ? new Color(1f, .69f, .24f) : color, CampaignMapView.SurfaceUV(marker));
         }
         private static void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1)
         {
             var vertex = UIVertex.simpleVert; vertex.position = position; vertex.color = tint;
             vertex.uv0 = uv; vertex.uv1 = new Vector2(textured ? 1 : 0, lighting); vh.AddVert(vertex);
         }
-        private static void Circle(VertexHelper vh, Vector2 center, float radius, Color tint)
+        private static void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 uv)
         {
-            int start = vh.currentVertCount; AddVertex(vh, center, tint, Vector2.zero, false);
+            int start = vh.currentVertCount; AddVertex(vh, center, tint, uv, false);
             const int sides = 16;
             for (int i = 0; i <= sides; i++)
             {
                 float angle = i * Mathf.PI * 2 / sides;
-                AddVertex(vh, center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius, tint, Vector2.zero, false);
+                AddVertex(vh, center + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * radius, tint, uv, false);
                 if (i > 0) vh.AddTriangle(start, start + i, start + i + 1);
             }
         }
