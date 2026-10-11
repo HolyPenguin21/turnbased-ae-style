@@ -35,6 +35,7 @@ namespace Game.Campaign
             if (s == null || !Guid.TryParseExact(s.CampaignId, "N", out _) || string.IsNullOrWhiteSpace(s.PlanetName)) throw new InvalidDataException("Missing campaign identity.");
             if (s.SchemaVersion > 1) throw new NotSupportedException("Campaign needs a newer game version.");
             if (s.SchemaVersion != 1 || !CampaignRules.IsPlayable(s.HumanFaction) || !Enum.IsDefined(typeof(CampaignPhase), s.Phase)
+                || s.BackgroundId < 0 || s.BackgroundId > CampaignMapGenerator.BackgroundCount
                 || s.RoundNumber < 1 || s.RandomSequence < 0 || s.TurnOrder == null || s.TurnOrder.Count < 1 || s.TurnOrder.Count > 3
                 || s.TurnOrder.Distinct().Count() != s.TurnOrder.Count || s.TurnOrder.Any(f => !CampaignRules.IsPlayable(f)) || s.CurrentTurnIndex < 0 || s.CurrentTurnIndex >= s.TurnOrder.Count
                 || s.Factions == null || s.Factions.Count != 3 || s.Factions.Any(f => f == null || !CampaignRules.IsPlayable(f.Faction) || f.ActiveDeckReference != "standard")

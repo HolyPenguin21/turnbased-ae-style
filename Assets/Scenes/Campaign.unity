@@ -244,6 +244,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Campaign.CampaignUI
   gameConfig: {fileID: 11400000, guid: 7eb9ac8d630ddb848b7ffe51f03f4b75, type: 2}
   enableHumanTestAutoResolve: 0
+  endTurnSprite: {fileID: 21300000, guid: 31cf71a035198ff4dbb73e9e1c861060, type: 3}
+  actionButtonSprite: {fileID: 21300000, guid: dd12b2624bc262c4db529b835fef0f4f, type: 3}
+  ironConcordLogo: {fileID: 21300000, guid: 2073e2d5ba390b0409dbcb0ba48612b7, type: 3}
+  ashenLogo: {fileID: 21300000, guid: ac8dae4f174ab61469d2e7c17b1a991f, type: 3}
+  vesselsLogo: {fileID: 21300000, guid: 461ffe05ef1546b89f48571470da4004, type: 3}
 --- !u!1 &2000
 GameObject:
   m_ObjectHideFlags: 0
@@ -388,3 +393,4 @@ SceneRoots:
   - {fileID: 391000798}
   - {fileID: 1001}
   - {fileID: 2001}
+

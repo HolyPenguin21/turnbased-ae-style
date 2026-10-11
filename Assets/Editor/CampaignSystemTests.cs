@@ -25,16 +25,54 @@ public sealed class CampaignSystemTests
     }
     private static CampaignState HumanTurn(CampaignState s)
     { int index = s.TurnOrder.IndexOf(s.HumanFaction); s.CurrentTurnIndex = index; return s; }
+    [Test] public void G00_DefaultCampaignUsesFortyEightRegions()
+    {
+        var s = new CampaignMapGenerator().Generate(37, Faction.Ashen);
+        Assert.AreEqual(48, s.Regions.Count);
+        CampaignGeometry.Validate(s.Regions, true);
+        foreach (var faction in s.Factions)
+            Assert.AreEqual(16, s.Regions.Count(r => r.OwnerFaction == faction.Faction));
+    }
     [Test] public void G01_SeedReproducesGeometryAndInitialOwnership() => Assert.AreEqual(Geometry(Planet()), Geometry(Planet()));
     [Test] public void G02_DifferentSeedsChangeGeometry() => Assert.AreNotEqual(Geometry(Planet(11)), Geometry(Planet(12)));
-    [TestCase(3)] [TestCase(7)] [TestCase(24)] [TestCase(31)]
+    [Test] public void G13_BackgroundChoiceIsSeededAndUsesEveryVariant()
+    {
+        var ids = new HashSet<int>();
+        for (int seed = 0; seed < 1000; seed++)
+        {
+            int id = CampaignMapGenerator.BackgroundForSeed(seed);
+            Assert.That(id, Is.InRange(1, CampaignMapGenerator.BackgroundCount));
+            Assert.AreEqual(id, CampaignMapGenerator.BackgroundForSeed(seed)); ids.Add(id);
+        }
+        Assert.AreEqual(CampaignMapGenerator.BackgroundCount, ids.Count);
+        Assert.AreEqual(CampaignMapGenerator.BackgroundForSeed(37), Planet().BackgroundId);
+    }
+    [Test] public void BackgroundSurvivesSaveReloadAndTurnAdvance()
+    {
+        var s = Planet(); var store = new CampaignStore(directory); store.Save(s);
+        var restored = store.Load(out _); Assert.AreEqual(s.BackgroundId, restored.BackgroundId);
+        var controller = new CampaignController(restored, store); controller.EndTurn();
+        Assert.AreEqual(s.BackgroundId, controller.Snapshot.BackgroundId);
+        Assert.AreEqual(s.BackgroundId, store.Load(out _).BackgroundId);
+    }
+    [Test] public void OldSaveWithoutBackgroundFieldRetainsOriginalSurface()
+    {
+        var s = Planet();
+        var json = System.Text.RegularExpressions.Regex.Replace(JsonUtility.ToJson(s), "\"BackgroundId\"\\s*:\\s*\\d+\\s*,", "");
+        Assert.False(json.Contains("\"BackgroundId\""));
+        var restored = CampaignState.Deserialize(json); Assert.AreEqual(0, restored.BackgroundId);
+        CampaignStore.Validate(restored); Assert.AreEqual(Geometry(s), Geometry(restored));
+    }
+    [TestCase(-1)] [TestCase(11)] public void InvalidBackgroundIdsAreRejected(int id)
+    { var s = Planet(); s.BackgroundId = id; Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(s)); }
+    [TestCase(3)] [TestCase(7)] [TestCase(24)] [TestCase(31)] [TestCase(36)] [TestCase(48)]
     public void G03_RegionCountAndBalancedConnectedOwnership(int count)
     {
         var s = Planet(31, count); Assert.AreEqual(count, s.Regions.Count); CampaignGeometry.Validate(s.Regions, true);
         foreach (var f in s.Factions) Assert.That(s.Regions.Count(r => r.OwnerFaction == f.Faction), Is.InRange(count / 3, (count + 2) / 3));
     }
     [Test] public void G12_ThousandSeedsHaveValidSharedGeometryAndConnectedBalancedTerritories()
-    { for (int seed = 0; seed < 1000; seed++) { var s = Planet(seed); CampaignGeometry.Validate(s.Regions, true); } }
+    { for (int seed = 0; seed < 1000; seed++) { var s = Planet(seed, 48); CampaignGeometry.Validate(s.Regions, true); } }
     [Test] public void InvalidGeometryAndAdjacencyAreRejected()
     {
         var s = Planet(); s.Regions[0].NeighborIds.Add(s.Regions[0].RegionId); Assert.Throws<InvalidDataException>(() => CampaignGeometry.Validate(s.Regions));
@@ -405,3 +443,4 @@ public sealed class CampaignSystemTests
     }
 }
 #endif
+
