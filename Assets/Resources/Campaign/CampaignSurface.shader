@@ -7,6 +7,8 @@ Shader "Game/UI/CampaignSurface"
         _SurfaceSize ("Surface size", Vector) = (1360,740,0,0)
         _EdgeFeather ("Edge feather (canvas units)", Float) = 28
         _Atmosphere ("Cloud overlay", Float) = 0
+        _CloudOverlay ("Cloud footprint attenuation", Float) = 0
+        _MapViewport ("Map viewport in overlay", Vector) = (0,0,1,1)
         _CornerRadius ("Panel corner radius", Float) = 0
         _UVRect ("Overlay UV rect", Vector) = (0,0,1,1)
         _StencilComp ("Stencil Comparison", Float) = 8
@@ -71,6 +73,8 @@ Shader "Game/UI/CampaignSurface"
             float4 _SurfaceSize;
             float _EdgeFeather;
             float _Atmosphere;
+            float _CloudOverlay;
+            float4 _MapViewport;
             float _CornerRadius;
             float4 _UVRect;
             v2f vert(appdata v)
@@ -101,16 +105,24 @@ Shader "Game/UI/CampaignSurface"
                 terrain = lerp(terrain, fixed3(.49,.46,.40), smoothstep(.72, 1.0, radiusSquared) * .22);
                 // Contour glow fades inward; its distance weights are cached on the region mesh.
                 terrain = lerp(terrain, fixed3(1,.72,.28), i.selection.x * .64);
-                fixed4 color = lerp(i.color, fixed4(terrain, sample.a * i.color.a), i.surface.x);
+                fixed4 color = lerp(i.color, fixed4(terrain, sample.a * i.color.a), saturate(i.surface.x));
                 color = lerp(color, sample * i.color, _Atmosphere);
                 // UV-carried viewport coordinates survive Canvas batching and parent transforms.
                 // Never compare batched POSITION with a graphic-local rectangle.
                 float2 viewport = lerp(i.selection.yz, (i.texcoord - _UVRect.xy) / _UVRect.zw, _Atmosphere);
+                // Inverse radius of the rounded map projection; avoid a rectangular cloud cutout.
+                float2 mapPosition = abs(((viewport - _MapViewport.xy) / _MapViewport.zw * 2 - 1) / .98);
+                float2 squared = mapPosition * mapPosition;
+                float2 fourth = squared * squared;
+                float mapRadius = sqrt(sqrt(sqrt(dot(fourth * fourth, float2(1, 1)))));
+                float overMap = (1 - smoothstep(.99, 1.075, mapRadius)) * _CloudOverlay;
+                color.a *= lerp(1, .10, overMap);
+                color.rgb = lerp(color.rgb, dot(color.rgb, fixed3(.299,.587,.114)), overMap * .70);
                 float2 edge = min(viewport, 1 - viewport) * _SurfaceSize.xy;
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
-                // Only the outer terrain rim fades; borders and markers stay readable.
+                // Fade terrain and the depth silhouette, keeping borders and markers readable.
                 float horizon = 1 - smoothstep(.94, 1.015, length(i.surface.zw));
-                color.a *= lerp(lerp(1, horizon, i.surface.x), 1, _Atmosphere);
+                color.a *= lerp(lerp(1, horizon, abs(i.surface.x)), 1, _Atmosphere);
                 // Optional rounded backing/mask uses the same batching-safe viewport coordinates.
                 float2 corner = abs((viewport - .5) * _SurfaceSize.xy) - (_SurfaceSize.xy * .5 - _CornerRadius);
                 float distance = length(max(corner, 0)) + min(max(corner.x, corner.y), 0) - _CornerRadius;

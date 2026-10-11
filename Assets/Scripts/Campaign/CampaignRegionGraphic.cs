@@ -37,11 +37,11 @@ namespace Game.Campaign
             clicked = click; hovered = onHover; SetVerticesDirty();
         }
 
-        // A concave generated cell's vertex average can lie outside it. Use an actual interior triangle.
+        // Area weighting is independent of how densely individual borders were subdivided.
         public static Vector2 InteriorCenter(RegionState region)
         {
             var p = region.PolygonVertices;
-            var center = CampaignGeometry.Center(region);
+            var center = AreaCenter(p);
             if (CampaignGeometry.Contains(p, center)) return center;
             var indices = CampaignGeometry.Triangulate(p);
             double largest = -1; Vector2 result = center;
@@ -54,13 +54,15 @@ namespace Game.Campaign
             return result;
         }
 
-        // Keep each marker in its original cell and its displayed polygon.
+        // Center the marker in the visible polygon; do not pull outer cells toward the map center.
         public static Vector2 VisibleCenter(RegionState region)
         {
-            var center = InteriorCenter(region);
-            var projectedCenter = CampaignMapView.Project(center);
             var displayedPolygon = region.PolygonVertices.ConvertAll(CampaignMapView.Project);
-            if (Math.Abs(projectedCenter.x) <= .90f && Math.Abs(projectedCenter.y) <= .80f && CampaignGeometry.Contains(displayedPolygon, projectedCenter)) return center;
+            var desired = AreaCenter(displayedPolygon);
+            var center = CampaignMapView.Unproject(desired);
+            if (CampaignGeometry.Contains(region.PolygonVertices, center) && CampaignGeometry.Contains(displayedPolygon, desired)) return center;
+            center = InteriorCenter(region);
+            if (CampaignGeometry.Contains(displayedPolygon, CampaignMapView.Project(center))) return center;
             var vertices = region.PolygonVertices;
             var triangles = CampaignGeometry.Triangulate(vertices);
             var best = center; double bestScore = double.MaxValue;
@@ -71,13 +73,23 @@ namespace Game.Campaign
                         var point = (vertices[triangles[t]] * a + vertices[triangles[t + 1]] * b
                             + vertices[triangles[t + 2]] * (12 - a - b)) / 12f;
                         var projectedPoint = CampaignMapView.Project(point);
-                        if (!CampaignGeometry.Contains(displayedPolygon, projectedPoint)) continue;
-                        double overflow = Math.Max(0, Math.Abs(projectedPoint.x) - .90f)
-                            + Math.Max(0, Math.Abs(projectedPoint.y) - .80f);
-                        double score = overflow * 100 + (point - center).sqrMagnitude;
+                        if (!CampaignGeometry.Contains(vertices, point) || !CampaignGeometry.Contains(displayedPolygon, projectedPoint)) continue;
+                        double score = (projectedPoint - desired).sqrMagnitude;
                         if (score < bestScore) { bestScore = score; best = point; }
                     }
             return best;
+        }
+
+        private static Vector2 AreaCenter(IReadOnlyList<Vector2> vertices)
+        {
+            double area = 0, x = 0, y = 0;
+            for (int i = 0; i < vertices.Count; i++)
+            {
+                var a = vertices[i]; var b = vertices[(i + 1) % vertices.Count];
+                double cross = (double)a.x * b.y - (double)b.x * a.y;
+                area += cross; x += (a.x + b.x) * cross; y += (a.y + b.y) * cross;
+            }
+            return Math.Abs(area) > 1e-12 ? new Vector2((float)(x / (3 * area)), (float)(y / (3 * area))) : vertices[0];
         }
 
         // Distance to the actual displayed contour, including concave notches.
@@ -194,7 +206,8 @@ namespace Game.Campaign
         private void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, float glow = 0, Vector2 mapPoint = default)
         {
             var vertex = UIVertex.simpleVert; vertex.position = position; vertex.color = tint;
-            vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : 0, lighting, mapPoint.x, mapPoint.y);
+            // -1 is the depth silhouette: solid color with terrain's horizon fade, without sampling.
+            vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : silhouette ? -1 : 0, lighting, mapPoint.x, mapPoint.y);
             // UV data is not transformed by Canvas batching; POSITION may be in Canvas space.
             var viewport = CampaignMapView.FromPixel(rectTransform.rect, position) * .5f + new Vector2(.5f, .5f);
             vertex.uv2 = new Vector4(glow, 0, viewport.x, viewport.y); vh.AddVert(vertex);
