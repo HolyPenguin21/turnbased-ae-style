@@ -23,11 +23,16 @@ namespace Game.Campaign
         // Terrain follows the displayed surface, avoiding enlarged central features.
         public static Vector2 SurfaceUV(Vector2 point) => ProjectedSurfaceUV(Project(point));
         public static Vector2 ProjectedSurfaceUV(Vector2 projected) => projected * (.48f / .98f) + new Vector2(.5f, .5f);
-        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered)
+        public static string BackgroundResourcePath(int backgroundId)
+        {
+            if (backgroundId < 0 || backgroundId > CampaignMapGenerator.BackgroundCount) throw new ArgumentOutOfRangeException(nameof(backgroundId));
+            return backgroundId == 0 ? "Campaign/WastelandSurface" : "Campaign/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+        }
+        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0)
         {
             foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
             graphics.Clear();
-            SurfaceTexture = Resources.Load<Texture2D>("Campaign/WastelandSurface");
+            SurfaceTexture = Resources.Load<Texture2D>(BackgroundResourcePath(backgroundId));
             var shader = Resources.Load<Shader>("Campaign/CampaignSurface");
             if (SurfaceTexture == null || shader == null) throw new InvalidOperationException("Campaign surface assets are missing.");
             if (surfaceMaterial != null) Destroy(surfaceMaterial);

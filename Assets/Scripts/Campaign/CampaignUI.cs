@@ -55,7 +55,7 @@ namespace Game.Campaign
             Skin(footer, true);
             hoverLabel = Label(surface, "", 30, 24, 1310, 34, 19); hoverLabel.color = Cream;
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
-            try { map.Build(Controller.Snapshot.Regions, ClickRegion, HoverRegion); }
+            try { var state = Controller.Snapshot; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
             catch (Exception ex) { Failure(ex.Message, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             if (!ProgressionContext.Initialize(gameConfig)) { Failure(ProgressionContext.Error, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             Recover();

@@ -18,6 +18,9 @@ namespace Game.Campaign
     }
     public sealed class CampaignMapGenerator
     {
+        public const int BackgroundCount = 10;
+        // Independent stream: selecting art never consumes geometry or gameplay randomness.
+        public static int BackgroundForSeed(int seed) => 1 + new CampaignRandom(CampaignRandom.Derive(seed ^ unchecked((int)0x3c6ef372), 0)).Range(BackgroundCount);
         public CampaignState Generate(int seed, Faction human, CampaignGenerationSettings settings = null)
         {
             settings = settings ?? new CampaignGenerationSettings();
@@ -35,7 +38,7 @@ namespace Game.Campaign
                     Assign(regions, rng);
                     CampaignGeometry.Validate(regions, true);
                     var state = new CampaignState { CampaignId = Guid.NewGuid().ToString("N"), PlanetName = "Dustworld " + unchecked((uint)seed).ToString("X4"),
-                        Seed = seed, HumanFaction = human, Regions = regions, Phase = CampaignPhase.AwaitingFactionAction };
+                        Seed = seed, BackgroundId = BackgroundForSeed(seed), HumanFaction = human, Regions = regions, Phase = CampaignPhase.AwaitingFactionAction };
                     state.Factions = DeckRules.PlayableFactions.Select(f => new CampaignFactionState { Faction = f }).ToList();
                     CampaignRules.SetRoundOrder(state);
                     return state;

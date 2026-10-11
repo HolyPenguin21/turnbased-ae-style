@@ -14,7 +14,9 @@ do not imply gameplay bonuses, resources or extra campaign mechanics.
 ## Assets and integration
 
 - `Assets/Resources/Campaign/WastelandSurface.jpg`: neutral uninterrupted desert
-  art. No region borders, faction colors, labels or baked selection.
+  art retained for legacy saves. `WastelandSurface_01.jpg` through
+  `WastelandSurface_10.jpg` provide ten different new-campaign landscapes.
+  No region borders, faction colors, labels or baked selection are present.
 - `MetalFrame.png`: actual alpha opening and corners; single sprite, full-rect,
   128-pixel nine-slice borders. The UI uses a pixels-per-unit multiplier of 4.
 - `Parchment.jpg`, `ConsoleMetal.jpg`: readable light paper and dark console material.
@@ -29,10 +31,20 @@ do not imply gameplay bonuses, resources or extra campaign mechanics.
   player builds. No runtime generation API, additional package or editor asset
   setup is required.
 
-The four bitmap materials were generated from the approved concept, then exported
+The bitmap materials were generated from the approved concept, then exported
 as JPEG for opaque materials and PNG for the transparent frame. They retain their
 1254×1254 native dimensions. Terrain is intentionally a reusable fixed artistic
-surface; procedural region geometry and ownership remain campaign data.
+surface chosen once per campaign; procedural region geometry and ownership remain campaign data.
+
+`CampaignMapGenerator.BackgroundForSeed` uses a separate derived RNG stream and
+chooses IDs 1–10 without consuming geometry, ownership or gameplay randomness.
+`CampaignState.BackgroundId` persists through the existing controller/store
+transaction boundary. Missing fields in older schema-1 saves default to zero,
+which loads the original surface; no geometry or schema migration is needed.
+`CampaignStore` rejects out-of-range IDs. `CampaignMapView` loads only the selected
+resource at build time; the region preview uses that same texture. Turns, battle
+returns and reloading never select another background. Catalog, art prompts and
+review sheet: `Campaign_Backgrounds.md` and `Campaign_Backgrounds_ContactSheet.jpg`.
 
 ## Rendering and input
 
@@ -179,6 +191,15 @@ vertex limits. Custom counts 3/7/24/31/36/48 and seed reproducibility passed. A 
 created by the previous generator retained its original 24 regions and exact
 geometry through a managed JSON roundtrip and current geometry validation.
 These checks do not execute native Unity JsonUtility or the full EditMode suite.
+
+The background update passed 10000 seeded selections with all ten variants,
+and comparisons against the immediately preceding generator at seven seeds
+confirmed identical region vertices, neighbors, ownership, turn order and gameplay
+random sequence. Using actual controller/store sources with managed vector/JSON
+adapters, IDs 0–10 survived save/reload and turn transactions; backup recovery,
+legacy missing-field loading and invalid-ID rejection also passed. The added
+background regression tests were run with these managed adapters; native Unity
+serialization and resource imports still require EditMode acceptance.
 
 Managed glow checks confirm maximum brightness at the contour, half brightness
 halfway through the falloff, zero at the interior beyond the falloff, and the

@@ -54,6 +54,8 @@ namespace Game.Campaign
         public int SchemaVersion = 1;
         public string CampaignId, PlanetName;
         public int Seed, RandomSequence, RoundNumber = 1, CurrentTurnIndex;
+        // Zero preserves the original terrain for saves created before background variants.
+        public int BackgroundId;
         public Faction HumanFaction;
         public CampaignPhase Phase;
         public List<Faction> TurnOrder = new List<Faction>();
@@ -85,3 +87,4 @@ namespace Game.Campaign
         { unchecked { uint x = (uint)seed + 0x9e3779b9u * ((uint)sequence + 1); x = (x ^ (x >> 16)) * 0x85ebca6bu; x = (x ^ (x >> 13)) * 0xc2b2ae35u; return (int)(x ^ (x >> 16)); } }
     }
 }
+
