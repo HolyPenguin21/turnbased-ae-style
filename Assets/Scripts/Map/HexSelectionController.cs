@@ -566,6 +566,7 @@ namespace Game.Map
                 if (target == null)
                     return false;
                 _selectedHex = hex;
+                if (ownRepresentative != target) ArmyInteracted?.Invoke(ownRepresentative);
                 ShowArmyModal(target);
                 return true;
             }
@@ -1050,8 +1051,11 @@ namespace Game.Map
         // once (both key off the same selected hex's own building/garrison), so every place that
         // opens one closes the other first, funnelled through these two rather than repeating the
         // Hide-then-Show pairing at each call site.
+        public event System.Action<ArmyData> ArmyInteracted;
+
         private void ShowArmyModal(ArmyData army)
         {
+            ArmyInteracted?.Invoke(army);
             if (baseViewerModal != null)
                 baseViewerModal.Hide();
             if (researchProductionModal != null)
@@ -1062,6 +1066,7 @@ namespace Game.Map
 
         private void ShowArmyModalReadOnly(ArmyData army)
         {
+            ArmyInteracted?.Invoke(army);
             if (baseViewerModal != null)
                 baseViewerModal.Hide();
             if (researchProductionModal != null)
@@ -1126,6 +1131,7 @@ namespace Game.Map
                 ShowArmyModal(army);
                 return;
             }
+            ArmyInteracted?.Invoke(army);
             SelectArmyForOrders(army);
         }
 

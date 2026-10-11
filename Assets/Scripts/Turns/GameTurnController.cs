@@ -550,7 +550,7 @@ namespace Game.Turns
         {
             var radio = GetComponent<ArmyRadioChatterController>() ?? gameObject.AddComponent<ArmyRadioChatterController>();
             radio.Configure(this, cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main,
-                cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null);
+                cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null, hexSelectionController);
             _aiObserverMatch = GameSession.Players != null
                 && GameSession.Players.Count > 0
                 && GameSession.FindHumanPlayer() == null;

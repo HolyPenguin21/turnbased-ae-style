@@ -225,7 +225,7 @@ namespace Game.EditorTests
         {
             UnityEngine.Random.State before = UnityEngine.Random.state;
             var situation = ArmyRadioChatter.Situation(_army, false, false, 1f);
-            ArmyRadioChatter.Phrase(situation, ArmyRadioLanguage.English, 2);
+            ArmyRadioChatter.Phrase(situation, 2);
             Assert.That(UnityEngine.Random.state, Is.EqualTo(before));
             Assert.That(_army.HasActivatedThisTurn, Is.False);
             Assert.That(_army.Members.Count, Is.EqualTo(1));
@@ -235,22 +235,180 @@ namespace Game.EditorTests
     public class ArmyRadioPhraseTests
     {
         [Test, Category("ArmyRadioManaged")]
-        public void Phrases_CoverEverySituationAndLanguageAndWrapWithoutImmediateRepeats()
+        public void Phrases_CoverEverySituationWithOneHundredDistinctEnglishLines()
         {
+            var unique = new System.Collections.Generic.HashSet<string>();
             foreach (ArmyRadioSituation situation in Enum.GetValues(typeof(ArmyRadioSituation)))
-                foreach (ArmyRadioLanguage language in Enum.GetValues(typeof(ArmyRadioLanguage)))
+            {
+                int count = ArmyRadioChatter.PhraseCount(situation);
+                Assert.That(count, Is.GreaterThanOrEqualTo(12));
+                for (int i = 0; i < count; i++) Assert.That(unique.Add(ArmyRadioChatter.Phrase(situation, i)), Is.True);
+                Assert.That(ArmyRadioChatter.Phrase(situation, count), Is.EqualTo(ArmyRadioChatter.Phrase(situation, 0)));
+                Assert.That(ArmyRadioChatter.Phrase(situation, int.MinValue), Is.Not.Empty);
+            }
+            Assert.That(unique.Count, Is.EqualTo(100));
+            Assert.That(ArmyRadioChatter.JokeCount, Is.EqualTo(25));
+            for (int i = 0; i < ArmyRadioChatter.JokeCount; i++) Assert.That(unique.Add(ArmyRadioChatter.Joke(i)), Is.True);
+            for (int i = 0; i < ArmyRadioChatter.DialogueCount; i++)
+            {
+                Assert.That(ArmyRadioChatter.Dialogue(i, false), Is.Not.Empty);
+                Assert.That(ArmyRadioChatter.Dialogue(i, true), Is.Not.EqualTo(ArmyRadioChatter.Dialogue(i, false)));
+            }
+        }
+    }
+
+    public class ArmyRadioManagerTests
+    {
+        [Test, Category("ArmyRadioManaged")]
+        public void Cadence_EnforcesGlobalAndPerArmyGapsAndReservesTheReply()
+        {
+            var clock = new ArmyRadioCadence(0f);
+            Assert.That(clock.CanSpeak(1, 1f, 45f), Is.False);
+            Assert.That(clock.CanSpeak(1, 2f, 45f), Is.True);
+            clock.Spoke(1, 2f, 3f); clock.Reserve(2, 2f);
+            Assert.That(clock.CanSpeak(3, 4.99f, 45f), Is.False);
+            Assert.That(clock.CanSpeak(3, 5f, 45f), Is.True);
+            Assert.That(clock.CanSpeak(1, 46.99f, 45f), Is.False);
+            Assert.That(clock.ArmyReady(2, 46.99f, 45f), Is.False);
+            Assert.That(clock.CanSpeak(1, 47f, 45f), Is.True);
+            Assert.That(clock.ArmyReady(2, 47f, 45f), Is.True);
+        }
+
+        [Test, Category("ArmyRadioManaged")]
+        public void Timing_FadesQuicklyAndDismissDuringEntryNeverBrightensOrRestarts()
+        {
+            var clock = new ArmyRadioTiming(10f, 5f, .18f, .28f);
+            Assert.That(clock.Alpha(10f), Is.EqualTo(0f));
+            Assert.That(clock.Alpha(10.09f), Is.EqualTo(.5f).Within(.001f));
+            clock.Dismiss(10.09f);
+            float alpha = clock.Alpha(10.2f);
+            Assert.That(alpha, Is.GreaterThan(0f).And.LessThan(.5f));
+            clock.Dismiss(10.25f);
+            Assert.That(clock.Finished(10.38f), Is.True);
+            Assert.That(clock.Alpha(10.38f), Is.EqualTo(0f));
+            var natural = new ArmyRadioTiming(0f, 5f, .18f, .28f);
+            Assert.That(natural.Alpha(4f), Is.EqualTo(1f));
+            Assert.That(natural.Alpha(4.86f), Is.EqualTo(.5f).Within(.001f));
+            Assert.That(natural.Finished(5f), Is.True);
+        }
+
+        [TestCase(1024f, 576f)]
+        [TestCase(1280f, 720f)]
+        [TestCase(1920f, 1080f)]
+        [Category("ArmyRadioManaged")]
+        public void Layout_ReflowsThreeNearbySpeakersWithoutOverlapAfterCameraMoves(float width, float height)
+        {
+            var safe = new Rect(-width / 2f, -height / 2f + 170f, width, height - 170f);
+            var size = new Vector2(278f, 110f);
+            var offsets = new Vector2?[3];
+            for (int frame = 0; frame < 10; frame++)
+            {
+                var occupied = new System.Collections.Generic.List<Rect>();
+                for (int i = 0; i < 3; i++)
                 {
-                    string first = ArmyRadioChatter.Phrase(situation, language, 0);
-                    Assert.That(first, Is.Not.Empty);
-                    Assert.That(ArmyRadioChatter.Phrase(situation, language, 1), Is.Not.EqualTo(first));
-                    Assert.That(ArmyRadioChatter.Phrase(situation, language, 5), Is.EqualTo(first));
-                    Assert.That(ArmyRadioChatter.Phrase(situation, language, int.MaxValue), Is.Not.Empty);
+                    var anchor = new Vector2(i * 22f + frame * 12f, frame * 8f);
+                    bool placed = ArmyRadioLayout.TryPlace(safe, anchor, size, 24f, occupied, offsets[i], out var centre, out bool left);
+                    Assert.That(placed, Is.True);
+                    var bounds = ArmyRadioLayout.Bounds(centre, size);
+                    foreach (var other in occupied) Assert.That(ArmyRadioLayout.Inset(bounds, -7f).Overlaps(other), Is.False);
+                    Assert.That(left, Is.EqualTo(centre.x > anchor.x));
+                    occupied.Add(bounds); offsets[i] = centre - anchor;
                 }
+            }
+        }
+
+        [TestCase(-450f, -90f)]
+        [TestCase(450f, -90f)]
+        [TestCase(-450f, 260f)]
+        [TestCase(450f, 260f)]
+        [Category("ArmyRadioManaged")]
+        public void Layout_AdjacentDialogueReservesFullArtBodiesAndActualPointers(float x, float y)
+        {
+            var safe = new Rect(-512f, -118f, 1024f, 406f);
+            var occupied = new System.Collections.Generic.List<Rect>();
+            var size = new Vector2(278f, 78f);
+            for (int i = 0; i < 2; i++)
+            {
+                var target = new Vector2(x + (x < 0f ? 1f : -1f) * i * 90f, y);
+                Assert.That(ArmyRadioLayout.TryPlace(safe, target, size, 24f, occupied, null,
+                    out var centre, out bool left, 58f, 52f, 14f), Is.True);
+                var body = ArmyRadioLayout.Bounds(centre, size);
+                foreach (var other in occupied) Assert.That(ArmyRadioLayout.Inset(body, -7f).Overlaps(other), Is.False);
+                var panel = ArmyRadioLayout.PanelBounds(centre, size, 58f, 52f, left);
+                Assert.That(ArmyRadioLayout.Pointer(panel, target, 9f, 14f, out var a, out var b, out var tip), Is.True);
+                Assert.That(ArmyRadioLayout.PointerPathClear((a + b) * .5f, tip, occupied), Is.True);
+                occupied.Add(body); ArmyRadioLayout.AddPointerObstacles((a + b) * .5f, tip, occupied);
+            }
+        }
+
+        [Test, Category("ArmyRadioManaged")]
+        public void Layout_AvoidsConnectorsAndPreservesAnUnblockedCameraRelativeOffset()
+        {
+            var obstacles = new System.Collections.Generic.List<Rect>();
+            ArmyRadioLayout.AddPointerObstacles(new Vector2(-40f, 0f), new Vector2(40f, 100f), obstacles);
+            Assert.That(ArmyRadioLayout.PointerPathClear(new Vector2(-40f, 100f), new Vector2(40f, 0f), obstacles), Is.False);
+            Assert.That(ArmyRadioLayout.PointerPathClear(new Vector2(200f, 100f), new Vector2(200f, 0f), obstacles), Is.True);
+            var safe = new Rect(-600f, -250f, 1200f, 600f);
+            var size = new Vector2(278f, 100f);
+            Assert.That(ArmyRadioLayout.TryPlace(safe, Vector2.zero, size, 24f, obstacles, null,
+                out var centre, out bool left, 58f, 70f, 14f), Is.True);
+            obstacles.Clear();
+            var anchor = new Vector2(10f, 10f);
+            Assert.That(ArmyRadioLayout.TryPlace(safe, anchor, size, 24f, obstacles, centre,
+                out var moved, out _, 58f, 70f, 14f), Is.True);
+            Assert.That(moved.x, Is.EqualTo(centre.x + 10f).Within(.001f));
+            Assert.That(moved.y, Is.EqualTo(centre.y + 10f).Within(.001f));
+        }
+
+        [Test, Category("ArmyRadioManaged")]
+        public void Layout_DeclinesAnOccupiedOrTooSmallViewportInsteadOfOverlapping()
+        {
+            var safe = new Rect(-200f, -100f, 400f, 200f);
+            var occupied = new[] { safe };
+            Assert.That(ArmyRadioLayout.TryPlace(safe, Vector2.zero, new Vector2(278f, 78f), 24f,
+                occupied, null, out _, out _), Is.False);
+            Assert.That(ArmyRadioLayout.TryPlace(safe, Vector2.zero, new Vector2(500f, 78f), 24f,
+                new Rect[0], null, out _, out _), Is.False);
         }
     }
 
     public class ArmyRadioLifecycleTests
     {
+        [Test]
+        public void ArmyInteraction_FadesItsMessageCancelsTheReplyAndUnsubscribes()
+        {
+            var host = new GameObject("Inactive interaction host"); host.SetActive(false);
+            var radioObject = new GameObject("Radio interaction presenter");
+            try
+            {
+                var turns = host.AddComponent<Game.Turns.GameTurnController>();
+                var selection = host.AddComponent<HexSelectionController>();
+                var radio = radioObject.AddComponent<ArmyRadioChatterController>();
+                radio.Configure(turns, null, null, new ArmyRadioChatterSettings(), selection);
+                var army = new ArmyData { Owner = new PlayerSetupData() };
+                army.Members.Add(new UnitData());
+                var views = (System.Collections.IList)Field(radio, "_views");
+                Assert.That(views.Count, Is.EqualTo(3));
+                object view = views[0];
+                view.GetType().GetMethod("Show").Invoke(view, new object[] { army, "Radio check.", Time.unscaledTime, new ArmyRadioChatterSettings() });
+                Type exchangeType = typeof(ArmyRadioChatterController).GetNestedType("Exchange", BindingFlags.NonPublic);
+                object exchange = Activator.CreateInstance(exchangeType);
+                exchangeType.GetField("First").SetValue(exchange, army);
+                exchangeType.GetField("Second").SetValue(exchange, new ArmyData());
+                typeof(ArmyRadioChatterController).GetField("_exchange", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(radio, exchange);
+                typeof(HexSelectionController).GetMethod("ShowArmyModal", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(selection, new object[] { army });
+                var timing = (ArmyRadioTiming)view.GetType().GetProperty("Timing").GetValue(view);
+                Assert.That(timing.IsDismissing, Is.True);
+                Assert.That(Field(radio, "_exchange"), Is.Null);
+                Assert.That(((ArmyRadioCadence)Field(radio, "_cadence")).ArmyReady(army.Id, Time.unscaledTime, 45f), Is.False);
+                radio.enabled = false;
+                var listeners = (Delegate)typeof(HexSelectionController).GetField("ArmyInteracted", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(selection);
+                Assert.That(listeners == null || !Array.Exists(listeners.GetInvocationList(), d => ReferenceEquals(d.Target, radio)), Is.True);
+            }
+            finally { Object.DestroyImmediate(radioObject); Object.DestroyImmediate(host); }
+        }
+        private static object Field(object target, string name) => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(target);
+
         [Test]
         public void ConfigureTwice_UsesOneOverlayAndDisableUnsubscribesWithoutBlockingMapInput()
         {
