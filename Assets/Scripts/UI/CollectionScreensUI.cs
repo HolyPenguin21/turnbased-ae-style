@@ -93,6 +93,7 @@ namespace Game.UI
         private void EnsureInitialized()
         {
             if (initialized) return;
+            CollectionUIElements.ApplyWindowSkin((RectTransform)transform);
             initialized = true;
             factionDropdown.ClearOptions(); factionDropdown.AddOptions(DeckRules.PlayableFactions.Select(LabelFaction).ToList());
             categoryDropdown.ClearOptions(); categoryDropdown.AddOptions(new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" });
@@ -369,4 +370,5 @@ namespace Game.UI
         public static void ShowMessage(Transform parent, string message) => CollectionMessageUI.Show(message);
     }
 }
+
 

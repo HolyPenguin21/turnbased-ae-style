@@ -21,7 +21,10 @@ namespace Game.UI
         public RectTransform CardHost => cardHost;
 
         public void Init(Action<CardDefinition> onAdd)
-        { addButton.onClick.AddListener(() => { if (Card != null) onAdd(Card); }); }
+        {
+            CollectionUIElements.ApplyCellSkin((RectTransform)transform);
+            addButton.onClick.AddListener(() => { if (Card != null) onAdd(Card); });
+        }
 
         public void Bind(CardDefinition card, GameConfig config, Action<CardDefinition> onSelect, Func<bool> inputAllowed)
         {
@@ -61,4 +64,5 @@ namespace Game.UI
         }
     }
 }
+
 
