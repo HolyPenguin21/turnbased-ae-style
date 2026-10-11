@@ -9207,6 +9207,9 @@ MonoBehaviour:
   settingsButton: {fileID: 1950000089}
   gameConfig: {fileID: 11400000, guid: 7eb9ac8d630ddb848b7ffe51f03f4b75, type: 2}
   collectionScreens: {fileID: 1964208469}
+  campaignIronConcordLogo: {fileID: 21300000, guid: 2073e2d5ba390b0409dbcb0ba48612b7, type: 3}
+  campaignAshenLogo: {fileID: 21300000, guid: ac8dae4f174ab61469d2e7c17b1a991f, type: 3}
+  campaignVesselsLogo: {fileID: 21300000, guid: 461ffe05ef1546b89f48571470da4004, type: 3}
 --- !u!4 &1007785364
 Transform:
   m_ObjectHideFlags: 0

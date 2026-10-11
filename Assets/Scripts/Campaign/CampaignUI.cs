@@ -370,25 +370,7 @@ namespace Game.Campaign
             label.color = Cream; return label;
         }
         private void CollectionSkin(RectTransform rect, string asset)
-        {
-            var image = rect.GetComponent<Image>();
-            string path = asset == "Panel_Outer" ? "Campaign/ConsoleFrame"
-                : asset == "Panel_Inset" ? "Campaign/InsetFrame"
-                : asset == "Plaque" ? $"Campaign/Plaque_{(int)rect.sizeDelta.x}x{(int)rect.sizeDelta.y}" : null;
-            // The shared collection sprites bake opaque metal into the frame slices.
-            // Campaign cutouts reveal one continuous backing through and around the rails.
-            var sprite = path == null ? null : asset == "Plaque"
-                ? Resources.LoadAll<Sprite>(path).FirstOrDefault() : Resources.Load<Sprite>(path);
-            if (sprite == null) { CollectionUIElements.ApplySurface(image, asset); return; }
-            image.sprite = sprite; image.color = Color.white;
-            // Each paper field has an authored backing at its own aspect ratio.
-            // Simple rendering scales the complete sprite uniformly with the canvas.
-            image.type = asset == "Plaque" ? Image.Type.Simple : Image.Type.Sliced;
-            image.preserveAspect = asset == "Plaque";
-            // Keep inset rails legible at full HD instead of collapsing their detail to a few pixels.
-            image.pixelsPerUnitMultiplier = asset == "Panel_Outer" ? 3 : 2;
-            image.fillCenter = asset == "Plaque";
-        }
+        { CollectionUIElements.ApplyCampaignSurface(rect, asset); }
         private void Plaque(Transform parent, string value, float x, float y, float w, float h, int size)
         {
             var rect = CollectionUIElements.Panel(parent, "SectionPlaque"); CollectionUIElements.Place(rect, x, y, w, h);
@@ -451,4 +433,5 @@ namespace Game.Campaign
         }
     }
 }
+
 

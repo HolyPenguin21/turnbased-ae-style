@@ -187,6 +187,32 @@ namespace Game.UI
         }
         private static void Surface(Transform target, string asset)
         { if (target != null) ApplySurface(target.GetComponent<Image>(), asset); }
+
+        // Campaign and its entry dialogs share the same transparent frame/plaque imports.
+        // Collection windows continue to use ApplySurface and their authored control templates.
+        internal static void ApplyCampaignSurface(RectTransform rect, string asset)
+        {
+            var image = rect.GetComponent<Image>();
+            string path = asset == "Panel_Outer" ? "Campaign/ConsoleFrame"
+                : asset == "Panel_Inset" ? "Campaign/InsetFrame"
+                : asset == "Plaque" ? $"Campaign/Plaque_{(int)rect.sizeDelta.x}x{(int)rect.sizeDelta.y}" : null;
+            Sprite sprite = null;
+            if (path != null)
+            {
+                if (asset == "Plaque")
+                {
+                    var sprites = Resources.LoadAll<Sprite>(path);
+                    if (sprites.Length > 0) sprite = sprites[0];
+                }
+                else sprite = Resources.Load<Sprite>(path);
+            }
+            if (sprite == null) { ApplySurface(image, asset); return; }
+            image.sprite = sprite; image.color = Color.white;
+            image.type = asset == "Plaque" ? Image.Type.Simple : Image.Type.Sliced;
+            image.preserveAspect = asset == "Plaque";
+            image.pixelsPerUnitMultiplier = asset == "Panel_Outer" ? 3 : 2;
+            image.fillCenter = asset == "Plaque";
+        }
         private static void ControlColors(Selectable control)
         {
             var colors = control.colors;
@@ -418,6 +444,7 @@ namespace Game.UI
         }
     }
 }
+
 
 
 

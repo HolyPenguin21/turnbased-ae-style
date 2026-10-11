@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+using TMPro;
 
 namespace Game.UI
 {
@@ -13,8 +14,10 @@ namespace Game.UI
         [SerializeField] private Button settingsButton;
         [SerializeField] private Game.Core.GameConfig gameConfig;
         [SerializeField] private CollectionScreensUI collectionScreens;
+        [SerializeField] private Sprite campaignIronConcordLogo, campaignAshenLogo, campaignVesselsLogo;
         private RectTransform campaignSetup;
         private Button continueCampaignButton;
+        private GameObject campaignPreviousSelection;
         private void Awake()
         {
             Game.Core.GameSession.EndRewardEligibility();
@@ -23,6 +26,10 @@ namespace Game.UI
             if (continueCampaignButton == null && mainMenuPanel != null)
                 foreach (var button in mainMenuPanel.GetComponentsInChildren<Button>(true))
                     if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
+            if (mainMenuPanel != null)
+                foreach (var button in mainMenuPanel.GetComponentsInChildren<Button>(true))
+                    if (button.name == "New Campaign" || button.name == "Continue Campaign")
+                        CollectionUIElements.ApplyControlsSkin(button.transform);
             bool canContinue = Game.Campaign.CampaignMatchBridge.Load(out _);
             if (continueCampaignButton != null) continueCampaignButton.interactable = canContinue;
             if (gameConfig == null) return;
@@ -84,38 +91,99 @@ namespace Game.UI
         public void OnNewCampaignClicked()
         {
             if (campaignSetup != null) return;
+            campaignPreviousSelection = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
             campaignSetup = CollectionUIElements.Canvas("NewCampaign", new Vector2(1920, 1080));
-            var backdrop = CollectionUIElements.Panel(campaignSetup, "CampaignSetup"); CollectionUIElements.Stretch(backdrop);
             UIFocusUtility.SetOverlay(this, true);
-            CollectionUIElements.Label(backdrop, "NEW PLANETARY CAMPAIGN", 500, 160, 920, 70, 34);
-            CollectionUIElements.Label(backdrop, "Choose your faction. A new planet has 24 regions.", 500, 265, 920, 70, 24);
+            ShowCampaignFactions();
+        }
+        private void ShowCampaignFactions()
+        {
+            var window = CampaignSetupWindow("CampaignSetup", "NEW PLANETARY CAMPAIGN");
+            CampaignSetupLabel(window, "Choose your faction. A new planet has "
+                + new Game.Campaign.CampaignMapGenerator().RegionCount + " regions.", 35, 108, 880, 70, 24);
             int index = 0;
+            Button first = null;
             foreach (var faction in Game.Cards.DeckRules.PlayableFactions)
             {
                 var chosen = faction;
-                CollectionUIElements.Button(backdrop, Game.Campaign.CampaignUI.FactionName(chosen), 500, 365 + index * 90, 920, 65, () => ChooseCampaignFaction(chosen), 26);
+                var button = CampaignSetupButton(window, Game.Campaign.CampaignUI.FactionName(chosen),
+                    35, 202 + index * 114, 880, 96, () => ChooseCampaignFaction(chosen), 28);
+                var label = button.GetComponentInChildren<TMP_Text>();
+                CollectionUIElements.Place((RectTransform)label.transform, 126, 18, 570, 60);
+                label.alignment = TextAlignmentOptions.Left;
+                CampaignFactionLogo(button.transform, chosen, 22, 10, 76);
+                CampaignSetupLabel(button.transform, "SELECT", 720, 29, 134, 38, 19);
+                if (first == null) first = button;
                 index++;
             }
-            CollectionUIElements.Button(backdrop, "Cancel", 500, 755, 920, 60, CloseCampaignSetup, 22);
+            CampaignSetupButton(window, "CANCEL", 35, 604, 880, 58, CloseCampaignSetup);
+            if (first != null) first.Select();
         }
         private void ChooseCampaignFaction(Game.Players.Faction human)
         {
-            CollectionUIElements.Clear(campaignSetup);
-            var backdrop = CollectionUIElements.Panel(campaignSetup, "ChosenFaction"); CollectionUIElements.Stretch(backdrop);
-            CollectionUIElements.Label(backdrop, "Your faction: " + Game.Campaign.CampaignUI.FactionName(human), 500, 280, 920, 120, 32);
-            CollectionUIElements.Button(backdrop, "Start Campaign", 500, 525, 920, 65, () => ConfirmCampaign(human), 26);
-            CollectionUIElements.Button(backdrop, "Back", 500, 645, 920, 65, () => { CloseCampaignSetup(); OnNewCampaignClicked(); }, 24);
+            var window = CampaignSetupWindow("ChosenFaction", "YOUR FACTION");
+            CampaignFactionLogo(window, human, 393, 132, 164);
+            CampaignSetupLabel(window, Game.Campaign.CampaignUI.FactionName(human), 35, 322, 880, 52, 32);
+            CampaignSetupLabel(window, "Lead your faction and conquer the planet.\nChoose a saved deck before each battle.", 35, 394, 880, 82, 24);
+            var start = CampaignSetupButton(window, "START CAMPAIGN", 35, 548, 880, 58, () => ConfirmCampaign(human), 26);
+            CampaignSetupButton(window, "BACK", 35, 628, 880, 40, ShowCampaignFactions);
+            start.Select();
         }
         private void ConfirmCampaign(Game.Players.Faction human)
         {
             bool previous = System.IO.File.Exists(System.IO.Path.Combine(Application.persistentDataPath, "campaign-v1.json"))
                 || System.IO.File.Exists(System.IO.Path.Combine(Application.persistentDataPath, "campaign-v1.json.bak"));
             if (!previous) { StartCampaign(human); return; }
+            var window = CampaignSetupWindow("OverwriteCampaign", "REPLACE SAVED CAMPAIGN?");
+            CampaignFactionLogo(window, human, 419, 128, 112);
+            CampaignSetupLabel(window, "The current planet and campaign progress will be replaced.\nYour collection and saved decks are retained.", 35, 270, 880, 128, 26);
+            CampaignSetupLabel(window, "New faction: " + Game.Campaign.CampaignUI.FactionName(human), 35, 430, 880, 48, 26);
+            CampaignSetupButton(window, "REPLACE AND START", 35, 548, 880, 58, () => StartCampaign(human), 26);
+            var cancel = CampaignSetupButton(window, "CANCEL", 35, 628, 880, 40, CloseCampaignSetup);
+            cancel.Select();
+        }
+        private RectTransform CampaignSetupWindow(string name, string title)
+        {
             CollectionUIElements.Clear(campaignSetup);
-            var backdrop = CollectionUIElements.Panel(campaignSetup, "OverwriteCampaign"); CollectionUIElements.Stretch(backdrop);
-            CollectionUIElements.Label(backdrop, "Replace the saved campaign?\nYour collection and saved decks are retained.", 500, 280, 920, 180, 30);
-            CollectionUIElements.Button(backdrop, "Start Campaign — " + Game.Campaign.CampaignUI.FactionName(human), 500, 570, 920, 65, () => StartCampaign(human), 24);
-            CollectionUIElements.Button(backdrop, "Cancel", 500, 680, 920, 65, CloseCampaignSetup, 24);
+            var backdrop = CollectionUIElements.Panel(campaignSetup, "CampaignBackdrop"); CollectionUIElements.Stretch(backdrop);
+            backdrop.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
+            var window = CollectionUIElements.Panel(backdrop, name);
+            CollectionUIElements.Place(window, 485, 190, 950, 700);
+            window.GetComponent<Image>().color = Color.clear;
+            var metal = CollectionUIElements.Panel(window, "CampaignMetal"); CollectionUIElements.Stretch(metal);
+            metal.offsetMin = new Vector2(19, 19); metal.offsetMax = new Vector2(-19, -19);
+            var image = metal.GetComponent<Image>();
+            image.sprite = Resources.Load<Sprite>("Campaign/ConsoleMetalClean") ?? Resources.Load<Sprite>("Campaign/ConsoleMetal");
+            image.type = Image.Type.Tiled; image.color = new Color(.82f, .82f, .82f); image.raycastTarget = false;
+            metal.SetAsFirstSibling();
+            var frame = CollectionUIElements.Panel(window, "CampaignFrame"); CollectionUIElements.Stretch(frame);
+            CollectionUIElements.ApplyCampaignSurface(frame, "Panel_Inset"); frame.GetComponent<Image>().raycastTarget = false;
+            var plaque = CollectionUIElements.Panel(window, "CampaignTitle"); CollectionUIElements.Place(plaque, 35, 25, 880, 58);
+            CollectionUIElements.ApplyCampaignSurface(plaque, "Plaque"); plaque.GetComponent<Image>().raycastTarget = false;
+            var heading = CampaignSetupLabel(plaque, title, 18, 4, 844, 50, 30);
+            heading.color = CollectionUIElements.CollectionInk; heading.fontStyle = FontStyles.Bold;
+            return window;
+        }
+        private static TMP_Text CampaignSetupLabel(Transform parent, string value, float x, float y, float w, float h, int size)
+        {
+            var label = CollectionUIElements.Label(parent, value, x, y, w, h, size);
+            label.color = CollectionUIElements.CollectionText; label.alignment = TextAlignmentOptions.Center;
+            return label;
+        }
+        private static Button CampaignSetupButton(Transform parent, string value, float x, float y, float w, float h, System.Action action, int size = 22)
+        {
+            var button = CollectionUIElements.Button(parent, value, x, y, w, h, action, size);
+            CollectionUIElements.ApplyControlsSkin(button.transform);
+            button.GetComponentInChildren<TMP_Text>().fontStyle = FontStyles.Bold;
+            return button;
+        }
+        private void CampaignFactionLogo(Transform parent, Game.Players.Faction faction, float x, float y, float size)
+        {
+            var rect = CollectionUIElements.Rect(parent, "FactionLogo"); CollectionUIElements.Place(rect, x, y, size, size);
+            var image = rect.gameObject.AddComponent<Image>();
+            image.sprite = faction == Game.Players.Faction.IronConcord ? campaignIronConcordLogo
+                : faction == Game.Players.Faction.Ashen ? campaignAshenLogo : campaignVesselsLogo;
+            image.preserveAspect = true; image.raycastTarget = false; image.enabled = image.sprite != null;
         }
         private void StartCampaign(Game.Players.Faction human)
         {
@@ -128,7 +196,14 @@ namespace Game.UI
             catch (System.Exception ex) { CollectionScreensUI.ShowMessage(campaignSetup, ex.Message); }
         }
         private void CloseCampaignSetup()
-        { UIFocusUtility.SetOverlay(this, false); if (campaignSetup != null) Destroy(campaignSetup.gameObject); campaignSetup = null; }
+        {
+            if (campaignSetup == null) return;
+            UIFocusUtility.SetOverlay(this, false); campaignSetup.gameObject.SetActive(false);
+            Destroy(campaignSetup.gameObject); campaignSetup = null;
+            if (EventSystem.current != null && campaignPreviousSelection != null && campaignPreviousSelection.activeInHierarchy)
+                EventSystem.current.SetSelectedGameObject(campaignPreviousSelection);
+            campaignPreviousSelection = null;
+        }
         public void OnContinueCampaignClicked()
         {
             if (!Game.Campaign.CampaignMatchBridge.Load(out string error)) { CollectionScreensUI.ShowMessage(transform, error ?? "No saved campaign."); return; }
@@ -169,3 +244,4 @@ namespace Game.UI
         }
     }
 }
+
