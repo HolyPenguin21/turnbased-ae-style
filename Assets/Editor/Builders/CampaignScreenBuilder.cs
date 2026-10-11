@@ -69,6 +69,10 @@ public static class CampaignScreenBuilder
         regions.offsetMin = new Vector2(12, 12); regions.offsetMax = new Vector2(-12, -12);
         regions.gameObject.AddComponent<RectMask2D>();
         var map = regions.gameObject.AddComponent<CampaignMapView>();
+        var attackDirection = Rect(regions, "AttackDirection"); Stretch(attackDirection);
+        var attackGraphic = attackDirection.gameObject.AddComponent<CampaignArrowGraphic>(); attackGraphic.raycastTarget = false;
+        var mapProperties = new SerializedObject(map);
+        mapProperties.FindProperty("arrow").objectReferenceValue = attackGraphic; mapProperties.ApplyModifiedPropertiesWithoutUndo();
         var clouds = Rect(surface, "AtmosphericClouds"); Stretch(clouds);
         var cloudImage = clouds.gameObject.AddComponent<RawImage>();
         cloudImage.texture = Resources.Load<Texture2D>("Campaign/Effects/AtmosphericClouds");

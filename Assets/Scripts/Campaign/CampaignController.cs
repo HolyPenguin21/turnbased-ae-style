@@ -122,7 +122,9 @@ namespace Game.Campaign
             if (state.Phase != CampaignPhase.AwaitingFactionAction || state.PendingOperation != null || CampaignRules.HumanFinished(state)) throw new InvalidOperationException("Turn is blocked.");
             Transact(CampaignRules.Advance);
         }
-        public void TakeAiTurn(DeckRules rules, CampaignBattleResolver resolver)
+        // UI can present the already selected/persisted operation before resolution.
+        // Default preserves the atomic convenience flow for existing callers/tests.
+        public void TakeAiTurn(DeckRules rules, CampaignBattleResolver resolver, bool resolveImmediately = true)
         {
             if (state.CurrentFaction == state.HumanFaction) throw new InvalidOperationException("Human turn.");
             var attacks = CampaignRules.LegalAttacks(state).ToList();
@@ -139,7 +141,7 @@ namespace Game.Campaign
             }).OrderByDescending(a => a.Score).First().Pair;
             bool manual = state.Regions.Find(r => r.RegionId == selected.Target).OwnerFaction == state.HumanFaction;
             BeginAttack(selected.Source, selected.Target, manual);
-            if (!manual) ResolveFast(attacker, CampaignDeck.Standard(state.PendingOperation.DefenderFaction, rules, state.Factions.Find(f => f.Faction == state.PendingOperation.DefenderFaction).ActiveDeckReference), resolver);
+            if (!manual && resolveImmediately) ResolveFast(attacker, CampaignDeck.Standard(state.PendingOperation.DefenderFaction, rules, state.Factions.Find(f => f.Faction == state.PendingOperation.DefenderFaction).ActiveDeckReference), resolver);
         }
     }
 }
