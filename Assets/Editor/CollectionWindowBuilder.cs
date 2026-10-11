@@ -224,6 +224,7 @@ public static class CollectionWindowBuilder
         so.FindProperty("plusButton").objectReferenceValue = plus;
         so.FindProperty("removeButton").objectReferenceValue = remove;
         so.ApplyModifiedPropertiesWithoutUndo();
+        CollectionUIElements.ApplyDeckRowSkin(root);
         return view;
     }
 
@@ -336,5 +337,6 @@ public static class CollectionWindowBuilder
     }
 }
 #endif
+
 
 

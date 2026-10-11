@@ -11,6 +11,7 @@ namespace Game.UI
     {
         public static readonly Color CollectionText = new Color(.93f, .85f, .69f);
         public static readonly Color CollectionInk = new Color(.16f, .12f, .08f);
+        private static TMP_FontAsset headingFont;
 
         // One visual application path for both editor authoring and opening existing windows.
         // An already-loaded scene may retain its old serialized appearance after a code/asset
@@ -29,36 +30,36 @@ namespace Game.UI
 
             void At(string path, float x, float y, float w, float h)
             { if (root.Find(path) is RectTransform rect) Place(rect, x, y, w, h); }
-            At("Filters", 16, 62, 240, 170);
-            At("Filters/Faction", 12, 28, 216, 30);
-            At("Filters/Category", 12, 79, 216, 30);
-            At("Filters/Ownership", 12, 130, 216, 30);
-            At("CardDetails", 16, 240, 240, 454);
-            At("Cards", 272, 62, 624, 632);
-            At("Deck", 912, 62, 352, 632);
-            At("Title", 376, 13, 528, 32);
-            At("Back", 1152, 12, 108, 32);
-            At("Back/Label", 3, 1, 102, 30);
-            At("Status", 272, 696, 992, 18);
-            At("Deck/DeckPicker", 9, 47, 333, 30);
-            At("Deck/Create", 9, 83, 333, 26);
-            At("Deck/Create/Label", 3, 1, 327, 24);
-            At("Deck/DeckName", 9, 115, 333, 30);
-            At("Deck/Starter", 9, 151, 103, 27);
-            At("Deck/Copy", 119, 151, 103, 27);
-            At("Deck/Delete", 228, 151, 115, 27);
-            At("Deck/Save", 9, 581, 333, 40);
-            At("Deck/Save/Label", 10, 4, 313, 32);
-            At("Deck/Points", 9, 188, 333, 20);
-            At("Deck/TotalCostTitle", 9, 212, 333, 17);
-            At("Deck/Budget", 9, 233, 333, 20);
-            At("Deck/CardsHeader", 9, 290, 260, 19);
-            At("Deck/CountHeader", 269, 290, 73, 19);
-            At("Deck/DeckCards", 9, 316, 333, 256);
+            At("Filters", 24, 56, 240, 200);
+            At("Filters/Faction", 14, 30, 212, 34);
+            At("Filters/Category", 14, 89, 212, 34);
+            At("Filters/Ownership", 14, 150, 212, 34);
+            At("CardDetails", 24, 260, 240, 442);
+            At("Cards", 276, 56, 632, 646);
+            At("Deck", 920, 56, 336, 646);
+            At("Title", 384, 11, 506, 38);
+            At("Back", 1128, 10, 118, 40);
+            At("Back/Label", 6, 4, 106, 32);
+            At("Status", 276, 702, 980, 16);
+            At("Deck/DeckPicker", 16, 60, 304, 32);
+            At("Deck/Create", 16, 95, 304, 32);
+            At("Deck/Create/Label", 6, 3, 292, 26);
+            At("Deck/DeckName", 16, 133, 304, 32);
+            At("Deck/Starter", 16, 170, 107, 34);
+            At("Deck/Copy", 131, 170, 85, 34);
+            At("Deck/Delete", 224, 170, 96, 34);
+            At("Deck/Save", 16, 577, 304, 56);
+            At("Deck/Save/Label", 12, 7, 280, 42);
+            At("Deck/Points", 20, 224, 190, 24);
+            At("Deck/TotalCostTitle", 210, 226, 106, 20);
+            At("Deck/Budget", 18, 254, 300, 26);
+            At("Deck/CardsHeader", 20, 329, 220, 19);
+            At("Deck/CountHeader", 262, 329, 54, 19);
+            At("Deck/DeckCards", 18, 351, 300, 221);
             for (int i = 0; i < 5; i++)
             {
-                At("Deck/CostIcon" + i, 9 + i * 67, 260, 19, 19);
-                At("Deck/CostValue" + i, 32 + i * 67, 260, 44, 19);
+                At("Deck/CostIcon" + i, 20 + i * 60, 291, 18, 18);
+                At("Deck/CostValue" + i, 43 + i * 60, 291, 32, 19);
             }
             Surface(root.Find("Deck/Budget"), "Meter");
             if (root.Find("Cards/Viewport/Content") is RectTransform content)
@@ -66,7 +67,7 @@ namespace Game.UI
                 var grid = content.GetComponent<GridLayoutGroup>();
                 if (grid != null)
                 {
-                    grid.cellSize = new Vector2(140, 194); grid.spacing = new Vector2(8, 8);
+                    grid.cellSize = new Vector2(140, 198); grid.spacing = new Vector2(8, 8);
                     grid.padding = new RectOffset(6, 6, 8, 8);
                     grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 4;
                 }
@@ -76,28 +77,39 @@ namespace Game.UI
             ApplyScrollSkin(root.Find("Cards"), true);
             ApplyScrollSkin(root.Find("CardDetails"), true);
             ApplyScrollSkin(root.Find("Deck/DeckCards"), false);
+            var deckRows = root.Find("Deck/DeckCards/Viewport/Content")?.GetComponent<VerticalLayoutGroup>();
+            if (deckRows != null) deckRows.spacing = 3;
 
-            var plaque = Decoration(root, "TitlePlaque", "Plaque"); Place(plaque, 360, 8, 560, 44);
+            var plaque = Decoration(root, "TitlePlaque", "Plaque"); Place(plaque, 360, 4, 560, 52);
             plaque.SetAsFirstSibling();
             var title = root.Find("Title")?.GetComponent<TMP_Text>();
-            if (title != null) { title.color = CollectionInk; title.fontSize = 24; title.alignment = TextAlignmentOptions.Center; }
+            Heading(title, 30);
             var filters = root.Find("Filters");
             if (filters != null)
             {
-                Caption(filters, "FactionTitle", "FACTION", 14, 10, 212, 16, 12);
-                Caption(filters, "CategoryTitle", "TYPE", 14, 61, 212, 16, 12);
-                Caption(filters, "OwnershipTitle", "OWNERSHIP", 14, 112, 212, 16, 12);
+                Caption(filters, "FactionTitle", "FACTION", 18, 12, 204, 16, 13);
+                Caption(filters, "CategoryTitle", "TYPE", 18, 71, 204, 16, 13);
+                Caption(filters, "OwnershipTitle", "OWNERSHIP", 18, 132, 204, 16, 13);
             }
             var deck = root.Find("Deck");
             if (deck != null)
             {
-                var heading = Decoration(deck, "DeckTitle", "Plaque"); Place(heading, 9, 9, 333, 32);
-                heading.SetAsFirstSibling();
-                var text = Caption(heading, "Label", "DECK", 12, 2, 309, 28, 20);
-                text.color = CollectionInk; text.alignment = TextAlignmentOptions.Center;
+                var statistics = Decoration(deck, "StatisticsFrame", "Panel_Inset"); Place(statistics, 8, 212, 320, 360);
+                statistics.SetSiblingIndex(deck.Find("MetalBackground") != null ? 1 : 0);
+                var divider = Decoration(deck, "StatisticsDivider", "Divider"); Place(divider, 20, 320, 296, 2);
+                var heading = Decoration(deck, "DeckTitle", "DeckHeader"); Place(heading, 12, 10, 312, 42);
+                heading.SetSiblingIndex(deck.Find("MetalBackground") != null ? 2 : 1);
+                var text = Caption(heading, "Label", "DECK", 12, 4, 288, 34, 24);
+                Heading(text, 24);
             }
             var saveLabel = root.Find("Deck/Save/Label")?.GetComponent<TMP_Text>();
-            if (saveLabel != null) { saveLabel.text = "SAVE DECK"; saveLabel.fontSize = 20; }
+            if (saveLabel != null) { saveLabel.text = "SAVE DECK"; Heading(saveLabel, 28); }
+            Heading(root.Find("Back/Label")?.GetComponent<TMP_Text>(), 20);
+            foreach (string path in new[] { "Deck/Starter", "Deck/Copy", "Deck/Delete" })
+                if (root.Find(path) is RectTransform button)
+                    if (button.Find("Label") is RectTransform label) Place(label, 5, 3, button.sizeDelta.x - 10, button.sizeDelta.y - 6);
+            var costTitle = root.Find("Deck/TotalCostTitle")?.GetComponent<TMP_Text>();
+            if (costTitle != null) costTitle.alignment = TextAlignmentOptions.Right;
             foreach (string path in new[] { "UnsavedModal/Window", "ConfirmModal/Window" })
                 root.Find(path)?.SetAsFirstSibling();
         }
@@ -105,7 +117,7 @@ namespace Game.UI
         public static void ApplyCellSkin(RectTransform root)
         {
             if (root == null) return;
-            root.sizeDelta = new Vector2(140, 194);
+            root.sizeDelta = new Vector2(140, 198);
             var background = root.GetComponent<Image>();
             if (background != null) { background.sprite = null; background.color = Color.clear; background.raycastTarget = false; }
             if (root.Find("Card") is RectTransform card) card.sizeDelta = new Vector2(106, 155);
@@ -115,9 +127,44 @@ namespace Game.UI
                 var text = info.GetComponent<TMP_Text>();
                 if (text != null) { text.alignment = TextAlignmentOptions.Center; text.color = CollectionText; }
             }
-            if (root.Find("Add") is RectTransform add) Place(add, 8, 176, 124, 18);
-            if (root.Find("Add/Label") is RectTransform label) Place(label, 3, 1, 118, 16);
+            if (root.Find("Add") is RectTransform add) Place(add, 5, 174, 130, 24);
+            if (root.Find("Add/Label") is RectTransform label) Place(label, 5, 3, 120, 18);
             ApplyControlsSkin(root);
+        }
+
+        public static void ApplyDeckRowSkin(RectTransform root)
+        {
+            if (root == null) return;
+            void At(string path, float x, float y, float w, float h)
+            { if (root.Find(path) is RectTransform rect) Place(rect, x, y, w, h); }
+            At("Row/Art", 0, 0, 30, 38);
+            At("Row/Name", 34, 0, 164, 38);
+            At("Row/Name/Label", 6, 5, 114, 28);
+            At("Row/Cost", 158, 9, 34, 20);
+            At("Row/Minus", 204, 5, 26, 28);
+            At("Row/Count", 260, 5, 20, 28);
+            At("Row/Plus", 232, 5, 26, 28);
+            At("Row/Remove", 19, 24, 12, 14);
+            foreach (string path in new[] { "Row/Minus/Label", "Row/Plus/Label" }) At(path, 2, 2, 22, 24);
+            At("Row/Remove/Label", 0, 0, 12, 14);
+            ApplyControlsSkin(root);
+            Surface(root.Find("Row/Name"), "RowPlate");
+            foreach (string path in new[] { "Row/Minus", "Row/Plus", "Row/Remove" }) Surface(root.Find(path), "SquareButton");
+            foreach (var text in root.GetComponentsInChildren<TMP_Text>(true))
+            { text.color = CollectionText; text.textWrappingMode = TextWrappingModes.NoWrap; text.overflowMode = TextOverflowModes.Ellipsis; }
+            var name = root.Find("Row/Name/Label")?.GetComponent<TMP_Text>();
+            if (name != null) { name.alignment = TextAlignmentOptions.Left; name.fontSize = 13; }
+            var cost = root.Find("Row/Cost")?.GetComponent<TMP_Text>();
+            if (cost != null) { cost.alignment = TextAlignmentOptions.Right; cost.fontSize = 11; }
+        }
+
+        private static void Heading(TMP_Text text, int size)
+        {
+            if (text == null) return;
+            if (headingFont == null) headingFont = Resources.Load<TMP_FontAsset>("Fonts/Rajdhani-SemiBold SDF");
+            if (headingFont != null) text.font = headingFont;
+            text.fontSize = size; text.fontStyle = FontStyles.Bold;
+            text.color = CollectionInk; text.alignment = TextAlignmentOptions.Center;
         }
 
         public static void ApplySurface(Image image, string asset)
@@ -126,7 +173,19 @@ namespace Game.UI
             var sprite = Resources.Load<Sprite>("UI/Collection/" + asset);
             if (sprite == null) return;
             image.sprite = sprite; image.color = Color.white;
-            image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 4f;
+            image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 1.30625f;
+            image.fillCenter = asset != "Panel_Inset";
+            if (asset == "Panel_Inset")
+            {
+                // Keep the metal grain at native scale; only the frame rails are stretched.
+                var metal = image.transform.Find("MetalBackground") as RectTransform;
+                if (metal == null) metal = Panel(image.transform, "MetalBackground");
+                Stretch(metal); metal.offsetMin = new Vector2(19, 19); metal.offsetMax = new Vector2(-19, -19);
+                var background = metal.GetComponent<Image>();
+                background.sprite = Resources.Load<Sprite>("UI/Collection/Metal"); background.color = Color.white;
+                background.type = Image.Type.Tiled; background.pixelsPerUnitMultiplier = 1.30625f; background.raycastTarget = false;
+                metal.SetAsFirstSibling();
+            }
         }
         private static void Surface(Transform target, string asset)
         { if (target != null) ApplySurface(target.GetComponent<Image>(), asset); }
@@ -143,7 +202,7 @@ namespace Game.UI
             foreach (var button in root.GetComponentsInChildren<Button>(true))
             {
                 bool primary = button.name == "Save" || button.name == "Back";
-                Surface(button.transform, primary ? "Plaque" : "Button"); ControlColors(button);
+                Surface(button.transform, primary ? (button.name == "Save" ? "SavePlate" : "BackPlate") : "Button"); ControlColors(button);
                 var label = button.GetComponentInChildren<TMP_Text>(true);
                 if (label != null) label.color = primary ? CollectionInk : CollectionText;
             }
@@ -271,4 +330,5 @@ namespace Game.UI
         }
     }
 }
+
 
