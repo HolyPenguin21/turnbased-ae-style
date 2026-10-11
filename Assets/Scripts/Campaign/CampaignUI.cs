@@ -18,7 +18,7 @@ namespace Game.Campaign
         [SerializeField] private Sprite endTurnSprite, actionButtonSprite;
         [SerializeField] private Sprite ironConcordLogo, ashenLogo, vesselsLogo;
         private Sprite frameSprite, paperSprite, metalSprite;
-        private Material cloudMaterial;
+        private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
         private static readonly Color PaperInk = new Color(.17f, .135f, .095f);
         private static readonly Color Cream = new Color(.90f, .83f, .67f);
         private RectTransform canvas, sidebar, footer, modal, modalContent;
@@ -33,7 +33,7 @@ namespace Game.Campaign
         private void Start()
         {
             canvas = CollectionUIElements.Canvas("PlanetaryCampaign", new Vector2(1920, 1080));
-            frameSprite = Resources.Load<Sprite>("Campaign/MetalFrame");
+            frameSprite = Resources.Load<Sprite>("Campaign/MetalFrameRounded");
             paperSprite = Resources.Load<Sprite>("Campaign/Parchment");
             metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
@@ -42,33 +42,52 @@ namespace Game.Campaign
             // Header and map are inserts in that console; only the map keeps its own frame.
             var console = CollectionUIElements.Panel(canvas, "CampaignConsole"); CollectionUIElements.Place(console, 26, 18, 1868, 1040);
             Skin(console, true, false); console.GetComponent<Image>().raycastTarget = false;
-            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 0, 0, 1868, 82);
+            var cloudShader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            if (cloudShader != null)
+            {
+                consoleMaterial = new Material(cloudShader) { name = "CampaignConsole (runtime)" };
+                consoleMaterial.SetFloat("_Atmosphere", 1);
+                consoleMaterial.SetFloat("_EdgeFeather", 1);
+                consoleMaterial.SetFloat("_CornerRadius", 64);
+                consoleMaterial.SetVector("_SurfaceSize", new Vector4(1868, 1040, 0, 0));
+                console.GetComponent<Image>().material = consoleMaterial;
+                console.gameObject.AddComponent<Mask>();
+            }
+            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 16, 12, 1836, 70);
             Skin(header, false, false); header.GetComponent<Image>().raycastTarget = false;
-            heading = Label(header, "PLANETARY CAMPAIGN", 28, 16, 1530, 50, 31);
+            heading = Label(header, "PLANETARY CAMPAIGN", 28, 6, 1530, 50, 31);
             heading.color = Cream; heading.fontStyle = FontStyles.Bold;
-            Button(header, "MENU", 1678, 17, 164, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
-            var surface = CollectionUIElements.Panel(console, "PlanetSurface"); CollectionUIElements.Place(surface, 0, 94, 1400, 780);
-            Skin(surface, false);
+            Button(header, "MENU", 1646, 11, 164, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
+            var surface = CollectionUIElements.Panel(console, "PlanetSurface"); CollectionUIElements.Place(surface, 24, 100, 1376, 768);
+            Skin(surface, false, false);
             surface.GetComponent<Image>().raycastTarget = false;
+            if (cloudShader != null)
+            {
+                surfacePanelMaterial = new Material(consoleMaterial) { name = "CampaignMapPanel (runtime)" };
+                surfacePanelMaterial.SetVector("_SurfaceSize", new Vector4(1376, 768, 0, 0));
+                surface.GetComponent<Image>().material = surfacePanelMaterial;
+                surface.gameObject.AddComponent<Mask>();
+            }
             var mapRect = CollectionUIElements.Rect(surface, "Regions"); CollectionUIElements.Stretch(mapRect);
-            mapRect.offsetMin = new Vector2(20, 20); mapRect.offsetMax = new Vector2(-20, -20);
+            mapRect.offsetMin = new Vector2(12, 12); mapRect.offsetMax = new Vector2(-12, -12);
             mapRect.gameObject.AddComponent<RectMask2D>();
             map = mapRect.gameObject.AddComponent<CampaignMapView>();
-            // The atmosphere is decorative and cannot intercept region input.
+            // Under the map: atmosphere fills the remaining corners but never paints over regions.
             var clouds = CollectionUIElements.Rect(surface, "AtmosphericClouds"); CollectionUIElements.Stretch(clouds);
-            clouds.offsetMin = new Vector2(20, 20); clouds.offsetMax = new Vector2(-20, -20);
+            clouds.offsetMin = new Vector2(12, 12); clouds.offsetMax = new Vector2(-12, -12);
+            clouds.SetSiblingIndex(mapRect.GetSiblingIndex());
             var cloudImage = clouds.gameObject.AddComponent<RawImage>();
             cloudImage.texture = Resources.Load<Texture2D>("Campaign/AtmosphericClouds");
-            cloudImage.color = new Color(.78f, .75f, .68f, .62f); cloudImage.raycastTarget = false;
-            var cloudShader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            cloudImage.color = new Color(.78f, .75f, .68f, .36f); cloudImage.raycastTarget = false;
             cloudImage.enabled = cloudImage.texture != null && cloudShader != null;
             if (cloudImage.enabled)
             {
                 cloudMaterial = new Material(cloudShader) { name = "CampaignAtmosphere (runtime)" };
                 cloudMaterial.SetFloat("_Atmosphere", 1);
-                cloudMaterial.SetVector("_SurfaceSize", new Vector4(1360, 740, 0, 0));
+                cloudMaterial.SetVector("_SurfaceSize", new Vector4(1352, 744, 0, 0));
                 cloudImage.material = cloudMaterial;
             }
+            Frame(surface);
             sidebar = CollectionUIElements.Rect(console, "RegionInformation"); CollectionUIElements.Place(sidebar, 1414, 94, 454, 780);
             footer = CollectionUIElements.Rect(console, "CampaignHistory"); CollectionUIElements.Place(footer, 0, 889, 1868, 150);
             Rule(console, 28, 878, 1812);
@@ -154,10 +173,23 @@ namespace Game.Campaign
             {
                 var preview = CollectionUIElements.Rect(sidebar, "RegionTerrainPreview"); CollectionUIElements.Place(preview, 30, 340, 394, 126);
                 var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.texture = map.SurfaceTexture; terrain.raycastTarget = false;
+                if (consoleMaterial != null)
+                {
+                    if (regionPreviewMaterial == null)
+                    {
+                        regionPreviewMaterial = new Material(consoleMaterial) { name = "CampaignRegionPreview (runtime)" };
+                        regionPreviewMaterial.SetFloat("_CornerRadius", 32);
+                        regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(394, 126, 0, 0));
+                    }
+                    terrain.material = regionPreviewMaterial;
+                    preview.gameObject.AddComponent<Mask>();
+                }
                 var center = map.SurfaceUVAt(CampaignRegionGraphic.VisibleCenter(region));
                 float previewHeight = .32f * (126f / 394f) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
                 terrain.uvRect = new Rect(Mathf.Clamp(center.x - .16f, 0, .68f), Mathf.Clamp(center.y - previewHeight / 2, 0, 1 - previewHeight), .32f, previewHeight);
-                Frame(preview);
+                if (regionPreviewMaterial != null)
+                    regionPreviewMaterial.SetVector("_UVRect", new Vector4(terrain.uvRect.x, terrain.uvRect.y, terrain.uvRect.width, terrain.uvRect.height));
+                Frame(preview, 8);
                 Label(sidebar, "OWNER", 30, 482, 98, 34, 20);
                 Logo(sidebar, region.OwnerFaction, 132, 478, 36);
                 Label(sidebar, FactionName(region.OwnerFaction), 179, 482, 245, 34, 23);
@@ -330,12 +362,12 @@ namespace Game.Campaign
             image.color = paper ? Color.white : new Color(.82f, .82f, .82f);
             if (framed) Frame(rect);
         }
-        private void Frame(RectTransform parent)
+        private void Frame(RectTransform parent, float pixelsPerUnitMultiplier = 4)
         {
             if (frameSprite == null) return;
             var rect = CollectionUIElements.Rect(parent, "MetalBorder"); CollectionUIElements.Stretch(rect);
             var image = rect.gameObject.AddComponent<Image>(); image.sprite = frameSprite;
-            image.type = Image.Type.Sliced; image.fillCenter = false; image.pixelsPerUnitMultiplier = 4;
+            image.type = Image.Type.Sliced; image.fillCenter = false; image.pixelsPerUnitMultiplier = pixelsPerUnitMultiplier;
             image.raycastTarget = false;
         }
         private Button Button(Transform parent, string value, float x, float y, float w, float h, Action action, int size = 22)
@@ -373,6 +405,9 @@ namespace Game.Campaign
             UIFocusUtility.SetOverlay(this, false);
             if (canvas != null) Destroy(canvas.gameObject);
             if (cloudMaterial != null) Destroy(cloudMaterial);
+            if (consoleMaterial != null) Destroy(consoleMaterial);
+            if (surfacePanelMaterial != null) Destroy(surfacePanelMaterial);
+            if (regionPreviewMaterial != null) Destroy(regionPreviewMaterial);
         }
     }
 }
