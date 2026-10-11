@@ -59,6 +59,16 @@ removed or re-ordered speakers also cancel immediately.
   refreshes on width, padding, font/size or corner/minimum-height changes.
 - `FirstUnitDetailArt` retains Image settings/tint; its sprite is supplied by the speaker.
   Assign a temporary detail sprite in Prefab Mode if needed to preview the portrait.
+  Its Image alpha defaults to 0.84. The authored `ArmyRadioArtFeather` mesh effect adds
+  a soft, irregular transparent edge on all four sides, with independently editable
+  `edgeWidth` (6), `tornDepth` (5), `grainScale` (9) and `gridStep` (2) in local UI units.
+  The contour is deterministic and does not animate or consume gameplay RNG. Centre
+  detail remains sharp; feathering applies alpha rather than blurring the entire picture.
+  Sprite/atlas UVs, original texture alpha, Image tint, aspect and CanvasGroup fades are
+  retained. The bounded grid uses no runtime material/texture/GameObject creation and
+  scales with the same parent transform as the rest of the callout. Simple Image mode
+  is required; other meshes pass through unchanged. Set width/depth to zero to disable
+  the edge, or disable the component. Editor changes dirty the Image through BaseMeshEffect.
 - `ArmyRadioOverlay.prefab` controls child-Canvas sorting and the three slot references.
   Its `referenceOrthographicSize` controls the zoom at which authored message sizes are 1:1.
   It stretches inside the existing `Canvas_UI`, inherits its CanvasScaler, and isolates
@@ -138,6 +148,12 @@ Enable/disable balances subscriptions; retired army observations/cooldowns are p
   semantic check also verifies scene → overlay → three nested message references, component
   owners/types, font/material links and input pass-through. Source scan confirms no runtime
   radio GameObject/AddComponent/Instantiate calls remain. `git diff --check` passes.
+- Five additional alpha tests pass against the actual `ArmyRadioArtFeather` code in a
+  portable harness: all outer edges vanish, the centre is retained, the edge has a soft
+  non-uniform ramp, and repeated samples are stable. A native EditMode mesh test checks
+  atlas UVs, tint, bounded subdivision and transparent outer vertices; it was compiled,
+  not run. The updated review render interpolates the component's actual exported mesh
+  alpha over the original project detail-art texture, including its authored 0.84 opacity.
 
 Unity 6000.5.4f1 is unavailable here. Before merging, run the complete EditMode suite and a
 live match: camera pan/zoom/all screen edges with three nearby messages, click dismissal

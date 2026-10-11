@@ -14,6 +14,73 @@ using Object = UnityEngine.Object;
 
 namespace Game.EditorTests
 {
+    public class ArmyRadioArtTests
+    {
+        [TestCase(0f, 39f)]
+        [TestCase(54f, 39f)]
+        [TestCase(27f, 0f)]
+        [TestCase(27f, 78f)]
+        [Category("ArmyRadioArtManaged")]
+        public void ArtAlpha_AllOuterEdgesDisappear(float x, float y)
+        {
+            Assert.That(ArmyRadioArtFeather.AlphaAt(new Vector2(x, y), new Vector2(54f, 78f), 6f, 5f, 9f), Is.EqualTo(0f));
+        }
+
+        [Test, Category("ArmyRadioArtManaged")]
+        public void ArtAlpha_CentreStaysClearAndEdgeIsSoftIrregularAndStable()
+        {
+            var size = new Vector2(54f, 78f);
+            Assert.That(ArmyRadioArtFeather.AlphaAt(size * .5f, size, 6f, 5f, 9f), Is.EqualTo(1f));
+            float minimum = 1f, maximum = 0f;
+            for (int i = 12; i <= 66; i++)
+            {
+                var point = new Vector2(5f, i);
+                float alpha = ArmyRadioArtFeather.AlphaAt(point, size, 6f, 5f, 9f);
+                Assert.That(alpha, Is.InRange(0f, 1f));
+                Assert.That(ArmyRadioArtFeather.AlphaAt(point, size, 6f, 5f, 9f), Is.EqualTo(alpha));
+                minimum = Mathf.Min(minimum, alpha); maximum = Mathf.Max(maximum, alpha);
+            }
+            Assert.That(maximum - minimum, Is.GreaterThan(.25f), "Edge must be visibly irregular, not a straight uniform ramp.");
+            Assert.That(maximum, Is.GreaterThan(0f).And.LessThan(1f), "Retain a soft partial-alpha transition.");
+            Assert.That(ArmyRadioArtFeather.AlphaAt(Vector2.zero, size, 0f, 0f, 9f), Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void ArtMesh_PreservesAtlasUVsTintAndBoundsWithTransparentEdges()
+        {
+            var host = new GameObject("Radio feather mesh", typeof(RectTransform), typeof(UnityEngine.UI.Image), typeof(ArmyRadioArtFeather));
+            try
+            {
+                using (var mesh = new UnityEngine.UI.VertexHelper())
+                {
+                    var colour = new Color32(220, 210, 200, 214);
+                    mesh.AddVert(new Vector3(0f, 0f), colour, new Vector2(.2f, .3f));
+                    mesh.AddVert(new Vector3(0f, 78f), colour, new Vector2(.2f, .9f));
+                    mesh.AddVert(new Vector3(54f, 78f), colour, new Vector2(.8f, .9f));
+                    mesh.AddVert(new Vector3(54f, 0f), colour, new Vector2(.8f, .3f));
+                    mesh.AddTriangle(0, 1, 2); mesh.AddTriangle(2, 3, 0);
+                    host.GetComponent<ArmyRadioArtFeather>().ModifyMesh(mesh);
+                    Assert.That(mesh.currentVertCount, Is.GreaterThan(4).And.LessThanOrEqualTo(6305));
+                    var vertex = new UnityEngine.UIVertex(); bool foundCentre = false;
+                    for (int i = 0; i < mesh.currentVertCount; i++)
+                    {
+                        mesh.PopulateUIVertex(ref vertex, i);
+                        Assert.That(vertex.color.r, Is.EqualTo(220));
+                        Assert.That(vertex.color.a, Is.LessThanOrEqualTo(214));
+                        Assert.That(vertex.uv0.x, Is.EqualTo(.2f + vertex.position.x / 54f * .6f).Within(.00001f));
+                        Assert.That(vertex.uv0.y, Is.EqualTo(.3f + vertex.position.y / 78f * .6f).Within(.00001f));
+                        if (vertex.position.x == 0f || vertex.position.x == 54f || vertex.position.y == 0f || vertex.position.y == 78f)
+                            Assert.That(vertex.color.a, Is.EqualTo(0));
+                        if (Mathf.Abs(vertex.position.x - 27f) < 2f && Mathf.Abs(vertex.position.y - 39f) < 2f)
+                        { foundCentre = true; Assert.That(vertex.color.a, Is.EqualTo(214)); }
+                    }
+                    Assert.That(foundCentre, Is.True);
+                }
+            }
+            finally { Object.DestroyImmediate(host); }
+        }
+    }
+
     public class ArmyRadioLayoutTests
     {
         [TestCase(2.6f, 1f)]
