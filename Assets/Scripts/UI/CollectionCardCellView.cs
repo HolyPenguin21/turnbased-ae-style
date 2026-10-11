@@ -58,7 +58,7 @@ namespace Game.UI
         public void SetCounts(int owned, int inDeck)
         {
             if (Card == null) return;
-            infoLabel.text = $"{owned}/{Card.deckCopyLimit}   {Card.deckPointCost} pt" + (owned >= Card.deckCopyLimit ? " MAX" : "");
+            infoLabel.text = $"{owned}/{DeckRules.CopyLimit(Card)}   {Card.deckPointCost} pt" + (owned >= DeckRules.CopyLimit(Card) ? " MAX" : "");
             addLabel.text = "+  In deck: " + inDeck;
             if (previewGroup != null) previewGroup.alpha = owned == 0 ? .4f : 1f;
         }

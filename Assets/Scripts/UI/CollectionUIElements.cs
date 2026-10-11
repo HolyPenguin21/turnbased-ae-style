@@ -144,12 +144,10 @@ namespace Game.UI
             At("Row/Minus", 204, 5, 26, 28);
             At("Row/Count", 260, 5, 20, 28);
             At("Row/Plus", 232, 5, 26, 28);
-            At("Row/Remove", 19, 24, 12, 14);
             foreach (string path in new[] { "Row/Minus/Label", "Row/Plus/Label" }) At(path, 2, 2, 22, 24);
-            At("Row/Remove/Label", 0, 0, 12, 14);
             ApplyControlsSkin(root);
             Surface(root.Find("Row/Name"), "RowPlate");
-            foreach (string path in new[] { "Row/Minus", "Row/Plus", "Row/Remove" }) Surface(root.Find(path), "SquareButton");
+            foreach (string path in new[] { "Row/Minus", "Row/Plus" }) Surface(root.Find(path), "SquareButton");
             foreach (var text in root.GetComponentsInChildren<TMP_Text>(true))
             { text.color = CollectionText; text.textWrappingMode = TextWrappingModes.NoWrap; text.overflowMode = TextOverflowModes.Ellipsis; }
             var name = root.Find("Row/Name/Label")?.GetComponent<TMP_Text>();
@@ -390,7 +388,7 @@ namespace Game.UI
             if (showScrollbar) viewport.offsetMax = new Vector2(-18, 0);
             var content = Rect(viewport, "Content"); Place(content, 0, 0, w - (showScrollbar ? 22 : 14), 1);
             var scroll = root.gameObject.AddComponent<ScrollRect>(); scroll.viewport = viewport; scroll.content = content;
-            scroll.scrollSensitivity *= 1.69f; // Two successive 30% wheel-only increases; dragging is unchanged.
+            scroll.scrollSensitivity = 3f; // Wheel-only multiplier; dragging is unchanged.
             scroll.horizontal = false; scroll.vertical = true; scroll.movementType = ScrollRect.MovementType.Clamped;
             if (showScrollbar)
             {

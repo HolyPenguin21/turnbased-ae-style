@@ -208,7 +208,6 @@ public static class CollectionWindowBuilder
         var minus = MakeButton(row, "Minus", "−", 235, 16, 23, 23, 14, font);
         var count = Text(row, "Count", "", 260, 16, 27, 23, 15, font); count.alignment = TextAlignmentOptions.Center;
         var plus = MakeButton(row, "Plus", "+", 289, 16, 23, 23, 14, font);
-        var remove = MakeButton(row, "Remove", "×", 207, 32, 20, 17, 13, font);
         var view = root.gameObject.AddComponent<CollectionDeckRowView>();
         var so = new SerializedObject(view);
         so.FindProperty("layout").objectReferenceValue = layout;
@@ -222,7 +221,6 @@ public static class CollectionWindowBuilder
         so.FindProperty("nameButton").objectReferenceValue = nameButton;
         so.FindProperty("minusButton").objectReferenceValue = minus;
         so.FindProperty("plusButton").objectReferenceValue = plus;
-        so.FindProperty("removeButton").objectReferenceValue = remove;
         so.ApplyModifiedPropertiesWithoutUndo();
         CollectionUIElements.ApplyDeckRowSkin(root);
         return view;
@@ -293,7 +291,7 @@ public static class CollectionWindowBuilder
         var fitter = content.gameObject.AddComponent<ContentSizeFitter>(); fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var scroll = root.gameObject.AddComponent<ScrollRect>();
         scroll.viewport = viewport; scroll.content = content;
-        scroll.scrollSensitivity = 1.69f;
+        scroll.scrollSensitivity = 3f;
         scroll.horizontal = false; scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
         if (scrollbar)

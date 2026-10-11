@@ -66,8 +66,8 @@ namespace Game.EditorTools
             var result = new List<SavedDeck>();
             foreach (var faction in DeckRules.PlayableFactions)
             {
-                var cards = rules.Cards(faction).Where(c => c.deckCopyLimit > 0).ToList();
-                Func<string, int> owned = key => rules.Resolve(key)?.deckCopyLimit ?? 0;
+                var cards = rules.Cards(faction).Where(c => DeckRules.CopyLimit(c) > 0).ToList();
+                Func<string, int> owned = key => DeckRules.CopyLimit(rules.Resolve(key));
                 foreach (var theme in new[] { "Mass", "Armor", "Recon", "Mixed", "Aviation", "Economy" })
                 {
                     var deck = new SavedDeck { deckId = faction + "." + theme, name = theme, faction = faction };

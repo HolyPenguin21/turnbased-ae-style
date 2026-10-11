@@ -36,7 +36,7 @@ namespace Game.Progression
         private List<string> AvailableOffers(PendingReward reward, CollectionProfile profile)
             => reward.offeredKeys.Where(key => CanGrant(collection.Rules.Resolve(key), reward.faction, profile)).ToList();
         private bool CanGrant(CardDefinition card, Game.Players.Faction faction, CollectionProfile profile)
-            => card != null && collection.Rules.Permitted(card, faction) && profile.Owned(card.authoredKey) < card.deckCopyLimit;
+            => card != null && collection.Rules.Permitted(card, faction) && profile.Owned(card.authoredKey) < DeckRules.CopyLimit(card);
         public bool Claim(string matchId, IEnumerable<string> selected, out string error)
         {
             var keys = selected?.ToList() ?? new List<string>();

@@ -371,7 +371,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void HumanBlueprintQuotaRejectsDirectBypassAndDebitsOnlyEachRealAttempt()
+        public void HumanBlueprintQuotaRejectsDirectBypassAndAllowsUnlimitedRealAttempts()
         {
             _player.IsHuman = true; _player.Faction = Faction.IronConcord;
             _card.cardType = CardType.Equipment; _card.deckPointCost = 1; _card.deckCopyLimit = 4;
@@ -392,14 +392,16 @@ namespace Game.EditorTests
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
                     ResearchProductionMode.Research, _card, _catalog, out _, out _), Is.False, "Pending duplicate must not debit.");
                 failed.Complete(false);
-                Assert.That(_player.BlueprintQuota.Remaining(_card.authoredKey), Is.EqualTo(1));
+                Assert.That(_player.BlueprintQuota.Available(_card.authoredKey), Is.True);
                 Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
                     ResearchProductionMode.Research, _card, _catalog, out _, out var succeeded), Is.True);
                 Assert.That(succeeded.Complete(true), Is.Not.Null); Assert.That(succeeded.Complete(true), Is.Null);
-                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
-                    ResearchProductionMode.Research, _card, _catalog, out _, out _), Is.False, "Exhausted quota must not debit.");
                 Assert.That(_root.ActionPoints, Is.EqualTo(6));
                 Assert.That(_root.GetResource(ResourceType.Human), Is.EqualTo(3));
+                Assert.That(ResearchProductionSystem.TryStartAttempt(_player, _root, _hero, Site,
+                    ResearchProductionMode.Research, _card, _catalog, out _, out var repeated), Is.True, "A deck blueprint is unlimited.");
+                Assert.That(repeated.Complete(true), Is.Not.Null);
+                Assert.That(_root.ActionPoints, Is.LessThan(6));
             }
             finally { Object.DestroyImmediate(starting); }
         }

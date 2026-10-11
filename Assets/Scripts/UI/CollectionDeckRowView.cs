@@ -14,17 +14,16 @@ namespace Game.UI
         [SerializeField] private GameObject headerRoot, rowRoot;
         [SerializeField] private TMP_Text headerLabel, nameLabel, costLabel, countLabel;
         [SerializeField] private Image art;
-        [SerializeField] private Button nameButton, minusButton, plusButton, removeButton;
+        [SerializeField] private Button nameButton, minusButton, plusButton;
         private CardDefinition card;
         private string key;
 
-        public void Init(Action<CardDefinition> onSelect, Action<string, int> onChange, Action<string> onRemove)
+        public void Init(Action<CardDefinition> onSelect, Action<string, int> onChange)
         {
             CollectionUIElements.ApplyDeckRowSkin((RectTransform)transform);
             nameButton.onClick.AddListener(() => onSelect(card));
             minusButton.onClick.AddListener(() => onChange(key, -1));
             plusButton.onClick.AddListener(() => onChange(key, 1));
-            removeButton.onClick.AddListener(() => onRemove(key));
         }
 
         public void SetHeader(string text)

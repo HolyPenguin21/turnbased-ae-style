@@ -33,6 +33,13 @@ namespace Game.Cards
                     : card.attachmentSlot == AttachmentSlot.Equipment ? DeckCategory.Equipment : DeckCategory.System;
             return card.cardType == CardType.Hero || card.cardType == CardType.Unit || card.cardType == CardType.Base || card.cardType == CardType.Facility ? DeckCategory.Main : DeckCategory.System;
         }
+        // Equipment and mutators are blueprints: one owned copy and one deck slot unlock unlimited production in a match.
+        public static int CopyLimit(CardDefinition card)
+        {
+            if (card == null) return 0;
+            var category = Category(card);
+            return category == DeckCategory.Equipment || category == DeckCategory.Mutator ? Math.Min(card.deckCopyLimit, 1) : card.deckCopyLimit;
+        }
         public CardDefinition Resolve(string key)
         {
             var card = Starting?.ResolveCard(key) ?? Research?.ResolveCard(key);
@@ -76,7 +83,7 @@ namespace Game.Cards
                     if (card == null) { result.Errors.Add("Obsolete card reference: " + row.cardKey); continue; }
                     if (Category(card) != category || !Permitted(card, deck.faction)) result.Errors.Add("Forbidden card: " + card.displayName);
                     if (card.deckPointCost < 0 || card.deckCopyLimit < 0) result.Errors.Add("Invalid card metadata: " + row.cardKey);
-                    if (row.count < 0 || row.count > card.deckCopyLimit || row.count > owned(row.cardKey))
+                    if (row.count < 0 || row.count > CopyLimit(card) || row.count > owned(row.cardKey))
                         result.Errors.Add("Invalid quantity: " + card.displayName);
                     result.Points += (long)card.deckPointCost * row.count;
                 }

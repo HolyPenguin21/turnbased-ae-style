@@ -21,7 +21,22 @@ namespace Game.Progression
         public CollectionProfile Snapshot => profile.Copy();
         public int Owned(string key) => profile.Owned(key);
         public CollectionService(DeckRules rules, CollectionProfileStore store, CollectionProfile initial)
-        { Rules = rules; this.store = store; profile = initial.Copy(); }
+        { Rules = rules; this.store = store; profile = initial.Copy(); ClampBlueprintCopies(profile); }
+        // Profiles saved before the one-copy blueprint rule may hold several copies of equipment/mutators.
+        private void ClampBlueprintCopies(CollectionProfile target)
+        {
+            if (Rules == null) return;
+            void Clamp(System.Collections.Generic.IEnumerable<DeckCardEntry> rows)
+            {
+                foreach (var e in rows)
+                {
+                    int limit = DeckRules.CopyLimit(Rules.Resolve(e.cardKey));
+                    if (limit > 0 && DeckRules.Category(Rules.Resolve(e.cardKey)) != DeckCategory.Main && e.count > limit) e.count = limit;
+                }
+            }
+            Clamp(target.ownedCards);
+            foreach (var deck in target.savedDecks) { Clamp(deck.equipment); Clamp(deck.mutators); }
+        }
         public bool Transact(Action<CollectionProfile> edit, out string error)
         {
             error = null;
@@ -68,7 +83,7 @@ namespace Game.Progression
                 var card = Rules.Resolve(e.cardKey);
                 if (card == null || DeckRules.Category(card) == DeckCategory.Main || !Rules.Permitted(card, faction))
                     throw new InvalidOperationException("Invalid initial blueprint: " + e.cardKey);
-                DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = e.cardKey, count = e.count });
+                DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = e.cardKey, count = Math.Min(e.count, DeckRules.CopyLimit(card)) });
             }
             return deck;
         }

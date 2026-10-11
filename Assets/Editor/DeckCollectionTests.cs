@@ -47,14 +47,16 @@ namespace Game.EditorTools
         {
             card.cardType = CardType.Equipment; card.attachmentSlot = AttachmentSlot.Mutator;
             research.cardCatalogs.Add(catalog); research.researchCards.Add(new ResearchProductionEntry { cardKey = card.authoredKey });
-            var deck = Deck(0); deck.mainCards.Clear(); deck.mutators.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 2 });
-            return new BlueprintQuota(new MatchLoadout(deck, rules, _ => 2));
+            var deck = Deck(0); deck.mainCards.Clear(); deck.mutators.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 });
+            return new BlueprintQuota(new MatchLoadout(deck, rules, _ => 1));
         }
-        [Test] public void MutatorDoesNotRequireEquipment() { Assert.That(Quota().Remaining(card.authoredKey), Is.EqualTo(2)); }
+        [Test] public void MutatorDoesNotRequireEquipment() { Assert.That(Quota().Unlocked(card.authoredKey), Is.True); }
+        [Test] public void EquipmentAndMutatorsAllowOnlyOneCopyInDeck()
+        { var quota = Quota(); var deck = Deck(0); deck.mainCards.Clear(); deck.mutators.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 2 }); Assert.That(rules.Validate(deck, _ => 2).IsValid, Is.False); deck.mutators[0].count = 1; Assert.That(rules.Validate(deck, _ => 2).IsValid, Is.True); Assert.That(DeckRules.CopyLimit(card), Is.EqualTo(1)); }
         [Test] public void FailureReleasesQuotaAndRepeatedCallbackIsInert()
-        { var quota = Quota(); Assert.That(quota.TryReserve(card.authoredKey), Is.True); var attempt = new ProductionAttempt(card, quota); Assert.That(quota.Available(card.authoredKey), Is.False); attempt.Complete(false); Assert.That(attempt.Complete(true), Is.Null); Assert.That(quota.Remaining(card.authoredKey), Is.EqualTo(2)); }
-        [Test] public void SuccessConsumesExactlyOneAndCancelReleases()
-        { var quota = Quota(); quota.TryReserve(card.authoredKey); var attempt = new ProductionAttempt(card, quota); Assert.That(attempt.Complete(true), Is.Not.Null); Assert.That(attempt.Complete(true), Is.Null); Assert.That(quota.Remaining(card.authoredKey), Is.EqualTo(1)); quota.TryReserve(card.authoredKey); new ProductionAttempt(card, quota).Dispose(); Assert.That(quota.Available(card.authoredKey), Is.True); }
+        { var quota = Quota(); Assert.That(quota.TryReserve(card.authoredKey), Is.True); var attempt = new ProductionAttempt(card, quota); Assert.That(quota.Available(card.authoredKey), Is.False); attempt.Complete(false); Assert.That(attempt.Complete(true), Is.Null); Assert.That(quota.Available(card.authoredKey), Is.True); }
+        [Test] public void SuccessNeverConsumesBlueprintAndCancelReleases()
+        { var quota = Quota(); quota.TryReserve(card.authoredKey); var attempt = new ProductionAttempt(card, quota); Assert.That(attempt.Complete(true), Is.Not.Null); Assert.That(attempt.Complete(true), Is.Null); Assert.That(quota.Available(card.authoredKey), Is.True); quota.TryReserve(card.authoredKey); new ProductionAttempt(card, quota).Dispose(); Assert.That(quota.Available(card.authoredKey), Is.True); }
         [Test] public void ProfileSurvivesReloadAndBackupRecovery()
         { var store = new CollectionProfileStore(directory); var p = new CollectionProfile(); store.Save(p); p.ownedCards.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 }); store.Save(p); Assert.That(store.Load(out _).Owned(card.authoredKey), Is.EqualTo(1)); File.WriteAllText(Path.Combine(directory, "collection-v1.json"), "broken"); Assert.That(store.Load(out var notice).Owned(card.authoredKey), Is.EqualTo(0)); Assert.That(notice, Is.Not.Null); Assert.That(File.Exists(Path.Combine(directory, "collection-v1.json.bak")), Is.True); }
         [Test] public void DefeatAndRepeatOutcomeGrantOnlyOnce()
@@ -511,7 +513,7 @@ namespace Game.EditorTools
                 var method = type.GetMethod("Scroll", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
                 var content = (RectTransform)method.Invoke(null, new object[] { go.transform, "Cards", 0f, 0f, 500f, 448f, true });
                 var scroll = content.GetComponentInParent<UnityEngine.UI.ScrollRect>();
-                Assert.That(scroll.scrollSensitivity, Is.EqualTo(1.69f).Within(.001f));
+                Assert.That(scroll.scrollSensitivity, Is.EqualTo(3f).Within(.001f));
                 Assert.That(scroll.verticalScrollbar, Is.Not.Null);
                 Assert.That(scroll.verticalScrollbar.direction, Is.EqualTo(UnityEngine.UI.Scrollbar.Direction.BottomToTop));
                 Assert.That(scroll.verticalScrollbarVisibility, Is.EqualTo(UnityEngine.UI.ScrollRect.ScrollbarVisibility.Permanent));

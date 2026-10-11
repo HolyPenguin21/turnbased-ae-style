@@ -37,14 +37,14 @@ namespace Game.Cards
     // Runtime quotas have no reference to the profile. Each participant owns a separate instance.
     public sealed class BlueprintQuota
     {
-        private readonly Dictionary<string, int> remaining = new Dictionary<string, int>();
+        private readonly HashSet<string> unlocked = new HashSet<string>();
         private readonly HashSet<string> pending = new HashSet<string>();
-        public BlueprintQuota(MatchLoadout loadout) { foreach (var e in loadout.BlueprintEntries()) remaining.Add(e.cardKey, e.count); }
-        public int Remaining(string key) => remaining.TryGetValue(key ?? "", out int n) ? n : 0;
-        public bool Available(string key) => Remaining(key) > 0 && !pending.Contains(key);
+        public BlueprintQuota(MatchLoadout loadout) { foreach (var e in loadout.BlueprintEntries()) if (e.count > 0) unlocked.Add(e.cardKey); }
+        // A blueprint in the deck unlocks unlimited production; only one attempt per card may be in flight.
+        public bool Unlocked(string key) => unlocked.Contains(key ?? "");
+        public bool Available(string key) => Unlocked(key) && !pending.Contains(key);
         internal bool TryReserve(string key) { if (!Available(key)) return false; return pending.Add(key); }
-        internal void Release(string key, bool consume)
-        { if (pending.Remove(key) && consume) remaining[key]--; }
+        internal void Release(string key) { pending.Remove(key); }
     }
     public sealed class ProductionAttempt : IDisposable
     {
@@ -55,7 +55,7 @@ namespace Game.Cards
         public CardData Complete(bool success)
         {
             if (finished) return null;
-            finished = true; quota?.Release(card.authoredKey, success);
+            finished = true; quota?.Release(card.authoredKey);
             return success ? ResearchProductionSystem.MintCard(card) : null;
         }
         public void Dispose() { Complete(false); }

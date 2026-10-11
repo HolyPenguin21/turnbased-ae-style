@@ -10,7 +10,7 @@ namespace Game.UI
         {
             if (card == null) return "Select a card.";
             string text = card.displayName + "\n" + (card.faction == Game.Players.Faction.Neutral || card.faction == Game.Players.Faction.None ? "Shared" : card.faction.ToString()) + " / " + card.cardType
-                + "\nPoints: " + card.deckPointCost + "\nOwned: " + owned + " / " + card.deckCopyLimit + "\n\n";
+                + "\nPoints: " + card.deckPointCost + "\nOwned: " + owned + " / " + DeckRules.CopyLimit(card) + "\n\n";
             if (card.cardType == CardType.Equipment) return text + EquipmentCardText.Description(card, config);
             if (card.cardType == CardType.Unit || card.cardType == CardType.Hero)
             {

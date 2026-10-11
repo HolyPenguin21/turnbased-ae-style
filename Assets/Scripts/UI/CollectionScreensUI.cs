@@ -93,7 +93,6 @@ namespace Game.UI
         private void EnsureInitialized()
         {
             if (initialized) return;
-            CollectionUIElements.ApplyWindowSkin((RectTransform)transform);
             initialized = true;
             factionDropdown.ClearOptions(); factionDropdown.AddOptions(DeckRules.PlayableFactions.Select(LabelFaction).ToList());
             categoryDropdown.ClearOptions(); categoryDropdown.AddOptions(new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" });
@@ -281,7 +280,7 @@ namespace Game.UI
                 {
                     var card = collection.Rules.Resolve(entry.cardKey);
                     DeckItem(n++).SetEntry(card, entry.cardKey, entry.count,
-                        card != null && collection.Rules.Permitted(card, faction) && Used(entry.cardKey) < Math.Min(collection.Owned(entry.cardKey), card.deckCopyLimit));
+                        card != null && collection.Rules.Permitted(card, faction) && Used(entry.cardKey) < Math.Min(collection.Owned(entry.cardKey), DeckRules.CopyLimit(card)));
                 }
             }
             for (int i = n; i < deckItems.Count; i++) deckItems[i].gameObject.SetActive(false);
@@ -294,7 +293,7 @@ namespace Game.UI
             if (index == deckItems.Count)
             {
                 var created = Instantiate(rowPrefab, deckContent);
-                created.Init(SelectCard, Change, RemoveEntry);
+                created.Init(SelectCard, Change);
                 deckItems.Add(created);
             }
             var item = deckItems[index]; item.gameObject.SetActive(true);
@@ -322,11 +321,6 @@ namespace Game.UI
             for (int i = 0; i < total.Length && i < costValues.Length; i++) costValues[i].text = total[i].ToString();
         }
 
-        private void RemoveEntry(string key)
-        {
-            foreach (var rows in new[] { draft.mainCards, draft.equipment, draft.mutators }) rows.RemoveAll(e => e.cardKey == key);
-            dirty = true; RefreshDeck(); RefreshCardCounters();
-        }
         private bool Save()
         {
             busy = true;

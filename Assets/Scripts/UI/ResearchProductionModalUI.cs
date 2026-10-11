@@ -369,7 +369,7 @@ namespace Game.UI
             var sb = new StringBuilder();
             sb.AppendLine(card.displayName);
             if (_player?.BlueprintQuota != null)
-                sb.AppendLine($"Blueprints remaining: {_player.BlueprintQuota.Remaining(card.authoredKey)}");
+                sb.AppendLine("Blueprint: unlimited production");
 
             // The upcoming Research/Production Challenge's difficulty — the SAME value the
             // Challenge itself uses as the card's fixed defender successes (see
