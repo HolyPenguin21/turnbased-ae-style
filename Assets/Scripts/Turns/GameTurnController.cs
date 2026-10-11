@@ -174,6 +174,20 @@ namespace Game.Turns
             || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
             || (aaChoicePopup != null && aaChoicePopup.IsShowing);
 
+        private bool IsMapModalShowing => UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
+            || (armyViewerModal != null && armyViewerModal.IsShowing)
+            || (baseViewerModal != null && baseViewerModal.IsShowing)
+            || (researchProductionModal != null && researchProductionModal.IsShowing)
+            || IsCombatPresentationActive
+            || (eventChoicePopup != null && eventChoicePopup.IsShowing)
+            || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+
+        // The non-interactive "other player's turn" banner leaves the map visible.
+        // Every actual modal/confirmation hides cosmetic radio messages immediately.
+        public bool CanPresentArmyRadio => !_gameOver && !IsAiObserverPaused && !IsMapModalShowing && CurrentPlayer != null
+            && (!CurrentPlayer.IsHuman || TurnConfirmed)
+            && (popupPanel == null || !popupPanel.IsShowing || popupPanel.IsOtherTurnShowing);
+
         private void RecomputeBlockedState()
         {
             bool combatShowing = IsCombatPresentationActive;
@@ -202,14 +216,7 @@ namespace Game.Turns
                     popupPanel.ShowForOther(CurrentPlayer);
             }
 
-            bool newInputBlocked = UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
-                || (popupPanel != null && popupPanel.IsShowing)
-                || (armyViewerModal != null && armyViewerModal.IsShowing)
-                || (baseViewerModal != null && baseViewerModal.IsShowing)
-                || (researchProductionModal != null && researchProductionModal.IsShowing)
-                || combatShowing
-                || (eventChoicePopup != null && eventChoicePopup.IsShowing)
-                || (eventRewardPopup != null && eventRewardPopup.IsShowing);
+            bool newInputBlocked = IsMapModalShowing || (popupPanel != null && popupPanel.IsShowing);
             bool newCardDraggingBlocked = UIFocusUtility.HasOverlay || (gameMenu != null && gameMenu.IsShowing)
                 || (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
@@ -541,6 +548,9 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
+            var radio = GetComponent<ArmyRadioChatterController>() ?? gameObject.AddComponent<ArmyRadioChatterController>();
+            radio.Configure(this, cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main,
+                cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null);
             _aiObserverMatch = GameSession.Players != null
                 && GameSession.Players.Count > 0
                 && GameSession.FindHumanPlayer() == null;

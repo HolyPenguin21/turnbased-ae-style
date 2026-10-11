@@ -178,6 +178,15 @@ namespace Game.Map
         // a projected distance. Called only on a click and only for markers on the clicked hex.
         public bool ContainsScreenPoint(Camera camera, Vector2 screenPoint, float paddingPixels = 3f)
         {
+            if (!TryGetScreenAnchor(camera, out Vector2 centre, out float radius)) return false;
+            return Vector2.Distance(screenPoint, centre) <= radius + Mathf.Max(0f, paddingPixels);
+        }
+
+        // Shared projected marker geometry for hit-testing and attached map UI. Uses the
+        // actual rendered centre and camera zoom instead of assuming the army root's pivot.
+        public bool TryGetScreenAnchor(Camera camera, out Vector2 centre, out float radiusPixels)
+        {
+            centre = Vector2.zero; radiusPixels = 0f;
             if (camera == null || !IsVisible)
                 return false;
 
@@ -197,10 +206,9 @@ namespace Game.Map
                 * Mathf.Abs(shape.transform.lossyScale.x) * Mathf.Clamp01(clickRadiusFactor);
             Vector3 edgeScreen = camera.WorldToScreenPoint(worldCentre + camera.transform.right * worldRadius);
 
-            Vector2 centre2D = new Vector2(centreScreen.x, centreScreen.y);
-            float radiusPixels = Vector2.Distance(centre2D, new Vector2(edgeScreen.x, edgeScreen.y));
-            float padding = Mathf.Max(0f, paddingPixels);
-            return Vector2.Distance(screenPoint, centre2D) <= radiusPixels + padding;
+            centre = new Vector2(centreScreen.x, centreScreen.y);
+            radiusPixels = Vector2.Distance(centre, new Vector2(edgeScreen.x, edgeScreen.y));
+            return true;
         }
 
         // The round circle is the marker's clickable shape; fall back to the icon renderer for
