@@ -91,7 +91,7 @@ namespace Game.Combat
             {
                 int candidateAttack = candidateAttackOverride ?? candidate.Attack;
                 score = -1000f + candidateAttack + candidate.Initiative;
-                reason = AiThoughtCategory.UselessTargetSkip;
+                reason = AiThoughtCategory.LowDamageAttack;
                 return false;
             }
 

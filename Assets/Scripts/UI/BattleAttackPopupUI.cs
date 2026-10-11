@@ -815,11 +815,17 @@ namespace Game.UI
         // side still "feels" about its own roll, it just can't act on it with Fate).
         private void FireRollThought()
         {
-            int damage = _challengeSession != null ? _challengeSession.RawDamage : 0;
+            if (_challengeSession == null || _onAiThought == null)
+                return;
+            // Equal successes kill the hunted hero, so a tie favors the hunter in Capture/Kill.
+            // These are provisional dice reactions; Fate and ability modifiers can change the result.
+            bool attackerFavored = _challengeSession.Mode == BattleChallengeMode.CaptureKill
+                ? _challengeSession.ResolveCaptureKillOutcome() != CaptureKillOutcome.Escaped
+                : _challengeSession.RawDamage > 0;
             if (IsAiSide(_attacker))
-                _onAiThought?.Invoke(_attacker, damage > 0 ? AiThoughtCategory.GoodRoll : AiThoughtCategory.BadRoll, _defender?.Name);
+                _onAiThought.Invoke(_attacker, attackerFavored ? AiThoughtCategory.GoodRoll : AiThoughtCategory.BadRoll, _defender?.Name);
             if (IsAiSide(_defender))
-                _onAiThought?.Invoke(_defender, damage > 0 ? AiThoughtCategory.BadRoll : AiThoughtCategory.GoodRoll, _attacker?.Name);
+                _onAiThought.Invoke(_defender, attackerFavored ? AiThoughtCategory.BadRoll : AiThoughtCategory.GoodRoll, _attacker?.Name);
         }
 
         private bool IsAiSide(UnitData unit) => unit?.Owner != null && (_automateHumanSides || !unit.Owner.IsHuman);
@@ -966,8 +972,11 @@ namespace Game.UI
         private IEnumerator RunAiTurn(bool isDefenderTurn)
         {
             UnitData hero = isDefenderTurn ? _defenderHero : _attackerHero;
-            bool hadInitialMiss = _challengeSession != null && _challengeSession.HasMiss(isDefenderTurn);
+            bool couldSpend = hero != null && _challengeSession != null
+                && _challengeSession.CanSpend(isDefenderTurn);
             bool spentThisTurn = false;
+            UnitData acting = isDefenderTurn ? _defender : _attacker;
+            UnitData opposing = isDefenderTurn ? _attacker : _defender;
 
             while (true)
             {
@@ -996,6 +1005,9 @@ namespace Game.UI
                     break;
                 SyncChallengePresentationState();
                 int remainingAfterSpend = isDefenderTurn ? _defenderFateRemaining : _attackerFateRemaining;
+                // Announce spending when it actually happens, once per turn, before its animation.
+                if (!spentThisTurn)
+                    _onAiThought?.Invoke(acting, AiThoughtCategory.FateSpendWorthIt, opposing?.Name);
                 spentThisTurn = true;
                 BattleDebugLog.Write($"[FateDuelDiag] {(isDefenderTurn ? "defender" : "attacker")} {hero.Name} spent Fate " +
                     $"(remaining={remainingAfterSpend}), rerolled slot {rerolledIndex} -> " +
@@ -1033,12 +1045,8 @@ namespace Game.UI
                 // deciding whether another reroll is still worth it.
             }
 
-            if (hadInitialMiss)
-            {
-                UnitData acting = isDefenderTurn ? _defender : _attacker;
-                UnitData opposing = isDefenderTurn ? _attacker : _defender;
-                _onAiThought?.Invoke(acting, spentThisTurn ? AiThoughtCategory.FateSpendWorthIt : AiThoughtCategory.FateSpendSkip, opposing?.Name);
-            }
+            if (couldSpend && !spentThisTurn)
+                _onAiThought?.Invoke(acting, AiThoughtCategory.FateSpendSkip, opposing?.Name);
             _turnSpent = spentThisTurn;
         }
 

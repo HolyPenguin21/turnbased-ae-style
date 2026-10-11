@@ -1,23 +1,25 @@
 using System.Collections.Generic;
-using UnityEngine;
 
 namespace Game.Combat
 {
     // The actual AiЕhoughts_Text content — English, personal, a little dry/funny where it fits,
-    // per the tone samples agreed with the user. One random line per category per trigger (see
-    // BattleAiThoughtsUI for how these get displayed — "freshest wins", never a stale backlog).
+    // One random line per category per trigger. BattleAiThoughtsUI finishes the visible line
+    // and retains only the latest pending event. Dice reactions precede the final result.
     public static class BattleAiPhraseBank
     {
+        // Cosmetic choices must not consume ChallengeResolver's UnityEngine.Random stream.
+        private static readonly System.Random PhraseRandom = new System.Random();
+
         private static readonly Dictionary<AiThoughtCategory, string[]> Phrases = new Dictionary<AiThoughtCategory, string[]>
         {
             [AiThoughtCategory.FightDecision] = new[]
             {
-                "The odds are in our favor. Let's finish this quickly.",
-                "We can win this. Hold the line.",
+                "We're staying in this fight. Hold the line.",
+                "Keep fighting. Stay sharp.",
                 "Not our first fight, won't be our last. Advance.",
-                "I like our chances here. Stay sharp.",
-                "This one's winnable. No mistakes now.",
-                "We came prepared for exactly this. Engage.",
+                "We're committed now. Stay sharp.",
+                "Still in this fight. No mistakes now.",
+                "We're fighting this out. Engage.",
             },
             [AiThoughtCategory.RetreatDecision] = new[]
             {
@@ -39,47 +41,47 @@ namespace Game.Combat
             },
             [AiThoughtCategory.FinishingBlow] = new[]
             {
-                "One more hit and that's the end of it.",
-                "It's barely standing. Finish it.",
-                "Almost done here — don't let it slip away.",
-                "This one's mine. Watch.",
-                "Weak, wounded, and about to be gone.",
-                "Close the deal. No mercy.",
+                "A chance to finish this one. Taking it.",
+                "Going for the kill.",
+                "This hit could end it. Stay focused.",
+                "Trying to finish this one off.",
+                "There's an opening. Make it count.",
+                "A finishing blow is within reach.",
             },
             [AiThoughtCategory.PriorityTarget] = new[]
             {
-                "That one hits too hard to ignore. Dealing with it first.",
-                "Neutralize the real threat before it does any more damage.",
-                "Everyone else can wait — this one's dangerous.",
-                "If I don't stop it now, it'll cost us later.",
-                "The biggest hammer on the field just became my problem.",
-                "Focus fire. That thing is the actual danger here.",
+                "That one gives us an opening. Taking it.",
+                "Focusing on this target.",
+                "Everyone else can wait — this one comes first.",
+                "This looks like our best shot.",
+                "Picking the target we can do most with.",
+                "Focus fire. Make this attack count.",
             },
-            [AiThoughtCategory.UselessTargetSkip] = new[]
+            [AiThoughtCategory.LowDamageAttack] = new[]
             {
-                "No point hitting that — the armor laughs it off.",
-                "Wasting an attack there gets us nowhere. Picking a real target.",
-                "That one's not worth the swing.",
-                "Can't crack that shell. Moving on.",
-                "Bad trade. Skipping it.",
-                "Not today — that target's a dead end.",
+                "Slim odds, but taking the shot.",
+                "A difficult target. Trying anyway.",
+                "Not much of an opening. Let's try it.",
+                "This will be hard to hurt. Taking a chance.",
+                "A long shot is still a shot.",
+                "No easy hit here. Trying our luck.",
             },
             [AiThoughtCategory.AdvanceMove] = new[]
             {
-                "Closing the distance.",
-                "Getting into position to actually do something.",
-                "No use standing around. Moving up.",
-                "Advancing — can't fight from back here.",
-                "Time to close the gap.",
-                "Pushing forward.",
+                "Changing position.",
+                "Getting into a better position.",
+                "No use standing around. Moving.",
+                "Looking for a better angle.",
+                "Time to reposition.",
+                "On the move.",
             },
             [AiThoughtCategory.CautiousWait] = new[]
             {
-                "Not yet. Let them come to us.",
+                "Not moving this turn.",
                 "Holding position — no reason to walk into that.",
-                "Patience. The opening will come.",
+                "No useful move right now.",
                 "Staying put for now.",
-                "That's a bad spot to move into. Waiting.",
+                "Holding here for now.",
                 "No rush. Let's see what they do first.",
             },
             [AiThoughtCategory.ForcedAdvance] = new[]
@@ -102,8 +104,8 @@ namespace Game.Combat
             },
             [AiThoughtCategory.FateSpendSkip] = new[]
             {
-                "Not worth spending Fate on this.",
-                "Save it. This roll isn't important enough.",
+                "Keeping Fate for another roll.",
+                "Accepting these dice. Saving Fate.",
                 "Letting this one go — Fate's better spent elsewhere.",
                 "Not every fight needs a reroll.",
                 "Holding onto our luck for now.",
@@ -111,39 +113,39 @@ namespace Game.Combat
             },
             [AiThoughtCategory.DamageTakenMinor] = new[]
             {
-                "That stung, but we're fine.",
-                "Took a hit. Nothing serious.",
-                "Barely felt that.",
-                "We'll shake that off.",
-                "Scratched, not stopped.",
-                "That one left a mark, not a wound.",
+                "Took a hit. Still fighting.",
+                "We're damaged, but still standing.",
+                "Still in this fight after that hit.",
+                "That hurt. Keep going.",
+                "Hit, but not stopped.",
+                "We're still holding after that blow.",
             },
             [AiThoughtCategory.DamageTakenMajor] = new[]
             {
-                "...That one hurt. A lot.",
+                "...Barely standing now.",
                 "We're bleeding badly here.",
                 "This is getting dangerous fast.",
-                "That's a serious hit to absorb.",
+                "Not much health left now.",
                 "We need this fight to turn around, quickly.",
-                "That one nearly finished us.",
+                "We're close to falling.",
             },
             [AiThoughtCategory.GoodRoll] = new[]
             {
-                "Clean hit. Didn't even need the armor check.",
-                "That's exactly how it's supposed to go.",
-                "Perfect timing on that roll.",
-                "Couldn't have asked for better dice.",
-                "That landed hard.",
-                "Beautiful. Just beautiful.",
+                "That's a promising roll.",
+                "The dice favor us so far.",
+                "Good start. Let's see how it holds.",
+                "I'll take those dice.",
+                "That roll looks good.",
+                "Luck is on our side for now.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "Of course it missed. Of course.",
+                "Of course the dice did that. Of course.",
                 "Not our day for dice, apparently.",
-                "That should've landed. Should have.",
+                "That roll could have been better.",
                 "Rough luck there.",
-                "We'll get the next one.",
-                "That one just wasn't meant to be.",
+                "The dice aren't helping yet.",
+                "Not the start we wanted.",
             },
             [AiThoughtCategory.UnitDied] = new[]
             {
@@ -165,7 +167,7 @@ namespace Game.Combat
             },
             [AiThoughtCategory.BattleWon] = new[]
             {
-                "It's over. We held.",
+                "It's over. We won.",
                 "Victory. Hard fought, but ours.",
                 "They're finished. We're still standing.",
                 "That's a win we'll remember.",
@@ -174,9 +176,9 @@ namespace Game.Combat
             },
             [AiThoughtCategory.BattleLost] = new[]
             {
-                "We couldn't hold. Regroup.",
+                "We lost this fight.",
                 "This one's lost. We'll come back stronger.",
-                "Not our day. Withdraw and recover.",
+                "Not our day. The battle is lost.",
                 "Defeat, but not the end.",
                 "We'll learn from this one.",
                 "The field is theirs. For now.",
@@ -205,8 +207,8 @@ namespace Game.Combat
             [AiThoughtCategory.FightDecision] = new[]
             {
                 "The army presses the attack.",
-                "Odds favor engagement. Proceeding.",
-                "Standing ground — the numbers work here.",
+                "Engagement continues.",
+                "Standing ground. Continuing the fight.",
                 "Committing to the fight.",
             },
             [AiThoughtCategory.RetreatDecision] = new[]
@@ -225,37 +227,37 @@ namespace Game.Combat
             },
             [AiThoughtCategory.FinishingBlow] = new[]
             {
-                "Target critically weakened. Pressing the attack.",
-                "One more strike ends it.",
-                "Closing out the kill.",
-                "The target won't last another hit.",
+                "A finishing blow is possible.",
+                "Attacking with a chance to eliminate the target.",
+                "Attempting to finish the target.",
+                "A lethal hit is within reach.",
             },
             [AiThoughtCategory.PriorityTarget] = new[]
             {
-                "Redirecting fire to the greater threat.",
-                "Neutralizing the dangerous unit first.",
-                "Focus shifts to the bigger risk.",
-                "The strongest threat is targeted.",
+                "Focusing fire on the selected target.",
+                "Taking the best available attack.",
+                "Engaging the preferred target.",
+                "Target selected. Opening fire.",
             },
-            [AiThoughtCategory.UselessTargetSkip] = new[]
+            [AiThoughtCategory.LowDamageAttack] = new[]
             {
-                "Target's defenses are too strong. Reassigning.",
-                "No effective attack available. Switching targets.",
-                "That target can't be meaningfully damaged.",
-                "Redirecting — this one's not worth it.",
+                "Low damage expected. Attempting the attack.",
+                "No easy target available. Taking a chance.",
+                "A difficult target is engaged.",
+                "Attempting a low-probability hit.",
             },
             [AiThoughtCategory.AdvanceMove] = new[]
             {
-                "The unit advances.",
-                "Closing the distance to the enemy.",
-                "Moving into engagement range.",
-                "Advancing on the enemy line.",
+                "The unit changes position.",
+                "Repositioning on the battlefield.",
+                "Moving to a new position.",
+                "The unit is on the move.",
             },
             [AiThoughtCategory.CautiousWait] = new[]
             {
                 "Holding position.",
-                "The unit waits for a better opening.",
-                "No advance — the risk isn't worth it yet.",
+                "The unit remains in place.",
+                "No move this turn.",
                 "Standing by.",
             },
             [AiThoughtCategory.ForcedAdvance] = new[]
@@ -267,31 +269,31 @@ namespace Game.Combat
             },
             [AiThoughtCategory.DamageTakenMinor] = new[]
             {
-                "Minor damage sustained.",
-                "The unit takes a light hit.",
-                "Damage recorded — negligible.",
-                "A glancing blow. No real harm.",
+                "Damage sustained. Still operational.",
+                "The unit survives the hit.",
+                "Damaged, but still combat capable.",
+                "The target remains in the fight.",
             },
             [AiThoughtCategory.DamageTakenMajor] = new[]
             {
-                "Heavy damage sustained.",
+                "Health is critically low.",
                 "The unit is critically damaged.",
-                "Serious losses taken from that strike.",
-                "That hit did real damage.",
+                "The unit is close to destruction.",
+                "The target barely remains standing.",
             },
             [AiThoughtCategory.GoodRoll] = new[]
             {
                 "Favorable outcome on that roll.",
-                "The attack connects cleanly.",
+                "The initial dice favor this side.",
                 "A strong result there.",
                 "That roll went well.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "The attack fails to connect.",
+                "The initial dice favor the opponent.",
                 "Unfavorable roll.",
                 "That attempt came up short.",
-                "No effect from that roll.",
+                "The dice give no advantage yet.",
             },
             [AiThoughtCategory.UnitDied] = new[]
             {
@@ -317,40 +319,36 @@ namespace Game.Combat
             [AiThoughtCategory.BattleLost] = new[]
             {
                 "The battle is lost.",
-                "Forces defeated. Withdrawing survivors.",
+                "Forces defeated.",
                 "This engagement is over.",
-                "Defeat. Regrouping elsewhere.",
+                "Defeat confirmed.",
             },
         };
 
-        // New, additive-only phrase set — a specific unit's name dropped into a `{0}` slot, for
-        // whichever categories naturally have one available at the call site (a target being
-        // attacked, a unit that just died/killed, who dealt/took damage, who a roll or Fate
-        // spend was against). None of the phrases above were touched or replaced; these are
-        // picked from a combined pool alongside them (see GetRandomPhrase) only when a caller
-        // actually has a name to give.
+        // Named variants are shared by hero-led and hero-less sides, so they use no personal
+        // narrator. They describe the same event as the corresponding plain pool.
         private static readonly Dictionary<AiThoughtCategory, string[]> NamedPhrases = new Dictionary<AiThoughtCategory, string[]>
         {
             [AiThoughtCategory.FinishingBlow] = new[]
             {
-                "{0} is barely standing. Finishing it.",
-                "One more hit and {0} is done.",
-                "{0} won't survive this.",
-                "This is the end for {0}.",
+                "A chance to finish {0}. Taking it.",
+                "One more hit could finish {0}.",
+                "Going for a lethal hit on {0}.",
+                "Trying to end the fight for {0}.",
             },
             [AiThoughtCategory.PriorityTarget] = new[]
             {
-                "{0} hits too hard to ignore. Focusing it.",
-                "{0} is the real threat here. Dealing with it.",
+                "Focusing on {0}.",
+                "{0} offers the best opening. Taking it.",
                 "Everyone else can wait — {0} goes first.",
-                "{0} just became my problem.",
+                "{0} is the preferred target.",
             },
-            [AiThoughtCategory.UselessTargetSkip] = new[]
+            [AiThoughtCategory.LowDamageAttack] = new[]
             {
-                "No point hitting {0} — the armor laughs it off.",
-                "{0}'s not worth the swing.",
-                "Can't crack {0}'s shell. Moving on.",
-                "Skipping {0}. Not today.",
+                "Slim odds against {0}. Trying anyway.",
+                "Taking a long shot at {0}.",
+                "Low damage expected against {0}.",
+                "Trying to hurt {0}, despite the odds.",
             },
             [AiThoughtCategory.EnemyKilled] = new[]
             {
@@ -361,51 +359,51 @@ namespace Game.Combat
             },
             [AiThoughtCategory.UnitDied] = new[]
             {
-                "We lost {0}. Make it count.",
+                "{0} has fallen. Make it count.",
                 "{0} is down. Keep fighting.",
                 "{0} won't be forgotten.",
-                "That's a price we didn't want to pay — goodbye, {0}.",
+                "A costly loss — goodbye, {0}.",
             },
             [AiThoughtCategory.DamageTakenMinor] = new[]
             {
-                "{0} barely touched us.",
-                "{0}'s hit stung, but we're fine.",
-                "That's the best {0} can do?",
-                "{0} left a mark, not a wound.",
+                "{0} dealt a hit. Still holding.",
+                "Taking damage from {0}, but still in the fight.",
+                "{0}'s hit was survived.",
+                "Damaged by {0}. Still standing.",
             },
             [AiThoughtCategory.DamageTakenMajor] = new[]
             {
-                "{0} hit us hard. Really hard.",
-                "{0} is doing real damage here.",
-                "We need an answer for {0}, fast.",
-                "{0} nearly finished us with that one.",
+                "Critical condition after {0}'s hit.",
+                "Dangerously low on health after {0}'s attack.",
+                "{0} is keeping the pressure on.",
+                "Barely standing after {0}'s hit.",
             },
             [AiThoughtCategory.GoodRoll] = new[]
             {
-                "Clean hit on {0}.",
-                "{0} didn't see that one coming.",
-                "That landed hard on {0}.",
-                "Perfect timing against {0}.",
+                "Promising dice against {0}.",
+                "A favorable roll against {0} so far.",
+                "The dice offer an advantage against {0}.",
+                "A good start against {0}.",
             },
             [AiThoughtCategory.BadRoll] = new[]
             {
-                "Should've landed on {0}. Should have.",
-                "{0} gets lucky this time.",
-                "Not our day against {0}, apparently.",
-                "{0} shrugs that one off.",
+                "Unfavorable dice against {0}.",
+                "The dice favor {0} for now.",
+                "A rough start against {0}.",
+                "The roll gives {0} an advantage so far.",
             },
             [AiThoughtCategory.FateSpendWorthIt] = new[]
             {
                 "Worth the risk against {0} — rerolling.",
-                "Burning Fate to deal with {0}. It counts.",
+                "Spending Fate against {0}.",
                 "{0} isn't getting away that easy. Rerolling.",
                 "This matters — spending Fate on {0}.",
             },
             [AiThoughtCategory.FateSpendSkip] = new[]
             {
-                "Not worth spending Fate on {0}.",
-                "{0} isn't important enough for a reroll.",
-                "Saving our luck — {0} can wait.",
+                "Keeping Fate after this roll against {0}.",
+                "Accepting these dice against {0}.",
+                "Saving Fate against {0}.",
                 "Not the moment to burn Fate on {0}.",
             },
         };
@@ -434,9 +432,8 @@ namespace Game.Combat
             if (total == 0)
                 return string.Empty;
 
-            int index = Random.Range(0, total);
-            string phrase = index < plainCount ? plain[index] : named[index - plainCount];
-            return phrase.Contains("{0}") ? string.Format(phrase, unitName) : phrase;
+            int index = PhraseRandom.Next(total);
+            return index < plainCount ? plain[index] : string.Format(named[index - plainCount], unitName);
         }
     }
 }

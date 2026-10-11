@@ -9,7 +9,7 @@ namespace Game.Combat
         CitadelDefense,
         FinishingBlow,
         PriorityTarget,
-        UselessTargetSkip,
+        LowDamageAttack,
         AdvanceMove,
         CautiousWait,
         ForcedAdvance,
