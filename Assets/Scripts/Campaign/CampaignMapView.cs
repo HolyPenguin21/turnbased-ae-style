@@ -16,13 +16,19 @@ namespace Game.Campaign
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
-        // Rounded rectangular projection keeps the complete disk visible. Saves stay in map space.
-        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * 1.35) / Math.Tanh(1.35)) * .98f, (float)(Math.Tanh(p.y * 1.10) / Math.Tanh(1.10)) * .98f);
+        // A broad elliptical limb, with only slight expansion of the central regions.
+        // Saves and shared region boundaries stay in map space.
+        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * .55) / Math.Tanh(.55)) * .995f, (float)(Math.Tanh(p.y * .35) / Math.Tanh(.35)) * .995f);
         public static Vector2 ToPixel(Rect rect, Vector2 projected) => rect.center + new Vector2(projected.x * rect.width * .50f, projected.y * rect.height * .50f);
         public static Vector2 FromPixel(Rect rect, Vector2 pixel) => new Vector2((pixel.x - rect.center.x) / (rect.width * .50f), (pixel.y - rect.center.y) / (rect.height * .50f));
-        // Terrain follows the displayed surface, avoiding enlarged central features.
-        public static Vector2 SurfaceUV(Vector2 point) => ProjectedSurfaceUV(Project(point));
-        public static Vector2 ProjectedSurfaceUV(Vector2 projected) => projected * (.48f / .98f) + new Vector2(.5f, .5f);
+        // Cover the viewport by cropping, preserving the texture's pixel aspect ratio.
+        public static Vector2 SurfaceUV(Vector2 point, float viewportAspect = 1, float textureAspect = 1) => ProjectedSurfaceUV(Project(point), viewportAspect, textureAspect);
+        public static Vector2 ProjectedSurfaceUV(Vector2 projected, float viewportAspect = 1, float textureAspect = 1) => new Vector2(.5f + projected.x * .48f * Math.Min(1, viewportAspect / textureAspect), .5f + projected.y * .48f * Math.Min(1, textureAspect / viewportAspect));
+        public Vector2 SurfaceUVAt(Vector2 point)
+        {
+            var rect = ((RectTransform)transform).rect;
+            return SurfaceUV(point, rect.width / Math.Max(1, rect.height), SurfaceTexture == null ? 1 : (float)SurfaceTexture.width / SurfaceTexture.height);
+        }
         public static string BackgroundResourcePath(int backgroundId)
         {
             if (backgroundId < 0 || backgroundId > CampaignMapGenerator.BackgroundCount) throw new ArgumentOutOfRangeException(nameof(backgroundId));
@@ -60,14 +66,11 @@ namespace Game.Campaign
             var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
             arrow = ar.AddComponent<CampaignArrowGraphic>(); arrow.raycastTarget = false;
             var labelRect = Game.UI.CollectionUIElements.Rect(transform, "SelectedRegionName");
-            var nameplate = labelRect.gameObject.AddComponent<Image>();
-            nameplate.sprite = Resources.Load<Sprite>("Campaign/Parchment");
-            nameplate.color = new Color(.98f, .92f, .78f, .92f); nameplate.raycastTarget = false;
-            var text = Game.UI.CollectionUIElements.Label(labelRect, "", 8, 0, 214, 36, 22);
+            var text = Game.UI.CollectionUIElements.Label(labelRect, "", 0, 0, 190, 28, 18);
             text.alignment = TMPro.TextAlignmentOptions.Center;
             text.color = new Color(.13f, .105f, .075f);
             text.fontStyle = TMPro.FontStyles.Bold;
-            text.enableAutoSizing = true; text.fontSizeMin = 13; text.fontSizeMax = 22;
+            text.enableAutoSizing = true; text.fontSizeMin = 12; text.fontSizeMax = 18;
             text.textWrappingMode = TMPro.TextWrappingModes.NoWrap; text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
             selectedLabelRoot = labelRect; selectedLabel = text;
         }
@@ -93,18 +96,18 @@ namespace Game.Campaign
                 var position = ToPixel(rect.rect, Project(CampaignRegionGraphic.VisibleCenter(labelRegion)));
                 selectedLabelRoot.anchorMin = selectedLabelRoot.anchorMax = new Vector2(.5f, .5f);
                 selectedLabelRoot.pivot = new Vector2(.5f, .5f);
-                selectedLabelRoot.sizeDelta = new Vector2(230, 36);
-                selectedLabelRoot.anchoredPosition = position - rect.rect.center + new Vector2(0, -22);
+                selectedLabelRoot.sizeDelta = new Vector2(190, 28);
+                selectedLabelRoot.anchoredPosition = position - rect.rect.center + new Vector2(0, -24);
                 selectedLabel.text = labelRegion.Name.ToUpperInvariant();
             }
         }
-        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.53f, .59f, .64f)
-            : faction == Game.Players.Faction.Ashen ? new Color(.73f, .55f, .42f) : new Color(.57f, .58f, .43f);
+        public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.48f, .55f, .61f)
+            : faction == Game.Players.Faction.Ashen ? new Color(.68f, .49f, .38f) : new Color(.46f, .49f, .37f);
         private void OnRectTransformDimensionsChange()
         {
             if (surfaceMaterial == null) return;
             var rect = ((RectTransform)transform).rect;
-            surfaceMaterial.SetVector("_SurfaceRect", new Vector4(rect.xMin, rect.yMin, rect.xMax, rect.yMax));
+            surfaceMaterial.SetVector("_SurfaceSize", new Vector4(rect.width, rect.height, 0, 0));
         }
         private void OnDestroy() { if (surfaceMaterial != null) Destroy(surfaceMaterial); }
     }

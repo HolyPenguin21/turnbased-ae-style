@@ -8,6 +8,49 @@ using UnityEngine.UI;
 
 public sealed class CampaignVisualTests
 {
+    [Test]
+    public void ShaderKeepsBothSidesAfterCanvasBatchTranslation()
+    {
+        if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
+            Assert.Ignore("A graphics device is required for the batched UI shader regression.");
+        var material = new Material(Resources.Load<Shader>("Campaign/CampaignSurface"));
+        var mesh = new Mesh();
+        var target = RenderTexture.GetTemporary(512, 256, 0, RenderTextureFormat.ARGB32);
+        var readback = new Texture2D(512, 256, TextureFormat.RGBA32, false);
+        var previous = RenderTexture.active;
+        try
+        {
+            // The actual 1360x740 campaign viewport after translation into the 1920x1080 Canvas.
+            mesh.vertices = new[] { new Vector3(-914, -332), new Vector3(446, -332), new Vector3(446, 408), new Vector3(-914, 408) };
+            mesh.colors = new[] { Color.white, Color.white, Color.white, Color.white };
+            mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.one, Vector2.up };
+            mesh.SetUVs(1, new System.Collections.Generic.List<Vector4> { new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0) });
+            mesh.SetUVs(2, new System.Collections.Generic.List<Vector4> { new Vector4(0, 0, 0, 0), new Vector4(0, 0, 1, 0), new Vector4(0, 0, 1, 1), new Vector4(0, 0, 0, 1) });
+            mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+            material.SetVector("_SurfaceSize", new Vector4(1360, 740, 0, 0));
+            material.SetTexture("_MainTex", Texture2D.whiteTexture);
+            material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
+            RenderTexture.active = target;
+            GL.Clear(true, true, Color.clear);
+            GL.PushMatrix();
+            try
+            {
+                GL.LoadPixelMatrix(-960, 960, -540, 540);
+                Assert.True(material.SetPass(0));
+                Graphics.DrawMeshNow(mesh, Matrix4x4.identity);
+            }
+            finally { GL.PopMatrix(); }
+            readback.ReadPixels(new Rect(0, 0, 512, 256), 0, 0); readback.Apply();
+            // x=-800 was incorrectly below the old local xMin=-680, despite being inside the map.
+            Assert.That(readback.GetPixel(43, 128).a, Is.GreaterThan(.95f), "Left side clipped by mixed coordinate spaces");
+            Assert.That(readback.GetPixel(336, 128).a, Is.GreaterThan(.95f), "Right side must stay visible too");
+        }
+        finally
+        {
+            RenderTexture.active = previous; RenderTexture.ReleaseTemporary(target);
+            Object.DestroyImmediate(readback); Object.DestroyImmediate(mesh); Object.DestroyImmediate(material);
+        }
+    }
     [TestCase(1920, 1080)]
     [TestCase(1280, 720)]
     [TestCase(2560, 1440)]
@@ -19,6 +62,23 @@ public sealed class CampaignVisualTests
             var projected = CampaignMapView.Project(point);
             var result = CampaignMapView.FromPixel(rect, CampaignMapView.ToPixel(rect, projected));
             Assert.That((result - projected).sqrMagnitude, Is.LessThan(1e-10f));
+        }
+    }
+    [TestCase(1360f, 740f, 1254f, 1254f)]
+    [TestCase(740f, 1360f, 1254f, 1254f)]
+    [TestCase(1360f, 740f, 1920f, 1080f)]
+    public void TerrainPixelsHaveTheSameScaleOnBothAxes(float width, float height, float textureWidth, float textureHeight)
+    {
+        var rect = new Rect(-width / 2, -height / 2, width, height);
+        float aspect = width / height, textureAspect = textureWidth / textureHeight;
+        var origin = CampaignMapView.ProjectedSurfaceUV(Vector2.zero, aspect, textureAspect);
+        var dx = CampaignMapView.ProjectedSurfaceUV(CampaignMapView.FromPixel(rect, new Vector2(10, 0)), aspect, textureAspect) - origin;
+        var dy = CampaignMapView.ProjectedSurfaceUV(CampaignMapView.FromPixel(rect, new Vector2(0, 10)), aspect, textureAspect) - origin;
+        Assert.That(dx.x * textureWidth, Is.EqualTo(dy.y * textureHeight).Within(.0001f));
+        foreach (var point in new[] { new Vector2(-1, -1), new Vector2(1, 1) })
+        {
+            var uv = CampaignMapView.ProjectedSurfaceUV(point, aspect, textureAspect);
+            Assert.That(uv.x, Is.InRange(0f, 1f)); Assert.That(uv.y, Is.InRange(0f, 1f));
         }
     }
     [Test]
@@ -114,9 +174,17 @@ public sealed class CampaignVisualTests
             {
                 if (surfaceData[i].x != 1) continue;
                 // Texture coordinates must stay linear in screen space through subdivision.
-                var expected = new Vector2(.5f + positions[i].x / rect.rect.width * (.96f / .98f),
-                    .5f + positions[i].y / rect.rect.height * (.96f / .98f));
+                var expected = new Vector2(.5f + positions[i].x / rect.rect.width * .96f,
+                    .5f + positions[i].y / rect.rect.width * .96f);
                 Assert.That((textureUVs[i] - expected).sqrMagnitude, Is.LessThan(1e-10f));
+            }
+            // These coordinates, unlike POSITION, survive translation/scaling during UI batching.
+            // The old mesh left zw at zero and clipped a large strip off the left of the map.
+            var effects = new System.Collections.Generic.List<Vector4>(); mesh.GetUVs(2, effects);
+            for (int i = 0; i < positions.Length; i++)
+            {
+                Assert.That(effects[i].z, Is.EqualTo((positions[i].x - rect.rect.xMin) / rect.rect.width).Within(1e-6));
+                Assert.That(effects[i].w, Is.EqualTo((positions[i].y - rect.rect.yMin) / rect.rect.height).Within(1e-6));
             }
             Assert.True(mesh.uv3.Any(v => v.x > .9f));
             Assert.True(mesh.uv3.Any(v => v.x > .01f && v.x < .99f));
