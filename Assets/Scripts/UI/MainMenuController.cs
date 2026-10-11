@@ -100,7 +100,7 @@ namespace Game.UI
         {
             var window = CampaignSetupWindow("CampaignSetup", "NEW PLANETARY CAMPAIGN");
             CampaignSetupLabel(window, "Choose your faction. A new planet has "
-                + new Game.Campaign.CampaignMapGenerator().RegionCount + " regions.", 35, 108, 880, 70, 24);
+                + new Game.Campaign.CampaignGenerationSettings().RegionCount + " regions.", 35, 108, 880, 70, 24);
             int index = 0;
             Button first = null;
             foreach (var faction in Game.Cards.DeckRules.PlayableFactions)
