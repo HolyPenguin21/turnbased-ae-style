@@ -77,16 +77,16 @@ namespace Game.UI
         public int DrawApCost => drawApCost;
 
         [Header("Layout")]
-        [SerializeField] private Vector2 cardSize = new Vector2(96f, 140f);
+        [SerializeField] private Vector2 cardSize = new Vector2(106f, 155f);
         // Purely cosmetic — the slot background rects (see CreateSlotBackgrounds) can be sized
         // independently of the actual cards/slot spacing (still driven by cardSize below), so
         // this can be tuned without touching any layout math.
-        [SerializeField] private Vector2 slotVisualSize = new Vector2(96f, 140f);
+        [SerializeField] private Vector2 slotVisualSize = new Vector2(106f, 155f);
         [Range(0f, 0.3f)]
         [SerializeField] private float overlapFraction = 0.08f;
         // Extra gap added on top of the overlap-derived step, so slots aren't flush/overlapping
-        // even at the full MaxVisible=6 width.
-        [SerializeField] private float cardSpacing = 2f;
+        // even at the full MaxVisible=7 width.
+        private const float cardSpacing = 4f;
         [SerializeField] private float restingScale = 0.9f;
         [SerializeField] private float hoverScale = 1.2f;
         [SerializeField] private float hoverLift = 20f;
@@ -98,14 +98,14 @@ namespace Game.UI
         // Not exposed as a setting — purely a rendering-window size, not a hand rule (see
         // maxHandSize below for the actual gameplay cap), so it stays a fixed constant rather
         // than something that needs tuning per game.
-        private const int MaxVisible = 6;
+        private const int MaxVisible = 7;
         // How far (in HandContainer-local pixels) a dragged card can be lifted above/below the
         // hand row and still trigger live reordering — beyond this, it reads as "being taken
         // somewhere else" (e.g. toward the map to play it) and the rest of the hand stops
         // reacting to it. See PreviewDrag.
         [SerializeField] private float dragBandBuffer = 50f;
 
-        [SerializeField] private int startingHandSize = 6;
+        private const int startingHandSize = 7;
         // Hard cap on cards the player can hold at once — enforced in OnDrawClicked (the only
         // way a card gets added to hand after the starting deal).
         [SerializeField] private int maxHandSize = 10;
