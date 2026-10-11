@@ -306,6 +306,73 @@ namespace Game.EditorTools
             Assert.That(collectionOrder.Select(c => c.authoredKey), Is.EqualTo(new[] { "hero", "cheap", "expensive" }));
             Assert.That(deckOrder.Select(e => e.cardKey), Is.EqualTo(collectionOrder.Select(c => c.authoredKey)));
         }
+        [Test] public void CollectionDropdownUsesOnePopupSurfaceAndPreservesSelection()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/PlayerRow.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var source = prefab.GetComponentInChildren<TMPro.TMP_Dropdown>(true);
+            var go = UnityEngine.Object.Instantiate(source.gameObject);
+            try
+            {
+                var dropdown = go.GetComponent<TMPro.TMP_Dropdown>();
+                dropdown.ClearOptions(); dropdown.AddOptions(new List<string> { "All Cards", "Owned Cards", "Not Owned" });
+                dropdown.onValueChanged = new TMPro.TMP_Dropdown.DropdownEvent();
+                int changes = 0; dropdown.onValueChanged.AddListener(_ => changes++);
+                dropdown.SetValueWithoutNotify(1);
+                var callback = dropdown.onValueChanged;
+                Game.UI.CollectionUIElements.ApplyControlsSkin(go.transform);
+                Game.UI.CollectionUIElements.ApplyControlsSkin(go.transform);
+                Assert.That(dropdown.value, Is.EqualTo(1)); Assert.That(dropdown.onValueChanged, Is.SameAs(callback));
+                dropdown.value = 2; Assert.That(changes, Is.EqualTo(1));
+                var item = dropdown.itemText.GetComponentInParent<UnityEngine.UI.Toggle>();
+                var background = item.transform.Find("Item Background").GetComponent<UnityEngine.UI.Image>();
+                Assert.That(background.sprite, Is.Null); Assert.That(item.colors.normalColor.a, Is.Zero);
+                Assert.That(((RectTransform)item.transform).sizeDelta.y, Is.EqualTo(32));
+                Assert.That(dropdown.template.GetComponent<UnityEngine.UI.Image>().sprite,
+                    Is.EqualTo(Resources.Load<Sprite>("UI/Collection/Input")));
+                var scroll = dropdown.template.GetComponent<UnityEngine.UI.ScrollRect>();
+                var bar = scroll.verticalScrollbar;
+                Assert.That(bar.GetComponent<UnityEngine.UI.Image>().sprite, Is.Null);
+                Assert.That(bar.handleRect.GetComponent<UnityEngine.UI.Image>().sprite,
+                    Is.EqualTo(Resources.Load<Sprite>("UI/Collection/SquareButton")));
+                Assert.That(((RectTransform)bar.transform).sizeDelta.x, Is.EqualTo(10));
+                Assert.That(bar.handleRect.Cast<Transform>().Count(t => t.name.StartsWith("Grip", StringComparison.Ordinal)), Is.EqualTo(3));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [TestCase(CardType.Base, 1, 2, 4, 5)]
+        [TestCase(CardType.Facility, 1, 2, 4, 5)]
+        [TestCase(CardType.Unit, 3, 2, 6, 9)]
+        [TestCase(CardType.Hero, 8, 5, 6, 7)]
+        public void CollectionPreviewUsesCardTypeStatOrder(CardType type, int first, int second, int fourth, int fifth)
+        {
+            var go = new GameObject("preview", typeof(RectTransform));
+            try
+            {
+                var preview = go.AddComponent<Game.UI.ArmyUnitCardUI>();
+                var row = new GameObject("stats", typeof(RectTransform)); row.transform.SetParent(go.transform);
+                string[] fields = { "attackStatText", "defenseStatText", "hpStatText", "moveStatText", "rangeStatText" };
+                var labels = new TMPro.TMP_Text[5];
+                var serialized = new SerializedObject(preview);
+                serialized.FindProperty("statsRow").objectReferenceValue = row;
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    var label = new GameObject(fields[i], typeof(RectTransform), typeof(TMPro.TextMeshProUGUI));
+                    label.transform.SetParent(row.transform); labels[i] = label.GetComponent<TMPro.TMP_Text>();
+                    serialized.FindProperty(fields[i]).objectReferenceValue = labels[i];
+                }
+                serialized.ApplyModifiedPropertiesWithoutUndo();
+                var definition = new CardDefinition { cardType = type, attack = 3, defenseRating = 2,
+                    hitPoints = 17, resistanceRating = 4, fate = 5, moveMax = 6, initiative = 7, commandRating = 8, range = 9 };
+                preview.SetupPreview(definition, null, _ => { });
+                Assert.That(row.activeSelf, Is.True);
+                Assert.That(labels.Select(t => t.text), Is.EqualTo(new[] { first.ToString(), second.ToString(), "17", fourth.ToString(), fifth.ToString() }));
+                preview.SetupPreview(null, null, _ => { }); Assert.That(row.activeSelf, Is.False);
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
         [Test] public void CollectionPreviewRemainsClickableWhileGameplayIsBlocked()
         {
             var go = new GameObject("preview", typeof(RectTransform));
@@ -457,5 +524,6 @@ namespace Game.EditorTools
     }
 }
 #endif
+
 
 

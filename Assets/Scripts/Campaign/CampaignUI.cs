@@ -35,7 +35,7 @@ namespace Game.Campaign
             canvas = CollectionUIElements.Canvas("PlanetaryCampaign", new Vector2(1920, 1080));
             frameSprite = Resources.Load<Sprite>("Campaign/MetalFrameRounded");
             paperSprite = Resources.Load<Sprite>("Campaign/Parchment");
-            metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
+            metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetalClean") ?? Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
             Skin(background, false, false);
             // Reuse the collection's authored metal shell and plaques as one campaign console.
@@ -51,7 +51,7 @@ namespace Game.Campaign
                 consoleMaterial.SetVector("_SurfaceSize", new Vector4(1868, 1040, 0, 0));
                 // A template for the map and cropped terrain masks, not the nine-sliced shell.
             }
-            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 24, 12, 1376, 70);
+            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 24, 16, 1376, 70);
             CollectionSkin(header, "Plaque"); header.GetComponent<Image>().raycastTarget = false;
             heading = Label(header, "PLANETARY CAMPAIGN", 28, 8, 1320, 52, 31);
             heading.color = PaperInk; heading.fontStyle = FontStyles.Bold; heading.alignment = TextAlignmentOptions.Center;
@@ -228,7 +228,7 @@ namespace Game.Campaign
             Label(footer, status, 28, 16, s.Phase == CampaignPhase.CampaignFinished ? 880 : 1510, 32, 23).fontStyle = FontStyles.Bold;
             Rule(footer, 28, 54, 1570);
             var history = s.BattleHistory.AsEnumerable().Reverse().Take(4).ToList();
-            Plaque(footer, "RECENT BATTLES", 28, 64, 205, 46, 20);
+            Plaque(footer, "RECENT BATTLES", 28, 64, 205, 46, 18);
             if (history.Count == 0) Label(footer, "No battles recorded yet.", 248, 68, 650, 30, 19);
             for (int i = 0; i < history.Count; i++)
             {
@@ -371,9 +371,23 @@ namespace Game.Campaign
         }
         private void CollectionSkin(RectTransform rect, string asset)
         {
-            var image = rect.GetComponent<Image>(); CollectionUIElements.ApplySurface(image, asset);
-            // Share the metal backing beneath panel rails instead of stretching its grain vertically.
-            image.fillCenter = asset != "Panel_Outer" && asset != "Panel_Inset";
+            var image = rect.GetComponent<Image>();
+            string path = asset == "Panel_Outer" ? "Campaign/ConsoleFrame"
+                : asset == "Panel_Inset" ? "Campaign/InsetFrame"
+                : asset == "Plaque" ? $"Campaign/Plaque_{(int)rect.sizeDelta.x}x{(int)rect.sizeDelta.y}" : null;
+            // The shared collection sprites bake opaque metal into the frame slices.
+            // Campaign cutouts reveal one continuous backing through and around the rails.
+            var sprite = path == null ? null : asset == "Plaque"
+                ? Resources.LoadAll<Sprite>(path).FirstOrDefault() : Resources.Load<Sprite>(path);
+            if (sprite == null) { CollectionUIElements.ApplySurface(image, asset); return; }
+            image.sprite = sprite; image.color = Color.white;
+            // Each paper field has an authored backing at its own aspect ratio.
+            // Simple rendering scales the complete sprite uniformly with the canvas.
+            image.type = asset == "Plaque" ? Image.Type.Simple : Image.Type.Sliced;
+            image.preserveAspect = asset == "Plaque";
+            // Keep inset rails legible at full HD instead of collapsing their detail to a few pixels.
+            image.pixelsPerUnitMultiplier = asset == "Panel_Outer" ? 3 : 2;
+            image.fillCenter = asset == "Plaque";
         }
         private void Plaque(Transform parent, string value, float x, float y, float w, float h, int size)
         {

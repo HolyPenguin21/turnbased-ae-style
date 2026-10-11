@@ -46,8 +46,8 @@ namespace Game.UI
         [SerializeField] private TMP_Text commandBadgeText;
         // Same 5-slot layout as CardUI's own StatsRow (Card.prefab), cloned into this prefab for
         // visual consistency — see CardUI's own field comment for the fixed per-slot mapping.
-        // Only Unit/Hero ever land here (a unit has no map presence without being in an army —
-        // see UnitData — so there's no Base/Facility case to handle, unlike CardUI):
+        // Runtime army slots only hold Unit/Hero. Catalog previews additionally display
+        // Base/Facility as Level / Defense / Structure Points / Resistance / Fate.
         //   AttackBadge slot: Attack (Unit) / Command Rating (Hero)
         //   DefenseBadge slot: Defense (Unit) / Fate (Hero)
         //   HpBadge slot: HP, REAL current/max (unlike CardUI's hand cards, this unit actually
@@ -315,15 +315,15 @@ namespace Game.UI
         }
 
         // Preview-mode counterpart to RefreshStatsRow — same 5-slot mapping, read from a
-        // CardDefinition. Only Hero/Unit cards carry a meaningful stat block; every other
-        // CardType hides the row entirely.
+        // CardDefinition, including Base/Facility's existing CardUI building-slot order.
         private void RefreshStatsRowForCard(CardDefinition card)
         {
             if (statsRow == null)
                 return;
 
             bool show = card != null && (card.cardType == CardType.Hero
-                || card.cardType == CardType.Unit || card.cardType == CardType.Equipment);
+                || card.cardType == CardType.Unit || card.cardType == CardType.Equipment
+                || card.cardType == CardType.Base || card.cardType == CardType.Facility);
             statsRow.SetActive(show);
             if (!show)
                 return;
@@ -338,24 +338,34 @@ namespace Game.UI
                 return;
             }
 
-            int slot1, slot2, slot5;
+            int slot1, slot2, slot4, slot5;
             if (card.cardType == CardType.Hero)
             {
                 slot1 = card.commandRating;
                 slot2 = card.fate;
+                slot4 = card.moveMax;
                 slot5 = card.initiative;
+            }
+            else if (card.cardType == CardType.Base || card.cardType == CardType.Facility)
+            {
+                // Unbuilt cards start at level 1, exactly as in CardUI.RefreshStatsRow.
+                slot1 = 1;
+                slot2 = card.defenseRating;
+                slot4 = card.resistanceRating;
+                slot5 = card.fate;
             }
             else
             {
                 slot1 = card.attack;
                 slot2 = card.defenseRating;
+                slot4 = card.moveMax;
                 slot5 = card.range;
             }
 
             if (attackStatText != null) attackStatText.text = slot1.ToString();
             if (defenseStatText != null) defenseStatText.text = slot2.ToString();
             if (hpStatText != null) hpStatText.text = card.hitPoints.ToString();
-            if (moveStatText != null) moveStatText.text = card.moveMax.ToString();
+            if (moveStatText != null) moveStatText.text = slot4.ToString();
             if (rangeStatText != null) rangeStatText.text = slot5.ToString();
         }
 
@@ -622,3 +632,4 @@ namespace Game.UI
         }
     }
 }
+
