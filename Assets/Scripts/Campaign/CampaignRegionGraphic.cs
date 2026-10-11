@@ -12,6 +12,7 @@ namespace Game.Campaign
         private readonly List<Vector2> surfaceTriangles = new List<Vector2>();
         private readonly List<Vector2> screenTriangles = new List<Vector2>();
         private Vector2 marker, glowSize;
+        public Vector2 ProjectedMarker { get; private set; }
         private readonly List<float> glowWeights = new List<float>();
         private Texture2D surface;
         private Action clicked;
@@ -33,7 +34,26 @@ namespace Game.Campaign
                 Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]],
                     projected[indices[i]], projected[indices[i + 1]], projected[indices[i + 2]], isShadow ? 0 : 3);
             marker = VisibleCenter(region);
+            ProjectedMarker = CampaignMapView.Project(marker);
             clicked = click; hovered = onHover; SetVerticesDirty();
+        }
+
+        // Fraction of the center-to-center segment up to the first displayed boundary.
+        // Projected polygons/marker are already cached for rendering; no per-operation polygon copy.
+        public float BoundaryFractionTowards(Vector2 target)
+        {
+            var direction = target - ProjectedMarker; float nearest = 1;
+            for (int i = 0; i < projected.Count; i++)
+            {
+                var a = projected[i]; var edge = projected[(i + 1) % projected.Count] - a;
+                float denominator = direction.x * edge.y - direction.y * edge.x;
+                if (Math.Abs(denominator) < 1e-10f) continue;
+                var offset = a - ProjectedMarker;
+                float t = (offset.x * edge.y - offset.y * edge.x) / denominator;
+                float u = (offset.x * direction.y - offset.y * direction.x) / denominator;
+                if (t >= 0 && u >= 0 && u <= 1) nearest = Math.Min(nearest, t);
+            }
+            return nearest;
         }
 
         // Area weighting is independent of how densely individual borders were subdivided.
