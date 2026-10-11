@@ -11,6 +11,9 @@ namespace Game.Campaign
         private CampaignState state;
         private readonly CampaignStore store;
         public CampaignState Snapshot => state.Copy();
+        // Read-only current state without a JSON round trip. Transact swaps in a new object and never edits
+        // this one in place, so a held reference stays a frozen snapshot; callers must not mutate it.
+        public CampaignState View => state;
         public CampaignPhase Phase => state.Phase;
         public bool IsAiTurn => state.CurrentFaction != state.HumanFaction;
         public CampaignController(CampaignState initial, CampaignStore store) { CampaignStore.Validate(initial); state = initial.Copy(); this.store = store; }
