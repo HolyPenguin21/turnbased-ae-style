@@ -49,7 +49,7 @@ namespace Game.UI
         [SerializeField] private TMP_Text confirmLabel;
         [SerializeField] private Button confirmAcceptButton, confirmCancelButton;
 
-        private static readonly Color BudgetOk = new Color(.36f, .55f, .3f);
+        private static readonly Color BudgetOk = new Color(.56f, .55f, .27f);
         private GameConfig config;
         private CollectionService collection;
         private Faction faction = Faction.IronConcord;
@@ -264,6 +264,9 @@ namespace Game.UI
             var validation = collection.Rules.Validate(draft, collection.Owned);
             pointsLabel.text = $"{validation.Points} / {DeckRules.MaximumPoints} points" + (dirty ? " — unsaved" : "");
             budgetFill.anchorMax = new Vector2(Mathf.Clamp01(validation.Points / (float)DeckRules.MaximumPoints), 1);
+            // Keep the fill inside the new frame, including a zero-width empty budget.
+            budgetFill.offsetMin = new Vector2(4f, 4f);
+            budgetFill.offsetMax = new Vector2(4f - 8f * budgetFill.anchorMax.x, -4f);
             budgetFill.GetComponent<Image>().color = validation.Points > DeckRules.MaximumPoints ? Color.red : BudgetOk;
             RefreshTotalCost();
 
@@ -366,3 +369,4 @@ namespace Game.UI
         public static void ShowMessage(Transform parent, string message) => CollectionMessageUI.Show(message);
     }
 }
+

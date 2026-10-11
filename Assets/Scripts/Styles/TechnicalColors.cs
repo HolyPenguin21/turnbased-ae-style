@@ -14,9 +14,9 @@ namespace Game.Styles
         public static readonly Color HexSelection = new Color(0.97f, 0.96f, 0.92f);
 
         // The currently-acting unit's cell in the Tactical Battle Module grid (UIRaggedGlowUI,
-        // see BattleScreenUI/BattleGridCellUI) — a bright "technical" yellow per the user's own
-        // spec, distinct from any player colour (see PlayerColorPalette's own exclusion).
-        public static readonly Color BattleActingUnit = new Color(0.95f, 0.85f, 0.1f);
+        // see BattleScreenUI/BattleGridCellUI), also used by collection selection.
+        // Warm amber matches the bronze/pergament UI frame.
+        public static readonly Color BattleActingUnit = new Color(1f, 0.67f, 0.16f);
 
         // The round-start title's "X is retreating this round!" callout (BattleRoundStartPopupUI)
         // — a warning orange so it reads as an alert rather than blending into the plain "Round N"
@@ -24,3 +24,4 @@ namespace Game.Styles
         public static readonly Color RetreatWarning = new Color(0.95f, 0.5f, 0.1f);
     }
 }
+

@@ -1,10 +1,6 @@
-// A UI-space (UGUI Image, screen space) counterpart to HexSelectionGlow.shader — same ragged
-// noise-driven edge + animated glow technique (see that shader's own comments for the visual
-// language this is matching), just drawn around a rectangle instead of a hexagon, and computed
-// from the Image's UV (0..1 across its RectTransform) instead of an object-space world mesh.
-// Structured like Unity's own built-in UI/Default.shader (stencil/clip-rect support included)
-// so it's a safe drop-in Image material rather than a bespoke one-off that fights the Canvas/
-// RectMask2D pipeline. See UIRaggedGlowUI.cs for the component that drives _TrueSize/_RectSize.
+// Shared rounded amber selection outline for collection cards and acting battle units.
+// Retains the shader name and style properties used by existing serialized components.
+// Uses the UGUI stencil and RectMask2D clipping pipeline.
 Shader "Custom/UIRaggedGlow"
 {
     Properties
@@ -63,6 +59,7 @@ Shader "Custom/UIRaggedGlow"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_local _ UNITY_UI_CLIP_RECT
             #include "UnityCG.cginc"
             #include "UnityUI.cginc"
 
@@ -105,25 +102,6 @@ Shader "Custom/UIRaggedGlow"
             float4 _TrueSize;
             float4 _RectSize;
 
-            float hash(float2 p)
-            {
-                p = frac(p * float2(123.34, 456.21));
-                p += dot(p, p + 45.32);
-                return frac(p.x * p.y);
-            }
-
-            float valueNoise(float2 p)
-            {
-                float2 i = floor(p);
-                float2 f = frac(p);
-                float a = hash(i);
-                float b = hash(i + float2(1, 0));
-                float c = hash(i + float2(0, 1));
-                float d = hash(i + float2(1, 1));
-                float2 u = f * f * (3.0 - 2.0 * f);
-                return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
-            }
-
             // Axis-aligned box SDF (Inigo Quilez) — negative inside, positive outside,
             // magnitude = distance to the nearest edge. Same role as HexSelectionGlow's hexSDF,
             // just for a rectangle instead of a hexagon.
@@ -141,21 +119,15 @@ Shader "Custom/UIRaggedGlow"
                 // space beyond it only used as room for the ragged edge/glow to bleed into.
                 float2 p = (IN.texcoord - 0.5) * _RectSize.xy;
                 float2 halfSize = _TrueSize.xy * 0.5 * _RadiusScale;
-                float dist = boxSDF(p, halfSize);
+                // Rounded amber frame follows card corners; no noisy tendrils.
+                float radius = min(3.5, min(halfSize.x, halfSize.y) * 0.1);
+                float dist = boxSDF(p, halfSize - radius) - radius;
 
-                float ring = 1.0 - smoothstep(0.0, _LineThickness, abs(dist));
-
-                float edgeNoise = valueNoise(p * _NoiseScale + _Time.y * _NoiseSpeed * 0.3);
-                float raggedReach = _NoiseReach * edgeNoise;
-                float ragged = smoothstep(0.0, 1.0, dist) * (1.0 - smoothstep(raggedReach, raggedReach + 1.0, dist));
-
-                float shape = saturate(ring + ragged);
-
-                float glowBand = 1.0 - smoothstep(0.0, _GlowWidth, abs(dist));
-                float glowNoise = valueNoise(p * _NoiseScale * 1.7 + _Time.y * _NoiseSpeed);
-                float glow = glowBand * glowNoise * _GlowIntensity;
-
-                float alpha = saturate(shape + glow) * IN.color.a;
+                float aa = max(fwidth(dist), 0.35);
+                float ring = 1.0 - smoothstep(_LineThickness * 0.5,
+                    _LineThickness * 0.5 + aa, abs(dist));
+                float glow = exp(-abs(dist) * 3.0 / max(_GlowWidth, 0.01)) * _GlowIntensity;
+                float alpha = saturate(ring + glow) * IN.color.a;
 
                 #ifdef UNITY_UI_CLIP_RECT
                 alpha *= UnityGet2DClipping(IN.worldPosition.xy, _ClipRect);
@@ -167,3 +139,4 @@ Shader "Custom/UIRaggedGlow"
         }
     }
 }
+
