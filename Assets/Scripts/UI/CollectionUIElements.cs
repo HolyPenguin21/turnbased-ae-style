@@ -235,7 +235,7 @@ namespace Game.UI
 
         // Campaign and its entry dialogs share the same transparent frame/plaque imports.
         // Collection windows continue to use ApplySurface and their authored control templates.
-        internal static void ApplyCampaignSurface(RectTransform rect, string asset)
+        public static void ApplyCampaignSurface(RectTransform rect, string asset)
         {
             var image = rect.GetComponent<Image>();
             string path = asset == "Panel_Outer" ? "Campaign/ConsoleFrame"

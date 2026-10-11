@@ -19,6 +19,7 @@ namespace Game.Cards
     public sealed class DeckRules
     {
         public const int MaximumPoints = 100;
+        public const int MaximumHeroes = 1;
         public static readonly Faction[] PlayableFactions = { Faction.IronConcord, Faction.Ashen, Faction.Vessels };
         public readonly StartingDeckCatalog Starting;
         public readonly ResearchProductionCatalog Research;
@@ -89,7 +90,9 @@ namespace Game.Cards
                 }
             }
             if (result.Points > MaximumPoints) result.Errors.Add("Deck exceeds 100 points.");
-            if (deck.mainCards?.Any(e => e != null && e.count > 0 && Resolve(e.cardKey)?.cardType == CardType.Hero) != true)
+            int heroCards = deck.mainCards?.Where(e => e != null && e.count > 0 && Resolve(e.cardKey)?.cardType == CardType.Hero).Sum(e => e.count) ?? 0;
+            if (heroCards > MaximumHeroes) result.Errors.Add("Deck can contain at most " + MaximumHeroes + " hero card.");
+            if (heroCards == 0)
                 result.Warnings.Add("No heroes: this deck may not field armies or operate facilities.");
             if (deck.mainCards?.Any(e => e != null && e.count > 0 && Resolve(e.cardKey)?.cardType == CardType.Base) != true)
                 result.Warnings.Add("No base cards: expansion may be limited.");

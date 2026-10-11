@@ -115,7 +115,7 @@ RectTransform:
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 123, y: 28.35}
+  m_SizeDelta: {x: 117, y: 28.35}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &1990000000000010003
 CanvasRenderer:
@@ -217,8 +217,10 @@ MonoBehaviour:
   lampOff: {fileID: 130261350636596230}
   apLabel: {fileID: 0}
   movementLabel: {fileID: 0}
+  capacityLabel: {fileID: 0}
   apIcon: {fileID: 0}
   movementIcon: {fileID: 0}
+  capacityIcon: {fileID: 0}
 --- !u!1 &1990000000000010011
 GameObject:
   m_ObjectHideFlags: 0
@@ -253,7 +255,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.03647968, y: 0.15374194}
   m_AnchorMax: {x: 0.96113014, y: 0.83548385}
-  m_AnchoredPosition: {x: 0.0000038146973, y: 0}
+  m_AnchoredPosition: {x: 0.0000076293945, y: 0}
   m_SizeDelta: {x: -0.000002861023, y: 0}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &1990000000000010013
