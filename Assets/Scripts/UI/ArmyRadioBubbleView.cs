@@ -16,9 +16,9 @@ namespace Game.UI
         [SerializeField] private Image _art;
         [SerializeField] private TMP_Text _message;
         [Min(40f)] [SerializeField] private float artHeight = 78f;
-        [Min(100f)] [SerializeField] private float messageWidth = 220f;
-        [Min(28f)] [SerializeField] private float minimumPanelHeight = 52f;
-        [Min(0f)] [SerializeField] private float cardGap = 4f;
+        [Min(100f)] [SerializeField] private float messageWidth = 180f;
+        [Min(28f)] [SerializeField] private float minimumPanelHeight = 56f;
+        [Min(0f)] [SerializeField] private float cardGap = 14f;
         [Min(10f)] [SerializeField] private float markerGap = 12f;
         [SerializeField] private Vector2 shadowOffset = new Vector2(0f, -2f);
         private Vector2 _measuredPadding;
@@ -64,11 +64,12 @@ namespace Game.UI
             if (_group != null) _group.gameObject.SetActive(false);
         }
 
-        public bool Follow(Rect safe, Vector2 anchor, float radius, IList<Rect> occupied)
+        public bool Follow(Rect safe, Vector2 anchor, float radius, IList<Rect> occupied, float scale = 1f)
         {
+            scale = Mathf.Max(.01f, scale);
             Vector2 artSize = ArmyRadioLayout.ArtSize(_art.sprite, Mathf.Max(40f, artHeight));
-            float width = Mathf.Min(Mathf.Max(100f, messageWidth), safe.width - artSize.x - Mathf.Max(0f, cardGap));
-            if (width < 100f || safe.height < artSize.y) return false;
+            float width = Mathf.Min(Mathf.Max(100f, messageWidth), safe.width / scale - artSize.x - Mathf.Max(0f, cardGap));
+            if (width < 100f || safe.height < artSize.y * scale) return false;
             RectTransform textRect = _message.rectTransform;
             Vector2 padding = textRect.offsetMin - textRect.offsetMax;
             if (Mathf.Abs(width - _measuredWidth) > .01f || padding != _measuredPadding
@@ -81,15 +82,19 @@ namespace Game.UI
                 _messageHeight = Mathf.Max(Mathf.Max(minimumPanelHeight, _bubble.CornerRadius * 2f + 8f), _message.GetPreferredValues(_message.text, Mathf.Max(1f, width - padding.x), 1000f).y + padding.y);
             }
             Vector2 size = new Vector2(width + artSize.x + Mathf.Max(0f, cardGap), Mathf.Max(artSize.y, _messageHeight));
-            if (!ArmyRadioLayout.TryPlace(safe, anchor, size, radius + Mathf.Max(10f, markerGap), occupied, _offset, out var position, out bool left, artSize.x + Mathf.Max(0f, cardGap), _messageHeight, radius + 2f, _bubble.CornerRadius))
+            Vector2 scaledSize = size * scale;
+            float scaledArtWidth = (artSize.x + Mathf.Max(0f, cardGap)) * scale;
+            Vector2? previousOffset = _offset.HasValue ? _offset.Value * scale : (Vector2?)null;
+            if (!ArmyRadioLayout.TryPlace(safe, anchor, scaledSize, radius + Mathf.Max(10f, markerGap) * scale, occupied, previousOffset, out var position, out bool left, scaledArtWidth, _messageHeight * scale, radius + 2f * scale, _bubble.CornerRadius * scale, 4f * scale, artSize * scale))
                 return false;
-            _offset = position - anchor; Bounds = ArmyRadioLayout.Bounds(position, size);
+            _offset = (position - anchor) / scale; Bounds = ArmyRadioLayout.Bounds(position, scaledSize);
+            _group.localScale = Vector3.one * scale;
             _group.sizeDelta = size; _group.anchoredPosition = position;
             _art.rectTransform.sizeDelta = artSize;
             _art.rectTransform.anchoredPosition = new Vector2((left ? -1f : 1f) * (size.x - artSize.x) * .5f, 0f);
             Vector2 panelPosition = new Vector2((left ? 1f : -1f) * (artSize.x + Mathf.Max(0f, cardGap)) * .5f, 0f);
-            if (ArmyRadioLayout.Pointer(ArmyRadioLayout.PanelBounds(position, size, artSize.x + Mathf.Max(0f, cardGap), _messageHeight, left),
-                anchor, _bubble.CornerRadius, radius + 2f, out var a, out var b, out var tip))
+            if (ArmyRadioLayout.Pointer(ArmyRadioLayout.PanelBounds(position, scaledSize, scaledArtWidth, _messageHeight * scale, left),
+                anchor, _bubble.CornerRadius * scale, radius + 2f * scale, out var a, out var b, out var tip, 4f * scale))
             {
                 _pointerStart = (a + b) * .5f; _pointerTip = tip;
                 _hasPointer = true;
@@ -97,15 +102,15 @@ namespace Game.UI
             else _hasPointer = false;
             _panel.sizeDelta = _shadow.sizeDelta = new Vector2(width, _messageHeight);
             _panel.anchoredPosition = panelPosition; _shadow.anchoredPosition = panelPosition + shadowOffset;
-            _bubble.AimAt(anchor - position - panelPosition, radius + 2f);
-            _bubbleShadow.AimAt(anchor - position - _shadow.anchoredPosition, radius + 2f);
+            _bubble.AimAt((anchor - position) / scale - panelPosition, radius / scale + 2f);
+            _bubbleShadow.AimAt((anchor - position) / scale - _shadow.anchoredPosition, radius / scale + 2f);
             return true;
         }
 
         public void AddObstacles(IList<Rect> occupied)
         {
             occupied.Add(Bounds);
-            if (_hasPointer) ArmyRadioLayout.AddPointerObstacles(_pointerStart, _pointerTip, occupied);
+            if (_hasPointer) ArmyRadioLayout.AddPointerObstacles(_pointerStart, _pointerTip, occupied, _bubble.SignalExtent * _group.localScale.x);
         }
 
     }
