@@ -35,7 +35,7 @@ namespace Game.Campaign
             canvas = CollectionUIElements.Canvas("PlanetaryCampaign", new Vector2(1920, 1080));
             frameSprite = Resources.Load<Sprite>("Campaign/MetalFrameRounded");
             paperSprite = Resources.Load<Sprite>("Campaign/Parchment");
-            metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
+            metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetalClean") ?? Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
             Skin(background, false, false);
             // Reuse the collection's authored metal shell and plaques as one campaign console.
@@ -51,7 +51,7 @@ namespace Game.Campaign
                 consoleMaterial.SetVector("_SurfaceSize", new Vector4(1868, 1040, 0, 0));
                 // A template for the map and cropped terrain masks, not the nine-sliced shell.
             }
-            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 24, 12, 1376, 70);
+            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 24, 16, 1376, 70);
             CollectionSkin(header, "Plaque"); header.GetComponent<Image>().raycastTarget = false;
             heading = Label(header, "PLANETARY CAMPAIGN", 28, 8, 1320, 52, 31);
             heading.color = PaperInk; heading.fontStyle = FontStyles.Bold; heading.alignment = TextAlignmentOptions.Center;
@@ -381,7 +381,8 @@ namespace Game.Campaign
                 ? Resources.LoadAll<Sprite>(path).FirstOrDefault() : Resources.Load<Sprite>(path);
             if (sprite == null) { CollectionUIElements.ApplySurface(image, asset); return; }
             image.sprite = sprite; image.color = Color.white; image.type = Image.Type.Sliced;
-            image.pixelsPerUnitMultiplier = asset == "Plaque" ? 8 : 4;
+            // Keep inset rails legible at full HD instead of collapsing their detail to a few pixels.
+            image.pixelsPerUnitMultiplier = asset == "Plaque" ? 8 : asset == "Panel_Outer" ? 3 : 2;
             image.fillCenter = asset == "Plaque";
         }
         private void Plaque(Transform parent, string value, float x, float y, float w, float h, int size)
