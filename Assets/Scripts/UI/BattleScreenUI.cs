@@ -301,7 +301,16 @@ namespace Game.UI
         {
             if (_idleTimer < 0f || _idleNudgeShown)
                 return;
-            _idleTimer += Time.deltaTime;
+            if (!HasInteractiveParticipant || !IsHumanAction(_currentActingUnit)
+                || (attackPopup != null && attackPopup.IsShowing)
+                || (roundStartPopup != null && roundStartPopup.IsShowing)
+                || (arrangePopup != null && arrangePopup.IsShowing)
+                || (outcomePopup != null && outcomePopup.IsShowing))
+            {
+                _idleTimer = 0f;
+                return;
+            }
+            _idleTimer += Time.unscaledDeltaTime;
             if (_idleTimer >= aiIdleThreshold)
             {
                 _idleNudgeShown = true;
@@ -597,11 +606,9 @@ namespace Game.UI
                 ? _battleEngine.AssessAiRetreat(army, enemy, map)
                 : default;
             _aiFavorableThisRound[army] = assessment.FavorableForAdvance;
-            UnitData sideHero = army.Commander;
-
             if (assessment.IsCitadelDefense)
             {
-                aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.CitadelDefense, hasHero: sideHero != null));
+                ShowArmyThought(army, AiThoughtCategory.CitadelDefense);
                 return false;
             }
             if (assessment.ShouldRetreat)
@@ -611,10 +618,10 @@ namespace Game.UI
                 {
                     _battleEngine.CommitRetreat(army);
                 }
-                aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.RetreatDecision, hasHero: sideHero != null));
+                ShowArmyThought(army, AiThoughtCategory.RetreatDecision);
                 return true;
             }
-            aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.FightDecision, hasHero: sideHero != null));
+            ShowArmyThought(army, AiThoughtCategory.FightDecision);
             return false;
         }
 
@@ -775,13 +782,23 @@ namespace Game.UI
         // implied by whose "voice" is speaking.
         private void ShowAiThought(UnitData actor, AiThoughtCategory category, string targetName = null)
         {
-            if (aiThoughts == null)
-                return;
             // Owning army, not grid row — see OwningArmy's own comment. `actor` may have already
             // moved into the opposing side's rows (e.g. mid-melee), so its row is not a reliable
             // stand-in for which army's hero should be "speaking" here.
-            UnitData sideHero = OwningHero(OwningArmy(actor));
-            aiThoughts.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(category, targetName, sideHero != null));
+            ShowArmyThought(OwningArmy(actor), category, targetName);
+        }
+
+        // All battle narration uses the same side/voice rules, including fast resolve.
+        // Automating the human's actions must not turn that army into the opponent's voice.
+        private void ShowArmyThought(ArmyData army, AiThoughtCategory category, string targetName = null)
+        {
+            if (aiThoughts == null || !aiThoughts.isActiveAndEnabled
+                || army?.Owner == null || army.Owner.IsHuman)
+                return;
+            UnitData sideHero = OwningHero(army);
+            bool terminal = category == AiThoughtCategory.BattleWon || category == AiThoughtCategory.BattleLost;
+            aiThoughts.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(category, targetName, sideHero != null),
+                immediate: terminal);
         }
 
         // Called by OnBattleOutcomeAcknowledged once the outcome popup is dismissed — there's

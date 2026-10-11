@@ -90,10 +90,9 @@ namespace Game.UI
             {
                 bool major = defender.HitPointsMax > 0
                     && defender.HitPointsCurrent <= defender.HitPointsMax / 3f;
-                UnitData sideHero = OwningHero(OwningArmy(defender));
-                aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(
+                ShowArmyThought(OwningArmy(defender),
                     major ? AiThoughtCategory.DamageTakenMajor : AiThoughtCategory.DamageTakenMinor,
-                    attacker?.Name, sideHero != null));
+                    attacker?.Name);
             }
 
             var secondary = new List<BattleSecondaryHit>();
@@ -123,15 +122,9 @@ namespace Game.UI
 
         private void ShowUnitRemovalThought(BattleUnitRemoval removal)
         {
-            UnitData deadSideHero = removal.DeadSide?.Commander;
-            UnitData killerSideHero = removal.KillerSide?.Commander;
-            if (removal.DeadSide?.Owner != null && !removal.DeadSide.Owner.IsHuman)
-                aiThoughts?.Show(deadSideHero, BattleAiPhraseBank.GetRandomPhrase(
-                    AiThoughtCategory.UnitDied, removal.Unit?.Name, deadSideHero != null));
-            if (removal.AnnounceKiller && removal.KillerSide?.Owner != null
-                && !removal.KillerSide.Owner.IsHuman)
-                aiThoughts?.Show(killerSideHero, BattleAiPhraseBank.GetRandomPhrase(
-                    AiThoughtCategory.EnemyKilled, removal.Unit?.Name, killerSideHero != null));
+            ShowArmyThought(removal.DeadSide, AiThoughtCategory.UnitDied, removal.Unit?.Name);
+            if (removal.AnnounceKiller)
+                ShowArmyThought(removal.KillerSide, AiThoughtCategory.EnemyKilled, removal.Unit?.Name);
         }
 
         // Re-opens the attack popup's full Result screen once per Splash/Scorcher side-hit, in
@@ -415,11 +408,7 @@ namespace Game.UI
 
         private void FireBattleEndThought(ArmyData army, bool survived)
         {
-            if (army?.Owner == null || army.Owner.IsHuman)
-                return;
-            UnitData sideHero = army.Commander;
-            aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(
-                survived ? AiThoughtCategory.BattleWon : AiThoughtCategory.BattleLost, hasHero: sideHero != null));
+            ShowArmyThought(army, survived ? AiThoughtCategory.BattleWon : AiThoughtCategory.BattleLost);
         }
 
         private void OnBattleOutcomeAcknowledged()
