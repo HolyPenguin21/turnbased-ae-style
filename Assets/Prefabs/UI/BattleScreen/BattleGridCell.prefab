@@ -1078,7 +1078,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.UIRaggedGlowUI
   rectTransform: {fileID: 4970000000000000101}
   image: {fileID: 4970000000000000103}
-  color: {r: 0.95, g: 0.85, b: 0.1, a: 1}
+  color: {r: 1, g: 0.67, b: 0.16, a: 1}
 --- !u!1 &4970000000000000105
 GameObject:
   m_ObjectHideFlags: 0
@@ -1624,4 +1624,5 @@ MonoBehaviour:
   rangeStatText: {fileID: 4970000000000000059}
   nameOverrideText: {fileID: 0}
   infoText: {fileID: 4970000000000000204}
+
 

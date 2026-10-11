@@ -4,12 +4,9 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // UI-space counterpart to Game.Map.HexShaderHighlight — same ragged noise-driven edge +
-    // animated glow technique (Custom/UIRaggedGlow.shader, adapted from HexSelectionGlow.shader
-    // for a rectangle instead of a hexagon), just drawn around a UGUI RectTransform instead of a
-    // world-space mesh. Sized bigger than the cell it's highlighting (see ShowAt) so the ragged
-    // edge/glow has room to bleed outward past the crisp ring, same reasoning as
-    // HexShaderHighlight.BuildQuad's own margin.
+    // Shared rounded amber frame for collection selection and the acting battle unit.
+    // Retains the component/shader identity and serialized style API for existing prefabs.
+    // ShowAt pads the rect so its thin outline and soft glow have room outside the card.
     [RequireComponent(typeof(RectTransform), typeof(Image))]
     public class UIRaggedGlowUI : MonoBehaviour
     {
@@ -60,7 +57,11 @@ namespace Game.UI
 
             Shader shader = Shader.Find("Custom/UIRaggedGlow");
             if (shader == null)
+            {
                 Debug.LogWarning("UIRaggedGlowUI: shader 'Custom/UIRaggedGlow' not found.");
+                image.enabled = false;
+                return;
+            }
             // A unique Material instance (not a MaterialPropertyBlock — CanvasRenderer-driven
             // Graphics don't support those the way a MeshRenderer does) — this only ever
             // highlights one cell at a time, so losing UI batching for it is a non-issue.
@@ -70,6 +71,7 @@ namespace Game.UI
             // convention as ArmyUnitCardUI's EmptySlotColor), which is all the shader needs:
             // it only reads the mesh's own UV, not any texture.
             image.sprite = null;
+            image.raycastTarget = false;
         }
 
         // Copies the values rather than keeping the reference — see HexShaderHighlight.
@@ -139,4 +141,5 @@ namespace Game.UI
         }
     }
 }
+
 

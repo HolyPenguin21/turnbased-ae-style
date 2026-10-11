@@ -336,13 +336,13 @@ MonoBehaviour:
     sortingOrder: 1
   battleActingUnitHighlightStyle:
     radiusScale: 1
-    margin: 6
-    lineThickness: 2
-    noiseReach: 4
+    margin: 5
+    lineThickness: 1.2
+    noiseReach: 0
     noiseScale: 0.15
-    noiseSpeed: 1.2
-    glowIntensity: 0.8
-    glowWidth: 6
+    noiseSpeed: 0
+    glowIntensity: 0.45
+    glowWidth: 4
     sortingOrder: 1
   resourceIconPrefab: {fileID: 200002, guid: 93f949af926942fabf01ccfa62c900e1, type: 3}
   resourceIconSpacing: 0.4
@@ -1077,5 +1077,6 @@ MonoBehaviour:
     coordLabelColor: {r: 0, g: 0, b: 0, a: 0.8627451}
     coordLabelOffset: {x: 0, y: -0.65}
     coordLabelSortingOrder: 6
+
 
 

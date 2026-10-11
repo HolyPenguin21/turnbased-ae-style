@@ -31,6 +31,16 @@ namespace Game.UI
             {
                 if (config == null || config.armyUnitCardPrefab == null) return;
                 preview = Instantiate(config.armyUnitCardPrefab, cardHost);
+                // Collection thumbnails stay inside their 106x155 host. Full rules remain in
+                // the details column; long captions must not paint over counters/buttons.
+                preview.gameObject.AddComponent<RectMask2D>();
+                foreach (var label in preview.GetComponentsInChildren<TMP_Text>(true))
+                {
+                    label.overflowMode = TextOverflowModes.Ellipsis;
+                    label.enableAutoSizing = true;
+                    label.fontSizeMax = label.fontSize;
+                    label.fontSizeMin = Mathf.Min(label.fontSize, 5f);
+                }
                 previewGroup = preview.GetComponent<CanvasGroup>();
                 if (previewGroup == null) previewGroup = preview.gameObject.AddComponent<CanvasGroup>();
             }
@@ -51,3 +61,4 @@ namespace Game.UI
         }
     }
 }
+
