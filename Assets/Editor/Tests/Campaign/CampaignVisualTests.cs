@@ -225,7 +225,7 @@ public sealed class CampaignVisualTests
             var graphic = root.AddComponent<CampaignRegionGraphic>();
             graphic.SetSurface(Resources.Load<Texture2D>("Campaign/Backgrounds/WastelandSurface"), material);
             graphic.Configure(state.Regions[0], () => { }, _ => { });
-            graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), true, false, false, false, false, true);
+            graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), true, false, false, false, true);
             using (var vh = new VertexHelper())
             {
                 typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -256,7 +256,7 @@ public sealed class CampaignVisualTests
             }
             Assert.True(mesh.uv3.Any(v => v.x > .9f));
             Assert.True(mesh.uv3.Any(v => v.x > .01f && v.x < .99f));
-            graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, false, true);
+            graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, true);
             using (var vh = new VertexHelper())
             {
                 typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
@@ -278,3 +278,4 @@ public sealed class CampaignVisualTests
     }
 }
 #endif
+

@@ -16,8 +16,7 @@ namespace Game.Campaign
         private Texture2D surface;
         private Action clicked;
         private Action<bool> hovered;
-        private bool selected, hover, attackable, attacked, captured, enabledInput, silhouette;
-        private float changedTime;
+        private bool selected, hover, attackable, attacked, enabledInput, silhouette, captureReveal;
         public override Texture mainTexture => silhouette || surface == null ? Texture2D.whiteTexture : surface;
 
         public void SetSurface(Texture2D texture, Material sharedMaterial)
@@ -128,15 +127,16 @@ namespace Game.Campaign
             Subdivide(ab, bc, ca, screenAB, screenBC, screenCA, depth - 1);
         }
 
-        // Returns true when a capture flash has just started and the owner should call Tick() for FlashSeconds.
-        public bool Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool capture, bool input)
+        public void SetCaptureReveal(bool active)
+        { if (captureReveal == active) return; captureReveal = active; SetVerticesDirty(); }
+
+        // Refresh projects current state only; a refresh/load can never initiate capture presentation.
+        public void Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool input)
         {
             if (color == tint && selected == selection && hover == over && attackable == legal
-                && attacked == target && captured == capture && enabledInput == input) return false;
-            if (color != tint) changedTime = Time.unscaledTime;
+                && attacked == target && enabledInput == input) return;
             color = tint; selected = selection; hover = over; attackable = legal;
-            attacked = target; captured = capture; enabledInput = input; SetVerticesDirty();
-            return capture && Time.unscaledTime - changedTime < FlashSeconds;
+            attacked = target; enabledInput = input; SetVerticesDirty();
         }
         public void OnPointerClick(PointerEventData data) { if (enabledInput) clicked?.Invoke(); }
         public void OnPointerEnter(PointerEventData data) { if (enabledInput) hovered?.Invoke(true); }
@@ -171,8 +171,6 @@ namespace Game.Campaign
             if (selected && !silhouette) CacheSelectionGlow();
             var ownership = color;
             if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .18f : .10f);
-            if (captured && Time.unscaledTime - changedTime < .6f)
-                ownership = Color.Lerp(ownership, Color.white, .18f * (1 - (Time.unscaledTime - changedTime) / .6f));
             for (int i = 0; i < surfaceTriangles.Count; i += 3)
             {
                 int start = vh.currentVertCount;
@@ -218,7 +216,7 @@ namespace Game.Campaign
             vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : silhouette ? -1 : 0, lighting, mapPoint.x, mapPoint.y);
             // UV data is not transformed by Canvas batching; POSITION may be in Canvas space.
             var viewport = CampaignMapView.FromPixel(rectTransform.rect, position) * .5f + new Vector2(.5f, .5f);
-            vertex.uv2 = new Vector4(glow, 0, viewport.x, viewport.y); vh.AddVert(vertex);
+            vertex.uv2 = new Vector4(glow, captureReveal && textured ? 1 : 0, viewport.x, viewport.y); vh.AddVert(vertex);
         }
         private void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 mapPoint)
         {
@@ -232,8 +230,6 @@ namespace Game.Campaign
                 if (i > 0) vh.AddTriangle(start, start + i, start + i + 1);
             }
         }
-        // Driven by CampaignMapView only while a capture flash plays; the component itself must stay enabled to render.
-        public const float FlashSeconds = .7f;
-        public void Tick() { if (captured && Time.unscaledTime - changedTime < FlashSeconds) SetVerticesDirty(); }
     }
 }
+

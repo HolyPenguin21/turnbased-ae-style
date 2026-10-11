@@ -13,6 +13,11 @@ Shader "Game/UI/CampaignSurface"
         _MapViewport ("Map viewport in overlay", Vector) = (0,0,1,1)
         _CornerRadius ("Panel corner radius", Float) = 0
         _UVRect ("Overlay UV rect", Vector) = (0,0,1,1)
+        _CaptureProgress ("Capture progress", Range(0,1)) = 1
+        _CaptureOrigin ("Capture origin in viewport", Vector) = (.5,.5,0,0)
+        _CaptureRadius ("Capture radius in viewport height", Float) = 0
+        _CaptureFeather ("Capture feather", Float) = .018
+        _CapturePreviousColor ("Previous owner", Color) = (1,1,1,1)
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -65,7 +70,7 @@ Shader "Game/UI/CampaignSurface"
                 float2 texcoord : TEXCOORD0;
                 float4 localPosition : TEXCOORD1;
                 float4 surface : TEXCOORD2;
-                float3 selection : TEXCOORD3;
+                float4 selection : TEXCOORD3;
                 UNITY_VERTEX_OUTPUT_STEREO
             };
             sampler2D _MainTex;
@@ -81,6 +86,9 @@ Shader "Game/UI/CampaignSurface"
             float4 _MapViewport;
             float _CornerRadius;
             float4 _UVRect;
+            float _CaptureProgress, _CaptureRadius, _CaptureFeather;
+            float4 _CaptureOrigin;
+            fixed4 _CapturePreviousColor;
             v2f vert(appdata v)
             {
                 v2f o;
@@ -90,7 +98,7 @@ Shader "Game/UI/CampaignSurface"
                 o.vertex = UnityObjectToClipPos(v.vertex);
                 o.texcoord = v.texcoord;
                 o.surface = v.surface;
-                o.selection = float3(v.selection.x, v.selection.zw);
+                o.selection = float4(v.selection.x, v.selection.zw, v.selection.y);
                 o.color = v.color * _Color;
                 return o;
             }
@@ -98,10 +106,17 @@ Shader "Game/UI/CampaignSurface"
             {
                 // Borders and markers remain solid; only terrain triangles sample the map texture.
                 fixed4 sample = tex2D(_MainTex, i.texcoord) + _TextureSampleAdd;
+                // Only the confirmed target's terrain vertices carry the capture flag. Shared
+                // map/stencil materials leave every other region, border and marker untouched.
+                float2 captureOffset = (i.selection.yz - _CaptureOrigin.xy) * _SurfaceSize.xy
+                    / max(1, min(_SurfaceSize.x, _SurfaceSize.y));
+                float reveal = 1 - smoothstep(_CaptureRadius - _CaptureFeather, _CaptureRadius, length(captureOffset));
+                reveal = _CaptureProgress <= 0 ? 0 : _CaptureProgress >= 1 ? 1 : reveal;
+                fixed3 ownerTint = lerp(i.color.rgb, lerp(_CapturePreviousColor.rgb * _Color.rgb, i.color.rgb, reveal), i.selection.w);
                 // Preserve terrain detail while washing its warm paper palette with faction color.
                 // A common reference brightness preserves the deliberately muted olive palette.
                 fixed luminance = dot(sample.rgb, fixed3(.299,.587,.114));
-                fixed3 terrain = lerp(sample.rgb, luminance * i.color.rgb / .65, .60);
+                fixed3 terrain = lerp(sample.rgb, luminance * ownerTint / .65, .60);
                 float radiusSquared = dot(i.surface.zw, i.surface.zw);
                 float limb = smoothstep(.38, 1.0, radiusSquared);
                 terrain *= (1.04 + .07 * i.surface.w - .34 * limb) * i.surface.y;
@@ -145,3 +160,4 @@ Shader "Game/UI/CampaignSurface"
         }
     }
 }
+

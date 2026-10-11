@@ -64,7 +64,7 @@ namespace Game.Campaign
         private int confirmFrom, confirmTarget;
         private string selectedDeckId;
         private Action cancelModal, retryAction;
-        private bool rewardOpen, defenceDeferred, acting;
+        private bool rewardOpen, defenceDeferred, acting, resultAfterCapture;
         private readonly CampaignBattleResolver resolver = new CampaignBattleResolver();
         private CampaignController Controller => CampaignMatchBridge.Controller;
         private bool ModalOpen => modalContent != null;
@@ -143,6 +143,11 @@ namespace Game.Campaign
         }
         private void Update()
         {
+            if (resultAfterCapture)
+            {
+                if (map.IsCapturePlaying) return;
+                resultAfterCapture = false; Render(); ShowResult(); return;
+            }
             bool escape = UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame;
             if (escape && !ModalOpen && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
             if (escape && ModalOpen)
@@ -161,6 +166,7 @@ namespace Game.Campaign
         { try { action(); } catch (Exception ex) { Failure(ex.Message, Recover); } }
         private void HoverRegion(int? id)
         {
+            if (resultAfterCapture) return;
             hovered = id;
             var r = id.HasValue ? Controller.View.Regions.Find(x => x.RegionId == id) : null;
             hoverLabel.text = r == null ? "" : r.Name + "  ·  " + FactionName(r.OwnerFaction);
@@ -168,7 +174,7 @@ namespace Game.Campaign
         }
         private void ClickRegion(int id)
         {
-            if (ModalOpen || rewardOpen) return;
+            if (ModalOpen || rewardOpen || resultAfterCapture) return;
             var state = Controller.View;
             if (selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
@@ -265,7 +271,7 @@ namespace Game.Campaign
         {
             if (Controller == null || map == null) return;
             var s = Controller.View;
-            bool enabled = !ModalOpen && !rewardOpen && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
+            bool enabled = !ModalOpen && !rewardOpen && !resultAfterCapture && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
             map.Refresh(s, selected, hovered, enabled);
         }
         private void OpenModal(GameObject window, Action onCancel = null)
@@ -355,6 +361,12 @@ namespace Game.Campaign
         {
             var s = Controller.View; var op = s.PendingOperation;
             if (s.Phase != CampaignPhase.ShowingResult || op == null) return;
+            if (map.IsCapturePlaying) { resultAfterCapture = true; return; }
+            if (CampaignMatchBridge.TryTakeOwnershipChange(out var change) && map.PlayCapture(change, s))
+            {
+                resultAfterCapture = true; hovered = null; hoverLabel.text = "";
+                RefreshMap(); return;
+            }
             OpenModal(resultWindow);
             string text = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name
                 + "\nAttacker: " + FactionName(op.AttackerFaction) + "  ·  " + op.AttackerDeckName
@@ -370,6 +382,7 @@ namespace Game.Campaign
         }
         private void Failure(string error, Action retry)
         {
+            resultAfterCapture = false; map?.CancelCapture();
             OpenModal(errorWindow); errorText.text = error; retryAction = retry;
         }
         public static string FactionName(Faction f) => f == Faction.IronConcord ? "Iron Concord" : f == Faction.Ashen ? "The Ashen" : "The Vessels";
@@ -390,3 +403,4 @@ namespace Game.Campaign
         }
     }
 }
+

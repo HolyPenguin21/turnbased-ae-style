@@ -13,7 +13,9 @@ namespace Game.Campaign
         private readonly Dictionary<int, CampaignRegionGraphic> graphics = new Dictionary<int, CampaignRegionGraphic>();
         private CampaignArrowGraphic arrow;
         private Material surfaceMaterial;
-        private float flashUntil;
+        [SerializeField] private CampaignCaptureSettings capture = new CampaignCaptureSettings();
+        private CampaignCaptureEffect captureEffect;
+        public bool IsCapturePlaying => captureEffect != null && captureEffect.IsPlaying;
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
@@ -38,6 +40,7 @@ namespace Game.Campaign
         }
         public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0)
         {
+            CancelCapture();
             foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
             graphics.Clear();
             SurfaceTexture = Resources.Load<Texture2D>(BackgroundResourcePath(backgroundId));
@@ -54,7 +57,7 @@ namespace Game.Campaign
                 var rect = (RectTransform)shadow.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
                 rect.offsetMin = rect.offsetMax = new Vector2(0, -12);
                 var graphic = shadow.AddComponent<CampaignRegionGraphic>(); graphic.SetSurface(SurfaceTexture, surfaceMaterial); graphic.Configure(region, null, null, true);
-                graphic.Refresh(new Color(.023f, .027f, .027f), false, false, false, false, false, false);
+                graphic.Refresh(new Color(.023f, .027f, .027f), false, false, false, false, false);
             }
             foreach (var region in regions)
             {
@@ -75,7 +78,20 @@ namespace Game.Campaign
             text.enableAutoSizing = true; text.fontSizeMin = 12; text.fontSizeMax = 18;
             text.textWrappingMode = TMPro.TextWrappingModes.NoWrap; text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
             selectedLabelRoot = labelRect; selectedLabel = text;
+            captureEffect = GetComponent<CampaignCaptureEffect>() ?? gameObject.AddComponent<CampaignCaptureEffect>();
+            captureEffect.Initialize(surfaceMaterial, capture);
         }
+        public bool PlayCapture(CampaignRegionOwnershipChange change, CampaignState state)
+        {
+            if (!change.Matches(state) || captureEffect == null || IsCapturePlaying
+                || !graphics.TryGetValue(change.TargetRegionId, out var graphic)) return false;
+            var target = state.Regions.Find(r => r.RegionId == change.TargetRegionId);
+            var source = state.Regions.Find(r => r.RegionId == change.SourceRegionId);
+            captureEffect.Play(graphic, source, target, ColorFor(change.PreviousOwner));
+            if (selectedLabelRoot != null) selectedLabelRoot.gameObject.SetActive(false);
+            return IsCapturePlaying;
+        }
+        public void CancelCapture() { if (captureEffect != null) captureEffect.Finish(); }
         public void Refresh(CampaignState state, int? selected, int? hovered, bool inputEnabled)
         {
             foreach (var r in state.Regions)
@@ -83,16 +99,15 @@ namespace Game.Campaign
                 bool attackable = selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, r.RegionId);
                 var op = state.PendingOperation;
                 if (!graphics.TryGetValue(r.RegionId, out var graphic)) continue;
-                if (graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
-                    op?.TargetRegionId == r.RegionId, op?.TargetRegionId == r.RegionId && op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory, inputEnabled))
-                    flashUntil = Time.unscaledTime + CampaignRegionGraphic.FlashSeconds;
+                graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
+                    op?.TargetRegionId == r.RegionId, inputEnabled && !IsCapturePlaying);
             }
             var operation = state.PendingOperation;
             arrow?.Set(operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.VisibleCenter(state.Regions.Find(r => r.RegionId == operation.SourceRegionId))),
                 operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.VisibleCenter(state.Regions.Find(r => r.RegionId == operation.TargetRegionId))));
             if (selectedLabelRoot == null) return;
             var labelRegion = selected.HasValue ? state.Regions.Find(r => r.RegionId == selected.Value) : null;
-            selectedLabelRoot.gameObject.SetActive(labelRegion != null);
+            selectedLabelRoot.gameObject.SetActive(labelRegion != null && !IsCapturePlaying);
             if (labelRegion != null)
             {
                 var rect = (RectTransform)transform;
@@ -109,11 +124,6 @@ namespace Game.Campaign
         }
         public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.48f, .55f, .61f)
             : faction == Game.Players.Faction.Ashen ? new Color(.68f, .49f, .38f) : new Color(.46f, .49f, .37f);
-        private void Update()
-        {
-            if (Time.unscaledTime >= flashUntil) return;
-            foreach (var graphic in graphics.Values) graphic.Tick();
-        }
         private void OnRectTransformDimensionsChange()
         {
             if (surfaceMaterial == null) return;
@@ -123,4 +133,5 @@ namespace Game.Campaign
         private void OnDestroy() { if (surfaceMaterial != null) Destroy(surfaceMaterial); }
     }
 }
+
 
