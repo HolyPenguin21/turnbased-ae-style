@@ -8,6 +8,7 @@ Shader "Game/UI/CampaignSurface"
         _EdgeFeather ("Edge feather (canvas units)", Float) = 28
         _Atmosphere ("Cloud overlay", Float) = 0
         _CloudOverlay ("Cloud footprint attenuation", Float) = 0
+        _CloudInteriorOpacity ("Cloud opacity over regions", Range(0,1)) = .10
         _MapViewport ("Map viewport in overlay", Vector) = (0,0,1,1)
         _CornerRadius ("Panel corner radius", Float) = 0
         _UVRect ("Overlay UV rect", Vector) = (0,0,1,1)
@@ -74,6 +75,7 @@ Shader "Game/UI/CampaignSurface"
             float _EdgeFeather;
             float _Atmosphere;
             float _CloudOverlay;
+            float _CloudInteriorOpacity;
             float4 _MapViewport;
             float _CornerRadius;
             float4 _UVRect;
@@ -115,8 +117,8 @@ Shader "Game/UI/CampaignSurface"
                 float2 squared = mapPosition * mapPosition;
                 float2 fourth = squared * squared;
                 float mapRadius = sqrt(sqrt(sqrt(dot(fourth * fourth, float2(1, 1)))));
-                float overMap = (1 - smoothstep(.99, 1.075, mapRadius)) * _CloudOverlay;
-                color.a *= lerp(1, .10, overMap);
+                float overMap = (1 - smoothstep(.93, 1.075, mapRadius)) * _CloudOverlay;
+                color.a *= lerp(1, _CloudInteriorOpacity, overMap);
                 color.rgb = lerp(color.rgb, dot(color.rgb, fixed3(.299,.587,.114)), overMap * .70);
                 float2 edge = min(viewport, 1 - viewport) * _SurfaceSize.xy;
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
