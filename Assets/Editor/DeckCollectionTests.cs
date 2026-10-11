@@ -263,7 +263,8 @@ namespace Game.EditorTools
                 Game.UI.CollectionUIElements.ApplyWindowSkin(root);
                 Game.UI.CollectionUIElements.ApplyWindowSkin(root);
                 foreach (var pair in new[] { ("", "Panel_Outer"), ("Filters", "Panel_Inset"), ("Cards", "Panel_Inset"),
-                    ("Deck", "Panel_Inset"), ("Deck/DeckName", "Input"), ("Deck/Save", "Plaque") })
+                    ("Deck", "Panel_Inset"), ("Deck/DeckName", "Input"), ("Deck/Save", "SavePlate"),
+                    ("Deck/StatisticsFrame", "Panel_Inset"), ("Deck/DeckTitle", "DeckHeader") })
                 {
                     var target = pair.Item1 == "" ? root : root.Find(pair.Item1);
                     var expected = Resources.Load<Sprite>("UI/Collection/" + pair.Item2);
@@ -271,7 +272,9 @@ namespace Game.EditorTools
                     Assert.That(target.GetComponent<UnityEngine.UI.Image>().sprite, Is.EqualTo(expected));
                 }
                 Assert.That(root.Cast<Transform>().Count(t => t.name == "TitlePlaque"), Is.EqualTo(1));
-                Assert.That(grid.cellSize, Is.EqualTo(new Vector2(140, 194)));
+                Assert.That(grid.cellSize, Is.EqualTo(new Vector2(140, 198)));
+                Assert.That(root.Find("Cards/MetalBackground").GetComponent<UnityEngine.UI.Image>().type, Is.EqualTo(UnityEngine.UI.Image.Type.Tiled));
+                Assert.That(root.Find("Cards").GetComponent<UnityEngine.UI.Image>().fillCenter, Is.False);
                 Assert.That(field.text, Is.EqualTo("Keep my deck"));
                 save.onClick.Invoke(); Assert.That(clicks, Is.EqualTo(1));
                 var cellBackground = cell.GetComponent<UnityEngine.UI.Image>();
@@ -454,4 +457,5 @@ namespace Game.EditorTools
     }
 }
 #endif
+
 

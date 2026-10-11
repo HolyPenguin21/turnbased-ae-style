@@ -9,7 +9,7 @@ namespace Game.UI
     // One pooled line of the deck list: either a category header or a card row.
     public sealed class CollectionDeckRowView : MonoBehaviour
     {
-        private const float HeaderHeight = 21f, RowHeight = 52f;
+        private const float HeaderHeight = 14f, RowHeight = 38f;
         [SerializeField] private LayoutElement layout;
         [SerializeField] private GameObject headerRoot, rowRoot;
         [SerializeField] private TMP_Text headerLabel, nameLabel, costLabel, countLabel;
@@ -20,6 +20,7 @@ namespace Game.UI
 
         public void Init(Action<CardDefinition> onSelect, Action<string, int> onChange, Action<string> onRemove)
         {
+            CollectionUIElements.ApplyDeckRowSkin((RectTransform)transform);
             nameButton.onClick.AddListener(() => onSelect(card));
             minusButton.onClick.AddListener(() => onChange(key, -1));
             plusButton.onClick.AddListener(() => onChange(key, 1));
@@ -46,3 +47,4 @@ namespace Game.UI
         }
     }
 }
+
