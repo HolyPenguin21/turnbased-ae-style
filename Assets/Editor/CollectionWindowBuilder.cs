@@ -19,12 +19,12 @@ public static class CollectionWindowBuilder
     [MenuItem("Tools/UI/Build Collection Window")]
     private static void Build()
     {
-        var menu = Object.FindFirstObjectByType<MainMenuController>();
+        var menu = Object.FindAnyObjectByType<MainMenuController>();
         if (menu == null) { EditorUtility.DisplayDialog("Collection window", "Open the MainMenu scene first (no MainMenuController found).", "OK"); return; }
         var menuObject = new SerializedObject(menu);
         var panel = menuObject.FindProperty("mainMenuPanel").objectReferenceValue as GameObject;
         var canvas = (panel != null ? panel.GetComponentInParent<Canvas>() : menu.GetComponentInParent<Canvas>());
-        if (canvas == null) canvas = Object.FindFirstObjectByType<Canvas>();
+        if (canvas == null) canvas = Object.FindAnyObjectByType<Canvas>();
         if (canvas == null) { EditorUtility.DisplayDialog("Collection window", "No Canvas found in the scene.", "OK"); return; }
         canvas = canvas.rootCanvas;
         var config = menuObject.FindProperty("gameConfig").objectReferenceValue as Game.Core.GameConfig;
