@@ -78,6 +78,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioChatterController
   _canvas: {fileID: 200001}
   _overlayCanvas: {fileID: 200002}
+  referenceOrthographicSize: 2.6
   _views:
   - {fileID: 201003}
   - {fileID: 202003}
