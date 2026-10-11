@@ -107,8 +107,14 @@ namespace Game.Campaign
             return 1 - progress * progress * (3 - 2 * progress);
         }
 
+        // Edges shorter than this (in projected map units, the disk spans 2) gain nothing from further subdivision.
+        private const float MinSubdivisionEdgeSqr = .12f * .12f;
+
         private void Subdivide(Vector2 a, Vector2 b, Vector2 c, Vector2 screenA, Vector2 screenB, Vector2 screenC, int depth)
         {
+            // Adaptive: only triangles that are large enough to show the projection's curvature are split.
+            if (depth > 0 && Math.Max((screenA - screenB).sqrMagnitude, Math.Max((screenB - screenC).sqrMagnitude, (screenC - screenA).sqrMagnitude)) < MinSubdivisionEdgeSqr)
+                depth = 0;
             if (depth == 0)
             {
                 surfaceTriangles.Add(a); surfaceTriangles.Add(b); surfaceTriangles.Add(c);
@@ -122,13 +128,15 @@ namespace Game.Campaign
             Subdivide(ab, bc, ca, screenAB, screenBC, screenCA, depth - 1);
         }
 
-        public void Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool capture, bool input)
+        // Returns true when a capture flash has just started and the owner should call Tick() for FlashSeconds.
+        public bool Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool capture, bool input)
         {
             if (color == tint && selected == selection && hover == over && attackable == legal
-                && attacked == target && captured == capture && enabledInput == input) return;
+                && attacked == target && captured == capture && enabledInput == input) return false;
             if (color != tint) changedTime = Time.unscaledTime;
             color = tint; selected = selection; hover = over; attackable = legal;
             attacked = target; captured = capture; enabledInput = input; SetVerticesDirty();
+            return capture && Time.unscaledTime - changedTime < FlashSeconds;
         }
         public void OnPointerClick(PointerEventData data) { if (enabledInput) clicked?.Invoke(); }
         public void OnPointerEnter(PointerEventData data) { if (enabledInput) hovered?.Invoke(true); }
@@ -224,6 +232,8 @@ namespace Game.Campaign
                 if (i > 0) vh.AddTriangle(start, start + i, start + i + 1);
             }
         }
-        private void Update() { if (captured && Time.unscaledTime - changedTime < .7f) SetVerticesDirty(); }
+        // Driven by CampaignMapView only while a capture flash plays; the component itself must stay enabled to render.
+        public const float FlashSeconds = .7f;
+        public void Tick() { if (captured && Time.unscaledTime - changedTime < FlashSeconds) SetVerticesDirty(); }
     }
 }

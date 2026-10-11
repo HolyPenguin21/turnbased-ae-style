@@ -13,6 +13,7 @@ namespace Game.Campaign
         private readonly Dictionary<int, CampaignRegionGraphic> graphics = new Dictionary<int, CampaignRegionGraphic>();
         private CampaignArrowGraphic arrow;
         private Material surfaceMaterial;
+        private float flashUntil;
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
@@ -82,8 +83,9 @@ namespace Game.Campaign
                 bool attackable = selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, r.RegionId);
                 var op = state.PendingOperation;
                 if (!graphics.TryGetValue(r.RegionId, out var graphic)) continue;
-                graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
-                    op?.TargetRegionId == r.RegionId, op?.TargetRegionId == r.RegionId && op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory, inputEnabled);
+                if (graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
+                    op?.TargetRegionId == r.RegionId, op?.TargetRegionId == r.RegionId && op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory, inputEnabled))
+                    flashUntil = Time.unscaledTime + CampaignRegionGraphic.FlashSeconds;
             }
             var operation = state.PendingOperation;
             arrow?.Set(operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.VisibleCenter(state.Regions.Find(r => r.RegionId == operation.SourceRegionId))),
@@ -107,6 +109,11 @@ namespace Game.Campaign
         }
         public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.48f, .55f, .61f)
             : faction == Game.Players.Faction.Ashen ? new Color(.68f, .49f, .38f) : new Color(.46f, .49f, .37f);
+        private void Update()
+        {
+            if (Time.unscaledTime >= flashUntil) return;
+            foreach (var graphic in graphics.Values) graphic.Tick();
+        }
         private void OnRectTransformDimensionsChange()
         {
             if (surfaceMaterial == null) return;

@@ -97,7 +97,7 @@ namespace Game.Campaign
             CollectionSkin(footer, "Panel_Inset"); footer.GetComponent<Image>().raycastTarget = false;
             hoverLabel = Label(surface, "", 30, 24, 1310, 34, 19); hoverLabel.color = Cream;
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
-            try { var state = Controller.Snapshot; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
+            try { var state = Controller.View; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
             catch (Exception ex) { Failure(ex.Message, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             if (!ProgressionContext.Initialize(gameConfig)) { Failure(ProgressionContext.Error, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             Recover();
@@ -107,7 +107,7 @@ namespace Game.Campaign
             CloseModal(); rewardOpen = false;
             if (!CampaignMatchBridge.RecoverReward(gameConfig, out string error)) { Failure(error, Recover); return; }
             Render();
-            var op = Controller.Snapshot.PendingOperation;
+            var op = Controller.View.PendingOperation;
             if (op?.Manual == true && op.ResultRecorded && !op.RewardAcknowledged)
             {
                 rewardOpen = true; RefreshMap();
@@ -115,7 +115,7 @@ namespace Game.Campaign
                 rewards.Resume(gameConfig, () => { rewardOpen = false; Recover(); });
                 return;
             }
-            if (Controller.Snapshot.Phase == CampaignPhase.ShowingResult) ShowResult();
+            if (Controller.View.Phase == CampaignPhase.ShowingResult) ShowResult();
             else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
             else if (op != null && !op.Manual && !op.ResultRecorded)
                 Attempt(() => { Controller.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, ProgressionContext.Collection.Rules), CampaignDeck.Standard(op.DefenderFaction, ProgressionContext.Collection.Rules), resolver); Render(); ShowResult(); });
@@ -141,21 +141,21 @@ namespace Game.Campaign
         private void HoverRegion(int? id)
         {
             hovered = id;
-            var r = id.HasValue ? Controller.Snapshot.Regions.Find(x => x.RegionId == id) : null;
+            var r = id.HasValue ? Controller.View.Regions.Find(x => x.RegionId == id) : null;
             hoverLabel.text = r == null ? "" : r.Name + "  ·  " + FactionName(r.OwnerFaction);
             RefreshMap();
         }
         private void ClickRegion(int id)
         {
             if (modal != null || rewardOpen) return;
-            var state = Controller.Snapshot;
+            var state = Controller.View;
             if (selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
         }
         private void Render()
         {
             if (Controller == null) return;
-            var s = Controller.Snapshot;
+            var s = Controller.View;
             heading.text = s.PlanetName + "  ·  Round " + s.RoundNumber + "  ·  " + FactionName(s.CurrentFaction);
             CollectionUIElements.Clear(sidebar); CollectionUIElements.Clear(footer);
             Plaque(sidebar, "TERRITORIES", 24, 18, 382, 46, 26);
@@ -254,7 +254,7 @@ namespace Game.Campaign
         private void RefreshMap()
         {
             if (Controller == null || map == null) return;
-            var s = Controller.Snapshot;
+            var s = Controller.View;
             bool enabled = modal == null && !rewardOpen && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
             map.Refresh(s, selected, hovered, enabled);
         }
@@ -272,7 +272,7 @@ namespace Game.Campaign
         private void CancelAttackConfirmation() { CloseModal(); RefreshMap(); }
         private void ConfirmAttack(int from, int target)
         {
-            var s = Controller.Snapshot; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
+            var s = Controller.View; if (!CampaignRules.CanAttack(s, s.HumanFaction, from, target)) return;
             Modal("CONFIRM ATTACK", CancelAttackConfirmation);
             Label(modalContent, s.Regions.Find(r => r.RegionId == from).Name + " → " + s.Regions.Find(r => r.RegionId == target).Name, 35, 110, 880, 90, 26);
             Button(modalContent, "Choose Deck", 35, 570, 400, 56, () => Attempt(() => { Controller.BeginAttack(from, target, true); OpenDeckSelection(); }));
@@ -280,7 +280,7 @@ namespace Game.Campaign
         }
         private void OpenDeckSelection()
         {
-            var s = Controller.Snapshot; var op = s.PendingOperation;
+            var s = Controller.View; var op = s.PendingOperation;
             if (op == null || !op.Manual || op.ResultRecorded) return;
             Modal("CAMPAIGN BATTLE", CancelDeck);
             bool attack = op.AttackerFaction == s.HumanFaction;
@@ -321,7 +321,7 @@ namespace Game.Campaign
         }
         private void ResolveTest(string deckId)
         {
-            var s = Controller.Snapshot; var op = s.PendingOperation;
+            var s = Controller.View; var op = s.PendingOperation;
             if (!enableHumanTestAutoResolve && !op.TestAutoResolve) throw new InvalidOperationException("Test Auto Resolve is disabled.");
             var deck = ProgressionContext.Collection.Snapshot.savedDecks.Find(d => d.deckId == deckId && d.faction == s.HumanFaction)
                 ?? throw new InvalidOperationException("Test deck is no longer available.");
@@ -334,18 +334,18 @@ namespace Game.Campaign
         }
         private void CancelDeck()
         {
-            var op = Controller?.Snapshot.PendingOperation;
+            var op = Controller?.View.PendingOperation;
             if (op == null) { CloseModal(); RefreshMap(); return; }
             if (op.ResultRecorded) return;
             // Never cancel a started match receipt; defending and interrupted battles stay pending.
-            if (Controller.Snapshot.Phase == CampaignPhase.PreparingBattle && op.AttackerFaction == Controller.Snapshot.HumanFaction)
+            if (Controller.View.Phase == CampaignPhase.PreparingBattle && op.AttackerFaction == Controller.View.HumanFaction)
                 { try { Controller.CancelHumanAttack(); } catch (Exception ex) { Failure(ex.Message, Recover); return; } }
             else defenceDeferred = true;
             CloseModal(); Render();
         }
         private void ShowResult()
         {
-            var s = Controller.Snapshot; var op = s.PendingOperation;
+            var s = Controller.View; var op = s.PendingOperation;
             if (s.Phase != CampaignPhase.ShowingResult || op == null) return;
             Modal("CAMPAIGN BATTLE RESULT");
             string text = "Region: " + s.Regions.Find(r => r.RegionId == op.TargetRegionId).Name
