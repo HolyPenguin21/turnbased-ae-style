@@ -45,6 +45,7 @@ public sealed class CampaignVisualTests
             {
                 material.SetFloat("_Atmosphere", 1);
                 material.SetFloat("_CloudOverlay", 1);
+                material.SetFloat("_CloudInteriorOpacity", .18f);
             }
             material.SetTexture("_MainTex", Texture2D.whiteTexture);
             material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
