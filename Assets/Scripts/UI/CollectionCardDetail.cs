@@ -25,8 +25,10 @@ namespace Game.UI
                 foreach (var tag in card.grantedAbilities) unit.Abilities.Add(tag);
                 return text + UnitDetailFormatter.Format(unit, config, 0);
             }
-            if (card.cardType == CardType.Base) text += $"Defense {card.defenseRating}\nResistance {card.resistanceRating}\nHP {card.hitPoints}\n";
+            if (card.cardType == CardType.Base || card.cardType == CardType.Facility)
+                text += $"Level 1\nDefense {card.defenseRating}\nStructure points {card.hitPoints}\nResistance {card.resistanceRating}\nFate {card.fate}\n";
             return text + config.FormatAbilitiesDetailed(card.grantedAbilities);
         }
     }
 }
+

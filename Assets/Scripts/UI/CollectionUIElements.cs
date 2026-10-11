@@ -214,12 +214,73 @@ namespace Game.UI
                 var arrow = dropdown.transform.Find("Arrow")?.GetComponent<Image>();
                 if (arrow != null) arrow.color = CollectionInk;
                 if (dropdown.template == null) continue;
+                // One parchment surface for the popup; items are flat highlight strips.
+                ApplySurface(dropdown.template.GetComponent<Image>(), "Input");
+                var template = dropdown.template;
+                template.anchorMin = new Vector2(0, 0); template.anchorMax = new Vector2(1, 0);
+                template.pivot = new Vector2(.5f, 1); template.anchoredPosition = new Vector2(0, -4);
+                template.sizeDelta = new Vector2(0, 240);
                 foreach (var image in dropdown.template.GetComponentsInChildren<Image>(true))
                 {
-                    if (image.transform == dropdown.template || image.name == "Item Background") ApplySurface(image, "Input");
-                    else if (image.name == "Handle") ApplySurface(image, "Button");
-                    else if (image.name == "Scrollbar") ApplySurface(image, "Meter");
+                    if (image.name == "Item Background")
+                    { image.sprite = null; image.type = Image.Type.Simple; image.color = Color.white; }
                     else if (image.name == "Item Checkmark") image.color = CollectionInk;
+                }
+                var item = dropdown.itemText != null ? dropdown.itemText.GetComponentInParent<Toggle>() : null;
+                if (item != null)
+                {
+                    var rect = (RectTransform)item.transform;
+                    rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(1, 1);
+                    rect.pivot = new Vector2(.5f, 1); rect.anchoredPosition = Vector2.zero;
+                    rect.sizeDelta = new Vector2(0, 32);
+                    var colors = item.colors;
+                    colors.normalColor = Color.clear;
+                    colors.highlightedColor = new Color(.36f, .25f, .12f, .18f);
+                    colors.selectedColor = colors.highlightedColor;
+                    colors.pressedColor = new Color(.36f, .25f, .12f, .3f);
+                    colors.disabledColor = Color.clear; item.colors = colors;
+                    var label = (RectTransform)dropdown.itemText.transform;
+                    Stretch(label); label.offsetMin = new Vector2(24, 3); label.offsetMax = new Vector2(-8, -3);
+                    dropdown.itemText.fontSize = 14; dropdown.itemText.textWrappingMode = TextWrappingModes.NoWrap;
+                    dropdown.itemText.overflowMode = TextOverflowModes.Ellipsis;
+                    var check = item.transform.Find("Item Checkmark") as RectTransform;
+                    if (check != null)
+                    {
+                        check.anchorMin = check.anchorMax = new Vector2(0, .5f);
+                        check.pivot = new Vector2(.5f, .5f); check.anchoredPosition = new Vector2(12, 0);
+                        check.sizeDelta = new Vector2(10, 10);
+                    }
+                }
+                var popup = template.GetComponent<ScrollRect>();
+                if (popup != null)
+                {
+                    popup.horizontal = false; popup.vertical = true;
+                    popup.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+                    popup.verticalScrollbarSpacing = 2;
+                    if (popup.viewport != null)
+                    {
+                        Stretch(popup.viewport); popup.viewport.offsetMin = new Vector2(8, 8); popup.viewport.offsetMax = new Vector2(-22, -8);
+                        var mask = popup.viewport.GetComponent<Mask>();
+                        if (mask != null) mask.showMaskGraphic = false;
+                        else
+                        {
+                            var graphic = popup.viewport.GetComponent<Image>();
+                            if (graphic != null) graphic.color = Color.clear;
+                        }
+                    }
+                    if (popup.content != null)
+                    {
+                        popup.content.anchorMin = new Vector2(0, 1); popup.content.anchorMax = new Vector2(1, 1);
+                        popup.content.pivot = new Vector2(.5f, 1); popup.content.anchoredPosition = Vector2.zero;
+                        popup.content.sizeDelta = new Vector2(0, 32);
+                    }
+                    if (popup.verticalScrollbar != null)
+                    {
+                        var bar = (RectTransform)popup.verticalScrollbar.transform;
+                        bar.anchorMin = new Vector2(1, 0); bar.anchorMax = new Vector2(1, 1); bar.pivot = new Vector2(1, .5f);
+                        bar.anchoredPosition = new Vector2(-8, 0); bar.sizeDelta = new Vector2(10, -20);
+                        ApplyScrollbarSkin(popup.verticalScrollbar);
+                    }
                 }
             }
             foreach (var input in root.GetComponentsInChildren<TMP_InputField>(true))
@@ -237,16 +298,45 @@ namespace Game.UI
             scroll.horizontal = false; scroll.vertical = true;
             if (inset && scroll.viewport != null)
             {
-                scroll.viewport.offsetMin = new Vector2(8, 8);
-                scroll.viewport.offsetMax = new Vector2(scroll.verticalScrollbar != null ? -20 : -8, -8);
+                scroll.viewport.offsetMin = new Vector2(scroll.verticalScrollbar != null ? 6 : 8, 8);
+                scroll.viewport.offsetMax = new Vector2(scroll.verticalScrollbar != null ? -28 : -8, -8);
             }
             if (scroll.verticalScrollbar == null) return;
             var bar = scroll.verticalScrollbar;
             var rect = (RectTransform)bar.transform;
             var size = ((RectTransform)root).sizeDelta;
-            Place(rect, size.x - 11, 12, 6, size.y - 24);
-            Surface(bar.transform, "Meter");
-            if (bar.handleRect != null) Surface(bar.handleRect, "Button");
+            Place(rect, size.x - (inset ? 26 : 14), 16, 10, size.y - 32);
+            ApplyScrollbarSkin(bar);
+        }
+        private static void ApplyScrollbarSkin(Scrollbar bar)
+        {
+            var track = bar.GetComponent<Image>();
+            if (track != null)
+            {
+                track.sprite = null; track.type = Image.Type.Simple;
+                track.color = new Color(.035f, .032f, .025f, .95f);
+                var edge = track.GetComponent<Outline>();
+                if (edge == null) edge = track.gameObject.AddComponent<Outline>();
+                edge.effectColor = new Color(.38f, .25f, .12f, .85f); edge.effectDistance = new Vector2(.65f, .65f);
+            }
+            if (bar.handleRect != null)
+            {
+                var area = bar.handleRect.parent as RectTransform;
+                if (area != null && area != bar.transform)
+                { Stretch(area); area.offsetMin = new Vector2(1, 2); area.offsetMax = new Vector2(-1, -2); }
+                Surface(bar.handleRect, "SquareButton");
+                var handle = bar.handleRect.GetComponent<Image>();
+                if (handle != null) { handle.pixelsPerUnitMultiplier = 3; handle.raycastTarget = true; bar.targetGraphic = handle; }
+                for (int i = 0; i < 3; i++)
+                {
+                    string name = "Grip" + i;
+                    var grip = bar.handleRect.Find(name) as RectTransform;
+                    if (grip == null) grip = Panel(bar.handleRect, name);
+                    grip.anchorMin = grip.anchorMax = new Vector2(.5f, .5f); grip.pivot = new Vector2(.5f, .5f);
+                    grip.anchoredPosition = new Vector2(0, (i - 1) * 3); grip.sizeDelta = new Vector2(4, 1);
+                    var line = grip.GetComponent<Image>(); line.sprite = null; line.color = CollectionText; line.raycastTarget = false;
+                }
+            }
             ControlColors(bar);
         }
         private static RectTransform Decoration(Transform parent, string name, string asset)
@@ -330,5 +420,6 @@ namespace Game.UI
         }
     }
 }
+
 
 
