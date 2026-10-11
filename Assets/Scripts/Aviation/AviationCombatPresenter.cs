@@ -43,6 +43,7 @@ namespace Game.Aviation
     // ArmyController.MoveAlong's per-step resolution; AA and air strikes remain here.
     public class AviationCombatPresenter : MonoBehaviour
     {
+        public static event System.Action<ArmyData> OperationCompleted;
         [SerializeField] private BattleAttackPopupUI attackPopup;
         [SerializeField] private AaChoicePopupUI aaChoicePopup;
         [SerializeField] private HexSelectionController hexSelection;
@@ -119,10 +120,13 @@ namespace Game.Aviation
 
             if (result != null)
                 result.DefenderCountBefore = targets.Sum(a => a.Members.Count);
-            yield return RunAirStrike(airArmy, targets, policy, result);
+            // Reuse the resolved strike result; selecting targets alone is not a completed attack.
+            AirStrikeResult operationResult = result ?? (OperationCompleted != null ? new AirStrikeResult() : null);
+            yield return RunAirStrike(airArmy, targets, policy, operationResult);
             if (result != null)
                 result.DefenderCountAfter = targets.Sum(a => a.Members.Count);
             VisionSystem.NotifyContentChanged(hex);
+            if (operationResult != null && operationResult.Attacked) OperationCompleted?.Invoke(airArmy);
         }
 
         private IEnumerator ResolveGroundAaStep(ArmyData groundArmy, HexCoord hex)

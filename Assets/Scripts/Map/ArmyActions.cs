@@ -13,6 +13,7 @@ namespace Game.Map
     // transferring members. Both human and AI callers use these exact mutations and costs.
     public static class ArmyActions
     {
+        public static event System.Action<ArmyData, UnitData> UnitDeployed;
         public const int CreateArmyApCost = 2;
 
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
@@ -337,6 +338,7 @@ namespace Game.Map
                 VisionSystem.RecomputeFor(owner);
             StealthSystem.RunChecksForNewVisionSource(resultingArmy, spawned);
             VisionSystem.NotifyContentChanged(deploymentHex);
+            UnitDeployed?.Invoke(resultingArmy, spawned);
             return true;
         }
 

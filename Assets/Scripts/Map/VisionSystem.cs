@@ -44,6 +44,8 @@ namespace Game.Map
         // walking through a large already-revealed area does not rebuild the whole fog/UI stack
         // once per animation step.
         public static event Action<PlayerSetupData> VisibilityChanged;
+        // Newly visited ground only, after all knowledge sets have been committed.
+        public static event Action<PlayerSetupData, HexCoord> GroundHexVisited;
         public static event Action<PlayerSetupData, HexCoord> VisibleContentChanged;
 
         public static PlayerSetupData CurrentViewer { get; set; }
@@ -195,6 +197,12 @@ namespace Game.Map
                 Visited[player] = visited;
             }
             bool visitedChanged = !footprint.IsSubsetOf(visited);
+            List<HexCoord> newGround = null;
+            if (GroundHexVisited != null && visitedChanged)
+            {
+                newGround = new List<HexCoord>();
+                foreach (var hex in footprint) if (!visited.Contains(hex)) newGround.Add(hex);
+            }
             visited.UnionWith(footprint);
 
             if (!EverSeen.TryGetValue(player, out HashSet<HexCoord> everSeen))
@@ -204,6 +212,8 @@ namespace Game.Map
             }
             everSeen.UnionWith(fresh);
 
+            if (newGround != null)
+                foreach (var hex in newGround) GroundHexVisited?.Invoke(player, hex);
             if (visibilityChanged || visitedChanged)
                 VisibilityChanged?.Invoke(player);
         }

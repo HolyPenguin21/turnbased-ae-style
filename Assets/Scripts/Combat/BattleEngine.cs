@@ -266,6 +266,10 @@ namespace Game.Combat
     // returns presentation-neutral result objects. BattleScreenUI only renders those results.
     public sealed class BattleEngine
     {
+        public static event Action<BattleState> EncounterStarted;
+        public static event Action<BattleState, BattleEncounterFinalization> EncounterFinalized;
+        public static event Action<BattleState, ArmyData, BattleRetreatApplication> ArmyRetreated;
+        public static event Action<ArmyData, UnitData> HeroImprisoned;
         private readonly BattleState _state;
         private readonly AbilityMagnitudes _magnitudes;
         private readonly System.Random _random;
@@ -279,6 +283,8 @@ namespace Game.Combat
             _random = random ?? new System.Random(state.BattleSeed);
             AiDebugLog.Write($"[BATTLE] ({state.BattleHex.Q},{state.BattleHex.R}) start: attacker "
                 + $"{DescribeSides(state.Attacker)} vs defender {DescribeSides(state.Defender)}");
+            if (state.Grid != null && BattleInitiator.IsCombatCapable(state.Attacker) && BattleInitiator.IsCombatCapable(state.Defender))
+                EncounterStarted?.Invoke(state);
         }
 
         // Every member with the stats the fight is played with (attack/defense/hp now/max): the
@@ -661,6 +667,7 @@ namespace Game.Combat
 
             bool needsRetreat = heroArmy != null && heroArmy.Members.Count > 0
                 && !BattleInitiator.IsCombatCapable(heroArmy);
+            if (imprisoned) HeroImprisoned?.Invoke(hunterArmy, hero);
             return new BattleCaptureKillApplication(outcome, effective, imprisoned, removed, needsRetreat);
         }
 
@@ -772,7 +779,9 @@ namespace Game.Combat
             hexSelectionController?.DeleteArmyIfEmptied(state.Defender);
             hexSelectionController?.RestackArmiesOn(hex, null);
 
-            return new BattleEncounterFinalization(survivor, attackerHere, defenderHere);
+            var finalization = new BattleEncounterFinalization(survivor, attackerHere, defenderHere);
+            EncounterFinalized?.Invoke(state, finalization);
+            return finalization;
         }
 
         public static BattleEncounterFinalization FinalizeStandaloneCaptureKill(
@@ -911,7 +920,9 @@ namespace Game.Combat
 
             hexSelectionController?.HandleRetreatFromHexEvent(battleHex, army.Owner);
 
-            return new BattleRetreatApplication(!relocated, relocated, destination, contactParticipants);
+            var application = new BattleRetreatApplication(!relocated, relocated, destination, contactParticipants);
+            ArmyRetreated?.Invoke(state, army, application);
+            return application;
         }
 
         public static void StripSummonedUnits(BattleState state, ArmyData army)

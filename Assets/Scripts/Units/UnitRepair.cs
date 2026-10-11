@@ -16,6 +16,7 @@ namespace Game.Units
     // static helper" shape as Map.ArmyActions.
     public static class UnitRepair
     {
+        public static event System.Action<ArmyData, UnitData> Repaired;
         public static bool IsWounded(UnitData unit) => unit != null && unit.HitPointsCurrent < unit.HitPointsMax;
 
         // The player's own Base only — not an ally's, not neutral/enemy (the project owner's own
@@ -114,6 +115,7 @@ namespace Game.Units
             ArmyData army = ArmyRegistry.FindArmyContaining(unit);
             if (army != null)
                 VisionSystem.NotifyContentChanged(army.Hex);
+            if (army != null) Repaired?.Invoke(army, unit);
             return true;
         }
     }

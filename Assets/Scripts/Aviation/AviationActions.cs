@@ -13,6 +13,7 @@ namespace Game.Aviation
     // capacity, and slot order cannot drift between a modal button and autonomous behavior.
     public static class AviationActions
     {
+        public static event System.Action<ArmyData, UnitData> AircraftLanded;
         public static ArmyData EnsureAirfield(HexSelectionController hexSelection, PlayerSetupData owner, Game.HexGrid.HexCoord hex)
         {
             if (!AviationRules.IsOwnedAirfieldAt(hex, owner))
@@ -206,6 +207,7 @@ namespace Game.Aviation
                 AviationRules.SyncAirArmyShell(airArmy, hexSelection);
                 hexSelection?.RestackArmiesOn(airArmy.Hex, null);
                 VisionSystem.NotifyContentChanged(airArmy.Hex);
+                AircraftLanded?.Invoke(airfield, landing[0]);
             }
             return landing.Count;
         }
