@@ -84,6 +84,7 @@ namespace Game.Campaign
                 cloudMaterial.SetFloat("_Atmosphere", 1);
                 cloudMaterial.SetFloat("_CloudOverlay", 1);
                 cloudMaterial.SetFloat("_CloudInteriorOpacity", .18f);
+                cloudMaterial.SetFloat("_CloudCornerOpacity", .72f);
                 cloudMaterial.SetVector("_UVRect", new Vector4(.04f, .04f, .92f, .92f));
                 cloudMaterial.SetVector("_MapViewport", new Vector4(12f / 1376, 12f / 768, 1352f / 1376, 744f / 768));
                 cloudMaterial.SetVector("_SurfaceSize", new Vector4(1376, 768, 0, 0));
