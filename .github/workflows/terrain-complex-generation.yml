@@ -7,7 +7,7 @@ on:
       - Assets/Scripts/Terrain/**
       - Assets/Scripts/Tools/HexMapGenerator.cs
       - Assets/Scripts/Map/MapTerrainAnimator.cs
-      - Assets/Editor/TerrainComplexTests.cs
+      - Assets/Editor/Tests/Map/TerrainComplexTests.cs
       - Assets/Config/GameConfig.asset
       - Assets/Textures/Terrain/**/Complexes/**
       - Tools/terrain-verify/**

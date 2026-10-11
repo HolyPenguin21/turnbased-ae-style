@@ -2,7 +2,7 @@
 
 New campaigns select one of ten full-bleed desert landscapes. The choice is stored in `CampaignState.BackgroundId` and remains fixed through turns, battles, save/reload and recovery. Selection uses an independent seeded stream; geometry, ownership and gameplay RNG are unchanged. Consecutive campaigns may legitimately select the same image.
 
-IDs 1–10 map to `Assets/Resources/Campaign/WastelandSurface_01.jpg` … `_10.jpg`. ID 0 keeps the original `WastelandSurface.jpg` for old saves. Each production texture is 1254×1254, opaque RGB JPEG; metadata uses unique GUIDs, clamp wrapping, no mipmaps and a 2048 import cap. Only the selected texture is loaded at runtime. Terrain features are decoration and grant no gameplay effects.
+IDs 1–10 map to `Assets/Resources/Campaign/Backgrounds/WastelandSurface_01.jpg` … `_10.jpg`. ID 0 keeps the original `WastelandSurface.jpg` for old saves. Each production texture is 1254×1254, opaque RGB JPEG; metadata uses unique GUIDs, clamp wrapping, no mipmaps and a 2048 import cap. Only the selected texture is loaded at runtime. Terrain features are decoration and grant no gameplay effects.
 
 | ID | Landscape | Production asset |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ IDs 1–10 map to `Assets/Resources/Campaign/WastelandSurface_01.jpg` … `_10.j
 
 ## Generation prompts
 
-Created using the built-in imagegen tool, one request per asset. The original `Assets/Resources/Campaign/WastelandSurface.jpg` was the style reference, not an overwrite target. Images were exported to JPEG without changing composition or colors. No regions, faction colors or UI were baked into the backgrounds.
+Created using the built-in imagegen tool, one request per asset. The original `Assets/Resources/Campaign/Backgrounds/WastelandSurface.jpg` was the style reference, not an overwrite target. Images were exported to JPEG without changing composition or colors. No regions, faction colors or UI were baked into the backgrounds.
 
 Every request used this common prefix, followed by `Primary request: ` and the matching landscape description below:
 

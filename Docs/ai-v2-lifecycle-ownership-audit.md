@@ -67,32 +67,32 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### MissionIntentRegistry
 
-- `Assets/Editor/AiActiveDefenceTests.cs:281,284,294,304,307,319,327,330,349`
-- `Assets/Editor/AiAggressionOwnershipRegressionTests.cs:32,40`
-- `Assets/Editor/AiAggressionRaidTests.cs:599`
-- `Assets/Editor/AiAttackBaseRefitTests.cs:26,36,142,251,255,282`
-- `Assets/Editor/AiAttackIntermediateBaseTests.cs:25,26,117,130,136,148,152,202`
-- `Assets/Editor/AiAttackLaneTests.cs:48,55,341,950,978`
-- `Assets/Editor/AiAttackObjectiveTests.cs:585,590,611`
-- `Assets/Editor/AiAviationMissionRegressionTests.cs:32,41`
-- `Assets/Editor/AiAviationSortieCycleTests.cs:1130,1150,1164,1165,1169`
-- `Assets/Editor/AiDevelopmentEquipmentMatchupTests.cs:584,602,613,621,650,657`
-- `Assets/Editor/AiEconomyBuildSiteOwnershipTests.cs:42,45,55,58`
-- `Assets/Editor/AiEconomyContinuityAuditTests.cs:24,83,115,313,332,345,412,578`
-- `Assets/Editor/AiEconomyDecisionTests.cs:458,488,519,542,574,594,634,650,670,681,694,741,770,839,900,916,937,941,961,983,993,1002,1006,1025,1048,1088,1132,1154,1183,1798,1817,1896,1936,1980,2390,2413,2437,3115,3901`
-- `Assets/Editor/AiEconomyDevelopmentAuditTests.cs:40,63,91,108`
-- `Assets/Editor/AiEconomyOwnershipTests.cs:68,114,222,226,236,238,247,383,389`
-- `Assets/Editor/AiFieldPowerCommittedRecipientTests.cs:35,41,62`
-- `Assets/Editor/AiGarrisonHeroTests.cs:207,212,227`
-- `Assets/Editor/AiRaidIntentStateTests.cs:149,191,214,236,252,287,347`
-- `Assets/Editor/AiReconAttackObservationTests.cs:24,93`
-- `Assets/Editor/AiReconAuditBugTests.cs:20,143,253,271,296,310`
-- `Assets/Editor/AiReconContinuityPayloadTests.cs:17,28,42,58,64`
-- `Assets/Editor/AiReconDetectorRiskTests.cs:20`
-- `Assets/Editor/AiReconIncumbentCostTests.cs:14`
-- `Assets/Editor/AiReconTrimEligibilityTests.cs:36,46,94,116,139,156`
-- `Assets/Editor/AiStrategicSpendabilityApTests.cs:23,49,135,182`
-- `Assets/Editor/AiTaskScoreBaseSwitchRegressionTests.cs:56,84,106,108,127,142`
+- `Assets/Editor/Tests/AI/AiActiveDefenceTests.cs:281,284,294,304,307,319,327,330,349`
+- `Assets/Editor/Tests/AI/AiAggressionOwnershipRegressionTests.cs:32,40`
+- `Assets/Editor/Tests/AI/AiAggressionRaidTests.cs:599`
+- `Assets/Editor/Tests/AI/AiAttackBaseRefitTests.cs:26,36,142,251,255,282`
+- `Assets/Editor/Tests/AI/AiAttackIntermediateBaseTests.cs:25,26,117,130,136,148,152,202`
+- `Assets/Editor/Tests/AI/AiAttackLaneTests.cs:48,55,341,950,978`
+- `Assets/Editor/Tests/AI/AiAttackObjectiveTests.cs:585,590,611`
+- `Assets/Editor/Tests/AI/AiAviationMissionRegressionTests.cs:32,41`
+- `Assets/Editor/Tests/AI/AiAviationSortieCycleTests.cs:1130,1150,1164,1165,1169`
+- `Assets/Editor/Tests/AI/AiDevelopmentEquipmentMatchupTests.cs:584,602,613,621,650,657`
+- `Assets/Editor/Tests/AI/AiEconomyBuildSiteOwnershipTests.cs:42,45,55,58`
+- `Assets/Editor/Tests/AI/AiEconomyContinuityAuditTests.cs:24,83,115,313,332,345,412,578`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:458,488,519,542,574,594,634,650,670,681,694,741,770,839,900,916,937,941,961,983,993,1002,1006,1025,1048,1088,1132,1154,1183,1798,1817,1896,1936,1980,2390,2413,2437,3115,3901`
+- `Assets/Editor/Tests/AI/AiEconomyDevelopmentAuditTests.cs:40,63,91,108`
+- `Assets/Editor/Tests/AI/AiEconomyOwnershipTests.cs:68,114,222,226,236,238,247,383,389`
+- `Assets/Editor/Tests/AI/AiFieldPowerCommittedRecipientTests.cs:35,41,62`
+- `Assets/Editor/Tests/AI/AiGarrisonHeroTests.cs:207,212,227`
+- `Assets/Editor/Tests/AI/AiRaidIntentStateTests.cs:149,191,214,236,252,287,347`
+- `Assets/Editor/Tests/AI/AiReconAttackObservationTests.cs:24,93`
+- `Assets/Editor/Tests/AI/AiReconAuditBugTests.cs:20,143,253,271,296,310`
+- `Assets/Editor/Tests/AI/AiReconContinuityPayloadTests.cs:17,28,42,58,64`
+- `Assets/Editor/Tests/AI/AiReconDetectorRiskTests.cs:20`
+- `Assets/Editor/Tests/AI/AiReconIncumbentCostTests.cs:14`
+- `Assets/Editor/Tests/AI/AiReconTrimEligibilityTests.cs:36,46,94,116,139,156`
+- `Assets/Editor/Tests/AI/AiStrategicSpendabilityApTests.cs:23,49,135,182`
+- `Assets/Editor/Tests/AI/AiTaskScoreBaseSwitchRegressionTests.cs:56,84,106,108,127,142`
 - `Assets/Scripts/Ai/V2/Analysis/ReconCapacitySnapshot.cs:106`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Development.cs:214`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs:165,533`
@@ -138,14 +138,14 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### ActorCommitments
 
-- `Assets/Editor/AiAggressionOwnershipRegressionTests.cs:164`
-- `Assets/Editor/AiAggressionRaidTests.cs:470`
-- `Assets/Editor/AiAttackBaseRefitTests.cs:192`
-- `Assets/Editor/AiAttackLaneTests.cs:111,273,321,1192`
-- `Assets/Editor/AiEconomyDecisionTests.cs:465,479,536,587,744,762,855,892,1125,1176,2375,2468`
-- `Assets/Editor/AiRaidIntentStateTests.cs:145,179`
-- `Assets/Editor/AiReconAuditBugTests.cs:103`
-- `Assets/Editor/AiReconContinuityPayloadTests.cs:94`
+- `Assets/Editor/Tests/AI/AiAggressionOwnershipRegressionTests.cs:164`
+- `Assets/Editor/Tests/AI/AiAggressionRaidTests.cs:470`
+- `Assets/Editor/Tests/AI/AiAttackBaseRefitTests.cs:192`
+- `Assets/Editor/Tests/AI/AiAttackLaneTests.cs:111,273,321,1192`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:465,479,536,587,744,762,855,892,1125,1176,2375,2468`
+- `Assets/Editor/Tests/AI/AiRaidIntentStateTests.cs:145,179`
+- `Assets/Editor/Tests/AI/AiReconAuditBugTests.cs:103`
+- `Assets/Editor/Tests/AI/AiReconContinuityPayloadTests.cs:94`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.Attack.cs:77,91,108,133,418,566,657`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.Raid.cs:87,101,115`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs:465,737`
@@ -169,22 +169,22 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### StrategicResourceReservationLedger
 
-- `Assets/Editor/AiAttackBaseRefitTests.cs:28,38,226,231`
-- `Assets/Editor/AiAttackIntermediateBaseTests.cs:221,224,231,232,238`
-- `Assets/Editor/AiDevelopmentDecisionPathTests.cs:118,137`
-- `Assets/Editor/AiDevelopmentReadmissionTests.cs:21,31,35`
-- `Assets/Editor/AiEconomyContinuityAuditTests.cs:26,387,393,480,603`
-- `Assets/Editor/AiEconomyDecisionTests.cs:51,2026,2027,2039,2041,2792,2811,2813,2815,2824,2838,2842,3685,3691,3694,3696,3924,3927,3929,3931,3940`
-- `Assets/Editor/AiEconomyDevelopmentAuditTests.cs:147,157,159,162,164,173,182,185,194,206,209,212,215,224,233,236,239,248,256,258,260`
-- `Assets/Editor/AiEconomyOwnershipTests.cs:69,423,424`
-- `Assets/Editor/AiEconomyReservationLifecycleTests.cs:40,49,52,54,56,75,87,93,96,99,102,104,113,128,130,132,135,137,139,147,156,168,170,172,174,183,190,199,207,215,217,220`
-- `Assets/Editor/AiReservationInvariantsTests.cs:114,115,119,122,124,133,134,138,142`
-- `Assets/Editor/AiSecondaryBaseStrategicNodeTests.cs:558,559,573,575,588,611`
-- `Assets/Editor/AiStrategicSpendabilityApTests.cs:20,207,208,251,330,332,343,346,348,350,352,361,362,389,420,421,478,479,508,509,543,544,553,580,601,602,614`
-- `Assets/Editor/AiTurnResourceBookTests.cs:43,46,53,74,79,81,84,101,103,105,107,112,114,118,121,138,139,140,141,142,143,144,145,146,147,148,149,150,152,303,304`
-- `Assets/Editor/ArmyMovementLifecyclePlayModeTests.cs:84,438,463,465`
-- `Assets/Editor/ArmyRemovalRegistryTests.cs:32,45,168,170,176,177,178`
-- `Assets/Editor/AttachmentLifecycleTests.cs:33,49,57,152,170`
+- `Assets/Editor/Tests/AI/AiAttackBaseRefitTests.cs:28,38,226,231`
+- `Assets/Editor/Tests/AI/AiAttackIntermediateBaseTests.cs:221,224,231,232,238`
+- `Assets/Editor/Tests/AI/AiDevelopmentDecisionPathTests.cs:118,137`
+- `Assets/Editor/Tests/AI/AiDevelopmentReadmissionTests.cs:21,31,35`
+- `Assets/Editor/Tests/AI/AiEconomyContinuityAuditTests.cs:26,387,393,480,603`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:51,2026,2027,2039,2041,2792,2811,2813,2815,2824,2838,2842,3685,3691,3694,3696,3924,3927,3929,3931,3940`
+- `Assets/Editor/Tests/AI/AiEconomyDevelopmentAuditTests.cs:147,157,159,162,164,173,182,185,194,206,209,212,215,224,233,236,239,248,256,258,260`
+- `Assets/Editor/Tests/AI/AiEconomyOwnershipTests.cs:69,423,424`
+- `Assets/Editor/Tests/AI/AiEconomyReservationLifecycleTests.cs:40,49,52,54,56,75,87,93,96,99,102,104,113,128,130,132,135,137,139,147,156,168,170,172,174,183,190,199,207,215,217,220`
+- `Assets/Editor/Tests/AI/AiReservationInvariantsTests.cs:114,115,119,122,124,133,134,138,142`
+- `Assets/Editor/Tests/AI/AiSecondaryBaseStrategicNodeTests.cs:558,559,573,575,588,611`
+- `Assets/Editor/Tests/AI/AiStrategicSpendabilityApTests.cs:20,207,208,251,330,332,343,346,348,350,352,361,362,389,420,421,478,479,508,509,543,544,553,580,601,602,614`
+- `Assets/Editor/Tests/AI/AiTurnResourceBookTests.cs:43,46,53,74,79,81,84,101,103,105,107,112,114,118,121,138,139,140,141,142,143,144,145,146,147,148,149,150,152,303,304`
+- `Assets/Editor/Tests/Units/ArmyMovementLifecyclePlayModeTests.cs:84,438,463,465`
+- `Assets/Editor/Tests/Units/ArmyRemovalRegistryTests.cs:32,45,168,170,176,177,178`
+- `Assets/Editor/Tests/Cards/AttachmentLifecycleTests.cs:33,49,57,152,170`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Development.cs:223`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs:60,61`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs:240,242,636,2006`
@@ -202,7 +202,7 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### StrategicInterruptRegistry
 
-- `Assets/Editor/AttachmentSlotTests.cs:67,70`
+- `Assets/Editor/Tests/Cards/AttachmentSlotTests.cs:67,70`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Observation.cs:38,49,60,68,81,87,93,102,107,111,116,123,131,139`
 - `Assets/Scripts/Ai/V2/Execution/AttackExecutor.cs:295,625`
 - `Assets/Scripts/Ai/V2/Execution/CardDrawExecutor.cs:62`
@@ -220,7 +220,7 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### V2StateVersion
 
-- `Assets/Editor/AttachmentLifecycleTests.cs:158,165`
+- `Assets/Editor/Tests/Cards/AttachmentLifecycleTests.cs:158,165`
 - `Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs:679,875,876`
 - `Assets/Scripts/Ai/V2/Execution/AttackExecutor.cs:624`
 - `Assets/Scripts/Ai/V2/Execution/BuildingPlayExecutor.cs:108,123,254,277`
@@ -242,16 +242,16 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### CapabilityPoolExhaustionRegistry
 
-- `Assets/Editor/AiAttackLaneTests.cs:781,782`
-- `Assets/Editor/AiEconomyContinuityAuditTests.cs:369,371,373`
+- `Assets/Editor/Tests/AI/AiAttackLaneTests.cs:781,782`
+- `Assets/Editor/Tests/AI/AiEconomyContinuityAuditTests.cs:369,371,373`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs:108,858,888,892,895,901,904,924,951,953,956,957`
 - `Assets/Scripts/Ai/V2/Reaction/ReactionRoundExecutor.cs:65,189,210,212,215,216`
 - `Assets/Scripts/Setup/CitadelSetupController.cs:165`
 
 ### ResourceStarvationRegistry
 
-- `Assets/Editor/AiEconomyDecisionTests.cs:42,45,47,49,53,55,56,57,58,59,60,62,65,76,79,81,83,85,88,90,92,94,96`
-- `Assets/Editor/AiV2ArchitecturalRegressionTests.cs:20,105,106,108,109,110,112,114,117,119`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:42,45,47,49,53,55,56,57,58,59,60,62,65,76,79,81,83,85,88,90,92,94,96`
+- `Assets/Editor/Tests/AI/AiV2ArchitecturalRegressionTests.cs:20,105,106,108,109,110,112,114,117,119`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs:47,67`
 - `Assets/Scripts/Ai/V2/Diagnostics/MaterializationDiagnostics.cs:26,154`
 - `Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs:1715`
@@ -265,9 +265,9 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### GroundCombatAdmissionRegistry
 
-- `Assets/Editor/AiAttackLaneTests.cs:712`
-- `Assets/Editor/AiRaidActorCommitmentTests.cs:181,182`
-- `Assets/Editor/AiV2ArchitecturalRegressionTests.cs:131,132,141,142,153,154,165,166,190,191`
+- `Assets/Editor/Tests/AI/AiAttackLaneTests.cs:712`
+- `Assets/Editor/Tests/AI/AiRaidActorCommitmentTests.cs:181,182`
+- `Assets/Editor/Tests/AI/AiV2ArchitecturalRegressionTests.cs:131,132,141,142,153,154,165,166,190,191`
 - `Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.ActiveDefence.cs:188,190`
 - `Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.Attack.cs:226,227,248,603,608`
 - `Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.Raid.cs:238,252,564,567`
@@ -276,7 +276,7 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### PreparationDeliveryMemory
 
-- `Assets/Editor/AiAttackPreparationWitnessTests.cs:109,111,112,118`
+- `Assets/Editor/Tests/AI/AiAttackPreparationWitnessTests.cs:109,111,112,118`
 - `Assets/Scripts/Ai/V2/Housekeeping/ArmyReorgAnalyzer.cs:268`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.AggressionAdmission.cs:103`
 - `Assets/Scripts/Ai/V2/Strategy/Demand/AggressionDemandEvaluator.Attack.cs:314`
@@ -285,8 +285,8 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### ReconIntelSnapshotRegistry
 
-- `Assets/Editor/AiAviationMissionRegressionTests.cs:31,40,91`
-- `Assets/Editor/AiReconAttackObservationTests.cs:25,95`
+- `Assets/Editor/Tests/AI/AiAviationMissionRegressionTests.cs:31,40,91`
+- `Assets/Editor/Tests/AI/AiReconAttackObservationTests.cs:25,95`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs:987,992`
 - `Assets/Scripts/Ai/V2/Diagnostics/ReconAcceptanceAudit.cs:185`
 - `Assets/Scripts/Ai/V2/Missions/GroundCombat/GroundCombatAirSupport.cs:90`
@@ -309,13 +309,13 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### AirSortieRegistry
 
-- `Assets/Editor/AiAviationMissionRegressionTests.cs:29,38,168,304`
-- `Assets/Editor/AiAviationSortieCycleTests.cs:35,46,408,409,432,450,455,1108`
-- `Assets/Editor/AiReconAirLifecycleTests.cs:85,133`
-- `Assets/Editor/AiReconRuleOwnershipTests.cs:165,210`
-- `Assets/Editor/AiSecondaryBaseStrategicNodeTests.cs:504,610,626,643,655,670,707`
-- `Assets/Editor/ArmyMovementLifecyclePlayModeTests.cs:48,49,81,82,475,476,486,487`
-- `Assets/Editor/ArmyRemovalRegistryTests.cs:31,44,155,156,158,159,160,161`
+- `Assets/Editor/Tests/AI/AiAviationMissionRegressionTests.cs:29,38,168,304`
+- `Assets/Editor/Tests/AI/AiAviationSortieCycleTests.cs:35,46,408,409,432,450,455,1108`
+- `Assets/Editor/Tests/AI/AiReconAirLifecycleTests.cs:85,133`
+- `Assets/Editor/Tests/AI/AiReconRuleOwnershipTests.cs:165,210`
+- `Assets/Editor/Tests/AI/AiSecondaryBaseStrategicNodeTests.cs:504,610,626,643,655,670,707`
+- `Assets/Editor/Tests/Units/ArmyMovementLifecyclePlayModeTests.cs:48,49,81,82,475,476,486,487`
+- `Assets/Editor/Tests/Units/ArmyRemovalRegistryTests.cs:31,44,155,156,158,159,160,161`
 - `Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.Attack.cs:448,499`
 - `Assets/Scripts/Ai/V2/Execution/GroundCombatLegStep.cs:82,92,155,218`
 - `Assets/Scripts/Ai/V2/Execution/ReconAirExecutor.cs:458,475,484,546,656,657,664,743,747,760,763,779`
@@ -332,7 +332,7 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### AviationObligationStallRegistry
 
-- `Assets/Editor/AiReconAuditBugTests.cs:322,323,325,326,327,329,330,331`
+- `Assets/Editor/Tests/AI/AiReconAuditBugTests.cs:322,323,325,326,327,329,330,331`
 - `Assets/Scripts/Ai/V2/Execution/ReconAirExecutor.cs:244`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs:757,818`
 - `Assets/Scripts/Ai/V2/Strategy/AviationRebasePlanner.cs:77`
@@ -340,7 +340,7 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### DevelopmentInvestmentGate
 
-- `Assets/Editor/AiGenerationSourceIdentityTests.cs:27,52,61`
+- `Assets/Editor/Tests/AI/AiGenerationSourceIdentityTests.cs:27,52,61`
 - `Assets/Scripts/Ai/V2/Materialization/GenerationSource.cs:91`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.DevelopmentAdmission.cs:42`
 - `Assets/Scripts/Ai/V2/Strategy/Demand/AggressionDemandEvaluator.Attack.cs:323`
@@ -351,13 +351,13 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### TurnResourceBook
 
-- `Assets/Editor/AiDevelopmentReadmissionTests.cs:28`
-- `Assets/Editor/AiEconomyDecisionTests.cs:2037,3935,3936,3937`
-- `Assets/Editor/AiRawResourceReadRatchetTests.cs:74`
-- `Assets/Editor/AiReservationInvariantsTests.cs:63`
-- `Assets/Editor/AiStrategicSpendabilityApTests.cs:241,243,585`
-- `Assets/Editor/AiTurnResourceBookTests.cs:26,50,51,72,73,161,167,204,205,207,213,214,222,223,232,233,242,248,261,271,284,290,292,294,312`
-- `Assets/Editor/ArmyRemovalRegistryTests.cs:180`
+- `Assets/Editor/Tests/AI/AiDevelopmentReadmissionTests.cs:28`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:2037,3935,3936,3937`
+- `Assets/Editor/Tests/AI/AiRawResourceReadRatchetTests.cs:74`
+- `Assets/Editor/Tests/AI/AiReservationInvariantsTests.cs:63`
+- `Assets/Editor/Tests/AI/AiStrategicSpendabilityApTests.cs:241,243,585`
+- `Assets/Editor/Tests/AI/AiTurnResourceBookTests.cs:26,50,51,72,73,161,167,204,205,207,213,214,222,223,232,233,242,248,261,271,284,290,292,294,312`
+- `Assets/Editor/Tests/Units/ArmyRemovalRegistryTests.cs:180`
 - `Assets/Scripts/Ai/V2/Allocation/ResourceAllocator.cs:566,571,1004,1006`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Development.cs:222`
 - `Assets/Scripts/Ai/V2/Housekeeping/HousekeepingManager.cs:49`
@@ -369,8 +369,8 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### PhaseAApBudget
 
-- `Assets/Editor/AiAttackBaseRefitTests.cs:170`
-- `Assets/Editor/AiRawResourceReadRatchetTests.cs:70`
+- `Assets/Editor/Tests/AI/AiAttackBaseRefitTests.cs:170`
+- `Assets/Editor/Tests/AI/AiRawResourceReadRatchetTests.cs:70`
 - `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs:195`
 - `Assets/Scripts/Ai/V2/Reaction/ReactionRoundExecutor.cs:114`
 
@@ -387,8 +387,8 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### OperationContinuationWindow
 
-- `Assets/Editor/AiAttackBaseRefitTests.cs:27,37,148`
-- `Assets/Editor/AiStrategicSpendabilityApTests.cs:22,92,95,141,191`
+- `Assets/Editor/Tests/AI/AiAttackBaseRefitTests.cs:27,37,148`
+- `Assets/Editor/Tests/AI/AiStrategicSpendabilityApTests.cs:22,92,95,141,191`
 - `Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Self.cs:119`
 - `Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.Attack.Preparation.cs:61`
 - `Assets/Scripts/Ai/V2/Missions/AttackBaseRefitPolicy.cs:181`
@@ -398,9 +398,9 @@ Read/write entry points for each owner; declarations and comments are omitted. T
 
 ### StrategicCapabilityLeaseRegistry
 
-- `Assets/Editor/AiCollectorCapabilityDeliveryTests.cs:137`
-- `Assets/Editor/AiEconomyDecisionTests.cs:3906`
-- `Assets/Editor/AiHousekeepingMissionContractTests.cs:241,250`
+- `Assets/Editor/Tests/AI/AiCollectorCapabilityDeliveryTests.cs:137`
+- `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs:3906`
+- `Assets/Editor/Tests/AI/AiHousekeepingMissionContractTests.cs:241,250`
 - `Assets/Scripts/Ai/V2/Housekeeping/ArmyReorgAnalyzer.cs:394,412`
 - `Assets/Scripts/Ai/V2/Housekeeping/HousekeepingManager.cs:116`
 - `Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs:121`

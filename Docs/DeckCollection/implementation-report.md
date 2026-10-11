@@ -91,25 +91,25 @@ flowchart TD
 | `Assets/Scripts/Core/GameSession.cs` | Валидация перед запуском, снимки, идентификатор и eligibility матча |
 | `Assets/Scripts/Players/PlayerSetupData.cs` | Выбранная колода и собственный runtime loadout/квота |
 | `Assets/Scripts/Setup/GameSetupController.cs` | Подготовка loadout до загрузки игры и отображение ошибки |
-| `Assets/Scripts/UI/PlayerRowUI.cs` | Выбор сохранённой колоды и переход к редактору |
-| `Assets/Scripts/UI/MainMenuController.cs` | Collection/My Decks, возврат к setup и восстановление наград |
-| `Assets/Scripts/UI/CardHandUI.cs` | Сборка руки из проверенного снимка, явная ошибка вместо неполной колоды |
-| `Assets/Scripts/UI/CollectionScreensUI.cs` | Отдельные browser/editor представления; фильтры, CRUD, draft и dirty guard |
-| `Assets/Scripts/UI/CollectionUIElements.cs` | Общие технические элементы новых экранов, scaler 1024×768, audio binding |
-| `Assets/Scripts/UI/CollectionCardDetail.cs` | Детализация через существующие форматтеры без регистрации игровых юнитов |
-| `Assets/Scripts/UI/CollectionMessageUI.cs` | Жизненный цикл сообщения, прокрутка описания, ESC и блокировка ввода |
-| `Assets/Scripts/UI/CollectionRewardUI.cs` | Показ/подтверждение награды, retry записи и возврат в меню |
-| `Assets/Scripts/UI/ArmyUnitCardUI.cs` | Повторное использование preview с разрешением ввода/hover от владельца |
-| `Assets/Scripts/UI/UIFocusUtility.cs` | Учёт коллекционных overlay в существующей блокировке ввода |
-| `Assets/Scripts/UI/GameMenuPanelUI.cs` | Недоступность gameplay menu под новым overlay |
+| `Assets/Scripts/UI/Rows/PlayerRowUI.cs` | Выбор сохранённой колоды и переход к редактору |
+| `Assets/Scripts/UI/Menus/MainMenuController.cs` | Collection/My Decks, возврат к setup и восстановление наград |
+| `Assets/Scripts/UI/Cards/CardHandUI.cs` | Сборка руки из проверенного снимка, явная ошибка вместо неполной колоды |
+| `Assets/Scripts/UI/Collection/CollectionScreensUI.cs` | Отдельные browser/editor представления; фильтры, CRUD, draft и dirty guard |
+| `Assets/Scripts/UI/Collection/CollectionUIElements.cs` | Общие технические элементы новых экранов, scaler 1024×768, audio binding |
+| `Assets/Scripts/UI/Collection/CollectionCardDetail.cs` | Детализация через существующие форматтеры без регистрации игровых юнитов |
+| `Assets/Scripts/UI/Collection/CollectionMessageUI.cs` | Жизненный цикл сообщения, прокрутка описания, ESC и блокировка ввода |
+| `Assets/Scripts/UI/Collection/CollectionRewardUI.cs` | Показ/подтверждение награды, retry записи и возврат в меню |
+| `Assets/Scripts/UI/Cards/ArmyUnitCardUI.cs` | Повторное использование preview с разрешением ввода/hover от владельца |
+| `Assets/Scripts/UI/Utilities/UIFocusUtility.cs` | Учёт коллекционных overlay в существующей блокировке ввода |
+| `Assets/Scripts/UI/Panels/GameMenuPanelUI.cs` | Недоступность gameplay menu под новым overlay |
 | `Assets/Scripts/Cards/ResearchProductionSystem.cs` | Проверка и резерв квоты перед прежней транзакцией; tracked attempt overload |
 | `Assets/Scripts/Map/HexSelectionController.cs` | Завершение/отмена tracked attempt через прежний popup |
-| `Assets/Scripts/UI/ResearchProductionModalUI.cs` | Фильтрация человека, remaining и обновление после попытки |
+| `Assets/Scripts/UI/Popups/ResearchProductionModalUI.cs` | Фильтрация человека, remaining и обновление после попытки |
 | `Assets/Scripts/Turns/GameTurnController.cs` | Типизированный окончательный исход участника и блокировка overlay |
-| `Assets/Editor/CollectionContentValidation.cs` | Build gate: ключи, метаданные, ссылки, валидность и совместимость starter |
-| `Assets/Editor/DeckCalibrationReport.cs` | Offline Unity-отчёт через канонические модели и 18 strategy fixtures |
-| `Assets/Editor/DeckCollectionTests.cs` | 33 новых EditMode-тестов профиля, правил, наград, снимков и UI preview |
-| `Assets/Editor/ResearchProductionAttemptTransactionTests.cs` | Регрессия оплаты, прямого обхода и расхода квоты человека |
+| `Assets/Editor/Tools/CollectionContentValidation.cs` | Build gate: ключи, метаданные, ссылки, валидность и совместимость starter |
+| `Assets/Editor/Tools/DeckCalibrationReport.cs` | Offline Unity-отчёт через канонические модели и 18 strategy fixtures |
+| `Assets/Editor/Tests/Cards/DeckCollectionTests.cs` | 33 новых EditMode-тестов профиля, правил, наград, снимков и UI preview |
+| `Assets/Editor/Tests/Cards/ResearchProductionAttemptTransactionTests.cs` | Регрессия оплаты, прямого обхода и расхода квоты человека |
 | `Assets/Cards/IronConcord/CardCatalog_IronConcord.asset` | Стабильные ключи и метаданные Concord |
 | `Assets/Cards/TheAshen/CardCatalog_TheAshen.asset` | Стабильные ключи и метаданные Ashen |
 | `Assets/Cards/TheVessels/CardCatalog_TheVessels.asset` | Метаданные при сохранении существующих ключей |

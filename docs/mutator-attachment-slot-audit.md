@@ -72,15 +72,15 @@ The existing EquipmentArtToggle class and .meta GUID are retained. Two instances
 | `Assets/Scripts/Cards/EquipmentSystem.cs` | Owns slot validation, canonical grant composition, runtime preservation, projection and the shared transaction. |
 | `Assets/Scripts/Map/ArmyActions.cs` | Transfers both slots from sourceCard at the authoritative spawn boundary; legacy Equipment argument remains fallback. |
 | `Assets/Scripts/Aviation/AviationActions.cs` | Transfers both slots back to CardData at the return boundary. |
-| `Assets/Scripts/UI/CardHandUI.cs` | Uses one pending attachment mode and existing cancellation/ownership/payment routing. |
-| `Assets/Scripts/UI/CardUI.cs` | Binds both indicators and delegates effective stats/abilities to gameplay projection. |
-| `Assets/Scripts/UI/ArmyUnitCardUI.cs` | Binds both indicators; clears them in definition preview; safely restores old preview before rebind. |
-| `Assets/Scripts/UI/BattleGridCellUI.cs` | Binds both preview-only indicators and restores them on exit/rebind. |
-| `Assets/Scripts/UI/EquipmentArtToggle.cs` | Shared peer-aware preview renderer; retains class/GUID and serialized compatibility. |
-| `Assets/Scripts/UI/EquipmentCardText.cs` | Shared attachment formatter states mandatory Bio for future Mutator cards. |
-| `Assets/Scripts/UI/ArmyViewerModalUI.cs` | Owns the added Mutator detail label. |
-| `Assets/Prefabs/UI/Card_Hand.prefab` | Wires a second independent renderer placeholder to CardUI. |
-| `Assets/Prefabs/UI/Card_Army.prefab` | Wires a second independent renderer placeholder to ArmyUnitCardUI. |
+| `Assets/Scripts/UI/Cards/CardHandUI.cs` | Uses one pending attachment mode and existing cancellation/ownership/payment routing. |
+| `Assets/Scripts/UI/Cards/CardUI.cs` | Binds both indicators and delegates effective stats/abilities to gameplay projection. |
+| `Assets/Scripts/UI/Cards/ArmyUnitCardUI.cs` | Binds both indicators; clears them in definition preview; safely restores old preview before rebind. |
+| `Assets/Scripts/UI/BattleScreen/BattleGridCellUI.cs` | Binds both preview-only indicators and restores them on exit/rebind. |
+| `Assets/Scripts/UI/Cards/EquipmentArtToggle.cs` | Shared peer-aware preview renderer; retains class/GUID and serialized compatibility. |
+| `Assets/Scripts/UI/Cards/EquipmentCardText.cs` | Shared attachment formatter states mandatory Bio for future Mutator cards. |
+| `Assets/Scripts/UI/Popups/ArmyViewerModalUI.cs` | Owns the added Mutator detail label. |
+| `Assets/Prefabs/UI/Cards/Card_Hand.prefab` | Wires a second independent renderer placeholder to CardUI. |
+| `Assets/Prefabs/UI/Cards/Card_Army.prefab` | Wires a second independent renderer placeholder to ArmyUnitCardUI. |
 | `Assets/Prefabs/UI/BattleScreen/BattleGridCell.prefab` | Wires a second independent renderer placeholder to BattleGridCellUI. |
 | `Assets/Scripts/Ai/V2/Materialization/MaterializationChainMatching.cs` | Shared capability ability read includes both slots. |
 | `Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs` | Slot-aware legality and canonical final abilities for existing/generated attach chains. |
@@ -99,11 +99,11 @@ The existing EquipmentArtToggle class and .meta GUID are retained. Two instances
 | `Assets/Scripts/Ai/V2/Strategy/Demand/AggressionDemandEvaluator.Attack.cs` | Reads both slots when projecting held reinforcement strength. |
 | `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.AggressionAdmission.cs` | Includes Mutator in the existing hand fingerprint. |
 | `Assets/Scripts/Ai/V2/Diagnostics/MaterializationDiagnostics.cs` | Reports combined effective ability state. |
-| `Assets/Editor/AiRaidKnownPoolReachabilityTests.cs` | Updates the existing frozen-pool test to the extended tuple shape. |
-| `Assets/Editor/AttachmentSlotTests.cs` | Pure slot/order/runtime/prediction regressions using synthetic definitions. |
-| `Assets/Editor/AttachmentLifecycleTests.cs` | Unity transaction, deployment, aircraft return and observation witnesses. |
-| `Assets/Editor/AttachmentSlotTests.cs.meta` | Unity GUID for the new test source. |
-| `Assets/Editor/AttachmentLifecycleTests.cs.meta` | Unity GUID for the new test source. |
+| `Assets/Editor/Tests/AI/AiRaidKnownPoolReachabilityTests.cs` | Updates the existing frozen-pool test to the extended tuple shape. |
+| `Assets/Editor/Tests/Cards/AttachmentSlotTests.cs` | Pure slot/order/runtime/prediction regressions using synthetic definitions. |
+| `Assets/Editor/Tests/Cards/AttachmentLifecycleTests.cs` | Unity transaction, deployment, aircraft return and observation witnesses. |
+| `Assets/Editor/Tests/Cards/AttachmentSlotTests.cs.meta` | Unity GUID for the new test source. |
+| `Assets/Editor/Tests/Cards/AttachmentLifecycleTests.cs.meta` | Unity GUID for the new test source. |
 
 ## Verification and remaining editor checks
 

@@ -31,7 +31,7 @@ catalog UI and seven animated map flag phases.
 | `Assets/Textures/Units/4_TheVessels/RawArt` | 29 clean 768 × 1120 artworks, without card frames |
 | `Assets/Textures/Units/4_TheVessels/GameCards` | Empty destination for future composed game card images |
 | `Assets/Textures/Units/4_TheVessels/DetailView` | Empty destination for future detail card images |
-| `Assets/Textures/General/Logo_TheVessels.png` | Transparent faction emblem |
+| `Assets/Textures/General/Factions/Logo_TheVessels.png` | Transparent faction emblem |
 | `Assets/Textures/General/Citadel/Vessels_Flag_Logo_01–07.png` | Emblem synchronized to the seven cloth animation phases |
 | `Assets/Prefabs/MapObject_Citadel_TV.prefab`, `MapObject_Base_TV.prefab` | Faction map buildings |
 

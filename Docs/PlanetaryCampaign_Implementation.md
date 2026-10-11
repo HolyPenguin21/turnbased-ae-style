@@ -246,12 +246,12 @@ MatchLoadout → обычный мир Game. Из тактического ми�
 
 Перечень находится ниже; точная ревизия коммита и ссылка на PR — в Git/PR.
 
-- `Assets/Editor/CampaignBattleCalibration.cs`
-- `Assets/Editor/CampaignBattleCalibration.cs.meta`
-- `Assets/Editor/CampaignCollectionIntegrationTests.cs`
-- `Assets/Editor/CampaignCollectionIntegrationTests.cs.meta`
-- `Assets/Editor/CampaignSystemTests.cs`
-- `Assets/Editor/CampaignSystemTests.cs.meta`
+- `Assets/Editor/Tools/CampaignBattleCalibration.cs`
+- `Assets/Editor/Tools/CampaignBattleCalibration.cs.meta`
+- `Assets/Editor/Tests/Campaign/CampaignCollectionIntegrationTests.cs`
+- `Assets/Editor/Tests/Campaign/CampaignCollectionIntegrationTests.cs.meta`
+- `Assets/Editor/Tests/Campaign/CampaignSystemTests.cs`
+- `Assets/Editor/Tests/Campaign/CampaignSystemTests.cs.meta`
 - `Assets/Scenes/Campaign.unity`
 - `Assets/Scenes/Campaign.unity.meta`
 - `Assets/Scenes/MainMenu.unity`
@@ -283,8 +283,8 @@ MatchLoadout → обычный мир Game. Из тактического ми�
 - `Assets/Scripts/Core/GameSession.cs`
 - `Assets/Scripts/Core/SceneNames.cs`
 - `Assets/Scripts/Turns/GameTurnController.cs`
-- `Assets/Scripts/UI/CollectionRewardUI.cs`
-- `Assets/Scripts/UI/MainMenuController.cs`
+- `Assets/Scripts/UI/Collection/CollectionRewardUI.cs`
+- `Assets/Scripts/UI/Menus/MainMenuController.cs`
 - `Docs/PlanetaryCampaign_Implementation.md`
 - `ProjectSettings/EditorBuildSettings.asset`
 - `Tools/campaign-verify/Experiments.cs`

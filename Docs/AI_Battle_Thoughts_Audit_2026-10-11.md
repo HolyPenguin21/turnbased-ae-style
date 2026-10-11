@@ -105,7 +105,7 @@ Unity RNG. В Play Mode проверить обычный бой человек�
 
 Изменены семь существующих файлов:
 `Assets/Scripts/Combat/AiThoughtCategory.cs`, `BattleAiPhraseBank.cs`, `BattleTargetSelector.cs`;
-`Assets/Scripts/UI/BattleAiThoughtsUI.cs`, `BattleAttackPopupUI.cs`,
+`Assets/Scripts/UI/BattleScreen/BattleAiThoughtsUI.cs`, `BattleAttackPopupUI.cs`,
 `BattleScreenUI.cs`, `BattleScreenUI.Combat.cs`.
 Добавлены два EditMode test-файла с .meta и этот отчёт.
 

@@ -29,7 +29,7 @@ This is a CPU composition of production assets and newly generated seed 0x907DFF
 
 ## Final frame edit
 
-Mode: built-in image_gen with a transparent background. The returned PNG is copied unchanged to `Assets/Resources/Campaign/MetalFrameRounded.png`, replacing oversized-corner artwork and preserving its metadata GUID.
+Mode: built-in image_gen with a transparent background. The returned PNG is copied unchanged to `Assets/Resources/UI/Panels/Campaign/MetalFrameRounded.png`, replacing oversized-corner artwork and preserving its metadata GUID.
 
 Final prompt:
 

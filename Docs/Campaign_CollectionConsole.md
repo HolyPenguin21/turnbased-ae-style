@@ -16,10 +16,10 @@ These are CPU compositions of the real project assets and generated world seed `
 
 ## Existing assets reused
 
-- `Assets/Resources/UI/Collection/Panel_Outer.png`
-- `Assets/Resources/UI/Collection/Panel_Inset.png`
-- `Assets/Resources/UI/Collection/Plaque.png`
-- `Assets/Resources/UI/Collection/Button.png`
+- `Assets/Resources/UI/Panels/Collection/Panel_Outer.png`
+- `Assets/Resources/UI/Panels/Collection/Panel_Inset.png`
+- `Assets/Resources/UI/Decorations/Collection/Plaque.png`
+- `Assets/Resources/UI/Buttons/Collection/Button.png`
 - Existing campaign metal, map, clouds, rounded map frame, faction logos and end-turn artwork.
 
 No raster artwork or `.meta` files are changed. No new image-generation prompt was needed.
