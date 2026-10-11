@@ -5,7 +5,8 @@ Shader "Game/UI/CampaignSurface"
         [PerRendererData] _MainTex ("Terrain", 2D) = "white" {}
         _Color ("Tint", Color) = (1,1,1,1)
         _SurfaceSize ("Surface size", Vector) = (1360,740,0,0)
-        _EdgeFeather ("Edge feather (canvas units)", Float) = 32
+        _EdgeFeather ("Edge feather (canvas units)", Float) = 64
+        _Atmosphere ("Cloud overlay", Float) = 0
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -67,6 +68,7 @@ Shader "Game/UI/CampaignSurface"
             float4 _ClipRect;
             float4 _SurfaceSize;
             float _EdgeFeather;
+            float _Atmosphere;
             v2f vert(appdata v)
             {
                 v2f o;
@@ -96,14 +98,16 @@ Shader "Game/UI/CampaignSurface"
                 // Contour glow fades inward; its distance weights are cached on the region mesh.
                 terrain = lerp(terrain, fixed3(1,.72,.28), i.selection.x * .64);
                 fixed4 color = lerp(i.color, fixed4(terrain, sample.a * i.color.a), i.surface.x);
+                color = lerp(color, sample * i.color, _Atmosphere);
                 // UV-carried viewport coordinates survive Canvas batching and parent transforms.
                 // Never compare batched POSITION with a graphic-local rectangle.
-                float2 edge = min(i.selection.yz, 1 - i.selection.yz) * _SurfaceSize.xy;
+                float2 viewport = lerp(i.selection.yz, i.texcoord, _Atmosphere);
+                float2 edge = min(viewport, 1 - viewport) * _SurfaceSize.xy;
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
                 // The elliptical limb has a soft map-space horizon.
                 // Original map coordinates keep the horizon independent of terrain UV scale.
-                float horizon = 1 - smoothstep(.91, 1.0, length(i.surface.zw));
-                color.a *= horizon;
+                float horizon = 1 - smoothstep(.80, 1.0, length(i.surface.zw));
+                color.a *= lerp(horizon, 1, _Atmosphere);
                 #ifdef UNITY_UI_CLIP_RECT
                 color.a *= UnityGet2DClipping(i.localPosition.xy, _ClipRect);
                 #endif

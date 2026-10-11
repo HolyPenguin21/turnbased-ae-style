@@ -87,6 +87,7 @@ public sealed class CampaignVisualTests
         Assert.NotNull(Resources.Load<Texture2D>("Campaign/WastelandSurface"));
         for (int id = 1; id <= CampaignMapGenerator.BackgroundCount; id++)
             Assert.NotNull(Resources.Load<Texture2D>(CampaignMapView.BackgroundResourcePath(id)), "Missing campaign background " + id);
+        Assert.NotNull(Resources.Load<Texture2D>("Campaign/AtmosphericClouds"));
         Assert.NotNull(Resources.Load<Shader>("Campaign/CampaignSurface"));
         Assert.NotNull(Resources.Load<Sprite>("Campaign/Parchment"));
         Assert.NotNull(Resources.Load<Sprite>("Campaign/ConsoleMetal"));

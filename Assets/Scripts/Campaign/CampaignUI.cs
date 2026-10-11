@@ -18,6 +18,7 @@ namespace Game.Campaign
         [SerializeField] private Sprite endTurnSprite, actionButtonSprite;
         [SerializeField] private Sprite ironConcordLogo, ashenLogo, vesselsLogo;
         private Sprite frameSprite, paperSprite, metalSprite;
+        private Material cloudMaterial;
         private static readonly Color PaperInk = new Color(.17f, .135f, .095f);
         private static readonly Color Cream = new Color(.90f, .83f, .67f);
         private RectTransform canvas, sidebar, footer, modal, modalContent;
@@ -37,22 +38,42 @@ namespace Game.Campaign
             metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
             Skin(background, false, false);
-            var header = CollectionUIElements.Panel(canvas, "CampaignHeader"); CollectionUIElements.Place(header, 26, 18, 1868, 82);
-            Skin(header, false);
+            // One continuous paper-backed console joins the information and history areas.
+            // Header and map are inserts in that console; only the map keeps its own frame.
+            var console = CollectionUIElements.Panel(canvas, "CampaignConsole"); CollectionUIElements.Place(console, 26, 18, 1868, 1040);
+            Skin(console, true, false); console.GetComponent<Image>().raycastTarget = false;
+            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 0, 0, 1868, 82);
+            Skin(header, false, false); header.GetComponent<Image>().raycastTarget = false;
             heading = Label(header, "PLANETARY CAMPAIGN", 28, 16, 1530, 50, 31);
             heading.color = Cream; heading.fontStyle = FontStyles.Bold;
             Button(header, "MENU", 1678, 17, 164, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
-            var surface = CollectionUIElements.Panel(canvas, "PlanetSurface"); CollectionUIElements.Place(surface, 26, 112, 1400, 780);
+            var surface = CollectionUIElements.Panel(console, "PlanetSurface"); CollectionUIElements.Place(surface, 0, 94, 1400, 780);
             Skin(surface, false);
             surface.GetComponent<Image>().raycastTarget = false;
             var mapRect = CollectionUIElements.Rect(surface, "Regions"); CollectionUIElements.Stretch(mapRect);
             mapRect.offsetMin = new Vector2(20, 20); mapRect.offsetMax = new Vector2(-20, -20);
             mapRect.gameObject.AddComponent<RectMask2D>();
             map = mapRect.gameObject.AddComponent<CampaignMapView>();
-            sidebar = CollectionUIElements.Panel(canvas, "RegionInformation"); CollectionUIElements.Place(sidebar, 1440, 112, 454, 780);
-            Skin(sidebar, true);
-            footer = CollectionUIElements.Panel(canvas, "CampaignHistory"); CollectionUIElements.Place(footer, 26, 907, 1868, 150);
-            Skin(footer, true);
+            // The atmosphere is decorative and cannot intercept region input.
+            var clouds = CollectionUIElements.Rect(surface, "AtmosphericClouds"); CollectionUIElements.Stretch(clouds);
+            clouds.offsetMin = new Vector2(20, 20); clouds.offsetMax = new Vector2(-20, -20);
+            var cloudImage = clouds.gameObject.AddComponent<RawImage>();
+            cloudImage.texture = Resources.Load<Texture2D>("Campaign/AtmosphericClouds");
+            cloudImage.color = new Color(.78f, .75f, .68f, .62f); cloudImage.raycastTarget = false;
+            var cloudShader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            cloudImage.enabled = cloudImage.texture != null && cloudShader != null;
+            if (cloudImage.enabled)
+            {
+                cloudMaterial = new Material(cloudShader) { name = "CampaignAtmosphere (runtime)" };
+                cloudMaterial.SetFloat("_Atmosphere", 1);
+                cloudMaterial.SetVector("_SurfaceSize", new Vector4(1360, 740, 0, 0));
+                cloudImage.material = cloudMaterial;
+            }
+            sidebar = CollectionUIElements.Rect(console, "RegionInformation"); CollectionUIElements.Place(sidebar, 1414, 94, 454, 780);
+            footer = CollectionUIElements.Rect(console, "CampaignHistory"); CollectionUIElements.Place(footer, 0, 889, 1868, 150);
+            Rule(console, 28, 878, 1812);
+            Rule(console, 28, 85, 1812);
+            Frame(console);
             hoverLabel = Label(surface, "", 30, 24, 1310, 34, 19); hoverLabel.color = Cream;
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             try { var state = Controller.Snapshot; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
@@ -116,7 +137,6 @@ namespace Game.Campaign
             var s = Controller.Snapshot;
             heading.text = s.PlanetName + "  ·  Round " + s.RoundNumber + "  ·  " + FactionName(s.CurrentFaction);
             CollectionUIElements.Clear(sidebar); CollectionUIElements.Clear(footer);
-            Skin(sidebar, true); Skin(footer, true);
             var title = Label(sidebar, "TERRITORIES", 28, 26, 398, 36, 26); title.fontStyle = FontStyles.Bold;
             int y = 78;
             foreach (var f in s.Factions)
@@ -348,7 +368,12 @@ namespace Game.Campaign
             var rect = CollectionUIElements.Panel(parent, "Divider"); CollectionUIElements.Place(rect, x, y, width, 1);
             var image = rect.GetComponent<Image>(); image.color = new Color(.27f, .20f, .12f, .55f); image.raycastTarget = false;
         }
-        private void OnDestroy() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) Destroy(canvas.gameObject); }
+        private void OnDestroy()
+        {
+            UIFocusUtility.SetOverlay(this, false);
+            if (canvas != null) Destroy(canvas.gameObject);
+            if (cloudMaterial != null) Destroy(cloudMaterial);
+        }
     }
 }
 
