@@ -8,12 +8,13 @@ using UnityEngine.UI;
 
 // Editor-only authoring helper: builds the collection window as ordinary scene objects under the
 // scene canvas (plus two prefabs for the pooled grid cell and deck row). After it runs the
-// hierarchy is a regular, hand-editable part of the scene; nothing is generated at runtime.
+// hierarchy is a regular, hand-editable part of the scene. The shared UI skin also repairs
+// the appearance of older loaded window instances when they are opened.
 public static class CollectionWindowBuilder
 {
     private const string PrefabFolder = "Assets/Prefabs/UI/Collection";
     private static readonly Color PanelColor = new Color(.085f, .075f, .065f, 1f);
-    private static readonly Color TextColor = new Color(.93f, .85f, .69f);
+    private static readonly Color TextColor = CollectionUIElements.CollectionText;
 
     [MenuItem("Tools/UI/Build Collection Window")]
     private static void Build()
@@ -167,6 +168,7 @@ public static class CollectionWindowBuilder
         for (int i = 0; i < icons.Length; i++)
         { iconArray.GetArrayElementAtIndex(i).objectReferenceValue = icons[i]; valueArray.GetArrayElementAtIndex(i).objectReferenceValue = values[i]; }
         so.ApplyModifiedPropertiesWithoutUndo();
+        CollectionUIElements.ApplyWindowSkin(root);
         root.gameObject.SetActive(false);
         return view;
     }
@@ -188,6 +190,7 @@ public static class CollectionWindowBuilder
         so.FindProperty("addButton").objectReferenceValue = add;
         so.FindProperty("addLabel").objectReferenceValue = add.GetComponentInChildren<TMP_Text>();
         so.ApplyModifiedPropertiesWithoutUndo();
+        CollectionUIElements.ApplyCellSkin(root);
         return view;
     }
 
@@ -244,14 +247,9 @@ public static class CollectionWindowBuilder
             Skin(image, "Panel_Inset");
         return r;
     }
-    private static readonly Color InkColor = new Color(.16f, .12f, .08f);
+    private static readonly Color InkColor = CollectionUIElements.CollectionInk;
     private static void Skin(Image image, string asset)
-    {
-        if (image == null) return;
-        image.sprite = Resources.Load<Sprite>("UI/Collection/" + asset);
-        image.color = image.sprite != null ? Color.white : PanelColor;
-        image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 4f;
-    }
+    { CollectionUIElements.ApplySurface(image, asset); }
     private static TMP_Text Text(Transform parent, string name, string value, float x, float y, float w, float h, float size, TMP_FontAsset font)
     {
         var r = Rect(parent, name); if (w > 0 || h > 0) Place(r, x, y, w, h);
@@ -270,9 +268,7 @@ public static class CollectionWindowBuilder
         var button = r.gameObject.AddComponent<Button>(); button.targetGraphic = image;
         var text = Text(r, "Label", label, 3, 1, w - 6, h - 2, size, font); text.alignment = TextAlignmentOptions.Center;
         text.color = primary ? InkColor : TextColor;
-        var colors = button.colors; colors.highlightedColor = new Color(1f, .92f, .76f);
-        colors.pressedColor = new Color(.72f, .62f, .47f); colors.disabledColor = new Color(.5f, .5f, .5f, .55f);
-        button.colors = colors;
+        CollectionUIElements.ApplyControlsSkin(r);
         return button;
     }
     private static RectTransform Modal(Transform parent, string name, TMP_FontAsset font, out Image backdrop)
@@ -321,15 +317,9 @@ public static class CollectionWindowBuilder
         if (logo != null) Object.DestroyImmediate(logo.gameObject);
         Place((RectTransform)copy.transform, x, y, w, 30);
         dropdown.onValueChanged = new TMP_Dropdown.DropdownEvent(); dropdown.ClearOptions();
-        Skin(copy.GetComponent<Image>(), "Input");
-        if (dropdown.captionText != null) { dropdown.captionText.fontSize = 14; dropdown.captionText.color = InkColor; }
-        if (dropdown.template != null)
-        foreach (var image in dropdown.template.GetComponentsInChildren<Image>(true))
-        {
-            if (image.transform == dropdown.template || image.name == "Item Background") Skin(image, "Input");
-            else if (image.name == "Handle") Skin(image, "Button");
-        }
-        if (dropdown.itemText != null) { dropdown.itemText.fontSize = 13; dropdown.itemText.color = InkColor; }
+        if (dropdown.captionText != null) dropdown.captionText.fontSize = 14;
+        if (dropdown.itemText != null) dropdown.itemText.fontSize = 13;
+        CollectionUIElements.ApplyControlsSkin(copy.transform);
         return dropdown;
     }
     private static TMP_InputField CloneInput(TMP_InputField template, Transform parent, string name, float x, float y, float w, string placeholder)
@@ -338,13 +328,13 @@ public static class CollectionWindowBuilder
         var input = copy.GetComponent<TMP_InputField>();
         Place((RectTransform)copy.transform, x, y, w, 30);
         input.onValueChanged = new TMP_InputField.OnChangeEvent(); input.onEndEdit = new TMP_InputField.SubmitEvent();
-        input.text = ""; Skin(copy.GetComponent<Image>(), "Input");
-        if (input.textComponent != null) input.textComponent.color = InkColor;
-        if (input.placeholder is TMP_Text placeholderText) placeholderText.color = new Color(.35f, .27f, .19f);
+        input.text = "";
         if (input.textComponent != null) input.textComponent.fontSize = 14;
         if (input.placeholder is TMP_Text hint) { hint.text = placeholder; hint.fontSize = 14; }
+        CollectionUIElements.ApplyControlsSkin(copy.transform);
         return input;
     }
 }
 #endif
+
 

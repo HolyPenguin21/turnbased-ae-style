@@ -18,9 +18,9 @@ namespace Game.Campaign
         [SerializeField] private Sprite endTurnSprite, actionButtonSprite;
         [SerializeField] private Sprite ironConcordLogo, ashenLogo, vesselsLogo;
         private Sprite frameSprite, paperSprite, metalSprite;
-        private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial, modalPanelMaterial;
-        private static readonly Color PaperInk = new Color(.17f, .135f, .095f);
-        private static readonly Color Cream = new Color(.90f, .83f, .67f);
+        private Material cloudMaterial, consoleMaterial, surfacePanelMaterial, regionPreviewMaterial;
+        private static readonly Color PaperInk = CollectionUIElements.CollectionInk;
+        private static readonly Color Cream = CollectionUIElements.CollectionText;
         private RectTransform canvas, sidebar, footer, modal, modalContent;
         private TMP_Text heading, hoverLabel;
         private CampaignMapView map;
@@ -38,10 +38,9 @@ namespace Game.Campaign
             metalSprite = Resources.Load<Sprite>("Campaign/ConsoleMetal");
             var background = CollectionUIElements.Panel(canvas, "PlanetBackground"); CollectionUIElements.Stretch(background);
             Skin(background, false, false);
-            // One continuous paper-backed console joins the information and history areas.
-            // Header and map are inserts in that console; only the map keeps its own frame.
+            // Reuse the collection's authored metal shell and plaques as one campaign console.
             var console = CollectionUIElements.Panel(canvas, "CampaignConsole"); CollectionUIElements.Place(console, 26, 18, 1868, 1040);
-            Skin(console, true, false); console.GetComponent<Image>().raycastTarget = false;
+            CollectionSkin(console, "Panel_Outer"); console.GetComponent<Image>().raycastTarget = false;
             var cloudShader = Resources.Load<Shader>("Campaign/CampaignSurface");
             if (cloudShader != null)
             {
@@ -50,14 +49,14 @@ namespace Game.Campaign
                 consoleMaterial.SetFloat("_EdgeFeather", 1);
                 consoleMaterial.SetFloat("_CornerRadius", 32);
                 consoleMaterial.SetVector("_SurfaceSize", new Vector4(1868, 1040, 0, 0));
-                console.GetComponent<Image>().material = consoleMaterial;
-                console.gameObject.AddComponent<Mask>();
+                // A template for the map and cropped terrain masks, not the nine-sliced shell.
             }
-            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 16, 12, 1836, 70);
-            Skin(header, false, false); header.GetComponent<Image>().raycastTarget = false;
-            heading = Label(header, "PLANETARY CAMPAIGN", 28, 6, 1530, 50, 31);
-            heading.color = Cream; heading.fontStyle = FontStyles.Bold;
-            Button(header, "MENU", 1646, 11, 164, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
+            var header = CollectionUIElements.Panel(console, "CampaignHeader"); CollectionUIElements.Place(header, 24, 12, 1376, 70);
+            CollectionSkin(header, "Plaque"); header.GetComponent<Image>().raycastTarget = false;
+            heading = Label(header, "PLANETARY CAMPAIGN", 28, 8, 1320, 52, 31);
+            heading.color = PaperInk; heading.fontStyle = FontStyles.Bold; heading.alignment = TextAlignmentOptions.Center;
+            var menu = Button(console, "MENU", 1646, 23, 176, 48, () => SceneManager.LoadScene(SceneNames.MainMenu));
+            CollectionSkin((RectTransform)menu.transform, "Plaque"); menu.GetComponentInChildren<TMP_Text>().color = PaperInk;
             var surface = CollectionUIElements.Panel(console, "PlanetSurface"); CollectionUIElements.Place(surface, 24, 100, 1376, 768);
             Skin(surface, false, false);
             surface.GetComponent<Image>().raycastTarget = false;
@@ -76,25 +75,25 @@ namespace Game.Campaign
             var clouds = CollectionUIElements.Rect(surface, "AtmosphericClouds"); CollectionUIElements.Stretch(clouds);
             var cloudImage = clouds.gameObject.AddComponent<RawImage>();
             cloudImage.texture = Resources.Load<Texture2D>("Campaign/AtmosphericClouds");
-            cloudImage.uvRect = new Rect(.10f, .10f, .80f, .80f);
-            cloudImage.color = new Color(.78f, .75f, .68f, .78f); cloudImage.raycastTarget = false;
+            cloudImage.uvRect = new Rect(.04f, .04f, .92f, .92f);
+            cloudImage.color = new Color(.90f, .87f, .81f, .94f); cloudImage.raycastTarget = false;
             cloudImage.enabled = cloudImage.texture != null && cloudShader != null;
             if (cloudImage.enabled)
             {
                 cloudMaterial = new Material(cloudShader) { name = "CampaignAtmosphere (runtime)" };
                 cloudMaterial.SetFloat("_Atmosphere", 1);
                 cloudMaterial.SetFloat("_CloudOverlay", 1);
-                cloudMaterial.SetVector("_UVRect", new Vector4(.10f, .10f, .80f, .80f));
+                cloudMaterial.SetFloat("_CloudInteriorOpacity", .18f);
+                cloudMaterial.SetVector("_UVRect", new Vector4(.04f, .04f, .92f, .92f));
                 cloudMaterial.SetVector("_MapViewport", new Vector4(12f / 1376, 12f / 768, 1352f / 1376, 744f / 768));
                 cloudMaterial.SetVector("_SurfaceSize", new Vector4(1376, 768, 0, 0));
                 cloudImage.material = cloudMaterial;
             }
             Frame(surface);
-            sidebar = CollectionUIElements.Rect(console, "RegionInformation"); CollectionUIElements.Place(sidebar, 1414, 94, 454, 780);
-            footer = CollectionUIElements.Rect(console, "CampaignHistory"); CollectionUIElements.Place(footer, 0, 889, 1868, 150);
-            Rule(console, 28, 878, 1812);
-            Rule(console, 28, 85, 1812);
-            Frame(console);
+            sidebar = CollectionUIElements.Panel(console, "RegionInformation"); CollectionUIElements.Place(sidebar, 1414, 100, 430, 768);
+            CollectionSkin(sidebar, "Panel_Inset"); sidebar.GetComponent<Image>().raycastTarget = false;
+            footer = CollectionUIElements.Panel(console, "CampaignHistory"); CollectionUIElements.Place(footer, 24, 889, 1820, 130);
+            CollectionSkin(footer, "Panel_Inset"); footer.GetComponent<Image>().raycastTarget = false;
             hoverLabel = Label(surface, "", 30, 24, 1310, 34, 19); hoverLabel.color = Cream;
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
             try { var state = Controller.Snapshot; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
@@ -158,22 +157,24 @@ namespace Game.Campaign
             var s = Controller.Snapshot;
             heading.text = s.PlanetName + "  ·  Round " + s.RoundNumber + "  ·  " + FactionName(s.CurrentFaction);
             CollectionUIElements.Clear(sidebar); CollectionUIElements.Clear(footer);
-            var title = Label(sidebar, "TERRITORIES", 28, 26, 398, 36, 26); title.fontStyle = FontStyles.Bold;
-            int y = 78;
+            Plaque(sidebar, "TERRITORIES", 24, 18, 382, 46, 26);
+            int y = 82;
             foreach (var f in s.Factions)
             {
-                Logo(sidebar, f.Faction, 30, y, 42);
-                Label(sidebar, FactionName(f.Faction) + (f.Eliminated ? " — eliminated" : ""), 85, y + 4, 276, 36, 23);
-                var count = Label(sidebar, s.Regions.Count(r => r.OwnerFaction == f.Faction).ToString(), 360, y + 4, 62, 36, 25);
+                var row = CollectionUIElements.Panel(sidebar, "FactionStanding"); CollectionUIElements.Place(row, 28, y, 374, 48);
+                CollectionSkin(row, "Button"); row.GetComponent<Image>().raycastTarget = false;
+                Logo(row, f.Faction, 12, 6, 36);
+                var factionLabel = Label(row, FactionName(f.Faction) + (f.Eliminated ? " — eliminated" : ""), 60, 8, 232, 32, 22);
+                factionLabel.textWrappingMode = TextWrappingModes.NoWrap; factionLabel.overflowMode = TextOverflowModes.Ellipsis;
+                var count = Label(row, s.Regions.Count(r => r.OwnerFaction == f.Faction).ToString(), 298, 8, 58, 32, 25);
                 count.alignment = TextAlignmentOptions.Right; y += 55;
             }
-            Rule(sidebar, 28, 249, 398);
+            Rule(sidebar, 28, 253, 374);
             var region = selected.HasValue ? s.Regions.Find(r => r.RegionId == selected.Value) : null;
-            var regionTitle = Label(sidebar, region == null ? "SELECT A REGION" : region.Name.ToUpperInvariant(), 28, 269, 398, 64, 28);
-            regionTitle.fontStyle = FontStyles.Bold;
+            Plaque(sidebar, region == null ? "SELECT A REGION" : region.Name.ToUpperInvariant(), 24, 268, 382, 62, 25);
             if (region != null)
             {
-                var preview = CollectionUIElements.Rect(sidebar, "RegionTerrainPreview"); CollectionUIElements.Place(preview, 30, 340, 394, 126);
+                var preview = CollectionUIElements.Rect(sidebar, "RegionTerrainPreview"); CollectionUIElements.Place(preview, 30, 344, 370, 122);
                 var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.texture = map.SurfaceTexture; terrain.raycastTarget = false;
                 if (consoleMaterial != null)
                 {
@@ -181,63 +182,71 @@ namespace Game.Campaign
                     {
                         regionPreviewMaterial = new Material(consoleMaterial) { name = "CampaignRegionPreview (runtime)" };
                         regionPreviewMaterial.SetFloat("_CornerRadius", 32);
-                        regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(394, 126, 0, 0));
+                        regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(370, 122, 0, 0));
                     }
                     terrain.material = regionPreviewMaterial;
                     preview.gameObject.AddComponent<Mask>();
                 }
                 var center = map.SurfaceUVAt(CampaignRegionGraphic.VisibleCenter(region));
-                float previewHeight = .32f * (126f / 394f) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
+                float previewHeight = .32f * (122f / 370f) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
                 terrain.uvRect = new Rect(Mathf.Clamp(center.x - .16f, 0, .68f), Mathf.Clamp(center.y - previewHeight / 2, 0, 1 - previewHeight), .32f, previewHeight);
                 if (regionPreviewMaterial != null)
                     regionPreviewMaterial.SetVector("_UVRect", new Vector4(terrain.uvRect.x, terrain.uvRect.y, terrain.uvRect.width, terrain.uvRect.height));
                 Frame(preview);
-                Label(sidebar, "OWNER", 30, 482, 98, 34, 20);
-                Logo(sidebar, region.OwnerFaction, 132, 478, 36);
-                Label(sidebar, FactionName(region.OwnerFaction), 179, 482, 245, 34, 23);
-                Label(sidebar, "NEIGHBORING REGIONS", 30, 530, 394, 32, 20).fontStyle = FontStyles.Bold;
-                var neighbors = CollectionUIElements.Scroll(sidebar, "Neighbors", 28, 565, 396, 118, true);
-                neighbors.parent.parent.GetComponent<Image>().color = new Color(0, 0, 0, .055f);
+                Label(sidebar, "OWNER", 30, 482, 88, 34, 20);
+                Logo(sidebar, region.OwnerFaction, 122, 478, 36);
+                Label(sidebar, FactionName(region.OwnerFaction), 170, 482, 230, 34, 23);
+                Plaque(sidebar, "NEIGHBORING REGIONS", 28, 530, 374, 34, 20);
+                var neighbors = CollectionUIElements.Scroll(sidebar, "Neighbors", 28, 574, 374, 106, true);
+                neighbors.parent.parent.GetComponent<Image>().color = new Color(0, 0, 0, .32f);
                 int row = 0;
                 foreach (int id in region.NeighborIds)
                 {
                     var neighbor = s.Regions.Find(r => r.RegionId == id);
                     var dot = CollectionUIElements.Panel(neighbors, "OwnerColor"); CollectionUIElements.Place(dot, 12, row * 30 + 10, 8, 8);
                     dot.GetComponent<Image>().color = CampaignMapView.ColorFor(neighbor.OwnerFaction); dot.GetComponent<Image>().raycastTarget = false;
-                    Label(neighbors, neighbor.Name, 30, row * 30, 330, 30, 20); row++;
+                    var name = Label(neighbors, neighbor.Name, 30, row * 30, 308, 30, 20);
+                    name.textWrappingMode = TextWrappingModes.NoWrap; name.overflowMode = TextOverflowModes.Ellipsis; row++;
                 }
-                neighbors.sizeDelta = new Vector2(neighbors.sizeDelta.x, Math.Max(118, row * 30));
+                neighbors.sizeDelta = new Vector2(neighbors.sizeDelta.x, Math.Max(106, row * 30));
                 bool can = s.Regions.Where(r => r.OwnerFaction == s.HumanFaction).Any(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId));
                 if (can)
-                    Button(sidebar, "ATTACK REGION", 28, 708, 398, 50, () =>
+                    Button(sidebar, "ATTACK REGION", 28, 704, 374, 48, () =>
                     { int from = s.Regions.First(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId)).RegionId; ConfirmAttack(from, region.RegionId); });
-                else Label(sidebar, region.OwnerFaction == s.HumanFaction ? "Select a highlighted enemy neighbor." : "Attack unavailable this turn.", 30, 707, 394, 54, 19);
+                else Label(sidebar, region.OwnerFaction == s.HumanFaction ? "Select a highlighted enemy neighbor." : "Attack unavailable this turn.", 30, 704, 370, 48, 19);
             }
-            else Label(sidebar, "Select a territory to see its owner and neighboring regions.\n\nSelect your territory to highlight available attacks.", 30, 358, 394, 200, 23);
+            else
+            {
+                Label(sidebar, "Select a territory to see its owner and neighboring regions.\n\nSelect your territory to highlight available attacks.", 36, 356, 358, 154, 22);
+                Logo(sidebar, s.HumanFaction, 143, 534, 144);
+                var faction = Label(sidebar, FactionName(s.HumanFaction), 30, 694, 370, 34, 24);
+                faction.alignment = TextAlignmentOptions.Center;
+            }
             string status = s.Phase == CampaignPhase.CampaignFinished ? (s.Factions.Find(f => f.Faction == s.HumanFaction).Eliminated ? "CAMPAIGN DEFEAT — your faction has been eliminated." : "PLANET CONQUERED — campaign completed.")
                 : s.PendingOperation != null ? "Pending battle — " + s.Phase : s.CurrentFaction == s.HumanFaction ? "Your turn: attack an adjacent enemy region or end turn." : "AI faction is choosing an attack.";
-            Label(footer, status, 28, 17, s.Phase == CampaignPhase.CampaignFinished ? 880 : 1510, 32, 23).fontStyle = FontStyles.Bold;
+            Label(footer, status, 28, 16, s.Phase == CampaignPhase.CampaignFinished ? 880 : 1510, 32, 23).fontStyle = FontStyles.Bold;
             Rule(footer, 28, 54, 1570);
             var history = s.BattleHistory.AsEnumerable().Reverse().Take(4).ToList();
-            Label(footer, "RECENT BATTLES", 28, 70, 205, 40, 20).fontStyle = FontStyles.Bold;
+            Plaque(footer, "RECENT BATTLES", 28, 64, 205, 46, 20);
+            if (history.Count == 0) Label(footer, "No battles recorded yet.", 248, 68, 650, 30, 19);
             for (int i = 0; i < history.Count; i++)
             {
                 var h = history[i];
                 var entry = Label(footer, "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · "
                     + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended"),
-                    244 + (i % 2) * 665, 65 + (i / 2) * 30, 650, 27, 17);
+                    248 + (i % 2) * 665, 64 + (i / 2) * 25, 650, 24, 17);
                 entry.textWrappingMode = TextWrappingModes.NoWrap;
                 entry.overflowMode = TextOverflowModes.Ellipsis;
             }
             if (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction)
                 EndTurnButton(footer, () => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
             else if (s.PendingOperation?.Manual == true && !s.PendingOperation.ResultRecorded)
-                Button(footer, "RESUME BATTLE", 1620, 56, 220, 56, () => { defenceDeferred = false; OpenDeckSelection(); });
+                Button(footer, "RESUME BATTLE", 1604, 38, 192, 56, () => { defenceDeferred = false; OpenDeckSelection(); });
             if (s.Phase == CampaignPhase.CampaignFinished)
             {
                 var h = s.BattleHistory.Where(b => b.Attacker == s.HumanFaction || b.Defender == s.HumanFaction).ToList();
                 int wins = h.Count(b => b.Outcome != CampaignOutcome.Draw && (b.Outcome == CampaignOutcome.AttackerVictory ? b.Attacker : b.Defender) == s.HumanFaction);
-                Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 950, 17, 850, 34, 18);
+                Label(footer, $"Rounds: {s.RoundNumber}  ·  Wins: {wins}  ·  Losses: {h.Count(b => b.Outcome != CampaignOutcome.Draw) - wins}  ·  Captures: {h.Count(b => b.Attacker == s.HumanFaction && b.Captured)}", 950, 17, 820, 34, 18);
             }
             RefreshMap();
         }
@@ -253,18 +262,9 @@ namespace Game.Campaign
             CloseModal(); modal = CollectionUIElements.Panel(canvas, "ModalBackdrop"); CollectionUIElements.Stretch(modal);
             cancelModal = onCancel;
             modal.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
-            modalContent = CollectionUIElements.Panel(modal, title); CollectionUIElements.Place(modalContent, 485, 190, 950, 700); Skin(modalContent, true);
-            if (consoleMaterial != null)
-            {
-                if (modalPanelMaterial == null)
-                {
-                    modalPanelMaterial = new Material(consoleMaterial) { name = "CampaignDialog (runtime)" };
-                    modalPanelMaterial.SetVector("_SurfaceSize", new Vector4(950, 700, 0, 0));
-                }
-                modalContent.GetComponent<Image>().material = modalPanelMaterial;
-                modalContent.gameObject.AddComponent<Mask>();
-            }
-            Label(modalContent, title, 35, 25, 880, 58, 30); UIFocusUtility.SetOverlay(this, true); RefreshMap();
+            modalContent = CollectionUIElements.Panel(modal, title); CollectionUIElements.Place(modalContent, 485, 190, 950, 700);
+            CollectionSkin(modalContent, "Panel_Inset");
+            Plaque(modalContent, title, 35, 25, 880, 58, 30); UIFocusUtility.SetOverlay(this, true); RefreshMap();
         }
         private void CloseModal()
         { UIFocusUtility.SetOverlay(this, false); if (modal != null) { modal.gameObject.SetActive(false); Destroy(modal.gameObject); } modal = modalContent = null; cancelModal = null; }
@@ -366,7 +366,20 @@ namespace Game.Campaign
         private TMP_Text Label(Transform parent, string value, float x, float y, float w, float h, int size = 16)
         {
             var label = CollectionUIElements.Label(parent, value, x, y, w, h, size);
-            label.color = PaperInk; return label;
+            label.color = Cream; return label;
+        }
+        private void CollectionSkin(RectTransform rect, string asset)
+        {
+            var image = rect.GetComponent<Image>(); CollectionUIElements.ApplySurface(image, asset);
+            // Share the metal backing beneath panel rails instead of stretching its grain vertically.
+            image.fillCenter = asset != "Panel_Outer" && asset != "Panel_Inset";
+        }
+        private void Plaque(Transform parent, string value, float x, float y, float w, float h, int size)
+        {
+            var rect = CollectionUIElements.Panel(parent, "SectionPlaque"); CollectionUIElements.Place(rect, x, y, w, h);
+            CollectionSkin(rect, "Plaque"); rect.GetComponent<Image>().raycastTarget = false;
+            var text = Label(rect, value, 18, 4, w - 36, h - 8, size);
+            text.color = PaperInk; text.fontStyle = FontStyles.Bold; text.alignment = TextAlignmentOptions.Center;
         }
         private void Skin(RectTransform rect, bool paper, bool framed = true)
         {
@@ -386,18 +399,18 @@ namespace Game.Campaign
         {
             var button = CollectionUIElements.Button(parent, value, x, y, w, h, action, size);
             var image = button.GetComponent<Image>(); image.sprite = actionButtonSprite; image.color = Color.white;
-            var text = button.GetComponentInChildren<TMP_Text>(); text.color = PaperInk; text.fontStyle = FontStyles.Bold;
-            var colors = button.colors; colors.highlightedColor = new Color(1.12f, 1.08f, .95f);
-            colors.pressedColor = new Color(.75f, .68f, .57f); colors.disabledColor = new Color(.48f, .46f, .42f);
-            button.colors = colors; return button;
+            CollectionUIElements.ApplyControlsSkin(button.transform);
+            var text = button.GetComponentInChildren<TMP_Text>();
+            text.color = actionButtonSprite != null && image.sprite == actionButtonSprite ? PaperInk : Cream; text.fontStyle = FontStyles.Bold;
+            return button;
         }
         private void EndTurnButton(Transform parent, Action action)
         {
-            var button = Button(parent, "", 1688, 19, 112, 112, action, 22);
+            var button = Button(parent, "", 1684, 9, 112, 112, action, 22);
             button.gameObject.name = "EndTurn";
             // This sprite already contains the action text.
             if (endTurnSprite == null) button.GetComponentInChildren<TMP_Text>().text = "END TURN";
-            var image = button.GetComponent<Image>(); image.sprite = endTurnSprite; image.preserveAspect = true;
+            var image = button.GetComponent<Image>(); image.sprite = endTurnSprite; image.type = Image.Type.Simple; image.preserveAspect = true;
         }
         private void Logo(Transform parent, Faction faction, float x, float y, float size)
         {
@@ -410,7 +423,7 @@ namespace Game.Campaign
         private static void Rule(Transform parent, float x, float y, float width)
         {
             var rect = CollectionUIElements.Panel(parent, "Divider"); CollectionUIElements.Place(rect, x, y, width, 1);
-            var image = rect.GetComponent<Image>(); image.color = new Color(.27f, .20f, .12f, .55f); image.raycastTarget = false;
+            var image = rect.GetComponent<Image>(); image.color = new Color(.60f, .43f, .23f, .65f); image.raycastTarget = false;
         }
         private void OnDestroy()
         {
@@ -420,7 +433,6 @@ namespace Game.Campaign
             if (consoleMaterial != null) Destroy(consoleMaterial);
             if (surfacePanelMaterial != null) Destroy(surfacePanelMaterial);
             if (regionPreviewMaterial != null) Destroy(regionPreviewMaterial);
-            if (modalPanelMaterial != null) Destroy(modalPanelMaterial);
         }
     }
 }

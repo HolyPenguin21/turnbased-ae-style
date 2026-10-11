@@ -232,6 +232,62 @@ namespace Game.EditorTools
                 context.SetValue(null, previous);
             }
         }
+        [Test] public void ExistingCollectionWindowReceivesCompleteSkinWithoutLosingState()
+        {
+            var canvas = new GameObject("canvas", typeof(RectTransform));
+            var dropdownObject = new GameObject("dropdown", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            var inputObject = new GameObject("input", typeof(RectTransform), typeof(UnityEngine.UI.Image));
+            var dropdown = dropdownObject.AddComponent<TMPro.TMP_Dropdown>();
+            var input = inputObject.AddComponent<TMPro.TMP_InputField>();
+            var cell = CollectionWindowBuilder.BuildCell(null);
+            var row = CollectionWindowBuilder.BuildRow(null);
+            try
+            {
+                var screen = CollectionWindowBuilder.BuildWindow(canvas.transform, cell, row, dropdown, input, null);
+                var root = (RectTransform)screen.transform;
+                var field = root.Find("Deck/DeckName").GetComponent<TMPro.TMP_InputField>();
+                field.SetTextWithoutNotify("Keep my deck");
+                int clicks = 0;
+                var save = root.Find("Deck/Save").GetComponent<UnityEngine.UI.Button>();
+                save.onClick.AddListener(() => clicks++);
+                // Reproduce an older loaded scene: white fields, flat panels and old grid size.
+                foreach (string path in new[] { "", "Filters", "Cards", "Deck", "Deck/DeckName", "Deck/Save" })
+                {
+                    var target = path == "" ? root : root.Find(path);
+                    var image = target.GetComponent<UnityEngine.UI.Image>();
+                    image.sprite = null; image.color = Color.white;
+                }
+                var grid = root.Find("Cards/Viewport/Content").GetComponent<UnityEngine.UI.GridLayoutGroup>();
+                grid.cellSize = new Vector2(144, 210);
+                UnityEngine.Object.DestroyImmediate(root.Find("TitlePlaque").gameObject);
+                Game.UI.CollectionUIElements.ApplyWindowSkin(root);
+                Game.UI.CollectionUIElements.ApplyWindowSkin(root);
+                foreach (var pair in new[] { ("", "Panel_Outer"), ("Filters", "Panel_Inset"), ("Cards", "Panel_Inset"),
+                    ("Deck", "Panel_Inset"), ("Deck/DeckName", "Input"), ("Deck/Save", "Plaque") })
+                {
+                    var target = pair.Item1 == "" ? root : root.Find(pair.Item1);
+                    var expected = Resources.Load<Sprite>("UI/Collection/" + pair.Item2);
+                    Assert.That(expected, Is.Not.Null);
+                    Assert.That(target.GetComponent<UnityEngine.UI.Image>().sprite, Is.EqualTo(expected));
+                }
+                Assert.That(root.Cast<Transform>().Count(t => t.name == "TitlePlaque"), Is.EqualTo(1));
+                Assert.That(grid.cellSize, Is.EqualTo(new Vector2(140, 194)));
+                Assert.That(field.text, Is.EqualTo("Keep my deck"));
+                save.onClick.Invoke(); Assert.That(clicks, Is.EqualTo(1));
+                var cellBackground = cell.GetComponent<UnityEngine.UI.Image>();
+                cellBackground.sprite = Resources.Load<Sprite>("UI/Collection/Panel_Outer");
+                cellBackground.color = Color.white;
+                Game.UI.CollectionUIElements.ApplyCellSkin((RectTransform)cell.transform);
+                Assert.That(cellBackground.sprite, Is.Null); Assert.That(cellBackground.color.a, Is.Zero);
+                Assert.That(((RectTransform)cell.transform.Find("Card")).sizeDelta, Is.EqualTo(new Vector2(106, 155)));
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(dropdownObject);
+                UnityEngine.Object.DestroyImmediate(inputObject); UnityEngine.Object.DestroyImmediate(cell.gameObject);
+                UnityEngine.Object.DestroyImmediate(row.gameObject);
+            }
+        }
         [Test] public void CollectionAndDeckRowsUseCategoryThenPerCopyCost()
         {
             var cheap = new CardDefinition { authoredKey = "cheap", displayName = "Zulu", cardType = CardType.Unit, deckPointCost = 1 };
@@ -398,3 +454,4 @@ namespace Game.EditorTools
     }
 }
 #endif
+
