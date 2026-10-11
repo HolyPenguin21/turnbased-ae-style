@@ -8,10 +8,12 @@ using UnityEngine.UI;
 
 public sealed class CampaignVisualTests
 {
-    [TestCase(false, 0f)]
-    [TestCase(false, .99f)]
-    [TestCase(true, 0f)]
-    public void ShaderKeepsBothSidesAfterCanvasBatchTranslation(bool croppedOverlay, float markerRadius)
+    [TestCase(false, 0f, false, 0f)]
+    [TestCase(false, .99f, false, 0f)]
+    [TestCase(true, 0f, false, 0f)]
+    [TestCase(false, 0f, true, 0f)]
+    [TestCase(false, .99f, false, -1f)]
+    public void ShaderKeepsBothSidesAfterCanvasBatchTranslation(bool croppedOverlay, float markerRadius, bool clouds, float surfaceMode)
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
             Assert.Ignore("A graphics device is required for the batched UI shader regression.");
@@ -28,7 +30,7 @@ public sealed class CampaignVisualTests
             mesh.uv = croppedOverlay
                 ? new[] { new Vector2(.2f, .3f), new Vector2(.52f, .3f), new Vector2(.52f, .42f), new Vector2(.2f, .42f) }
                 : new[] { Vector2.zero, Vector2.right, Vector2.one, Vector2.up };
-            mesh.SetUVs(1, new System.Collections.Generic.List<Vector4> { new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0) });
+            mesh.SetUVs(1, new System.Collections.Generic.List<Vector4> { new Vector4(surfaceMode, 1, markerRadius, 0), new Vector4(surfaceMode, 1, markerRadius, 0), new Vector4(surfaceMode, 1, markerRadius, 0), new Vector4(surfaceMode, 1, markerRadius, 0) });
             mesh.SetUVs(2, new System.Collections.Generic.List<Vector4> { new Vector4(0, 0, 0, 0), new Vector4(0, 0, 1, 0), new Vector4(0, 0, 1, 1), new Vector4(0, 0, 0, 1) });
             mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
             material.SetVector("_SurfaceSize", new Vector4(1360, 740, 0, 0));
@@ -38,6 +40,11 @@ public sealed class CampaignVisualTests
                 material.SetFloat("_Atmosphere", 1);
                 material.SetFloat("_CornerRadius", 64);
                 material.SetVector("_UVRect", new Vector4(.2f, .3f, .32f, .12f));
+            }
+            if (clouds)
+            {
+                material.SetFloat("_Atmosphere", 1);
+                material.SetFloat("_CloudOverlay", 1);
             }
             material.SetTexture("_MainTex", Texture2D.whiteTexture);
             material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
@@ -53,8 +60,17 @@ public sealed class CampaignVisualTests
             finally { GL.PopMatrix(); }
             readback.ReadPixels(new Rect(0, 0, 512, 256), 0, 0); readback.Apply();
             // x=-800 was incorrectly below the old local xMin=-680, despite being inside the map.
-            Assert.That(readback.GetPixel(43, 128).a, Is.GreaterThan(.95f), "Left side clipped by mixed coordinate spaces");
-            Assert.That(readback.GetPixel(336, 128).a, Is.GreaterThan(.95f), "Right side must stay visible too");
+            if (clouds || surfaceMode < 0)
+            {
+                Assert.That(readback.GetPixel(43, 128).a, Is.LessThan(.15f), "Clouds over regions and the depth silhouette must stay soft");
+                if (clouds)
+                    Assert.That(readback.GetPixel(18, 53).a, Is.GreaterThan(readback.GetPixel(180, 128).a * 5), "Clouds must remain denser outside the map near its corners");
+            }
+            else
+            {
+                Assert.That(readback.GetPixel(43, 128).a, Is.GreaterThan(.95f), "Left side clipped by mixed coordinate spaces");
+                Assert.That(readback.GetPixel(336, 128).a, Is.GreaterThan(.95f), "Right side must stay visible too");
+            }
             if (croppedOverlay)
                 Assert.That(readback.GetPixel(14, 51).a, Is.LessThan(.02f), "Cropped terrain UVs must not move the rounded mask away from its corner");
         }
@@ -163,6 +179,27 @@ public sealed class CampaignVisualTests
         Assert.True(CampaignGeometry.Contains(region.PolygonVertices, CampaignRegionGraphic.InteriorCenter(region)));
     }
     [Test]
+    public void MarkerCenterDoesNotDependOnBorderVertexDensity()
+    {
+        var region = new RegionState { PolygonVertices = new System.Collections.Generic.List<Vector2>
+            { new Vector2(-.2f, -.2f), new Vector2(.2f, -.2f), new Vector2(.2f, .2f),
+              new Vector2(.1f, .2f), new Vector2(0, .2f), new Vector2(-.1f, .2f), new Vector2(-.2f, .2f) } };
+        Assert.That(CampaignRegionGraphic.InteriorCenter(region).sqrMagnitude, Is.LessThan(1e-10f));
+    }
+    [Test]
+    public void OuterRegionMarkerStaysAtItsVisibleAreaCenter()
+    {
+        var region = new RegionState { PolygonVertices = new System.Collections.Generic.List<Vector2>
+            { new Vector2(-.08f, .84f), new Vector2(.08f, .84f), new Vector2(.08f, .96f), new Vector2(-.08f, .96f) } };
+        var marker = CampaignRegionGraphic.VisibleCenter(region);
+        var displayed = CampaignMapView.Project(marker);
+        Assert.True(CampaignGeometry.Contains(region.PolygonVertices, marker));
+        Assert.That(displayed.x, Is.EqualTo(0).Within(1e-5f));
+        Assert.That(displayed.y, Is.InRange(.880f, .890f), "The former .80 viewport gate pulled this marker away from its region center");
+        foreach (var point in region.PolygonVertices)
+            Assert.That((CampaignMapView.Unproject(CampaignMapView.Project(point)) - point).sqrMagnitude, Is.LessThan(1e-10f));
+    }
+    [Test]
     public void SelectionGlowFadesFromContourTowardTheInterior()
     {
         var boundary = new[] { new Vector2(0, 0), new Vector2(100, 0), new Vector2(100, 100), new Vector2(0, 100) };
@@ -225,6 +262,14 @@ public sealed class CampaignVisualTests
                 vh.FillMesh(mesh);
             }
             Assert.True(mesh.uv3.All(v => v.x == 0));
+            graphic.Configure(state.Regions[0], null, null, true);
+            using (var vh = new VertexHelper())
+            {
+                typeof(CampaignRegionGraphic).GetMethod("OnPopulateMesh", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                    .Invoke(graphic, new object[] { vh });
+                vh.FillMesh(mesh);
+            }
+            Assert.True(mesh.uv2.All(v => v.x == -1), "Depth meshes must use the solid-color horizon-fade shader mode");
             CampaignGeometry.Validate(state.Regions, true);
         }
         finally { Object.DestroyImmediate(root); Object.DestroyImmediate(mesh); Object.DestroyImmediate(material); }
