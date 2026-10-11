@@ -8,8 +8,11 @@ Behavior settings live in `GameConfig.armyRadioChatter`.
 
 ## Appearance and placement
 
-The third approved concept retains its translucent sand-colored rounded panel, muted
-outline, soft shadow, GameMenuFont and collection ink. The whole phrase is readable while
+The approved image (`Minimal radio chatter above desert battlefield.png`) uses an open
+radio callout: light sand text, a thin muted-gold underline, dot/radio waves and a fine
+wire to the marker. There is no beige balloon, triangle or enclosing border. A low-opacity
+dark wash feathers to transparent inside the text bounds. GameMenuFont remains editable.
+The whole phrase is readable while
 the complete card/message group fades in. The first living non-prisoner roster unit supplies
 its full `detailArt`/runtime `DetailArt`; compact slot art is never substituted. Sprite
 proportions are retained without cropping (inspected full images: 772×1124 including frame).
@@ -21,11 +24,23 @@ is the complete reusable pool; there is no runtime construction or fallback UI b
 It has no raycaster. The manager bounds concurrent messages and prevents duplicate speakers. Each
 LateUpdate projects actual marker centers/radii through the camera, intersects the viewport
 with the safe area, reserves the bottom hand panel and places whole card/message groups.
-The card swaps ends toward its army and the pointer can leave any of the panel's four sides.
+The card swaps ends toward its army and the thin wire can leave any of the text bounds' four sides.
+Diagonal callouts are preferred, with straight placements as collision/viewport fallbacks.
+
+The complete message group scales with the actual orthographic map zoom: text, card,
+underline, signal and wire thickness all share one RectTransform scale. The authored
+`referenceOrthographicSize` defaults to 2.6 (the map camera's closest zoom); scale is
+`referenceOrthographicSize / camera.orthographicSize`. Sizes 2.6 / 4 / 7 therefore give
+100% / 65% / 37.14%. There is no screen-size readability floor or font-size rewrite.
+Bounds and connector geometry use that same scale, and retained placement offsets scale
+with it so a message stays close to its marker when zooming. CanvasScaler still handles
+screen resolution independently. This is the existing orthographic map camera; camera
+distance alone does not affect orthographic zoom.
 
 Placement retains a valid camera-relative offset to avoid unnecessary jumps. If blocked,
 it searches nearby diagonal, horizontal and vertical positions with an eight-pixel body clearance. Existing thin
 connectors also reserve space; new connectors cannot cross earlier messages/connectors.
+The reservation includes radio-wave extent and wires must also clear their own portraits.
 Fading messages retain their reserved space until removed. When there is no valid position,
 a new transmission is deferred. If camera movement leaves an existing message with no valid
 position, it is suppressed immediately so no overlap is drawn. Off-screen, hidden, moving,
@@ -36,13 +51,16 @@ removed or re-ordered speakers also cancel immediately.
 - Open `ArmyRadioMessage.prefab` to change all three messages together. Its
   `ArmyRadioBubbleView` exposes art height, text-panel width/minimum height, card/marker
   gaps and shadow offset. Runtime derives only dynamic placement and actual art proportions.
-- `Message` / `Shadow` graphics expose fill color, border color/width and corner radius.
+- `Message` exposes the dark wash color/feather, radio-line color/width, signal radius and
+  corner inset (`cornerRadius`, retained for serialization). `Shadow` is disabled in the
+  authored prefab; it remains available for optional Inspector styling.
 - `Speech` exposes the TMP font, font size and color; edit its stretched RectTransform
   offsets for text padding. These choices are preserved by Configure/Show. Text measurement
   refreshes on width, padding, font/size or corner/minimum-height changes.
 - `FirstUnitDetailArt` retains Image settings/tint; its sprite is supplied by the speaker.
   Assign a temporary detail sprite in Prefab Mode if needed to preview the portrait.
 - `ArmyRadioOverlay.prefab` controls child-Canvas sorting and the three slot references.
+  Its `referenceOrthographicSize` controls the zoom at which authored message sizes are 1:1.
   It stretches inside the existing `Canvas_UI`, inherits its CanvasScaler, and isolates
   radio geometry/batching without adding a second root Canvas. Marker radius uses the
   root Canvas scale factor, including at 1920×1080 and other scaled resolutions.
@@ -104,11 +122,13 @@ Enable/disable balances subscriptions; retired army observations/cooldowns are p
   compile with zero errors against the repository's older Unity reference DLLs. Identical
   temporary compatibility fixes affect only verification copies (TMP dropdown members and
   newer FindObjectsByType overload calls); no stubs are shipped in the game.
-- 27 checked-in geometry/content/cadence/fade test cases pass in a portable NUnit harness
+- 33 checked-in geometry/content/cadence/fade test cases pass in a portable NUnit harness
   using the real radio policy/layout/timing sources and test-only managed primitives. They
   cover all pointer sides/diagonals, resolution/corner placement, three-army reflow during
   camera movement, adjacent dialogues at all four corners, connector clearance, occupied viewport rejection, cooldown/reservation,
-  normal/click exit timing, configurable rounded-corner clearance and exact English content counts. This does not test Unity rendering.
+  normal/click exit timing, configurable corner inset, exact English content counts,
+  the three real camera zoom settings and scaled body/wire clearance at all four edges.
+  This does not test Unity rendering.
 - Native EditMode tests additionally cover real sprite/camera projection, fog/stealth,
   roster flags, gameplay RNG, pool/configuration/subscriptions and the actual selection
   event path dismissing a message/cancelling a pending reply. They instantiate the actual
@@ -125,3 +145,9 @@ live match: camera pan/zoom/all screen edges with three nearby messages, click d
 HUD clearance/full art, modal/observer pause, hot-seat handoff and scene restart. Also
 verify the authored nested prefabs import in that editor and editing the message prefab updates
 all three slots without runtime style overrides.
+
+A review sheet covers three zoom levels and four placement directions using the compiled
+`ArmyRadioLayout` and `ArmyRadioBubbleGraphic` mesh, authored prefab values, actual unit
+detail art, LiberationSans (GameMenuFont's source), terrain and army sprites. It is a
+portable geometry rasterization; TMP text rasterization, world-camera tilt and Unity's
+actual Canvas renderer still require the live editor check above.

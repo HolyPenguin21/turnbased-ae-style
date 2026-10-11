@@ -30,6 +30,8 @@ namespace Game.UI
         private RectTransform _hud;
         [SerializeField] private RectTransform _canvas;
         [SerializeField] private Canvas _overlayCanvas;
+        [Tooltip("Message scale is 1 at this map-camera orthographic size; zooming out shrinks text, art and lines together.")]
+        [Min(.01f)] [SerializeField] private float referenceOrthographicSize = 2.6f;
         private readonly Vector3[] _hudCorners = new Vector3[4];
         [SerializeField] private ArmyRadioBubbleView[] _views = System.Array.Empty<ArmyRadioBubbleView>();
         private readonly List<Rect> _occupied = new List<Rect>(96);
@@ -281,7 +283,7 @@ namespace Game.UI
                 if (view.Active) continue;
                 if (!CanPresent(army, out var anchor, out float radius)) return false;
                 view.Show(army, text, now, _settings);
-                if (!view.Follow(SafeRect(), anchor, radius, _occupied)) { view.Hide(); return false; }
+                if (!view.Follow(SafeRect(), anchor, radius, _occupied, MessageScale())) { view.Hide(); return false; }
                 view.AddObstacles(_occupied);
                 return true;
             }
@@ -296,7 +298,7 @@ namespace Game.UI
                 if (!view.Active) continue;
                 if (_viewer != VisionSystem.CurrentViewer || view.Unit != ArmyRadioChatter.FirstUnit(view.Speaker)
                     || !CanPresent(view.Speaker, out var anchor, out float radius)
-                    || !view.Follow(SafeRect(), anchor, radius, _occupied))
+                    || !view.Follow(SafeRect(), anchor, radius, _occupied, MessageScale()))
                 {
                     // No valid on-screen position: suppress immediately rather than draw overlapping
                     // art during an exit fade. Normal lifetime/click/modal exits retain their fade.
@@ -307,6 +309,8 @@ namespace Game.UI
         }
         private bool ScreenToLocal(Vector2 screen, out Vector2 local) =>
             RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvas, screen, null, out local);
+        private float MessageScale() => _camera.orthographic
+            ? ArmyRadioLayout.CameraScale(_camera.orthographicSize, referenceOrthographicSize) : 1f;
         private Rect SafeRect()
         {
             Rect screen = Screen.safeArea, cameraRect = _camera.pixelRect;

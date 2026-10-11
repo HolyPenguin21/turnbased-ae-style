@@ -38,7 +38,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 277.57, y: 78}
+  m_SizeDelta: {x: 247.57, y: 78}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!225 &100002
 CanvasGroup:
@@ -73,9 +73,9 @@ MonoBehaviour:
   _art: {fileID: 100043}
   _message: {fileID: 100033}
   artHeight: 78
-  messageWidth: 220
-  minimumPanelHeight: 52
-  cardGap: 4
+  messageWidth: 180
+  minimumPanelHeight: 56
+  cardGap: 14
   markerGap: 12
   shadowOffset: {x: 0, y: -2}
 --- !u!1 &100010
@@ -95,7 +95,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &100011
 RectTransform:
   m_ObjectHideFlags: 0
@@ -181,8 +181,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 28.785, y: 0}
-  m_SizeDelta: {x: 220, y: 52}
+  m_AnchoredPosition: {x: 33.785, y: 0}
+  m_SizeDelta: {x: 180, y: 56}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &100022
 CanvasRenderer:
@@ -205,7 +205,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioBubbleGraphic
   m_Material: {fileID: 0}
-  m_Color: {r: 0.8, g: 0.72, b: 0.6, a: 0.86}
+  m_Color: {r: 0.08, g: 0.065, b: 0.045, a: 0.22}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -213,8 +213,10 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   cornerRadius: 9
-  borderWidth: 0.8
-  borderColor: {r: 0.27, g: 0.2, b: 0.13, a: 0.5}
+  borderWidth: 0.9
+  borderColor: {r: 0.78, g: 0.61, b: 0.35, a: 0.9}
+  backgroundFeather: 16
+  signalRadius: 2.5
 --- !u!1 &100030
 GameObject:
   m_ObjectHideFlags: 0
@@ -249,8 +251,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: -22, y: -20}
+  m_AnchoredPosition: {x: 0, y: 6}
+  m_SizeDelta: {x: 0, y: -16}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &100032
 CanvasRenderer:
@@ -273,7 +275,7 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Unity.TextMeshPro::TMPro.TextMeshProUGUI
   m_Material: {fileID: 0}
-  m_Color: {r: 0.16, g: 0.12, b: 0.08, a: 1}
+  m_Color: {r: 0.86, g: 0.79, b: 0.65, a: 1}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -289,8 +291,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4279508521
-  m_fontColor: {r: 0.16, g: 0.12, b: 0.08, a: 1}
+    rgba: 4289128923
+  m_fontColor: {r: 0.86, g: 0.79, b: 0.65, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -320,7 +322,7 @@ MonoBehaviour:
   m_characterSpacing: 0
   m_characterHorizontalScale: 1
   m_wordSpacing: 0
-  m_lineSpacing: 0
+  m_lineSpacing: 2
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
@@ -386,7 +388,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -112, y: 0}
+  m_AnchoredPosition: {x: -97, y: 0}
   m_SizeDelta: {x: 53.57, y: 78}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &100042
