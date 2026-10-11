@@ -1,4 +1,4 @@
-# Campaign: seamless frame cutouts
+# Campaign: transparent frames and size-specific paper fields
 
 Base: `9e357c5302788014f352e3e6d8ce90e111940a2f`.
 Initial diagnosis used `57ee38e6a53768192119334b586694f914ba0362`; the later
@@ -13,11 +13,14 @@ exterior rectangle into the header.
 Campaign now uses transparent cutouts of the same authored designs. One existing
 ConsoleMetal backing remains visible inside and outside the rails. Frame borders
 include the corner joints, and campaign uses its own separate pixel densities
-(3 for the outer frame, 2 for inset frames, 8 for the plaque). Other collection windows retain their
+(3 for the outer frame, 2 for inset frames). Paper fields now use seven individual
+assets with Simple rendering and preserved aspect; see [asset sizes and prompts](Campaign_PlaqueAssets.md).
+Other collection windows retain their
 current assets and helper behavior.
 
 CampaignUI changes remain local to presentation: transparent sprite application,
-frame density, the background texture path and the header's vertical offset. Serialized references, region geometry,
+frame density, background texture, header offset, size-specific plaque selection,
+and the RECENT BATTLES label size (18, fitting one line). Serialized references, region geometry,
 callbacks, map materials, cloud opacity and gameplay are unchanged.
 
 ## Assets
@@ -30,13 +33,14 @@ resampling or alpha reconstruction is performed.
 | --- | --- | --- | --- |
 | `Assets/Resources/Campaign/ConsoleFrame.png` | 1672 × 941 | 128, 112, 128, 112 | 3 |
 | `Assets/Resources/Campaign/InsetFrame.png` | 1239 × 1269 | 96, 96, 96, 96 | 2 |
-| `Assets/Resources/Campaign/SectionPlaque.png` | 2170 × 725 | 180, 64, 180, 64 | 8 |
+| `Assets/Resources/Campaign/SectionPlaque.png` (generation reference only) | 2170 × 725 | 180, 64, 180, 64 | — |
 
 SectionPlaque has one imported sprite, named SectionPlaque, rect
 `x=0, y=245, width=2170, height=240` (Unity bottom-left coordinates).
 This excludes the generated transparent padding through native sprite metadata;
-the PNG and its alpha remain intact. It is loaded with
-`Resources.LoadAll<Sprite>(path).FirstOrDefault()`.
+the PNG and its alpha remain intact. This older universal sprite is kept as
+the material reference for generation; campaign no longer renders it. Each new
+size-specific sprite is loaded with `Resources.LoadAll<Sprite>(path).FirstOrDefault()`.
 New assets have new GUIDs; existing .meta files are untouched.
 Imports retain full resolution, alpha transparency, no mipmaps, bilinear clamp,
 and uncompressed Default/Standalone settings.
@@ -59,14 +63,16 @@ byte-for-byte from the selected built-in imagegen edit result.
 
 ## Review previews
 
-![Upper-right frame and menu comparison](Campaign_TransparentFrames_Comparison.png)
+![Header and menu before and after purpose-sized assets](Campaign_TransparentFrames_Comparison.png)
 
 ![Selected campaign region](Campaign_TransparentFrames.png)
 
-These are CPU nine-slice compositions, **not Unity screenshots**. The full image
+![Seven field sizes at native canvas size](Campaign_PlaqueSizes.png)
+
+These are CPU UI compositions, **not Unity screenshots**. The full image
 is a lossless 1920 × 1080 PNG. Each comparison crop has exactly one source pixel
 per output pixel; neither half is enlarged or JPEG-compressed. The comparison
-is the previous PR version (bc1369e8) versus the rendering quality revision,
+is PR revision 4a48c7e8 versus the size-specific backing revision,
 with the same map seed 0x345703EE, labels, terrain and .72 cloud corner opacity. TMP font metrics, UI button tint transitions, native sprite
 import and GPU rendering still require editor verification.
 
@@ -92,7 +98,8 @@ import and GPU rendering still require editor verification.
 
 Editor follow-up: check header/menu joins, sidebar, footer and modal corners at
 1920 × 1080 and narrower aspect ratios; verify the single imported plaque sprite
-and button hover/pressed states.
+and button hover/pressed states. New plaque validation and the seven sprite
+rectangles are documented in [Campaign_PlaqueAssets.md](Campaign_PlaqueAssets.md).
 
 ## Exact edit prompts
 
