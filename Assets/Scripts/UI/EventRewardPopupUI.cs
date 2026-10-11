@@ -24,6 +24,7 @@ namespace Game.UI
         [SerializeField] private TMP_Text summaryText;
         [SerializeField] private Image rewardCardImage;
         [SerializeField] private Button okButton;
+        private RectTransform rewardWindow, recipientFrame, cardFrame, summaryPanel;
 
         private static readonly (ResourceType type, string label)[] ResourceLabels =
         {
@@ -56,6 +57,7 @@ namespace Game.UI
 
             if (summaryText != null)
                 summaryText.text = BuildSummary(entry, recipient);
+            ApplyRewardSkin();
 
             if (okButton != null)
             {
@@ -68,6 +70,77 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             VisibilityChanged?.Invoke();
+        }
+
+        private void ApplyRewardSkin()
+        {
+            if (panelRoot == null) return;
+            if (rewardWindow == null)
+            {
+                var backdrop = (RectTransform)panelRoot.transform; CollectionUIElements.Stretch(backdrop);
+                var dimmer = panelRoot.GetComponent<Image>();
+                if (dimmer != null) { dimmer.sprite = null; dimmer.type = Image.Type.Simple; dimmer.color = new Color(0, 0, 0, .8f); }
+                rewardWindow = CollectionUIElements.RewardWindow(backdrop, "EventRewardWindow");
+                // Keep all authored object identities and button bindings while moving the
+                // controls into the centered window under the original visibility owner.
+                for (int i = backdrop.childCount - 2; i >= 0; i--)
+                    backdrop.GetChild(i).SetParent(rewardWindow, false);
+                var title = rewardWindow.Find("TitleText")?.GetComponent<TMP_Text>();
+                CollectionUIElements.RewardTitle(rewardWindow, "EVENT REWARD", false, title);
+                recipientFrame = CollectionUIElements.Panel(rewardWindow, "RecipientFrame");
+                cardFrame = CollectionUIElements.Panel(rewardWindow, "RewardCardFrame");
+                CollectionUIElements.Place(recipientFrame, 60, 148, 200, 340);
+                CollectionUIElements.Place(cardFrame, 800, 148, 200, 340);
+                CollectionUIElements.ApplySurface(recipientFrame.GetComponent<Image>(), "Panel_Inset");
+                CollectionUIElements.ApplySurface(cardFrame.GetComponent<Image>(), "Panel_Inset");
+                recipientFrame.GetComponent<Image>().raycastTarget = cardFrame.GetComponent<Image>().raycastTarget = false;
+                // Art stays above the frame backing; it uses its full authored aspect ratio.
+                if (unitImage != null)
+                {
+                    unitImage.transform.SetParent(recipientFrame, false);
+                    CollectionUIElements.Place(unitImage.rectTransform, 12, 22, 176, 257);
+                    unitImage.preserveAspect = true; unitImage.raycastTarget = false;
+                }
+                if (rewardCardImage != null)
+                {
+                    rewardCardImage.transform.SetParent(cardFrame, false);
+                    CollectionUIElements.Place(rewardCardImage.rectTransform, 12, 22, 176, 257);
+                    rewardCardImage.preserveAspect = true; rewardCardImage.raycastTarget = false;
+                }
+                var recipientCaption = CollectionUIElements.Label(recipientFrame, "RECIPIENT", 10, 296, 180, 28, 18);
+                var cardCaption = CollectionUIElements.Label(cardFrame, "REWARD CARD", 10, 296, 180, 28, 18);
+                recipientCaption.alignment = cardCaption.alignment = TextAlignmentOptions.Center;
+                summaryPanel = CollectionUIElements.Panel(rewardWindow, "RewardSummary");
+                var paper = summaryPanel.GetComponent<Image>(); paper.sprite = Resources.Load<Sprite>("Campaign/Parchment");
+                paper.type = Image.Type.Tiled; paper.color = Color.white; paper.raycastTarget = false;
+                var frame = CollectionUIElements.Panel(summaryPanel, "SummaryFrame"); CollectionUIElements.Stretch(frame);
+                CollectionUIElements.ApplyCampaignSurface(frame, "Panel_Inset"); frame.GetComponent<Image>().raycastTarget = false;
+                if (summaryText != null)
+                {
+                    summaryText.transform.SetParent(summaryPanel, false);
+                    summaryText.color = CollectionUIElements.CollectionInk; summaryText.alignment = TextAlignmentOptions.Center;
+                    summaryText.enableAutoSizing = true; summaryText.fontSizeMin = 14; summaryText.fontSizeMax = 22;
+                    summaryText.textWrappingMode = TextWrappingModes.Normal; summaryText.raycastTarget = false;
+                }
+                if (okButton != null)
+                {
+                    CollectionUIElements.Place((RectTransform)okButton.transform, 400, 532, 260, 44);
+                    CollectionUIElements.ApplyControlsSkin(okButton.transform);
+                    var label = okButton.GetComponentInChildren<TMP_Text>(true);
+                    if (label != null)
+                    {
+                        CollectionUIElements.Place((RectTransform)label.transform, 10, 4, 240, 36);
+                        label.text = "CONTINUE"; label.fontSize = 22; label.fontStyle = FontStyles.Bold;
+                    }
+                }
+            }
+            bool portrait = unitImage != null && unitImage.gameObject.activeSelf;
+            bool card = rewardCardImage != null && rewardCardImage.gameObject.activeSelf;
+            recipientFrame.gameObject.SetActive(portrait); cardFrame.gameObject.SetActive(card);
+            float x = portrait ? (card ? 284 : 300) : (card ? 60 : 130);
+            float width = portrait && card ? 492 : portrait || card ? 700 : 800;
+            CollectionUIElements.Place(summaryPanel, x, 148, width, 328);
+            if (summaryText != null) CollectionUIElements.Place(summaryText.rectTransform, 30, 30, width - 60, 268);
         }
 
         // "<Army> receives <resources> as a reward." / "<Army> receives <card> as a reward." /

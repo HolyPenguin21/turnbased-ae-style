@@ -48,11 +48,7 @@ namespace Game.UI
                 if (previewGroup == null) previewGroup = preview.gameObject.AddComponent<CanvasGroup>();
             }
             preview.SetupPreview(card, config, onSelect, inputAllowed);
-            var rt = (RectTransform)preview.transform;
-            Vector2 area = cardHost.rect.size;
-            float scale = Mathf.Min(area.x / Mathf.Max(1, rt.rect.width), area.y / Mathf.Max(1, rt.rect.height));
-            rt.localScale = Vector3.one * scale;
-            rt.anchorMin = rt.anchorMax = new Vector2(.5f, 1); rt.pivot = new Vector2(.5f, 1); rt.anchoredPosition = Vector2.zero;
+            CollectionUIElements.FitCardPreview((RectTransform)preview.transform, cardHost);
         }
 
         public void SetCounts(int owned, int inDeck)
