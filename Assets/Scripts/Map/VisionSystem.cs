@@ -127,6 +127,10 @@ namespace Game.Map
             return DebugRevealAll || CurrentViewer == null || HasEverSeen(CurrentViewer, hex);
         }
 
+        // One shared radius for visibility recomputation and read-only per-army observations.
+        public static int ArmyVisionRadius(ArmyData army) =>
+            (_config != null ? _config.armyVisionRadius : 0) + Game.Cards.AbilityParams.GetBestRecceRadius(army);
+
         // Rebuilds `player`'s own visible set from scratch — every one of their armies and
         // buildings, expanded by its own radius (HexGridMath.HexesInRange) and unioned together.
         // Called from the one places those actually change (ArmyRegistry/BuildingRegistry's own
@@ -137,7 +141,6 @@ namespace Game.Map
             if (player == null)
                 return;
 
-            int armyRadius = _config != null ? _config.armyVisionRadius : 0;
             int buildingRadius = _config != null ? _config.buildingVisionRadius : 1;
 
             var fresh = new HashSet<HexCoord>();
@@ -170,7 +173,7 @@ namespace Game.Map
                 // from the tag itself now (see Game.Cards.AbilityParams), max across members,
                 // never summed. Detection strength (the sX part) is a separate concern handled
                 // by Game.Map.StealthSystem, not here.
-                int radius = armyRadius + Game.Cards.AbilityParams.GetBestRecceRadius(army);
+                int radius = ArmyVisionRadius(army);
                 foreach (HexCoord hex in HexGridMath.HexesInRange(origin, radius))
                     fresh.Add(hex);
             }

@@ -18,6 +18,9 @@ namespace Game.Core
     [CreateAssetMenu(fileName = "GameConfig", menuName = "Game/Game Config")]
     public class GameConfig : ScriptableObject
     {
+        [Header("Army radio (presentation only)")]
+        public ArmyRadioChatterSettings armyRadioChatter = new ArmyRadioChatterSettings();
+
         [Header("Collection content")]
         public Game.Cards.StartingDeckCatalog collectionDeckCatalog;
         public Game.Cards.ResearchProductionCatalog collectionResearchCatalog;
