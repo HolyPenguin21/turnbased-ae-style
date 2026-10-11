@@ -5,8 +5,10 @@ Shader "Game/UI/CampaignSurface"
         [PerRendererData] _MainTex ("Terrain", 2D) = "white" {}
         _Color ("Tint", Color) = (1,1,1,1)
         _SurfaceSize ("Surface size", Vector) = (1360,740,0,0)
-        _EdgeFeather ("Edge feather (canvas units)", Float) = 64
+        _EdgeFeather ("Edge feather (canvas units)", Float) = 28
         _Atmosphere ("Cloud overlay", Float) = 0
+        _CornerRadius ("Panel corner radius", Float) = 0
+        _UVRect ("Overlay UV rect", Vector) = (0,0,1,1)
         _StencilComp ("Stencil Comparison", Float) = 8
         _Stencil ("Stencil ID", Float) = 0
         _StencilOp ("Stencil Operation", Float) = 0
@@ -69,6 +71,8 @@ Shader "Game/UI/CampaignSurface"
             float4 _SurfaceSize;
             float _EdgeFeather;
             float _Atmosphere;
+            float _CornerRadius;
+            float4 _UVRect;
             v2f vert(appdata v)
             {
                 v2f o;
@@ -101,13 +105,16 @@ Shader "Game/UI/CampaignSurface"
                 color = lerp(color, sample * i.color, _Atmosphere);
                 // UV-carried viewport coordinates survive Canvas batching and parent transforms.
                 // Never compare batched POSITION with a graphic-local rectangle.
-                float2 viewport = lerp(i.selection.yz, i.texcoord, _Atmosphere);
+                float2 viewport = lerp(i.selection.yz, (i.texcoord - _UVRect.xy) / _UVRect.zw, _Atmosphere);
                 float2 edge = min(viewport, 1 - viewport) * _SurfaceSize.xy;
                 color.a *= smoothstep(0, _EdgeFeather, min(edge.x, edge.y));
-                // The elliptical limb has a soft map-space horizon.
-                // Original map coordinates keep the horizon independent of terrain UV scale.
-                float horizon = 1 - smoothstep(.80, 1.0, length(i.surface.zw));
-                color.a *= lerp(horizon, 1, _Atmosphere);
+                // Only the outer terrain rim fades; borders and markers stay readable.
+                float horizon = 1 - smoothstep(.94, 1.015, length(i.surface.zw));
+                color.a *= lerp(lerp(1, horizon, i.surface.x), 1, _Atmosphere);
+                // Optional rounded backing/mask uses the same batching-safe viewport coordinates.
+                float2 corner = abs((viewport - .5) * _SurfaceSize.xy) - (_SurfaceSize.xy * .5 - _CornerRadius);
+                float distance = length(max(corner, 0)) + min(max(corner.x, corner.y), 0) - _CornerRadius;
+                color.a *= 1 - smoothstep(-1, 0, distance);
                 #ifdef UNITY_UI_CLIP_RECT
                 color.a *= UnityGet2DClipping(i.localPosition.xy, _ClipRect);
                 #endif

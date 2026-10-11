@@ -8,8 +8,10 @@ using UnityEngine.UI;
 
 public sealed class CampaignVisualTests
 {
-    [Test]
-    public void ShaderKeepsBothSidesAfterCanvasBatchTranslation()
+    [TestCase(false, 0f)]
+    [TestCase(false, .99f)]
+    [TestCase(true, 0f)]
+    public void ShaderKeepsBothSidesAfterCanvasBatchTranslation(bool croppedOverlay, float markerRadius)
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
             Assert.Ignore("A graphics device is required for the batched UI shader regression.");
@@ -23,11 +25,20 @@ public sealed class CampaignVisualTests
             // The actual 1360x740 campaign viewport after translation into the 1920x1080 Canvas.
             mesh.vertices = new[] { new Vector3(-914, -332), new Vector3(446, -332), new Vector3(446, 408), new Vector3(-914, 408) };
             mesh.colors = new[] { Color.white, Color.white, Color.white, Color.white };
-            mesh.uv = new[] { Vector2.zero, Vector2.right, Vector2.one, Vector2.up };
-            mesh.SetUVs(1, new System.Collections.Generic.List<Vector4> { new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0), new Vector4(0, 1, 0, 0) });
+            mesh.uv = croppedOverlay
+                ? new[] { new Vector2(.2f, .3f), new Vector2(.52f, .3f), new Vector2(.52f, .42f), new Vector2(.2f, .42f) }
+                : new[] { Vector2.zero, Vector2.right, Vector2.one, Vector2.up };
+            mesh.SetUVs(1, new System.Collections.Generic.List<Vector4> { new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0), new Vector4(0, 1, markerRadius, 0) });
             mesh.SetUVs(2, new System.Collections.Generic.List<Vector4> { new Vector4(0, 0, 0, 0), new Vector4(0, 0, 1, 0), new Vector4(0, 0, 1, 1), new Vector4(0, 0, 0, 1) });
             mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
             material.SetVector("_SurfaceSize", new Vector4(1360, 740, 0, 0));
+            if (croppedOverlay)
+            {
+                // Region previews crop their terrain UVs; masking must still use the full panel.
+                material.SetFloat("_Atmosphere", 1);
+                material.SetFloat("_CornerRadius", 64);
+                material.SetVector("_UVRect", new Vector4(.2f, .3f, .32f, .12f));
+            }
             material.SetTexture("_MainTex", Texture2D.whiteTexture);
             material.SetInt("unity_GUIZTestMode", (int)UnityEngine.Rendering.CompareFunction.Always);
             RenderTexture.active = target;
@@ -44,6 +55,8 @@ public sealed class CampaignVisualTests
             // x=-800 was incorrectly below the old local xMin=-680, despite being inside the map.
             Assert.That(readback.GetPixel(43, 128).a, Is.GreaterThan(.95f), "Left side clipped by mixed coordinate spaces");
             Assert.That(readback.GetPixel(336, 128).a, Is.GreaterThan(.95f), "Right side must stay visible too");
+            if (croppedOverlay)
+                Assert.That(readback.GetPixel(14, 51).a, Is.LessThan(.02f), "Cropped terrain UVs must not move the rounded mask away from its corner");
         }
         finally
         {
@@ -91,8 +104,23 @@ public sealed class CampaignVisualTests
         Assert.NotNull(Resources.Load<Shader>("Campaign/CampaignSurface"));
         Assert.NotNull(Resources.Load<Sprite>("Campaign/Parchment"));
         Assert.NotNull(Resources.Load<Sprite>("Campaign/ConsoleMetal"));
-        var frame = Resources.Load<Sprite>("Campaign/MetalFrame");
+        var frame = Resources.Load<Sprite>("Campaign/MetalFrameRounded");
         Assert.NotNull(frame); Assert.That(frame.border.x, Is.GreaterThan(0));
+    }
+    [Test]
+    public void RoundedMapFillsTheCornersWithoutCroppingItsLimb()
+    {
+        Assert.That(CampaignMapView.Project(Vector2.zero), Is.EqualTo(Vector2.zero));
+        for (int step = 0; step < 128; step++)
+        {
+            float angle = step * Mathf.PI * 2 / 128;
+            var edge = CampaignMapView.Project(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)));
+            Assert.That(Mathf.Abs(edge.x), Is.LessThanOrEqualTo(.981f));
+            Assert.That(Mathf.Abs(edge.y), Is.LessThanOrEqualTo(.981f));
+        }
+        var corner = CampaignMapView.Project(new Vector2(.70710678f, .70710678f));
+        Assert.That(corner.x, Is.GreaterThan(.89f));
+        Assert.That(corner.y, Is.GreaterThan(.89f));
     }
     [TestCase(1)]
     [TestCase(37)]

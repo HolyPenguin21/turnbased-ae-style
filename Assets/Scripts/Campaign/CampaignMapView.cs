@@ -16,9 +16,9 @@ namespace Game.Campaign
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
-        // A broad elliptical limb, with only slight expansion of the central regions.
-        // Saves and shared region boundaries stay in map space.
-        public static Vector2 Project(Vector2 p) => new Vector2((float)(Math.Tanh(p.x * .55) / Math.Tanh(.55)) * .995f, (float)(Math.Tanh(p.y * .35) / Math.Tanh(.35)) * .995f);
+        // Map the disk to a rounded rectangle, filling the panel's corners without cropping cells.
+        // A radial bijection keeps saves and shared boundaries in their original map space.
+        public static Vector2 Project(Vector2 p) => p.sqrMagnitude < 1e-12f ? Vector2.zero : p * (float)(.98 * Math.Sqrt(p.sqrMagnitude) / Math.Pow(Math.Pow(p.x, 8) + Math.Pow(p.y, 8), .125));
         public static Vector2 ToPixel(Rect rect, Vector2 projected) => rect.center + new Vector2(projected.x * rect.width * .50f, projected.y * rect.height * .50f);
         public static Vector2 FromPixel(Rect rect, Vector2 pixel) => new Vector2((pixel.x - rect.center.x) / (rect.width * .50f), (pixel.y - rect.center.y) / (rect.height * .50f));
         // Cover the viewport by cropping, preserving the texture's pixel aspect ratio.
@@ -97,7 +97,10 @@ namespace Game.Campaign
                 selectedLabelRoot.anchorMin = selectedLabelRoot.anchorMax = new Vector2(.5f, .5f);
                 selectedLabelRoot.pivot = new Vector2(.5f, .5f);
                 selectedLabelRoot.sizeDelta = new Vector2(190, 28);
-                selectedLabelRoot.anchoredPosition = position - rect.rect.center + new Vector2(0, -24);
+                var labelPosition = position - rect.rect.center + new Vector2(0, -24);
+                labelPosition.x = Mathf.Clamp(labelPosition.x, -rect.rect.width / 2 + 103, rect.rect.width / 2 - 103);
+                labelPosition.y = Mathf.Clamp(labelPosition.y, -rect.rect.height / 2 + 22, rect.rect.height / 2 - 22);
+                selectedLabelRoot.anchoredPosition = labelPosition;
                 selectedLabel.text = labelRegion.Name.ToUpperInvariant();
             }
         }
