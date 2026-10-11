@@ -371,9 +371,18 @@ namespace Game.Campaign
         }
         private void CollectionSkin(RectTransform rect, string asset)
         {
-            var image = rect.GetComponent<Image>(); CollectionUIElements.ApplySurface(image, asset);
-            // Share the metal backing beneath panel rails instead of stretching its grain vertically.
-            image.fillCenter = asset != "Panel_Outer" && asset != "Panel_Inset";
+            var image = rect.GetComponent<Image>();
+            string path = asset == "Panel_Outer" ? "Campaign/ConsoleFrame"
+                : asset == "Panel_Inset" ? "Campaign/InsetFrame"
+                : asset == "Plaque" ? "Campaign/SectionPlaque" : null;
+            // The shared collection sprites bake opaque metal into the frame slices.
+            // Campaign cutouts reveal one continuous backing through and around the rails.
+            var sprite = path == null ? null : asset == "Plaque"
+                ? Resources.LoadAll<Sprite>(path).FirstOrDefault() : Resources.Load<Sprite>(path);
+            if (sprite == null) { CollectionUIElements.ApplySurface(image, asset); return; }
+            image.sprite = sprite; image.color = Color.white; image.type = Image.Type.Sliced;
+            image.pixelsPerUnitMultiplier = asset == "Plaque" ? 8 : 4;
+            image.fillCenter = asset == "Plaque";
         }
         private void Plaque(Transform parent, string value, float x, float y, float w, float h, int size)
         {
