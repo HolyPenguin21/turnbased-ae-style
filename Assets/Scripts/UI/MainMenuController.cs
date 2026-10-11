@@ -26,10 +26,6 @@ namespace Game.UI
             if (continueCampaignButton == null && mainMenuPanel != null)
                 foreach (var button in mainMenuPanel.GetComponentsInChildren<Button>(true))
                     if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
-            if (mainMenuPanel != null)
-                foreach (var button in mainMenuPanel.GetComponentsInChildren<Button>(true))
-                    if (button.name == "New Campaign" || button.name == "Continue Campaign")
-                        CollectionUIElements.ApplyControlsSkin(button.transform);
             bool canContinue = Game.Campaign.CampaignMatchBridge.Load(out _);
             if (continueCampaignButton != null) continueCampaignButton.interactable = canContinue;
             if (gameConfig == null) return;
