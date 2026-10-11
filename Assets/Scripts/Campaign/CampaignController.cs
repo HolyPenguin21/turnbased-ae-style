@@ -16,6 +16,8 @@ namespace Game.Campaign
         public CampaignState View => state;
         public CampaignPhase Phase => state.Phase;
         public bool IsAiTurn => state.CurrentFaction != state.HumanFaction;
+        // Transient, post-commit fact. Loading a snapshot never publishes historical captures.
+        public event Action<CampaignRegionOwnershipChange> RegionOwnershipChanged;
         public CampaignController(CampaignState initial, CampaignStore store) { CampaignStore.Validate(initial); state = initial.Copy(); this.store = store; }
         private void Transact(Action<CampaignState> edit)
         { var next = state.Copy(); edit(next); store.Save(next); state = next; }
@@ -103,7 +105,12 @@ namespace Game.Campaign
         {
             var op = state.PendingOperation;
             if (op?.ResultRecorded != true || (op.Manual && !op.RewardAcknowledged) || op.OwnershipApplied) return;
+            var previousOwner = state.Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction;
             Transact(CampaignRules.ApplyRecordedResult);
+            var newOwner = state.Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction;
+            if (previousOwner != newOwner)
+                RegionOwnershipChanged?.Invoke(new CampaignRegionOwnershipChange(state.CampaignId, op.OperationId,
+                    op.SourceRegionId, op.TargetRegionId, previousOwner, newOwner));
         }
         public void Continue(string operationId)
         {
@@ -136,3 +143,4 @@ namespace Game.Campaign
         }
     }
 }
+
