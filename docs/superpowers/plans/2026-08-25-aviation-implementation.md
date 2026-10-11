@@ -78,7 +78,7 @@ future `AA1`/`AA2` tags are valid and UI/editor validation can remain one shared
 * Modify `Assets/Scripts/Setup/CitadelSetupController.cs`
 * Modify `Assets/Scripts/Map/BuildingRegistry.cs`
 * Modify `Assets/Scripts/Cards/CardHandUI.cs`
-* Modify `Assets/Scripts/UI/ArmyViewerModalUI.cs`
+* Modify `Assets/Scripts/UI/Popups/ArmyViewerModalUI.cs`
 * Add `Assets/Scripts/Aviation/AviationActions.cs`
 
 `AviationActions` owns transactional actions, returning a result plus `failReason` just like
@@ -146,7 +146,7 @@ participants.
 
 * Add `Assets/Scripts/Aviation/AntiAirState.cs`
 * Add `Assets/Scripts/Aviation/AviationCombatPresenter.cs`
-* Modify `Assets/Scripts/UI/BattleAttackPopupUI.cs`
+* Modify `Assets/Scripts/UI/BattleScreen/BattleAttackPopupUI.cs`
 * Modify `Assets/Scripts/Turns/GameTurnController.cs`
 
 `AntiAirState` is a turn-scoped registry keyed by `(aaUnit, airArmy.Id)`.  It records that an
@@ -189,7 +189,7 @@ following turn's normal MP but never HP.
 * Modify `Assets/Scripts/Map/HexSelectionController.cs`
 * Modify `Assets/Scripts/Map/HexObjectLayout.cs` / marker creation code
 * Modify `Assets/Scripts/Map/HumanVisualMemory.cs`
-* Modify `Assets/Scripts/UI/ArmyViewerModalUI.cs` and its row/card helpers
+* Modify `Assets/Scripts/UI/Popups/ArmyViewerModalUI.cs` and its row/card helpers
 * Modify relevant prefabs/scenes only to wire the distinct air-army icon and AA choice UI
 
 Add an optional faction `airArmyIcon`, falling back to the existing army icon until assets are

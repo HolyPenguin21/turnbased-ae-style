@@ -115,10 +115,10 @@ Production сохраняет семь прежних записей в том �
 | Assets/Cards/ResearchProductionCatalog.asset | Три физических Research outputs заменены 20 Mutator entries. | Content-driven Research, без изменений Production. |
 | Assets/Cards/IronConcord/CardCatalog_IronConcord.asset | Bio добавлен восьми героям. | Согласованная применимость Hero Mutator к органическим героям. |
 | Assets/Cards/TheAshen/CardCatalog_TheAshen.asset | Bio добавлен восьми героям. | Та же блокирующая проблема контента; остальные данные сохранены. |
-| Assets/Scripts/UI/EquipmentCardText.cs | Общий plain-value формат; Initiative/Activation AP в тексте, host kind у Mutator; полное Description. | Эти эффекты не помещаются в пять Unit badges; прежний текст не сообщал Unit/Hero ограничение при Bio tag. |
-| Assets/Scripts/UI/ResearchProductionModalUI.cs | DescribeCard вызывает общее Description для Equipment. | Панель результата не имеет stat badges, поэтому должна перечислять все эффекты. |
-| Assets/Editor/MutatorContentTests.cs | 33 EditMode test cases читают actual content и проверяют grants/compatibility/projections/minting/UI. | Проверки требований и реальных hero targets; отдельный native import witness. |
-| Assets/Editor/MutatorContentTests.cs.meta | GUID тестового файла. | Unity import identity. |
+| Assets/Scripts/UI/Cards/EquipmentCardText.cs | Общий plain-value формат; Initiative/Activation AP в тексте, host kind у Mutator; полное Description. | Эти эффекты не помещаются в пять Unit badges; прежний текст не сообщал Unit/Hero ограничение при Bio tag. |
+| Assets/Scripts/UI/Popups/ResearchProductionModalUI.cs | DescribeCard вызывает общее Description для Equipment. | Панель результата не имеет stat badges, поэтому должна перечислять все эффекты. |
+| Assets/Editor/Tests/Cards/MutatorContentTests.cs | 33 EditMode test cases читают actual content и проверяют grants/compatibility/projections/minting/UI. | Проверки требований и реальных hero targets; отдельный native import witness. |
+| Assets/Editor/Tests/Cards/MutatorContentTests.cs.meta | GUID тестового файла. | Unity import identity. |
 | docs/mutator-research-content-audit.md | Этот анализ, actual content/art mapping, результаты и ограничения проверок. | Полный reviewable отчёт. |
 
 Реализация двух слотов уже содержится в итоговом master и не является повторной core-доработкой данного PR. Её полный audit: docs/mutator-attachment-slot-audit.md.

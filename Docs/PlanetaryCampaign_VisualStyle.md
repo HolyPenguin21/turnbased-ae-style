@@ -13,7 +13,7 @@ do not imply gameplay bonuses, resources or extra campaign mechanics.
 
 ## Assets and integration
 
-- `Assets/Resources/Campaign/WastelandSurface.jpg`: neutral uninterrupted desert
+- `Assets/Resources/Campaign/Backgrounds/WastelandSurface.jpg`: neutral uninterrupted desert
   art retained for legacy saves. `WastelandSurface_01.jpg` through
   `WastelandSurface_10.jpg` provide ten different new-campaign landscapes.
   No region borders, faction colors, labels or baked selection are present.

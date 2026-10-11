@@ -126,7 +126,7 @@ namespace Game.Cards
         // Game.Cards.UnitAbilities for the Base-card ones like Barracks/Research/CollectX). Still
         // a List<string>, not an enum like unitTypeTags — the choices are UnitAbilityCatalog.
         // knownAbilities (tunable data, not compiled code) — but [AbilityTag] (see
-        // Assets/Editor/AbilityTagDrawer.cs) gives it the same per-entry dropdown in the
+        // Assets/Editor/Drawers/AbilityTagDrawer.cs) gives it the same per-entry dropdown in the
         // inspector. Carried into UnitData.Abilities for Hero/Unit cards (see
         // HexSelectionController.Factory.SpawnUnit) or BuildingData.Abilities for Base cards
         // (see HexSelectionController.Factory.SpawnBuilding) at spawn time either way — same

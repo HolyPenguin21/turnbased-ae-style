@@ -4,7 +4,7 @@ Follow-up to PR #166, based on `0ca7f939125bbe9eda8fc36c95a7c3efc66dc820`.
 
 ## Result
 
-The map's limb now fades over radius 0.80–1.00 instead of 0.91–1.00, with 64 design units of viewport feathering. A new transparent `Assets/Resources/Campaign/AtmosphericClouds.png` covers the outer corners with soft dusty clouds while leaving the central region view almost entirely clear. The RGBA source is copied unchanged from the built-in imagegen output (1672×941). Its alpha is preserved; Unity metadata uses a unique GUID, clamp wrapping, no mipmaps, alpha transparency and a 2048 import cap.
+The map's limb now fades over radius 0.80–1.00 instead of 0.91–1.00, with 64 design units of viewport feathering. A new transparent `Assets/Resources/Campaign/Effects/AtmosphericClouds.png` covers the outer corners with soft dusty clouds while leaving the central region view almost entirely clear. The RGBA source is copied unchanged from the built-in imagegen output (1672×941). Its alpha is preserved; Unity metadata uses a unique GUID, clamp wrapping, no mipmaps, alpha transparency and a 2048 import cap.
 
 A decorative RawImage draws the clouds above the map. The existing CampaignSurface shader has an atmosphere mode that retains cloud texture alpha/color, feathers the image's own perimeter, and bypasses terrain ownership tint and the planet horizon. A separate runtime material uses that mode and is destroyed with the screen. Clouds and frames have raycasts disabled.
 

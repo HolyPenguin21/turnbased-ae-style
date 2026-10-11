@@ -23,10 +23,10 @@
 - `Assets/Scripts/Ai/V2/Provisioning/ProvisioningSession.cs`
 - `Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs`
 - `Assets/Scripts/Ai/V2/Execution/ActiveDefenceExecutor.cs`
-- `Assets/Editor/AiActiveDefenceTests.cs`
-- `Assets/Editor/AiAggressionOwnershipRegressionTests.cs`
-- `Assets/Editor/AiSecondaryBaseStrategicNodeTests.cs`
-- `Assets/Editor/ArmyMovementLifecyclePlayModeTests.cs`
+- `Assets/Editor/Tests/AI/AiActiveDefenceTests.cs`
+- `Assets/Editor/Tests/AI/AiAggressionOwnershipRegressionTests.cs`
+- `Assets/Editor/Tests/AI/AiSecondaryBaseStrategicNodeTests.cs`
+- `Assets/Editor/Tests/Units/ArmyMovementLifecyclePlayModeTests.cs`
 - Этот отчёт и `Docs/active-defence-verification.json`.
 
 ## 2. Аудит владельцев и call graph

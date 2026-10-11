@@ -17,8 +17,8 @@ the complete card/message group fades in. The first living non-prisoner roster u
 its full `detailArt`/runtime `DetailArt`; compact slot art is never substituted. Sprite
 proportions are retained without cropping (inspected full images: 772×1124 including frame).
 
-`Assets/Prefabs/UI/ArmyRadioOverlay.prefab` contains one child Canvas and the manager
-and three inactive nested instances of `Assets/Prefabs/UI/ArmyRadioMessage.prefab`.
+`Assets/Prefabs/UI/ArmyRadio/ArmyRadioOverlay.prefab` contains one child Canvas and the manager
+and three inactive nested instances of `Assets/Prefabs/UI/ArmyRadio/ArmyRadioMessage.prefab`.
 Each message contains its CanvasGroup, panel, shadow, TMP label and full-art Image. This
 is the complete reusable pool; there is no runtime construction or fallback UI builder.
 It has no raycaster. The manager bounds concurrent messages and prevents duplicate speakers. Each

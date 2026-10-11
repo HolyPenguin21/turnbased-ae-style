@@ -15,7 +15,7 @@ class AudioIntegration(unittest.TestCase):
    if '.onClick.RemoveAllListeners()' in p.read_text() and p.name!='UIButtonEventUtility.cs':bad.append(str(p.relative_to(ROOT)))
   self.assertEqual([],bad)
  def test_runtime_created_ui_is_registered(self):
-  paths=list((ROOT/'Assets/Scripts/UI').glob('*.cs'))+[ROOT/'Assets/Scripts/Setup/GameSetupController.cs']
+  paths=list((ROOT/'Assets/Scripts/UI').rglob('*.cs'))+[ROOT/'Assets/Scripts/Setup/GameSetupController.cs']
   missing=[]
   for p in paths:
    lines=p.read_text().splitlines()
@@ -23,7 +23,7 @@ class AudioIntegration(unittest.TestCase):
     if re.search(r'\bInstantiate\(',line) and 'BindCreatedRoot' not in '\n'.join(lines[i:i+3]):missing.append(f'{p.name}:{i+1}')
   self.assertEqual([],missing)
  def test_settings_menu_is_wired(self):
-  scene=(ROOT/'Assets/Scenes/MainMenu.unity').read_text()+(ROOT/'Assets/Prefabs/UI/AudioOptionsPanel.prefab').read_text()
+  scene=(ROOT/'Assets/Scenes/MainMenu.unity').read_text()+(ROOT/'Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab').read_text()
   for field in ['settingsPanel:', 'masterVolumeSlider:', 'musicEnabledToggle:', 'musicVolumeSlider:', 'OnSettingsClicked']:
    self.assertTrue(field in scene,field)
  def test_every_new_script_has_matching_meta(self):
@@ -32,5 +32,5 @@ class AudioIntegration(unittest.TestCase):
     self.assertTrue(Path(str(p)+'.meta').exists(),str(p))
  def test_existing_clip_guids_preserved(self):
   for name,guid in [('ui_click','38d9e1e3ce19f0a43980542fe9521ea9'),('ui_info_radio_hiss','9f3d9dfe88d1ec0429e48daca955c5c1')]:
-   self.assertIn('guid: '+guid,(ROOT/f'Assets/Audio/{name}.wav.meta').read_text())
+   self.assertIn('guid: '+guid,(ROOT/f'Assets/Audio/Effects/{name}.wav.meta').read_text())
 if __name__=='__main__':unittest.main()

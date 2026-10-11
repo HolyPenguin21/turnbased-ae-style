@@ -56,8 +56,8 @@
 | Assets/Scripts/Ai/V2/Execution/AttackExecutor.cs | Та же корректировка для Assault / Return / Reinforcement, с сохранением CombatChanged и diversion facts |
 | Assets/Scripts/Ai/V2/Execution/ActiveDefenceExecutor.cs | MoverLost в завершившемся бою и Return; потеря исполнителя не объявляется достижением цели |
 | Assets/Scripts/Ai/V2/Execution/TaskExecutor.cs | MoverLost в transport; Economy / Development не объявляют доставку после гибели; штатное AP / resource stamping и owner-scoped release сохранены |
-| Assets/Editor/ArmyRemovalRegistryTests.cs (+ .meta) | 7 EditMode-проверок реестра, наблюдаемой / исторической памяти, sortie и owner-scoped банка |
-| Assets/Editor/ArmyMovementLifecyclePlayModeTests.cs (+ .meta) | 14 coroutine-проверок с явным EnterPlayMode / ExitPlayMode; включены для Unity 6000.3+ и исключены из старой ai-verify среды |
+| Assets/Editor/Tests/Units/ArmyRemovalRegistryTests.cs (+ .meta) | 7 EditMode-проверок реестра, наблюдаемой / исторической памяти, sortie и owner-scoped банка |
+| Assets/Editor/Tests/Units/ArmyMovementLifecyclePlayModeTests.cs (+ .meta) | 14 coroutine-проверок с явным EnterPlayMode / ExitPlayMode; включены для Unity 6000.3+ и исключены из старой ai-verify среды |
 
 ## Банк и резервы
 

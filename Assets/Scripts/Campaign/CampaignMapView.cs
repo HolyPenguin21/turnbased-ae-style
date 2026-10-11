@@ -34,14 +34,14 @@ namespace Game.Campaign
         public static string BackgroundResourcePath(int backgroundId)
         {
             if (backgroundId < 0 || backgroundId > CampaignMapGenerator.BackgroundCount) throw new ArgumentOutOfRangeException(nameof(backgroundId));
-            return backgroundId == 0 ? "Campaign/WastelandSurface" : "Campaign/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+            return backgroundId == 0 ? "Campaign/Backgrounds/WastelandSurface" : "Campaign/Backgrounds/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
         }
         public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0)
         {
             foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
             graphics.Clear();
             SurfaceTexture = Resources.Load<Texture2D>(BackgroundResourcePath(backgroundId));
-            var shader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            var shader = Resources.Load<Shader>("Shaders/CampaignSurface");
             if (SurfaceTexture == null || shader == null) throw new InvalidOperationException("Campaign surface assets are missing.");
             if (surfaceMaterial != null) Destroy(surfaceMaterial);
             surfaceMaterial = new Material(shader) { name = "CampaignSurface (runtime)" };

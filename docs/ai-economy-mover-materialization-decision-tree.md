@@ -130,7 +130,7 @@ all (`AviationSortieReservationEvaluator`/`ReconAirEnergyPolicy` and
 isolation). Revisit as an explicit, separate follow-up if the user wants the bottleneck to also
 reflect recurring Production/aviation draw, not just hand+deck card cost.
 
-Verified against `Assets/Editor/AiEconomyDecisionTests.cs`'s three existing `CalculateResource`
+Verified against `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`'s three existing `CalculateResource`
 tests by hand (no Unity test runner available in this environment, `dotnet build` is the only
 compiler feedback, same limitation every round in this file has noted) — all three still pass
 under the new formula, each for a different reason than the one it was written to test:
@@ -165,7 +165,7 @@ means): `EconomyBaseOpportunity.InfrastructurePressure` field (`WorldSnapshot.cs
 (`StrategicCardEvaluator.cs`/`AiConfigV2.Economy.cs`), and the `pressure=...` log field
 (`DemandLayer.Economy.cs`'s `Explain`). Single owner throughout (grepped for every reference before
 touching anything) — no duplicate implementation existed anywhere else to also clean up.
-`Assets/Editor/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` object-initializers
+`Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` object-initializers
 directly in 5 places that set `InfrastructurePressure` as an arbitrary reasonValue lever (per those
 tests' own comments, never about real infrastructure semantics) — 4 were repointed at `SpacingScore`
 (round 13's new field, same per-hex 0..1 scoring role) with adjusted magnitudes to preserve each
@@ -227,7 +227,7 @@ that is the actual reason `eff` goes negative — `SpacingScore` raises `strateg
 `deliveryApCost`/`travel`/`heroCost` terms still subtract from afterward; a well-placed but currently
 mover-far base can still net negative. `dotnet build` on both `Assembly-CSharp.csproj` and
 `Assembly-CSharp-Editor.csproj` — 0 errors/0 warnings. Editor test file
-`Assets/Editor/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` directly in several
+`Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` directly in several
 places and does not set the new `SpacingScore` field (defaults to 0, i.e. no bonus/no penalty in
 those synthetic cases) — left as-is per the project's own no-test-writing convention; not a
 compile/behavior break. **NOT play-tested in Unity yet.**

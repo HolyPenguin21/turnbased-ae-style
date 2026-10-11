@@ -21,7 +21,7 @@
 ## Итог по гипотезам
 
 Имена файлов ниже относительны `Assets/Scripts/Ai/V2/`, если не указано иное.
-Все новые regression tests находятся в `Assets/Editor/AiEconomyOwnershipTests.cs`.
+Все новые regression tests находятся в `Assets/Editor/Tests/AI/AiEconomyOwnershipTests.cs`.
 
 | Гипотеза | Подтверждена? | Причина | Старые owners | Новый canonical owner | Изменённые файлы | Tests |
 |---|---|---|---|---|---|---|
