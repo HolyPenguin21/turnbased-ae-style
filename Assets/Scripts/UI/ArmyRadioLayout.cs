@@ -15,43 +15,19 @@ namespace Game.UI
         public static Rect Inset(Rect rect, float margin) => Rect.MinMaxRect(
             rect.xMin + margin, rect.yMin + margin, rect.xMax - margin, rect.yMax - margin);
 
-        // Choose the diagonal with most room; try all four directions before clamping.
-        // Portrait stays at the end nearest the marker, while text always reads normally.
-        public static Vector2 Place(Rect safe, Vector2 target, Vector2 size, float gap, out bool cardOnLeft)
-        {
-            float horizontal = target.x <= safe.center.x ? 1f : -1f;
-            float vertical = target.y <= safe.center.y ? 1f : -1f;
-            Vector2 best = Vector2.zero;
-            float bestPenalty = float.PositiveInfinity;
-            cardOnLeft = horizontal > 0f;
-            for (int i = 0; i < 4; i++)
-            {
-                float x = i % 2 == 0 ? horizontal : -horizontal;
-                float y = i < 2 ? vertical : -vertical;
-                Vector2 proposed = target + new Vector2(x * (size.x * .5f + gap), y * (size.y * .5f + gap));
-                Vector2 clamped = new Vector2(
-                    ClampCentre(proposed.x, safe.xMin, safe.xMax, size.x),
-                    ClampCentre(proposed.y, safe.yMin, safe.yMax, size.y));
-                float penalty = (proposed - clamped).sqrMagnitude;
-                if (penalty >= bestPenalty) continue;
-                best = clamped; bestPenalty = penalty; cardOnLeft = x > 0f;
-            }
-            return best;
-        }
-
         public static Rect Bounds(Vector2 centre, Vector2 size) => new Rect(centre - size * .5f, size);
 
         // Keep the previous camera-relative offset when it still fits. Otherwise try nearby
         // rows on both sides. Never clamp into another message or cover the speaker marker.
         public static bool TryPlace(Rect safe, Vector2 target, Vector2 size, float gap,
-            IList<Rect> occupied, Vector2? previousOffset, out Vector2 position, out bool cardOnLeft, float artWidth = 0f, float panelHeight = 0f, float markerRadius = 0f)
+            IList<Rect> occupied, Vector2? previousOffset, out Vector2 position, out bool cardOnLeft, float artWidth = 0f, float panelHeight = 0f, float markerRadius = 0f, float cornerRadius = 9f)
         {
             position = Vector2.zero; cardOnLeft = true;
             if (size.x > safe.width || size.y > safe.height) return false;
             if (previousOffset.HasValue)
             {
                 Vector2 old = target + previousOffset.Value;
-                if (Fits(old, size, target, gap, safe, occupied, artWidth, panelHeight, markerRadius))
+                if (Fits(old, size, target, gap, safe, occupied, artWidth, panelHeight, markerRadius, cornerRadius))
                 { position = old; cardOnLeft = old.x > target.x; return true; }
             }
             float horizontal = target.x <= safe.center.x ? 1f : -1f;
@@ -72,7 +48,7 @@ namespace Game.UI
                     Vector2 proposed = target + distance;
                     Vector2 candidate = new Vector2(ClampCentre(proposed.x, safe.xMin, safe.xMax, size.x),
                         ClampCentre(proposed.y, safe.yMin, safe.yMax, size.y));
-                    if (!Fits(candidate, size, target, gap, safe, occupied, artWidth, panelHeight, markerRadius)) continue;
+                    if (!Fits(candidate, size, target, gap, safe, occupied, artWidth, panelHeight, markerRadius, cornerRadius)) continue;
                     float penalty = (candidate - target).sqrMagnitude + (candidate - proposed).sqrMagnitude;
                     if (penalty >= score) continue;
                     score = penalty; position = candidate; cardOnLeft = candidate.x > target.x;
@@ -80,7 +56,7 @@ namespace Game.UI
             return !float.IsPositiveInfinity(score);
         }
 
-        private static bool Fits(Vector2 centre, Vector2 size, Vector2 target, float gap, Rect safe, IList<Rect> occupied, float artWidth, float panelHeight, float markerRadius)
+        private static bool Fits(Vector2 centre, Vector2 size, Vector2 target, float gap, Rect safe, IList<Rect> occupied, float artWidth, float panelHeight, float markerRadius, float cornerRadius)
         {
             Rect rect = Bounds(centre, size);
             if (rect.xMin < safe.xMin || rect.xMax > safe.xMax || rect.yMin < safe.yMin || rect.yMax > safe.yMax) return false;
@@ -89,7 +65,7 @@ namespace Game.UI
             for (int i = 0; i < occupied.Count; i++)
                 if (padded.Overlaps(occupied[i])) return false;
             Rect panel = PanelBounds(centre, size, artWidth, panelHeight > 0f ? panelHeight : size.y, centre.x > target.x);
-            if (Pointer(panel, target, 9f, markerRadius, out var a, out var b, out var tip)
+            if (Pointer(panel, target, cornerRadius, markerRadius, out var a, out var b, out var tip)
                 && !PointerPathClear((a + b) * .5f, tip, occupied)) return false;
             return true;
         }

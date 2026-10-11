@@ -508,6 +508,7 @@ MonoBehaviour:
   startingDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
   cameraController: {fileID: 2127740560}
   hexSelectionController: {fileID: 292369660}
+  armyRadioChatter: {fileID: 1975000004}
   popupPanel: {fileID: 6660000000000040004}
   gameMenu: {fileID: 1960000005}
   armyViewerModal: {fileID: 6660000000000060005}
@@ -10564,6 +10565,7 @@ RectTransform:
   - {fileID: 1667965897}
   - {fileID: 6660000000000040002}
   - {fileID: 1960000001}
+  - {fileID: 1975000001}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -39340,6 +39342,35 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8880000000000099111}
   m_CullTransparentMesh: 1
+--- !u!1001 &1975000999
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 1302864677}
+    m_Modifications: []
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 8f80546beb194a96aa7c233b5be8ad9c, type: 3}
+--- !u!224 &1975000001 stripped
+RectTransform:
+  m_CorrespondingSourceObject: {fileID: 200001, guid: 8f80546beb194a96aa7c233b5be8ad9c, type: 3}
+  m_PrefabInstance: {fileID: 1975000999}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1975000004 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 200004, guid: 8f80546beb194a96aa7c233b5be8ad9c, type: 3}
+  m_PrefabInstance: {fileID: 1975000999}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ec62a536343e4bfdb788d95c5fb2fc20, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioChatterController
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

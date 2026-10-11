@@ -26,9 +26,6 @@ namespace Game.UI
         [Range(0f, 1f)] public float jokeChance = .3f;
         [Range(0f, 1f)] public float dialogueChance = .25f;
         [Min(.5f)] public float replyDelay = 2f;
-        [Min(40f)] public float artHeight = 78f;
-        [Min(140f)] public float messageWidth = 220f;
-        [Min(12f)] public float fontSize = 16f;
     }
 
     // Cosmetic read-only policy. No tactical evaluation, purchases, or random game rolls.
@@ -66,9 +63,9 @@ namespace Game.UI
             return false;
         }
 
-        public static ArmyRadioSituation Situation(ArmyData army, bool newContact, bool moved, float quietSeconds)
+        public static ArmyRadioSituation Situation(ArmyData army, bool contact, bool moved, float quietSeconds)
         {
-            if (newContact) return ArmyRadioSituation.Contact;
+            if (contact) return ArmyRadioSituation.Contact;
             foreach (UnitData unit in army.Members)
                 if (unit != null && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
                     return ArmyRadioSituation.Damaged;

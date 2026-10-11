@@ -96,6 +96,7 @@ namespace Game.Turns
         // with, so an AI turn looks the same to watch as a human's would.
         [SerializeField] private RtsCameraController cameraController;
         [SerializeField] private HexSelectionController hexSelectionController;
+        [SerializeField] private ArmyRadioChatterController armyRadioChatter;
 
         // Single shared modal for both the every-turn handoff ("Current turn: X" / "Your turn,
         // X" + Confirm — gates the human's own map input, see HexSelectionController.
@@ -548,8 +549,7 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
-            var radio = GetComponent<ArmyRadioChatterController>() ?? gameObject.AddComponent<ArmyRadioChatterController>();
-            radio.Configure(this, cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main,
+            armyRadioChatter?.Configure(this, cameraController != null ? cameraController.GetComponent<Camera>() : Camera.main,
                 cardHand != null ? cardHand.GetComponent<RectTransform>() : null, gameConfig != null ? gameConfig.armyRadioChatter : null, hexSelectionController);
             _aiObserverMatch = GameSession.Players != null
                 && GameSession.Players.Count > 0

@@ -60,7 +60,8 @@ namespace Game.EditorTests
             foreach (float x in new[] { safe.xMin + 10f, 0f, safe.xMax - 10f })
                 foreach (float y in new[] { safe.yMin + 10f, safe.center.y, safe.yMax - 10f })
                 {
-                    Vector2 position = ArmyRadioLayout.Place(safe, new Vector2(x, y), size, 24f, out bool left);
+                    Assert.That(ArmyRadioLayout.TryPlace(safe, new Vector2(x, y), size, 24f, new Rect[0], null,
+                        out Vector2 position, out bool left), Is.True);
                     Rect placed = new Rect(position - size * .5f, size);
                     Assert.That(placed.xMin, Is.GreaterThanOrEqualTo(safe.xMin - .01f));
                     Assert.That(placed.xMax, Is.LessThanOrEqualTo(safe.xMax + .01f));
@@ -76,6 +77,17 @@ namespace Game.EditorTests
         {
             Assert.That(ArmyRadioLayout.Pointer(new Rect(-110f, -32f, 220f, 64f), Vector2.zero,
                 9f, 12f, out _, out _, out _), Is.False);
+        }
+
+        [TestCase(0f)]
+        [TestCase(20f)]
+        [Category("ArmyRadioManaged")]
+        public void Pointer_RespectsThePrefabCornerRadius(float radius)
+        {
+            var panel = new Rect(-110f, -32f, 220f, 64f);
+            Assert.That(ArmyRadioLayout.Pointer(panel, new Vector2(400f, 100f), radius, 14f, out var a, out var b, out _), Is.True);
+            Vector2 centre = (a + b) * .5f;
+            Assert.That(Mathf.Abs(centre.y), Is.LessThanOrEqualTo(32f - radius - 4f + .001f));
         }
 
         [Test]
@@ -195,6 +207,13 @@ namespace Game.EditorTests
             _army.Members.Reverse(); Assert.That(ArmyRadioChatter.FirstUnit(_army), Is.SameAs(second));
             second.IsPrisoner = true; Assert.That(ArmyRadioChatter.FirstUnit(_army), Is.SameAs(first));
             first.HitPointsCurrent = 0; Assert.That(ArmyRadioChatter.CanSpeak(_army, _owner), Is.False);
+        }
+
+        [Test]
+        public void OngoingContact_OverridesWaitingDamageAndIdleFlavor()
+        {
+            _army.Members[0].HitPointsMax = 3;
+            Assert.That(ArmyRadioChatter.Situation(_army, true, false, 60f), Is.EqualTo(ArmyRadioSituation.Contact));
         }
 
         [Test]
@@ -378,15 +397,16 @@ namespace Game.EditorTests
         public void ArmyInteraction_FadesItsMessageCancelsTheReplyAndUnsubscribes()
         {
             var host = new GameObject("Inactive interaction host"); host.SetActive(false);
-            var radioObject = new GameObject("Radio interaction presenter");
+            var radioObject = CreateRadioPrefab();
             try
             {
                 var turns = host.AddComponent<Game.Turns.GameTurnController>();
                 var selection = host.AddComponent<HexSelectionController>();
-                var radio = radioObject.AddComponent<ArmyRadioChatterController>();
+                var radio = radioObject.GetComponent<ArmyRadioChatterController>();
                 radio.Configure(turns, null, null, new ArmyRadioChatterSettings(), selection);
                 var army = new ArmyData { Owner = new PlayerSetupData() };
                 army.Members.Add(new UnitData());
+                typeof(ArmyRadioChatterController).GetField("_viewer", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(radio, army.Owner);
                 var views = (System.Collections.IList)Field(radio, "_views");
                 Assert.That(views.Count, Is.EqualTo(3));
                 object view = views[0];
@@ -405,21 +425,68 @@ namespace Game.EditorTests
                 var listeners = (Delegate)typeof(HexSelectionController).GetField("ArmyInteracted", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(selection);
                 Assert.That(listeners == null || !Array.Exists(listeners.GetInvocationList(), d => ReferenceEquals(d.Target, radio)), Is.True);
             }
-            finally { Object.DestroyImmediate(radioObject); Object.DestroyImmediate(host); }
+            finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); }
+        }
+        [Test]
+        public void MissingFirstMessage_CancelsThePendingReply()
+        {
+            var radioObject = CreateRadioPrefab();
+            var host = new GameObject("Inactive reply host"); host.SetActive(false);
+            try
+            {
+                var radio = radioObject.GetComponent<ArmyRadioChatterController>();
+                radio.Configure(host.AddComponent<Game.Turns.GameTurnController>(), null, null, new ArmyRadioChatterSettings());
+                Type exchangeType = typeof(ArmyRadioChatterController).GetNestedType("Exchange", BindingFlags.NonPublic);
+                object exchange = Activator.CreateInstance(exchangeType);
+                exchangeType.GetField("First").SetValue(exchange, new ArmyData());
+                exchangeType.GetField("Second").SetValue(exchange, new ArmyData());
+                typeof(ArmyRadioChatterController).GetField("_exchange", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(radio, exchange);
+                typeof(ArmyRadioChatterController).GetMethod("PresentReply", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(radio, new object[] { Time.unscaledTime });
+                Assert.That(Field(radio, "_exchange"), Is.Null);
+                foreach (var view in radioObject.GetComponentsInChildren<ArmyRadioBubbleView>(true)) Assert.That(view.Active, Is.False);
+            }
+            finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); }
+        }
+
+        private static GameObject CreateRadioPrefab()
+        {
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadioOverlay.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var shared = new GameObject("Shared scene Canvas test host", typeof(RectTransform), typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler));
+            shared.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            var scaler = shared.GetComponent<UnityEngine.UI.CanvasScaler>();
+            scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1280f, 720f); scaler.matchWidthOrHeight = .5f;
+            return Object.Instantiate(prefab, shared.transform, false);
         }
         private static object Field(object target, string name) => target.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic).GetValue(target);
 
         [Test]
-        public void ConfigureTwice_UsesOneOverlayAndDisableUnsubscribesWithoutBlockingMapInput()
+        public void ConfigureTwice_ReusesAuthoredPrefabWithoutCreatingObjectsAndBalancesSubscriptions()
         {
             var turnsObject = new GameObject("Inactive radio turn host"); turnsObject.SetActive(false);
-            var radioObject = new GameObject("Radio presenter");
+            var radioObject = CreateRadioPrefab();
             try
             {
                 var turns = turnsObject.AddComponent<Game.Turns.GameTurnController>();
-                var radio = radioObject.AddComponent<ArmyRadioChatterController>();
+                var radio = radioObject.GetComponent<ArmyRadioChatterController>();
+                int transformsBefore = radioObject.GetComponentsInChildren<Transform>(true).Length;
+                var canvasBefore = radioObject.GetComponent<Canvas>();
+                var label = radioObject.GetComponentInChildren<TMPro.TMP_Text>(true);
+                label.fontSize = 19f; label.color = Color.red;
+                var panel = radioObject.GetComponentInChildren<ArmyRadioBubbleGraphic>(true);
+                panel.color = Color.blue; panel.BorderColor = Color.green;
                 radio.Configure(turns, null, null, new ArmyRadioChatterSettings());
                 radio.Configure(turns, null, null, new ArmyRadioChatterSettings());
+                Assert.That(radioObject.GetComponentsInChildren<Transform>(true).Length, Is.EqualTo(transformsBefore));
+                Assert.That(radioObject.GetComponent<Canvas>(), Is.SameAs(canvasBefore));
+                Assert.That(radioObject.GetComponentsInChildren<ArmyRadioBubbleView>(true).Length, Is.EqualTo(3));
+                var view = radioObject.GetComponentInChildren<ArmyRadioBubbleView>(true);
+                var army = new ArmyData(); army.Members.Add(new UnitData());
+                view.Show(army, "Inspector style check.", Time.unscaledTime, new ArmyRadioChatterSettings());
+                Assert.That(label.fontSize, Is.EqualTo(19f)); Assert.That(label.color, Is.EqualTo(Color.red));
+                view.Hide();
+                Assert.That(panel.color, Is.EqualTo(Color.blue)); Assert.That(panel.BorderColor, Is.EqualTo(Color.green));
                 Assert.That(radio.GetComponentsInChildren<Canvas>(true).Length, Is.EqualTo(1));
                 var fade = radio.GetComponentInChildren<CanvasGroup>(true);
                 Assert.That(fade.blocksRaycasts, Is.False); Assert.That(fade.interactable, Is.False);
@@ -427,7 +494,9 @@ namespace Game.EditorTests
                     Assert.That(graphic.raycastTarget, Is.False);
                 var image = radio.GetComponentInChildren<UnityEngine.UI.Image>(true);
                 Assert.That(image.preserveAspect, Is.True);
-                var scaler = radio.GetComponentInChildren<UnityEngine.UI.CanvasScaler>(true);
+                Assert.That(radio.GetComponent<UnityEngine.UI.CanvasScaler>(), Is.Null);
+                Assert.That(canvasBefore.rootCanvas, Is.SameAs(radioObject.transform.parent.GetComponent<Canvas>()));
+                var scaler = radio.GetComponentInParent<UnityEngine.UI.CanvasScaler>();
                 Assert.That(scaler.referenceResolution, Is.EqualTo(new Vector2(1280f, 720f)));
                 var eventField = typeof(VisionSystem).GetField("VisibilityChanged", BindingFlags.Static | BindingFlags.NonPublic);
                 var listeners = (Delegate)eventField.GetValue(null);
@@ -437,7 +506,7 @@ namespace Game.EditorTests
                 Assert.That(listeners == null || !Array.Exists(listeners.GetInvocationList(), d => ReferenceEquals(d.Target, radio)), Is.True);
                 Assert.That(fade.gameObject.activeSelf, Is.False);
             }
-            finally { Object.DestroyImmediate(radioObject); Object.DestroyImmediate(turnsObject); }
+            finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(turnsObject); }
         }
     }
 }

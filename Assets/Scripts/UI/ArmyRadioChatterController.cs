@@ -5,7 +5,6 @@ using Game.Players;
 using Game.Turns;
 using Game.Units;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace Game.UI
 {
@@ -28,10 +27,11 @@ namespace Game.UI
         private GameTurnController _turns;
         private HexSelectionController _selection;
         private Camera _camera;
-        private RectTransform _hud, _canvas;
-        private Canvas _overlayCanvas;
+        private RectTransform _hud;
+        [SerializeField] private RectTransform _canvas;
+        [SerializeField] private Canvas _overlayCanvas;
         private readonly Vector3[] _hudCorners = new Vector3[4];
-        private readonly List<ArmyRadioBubbleView> _views = new List<ArmyRadioBubbleView>(3);
+        [SerializeField] private ArmyRadioBubbleView[] _views = System.Array.Empty<ArmyRadioBubbleView>();
         private readonly List<Rect> _occupied = new List<Rect>(96);
         private readonly List<ArmyData> _candidates = new List<ArmyData>();
         private readonly List<ArmyData> _retired = new List<ArmyData>();
@@ -54,18 +54,23 @@ namespace Game.UI
         {
             Unsubscribe(); Clear();
             _turns = turns; _camera = camera; _hud = hud; _selection = selection;
+            _settings = null;
+            if (!HasConfiguredUI())
+            {
+                Debug.LogError("Army radio needs its authored overlay Canvas and 1–3 message views. Assign the ArmyRadioOverlay prefab in the scene.", this);
+                return;
+            }
             _settings = settings ?? new ArmyRadioChatterSettings();
             _viewer = null; _actor = null; ResetChannel();
             for (int i = 0; i < _variations.Length; i++)
                 _variations[i] = _random.Next(ArmyRadioChatter.PhraseCount((ArmyRadioSituation)i));
-            if (_canvas == null) CreateUI();
             if (isActiveAndEnabled) Subscribe();
         }
         private void OnEnable() { if (_turns != null) Subscribe(); }
         private void OnDisable() { Unsubscribe(); Clear(); }
         private void Subscribe()
         {
-            if (_subscribed || _turns == null) return;
+            if (_subscribed || _turns == null || _settings == null) return;
             _subscribed = true;
             _turns.TurnChanging += Invalidate; _turns.TurnStateChanged += OnTurnStateChanged;
             VisionSystem.VisibilityChanged += OnVision; VisionSystem.VisibleContentChanged += OnContent;
@@ -122,7 +127,7 @@ namespace Game.UI
             float now = Time.unscaledTime;
             foreach (var view in _views) if (view.Speaker == army) view.Dismiss(now);
             CancelExchangeFor(army);
-            if (army != null) _cadence.Reserve(army.Id, now);
+            if (army != null && army.Owner == _viewer) _cadence.Reserve(army.Id, now);
         }
 
         private void Update()
@@ -142,8 +147,9 @@ namespace Game.UI
             }
             if (_dirty || now >= _nextObservation)
             { Sample(now); _dirty = false; _nextObservation = now + 1f; }
+            Follow();
             PresentReply(now);
-            if (ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, 3)) return;
+            if (ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)) return;
             bool ambient = now >= _nextAmbient;
             foreach (var army in _candidates)
             {
@@ -152,12 +158,12 @@ namespace Game.UI
                     || !_cadence.CanSpeak(army.Id, now, _settings.armyCooldown) || !CanPresent(army, out _, out _)) continue;
                 float stationary = now - _observations[army].StationarySince;
                 bool waiting = _actor == _viewer && stationary >= Mathf.Max(1f, _settings.waitingSeconds);
-                var situation = ArmyRadioChatter.Situation(army, contact, _moved.Contains(army), waiting ? 1f : 0f);
+                var situation = ArmyRadioChatter.Situation(army, _contacts.Contains(army), _moved.Contains(army), waiting ? 1f : 0f);
                 string text;
                 ArmyData partner = null; int dialogue = -1;
                 bool quiet = !contact && !_contacts.Contains(army) && CanIdleFlavor(army)
                     && stationary >= Mathf.Max(1f, _settings.waitingSeconds);
-                if (quiet && _exchange == null && ActiveCount() == 0 && _settings.maximumMessages > 1
+                if (quiet && _exchange == null && ActiveCount() == 0 && Mathf.Min(_settings.maximumMessages, _views.Length) > 1
                     && _random.NextDouble() < Mathf.Clamp01(_settings.dialogueChance)) partner = FindPartner(army, now);
                 if (partner != null)
                 { dialogue = NextDifferent(ArmyRadioChatter.DialogueCount, ref _lastDialogue); text = ArmyRadioChatter.Dialogue(dialogue, false); }
@@ -191,7 +197,7 @@ namespace Game.UI
         }
         private int NextDifferent(int count, ref int previous)
         {
-            int next = _random.Next(count - 1);
+            int next = _random.Next(previous < 0 ? count : count - 1);
             if (next >= previous && previous >= 0) next++;
             previous = next; return next;
         }
@@ -220,7 +226,7 @@ namespace Game.UI
                 || ArmyRadioChatter.FirstUnit(exchange.First) != exchange.FirstUnit || ArmyRadioChatter.FirstUnit(exchange.Second) != exchange.SecondUnit
                 || !CanPresent(exchange.First, out _, out _) || !CanPresent(exchange.Second, out _, out _))
             { _exchange = null; return; }
-            if (now < exchange.ReplyAt || ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, 3)) return;
+            if (now < exchange.ReplyAt || ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)) return;
             if (!Show(exchange.Second, ArmyRadioChatter.Dialogue(exchange.Variation, true), now)) return;
             _cadence.Spoke(exchange.Second.Id, now, _settings.minimumGap);
             _exchange = null;
@@ -266,18 +272,17 @@ namespace Game.UI
                 || army.Controller.Visual == null || ArmyRadioChatter.DetailArt(ArmyRadioChatter.FirstUnit(army)) == null
                 || !army.Controller.Visual.TryGetScreenAnchor(_camera, out var screen, out float pixels)) return false;
             if (!ScreenToLocal(screen, out anchor) || !SafeRect().Contains(anchor)) return false;
-            markerRadius = pixels / Mathf.Max(.01f, _overlayCanvas.scaleFactor); return true;
+            markerRadius = pixels / Mathf.Max(.01f, _overlayCanvas.rootCanvas.scaleFactor); return true;
         }
         private bool Show(ArmyData army, string text, float now)
         {
-            // Reflow existing slots first, so a new message never uses last frame's camera bounds.
-            Follow();
             foreach (var view in _views)
             {
                 if (view.Active) continue;
                 if (!CanPresent(army, out var anchor, out float radius)) return false;
                 view.Show(army, text, now, _settings);
-                if (!view.Follow(SafeRect(), anchor, radius, _occupied, _settings)) { view.Reset(); return false; }
+                if (!view.Follow(SafeRect(), anchor, radius, _occupied)) { view.Hide(); return false; }
+                view.AddObstacles(_occupied);
                 return true;
             }
             return false;
@@ -291,11 +296,11 @@ namespace Game.UI
                 if (!view.Active) continue;
                 if (_viewer != VisionSystem.CurrentViewer || view.Unit != ArmyRadioChatter.FirstUnit(view.Speaker)
                     || !CanPresent(view.Speaker, out var anchor, out float radius)
-                    || !view.Follow(SafeRect(), anchor, radius, _occupied, _settings))
+                    || !view.Follow(SafeRect(), anchor, radius, _occupied))
                 {
                     // No valid on-screen position: suppress immediately rather than draw overlapping
                     // art during an exit fade. Normal lifetime/click/modal exits retain their fade.
-                    CancelExchangeFor(view.Speaker); view.Reset(); continue;
+                    CancelExchangeFor(view.Speaker); view.Hide(); continue;
                 }
                 view.AddObstacles(_occupied);
             }
@@ -321,16 +326,22 @@ namespace Game.UI
             }
             return ArmyRadioLayout.Inset(safe, 12f);
         }
-        private void Clear() { _exchange = null; foreach (var view in _views) view.Reset(); }
-        private void CreateUI()
+        private void Clear()
         {
-            var root = new GameObject("ArmyRadioOverlay", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
-            root.transform.SetParent(transform, false); _canvas = (RectTransform)root.transform;
-            _overlayCanvas = root.GetComponent<Canvas>(); _overlayCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _overlayCanvas.overrideSorting = true; _overlayCanvas.sortingOrder = 5;
-            var scaler = root.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1280f, 720f); scaler.matchWidthOrHeight = .5f;
-            for (int i = 0; i < 3; i++) _views.Add(new ArmyRadioBubbleView(_canvas));
+            _exchange = null;
+            if (_views == null) return;
+            foreach (var view in _views) if (view != null) view.Hide();
+        }
+        private bool HasConfiguredUI()
+        {
+            if (_canvas == null || _overlayCanvas == null || _overlayCanvas.transform != _canvas
+                || _overlayCanvas.renderMode != RenderMode.ScreenSpaceOverlay || _views == null || _views.Length == 0 || _views.Length > 3) return false;
+            for (int i = 0; i < _views.Length; i++)
+            {
+                if (_views[i] == null || !_views[i].IsConfigured || !_views[i].transform.IsChildOf(_canvas)) return false;
+                for (int j = 0; j < i; j++) if (_views[j] == _views[i]) return false;
+            }
+            return true;
         }
     }
 }

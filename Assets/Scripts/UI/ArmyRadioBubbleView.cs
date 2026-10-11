@@ -8,13 +8,22 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // Reused presentation slot; the controller alone chooses speakers and schedules replies.
-    internal sealed class ArmyRadioBubbleView
+    public sealed class ArmyRadioBubbleView : MonoBehaviour
     {
-        private readonly RectTransform _group, _panel, _shadow;
-        private readonly CanvasGroup _fade;
-        private readonly ArmyRadioBubbleGraphic _bubble, _bubbleShadow;
-        private readonly Image _art;
-        private readonly TMP_Text _message;
+        [SerializeField] private RectTransform _group, _panel, _shadow;
+        [SerializeField] private CanvasGroup _fade;
+        [SerializeField] private ArmyRadioBubbleGraphic _bubble, _bubbleShadow;
+        [SerializeField] private Image _art;
+        [SerializeField] private TMP_Text _message;
+        [Min(40f)] [SerializeField] private float artHeight = 78f;
+        [Min(100f)] [SerializeField] private float messageWidth = 220f;
+        [Min(28f)] [SerializeField] private float minimumPanelHeight = 52f;
+        [Min(0f)] [SerializeField] private float cardGap = 4f;
+        [Min(10f)] [SerializeField] private float markerGap = 12f;
+        [SerializeField] private Vector2 shadowOffset = new Vector2(0f, -2f);
+        private Vector2 _measuredPadding;
+        private float _measuredFontSize, _measuredMinimumHeight, _measuredCornerRadius;
+        private TMP_FontAsset _measuredFont;
         private float _measuredWidth = -1f, _messageHeight;
         private Vector2? _offset;
         public ArmyData Speaker { get; private set; }
@@ -25,79 +34,69 @@ namespace Game.UI
         private bool _hasPointer;
         public bool Active => Speaker != null;
 
-        public ArmyRadioBubbleView(RectTransform canvas)
-        {
-            RectTransform _canvas = canvas;
-            _group = CreateRect(_canvas, "RadioMessage");
-            _fade = _group.gameObject.AddComponent<CanvasGroup>(); _fade.blocksRaycasts = false; _fade.interactable = false;
-            _shadow = CreateRect(_group, "Shadow"); _bubbleShadow = _shadow.gameObject.AddComponent<ArmyRadioBubbleGraphic>();
-            _bubbleShadow.color = new Color(.13f, .10f, .07f, .16f); _bubbleShadow.BorderColor = Color.clear;
-            _bubbleShadow.raycastTarget = false;
-            _panel = CreateRect(_group, "Message"); _bubble = _panel.gameObject.AddComponent<ArmyRadioBubbleGraphic>();
-            _bubble.color = new Color(.80f, .72f, .60f, .86f); _bubble.raycastTarget = false;
-            RectTransform label = CreateRect(_panel, "Speech");
-            label.anchorMin = Vector2.zero; label.anchorMax = Vector2.one; label.offsetMin = new Vector2(11f, 10f); label.offsetMax = new Vector2(-11f, -10f);
-            _message = label.gameObject.AddComponent<TextMeshProUGUI>();
-            _message.font = Resources.Load<TMP_FontAsset>("Fonts/GameMenuFont") ?? TMP_Settings.defaultFontAsset;
-            _message.color = CollectionUIElements.CollectionInk; _message.alignment = TextAlignmentOptions.MidlineLeft;
-            _message.richText = false; _message.textWrappingMode = TextWrappingModes.Normal;
-            _message.overflowMode = TextOverflowModes.Overflow; _message.raycastTarget = false;
-            _art = CreateRect(_group, "FirstUnitDetailArt").gameObject.AddComponent<Image>();
-            _art.preserveAspect = true; _art.raycastTarget = false;
-            Reset();
-        }
-
+        public bool IsConfigured => _group != null && _group == transform && _panel != null && _shadow != null
+            && _fade != null && _bubble != null && _bubbleShadow != null && _art != null && _message != null
+            && _fade.transform == _group && _bubble.transform == _panel && _bubbleShadow.transform == _shadow
+            && _panel.parent == _group && _shadow.parent == _group && _art.transform.parent == _group
+            && _message.transform.parent == _panel && _message.rectTransform.anchorMin == Vector2.zero
+            && _message.rectTransform.anchorMax == Vector2.one;
 
         public void Show(ArmyData army, string text, float now, ArmyRadioChatterSettings settings)
         {
             Speaker = army; Unit = ArmyRadioChatter.FirstUnit(army);
             Timing = new ArmyRadioTiming(now, settings.displaySeconds, settings.fadeInSeconds, settings.fadeOutSeconds);
-            _art.sprite = ArmyRadioChatter.DetailArt(Unit); _art.color = Color.white;
-            _message.text = text; _message.fontSize = Mathf.Clamp(settings.fontSize, 12f, 20f);
+            _art.sprite = ArmyRadioChatter.DetailArt(Unit);
+            _message.text = text;
             _measuredWidth = -1f; _offset = null; _fade.alpha = 0f; _group.gameObject.SetActive(true);
         }
 
         public void Tick(float now)
         {
             if (!Active) return;
-            if (Timing.Finished(now)) Reset();
+            if (Timing.Finished(now)) Hide();
             else _fade.alpha = Timing.Alpha(now);
         }
         public void Dismiss(float now) { if (Active) Timing.Dismiss(now); }
-        public void Reset()
+        public void Hide()
         {
             Speaker = null; Unit = null; Timing = null; _offset = null;
-            _fade.alpha = 0f; _group.gameObject.SetActive(false);
+            if (_fade != null) _fade.alpha = 0f;
+            if (_group != null) _group.gameObject.SetActive(false);
         }
 
-        public bool Follow(Rect safe, Vector2 anchor, float radius, IList<Rect> occupied, ArmyRadioChatterSettings settings)
+        public bool Follow(Rect safe, Vector2 anchor, float radius, IList<Rect> occupied)
         {
-            Vector2 artSize = ArmyRadioLayout.ArtSize(_art.sprite, Mathf.Clamp(settings.artHeight, 40f, 110f));
-            float width = Mathf.Min(Mathf.Clamp(settings.messageWidth, 140f, 300f), safe.width - artSize.x - 8f);
+            Vector2 artSize = ArmyRadioLayout.ArtSize(_art.sprite, Mathf.Max(40f, artHeight));
+            float width = Mathf.Min(Mathf.Max(100f, messageWidth), safe.width - artSize.x - Mathf.Max(0f, cardGap));
             if (width < 100f || safe.height < artSize.y) return false;
-            if (Mathf.Abs(width - _measuredWidth) > .01f)
+            RectTransform textRect = _message.rectTransform;
+            Vector2 padding = textRect.offsetMin - textRect.offsetMax;
+            if (Mathf.Abs(width - _measuredWidth) > .01f || padding != _measuredPadding
+                || _message.font != _measuredFont || _message.fontSize != _measuredFontSize
+                || minimumPanelHeight != _measuredMinimumHeight || _bubble.CornerRadius != _measuredCornerRadius)
             {
-                _measuredWidth = width;
-                _messageHeight = Mathf.Max(52f, _message.GetPreferredValues(_message.text, width - 22f, 1000f).y + 20f);
+                _measuredWidth = width; _measuredPadding = padding;
+                _measuredFont = _message.font; _measuredFontSize = _message.fontSize;
+                _measuredMinimumHeight = minimumPanelHeight; _measuredCornerRadius = _bubble.CornerRadius;
+                _messageHeight = Mathf.Max(Mathf.Max(minimumPanelHeight, _bubble.CornerRadius * 2f + 8f), _message.GetPreferredValues(_message.text, Mathf.Max(1f, width - padding.x), 1000f).y + padding.y);
             }
-            Vector2 size = new Vector2(width + artSize.x + 4f, Mathf.Max(artSize.y, _messageHeight));
-            if (!ArmyRadioLayout.TryPlace(safe, anchor, size, radius + 12f, occupied, _offset, out var position, out bool left, artSize.x + 4f, _messageHeight, radius + 2f))
+            Vector2 size = new Vector2(width + artSize.x + Mathf.Max(0f, cardGap), Mathf.Max(artSize.y, _messageHeight));
+            if (!ArmyRadioLayout.TryPlace(safe, anchor, size, radius + Mathf.Max(10f, markerGap), occupied, _offset, out var position, out bool left, artSize.x + Mathf.Max(0f, cardGap), _messageHeight, radius + 2f, _bubble.CornerRadius))
                 return false;
             _offset = position - anchor; Bounds = ArmyRadioLayout.Bounds(position, size);
             _group.sizeDelta = size; _group.anchoredPosition = position;
             _art.rectTransform.sizeDelta = artSize;
             _art.rectTransform.anchoredPosition = new Vector2((left ? -1f : 1f) * (size.x - artSize.x) * .5f, 0f);
-            Vector2 panelPosition = new Vector2((left ? 1f : -1f) * (artSize.x + 4f) * .5f, 0f);
-            if (ArmyRadioLayout.Pointer(ArmyRadioLayout.PanelBounds(position, size, artSize.x + 4f, _messageHeight, left),
-                anchor, 9f, radius + 2f, out var a, out var b, out var tip))
+            Vector2 panelPosition = new Vector2((left ? 1f : -1f) * (artSize.x + Mathf.Max(0f, cardGap)) * .5f, 0f);
+            if (ArmyRadioLayout.Pointer(ArmyRadioLayout.PanelBounds(position, size, artSize.x + Mathf.Max(0f, cardGap), _messageHeight, left),
+                anchor, _bubble.CornerRadius, radius + 2f, out var a, out var b, out var tip))
             {
                 _pointerStart = (a + b) * .5f; _pointerTip = tip;
-                if (!ArmyRadioLayout.PointerPathClear(_pointerStart, tip, occupied)) return false;
                 _hasPointer = true;
             }
             else _hasPointer = false;
             _panel.sizeDelta = _shadow.sizeDelta = new Vector2(width, _messageHeight);
-            _panel.anchoredPosition = panelPosition; _shadow.anchoredPosition = panelPosition + new Vector2(0f, -2f);
+            _panel.anchoredPosition = panelPosition; _shadow.anchoredPosition = panelPosition + shadowOffset;
             _bubble.AimAt(anchor - position - panelPosition, radius + 2f);
             _bubbleShadow.AimAt(anchor - position - _shadow.anchoredPosition, radius + 2f);
             return true;
@@ -109,11 +108,5 @@ namespace Game.UI
             if (_hasPointer) ArmyRadioLayout.AddPointerObstacles(_pointerStart, _pointerTip, occupied);
         }
 
-        private static RectTransform CreateRect(Transform parent, string name)
-        {
-            var rect = (RectTransform)new GameObject(name, typeof(RectTransform)).transform;
-            rect.SetParent(parent, false); rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(.5f, .5f);
-            return rect;
-        }
     }
 }
