@@ -12,9 +12,8 @@ using UnityEngine.UI;
 public static class CollectionWindowBuilder
 {
     private const string PrefabFolder = "Assets/Prefabs/UI/Collection";
-    private static readonly Color PanelColor = new Color(.055f, .065f, .07f, .98f);
-    private static readonly Color ButtonColor = new Color(.16f, .2f, .17f);
-    private static readonly Color TextColor = new Color(.82f, .85f, .8f);
+    private static readonly Color PanelColor = new Color(.085f, .075f, .065f, 1f);
+    private static readonly Color TextColor = new Color(.93f, .85f, .69f);
 
     [MenuItem("Tools/UI/Build Collection Window")]
     private static void Build()
@@ -72,61 +71,73 @@ public static class CollectionWindowBuilder
     {
         var root = Panel(parent, "CollectionWindow"); Stretch(root);
         var view = root.gameObject.AddComponent<CollectionScreensUI>();
-        Text(root, "Title", "COLLECTION & DECKS", 16, 12, 667, 32, 20, font);
-        var back = MakeButton(root, "Back", "Back", 1164, 13, 100, 30, 14, font);
+        var titlePlaque = Panel(root, "TitlePlaque"); Place(titlePlaque, 360, 8, 560, 44);
+        Skin(titlePlaque.GetComponent<Image>(), "Plaque");
+        var title = Text(root, "Title", "COLLECTION & DECKS", 376, 13, 528, 32, 24, font);
+        title.alignment = TextAlignmentOptions.Center; title.color = InkColor;
+        var back = MakeButton(root, "Back", "Back", 1152, 12, 108, 32, 14, font);
 
-        var filters = Panel(root, "Filters"); Place(filters, 16, 59, 240, 111);
-        var faction = CloneDropdown(dropdownTemplate, filters, "Faction", 9, 7, 221);
-        var category = CloneDropdown(dropdownTemplate, filters, "Category", 9, 40, 221);
-        var ownership = CloneDropdown(dropdownTemplate, filters, "Ownership", 9, 73, 221);
+        var filters = Panel(root, "Filters"); Place(filters, 16, 62, 240, 170);
+        Text(filters, "FactionTitle", "FACTION", 14, 10, 212, 16, 12, font);
+        Text(filters, "CategoryTitle", "TYPE", 14, 61, 212, 16, 12, font);
+        Text(filters, "OwnershipTitle", "OWNERSHIP", 14, 112, 212, 16, 12, font);
+        var faction = CloneDropdown(dropdownTemplate, filters, "Faction", 12, 28, 216);
+        var category = CloneDropdown(dropdownTemplate, filters, "Category", 12, 79, 216);
+        var ownership = CloneDropdown(dropdownTemplate, filters, "Ownership", 12, 130, 216);
 
-        var detailsScroll = Scroll(root, "CardDetails", 16, 180, 240, 492, false, font, out var detailsContent);
+        var detailsScroll = Scroll(root, "CardDetails", 16, 240, 240, 454, false, font, out var detailsContent);
         var detailsLayout = detailsContent.gameObject.AddComponent<VerticalLayoutGroup>();
         detailsLayout.padding = new RectOffset(8, 8, 8, 8); detailsLayout.spacing = 8;
         detailsLayout.childControlWidth = detailsLayout.childControlHeight = true;
         detailsLayout.childForceExpandWidth = true; detailsLayout.childForceExpandHeight = false;
         var art = Rect(detailsContent, "Art"); var artImage = art.gameObject.AddComponent<Image>();
         artImage.preserveAspect = true; artImage.raycastTarget = false;
-        art.gameObject.AddComponent<LayoutElement>().preferredHeight = 187;
+        art.gameObject.AddComponent<LayoutElement>().preferredHeight = 210;
         var detailsText = Text(detailsContent, "Description", "", 0, 0, 0, 0, 14, font);
         detailsText.alignment = TextAlignmentOptions.TopLeft;
 
-        var cardsScroll = Scroll(root, "Cards", 272, 59, 624, 613, true, font, out var gridContent);
+        var cardsScroll = Scroll(root, "Cards", 272, 62, 624, 632, true, font, out var gridContent);
         var grid = gridContent.gameObject.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(144, 200); grid.spacing = new Vector2(7, 7);
+        grid.cellSize = new Vector2(140, 194); grid.spacing = new Vector2(8, 8);
+        grid.padding = new RectOffset(6, 6, 8, 8);
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount; grid.constraintCount = 4;
         grid.childAlignment = TextAnchor.UpperLeft;
 
-        var deckPanel = Panel(root, "Deck"); Place(deckPanel, 912, 59, 352, 613);
-        var deckDropdown = CloneDropdown(dropdownTemplate, deckPanel, "DeckPicker", 9, 7, 333);
-        var create = MakeButton(deckPanel, "Create", "Create", 9, 43, 333, 29, 14, font);
-        var nameInput = CloneInput(inputTemplate, deckPanel, "DeckName", 9, 79, 333, "Deck name");
-        var starter = MakeButton(deckPanel, "Starter", "Starter", 9, 115, 103, 27, 14, font);
-        var copy = MakeButton(deckPanel, "Copy", "Copy", 119, 115, 103, 27, 14, font);
-        var delete = MakeButton(deckPanel, "Delete", "Delete", 228, 115, 115, 27, 14, font);
-        var save = MakeButton(deckPanel, "Save", "Save Deck", 9, 148, 333, 29, 14, font);
-        var points = Text(deckPanel, "Points", "", 9, 185, 333, 20, 15, font);
-        Text(deckPanel, "TotalCostTitle", "Total cost", 9, 211, 333, 17, 12, font);
+        var deckPanel = Panel(root, "Deck"); Place(deckPanel, 912, 62, 352, 632);
+        var deckTitle = Panel(deckPanel, "DeckTitle"); Place(deckTitle, 9, 9, 333, 32);
+        Skin(deckTitle.GetComponent<Image>(), "Plaque");
+        var deckTitleLabel = Text(deckTitle, "Label", "DECK", 12, 2, 309, 28, 20, font);
+        deckTitleLabel.alignment = TextAlignmentOptions.Center; deckTitleLabel.color = InkColor;
+        var deckDropdown = CloneDropdown(dropdownTemplate, deckPanel, "DeckPicker", 9, 47, 333);
+        var create = MakeButton(deckPanel, "Create", "Create", 9, 83, 333, 26, 14, font);
+        var nameInput = CloneInput(inputTemplate, deckPanel, "DeckName", 9, 115, 333, "Deck name");
+        var starter = MakeButton(deckPanel, "Starter", "Starter", 9, 151, 103, 27, 14, font);
+        var copy = MakeButton(deckPanel, "Copy", "Copy", 119, 151, 103, 27, 14, font);
+        var delete = MakeButton(deckPanel, "Delete", "Delete", 228, 151, 115, 27, 14, font);
+        var save = MakeButton(deckPanel, "Save", "SAVE DECK", 9, 581, 333, 40, 20, font);
+        var points = Text(deckPanel, "Points", "", 9, 188, 333, 20, 15, font);
+        Text(deckPanel, "TotalCostTitle", "Total cost", 9, 212, 333, 17, 12, font);
         var icons = new Image[5]; var values = new TMP_Text[5];
         for (int i = 0; i < 5; i++)
         {
-            var badge = Rect(deckPanel, "CostIcon" + i); Place(badge, 9 + i * 67, 235, 19, 19);
+            var badge = Rect(deckPanel, "CostIcon" + i); Place(badge, 9 + i * 67, 260, 19, 19);
             icons[i] = badge.gameObject.AddComponent<Image>(); icons[i].preserveAspect = true; icons[i].raycastTarget = false;
-            values[i] = Text(deckPanel, "CostValue" + i, "0", 32 + i * 67, 235, 44, 19, 14, font);
+            values[i] = Text(deckPanel, "CostValue" + i, "0", 32 + i * 67, 260, 44, 19, 14, font);
         }
-        var bar = Panel(deckPanel, "Budget"); Place(bar, 9, 263, 333, 5);
-        var fill = Panel(bar, "Fill"); fill.anchorMin = Vector2.zero; fill.anchorMax = Vector2.one; fill.offsetMin = fill.offsetMax = Vector2.zero;
-        fill.GetComponent<Image>().color = new Color(.36f, .55f, .3f);
-        Text(deckPanel, "CardsHeader", "Cards", 9, 280, 260, 19, 14, font);
-        Text(deckPanel, "CountHeader", "Count", 269, 280, 73, 19, 14, font);
-        var deckScroll = Scroll(deckPanel, "DeckCards", 9, 305, 333, 299, true, font, out var deckContent);
+        var bar = Panel(deckPanel, "Budget"); Place(bar, 9, 233, 333, 20); Skin(bar.GetComponent<Image>(), "Meter");
+        var fill = Panel(bar, "Fill"); fill.anchorMin = Vector2.zero; fill.anchorMax = Vector2.one;
+        fill.offsetMin = new Vector2(4, 4); fill.offsetMax = new Vector2(-4, -4);
+        fill.GetComponent<Image>().color = new Color(.56f, .55f, .27f);
+        Text(deckPanel, "CardsHeader", "Cards", 9, 290, 260, 19, 14, font);
+        Text(deckPanel, "CountHeader", "Count", 269, 290, 73, 19, 14, font);
+        var deckScroll = Scroll(deckPanel, "DeckCards", 9, 316, 333, 256, true, font, out var deckContent);
         var deckLayout = deckContent.gameObject.AddComponent<VerticalLayoutGroup>();
         deckLayout.spacing = 4; deckLayout.childControlWidth = deckLayout.childControlHeight = true;
         deckLayout.childForceExpandWidth = true; deckLayout.childForceExpandHeight = false;
         var checks = Text(deckContent, "Checks", "", 0, 0, 0, 0, 12, font);
         checks.alignment = TextAlignmentOptions.TopLeft;
 
-        var status = Text(root, "Status", "", 272, 680, 992, 32, 13, font);
+        var status = Text(root, "Status", "", 272, 696, 992, 18, 13, font);
 
         var unsaved = Modal(root, "UnsavedModal", font, out _);
         Text(unsaved, "Title", "Unsaved changes", 440, 280, 400, 32, 20, font).alignment = TextAlignmentOptions.Center;
@@ -163,12 +174,13 @@ public static class CollectionWindowBuilder
     // ---- prefabs ---------------------------------------------------------------------------------
     internal static CollectionCardCellView BuildCell(TMP_FontAsset font)
     {
-        var root = Panel(null, "CollectionCardCell"); root.sizeDelta = new Vector2(144, 200);
+        var root = Panel(null, "CollectionCardCell"); root.sizeDelta = new Vector2(140, 194);
         var host = Rect(root, "Card");
         host.anchorMin = host.anchorMax = new Vector2(.5f, 1); host.pivot = new Vector2(.5f, 1);
-        host.anchoredPosition = Vector2.zero; host.sizeDelta = new Vector2(139, 155);
-        var info = Text(root, "Info", "", 3, 159, 138, 17, 12, font);
-        var add = MakeButton(root, "Add", "", 3, 180, 138, 20, 13, font);
+        host.anchoredPosition = Vector2.zero; host.sizeDelta = new Vector2(106, 155);
+        var info = Text(root, "Info", "", 1, 158, 138, 15, 12, font);
+        info.alignment = TextAlignmentOptions.Center;
+        var add = MakeButton(root, "Add", "", 8, 176, 124, 18, 12, font);
         var view = root.gameObject.AddComponent<CollectionCardCellView>();
         var so = new SerializedObject(view);
         so.FindProperty("cardHost").objectReferenceValue = host;
@@ -224,7 +236,22 @@ public static class CollectionWindowBuilder
     private static void Stretch(RectTransform r)
     { r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = Vector2.zero; r.offsetMax = Vector2.zero; }
     private static RectTransform Panel(Transform parent, string name)
-    { var r = Rect(parent, name); r.gameObject.AddComponent<Image>().color = PanelColor; return r; }
+    {
+        var r = Rect(parent, name); var image = r.gameObject.AddComponent<Image>();
+        image.color = Color.clear;
+        if (name == "CollectionWindow") Skin(image, "Panel_Outer");
+        else if (name == "Filters" || name == "CardDetails" || name == "Cards" || name == "Deck" || name == "Window")
+            Skin(image, "Panel_Inset");
+        return r;
+    }
+    private static readonly Color InkColor = new Color(.16f, .12f, .08f);
+    private static void Skin(Image image, string asset)
+    {
+        if (image == null) return;
+        image.sprite = Resources.Load<Sprite>("UI/Collection/" + asset);
+        image.color = image.sprite != null ? Color.white : PanelColor;
+        image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 4f;
+    }
     private static TMP_Text Text(Transform parent, string name, string value, float x, float y, float w, float h, float size, TMP_FontAsset font)
     {
         var r = Rect(parent, name); if (w > 0 || h > 0) Place(r, x, y, w, h);
@@ -237,9 +264,15 @@ public static class CollectionWindowBuilder
     private static Button MakeButton(Transform parent, string name, string label, float x, float y, float w, float h, float size, TMP_FontAsset font)
     {
         var r = Panel(parent, name); Place(r, x, y, w, h);
-        var image = r.GetComponent<Image>(); image.color = ButtonColor;
+        var image = r.GetComponent<Image>();
+        bool primary = name == "Save" || name == "Back";
+        Skin(image, primary ? "Plaque" : "Button");
         var button = r.gameObject.AddComponent<Button>(); button.targetGraphic = image;
         var text = Text(r, "Label", label, 3, 1, w - 6, h - 2, size, font); text.alignment = TextAlignmentOptions.Center;
+        text.color = primary ? InkColor : TextColor;
+        var colors = button.colors; colors.highlightedColor = new Color(1f, .92f, .76f);
+        colors.pressedColor = new Color(.72f, .62f, .47f); colors.disabledColor = new Color(.5f, .5f, .5f, .55f);
+        button.colors = colors;
         return button;
     }
     private static RectTransform Modal(Transform parent, string name, TMP_FontAsset font, out Image backdrop)
@@ -254,22 +287,25 @@ public static class CollectionWindowBuilder
     {
         var root = Panel(parent, name); Place(root, x, y, w, h);
         var viewport = Rect(root, "Viewport"); Stretch(viewport); viewport.gameObject.AddComponent<RectMask2D>();
-        if (scrollbar) viewport.offsetMax = new Vector2(-12, 0);
+        if (name == "Cards" || name == "CardDetails")
+        { viewport.offsetMin = new Vector2(8, 8); viewport.offsetMax = new Vector2(scrollbar ? -20 : -8, -8); }
+        else if (scrollbar) viewport.offsetMax = new Vector2(-12, 0);
         content = Rect(viewport, "Content");
         content.anchorMin = new Vector2(0, 1); content.anchorMax = new Vector2(1, 1); content.pivot = new Vector2(0, 1);
         content.sizeDelta = Vector2.zero;
         var fitter = content.gameObject.AddComponent<ContentSizeFitter>(); fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
         var scroll = root.gameObject.AddComponent<ScrollRect>();
         scroll.viewport = viewport; scroll.content = content;
-        scroll.scrollSensitivity = 1.69f; // wheel speed matches the previous generated scrolls scroll.horizontal = false; scroll.vertical = true;
+        scroll.scrollSensitivity = 1.69f;
+        scroll.horizontal = false; scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
         if (scrollbar)
         {
-            var track = Panel(root, "Scrollbar"); Place(track, w - 11, 2, 9, h - 4);
-            track.GetComponent<Image>().color = new Color(.1f, .13f, .11f);
+            var track = Panel(root, "Scrollbar"); Place(track, w - 11, 12, 6, h - 24);
+            Skin(track.GetComponent<Image>(), "Meter");
             var area = Rect(track, "SlidingArea"); Stretch(area);
             var handle = Panel(area, "Handle"); Stretch(handle);
-            handle.GetComponent<Image>().color = new Color(.36f, .48f, .34f);
+            Skin(handle.GetComponent<Image>(), "Button");
             var bar = track.gameObject.AddComponent<Scrollbar>();
             bar.direction = Scrollbar.Direction.BottomToTop; bar.handleRect = handle; bar.targetGraphic = handle.GetComponent<Image>();
             scroll.verticalScrollbar = bar; scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
@@ -285,8 +321,15 @@ public static class CollectionWindowBuilder
         if (logo != null) Object.DestroyImmediate(logo.gameObject);
         Place((RectTransform)copy.transform, x, y, w, 30);
         dropdown.onValueChanged = new TMP_Dropdown.DropdownEvent(); dropdown.ClearOptions();
-        if (dropdown.captionText != null) dropdown.captionText.fontSize = 14;
-        if (dropdown.itemText != null) dropdown.itemText.fontSize = 13;
+        Skin(copy.GetComponent<Image>(), "Input");
+        if (dropdown.captionText != null) { dropdown.captionText.fontSize = 14; dropdown.captionText.color = InkColor; }
+        if (dropdown.template != null)
+        foreach (var image in dropdown.template.GetComponentsInChildren<Image>(true))
+        {
+            if (image.transform == dropdown.template || image.name == "Item Background") Skin(image, "Input");
+            else if (image.name == "Handle") Skin(image, "Button");
+        }
+        if (dropdown.itemText != null) { dropdown.itemText.fontSize = 13; dropdown.itemText.color = InkColor; }
         return dropdown;
     }
     private static TMP_InputField CloneInput(TMP_InputField template, Transform parent, string name, float x, float y, float w, string placeholder)
@@ -295,10 +338,13 @@ public static class CollectionWindowBuilder
         var input = copy.GetComponent<TMP_InputField>();
         Place((RectTransform)copy.transform, x, y, w, 30);
         input.onValueChanged = new TMP_InputField.OnChangeEvent(); input.onEndEdit = new TMP_InputField.SubmitEvent();
-        input.text = "";
+        input.text = ""; Skin(copy.GetComponent<Image>(), "Input");
+        if (input.textComponent != null) input.textComponent.color = InkColor;
+        if (input.placeholder is TMP_Text placeholderText) placeholderText.color = new Color(.35f, .27f, .19f);
         if (input.textComponent != null) input.textComponent.fontSize = 14;
         if (input.placeholder is TMP_Text hint) { hint.text = placeholder; hint.fontSize = 14; }
         return input;
     }
 }
 #endif
+
