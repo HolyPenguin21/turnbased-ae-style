@@ -1080,6 +1080,44 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void CombatProjection_ImmediateServiceDoesNotBorrowNextTurnDamage()
+        {
+            HexMap map = Line(1, out GameObject mapObject);
+            var actorObject = new GameObject("immediate-air-support-actor");
+            try
+            {
+                Airfield(default, 2);
+                UnitData aircraft = Plane(1, 1);
+                aircraft.TurnsWithoutRefuel = 1;
+                ArmyData wing = Wing(default, aircraft);
+                wing.Controller = actorObject.AddComponent<ArmyController>();
+                var target = new HexCoord(1, 0);
+                var enemy = new PlayerSetupData();
+                var snap = new WorldSnapshot { Observer = _owner, Known = new KnownSnapshot {
+                    AirSightings = new[] { new AiMapMemory.KnownAirSighting(target, enemy, 1, true,
+                        new AviationCombatEstimator.DefendingAirArmy(7,
+                            new[] { Profile(hp: 100) }, new[] { 0 })) } } };
+                var request = new CombatAirSupportRequest(MissionIntentKey.ForActiveDefence(7),
+                    target, AirStrikePolicy.DefenceSupport(7), new TaskScore(preventedDamage: 10));
+                var current = GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    wing.Members, wing.Hex, request, wing, firstStrikeThisTurnOnly: true);
+                Assert.That(current.HasValue, Is.True);
+                Assert.That(current.Value.StrikeTurns, Is.EqualTo(1));
+                Assert.That(current.Value.Estimate.ExpectedDamage, Is.GreaterThan(0f));
+                aircraft.HasAirAttackedThisTurn = true;
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    wing.Members, wing.Hex, request, wing).HasValue, Is.True,
+                    "ordinary support still values recoverable future strikes");
+                Assert.That(GroundCombatAirSupport.ProjectService(snap, _owner, map,
+                    wing.Members, wing.Hex, request, wing, firstStrikeThisTurnOnly: true), Is.Null,
+                    "Recon must not yield for damage that cannot happen this turn");
+                Assert.That(aircraft.HasAirAttackedThisTurn, Is.True);
+                Assert.That(AirSortieRegistry.For(_owner), Is.Empty, "projection must not publish a sortie");
+            }
+            finally { Object.DestroyImmediate(actorObject); Object.DestroyImmediate(mapObject); }
+        }
+
+        [Test]
         public void CombatCoverage_UsesJointLandingCapacity_WithoutPublishingClaims()
         {
             HexMap map = Line(2, out GameObject mapObject);

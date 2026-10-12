@@ -63,7 +63,30 @@ namespace Game.EditorTests
                 ArmyId = 27, Owner = us, Hex = citadel, EffectiveArmyPower = 10f,
             };
             Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
-                Snap(1, defender, second), defender), Is.False, "another defender keeps the hex held");
+                Snap(1, defender, second), defender), Is.True,
+                "another body without a known combat roster does not prove the hex will hold");
+        }
+
+        [TestCase(false, false, false, true)]
+        [TestCase(true, false, false, false)]
+        [TestCase(true, false, true, true)]
+        [TestCase(false, true, false, true)]
+        [TestCase(true, true, false, false)]
+        [TestCase(true, true, true, false)]
+        public void StrongholdPin_RequiresSufficientRemainingDefence(bool strong, bool garrison,
+            bool claimed, bool pinned)
+        {
+            var owner = new PlayerSetupData();
+            var mover = DefenceActor(owner, 26, Secondary, 60f, 60f, 100f);
+            float strength = strong ? 60f : 1f;
+            var remaining = DefenceActor(owner, 27, Secondary, strength, strength,
+                strong ? 100f : 1f, garrison);
+            var snap = AssetWorld(mover, remaining);
+            snap.Threat.Threats[0].EnemyEta = 1;
+            var unavailable = claimed ? new HashSet<int> { remaining.ArmyId } : null;
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, mover,
+                unavailable), Is.EqualTo(pinned));
+            Assert.That(snap.Self.Armies.Count, Is.EqualTo(2), "the nomination is read-only");
         }
 
         [Test]

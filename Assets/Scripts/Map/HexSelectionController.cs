@@ -539,7 +539,6 @@ namespace Game.Map
                         || !representative.Controller.Visual.IsVisible
                         || !IsMarkerHit(representative.Controller.Visual, screenPosition))
                         continue;
-                    _selectedHex = hex;
                     armyButtonRow?.Hide();
                     ShowArmyModalReadOnly(representative);
                     return true;
@@ -567,7 +566,6 @@ namespace Game.Map
                 ArmyData target = ResolveArmyMarkerTarget(ownArmies, GetSelectedArmy());
                 if (target == null)
                     return false;
-                _selectedHex = hex;
                 if (ownRepresentative != target) ArmyInteracted?.Invoke(ownRepresentative);
                 ShowArmyModal(target);
                 return true;
@@ -614,11 +612,13 @@ namespace Game.Map
                         continue;
                     if (!IsMarkerHit(remembered.Visual, screenPosition))
                         continue;
-                    SelectHex(hex);
                     var siblings = new List<ArmyData>();
                     foreach (RememberedArmyVisual candidate in rememberedAtHex)
                         if (candidate.Snapshot != null && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
                             siblings.Add(candidate.Snapshot);
+                    if (baseViewerModal != null) baseViewerModal.Hide();
+                    if (researchProductionModal != null) researchProductionModal.Hide();
+                    SelectHex(hex);
                     armyButtonRow?.Hide();
                     armyViewerModal.ShowLastSeen(remembered.Snapshot, siblings);
                     return true;

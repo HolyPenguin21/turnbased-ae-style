@@ -308,6 +308,81 @@ namespace Game.EditorTools
             Assert.That(collectionOrder.Select(c => c.authoredKey), Is.EqualTo(new[] { "hero", "cheap", "expensive" }));
             Assert.That(deckOrder.Select(e => e.cardKey), Is.EqualTo(collectionOrder.Select(c => c.authoredKey)));
         }
+
+        [Test] public void DeckCategoryHeaderFitsItsFontAfterReusingACardRow()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Collection/CollectionDeckRow.prefab");
+            var go = UnityEngine.Object.Instantiate(prefab);
+            try
+            {
+                var view = go.GetComponent<Game.UI.CollectionDeckRowView>();
+                view.Init(_ => { }, (_, __) => { });
+                view.SetEntry(card, card.authoredKey, 1, true);
+                view.SetHeader("Equipment");
+                var label = go.transform.Find("Header/Label").GetComponent<TMPro.TMP_Text>();
+                Assert.That(go.transform.Find("Header").gameObject.activeSelf, Is.True);
+                Assert.That(go.transform.Find("Row").gameObject.activeSelf, Is.False);
+                Assert.That(go.GetComponent<UnityEngine.UI.LayoutElement>().preferredHeight,
+                    Is.GreaterThanOrEqualTo(label.preferredHeight + 4f),
+                    "a category heading must not be ellipsized into an empty line");
+                view.SetEntry(card, card.authoredKey, 2, false);
+                Assert.That(go.transform.Find("Header").gameObject.activeSelf, Is.False);
+                Assert.That(go.transform.Find("Row").gameObject.activeSelf, Is.True);
+                Assert.That(go.transform.Find("Row/Count").GetComponent<TMPro.TMP_Text>().text, Is.EqualTo("2"));
+            }
+            finally { UnityEngine.Object.DestroyImmediate(go); }
+        }
+
+        [Test] public void AddingDeckCopiesKeepsOneCardRowAndHidesEmptyChecks()
+        {
+            const System.Reflection.BindingFlags fields = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var hero = new CardDefinition { authoredKey = "test.hero", displayName = "Hero", cardType = CardType.Hero,
+                deckCopyLimit = 1, faction = Faction.IronConcord };
+            var building = new CardDefinition { authoredKey = "test.base", displayName = "Base", cardType = CardType.Base,
+                deckCopyLimit = 1, faction = Faction.IronConcord };
+            catalog.cards.Add(hero); catalog.cards.Add(building);
+            var profile = new CollectionProfile();
+            foreach (var definition in new[] { card, hero, building })
+                profile.ownedCards.Add(new DeckCardEntry { cardKey = definition.authoredKey, count = definition.deckCopyLimit });
+            var draft = Deck(0); draft.mainCards.Clear();
+            draft.mainCards.Add(new DeckCardEntry { cardKey = hero.authoredKey, count = 1 });
+            draft.mainCards.Add(new DeckCardEntry { cardKey = building.authoredKey, count = 1 });
+            var canvas = new GameObject("deck-row-test", typeof(RectTransform));
+            var dropdown = new GameObject("dropdown", typeof(RectTransform)).AddComponent<TMPro.TMP_Dropdown>();
+            var input = new GameObject("input", typeof(RectTransform)).AddComponent<TMPro.TMP_InputField>();
+            var cell = CollectionWindowBuilder.BuildCell(null); var row = CollectionWindowBuilder.BuildRow(null);
+            try
+            {
+                var screens = CollectionWindowBuilder.BuildWindow(canvas.transform, cell, row, dropdown, input, null);
+                typeof(Game.UI.CollectionScreensUI).GetField("collection", fields).SetValue(screens,
+                    new CollectionService(rules, null, profile));
+                typeof(Game.UI.CollectionScreensUI).GetField("draft", fields).SetValue(screens, draft);
+                var change = typeof(Game.UI.CollectionScreensUI).GetMethod("Change", fields);
+                var content = screens.transform.Find("Deck/DeckCards/Viewport/Content");
+                var checks = content.Find("Checks").gameObject;
+                foreach (int count in new[] { 1, 2 })
+                {
+                    change.Invoke(screens, new object[] { card.authoredKey, 1 });
+                    Assert.That(draft.mainCards.Count(e => e.cardKey == card.authoredKey), Is.EqualTo(1));
+                    Assert.That(draft.mainCards.Single(e => e.cardKey == card.authoredKey).count, Is.EqualTo(count));
+                    Assert.That(content.GetComponentsInChildren<Game.UI.CollectionDeckRowView>(true)
+                        .Count(v => v.gameObject.activeSelf), Is.EqualTo(4), "one header and three distinct cards");
+                    Assert.That(checks.activeSelf, Is.False, "valid decks must not have an empty trailing row");
+                }
+                change.Invoke(screens, new object[] { hero.authoredKey, -1 });
+                Assert.That(checks.activeSelf, Is.True, "real warnings remain visible");
+                change.Invoke(screens, new object[] { hero.authoredKey, 1 });
+                Assert.That(checks.activeSelf, Is.False);
+                Assert.That(content.GetComponentsInChildren<Game.UI.CollectionDeckRowView>(true)
+                    .Count(v => v.gameObject.activeSelf), Is.EqualTo(4), "pooled rows must not multiply after reuse");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(dropdown.gameObject);
+                UnityEngine.Object.DestroyImmediate(input.gameObject); UnityEngine.Object.DestroyImmediate(cell.gameObject);
+                UnityEngine.Object.DestroyImmediate(row.gameObject);
+            }
+        }
         [Test] public void CollectionDropdownUsesOnePopupSurfaceAndPreservesSelection()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/Rows/PlayerRow.prefab");

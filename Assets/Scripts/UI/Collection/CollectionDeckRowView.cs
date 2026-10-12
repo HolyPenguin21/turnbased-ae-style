@@ -9,7 +9,7 @@ namespace Game.UI
     // One pooled line of the deck list: either a category header or a card row.
     public sealed class CollectionDeckRowView : MonoBehaviour
     {
-        private const float HeaderHeight = 14f, RowHeight = 38f;
+        private const float HeaderHeight = 22f, RowHeight = 38f;
         [SerializeField] private LayoutElement layout;
         [SerializeField] private GameObject headerRoot, rowRoot;
         [SerializeField] private TMP_Text headerLabel, nameLabel, costLabel, countLabel;
@@ -29,7 +29,10 @@ namespace Game.UI
         public void SetHeader(string text)
         {
             headerRoot.SetActive(true); rowRoot.SetActive(false);
-            layout.preferredHeight = HeaderHeight; headerLabel.text = text;
+            headerLabel.text = text;
+            // TMP's line metrics exceed the font size. A 14px row can ellipsize a 13px
+            // heading into an empty line; keep authored fonts readable when rows are reused.
+            layout.preferredHeight = Mathf.Max(HeaderHeight, headerLabel.preferredHeight + 4f);
         }
 
         public void SetEntry(CardDefinition card, string key, int count, bool canAdd)
