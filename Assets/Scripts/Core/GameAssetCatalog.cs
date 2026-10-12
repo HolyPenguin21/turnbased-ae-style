@@ -31,7 +31,7 @@ namespace Game.Core
         {
             get
             {
-                if (_instance == null) _instance = GameAssetCatalog.Load<GameAssetCatalog>(ResourceName);
+                if (_instance == null) _instance = Resources.Load<GameAssetCatalog>(ResourceName);
                 return _instance;
             }
         }
