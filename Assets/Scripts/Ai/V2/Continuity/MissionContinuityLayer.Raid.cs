@@ -36,6 +36,25 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // Re-evaluate the optional raid against a newly imminent defence before retaining
+            // its lease. Only a concrete responder is released; distant armies keep their raids.
+            if ((ri.Phase == RaidMissionPhase.Assault || ri.Phase == RaidMissionPhase.Reinforcement)
+                && ri.PrimaryArmyId.HasValue)
+            {
+                var available = new HashSet<int>(raidClaims ?? new HashSet<int>());
+                available.Remove(ri.PrimaryArmyId.Value);
+                if (ri.SupportArmyId.HasValue) available.Remove(ri.SupportArmyId.Value);
+                var actor = snap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == ri.PrimaryArmyId.Value);
+                var responders = ActiveDefenceObjectiveEvaluator.ImminentResponseArmyIds(snap, available);
+                if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, actor, available)
+                    || responders.Contains(ri.PrimaryArmyId.Value)
+                    || (ri.SupportArmyId.HasValue && responders.Contains(ri.SupportArmyId.Value)))
+                {
+                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired: actor required for imminent defence");
+                    return false;
+                }
+            }
+
             if (ri.Phase == RaidMissionPhase.AirSupport)
             {
                 // The strike series never holds back a ground assault that is ready: once the
@@ -819,4 +838,5 @@ namespace Game.Ai.V2
 
     }
 }
+
 

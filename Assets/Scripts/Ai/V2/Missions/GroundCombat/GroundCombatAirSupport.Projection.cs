@@ -39,12 +39,54 @@ namespace Game.Ai.V2
 
     internal static partial class GroundCombatAirSupport
     {
+        // The physical Recon flight can change owners without losing its paid launch or
+        // reserving a second landing. Return/Turning and an exhausted old Hold stay recovery.
+        internal static bool CanYieldReconSortie(PlayerSetupData player, ArmyData wing, int turn)
+        {
+            AirSortie active = AirSortieRegistry.ForArmy(player, wing);
+            if (active?.Kind != AirSortieKind.Recon || !active.Outbound
+                || !ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState state))
+                return false;
+            ReconAirPhase phase = ReconAirSortieLifecycle.PhaseAfterHold(state.Phase,
+                state.LastProcessedTurn != turn, AviationRange.SafeUnlandedEndsRemaining(wing));
+            return phase == ReconAirPhase.Outbound || phase == ReconAirPhase.Hold;
+        }
+
+        // Recon may yield an already formed wing only to a known, useful strike THIS turn
+        // against an imminent base threat. Route, damage and endurance have one existing owner.
+        // No resource is reserved here; allocation/provisioning still fund and revalidate it.
+        internal static bool HasImmediateDefenceService(WorldSnapshot snap, ArmyData wing,
+            int? enemyArmyId = null)
+        {
+            if (snap?.Map == null || wing == null || wing.CurrentMovement <= 0
+                || (AirSortieRegistry.ForArmy(snap.Observer, wing) != null
+                    && !CanYieldReconSortie(snap.Observer, wing, snap.TurnNumber)))
+                return false;
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            {
+                if (enemyArmyId.HasValue && objective.Target.EnemyArmyId != enemyArmyId.Value)
+                    continue;
+                if (!objective.Target.EnemyEta.HasValue
+                    || objective.Target.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                    continue;
+                var request = new CombatAirSupportRequest(objective.IntentKey,
+                    objective.Target.LastKnownHex, AirStrikePolicy.DefenceSupport(objective.Target.EnemyArmyId),
+                    objective.TaskScore);
+                var service = ProjectService(snap, snap.Observer, snap.Map, wing.Members, wing.Hex,
+                    request, wing, firstStrikeThisTurnOnly: true);
+                if (service.HasValue && service.Value.FirstStrikeEta == 1 && service.Value.RosterKnown
+                    && service.Value.Score.Value > 0f)
+                    return true;
+            }
+            return false;
+        }
+
         // Same route proof as provisioning, with optional read-only claims for a joint coverage
         // projection. Storage and live wings differ only in their initial movement/launch state.
         internal static CombatAirService? ProjectService(WorldSnapshot snap, PlayerSetupData player,
             HexMap map, IReadOnlyList<UnitData> aircraft, HexCoord start,
             CombatAirSupportRequest request, ArmyData wing = null,
-            Func<HexCoord, int> additionalClaims = null)
+            Func<HexCoord, int> additionalClaims = null, bool firstStrikeThisTurnOnly = false)
         {
             if (snap == null || map == null || player == null || aircraft == null || aircraft.Count == 0
                 || aircraft.Any(u => !AviationRules.IsAviation(u))) return null;
@@ -63,9 +105,13 @@ namespace Game.Ai.V2
             int maxMovement = aircraft.Min(AviationRules.EffectiveMoveMax);
             if (maxMovement <= 0 || (movement <= 0 && outbound > 0)) return null;
             int eta = 1 + Mathf.CeilToInt(Mathf.Max(0, outbound - movement) / (float)maxMovement);
+            if (firstStrikeThisTurnOnly && eta != 1) return null;
             int strikes = AviationRange.StrikeTurns(movement, maxMovement,
                 AviationRange.SafeUnlandedEndsRemaining(aircraft), outbound, home);
             if (strikes <= 0 || aircraft.All(u => u.Attack <= 0)) return null;
+            // Optional-mission handoff needs useful damage now. Keep the full recoverable
+            // route proof above, but do not count a spent aircraft's next-turn strike.
+            if (firstStrikeThisTurnOnly) strikes = 1;
             bool[] spent = aircraft.Select(u => eta == 1 && u.HasAirAttackedThisTurn).ToArray();
             if (strikes == 1 && spent.All(s => s)) return null;
             var targets = KnownAirTargets(snap, request.Target, request.Policy);
@@ -190,4 +236,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

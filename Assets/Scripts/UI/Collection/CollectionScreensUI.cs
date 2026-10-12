@@ -285,6 +285,8 @@ namespace Game.UI
             }
             for (int i = n; i < deckItems.Count; i++) deckItems[i].gameObject.SetActive(false);
             checksLabel.text = string.Join("\n", validation.Errors.Concat(validation.Warnings));
+            // An empty TMP label still contributes line height and spacing to the deck list.
+            checksLabel.gameObject.SetActive(!string.IsNullOrWhiteSpace(checksLabel.text));
             checksLabel.transform.SetAsLastSibling();
             statusLabel.text = status ?? "";
         }
