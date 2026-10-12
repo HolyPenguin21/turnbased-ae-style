@@ -276,8 +276,15 @@ namespace Game.Ai.V2
             switch (reaction.Action)
             {
                 case ReconReactionAction.Flee:
-                    if (reaction.TargetHex.HasValue)
-                        next = reaction.TargetHex.Value;
+                    // The reaction owner already considered every safe adjacent escape. A null
+                    // target is its deliberate hold fallback, not permission to resume patrol
+                    // toward the threat or to attempt an unvalidated garrison route.
+                    if (!reaction.TargetHex.HasValue)
+                    {
+                        control.StopReason = ExecutionStopReason.NoSafeStep;
+                        yield break;
+                    }
+                    next = reaction.TargetHex.Value;
                     actionWhy = "Flee";
                     break;
                 case ReconReactionAction.EvadeDetector:
@@ -316,7 +323,8 @@ namespace Game.Ai.V2
             // Tactical policies choose the desired destination; the shared ground-routing
             // owner decides the executable first step for every Recon action shape.
             next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, next.Value);
-            if (!next.HasValue)
+            if (!next.HasValue || (reaction.Action == ReconReactionAction.Flee
+                && ScoutExecutionSafety.StepBlocked(player, army, next.Value)))
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
                 yield break;
