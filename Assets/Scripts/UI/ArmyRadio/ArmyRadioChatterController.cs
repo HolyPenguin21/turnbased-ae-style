@@ -31,8 +31,10 @@ namespace Game.UI
         private RectTransform _hud;
         [SerializeField] private RectTransform _canvas;
         [SerializeField] private Canvas _overlayCanvas;
-        [Tooltip("Message scale is 1 at this map-camera orthographic size; zooming out shrinks text, art and lines together.")]
+        [Tooltip("Zoom reference for the map camera; zooming out shrinks text, art and lines together.")]
         [Min(.01f)] [SerializeField] private float referenceOrthographicSize = 2.6f;
+        [Tooltip("Uniform size multiplier for the complete radio message, including placement bounds and pointers.")]
+        [Min(.01f)] [SerializeField] private float presentationScale = 2f;
         private readonly Vector3[] _hudCorners = new Vector3[4];
         [SerializeField] private ArmyRadioBubbleView[] _views = System.Array.Empty<ArmyRadioBubbleView>();
         private readonly List<Rect> _occupied = new List<Rect>(96);
@@ -425,8 +427,8 @@ namespace Game.UI
         }
         private bool ScreenToLocal(Vector2 screen, out Vector2 local) =>
             RectTransformUtility.ScreenPointToLocalPointInRectangle(_canvas, screen, null, out local);
-        private float MessageScale() => _camera.orthographic
-            ? ArmyRadioLayout.CameraScale(_camera.orthographicSize, referenceOrthographicSize) : 1f;
+        private float MessageScale() => Mathf.Max(.01f, presentationScale) * (_camera.orthographic
+            ? ArmyRadioLayout.CameraScale(_camera.orthographicSize, referenceOrthographicSize) : 1f);
         private Rect SafeRect()
         {
             Rect screen = Screen.safeArea, cameraRect = _camera.pixelRect;
