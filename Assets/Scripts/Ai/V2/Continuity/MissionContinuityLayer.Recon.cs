@@ -199,6 +199,17 @@ namespace Game.Ai.V2
                 && intent.Suspended == SuspendReason.EconomyLoan)
                 return;
 
+            if (ReconScoutKinds.IsAirSweep(s.Kind) && intent.PreferredMoverArmyId.HasValue
+                && GroundCombatAirSupport.HasImmediateDefenceService(snap,
+                    AiV2Util.ResolveArmy(player, intent.PreferredMoverArmyId.Value)))
+            {
+                // Flight/landing state survives until the funded combat owner takes over.
+                // Retiring only the mission releases its actor without inventing a second sortie.
+                dead.Add(intent.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Recon][Air] {intent.IntentKey} yields wing to imminent defence");
+                return;
+            }
+
             // A ground Recon role whose bound actor no longer exists (killed / merged away) is
             // not a lane any more. Unbind it so AdvanceIntent ages it like any idle intent
             // instead of parking it forever under the CapabilityUnavailable exemption, and so
@@ -319,3 +330,4 @@ namespace Game.Ai.V2
 
     }
 }
+

@@ -131,7 +131,8 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence air support: enemy #{target.EnemyArmyId} has no honest sighting"));
             if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
-                    "active-defence", out AirSupportWing w, out ProvisionFailure wingFailure))
+                    "active-defence", out AirSupportWing w, out ProvisionFailure wingFailure,
+                    defenceHandoffEnemyId: target.EnemyArmyId))
                 return ProvisioningResult.Fail(wingFailure);
             HexCoord targetHex = sighting.Value.Hex;
             float eps = AiConfigV2.allocatorSliceEpsilon;

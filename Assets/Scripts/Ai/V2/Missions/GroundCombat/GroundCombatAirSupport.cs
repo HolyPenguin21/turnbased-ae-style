@@ -201,10 +201,15 @@ namespace Game.Ai.V2
                     ArmyData live = AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId);
                     if (live == null) continue;
                     AirSortie active = AirSortieRegistry.ForArmy(snap.Observer, live);
-                    if (active != null && (!fixedWingArmyId.HasValue || active.Kind != AirSortieKind.Strike))
+                    bool reconHandoff = active?.Kind == AirSortieKind.Recon
+                        && policy.Kind == AirStrikePolicyKind.DefenceSupport
+                        && HasImmediateDefenceService(snap, live, policy.ExactTargetArmyId);
+                    if (active != null && !reconHandoff
+                        && (!fixedWingArmyId.HasValue || active.Kind != AirSortieKind.Strike))
                         continue;
                     var projection = ProjectService(snap, snap.Observer, snap.Map, live.Members,
-                        live.Hex, new CombatAirSupportRequest(default, targetHex, policy, default), live);
+                        live.Hex, new CombatAirSupportRequest(default, targetHex, policy, default), live,
+                        firstStrikeThisTurnOnly: reconHandoff);
                     if (!projection.HasValue) continue;
                     CombatAirService service = projection.Value;
                     float projectedWin = service.RosterKnown && winAgainst != null
@@ -450,7 +455,8 @@ namespace Game.Ai.V2
         // The wing itself: alive, ours, not claimed this pass, and either free of any sortie or
         // already flying this lane's strike series (its target may have moved — ActiveDefence).
         internal static bool TryResolveWing(PlayerSetupData player, ProvisioningSession session,
-            int wingArmyId, string lane, out AirSupportWing resolved, out ProvisionFailure failure)
+            int wingArmyId, string lane, out AirSupportWing resolved, out ProvisionFailure failure,
+            int? defenceHandoffEnemyId = null)
         {
             resolved = default;
             failure = default;
@@ -463,7 +469,9 @@ namespace Game.Ai.V2
             }
             AirSortie active = AirSortieRegistry.ForArmy(player, wing);
             bool continuing = active != null && active.Kind == AirSortieKind.Strike;
-            if (active != null && !continuing)
+            bool reconHandoff = active?.Kind == AirSortieKind.Recon && defenceHandoffEnemyId.HasValue
+                && HasImmediateDefenceService(session.Snapshot, wing, defenceHandoffEnemyId);
+            if (active != null && !continuing && !reconHandoff)
             {
                 failure = ProvisionFailure.MoverContended($"wing #{wing.Id} is reserved by another sortie");
                 return false;
@@ -491,6 +499,13 @@ namespace Game.Ai.V2
                 ? AirStrikePolicy.RaidSupport(raid.Target.ArmyId)
                 : funded.Mission.Target is ActiveDefenceMissionTarget defence
                     ? AirStrikePolicy.DefenceSupport(defence.EnemyArmyId) : AirStrikePolicy.Standard;
+            if (w.Active?.Kind == AirSortieKind.Recon
+                && (targetPolicy.Kind != AirStrikePolicyKind.DefenceSupport
+                    || !HasImmediateDefenceService(session.Snapshot, wing, targetPolicy.ExactTargetArmyId)))
+            {
+                failure = ProvisionFailure.NoExecutableStep("Recon wing has no useful current-turn defence strike");
+                return false;
+            }
             if (TargetKnownEmpty(session.Snapshot, targetHex, targetPolicy))
             {
                 failure = ProvisionFailure.TargetInvalidated("air support has no observed strike target");

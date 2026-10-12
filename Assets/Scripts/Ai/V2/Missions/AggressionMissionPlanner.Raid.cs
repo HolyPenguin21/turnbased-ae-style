@@ -69,10 +69,12 @@ namespace Game.Ai.V2
             // for four turns. A FRESH Raid never takes the pending preparation host; a Raid already
             // under way keeps its own army (incumbents exclude only `committed`).
             (int pendingHostId, float _) = PendingPreparationHost(snap, activeIntents, committed);
-            ISet<int> freshExcluded = committed;
+            ISet<int> freshExcluded = new HashSet<int>(committed);
+            freshExcluded.UnionWith(ActiveDefenceObjectiveEvaluator.ImminentResponseArmyIds(
+                snap, committed, activeIntents));
             if (pendingHostId >= 0)
             {
-                freshExcluded = new HashSet<int>(committed) { pendingHostId };
+                freshExcluded.Add(pendingHostId);
                 AiDebugLog.WriteDeduped($"raid-skips-prep-host#{snap.Observer?.ColorIndex}#{pendingHostId}",
                     $"[AI][V2][Attack][Mobilization] fresh raids leave the pending preparation host #{pendingHostId} alone");
             }
@@ -586,3 +588,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
