@@ -153,5 +153,25 @@ namespace Game.Ai.V2
             }
             return fresh;
         }
+
+        // Frozen counterpart of the live step's home coverage fact. Dangerous/arrival-blocked
+        // cells are not outstanding local work for an ordinary ground scout.
+        internal static float LocalExplorationGap(WorldSnapshot snap)
+        {
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            if (mk?.AllHexes == null || snap.Self == null) return 0f;
+            var homes = (snap.Self.BaseHexes ?? new List<HexCoord>())
+                .Concat(new[] { snap.Self.Citadel }).Distinct().ToList();
+            int local = 0, open = 0;
+            foreach (HexCoord h in mk.AllHexes)
+            {
+                if (mk.IsBlockedForScout(h, stealthCapable: false)
+                    || homes.Min(b => HexGridMath.Distance(b, h))
+                        > AiConfigV2.scoutStepHomeLocalRingRadius) continue;
+                local++;
+                if (mk.VisitedHexSet?.Contains(h) != true) open++;
+            }
+            return local > 0 ? open / (float)local : 0f;
+        }
     }
 }

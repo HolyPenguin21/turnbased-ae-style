@@ -21,6 +21,9 @@ namespace Game.Ai.V2
 
         // Structural/legal Base and Extraction rules, not legacy score contributions.
         public const float economyExtractionMaxPaybackTurns = 8f;
+        // New extraction work stays local in DELIVERY time, including slow terrain/escorts.
+        // FoundBase and already committed deliveries retain their own lifecycle policies.
+        public const int economyExtractionMaxDeliveryTurns = 3;
         public const int economyBaseFoundScanRadius = 3;
         // Enemy-Citadel perimeter; also the zero-cost distance for soft own-home crowding.
         public const int economyBaseMinSpacing = 3;

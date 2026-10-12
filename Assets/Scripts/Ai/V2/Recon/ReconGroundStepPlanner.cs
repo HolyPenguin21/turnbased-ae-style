@@ -47,6 +47,11 @@ namespace Game.Ai.V2
             return purpose * quality;
         }
 
+        internal static float CompleteStepScore(float immediate, float lookahead,
+            float heading, float movementEfficiency, float homeFactor) =>
+            (immediate + Mathf.Max(0f, lookahead) * Mathf.Max(0f, 1f + heading + movementEfficiency))
+                * homeFactor;
+
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, WorldSnapshot snapshot)
         {
@@ -76,8 +81,8 @@ namespace Game.Ai.V2
                 float movementQuality = 1f / Mathf.Max(1, baseChoice.MoveCost);
                 // Direction and cheap movement improve witnessed useful continuation; they never
                 // create useful work on their own.
-                float score = baseChoice.Score
-                    + lookahead * (1f + headingQuality + movementQuality);
+                float score = CompleteStepScore(baseChoice.Score, lookahead, headingQuality,
+                    movementQuality, assignment.Mode == ReconMode.Explore ? home.FactorOf(h) : 1f);
                 if (score <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 choices.Add(new StepChoice(baseChoice.Hex, score, baseChoice.FreshNeighbors,
@@ -129,6 +134,18 @@ namespace Game.Ai.V2
                 return best == int.MaxValue ? 0 : best;
             }
 
+            internal float FactorOf(HexCoord h)
+            {
+                if (!Active) return 1f;
+                int distance = DistOf(h);
+                float factor = 1f;
+                if (distance > AiConfigV2.scoutStepHomeLocalRingRadius)
+                    factor -= AiConfigV2.scoutStepHomeOutwardPenaltyWeight * LocalGap;
+                if (distance < CurDist && LocalGap > 0f)
+                    factor += AiConfigV2.scoutStepHomeInwardBonusWeight * LocalGap;
+                return Mathf.Clamp(factor, 0.30f, 1.15f);
+            }
+
             public static HomePressure Build(PlayerSetupData player, HexMap map, ArmyData army,
                 WorldSnapshot snapshot)
             {
@@ -153,7 +170,8 @@ namespace Game.Ai.V2
                 foreach (HexCoord a in anchors)
                     foreach (HexCoord h in HexGridMath.HexesInRange(a, radius))
                     {
-                        if (!counted.Add(h) || !map.CanEnter(h))
+                        if (!counted.Add(h) || !map.CanEnter(h)
+                            || ScoutExecutionSafety.StepBlocked(player, h, moverFullyHidden: false))
                             continue;
                         inRing++;
                         if (!VisionSystem.IsVisited(player, h) && !AiMapMemory.IsScoutDangerous(player, h))
@@ -240,22 +258,19 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
-            // Spec §4 — soft outward-distance penalty. An Explore step that increases distance from
-            // the nearest Citadel/base beyond the local ring is shaved while nearby unexplored
+            // Spec §4 — soft home-distance penalty. Every Explore step outside
+            // the nearest Citadel/base's local ring is shaved while nearby unexplored
             // territory remains (scaled by localGap); a step that closes home distance gets a small
             // reward for filling local gaps. Fades to ~1.0 once local coverage is good. Not a leash:
             // clamped, and zero effect for distant/enemy-driven work once localGap→0.
+            // Pick applies this factor after adding the forecast, once for the whole step.
             float homeFactor = 1f;
             int homeDist = 0, homeDelta = 0;
             if (home.Active && assignment.Mode == ReconMode.Explore)
             {
                 homeDist = home.DistOf(h);
                 homeDelta = homeDist - home.CurDist;
-                if (homeDelta > 0 && homeDist > AiConfigV2.scoutStepHomeLocalRingRadius)
-                    homeFactor -= AiConfigV2.scoutStepHomeOutwardPenaltyWeight * home.LocalGap;
-                else if (homeDelta < 0 && home.LocalGap > 0f)
-                    homeFactor += AiConfigV2.scoutStepHomeInwardBonusWeight * home.LocalGap;
-                homeFactor = Mathf.Clamp(homeFactor, 0.30f, 1.15f);
+                homeFactor = home.FactorOf(h);
             }
 
             // T09 — an ordinary step never walks straight back into the unchanged cause of a
@@ -271,7 +286,7 @@ namespace Game.Ai.V2
             float purpose = information + anchorProgress;
             float score = PurposefulStepScore(
                     information, anchorProgress, heading, movementEfficiency)
-                * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
+                * trailFactor * safetyFactor * coverageFactor * deadEndFactor;
             string reason = $"purpose={purpose:0.00} info={information:0.00} "
                 + $"anchorProgress={anchorProgress:0.00} heading={heading:0.00} "
                 + $"mpEff={movementEfficiency:0.00} "

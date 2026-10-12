@@ -483,7 +483,8 @@ namespace Game.Ai.V2
                     + $"{(r.RequiresGarrisonExtraction ? "g" : "")}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"{(int)site.ResourceType}:{site.EffectiveYield}:"
-                + $"{site.CurrentBuildingCollection}:{site.MarginalIncomeGain}:[{actors}]";
+                + $"{site.CurrentBuildingCollection}:{site.MarginalIncomeGain}:[{actors}]"
+                + $"|newBuilderTurns={site.MinimumNewBuilderDeliveryTurns?.ToString(CultureInfo.InvariantCulture) ?? "unknown"}";
         }
 
         // The mobile-collection counterpart. Facility and MobileCollection stay separate lists

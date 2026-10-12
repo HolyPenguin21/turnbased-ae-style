@@ -218,6 +218,19 @@ namespace Game.Ai.V2
                 // hero's own delivery stays under the site's value.
                 bool readyLossToNewHero = value <= AiConfigV2.allocatorSliceEpsilon
                     && builder != null && !committed;
+                // A rejected long existing route must not become an impossible Hero prerequisite
+                // whose deferred reservation freezes H/E/M/T before Materialization can reject it.
+                if (!committed && (builder == null || readyLossToNewHero)
+                    && site.MinimumNewBuilderDeliveryTurns.HasValue
+                    && site.MinimumNewBuilderDeliveryTurns.Value > AiConfigV2.economyExtractionMaxDeliveryTurns)
+                {
+                    rejectedDeliveryValue++;
+                    AiDebugLog.WriteDeduped($"new-builder-horizon|{site.Hex}|{site.ResourceType}",
+                        $"[AI][V2][Economy][Demand] target=({site.Hex.Q},{site.Hex.R}) "
+                        + $"resource={site.ResourceType} decision=REJECT reason=extraction_delivery_horizon "
+                        + $"minimumNewBuilderTurns={site.MinimumNewBuilderDeliveryTurns.Value}");
+                    continue;
+                }
                 if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero && !committed)
                 {
                     if (builder == null) rejectedNoBuilder++;
@@ -754,6 +767,9 @@ namespace Game.Ai.V2
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn, requiresFoundingGarrison))
                 .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
+                .Where(x => EconomyExtractionDeliveryAllowed(x)
+                    || activeIntents?.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target)
+                        && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
                 .Where(x => x.Route.IsOnTarget
                     || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
                     || ActiveAssignment(activeIntents, x.Army.ArmyId).Kind == MissionKind.Economy
@@ -1166,6 +1182,26 @@ namespace Game.Ai.V2
                 ? Mathf.CeilToInt(route.ReturnTravelCost / (float)move) : 0;
             return Mathf.Max(0f, buildApCost)
                 + (paidOutboundActivations + returnTurns) * Mathf.Max(0, route.ActivationApCost);
+        }
+
+        // Admission of a NEW extraction delivery, shared by existing-builder ranking and
+        // prospective hero materialization. AP-free movement still consumes owner turns.
+        internal static bool EconomyExtractionDeliveryAllowed(EconomyBuilderChoice choice)
+        {
+            if (choice == null) return false;
+            if (choice.FoundsBase || choice.Route.IsOnTarget) return true;
+            EconomyBuilderRouteSnapshot route = choice.Route;
+            int turns = route.TravelCost <= 0 ? 0
+                : (route.CurrentMovement > 0 ? 1 : 0)
+                    + Mathf.CeilToInt(Mathf.Max(0, route.TravelCost - route.CurrentMovement)
+                        / (float)Mathf.Max(1, route.MaxMovement));
+            bool allowed = turns <= AiConfigV2.economyExtractionMaxDeliveryTurns;
+            if (!allowed)
+                AiDebugLog.WriteDeduped($"delivery-horizon|{route.ArmyId}|{route.TravelCost}",
+                    $"[ECO][Builder] actor=#{route.ArmyId} routeCost={route.TravelCost} "
+                    + $"deliveryTurns={turns} max={AiConfigV2.economyExtractionMaxDeliveryTurns} "
+                    + "decision=REJECT reason=extraction_delivery_horizon");
+            return allowed;
         }
 
         private static IEnumerable<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)>

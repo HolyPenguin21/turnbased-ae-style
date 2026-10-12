@@ -13,6 +13,22 @@ namespace Game.EditorTests
     // (a scout stepping its waypoint) must not.
     public class AiEconomyAdmissionFingerprintTests
     {
+        [Test]
+        public void AChangedProspectiveBuilderHorizonReadmitsTheExtractionSite()
+        {
+            WorldSnapshot before = Snap();
+            WorldSnapshot after = Snap();
+            var site = new EconomyExtractionOpportunity { Hex = new HexCoord(-3, 5),
+                ResourceType = Game.Economy.ResourceType.Human, EffectiveYield = 1,
+                MarginalIncomeGain = 1, MinimumNewBuilderDeliveryTurns = 5 };
+            before.Economy = new EconomyStanding { ExtractionOpportunities = new[] { site } };
+            site.MinimumNewBuilderDeliveryTurns = 2;
+            after.Economy = new EconomyStanding { ExtractionOpportunities = new[] { site } };
+            Assert.That(WorldAnalysis.EconomyOpportunityRows(before), Is.Not.EqualTo(WorldAnalysis.EconomyOpportunityRows(after)));
+            Assert.That(Key(before), Is.Not.EqualTo(Key(after)),
+                "a closer owned base or faster known Hero must reopen the same previously distant site");
+        }
+
         private PlayerSetupData _player;
         private AiTurnContext _ctx;
 
