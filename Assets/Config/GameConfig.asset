@@ -1034,7 +1034,7 @@ MonoBehaviour:
       groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
       borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
   minPlayers: 2
-  maxPlayers: 6
+  maxPlayers: 4
   playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}
   moveArrowStyle:
     segmentsPerLeg: 20

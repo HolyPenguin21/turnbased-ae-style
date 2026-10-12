@@ -44,6 +44,9 @@ namespace Game.UI
         [SerializeField] private StartingDeckCatalog startingDeckCatalog;
         [SerializeField] private TMP_Dropdown controllerDropdown;
         [SerializeField] private Button removeButton;
+        [SerializeField] private GameObject deckSelectionRoot;
+        [SerializeField] private TMP_Dropdown deckDropdown;
+        [SerializeField] private Button editDecksButton;
 
         // Colour dropdown only ever lists colours not taken by another row, so its option
         // positions don't line up 1:1 with PlayerColorPalette indices — this maps
@@ -53,34 +56,27 @@ namespace Game.UI
 
         internal TMP_Dropdown FactionTemplate => factionDropdown;
         internal TMP_InputField NicknameTemplate => nicknameField;
-        private TMP_Dropdown deckDropdown;
         private Game.Core.GameConfig deckConfig;
         private bool refreshingDecks;
         public void ConfigureDeckSelection(Game.Core.GameConfig config)
         {
             deckConfig = config;
-            if (deckDropdown == null)
+            if (deckDropdown == null) return;
+            deckDropdown.onValueChanged.RemoveAllListeners();
+            deckDropdown.onValueChanged.AddListener(index =>
             {
-                var strip = CollectionUIElements.Rect(transform, "DeckSelection");
-                strip.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
-                CollectionUIElements.Place(strip, 0, 38, 700, 32);
-                deckDropdown = Instantiate(factionDropdown, strip);
-                CollectionUIElements.Place((RectTransform)deckDropdown.transform, 0, 0, 525, 30);
-                deckDropdown.onValueChanged.RemoveAllListeners();
-                deckDropdown.onValueChanged.AddListener(index =>
-                {
-                    if (refreshingDecks) return;
-                    var decks = Game.Progression.ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
-                    if (index >= 0 && index < decks.Count) Data.SelectedDeckId = decks[index].deckId;
-                });
-                CollectionUIElements.Button(strip, "Edit Decks", 535, 0, 155, 30, () =>
+                if (refreshingDecks) return;
+                var decks = Game.Progression.ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
+                if (index >= 0 && index < decks.Count) Data.SelectedDeckId = decks[index].deckId;
+            });
+            if (editDecksButton != null)
+            {
+                Game.UI.UIButtonEventUtility.ResetRuntimeListeners(editDecksButton);
+                editDecksButton.onClick.AddListener(() =>
                 {
                     var menu = UnityEngine.Object.FindAnyObjectByType<MainMenuController>();
                     if (menu != null) menu.OpenDeckBuilderFromSetup(RefreshDeckOptions);
                 });
-                var element = GetComponent<LayoutElement>();
-                if (element == null) element = gameObject.AddComponent<LayoutElement>();
-                element.preferredHeight = 76; element.minHeight = 76;
             }
             RefreshDeckOptions();
         }
@@ -93,7 +89,7 @@ namespace Game.UI
         {
             if (deckDropdown == null) return;
             refreshingDecks = true;
-            deckDropdown.transform.parent.gameObject.SetActive(Data.IsHuman);
+            if (deckSelectionRoot != null) deckSelectionRoot.SetActive(Data.IsHuman);
             deckDropdown.ClearOptions();
             if (!Data.IsHuman) { refreshingDecks = false; return; }
             if (Data.Faction == Faction.Random)
