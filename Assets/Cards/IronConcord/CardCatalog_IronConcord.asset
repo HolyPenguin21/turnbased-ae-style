@@ -667,7 +667,7 @@ MonoBehaviour:
       materials: 1
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0

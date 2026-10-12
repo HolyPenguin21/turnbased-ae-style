@@ -1052,7 +1052,7 @@ MonoBehaviour:
     commandRating: 0
     fate: 0
     attack: 4
-    defenseRating: 4
+    defenseRating: 3
     resistanceRating: 3
     range: 2
     hitPoints: 5
@@ -1398,6 +1398,55 @@ MonoBehaviour:
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s4
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 29
+    authoredKey: ashen.card.furnace-tortoise
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Furnace Tortoise
+    art: {fileID: 21300000, guid: 29cbb0a34a222e34cac948711d02b3fb, type: 3}
+    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    resistanceRating: 2
+    range: 1
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities:
+    - Pyrokinetic
+    - Scorcher
     resourceYield:
       human: 0
       energy: 0
