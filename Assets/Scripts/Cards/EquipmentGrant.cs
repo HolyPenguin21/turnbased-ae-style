@@ -25,16 +25,17 @@ namespace Game.Cards
     // moves both Max and Current together, see EquipmentSystem.Apply).
     public enum EquipmentStat
     {
-        Attack,
-        Defense,
-        Resistance,
-        Range,
-        HitPoints,
-        MoveMax,
-        Initiative,
-        ActivationApCost,
-        CommandRating,
-        Fate,
+        Attack = 0,
+        Defense = 1,
+        // 2 was Resistance (removed). Values are serialized as ints in card assets, so the
+        // remaining members keep their numbers.
+        Range = 3,
+        HitPoints = 4,
+        MoveMax = 5,
+        Initiative = 6,
+        ActivationApCost = 7,
+        CommandRating = 8,
+        Fate = 9,
     }
 
     // A parameterized-ability "family" for the "strip whatever the host currently has, then add

@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         // --- Hero operational-role model (spec §8). A combat-leadership score from canonical hero
         //     data only: CommandRating (how large a force it can lead) plus the hero's own
         //     AiPower.ToPowerUnit contribution, scaled by movement fitness against the canonical
-        //     MobileCombat MoveMax line (HitPoints / Initiative / Resistance / Fate —
+        //     MobileCombat MoveMax line (HitPoints / Initiative / Fate —
         //     heroes carry NO Attack/Defense). Never card or display names. A hero carrying a
         //     Researcher/Assembler/ApBonus support vocation (or too slow to keep pace with a field
         //     force at all — see homeHeroMoveMaxThreshold) whose score is below

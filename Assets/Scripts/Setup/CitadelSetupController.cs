@@ -287,7 +287,7 @@ namespace Game.Setup
 
             // Same stats source as a "Concord Citadel" card played later (see
             // HexSelectionController.SpawnBuilding) — both read the citadel card's own
-            // hitPoints/defenseRating/resistanceRating/fate now, so the two can never drift
+            // hitPoints/defenseRating/fate now, so the two can never drift
             // apart the way the old GameConfig.startingStructurePoints-and-friends baseline
             // once could. 1 is just a safe non-zero fallback for a misconfigured scene with no
             // catalog assigned — same defensive spirit as citadelCard's own null checks below.
@@ -301,7 +301,6 @@ namespace Game.Setup
                 StructurePointsMax = structurePoints,
                 StructurePointsCurrent = structurePoints,
                 Defense = citadelCard != null ? citadelCard.defenseRating : 1,
-                Resistance = citadelCard != null ? citadelCard.resistanceRating : 1,
                 Fate = citadelCard != null ? citadelCard.fate : 1,
                 // Starting citadel must read the same airfield configuration as a later Base
                 // card; otherwise the first aircraft has no valid deployment target.

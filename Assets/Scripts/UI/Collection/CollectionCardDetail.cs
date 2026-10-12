@@ -16,7 +16,7 @@ namespace Game.UI
             {
                 var unit = UnitData.CreateProjection();
                 unit.Name = card.displayName; unit.IsHero = card.cardType == CardType.Hero;
-                unit.Attack = card.attack; unit.Defense = card.defenseRating; unit.Resistance = card.resistanceRating;
+                unit.Attack = card.attack; unit.Defense = card.defenseRating;
                 unit.HitPointsMax = unit.HitPointsCurrent = card.hitPoints;
                 unit.Range = card.range; unit.MoveMax = unit.MoveCurrent = card.moveMax;
                 unit.CommandRating = card.commandRating; unit.Fate = card.fate; unit.Initiative = card.initiative;
@@ -26,7 +26,7 @@ namespace Game.UI
                 return text + UnitDetailFormatter.Format(unit, config, 0);
             }
             if (card.cardType == CardType.Base || card.cardType == CardType.Facility)
-                text += $"Level 1\nDefense {card.defenseRating}\nStructure points {card.hitPoints}\nResistance {card.resistanceRating}\nFate {card.fate}\n";
+                text += $"Level 1\nDefense {card.defenseRating}\nStructure points {card.hitPoints}\nFate {card.fate}\n";
             return text + config.FormatAbilitiesDetailed(card.grantedAbilities);
         }
     }

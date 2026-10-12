@@ -88,7 +88,7 @@ namespace Game.EditorTests
                 {
                     Assert.That(change.isOverride, Is.False);
                     Assert.That(change.stat == EquipmentStat.Range
-                        || change.stat == EquipmentStat.CommandRating || change.stat == EquipmentStat.Resistance,
+                        || change.stat == EquipmentStat.CommandRating,
                         Is.False, change.stat.ToString());
                     Assert.That(change.amount, Is.InRange(-1, change.stat == EquipmentStat.HitPoints && !hero ? 2 : 1));
                     if (hero) Assert.That(change.stat, Is.EqualTo(EquipmentStat.Fate));

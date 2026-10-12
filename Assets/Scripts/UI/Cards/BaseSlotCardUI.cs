@@ -47,7 +47,7 @@ namespace Game.UI
         // Same 5-slot building layout as CardUI's Base/Facility cards:
         //   AttackBadge slot: Level      DefenseBadge slot: Defense
         //   HpBadge slot: Structure Points, REAL current/max
-        //   MoveBadge slot: Resistance   RangeBadge slot: Fate
+        //   MoveBadge slot: "-" (no stat)   RangeBadge slot: Fate
         // Base reads BuildingData; an installed Facility reads the runtime stats copied into
         // FacilityData.FromDefinition. Empty/locked Facility slots keep the row hidden.
         [SerializeField] private GameObject statsRow;
@@ -162,7 +162,7 @@ namespace Game.UI
                 if (attackStatText != null) attackStatText.text = building.Level.ToString();
                 if (defenseStatText != null) defenseStatText.text = building.Defense.ToString();
                 if (hpStatText != null) hpStatText.text = $"{building.StructurePointsCurrent}/{building.StructurePointsMax}";
-                if (moveStatText != null) moveStatText.text = building.Resistance.ToString();
+                if (moveStatText != null) moveStatText.text = "-";
                 if (rangeStatText != null) rangeStatText.text = building.Fate.ToString();
                 return;
             }
@@ -170,7 +170,7 @@ namespace Game.UI
             if (attackStatText != null) attackStatText.text = facility.Level.ToString();
             if (defenseStatText != null) defenseStatText.text = facility.Defense.ToString();
             if (hpStatText != null) hpStatText.text = $"{facility.StructurePointsCurrent}/{facility.StructurePointsMax}";
-            if (moveStatText != null) moveStatText.text = facility.Resistance.ToString();
+            if (moveStatText != null) moveStatText.text = "-";
             if (rangeStatText != null) rangeStatText.text = facility.Fate.ToString();
         }
 

@@ -287,7 +287,6 @@ namespace Game.Map
             tier.cost?.PayFrom(root);
             building.Level++;
             building.Defense += tier.defenseGain;
-            building.Resistance += tier.resistanceGain;
             // Level changes UnlockedFacilitySlots while the hex and its owner's vision stay the same:
             // publish the completed building state once.
             VisionSystem.NotifyContentChanged(building.Hex);

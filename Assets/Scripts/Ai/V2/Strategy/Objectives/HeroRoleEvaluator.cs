@@ -30,7 +30,7 @@ namespace Game.Ai.V2
     public static class HeroRoleEvaluator
     {
         // Combat-leadership merit from canonical hero data: CommandRating (leadership capacity)
-        // plus the hero's own AiPower contribution (HitPoints / Initiative / Resistance / Fate —
+        // plus the hero's own AiPower contribution (HitPoints / Initiative / Fate —
         // heroes carry no Attack/Defense). Higher = better field commander.
         public static float CombatLeadershipScore(UnitData hero) =>
             hero == null || !hero.IsHero ? 0f

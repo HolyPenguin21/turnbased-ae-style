@@ -86,9 +86,6 @@ namespace Game.Cards
         // SpawnBuilding/CitadelSetupController.SpawnCitadelMarker) rather than keeping a
         // separate copy — Hero/Unit and Base cards share this one Stats block.
         public int defenseRating = 1;
-        // Named resistanceRating for the same reason as defenseRating — shared with
-        // BuildingData.Resistance for a Base card the same way.
-        public int resistanceRating = 1;
         public int range = 1;
         public int hitPoints = 1;
         // Same meaning as UnitData.Initiative — carried straight through at spawn time like
@@ -137,8 +134,8 @@ namespace Game.Cards
 
         // Only meaningful for CardType.Base — the BuildingData a Base card spawns (see
         // HexSelectionController.SpawnBuilding/CitadelSetupController.SpawnCitadelMarker, both
-        // now read the same shared Stats block above: hitPoints/defenseRating/resistanceRating/
-        // fate) instead of a separate Base-only copy of those same four numbers.
+        // now read the same shared Stats block above: hitPoints/defenseRating/
+        // fate) instead of a separate Base-only copy of those same numbers.
         //
         // Resource collection is skill/ability-driven now (see UnitAbilities.
         // CollectAbilities) — this isn't wired into BuildingData/spawn at all, kept only for a

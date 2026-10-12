@@ -402,7 +402,6 @@ namespace Game.UI
                     break;
                 case CardType.Base:
                     sb.AppendLine($"Defense {card.defenseRating}");
-                    sb.AppendLine($"Resistance {card.resistanceRating}");
                     sb.AppendLine($"HP {card.hitPoints}");
                     break;
                 case CardType.Facility:

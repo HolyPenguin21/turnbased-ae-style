@@ -365,8 +365,6 @@ MonoBehaviour:
   nameText: {fileID: 1980000000000010014}
   titleRoot: {fileID: 4584798362014750891}
   moveText: {fileID: 1980000000000010024}
-  commandBadgeRoot: {fileID: 0}
-  commandBadgeText: {fileID: 0}
   statsRow: {fileID: 1980000000000010101}
   attackStatText: {fileID: 1980000000000010112}
   defenseStatText: {fileID: 1980000000000010121}

@@ -169,7 +169,6 @@ namespace Game.UI
                     levelLine +
                     $"Structure Points: {_currentBuilding.StructurePointsCurrent}/{_currentBuilding.StructurePointsMax}\n" +
                     $"Defense: {_currentBuilding.Defense}\n" +
-                    $"Resistance: {_currentBuilding.Resistance}\n" +
                     $"Fate: {_currentBuilding.Fate}";
             if (detailText2 != null)
                 detailText2.text = FormatAbilities(_currentBuilding.Abilities);
@@ -192,7 +191,6 @@ namespace Game.UI
                     $"Level {facility.Level}\n" +
                     $"Structure Points: {facility.StructurePointsCurrent}/{facility.StructurePointsMax}\n" +
                     $"Defense: {facility.Defense}\n" +
-                    $"Resistance: {facility.Resistance}\n" +
                     $"Fate: {facility.Fate}";
             if (detailText2 != null)
                 detailText2.text = FormatAbilities(facility.Abilities);
@@ -225,7 +223,7 @@ namespace Game.UI
                 turnController?.ShowSpawnHint($"{_currentBuilding.Name} is already fully upgraded.");
                 return;
             }
-            // One gameplay primitive owns the legality, the payment and the Level/Defense/Resistance
+            // One gameplay primitive owns the legality, the payment and the Level/Defense
             // mutation (the AI capacity step uses the same one); the UI only reports and refreshes.
             BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
                 _currentBuilding, gameConfig.baseUpgradeTiers);

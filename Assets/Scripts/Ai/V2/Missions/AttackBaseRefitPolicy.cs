@@ -118,7 +118,7 @@ namespace Game.Ai.V2
             var u = UnitData.CreateProjection();
             u.Name = def.displayName; u.Owner = owner; u.OriginatingCard = def;
             u.IsHero = def.cardType == CardType.Hero; u.CommandRating = line.CommandRating;
-            u.Attack = line.Attack; u.Defense = line.Defense; u.Resistance = line.Resistance;
+            u.Attack = line.Attack; u.Defense = line.Defense;
             u.Range = line.Range; u.HitPointsMax = u.HitPointsCurrent = line.HitPoints;
             u.Initiative = line.Initiative; u.Fate = u.FateMax = line.Fate;
             u.MoveMax = u.MoveCurrent = line.MoveMax; u.ActivationApCost = CapabilityQualityEvaluator.ProjectedActivationApCost(plan);
@@ -211,7 +211,7 @@ namespace Game.Ai.V2
         }
 
         internal static string RosterKey(ArmyData army) => army == null ? "-" : $"activated:{army.HasActivatedThisTurn}|" + string.Join(";",
-            army.Members.Select(u => $"{u.RuntimeId}:{u.Attack}:{u.Defense}:{u.Resistance}:{u.Range}:"
+            army.Members.Select(u => $"{u.RuntimeId}:{u.Attack}:{u.Defense}:{u.Range}:"
                 + $"{u.HitPointsCurrent}/{u.HitPointsMax}:{u.Initiative}:{u.Fate}/{u.FateMax}:{u.CommandRating}:"
                 + $"{u.MoveCurrent}/{u.MoveMax}:{u.ActivationApCost}:{army.HasActivationCoverageFor(u)}:"
                 + $"{string.Join(",", u.Abilities.OrderBy(x => x, StringComparer.Ordinal))}:"

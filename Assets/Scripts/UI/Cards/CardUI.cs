@@ -27,7 +27,7 @@ namespace Game.UI
         //   AttackBadge slot: Attack (Unit) / Command Rating (Hero) / Level (Base)
         //   DefenseBadge slot: Defense (Unit) / Fate (Hero) / Defense (Base)
         //   HpBadge slot: HP, current/max (all three — Base uses Structure Points as its HP)
-        //   MoveBadge slot: Move (Unit) / Move (Hero) / Resistance (Base)
+        //   MoveBadge slot: Move (Unit) / Move (Hero) / "-" (Base)
         //   RangeBadge slot: Range (Unit) / Initiative (Hero) / Fate (Base)
         // A card still sitting in hand hasn't been spawned yet, so "current" HP/Structure and
         // Base Level are shown as their eventual starting values (max/max, Level 1) rather than
@@ -222,7 +222,7 @@ namespace Game.UI
                     slot1 = 1; // Level — always 1 for a not-yet-built card, see the field block's own comment
                     slot2 = definition.defenseRating;
                     hp = definition.hitPoints;
-                    slot4 = definition.resistanceRating;
+                    slot4 = 0; // no stat here for a Base/Facility — shown as "-" below
                     slot5 = definition.fate;
                     break;
                 default: // Unit
@@ -239,7 +239,9 @@ namespace Game.UI
             if (attackStatText != null) attackStatText.text = slot1.ToString();
             if (defenseStatText != null) defenseStatText.text = slot2.ToString();
             if (hpStatText != null) hpStatText.text = $"{hp}/{hp}";
-            if (moveStatText != null) moveStatText.text = slot4.ToString();
+            if (moveStatText != null)
+                moveStatText.text = definition.cardType == CardType.Base || definition.cardType == CardType.Facility
+                    ? "-" : slot4.ToString();
             if (rangeStatText != null) rangeStatText.text = slot5.ToString();
         }
 

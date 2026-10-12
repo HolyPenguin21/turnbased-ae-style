@@ -129,7 +129,7 @@ namespace Game.Ai.V2
                         rows.Add($"u:{u.RuntimeId}:{a.Id}:{a.IsPrison}:{u.IsPrisoner}:{u.IsHero}:"
                             + $"{u.Equipment != null}:{u.Mutator != null}:"
                             + $"{u.Equipment?.authoredKey}:{u.Mutator?.authoredKey}:{u.Attack}:{u.Defense}:"
-                            + $"{u.Resistance}:{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
+                            + $"{u.Range}:{u.HitPointsMax}:{u.HitPointsCurrent}:"
                             + $"{u.MoveMax}:{u.Initiative}:{u.ActivationApCost}:"
                             + $"{u.CommandRating}:{u.Fate}:{u.FateMax}:"
                             + string.Join(",", u.Abilities.OrderBy(x => x, System.StringComparer.Ordinal))

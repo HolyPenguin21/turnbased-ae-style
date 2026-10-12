@@ -15,7 +15,6 @@ namespace Game.Ai.V2
         public const float powerDefenseWeight = 0.8f;
         public const float powerHitPointsWeight = 0.6f;
         public const float powerInitiativeWeight = 0.25f;
-        public const float powerResistanceWeight = 0.35f;
         // A hero's Fate (battle re-rolls) folded into its own UnitPower on top of its raw stats.
         public const float powerHeroFateWeight = 1.5f;
 

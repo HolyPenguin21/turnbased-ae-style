@@ -110,7 +110,7 @@ namespace Game.Campaign
             {
                 void Text(string v) { v = v ?? ""; key.Append(v.Length).Append(':').Append(v).Append('|'); }
                 Text(c.authoredKey); Text(((int)c.cardType).ToString());
-                foreach (int value in new[] { c.attack, c.defenseRating, c.resistanceRating, c.hitPoints, c.initiative, c.range,
+                foreach (int value in new[] { c.attack, c.defenseRating, c.hitPoints, c.initiative, c.range,
                     c.commandRating, c.fate, c.moveMax, c.activationApCost, c.isAviation ? 1 : 0, (int)c.attachmentSlot }) key.Append(value).Append(',');
                 Text(c.requiredBuildingAbility);
                 foreach (var tag in c.unitTypeTags ?? new List<UnitTypeTag>()) key.Append((int)tag).Append(','); key.Append('|');

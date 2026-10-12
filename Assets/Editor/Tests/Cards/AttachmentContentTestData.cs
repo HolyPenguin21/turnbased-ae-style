@@ -57,7 +57,7 @@ namespace Game.EditorTests
             resourceCost = new ResourceCost { human = Number(block, "human"), energy = Number(block, "energy"),
                 materials = Number(block, "materials"), tech = Number(block, "tech") },
             attack = Number(block, "attack"), defenseRating = Number(block, "defenseRating"),
-            resistanceRating = Number(block, "resistanceRating"), range = Number(block, "range"),
+            range = Number(block, "range"),
             hitPoints = Number(block, "hitPoints"), moveMax = Number(block, "moveMax"),
             initiative = Number(block, "initiative"), commandRating = Number(block, "commandRating"),
             antiAirRadius = Number(block, "antiAirRadius"),

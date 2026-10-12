@@ -69,8 +69,7 @@ namespace Game.Ai.V2
                 float line = c.attack * AiConfigV2.powerAttackWeight
                            + c.defenseRating * AiConfigV2.powerDefenseWeight
                            + c.hitPoints * AiConfigV2.powerHitPointsWeight
-                           + c.initiative * AiConfigV2.powerInitiativeWeight
-                           + c.resistanceRating * AiConfigV2.powerResistanceWeight;
+                           + c.initiative * AiConfigV2.powerInitiativeWeight;
                 p = Mathf.Max(0f, line) * AbilityMultiplier(c.grantedAbilities);
             }
             return new PowerUnit(p, c.unitTypeTags, c.range, isHero, c.commandRating);
@@ -90,8 +89,7 @@ namespace Game.Ai.V2
             float line = attack * AiConfigV2.powerAttackWeight
                        + defense * AiConfigV2.powerDefenseWeight
                        + u.HitPointsCurrent * AiConfigV2.powerHitPointsWeight
-                       + u.Initiative * AiConfigV2.powerInitiativeWeight
-                       + u.Resistance * AiConfigV2.powerResistanceWeight;
+                       + u.Initiative * AiConfigV2.powerInitiativeWeight;
             if (u.IsHero)
                 line += u.Fate * AiConfigV2.powerHeroFateWeight;
             return Mathf.Max(0f, line) * AbilityMultiplier(u.Abilities);
@@ -106,16 +104,16 @@ namespace Game.Ai.V2
         public readonly struct ProjectedStrategicLine
         {
             public readonly float BasePower;
-            public readonly int Attack, Defense, Resistance, Range, HitPoints, MoveMax, Initiative,
+            public readonly int Attack, Defense, Range, HitPoints, MoveMax, Initiative,
                 CommandRating, Fate, ActivationApCost;
             public readonly IReadOnlyList<string> EffectiveAbilities;
 
-            public ProjectedStrategicLine(float basePower, int attack, int defense, int resistance,
+            public ProjectedStrategicLine(float basePower, int attack, int defense,
                 int range, int hitPoints, int moveMax, int initiative, int commandRating, int fate,
                 int activationApCost, IReadOnlyList<string> effectiveAbilities)
             {
                 BasePower = basePower;
-                Attack = attack; Defense = defense; Resistance = resistance; Range = range;
+                Attack = attack; Defense = defense; Range = range;
                 HitPoints = hitPoints; MoveMax = moveMax; Initiative = initiative;
                 CommandRating = commandRating; Fate = fate; ActivationApCost = activationApCost;
                 EffectiveAbilities = effectiveAbilities ?? System.Array.Empty<string>();
@@ -129,13 +127,12 @@ namespace Game.Ai.V2
         public static ProjectedStrategicLine EffectiveLine(CardDefinition c, params EquipmentGrant[] grants)
         {
             if (c == null)
-                return new ProjectedStrategicLine(0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
+                return new ProjectedStrategicLine(0f, 0, 0, 0, 0, 0, 0, 0, 0, 0, null);
 
             var stats = new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = c.attack,
                 [EquipmentStat.Defense] = c.defenseRating,
-                [EquipmentStat.Resistance] = c.resistanceRating,
                 [EquipmentStat.Range] = c.range,
                 [EquipmentStat.HitPoints] = c.hitPoints,
                 [EquipmentStat.MoveMax] = c.moveMax,
@@ -172,8 +169,7 @@ namespace Game.Ai.V2
             float line = S(EquipmentStat.Attack) * AiConfigV2.powerAttackWeight
                        + S(EquipmentStat.Defense) * AiConfigV2.powerDefenseWeight
                        + S(EquipmentStat.HitPoints) * AiConfigV2.powerHitPointsWeight
-                       + S(EquipmentStat.Initiative) * AiConfigV2.powerInitiativeWeight
-                       + S(EquipmentStat.Resistance) * AiConfigV2.powerResistanceWeight;
+                       + S(EquipmentStat.Initiative) * AiConfigV2.powerInitiativeWeight;
             if (c.cardType == CardType.Hero)
                 line += S(EquipmentStat.Fate) * AiConfigV2.powerHeroFateWeight;
 
@@ -185,7 +181,7 @@ namespace Game.Ai.V2
                     : ToPowerUnit(c).BasePower;
 
             return new ProjectedStrategicLine(basePower,
-                S(EquipmentStat.Attack), S(EquipmentStat.Defense), S(EquipmentStat.Resistance),
+                S(EquipmentStat.Attack), S(EquipmentStat.Defense),
                 S(EquipmentStat.Range), S(EquipmentStat.HitPoints), S(EquipmentStat.MoveMax),
                 S(EquipmentStat.Initiative), S(EquipmentStat.CommandRating), S(EquipmentStat.Fate),
                 S(EquipmentStat.ActivationApCost), abilities);

@@ -53,7 +53,6 @@ namespace Game.EditorTests
             {
                 Assert.That(c.authoredKey, Does.StartWith("neutral.equipment."));
                 Assert.That(c.displayName, Does.Not.StartWith("it "));
-                Assert.That(c.equipment.statChanges.Any(s => s.stat == EquipmentStat.Resistance), Is.False);
                 Assert.That(c.equipment.hostKinds, Is.EqualTo(new[] { EquipmentHostKind.Unit }));
                 Assert.That(c.apCost, Is.EqualTo(1)); Assert.That(c.activationApCost, Is.EqualTo(1));
                 Assert.That(c.fate, Is.InRange(3, 6));
@@ -79,7 +78,6 @@ namespace Game.EditorTests
             Assert.That(body.HitPointsMax, Is.EqualTo(predicted.Stats[EquipmentStat.HitPoints]));
             Assert.That(body.MoveMax, Is.EqualTo(predicted.Stats[EquipmentStat.MoveMax]));
             Assert.That(body.Abilities, Is.EquivalentTo(predicted.Abilities));
-            Assert.That(body.Resistance, Is.EqualTo(host.resistanceRating));
         }
 
         [TestCase("Assault Rifle Kit", 6, 3, 10, 6, 2)]
