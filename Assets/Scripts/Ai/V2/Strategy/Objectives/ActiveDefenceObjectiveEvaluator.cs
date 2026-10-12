@@ -772,19 +772,50 @@ namespace Game.Ai.V2
                 || snap?.Self?.Armies == null || snap.Self.BaseHexes == null
                 || !snap.Self.BaseHexes.Contains(army.Hex))
                 return false;
-            foreach (ArmySnapshot other in snap.Self.Armies)
-                // A dedicated scout passing through is not a defender that keeps the hex held.
-                if (other != null && other.ArmyId != army.ArmyId && other.Hex.Equals(army.Hex)
-                    && (other.IsGarrison || unavailable == null || !unavailable.Contains(other.ArmyId))
-                    && !other.IsAir && !other.IsAirfield && !other.IsPrison && !other.IsSoloRecce
-                    && other.EffectiveArmyPower > AiConfigV2.allocatorSliceEpsilon)
-                    return false;
-            IEnumerable<AssetThreatSnapshot> threats = snap.Threat?.Threats
-                ?? Enumerable.Empty<AssetThreatSnapshot>();
-            return threats.Any(t => IsHonestPositionedHostile(t) && t.CanDamage
-                && t.Asset.Hex.Equals(army.Hex)
-                && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base)
-                && t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.strongholdDefenderPinEnemyEta);
+            // Another body on the hex is not proof that the stronghold remains defended.
+            // Reuse the same defending-side simulation as AssessResponse, excluding the mover.
+            var without = unavailable == null ? new HashSet<int>() : new HashSet<int>(unavailable);
+            without.Add(army.ArmyId);
+            foreach (AssetThreatSnapshot threat in snap.Threat?.Threats ?? Enumerable.Empty<AssetThreatSnapshot>())
+            {
+                if (!IsHonestPositionedHostile(threat) || !threat.CanDamage
+                    || !threat.Asset.Hex.Equals(army.Hex)
+                    || !IsDefendableAsset(snap, threat.Asset.Kind, threat.Asset.Hex)
+                    || !threat.EnemyEta.HasValue
+                    || threat.EnemyEta.Value > AiConfigV2.strongholdDefenderPinEnemyEta)
+                    continue;
+                var objective = new ActiveDefenceObjective { Target = new ActiveDefenceMissionTarget
+                    { ProtectedAssetHex = army.Hex, ProtectedAssetKind = threat.Asset.Kind } };
+                var opposition = Opposition(snap, threat.Contact.Army.ArmyId);
+                if (opposition == null || HoldChanceAtAsset(snap, objective, null, null,
+                        opposition, without) < AiConfigV2.activeDefenceHoldWinChance)
+                    return true;
+            }
+            return false;
+        }
+
+        // Reserve only actors in a concrete imminent response, not every nearby army.
+        // This is an admission exclusion for optional raids, never an actor lease or spend.
+        internal static HashSet<int> ImminentResponseArmyIds(WorldSnapshot snap, ISet<int> committed,
+            IEnumerable<MissionIntent> intents = null)
+        {
+            var required = new HashSet<int>();
+            foreach (ActiveDefenceObjective objective in Enumerate(snap))
+            {
+                if (!objective.Target.EnemyEta.HasValue
+                    || objective.Target.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                    continue;
+                var response = AssessResponse(snap, objective, committed, null, null, intents);
+                if (response?.Kind == ActiveDefenceResponseKind.Intercept && response.Plan != null)
+                {
+                    required.Add(response.Plan.BaseArmyId);
+                    required.UnionWith(response.Plan.MergeArmyIds);
+                    required.UnionWith(response.Plan.Transfers.Select(t => t.DonorArmyId));
+                }
+                else if (response?.Kind == ActiveDefenceResponseKind.Regroup)
+                    required.UnionWith(response.ReinforcementArmyIds);
+            }
+            return required;
         }
 
         private static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
@@ -898,3 +929,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -406,6 +406,12 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (GroundCombatAirSupport.HasImmediateDefenceService(snap, live))
+                {
+                    Reject("immediate_defence_service");
+                    continue;
+                }
+
                 HexCoord anchorTarget = target.FocusHex;
                 var feasDiag = new List<string>();
                 AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
@@ -1497,3 +1503,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

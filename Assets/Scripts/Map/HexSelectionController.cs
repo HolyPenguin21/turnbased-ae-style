@@ -602,9 +602,7 @@ namespace Game.Map
                 if (!IsMarkerHit(army.Controller.Visual, screenPosition))
                     continue;
 
-                _selectedHex = hex;
-                armyButtonRow?.Hide();
-                armyViewerModal.ShowReadOnly(army);
+                ShowArmyModalReadOnly(army);
                 return true;
             }
             if (_rememberedArmyVisualsByHex.TryGetValue(human,
@@ -616,7 +614,7 @@ namespace Game.Map
                         continue;
                     if (!IsMarkerHit(remembered.Visual, screenPosition))
                         continue;
-                    _selectedHex = hex;
+                    SelectHex(hex);
                     var siblings = new List<ArmyData>();
                     foreach (RememberedArmyVisual candidate in rememberedAtHex)
                         if (candidate.Snapshot != null && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
@@ -745,33 +743,21 @@ namespace Game.Map
                 infoPanel.SetProductionButtonVisible(productionEligible, () => OnProductionActionClicked(coord));
             }
 
+            int extractionActions = 0;
             if (observerInspection)
                 resourceActionRow?.Hide();
             else
-                RefreshResourceActionRow(coord, buildingHere, effectiveYields);
+                extractionActions = RefreshResourceActionRow(coord, buildingHere, effectiveYields);
 
             if (infoPanel != null)
             {
-                bool hasGarrison = false;
-                foreach (ArmyData army in ArmyRegistry.AllAt(coord))
-                    if (army.IsGarrison) { hasGarrison = true; break; }
-                bool hasResources = false;
-                int unextractedResources = 0;
-                foreach (ResourceType type in AllResourceTypes)
-                {
-                    int yield = effectiveYields.Get(type);
-                    if (yield <= 0) continue;
-                    hasResources = true;
-                    if (buildingHere != null &&
-                        (buildingHere.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type))
-                        || buildingHere.CollectedAmount(type) >= yield)) continue;
-                    unextractedResources++;
-                }
-                if (buildingHere != null || hasGarrison || hasResources)
-                {
-                    infoPanel.ShowHex(unextractedResources);
-                }
-                else infoPanel.HideAnimated();
+                bool hasGarrison = ArmyRegistry.AllAt(coord).Exists(army => army.IsGarrison);
+                // The panel and its size follow the very actions offered by the canonical row.
+                // Resource yield alone is not an available construction action.
+                if (buildingHere != null || hasGarrison || extractionActions > 0)
+                    infoPanel.ShowHex(extractionActions);
+                else
+                    infoPanel.HideAnimated();
             }
 
             // One button per mobile army. A lone garrison shows neither: it can't move and isn't "an army"
@@ -850,17 +836,14 @@ namespace Game.Map
         // available action; there is no paging — the row is sized for all 4 at once. Research/
         // Production moved out of this row into their own fixed buttons on HexInfoPanelUI's nav
         // row (see SelectHex) — this row is extraction-only now.
-        private void RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
+        private int RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
         {
-            if (resourceActionRow == null)
-                return;
-
             PlayerSetupData human = turnController?.CurrentPlayer;
             var actions = new List<HexActionDescriptor>();
 
             // No building here — regardless of who it belongs to — can be worked while a
             // combat-capable enemy army stands on the hex (see Game.Combat.BattleInitiator).
-            if (human != null && human.IsHuman && gameConfig.extractionFacilityCards != null
+            if (human != null && human.IsHuman && gameConfig != null && gameConfig.extractionFacilityCards != null
                 && (buildingHere == null || buildingHere.Owner == human)
                 && BattleInitiator.FindEnemyAt(coord, human) == null
                 && map.CanEnter(coord) && HasOwnHeroArmyAt(coord, human))
@@ -892,9 +875,10 @@ namespace Game.Map
             }
 
             if (actions.Count > 0)
-                resourceActionRow.Show(actions);
+                resourceActionRow?.Show(actions);
             else
-                resourceActionRow.Hide();
+                resourceActionRow?.Hide();
+            return actions.Count;
         }
 
         // Eligibility (ResearchProductionSystem.IsEligible: on the human's own turn, an OWN
@@ -1064,6 +1048,7 @@ namespace Game.Map
                 baseViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            SelectHex(army.Hex);
             armyButtonRow?.Hide();
             armyViewerModal?.Show(army);
         }
@@ -1075,6 +1060,7 @@ namespace Game.Map
                 baseViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            SelectHex(army.Hex);
             armyButtonRow?.Hide();
             armyViewerModal?.ShowReadOnly(army);
         }
@@ -1085,6 +1071,7 @@ namespace Game.Map
                 armyViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            SelectHex(building.Hex);
             armyButtonRow?.Hide();
             baseViewerModal?.ShowReadOnly(building);
         }
@@ -1095,6 +1082,7 @@ namespace Game.Map
                 armyViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            SelectHex(building.Hex);
             armyButtonRow?.Hide();
             baseViewerModal?.Show(building);
         }
@@ -1145,6 +1133,7 @@ namespace Game.Map
                 return;
 
             SetSelectedArmy(army.Controller);
+            SelectHex(army.Hex, preserveSelection: true);
             // The chosen army becomes the visible marker for its owner on this hex too (see
             // RestackArmiesOn's representative-selection), so a move order started from here
             // actually animates the same army the player just picked, not an arbitrary one.
@@ -1181,6 +1170,7 @@ namespace Game.Map
         // moved to HexSelectionController.Visuals.cs — see that file's own class-level comment.
     }
 }
+
 
 
 

@@ -93,6 +93,10 @@ namespace Game.Ai.V2
                     Outbound = true,
                 };
                 AirSortieRegistry.Add(player, sortie);
+                // A funded combat sortie now owns the wing. Drop Recon's coverage/heading
+                // bookkeeping only here, after handoff, never during read-only nomination.
+                ReconAirSortieRegistry.Retire(player, wing.Id);
+                ReconPatrolStateRegistry.Retire(player, wing.Id, "combat support handoff");
             }
             if (sortie.Kind != AirSortieKind.Strike)
             {
@@ -226,4 +230,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

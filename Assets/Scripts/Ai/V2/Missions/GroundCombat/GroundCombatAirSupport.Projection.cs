@@ -39,6 +39,30 @@ namespace Game.Ai.V2
 
     internal static partial class GroundCombatAirSupport
     {
+        // Recon may yield an already formed wing only to a known, useful strike THIS turn
+        // against an imminent base threat. Route, damage and endurance have one existing owner.
+        // No resource is reserved here; allocation/provisioning still fund and revalidate it.
+        internal static bool HasImmediateDefenceService(WorldSnapshot snap, ArmyData wing)
+        {
+            if (snap?.Map == null || wing == null || wing.CurrentMovement <= 0
+                || AirSortieRegistry.ForArmy(snap.Observer, wing) != null)
+                return false;
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            {
+                if (!objective.Target.EnemyEta.HasValue
+                    || objective.Target.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
+                    continue;
+                var request = new CombatAirSupportRequest(objective.IntentKey,
+                    objective.Target.LastKnownHex, AirStrikePolicy.DefenceSupport(objective.Target.EnemyArmyId),
+                    objective.TaskScore);
+                var service = ProjectService(snap, snap.Observer, snap.Map, wing.Members, wing.Hex, request, wing);
+                if (service.HasValue && service.Value.FirstStrikeEta == 1 && service.Value.RosterKnown
+                    && service.Value.Score.Value > 0f)
+                    return true;
+            }
+            return false;
+        }
+
         // Same route proof as provisioning, with optional read-only claims for a joint coverage
         // projection. Storage and live wings differ only in their initial movement/launch state.
         internal static CombatAirService? ProjectService(WorldSnapshot snap, PlayerSetupData player,
@@ -190,4 +214,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

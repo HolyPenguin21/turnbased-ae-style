@@ -263,7 +263,8 @@ namespace Game.Ai.V2
                         AiV2Util.ResolveArmy(snap.Observer, w.ArmyId)) != null)
                     unavailable.Add(w.ArmyId);
 
-            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap)
+                .OrderBy(o => o.Target.EnemyEta ?? int.MaxValue).ThenByDescending(o => o.BaseValue))
             {
                 int enemyId = objective.Target.EnemyArmyId;
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
@@ -377,3 +378,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

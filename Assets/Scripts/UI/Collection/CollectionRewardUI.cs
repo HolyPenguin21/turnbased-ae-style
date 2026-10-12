@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Core;
+using Game.Cards;
 using Game.Progression;
 using Game.Turns;
 using TMPro;
@@ -14,7 +15,9 @@ namespace Game.UI
     {
         private GameTurnController turns;
         private GameConfig config;
-        private RectTransform canvas, root;
+        private RectTransform canvas;
+        private CollectionRewardView view;
+        private CollectionRewardCardView cardTemplate;
         private readonly HashSet<string> selection = new HashSet<string>();
         private ParticipantResult? retryResult;
         private string error;
@@ -44,11 +47,16 @@ namespace Game.UI
             if (canvas == null)
             {
                 canvas = CollectionUIElements.Canvas("CollectionRewards", new Vector2(1920, 1080));
-                var backdrop = CollectionUIElements.Panel(canvas, "RewardBackdrop"); CollectionUIElements.Stretch(backdrop);
-                backdrop.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
-                root = CollectionUIElements.RewardWindow(backdrop, "Rewards", true);
+                view = Instantiate(Resources.Load<GameObject>("Prefabs/Rewards/CollectionRewards").GetComponent<CollectionRewardView>(), canvas);
+                cardTemplate = Resources.Load<GameObject>("Prefabs/Rewards/CollectionRewardCard").GetComponent<CollectionRewardCardView>();
             }
-            UIFocusUtility.SetOverlay(this, true); CollectionUIElements.Clear(root);
+            UIFocusUtility.SetOverlay(this, true);
+            CollectionUIElements.Clear(view.CardsHost);
+            view.CardsHost.gameObject.SetActive(true);
+            view.BodyRoot.SetActive(false);
+            view.Subtitle.gameObject.SetActive(true);
+            view.Status.gameObject.SetActive(true);
+            view.PrimaryButton.onClick.RemoveAllListeners();
             if (retryResult.HasValue)
             {
                 DrawSaveError("Cannot save the match reward.\n" + error, () => OnResult(retryResult.Value)); return;
@@ -74,19 +82,15 @@ namespace Game.UI
             string notice = !reward.claimed && keys.Count < reward.offeredKeys.Count
                 ? $"{reward.offeredKeys.Count - keys.Count} offers unavailable after a content/limit update. Original identities retained; no replacements." : "";
             string title = reward.outcome == MatchOutcome.Victory ? "VICTORY" : "DEFEAT";
-            CollectionUIElements.RewardTitle(root, title, true);
-            var subtitle = CollectionUIElements.Label(root, keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards — selected {selection.Count}/{required}", 88, 136, 1264, 46, 26);
-            subtitle.alignment = TextAlignmentOptions.Center;
+            view.Title.text = title;
+            view.Subtitle.text = keys.Count == 0 ? "No eligible rewards remain." : reward.claimed ? "REWARD ACQUIRED" : $"Choose {required} rewards — selected {selection.Count}/{required}";
             Button firstChoice = null, focusedChoice = null;
-            float rowWidth = keys.Count * 240 + Mathf.Max(0, keys.Count - 1) * 16;
             for (int i = 0; i < keys.Count; i++)
             {
                 string key = keys[i]; var card = ProgressionContext.Collection.Rules.Resolve(key);
-                // Five offers fit in one row; acquired cards and reduced offers stay centered.
-                float x = (1440 - rowWidth) / 2 + i * 256;
-                var cell = CollectionUIElements.Panel(root, key); CollectionUIElements.Place(cell, x, 204, 240, 438);
-                CollectionUIElements.ApplySurface(cell.GetComponent<Image>(), "Panel_Inset");
-                var art = CollectionUIElements.Rect(cell, "Art"); CollectionUIElements.Place(art, 26, 18, 188, 274);
+                var cell = Instantiate(cardTemplate, view.CardsHost);
+                var art = cell.ArtHost;
+                cell.CopyCountLabel.text = $"Owned: {ProgressionContext.Collection.Owned(key)} / {DeckRules.CopyLimit(card)}";
                 if (config != null && config.armyUnitCardPrefab != null)
                 {
                     var preview = Instantiate(config.armyUnitCardPrefab, art);
@@ -108,53 +112,51 @@ namespace Game.UI
                     var image = art.gameObject.AddComponent<Image>(); image.sprite = card?.art;
                     image.preserveAspect = true; image.raycastTarget = false;
                 }
-                var details = CollectionUIElements.RewardButton(cell, card?.displayName ?? key, 12, 310, 216, 52,
-                    () => CollectionMessageUI.ShowReward(CollectionCardDetail.Describe(card, config, ProgressionContext.Collection.Owned(key))), 19);
-                var name = details.GetComponentInChildren<TMP_Text>();
-                name.enableAutoSizing = true; name.fontSizeMin = 14; name.fontSizeMax = 19;
-                if (reward.claimed)
+                cell.DetailsButton.GetComponentInChildren<TMP_Text>().text = card?.displayName ?? key;
+                cell.DetailsButton.onClick.AddListener(() => CollectionMessageUI.ShowReward(
+                    CollectionCardDetail.Describe(card, config, ProgressionContext.Collection.Owned(key))));
+                cell.ChooseButton.gameObject.SetActive(!reward.claimed);
+                cell.SetSelected(!reward.claimed && selection.Contains(key));
+                if (!reward.claimed)
                 {
-                    var owned = CollectionUIElements.Label(cell, "Owned: " + ProgressionContext.Collection.Owned(key), 12, 380, 216, 40, 21);
-                    owned.alignment = TextAlignmentOptions.Center;
-                }
-                else
-                {
-                    bool selected = selection.Contains(key);
-                    var choose = CollectionUIElements.RewardButton(cell, selected ? "SELECTED" : "SELECT", 12, 380, 216, 40, () =>
-                    { focusedKey = key; if (!selection.Remove(key) && selection.Count < required) selection.Add(key); Draw(); }, 20);
+                    var choose = cell.ChooseButton;
+                    choose.onClick.AddListener(() =>
+                    { focusedKey = key; if (!selection.Remove(key) && selection.Count < required) selection.Add(key); Draw(); });
                     if (firstChoice == null) firstChoice = choose;
                     if (focusedKey == key) focusedChoice = choose;
-                    if (selected)
-                    {
-                        var outline = cell.gameObject.AddComponent<Outline>();
-                        outline.effectColor = new Color(.95f, .66f, .25f, .95f); outline.effectDistance = new Vector2(2, 2);
-                        choose.GetComponent<Image>().color = new Color(1, .82f, .52f);
-                    }
                 }
             }
-            var status = CollectionUIElements.Label(root, string.IsNullOrEmpty(error) ? notice : error, 96, 670, 1248, 62, 20);
-            status.alignment = TextAlignmentOptions.Center; status.enableAutoSizing = true; status.fontSizeMin = 14; status.fontSizeMax = 20;
+            view.Status.text = string.IsNullOrEmpty(error) ? notice : error;
+            var button = view.PrimaryButton;
+            button.GetComponentInChildren<TMP_Text>().text = reward.claimed ? "CONTINUE" : "CONFIRM REWARDS";
+            button.interactable = reward.claimed || selection.Count == required;
             if (!reward.claimed)
             {
-                var button = CollectionUIElements.RewardButton(root, "CONFIRM REWARDS", 490, 760, 460, 54, () =>
+                button.onClick.AddListener(() =>
                 { ProgressionContext.Rewards.Claim(reward.matchId, selection, out error); Draw(); });
-                button.interactable = selection.Count == required;
                 if (focusedChoice != null) focusedChoice.Select();
                 else if (firstChoice != null) firstChoice.Select();
                 else button.Select();
             }
-            else CollectionUIElements.RewardButton(root, "CONTINUE", 490, 760, 460, 54, () =>
-            { if (!ProgressionContext.Rewards.Dismiss(reward.matchId, out error)) { Draw(); return; } FinishDismiss(reward.matchId); }).Select();
+            else
+            {
+                button.onClick.AddListener(() =>
+                { if (!ProgressionContext.Rewards.Dismiss(reward.matchId, out error)) { Draw(); return; } FinishDismiss(reward.matchId); });
+                button.Select();
+            }
         }
         private void DrawSaveError(string message, System.Action retry)
         {
-            CollectionUIElements.RewardTitle(root, "REWARD SAVE ERROR", true);
-            var content = CollectionUIElements.RewardScroll(root, "SaveError", 130, 210, 1180, 440);
-            var label = CollectionUIElements.Label(content, message, 0, 0, 1130, 1, 25);
-            float height = Mathf.Max(1, label.GetPreferredValues(message, 1130, 10000).y);
-            ((RectTransform)label.transform).sizeDelta = new Vector2(1130, height);
-            content.sizeDelta = new Vector2(1130, height);
-            CollectionUIElements.RewardButton(root, "RETRY", 490, 760, 460, 54, retry).Select();
+            view.Title.text = "REWARD SAVE ERROR";
+            view.CardsHost.gameObject.SetActive(false);
+            view.Subtitle.gameObject.SetActive(false);
+            view.Status.gameObject.SetActive(false);
+            view.BodyRoot.SetActive(true);
+            view.Body.text = message;
+            view.PrimaryButton.GetComponentInChildren<TMP_Text>().text = "RETRY";
+            view.PrimaryButton.interactable = true;
+            view.PrimaryButton.onClick.AddListener(() => retry());
+            view.PrimaryButton.Select();
         }
         private void FinishDismiss(string matchId)
         {
@@ -167,7 +169,8 @@ namespace Game.UI
             if (returnToMenu) { GameSession.EndRewardEligibility(); SceneManager.LoadScene(destination); }
             else { var callback = resumedOnClosed; resumedOnClosed = null; callback?.Invoke(); }
         }
-        private void Close() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) { canvas.gameObject.SetActive(false); Destroy(canvas.gameObject); } canvas = null; root = null; }
+        private void Close() { UIFocusUtility.SetOverlay(this, false); if (canvas != null) { canvas.gameObject.SetActive(false); Destroy(canvas.gameObject); } canvas = null; view = null; }
         private void OnDestroy() { if (turns != null) turns.ParticipantFinished -= OnResult; Close(); }
     }
 }
+
