@@ -46,7 +46,7 @@ namespace Game.Ai.V2
     public enum ScoutAssignmentFailureReason
     {
         NoMoverExists,          // no structural candidate at all (stealth-filtered where relevant)
-        NoExecutableStep,       // an eligible mover exists but none has a safe first step / vantage
+        NoExecutableStep,       // no executable candidate this pass (also spent ground / absent air)
         NoObservationVantage,   // Refresh — no on-map vantage within any scout's vision
         MoverContended,         // a capable candidate existed but lost this pass's batch solve
     }

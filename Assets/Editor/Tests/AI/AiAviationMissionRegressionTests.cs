@@ -12,6 +12,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using Game.Terrain;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -154,6 +155,20 @@ namespace Game.EditorTests
 
         private ScoutMissionTarget Sweep() => new ScoutMissionTarget { Kind = ScoutTargetKind.AirSweep, FocusHex = target };
 
+        // These allocator tests supply a priced proposal directly. A snapshot alone cannot
+        // prove a live flight route; Missions admission is covered separately below.
+        private MissionProposal PricedSweep(WorldSnapshot snap)
+        {
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap, Sweep());
+            var proposal = new MissionProposal { Kind = MissionKind.Scout, Target = Sweep(),
+                BaseValue = 30, LocalAdmissionScore = 30, Requirements = new MissionRequirements {
+                    ApMinimum = cost.ApMinimum, ApDesired = cost.ApDesired, ApMaximum = cost.ApMaximum,
+                    EnergyMinimum = cost.EnergyMinimum, EnergyDesired = cost.EnergyDesired,
+                    EnergyMaximum = cost.EnergyMaximum } };
+            proposal.Axes.Value[DesireAxis.Recon] = 1;
+            return proposal;
+        }
+
         [Test]
         public void FreshSweep_PublishesExactStoredLaunchEnergyAsAMandatoryMinimum()
         {
@@ -172,10 +187,7 @@ namespace Game.EditorTests
         public void FreshSweep_FundingCannotAdmitAZeroEnergyEnvelope()
         {
             WorldSnapshot snap = Stored(0);
-            var objective = new ReconObjective { Kind = ReconObjectiveKind.AirSweep, FocusHex = target,
-                TaskScore = new TaskScore(infoGain: 30), BaseValue = 30 };
-            MissionProposal proposal = ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), new[] { objective }).Single();
+            MissionProposal proposal = PricedSweep(snap);
             TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { proposal }, new List<Commitment>(), owner).Pack();
             Assert.That(allocation.Funded, Is.Empty);
@@ -186,14 +198,96 @@ namespace Game.EditorTests
         public void FreshSweep_FirstAllocationFundsTheFullLaunchWithoutRepricing()
         {
             WorldSnapshot snap = Stored();
-            var objective = new ReconObjective { Kind = ReconObjectiveKind.AirSweep, FocusHex = target,
-                TaskScore = new TaskScore(infoGain: 30), BaseValue = 30 };
-            MissionProposal proposal = ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), new[] { objective }).Single();
+            MissionProposal proposal = PricedSweep(snap);
             FundedEntry funded = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { proposal }, new List<Commitment>(), owner).Pack().Funded.Single();
             Assert.That(funded.Tentative.Ap, Is.GreaterThanOrEqualTo(1));
             Assert.That(funded.PhysicalDraw.Energy, Is.EqualTo(2));
+        }
+
+        // Native EditMode: real map, landing capacity, actor registry and mission-bound route.
+        // block: 0=legal, 1=wing serving Strike, 2=no safe landing, 3=spent movement.
+        [TestCase(false, 0)]
+        [TestCase(true, 0)]
+        [TestCase(false, 1)]
+        [TestCase(false, 2)]
+        [TestCase(true, 2)]
+        [TestCase(false, 3)]
+        [TestCase(true, 3)]
+        public void FreshSweepAdmission_UsesLiveAirCandidateWithoutClaimsOrFormation(bool stored, int block)
+        {
+            var mapObject = new GameObject("sweep-admission-map");
+            var rootObject = new GameObject("sweep-admission-root");
+            try
+            {
+                PlayerRootRegistry.Clear(); ReconPatrolStateRegistry.ClearAll(); ReconAirSortieRegistry.ClearAll();
+                HexMap map = mapObject.AddComponent<HexMap>();
+                var terrain = new TerrainTypeEntry { moveCost = 1 };
+                var cells = HexGridMath.HexesInRange(default, 6).ToDictionary(h => h, h => terrain);
+                map.SetData(6, 1f, cells);
+                PlayerRoot root = rootObject.AddComponent<PlayerRoot>();
+                PlayerRootRegistry.Register(owner, root);
+                root.ActionPoints = 0; // physical candidacy must not pre-empt allocator economics
+                var building = new BuildingData { Owner = block == 2 ? new PlayerSetupData() : owner,
+                    Hex = default, IsBase = true, IsStartingCitadel = true, AirfieldCapacity = 2 };
+                BuildingRegistry.Register(default, building);
+                UnitData plane = Plane();
+                if (block == 3) plane.MoveCurrent = 0;
+                var actor = new ArmyData { Owner = owner, Hex = default,
+                    IsAirArmy = !stored, IsAirfield = stored };
+                actor.AddMemberSorted(plane); ArmyRegistry.Register(actor);
+                if (block == 1)
+                    AirSortieRegistry.Add(owner, new AirSortie { Army = actor, Kind = AirSortieKind.Strike,
+                        TargetHex = target, LandingHex = default });
+                var actorSnapshot = new ArmySnapshot { ArmyId = actor.Id, Owner = owner, Hex = actor.Hex,
+                    IsAir = !stored, IsAirfield = stored, MemberCount = 1,
+                    CurrentMovement = plane.MoveCurrent, MaxMovement = 6,
+                    ActivationApCost = 1, ActivationEnergyCost = 2,
+                    PendingActivationApCost = 1, PendingActivationEnergyCost = 2,
+                    StoredAircraft = stored ? new[] { new StoredAircraftLaunchCost(plane.RuntimeId, 1, 2, plane.MoveCurrent) }
+                        : Array.Empty<StoredAircraftLaunchCost>() };
+                var snap = new WorldSnapshot { Observer = owner, TurnNumber = 27, KnowledgeVersion = 1,
+                    Self = new SelfSnapshot { Citadel = default, BaseHexes = new[] { default(HexCoord) },
+                        Armies = new[] { actorSnapshot } },
+                    MapKnowledge = new MapKnowledgeSnapshot { AllHexes = cells.Keys.ToArray(),
+                        VisitedHexSet = new HashSet<HexCoord>(), ScoutHardBlockedHexes = new HashSet<HexCoord>() } };
+                var ctx = new AiTurnContext { Map = map, TurnNumber = 27 };
+                var objective = new ReconObjective { Kind = ReconObjectiveKind.AirSweep, FocusHex = target,
+                    TaskScore = new TaskScore(infoGain: 30), BaseValue = 30 };
+                var jobs = new[] { objective };
+                var witness = ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, Sweep(), null, new HashSet<int>());
+                var proposals = ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
+                    Array.Empty<MissionIntent>(), jobs, ctx: ctx);
+                Assert.That(witness.HasValue, Is.EqualTo(block == 0));
+                Assert.That(proposals.Count, Is.EqualTo(block == 0 ? 1 : 0));
+                if (block == 0)
+                {
+                    Assert.That(witness.Value.ExecutorKind, Is.EqualTo(stored ? ScoutExecutorKind.AirStored : ScoutExecutorKind.AirExisting));
+                    Assert.That(proposals.Single().Requirements.EnergyMinimum, Is.EqualTo(2));
+                    Assert.That(ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, Sweep(), null,
+                        new HashSet<int> { actor.Id }), Is.Null, "a foreign actor claim remains excluded");
+                    plane.MoveCurrent = 0;
+                    actorSnapshot.CurrentMovement = 0;
+                    actorSnapshot.StoredAircraft = stored ? new[] { new StoredAircraftLaunchCost(plane.RuntimeId, 1, 2, 0) }
+                        : Array.Empty<StoredAircraftLaunchCost>();
+                    Assert.That(ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
+                        Array.Empty<MissionIntent>(), jobs, ctx: ctx), Is.Empty,
+                        "same-turn replanning must re-probe current movement, not cache the former witness");
+                }
+                Assert.That(ArmyRegistry.AllForOwner(owner).Single(), Is.SameAs(actor));
+                Assert.That(actor.Members.Single(), Is.SameAs(plane));
+                Assert.That(MissionIntentRegistry.GetOrCreate(owner).All, Is.Empty);
+                Assert.That(root.ActionPoints, Is.Zero);
+                Assert.That(root.GetResource(Game.Economy.ResourceType.Energy), Is.Zero);
+                Assert.That(AirSortieRegistry.For(owner).Count, Is.EqualTo(block == 1 ? 1 : 0));
+                Assert.That(snap.KnowledgeVersion, Is.EqualTo(1));
+            }
+            finally
+            {
+                PlayerRootRegistry.Clear(); ReconPatrolStateRegistry.ClearAll(); ReconAirSortieRegistry.ClearAll();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
         }
 
         [Test]
