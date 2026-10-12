@@ -79,7 +79,7 @@ namespace Game.UI
             canvas.sortingOrder = OverlaySortingOrder;
 
             // Keeping the shader in Resources guarantees that it is included in a player build.
-            Shader shader = Resources.Load<Shader>("ScreenWear");
+            Shader shader = GameAssetCatalog.Load<Shader>("ScreenWear");
             if (shader == null)
                 shader = Shader.Find("Custom/ScreenWear");
 
@@ -90,7 +90,7 @@ namespace Game.UI
                 return;
             }
 
-            _texture = Resources.Load<Texture2D>(TextureResourcePath);
+            _texture = GameAssetCatalog.Load<Texture2D>(TextureResourcePath);
             if (_texture == null)
                 Debug.LogWarning($"ScreenWearOverlay: texture '{TextureResourcePath}' was not found.");
 

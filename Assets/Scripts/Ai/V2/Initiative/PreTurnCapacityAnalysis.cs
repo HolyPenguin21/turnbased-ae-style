@@ -139,7 +139,7 @@ namespace Game.Ai.V2.Initiative
             else
             {
                 InitiativeDeckDemand.Accumulate(deckCatalog != null
-                    ? deckCatalog.BuildDeckPool(player.Faction)
+                    ? deckCatalog.BuildDeckPool(player)
                     : Enumerable.Empty<CardDefinition>(), a.DeckDemand);
             }
 

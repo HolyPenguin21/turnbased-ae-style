@@ -1,3 +1,4 @@
+using Game.Core;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,7 +24,7 @@ namespace Game.UI
 
         public static void Show(Transform card, float started)
         {
-            if (_sprite == null) _sprite = Resources.Load<Sprite>("UI/Effects/HealCross");
+            if (_sprite == null) _sprite = GameAssetCatalog.Load<Sprite>("UI/Effects/HealCross");
             if (_sprite == null) return;
             var go = new GameObject("Heal", typeof(RectTransform), typeof(Image), typeof(LayoutElement), typeof(BattleHealEffect));
             var rect = (RectTransform)go.transform;

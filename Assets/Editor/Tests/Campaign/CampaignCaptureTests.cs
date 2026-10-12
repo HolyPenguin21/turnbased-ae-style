@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Core;
 using System;
 using System.IO;
 using System.Linq;
@@ -148,7 +149,7 @@ public sealed class CampaignCaptureVisualTests
     {
         var parent = new GameObject("Masked campaign panel", typeof(RectTransform), typeof(Canvas), typeof(CanvasRenderer), typeof(UnityEngine.UI.Image), typeof(UnityEngine.UI.Mask));
         var root = new GameObject("Captured region", typeof(RectTransform), typeof(CanvasRenderer));
-        var material = new Material(Resources.Load<Shader>("Shaders/CampaignSurface"));
+        var material = new Material(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
         var mesh = new Mesh();
         try
         {
@@ -183,7 +184,7 @@ public sealed class CampaignCaptureVisualTests
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
             Assert.Ignore("A graphics device is required to verify the real reveal shader.");
-        var material = new Material(Resources.Load<Shader>("Shaders/CampaignSurface"));
+        var material = new Material(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
         var mesh = new Mesh(); var image = new Texture2D(512, 256, TextureFormat.RGBA32, false);
         var target = RenderTexture.GetTemporary(512, 256, 0, RenderTextureFormat.ARGB32); var previous = RenderTexture.active;
         try
@@ -218,7 +219,7 @@ public sealed class CampaignCaptureVisualTests
     public void DisablingPresentationFinishesCaptureAndRefreshDoesNotRestartIt()
     {
         var root = new GameObject("Capture lifecycle", typeof(RectTransform), typeof(CanvasRenderer));
-        var material = new Material(Resources.Load<Shader>("Shaders/CampaignSurface"));
+        var material = new Material(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
         try
         {
             root.GetComponent<RectTransform>().sizeDelta = new Vector2(1000, 600);

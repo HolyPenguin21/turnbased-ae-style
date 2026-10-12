@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using Game.Core;
 using Game.UI;
 using TMPro;
 using UnityEditor;
@@ -40,7 +41,7 @@ public static class CollectionWindowBuilder
         var dropdown = rowObject.FindProperty("factionDropdown").objectReferenceValue as TMP_Dropdown;
         var input = rowObject.FindProperty("nicknameField").objectReferenceValue as TMP_InputField;
         if (dropdown == null || input == null) { EditorUtility.DisplayDialog("Collection window", "PlayerRow prefab has no faction dropdown / nickname field to copy the style from.", "OK"); return; }
-        var font = Resources.Load<TMP_FontAsset>("Fonts/GameMenuFont");
+        var font = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/GameMenuFont");
 
         var cell = LoadOrCreatePrefab("CollectionCardCell", () => BuildCell(font).gameObject).GetComponent<CollectionCardCellView>();
         var row = LoadOrCreatePrefab("CollectionDeckRow", () => BuildRow(font).gameObject).GetComponent<CollectionDeckRowView>();

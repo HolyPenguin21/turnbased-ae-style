@@ -4,8 +4,8 @@ Run the structural integration gate from the repository root:
 
 ```sh
 python3 Tools/ui-audio-verify/verify.py
-node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
-node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
+node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Prefabs/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
+node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Prefabs/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
 ```
 
 These checks do not compile C# or prove Unity imports or plays the assets correctly.
@@ -20,7 +20,7 @@ covers service reinitialization; it does not replace actual Editor reload testin
 
 ## Runtime design
 
-`Resources/Audio/GameAudio` is bootstrapped before scene loading and survives scene
+`Assets/Prefabs/Audio/GameAudio` (loaded via GameAssetCatalog key `Audio/GameAudio`) is bootstrapped before scene loading and survives scene
 changes. Its two 2D AudioSources route into UI and Music mixer groups, with Master
 above both. Scene cameras retain their AudioListeners; the binder selects the
 active scene's MainCamera listener (or its sole eligible camera listener).

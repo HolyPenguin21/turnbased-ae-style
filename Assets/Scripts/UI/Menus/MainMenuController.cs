@@ -1,3 +1,4 @@
+using Game.Core;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -149,7 +150,7 @@ namespace Game.UI
             var metal = CollectionUIElements.Panel(window, "CampaignMetal"); CollectionUIElements.Stretch(metal);
             metal.offsetMin = new Vector2(19, 19); metal.offsetMax = new Vector2(-19, -19);
             var image = metal.GetComponent<Image>();
-            image.sprite = Resources.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetalClean") ?? Resources.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal");
+            image.sprite = GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetalClean") ?? GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal");
             image.type = Image.Type.Tiled; image.color = new Color(.82f, .82f, .82f); image.raycastTarget = false;
             metal.SetAsFirstSibling();
             var frame = CollectionUIElements.Panel(window, "CampaignFrame"); CollectionUIElements.Stretch(frame);

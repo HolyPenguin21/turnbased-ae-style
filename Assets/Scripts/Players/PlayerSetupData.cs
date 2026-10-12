@@ -10,6 +10,10 @@ namespace Game.Players
         public Faction Faction;
         public bool IsHuman;
         public string SelectedDeckId;
+        // AI players only: the StartingDeckCatalog.aiDecks entry chosen for this match.
+        public string AiDeckName;
+        // AI players only: authoredKeys of the chosen AI deck's blueprints; null = unrestricted.
+        public System.Collections.Generic.HashSet<string> AiBlueprints;
         public Game.Cards.MatchLoadout MatchLoadout;
         public Game.Cards.BlueprintQuota BlueprintQuota;
         // True only for CitadelSetupController's single shared _neutralPlayer instance — never

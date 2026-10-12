@@ -82,7 +82,7 @@ namespace Game.EditorTests
         }
         [Test] public void AudioPrefab_HasTwoIndependent2DSourcesAndNoListener()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/Audio/GameAudio.prefab");
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/Audio/GameAudio.prefab");
             Assert.NotNull(prefab);
             Assert.NotNull(prefab.GetComponent<GameAudioManager>());
             Assert.NotNull(prefab.GetComponent<SceneUIAudioBinder>());

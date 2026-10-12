@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Core;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -269,7 +270,7 @@ namespace Game.EditorTools
                     ("Deck/StatisticsFrame", "UI/Panels/Collection/Panel_Inset"), ("Deck/DeckTitle", "UI/Decorations/Collection/DeckHeader") })
                 {
                     var target = pair.Item1 == "" ? root : root.Find(pair.Item1);
-                    var expected = Resources.Load<Sprite>(pair.Item2);
+                    var expected = GameAssetCatalog.Load<Sprite>(pair.Item2);
                     Assert.That(expected, Is.Not.Null);
                     Assert.That(target.GetComponent<UnityEngine.UI.Image>().sprite, Is.EqualTo(expected));
                 }
@@ -280,7 +281,7 @@ namespace Game.EditorTools
                 Assert.That(field.text, Is.EqualTo("Keep my deck"));
                 save.onClick.Invoke(); Assert.That(clicks, Is.EqualTo(1));
                 var cellBackground = cell.GetComponent<UnityEngine.UI.Image>();
-                cellBackground.sprite = Resources.Load<Sprite>("UI/Panels/Collection/Panel_Outer");
+                cellBackground.sprite = GameAssetCatalog.Load<Sprite>("UI/Panels/Collection/Panel_Outer");
                 cellBackground.color = Color.white;
                 Game.UI.CollectionUIElements.ApplyCellSkin((RectTransform)cell.transform);
                 Assert.That(cellBackground.sprite, Is.Null); Assert.That(cellBackground.color.a, Is.Zero);
@@ -406,12 +407,12 @@ namespace Game.EditorTools
                 Assert.That(background.sprite, Is.Null); Assert.That(item.colors.normalColor.a, Is.Zero);
                 Assert.That(((RectTransform)item.transform).sizeDelta.y, Is.EqualTo(32));
                 Assert.That(dropdown.template.GetComponent<UnityEngine.UI.Image>().sprite,
-                    Is.EqualTo(Resources.Load<Sprite>("UI/Controls/Collection/Input")));
+                    Is.EqualTo(GameAssetCatalog.Load<Sprite>("UI/Controls/Collection/Input")));
                 var scroll = dropdown.template.GetComponent<UnityEngine.UI.ScrollRect>();
                 var bar = scroll.verticalScrollbar;
                 Assert.That(bar.GetComponent<UnityEngine.UI.Image>().sprite, Is.Null);
                 Assert.That(bar.handleRect.GetComponent<UnityEngine.UI.Image>().sprite,
-                    Is.EqualTo(Resources.Load<Sprite>("UI/Buttons/Collection/SquareButton")));
+                    Is.EqualTo(GameAssetCatalog.Load<Sprite>("UI/Buttons/Collection/SquareButton")));
                 Assert.That(((RectTransform)bar.transform).sizeDelta.x, Is.EqualTo(10));
                 Assert.That(bar.handleRect.Cast<Transform>().Count(t => t.name.StartsWith("Grip", StringComparison.Ordinal)), Is.EqualTo(3));
             }

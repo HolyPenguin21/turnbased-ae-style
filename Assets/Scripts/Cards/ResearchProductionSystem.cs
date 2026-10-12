@@ -169,6 +169,8 @@ namespace Game.Cards
             var cards = OfferedCards(catalog, mode, player != null ? player.Faction : Faction.None);
             if (player != null && player.IsHuman)
                 cards.RemoveAll(c => player.MatchLoadout == null || player.BlueprintQuota?.Available(c.authoredKey) != true);
+            else if (player?.AiBlueprints != null)
+                cards.RemoveAll(c => !player.AiBlueprints.Contains(c.authoredKey));
             return cards;
         }
 
@@ -223,7 +225,8 @@ namespace Game.Cards
                 reason = "player resource account is not the canonical registered root";
                 return false;
             }
-            if (!Offers(catalog, mode, player.Faction, card))
+            if (!Offers(catalog, mode, player.Faction, card)
+                || (!player.IsHuman && player.AiBlueprints != null && !player.AiBlueprints.Contains(card.authoredKey)))
             {
                 reason = "card is not offered by the current Research/Production catalog";
                 return false;

@@ -58,12 +58,13 @@ namespace Game.Ai
         // view — the deck is still mutated only through DrawOne.
         public IReadOnlyList<CardDefinition> RemainingDeck => _remainingDeck;
 
-        public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize, int capacity = 10)
+        public AiHandData(StartingDeckCatalog deckCatalog, Faction faction, int startingHandSize, int capacity = 10,
+            string aiDeckName = null)
         {
             Capacity = Mathf.Max(0, capacity);
 
             if (deckCatalog != null)
-                _remainingDeck.AddRange(deckCatalog.BuildDeckPool(faction));
+                _remainingDeck.AddRange(deckCatalog.BuildAiDeckPool(faction, aiDeckName));
 
             for (int i = 0; i < startingHandSize; i++)
                 if (DrawOne() == null)
@@ -185,7 +186,7 @@ namespace Game.Ai
                 return null;
             if (!ByPlayer.TryGetValue(player, out AiHandData hand))
             {
-                hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10);
+                hand = new AiHandData(deckCatalog, player.Faction, startingHandSize, capacity ?? 10, player.AiDeckName);
                 ByPlayer[player] = hand;
                 OwnerByHand[hand] = player;
             }

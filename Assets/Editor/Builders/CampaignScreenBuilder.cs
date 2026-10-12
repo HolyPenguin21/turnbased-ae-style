@@ -1,4 +1,5 @@
 #if UNITY_EDITOR
+using Game.Core;
 using System.Collections.Generic;
 using Game.Campaign;
 using Game.UI;
@@ -35,9 +36,9 @@ public static class CampaignScreenBuilder
         var so = new SerializedObject(ui);
         endTurnSprite = so.FindProperty("endTurnSprite").objectReferenceValue as Sprite;
         actionSprite = so.FindProperty("actionButtonSprite").objectReferenceValue as Sprite;
-        font = Resources.Load<TMP_FontAsset>("Fonts/GameMenuFont");
-        var frame = Resources.Load<Sprite>("UI/Panels/Campaign/MetalFrameRounded");
-        var metal = Resources.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetalClean") ?? Resources.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal");
+        font = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/GameMenuFont");
+        var frame = GameAssetCatalog.Load<Sprite>("UI/Panels/Campaign/MetalFrameRounded");
+        var metal = GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetalClean") ?? GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal");
 
         var neighborRow = LoadOrCreatePrefab("CampaignNeighborRow", BuildNeighborRow).GetComponent<CampaignNeighborRowView>();
         var deckRow = LoadOrCreatePrefab("CampaignDeckRow", BuildDeckRow).GetComponent<CampaignDeckRowView>();
@@ -75,7 +76,7 @@ public static class CampaignScreenBuilder
         mapProperties.FindProperty("arrow").objectReferenceValue = attackGraphic; mapProperties.ApplyModifiedPropertiesWithoutUndo();
         var clouds = Rect(surface, "AtmosphericClouds"); Stretch(clouds);
         var cloudImage = clouds.gameObject.AddComponent<RawImage>();
-        cloudImage.texture = Resources.Load<Texture2D>("Campaign/Effects/AtmosphericClouds");
+        cloudImage.texture = GameAssetCatalog.Load<Texture2D>("Campaign/Effects/AtmosphericClouds");
         cloudImage.uvRect = new Rect(.04f, .04f, .92f, .92f);
         cloudImage.color = new Color(.90f, .87f, .81f, .94f); cloudImage.raycastTarget = false;
         Frame(surface, frame);

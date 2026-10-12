@@ -101,7 +101,7 @@ namespace Game.Campaign
         // Shader-driven surfaces get per-screen material instances; the objects themselves are scene-authored.
         private void SetupMaterials()
         {
-            var cloudShader = Resources.Load<Shader>("Shaders/CampaignSurface");
+            var cloudShader = GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface");
             if (cloudShader == null) { cloudImage.enabled = false; return; }
             consoleMaterial = new Material(cloudShader) { name = "CampaignConsole (runtime)" };
             consoleMaterial.SetFloat("_Atmosphere", 1);

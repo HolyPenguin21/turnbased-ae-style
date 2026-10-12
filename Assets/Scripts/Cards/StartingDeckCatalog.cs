@@ -23,6 +23,10 @@ namespace Game.Cards
         public string deckName;
         public Faction faction;
         public List<DeckCardEntry> cards = new List<DeckCardEntry>();
+        // AI decks only: blueprints (equipment / mutators) the AI may produce without limit.
+        // Never drawn into the hand; they gate what the AI's Production/Research may offer.
+        public List<DeckCardEntry> equipment = new List<DeckCardEntry>();
+        public List<DeckCardEntry> mutators = new List<DeckCardEntry>();
     }
 
     // Every starting deck in the game, plus every FactionCardCatalog a deck's cards can be drawn
@@ -36,6 +40,10 @@ namespace Game.Cards
     {
         public List<FactionCardCatalog> catalogs = new List<FactionCardCatalog>();
         public List<StartingDeck> decks = new List<StartingDeck>();
+
+        // Decks AI players draw from. Every AI player picks one at random among its faction's
+        // decks once, when the match is prepared (PickAiDeckName), so several can be authored.
+        public List<StartingDeck> aiDecks = new List<StartingDeck>();
 
         public FactionCardCatalog GetCatalog(Faction faction) =>
             catalogs.FirstOrDefault(c => c != null && c.faction == faction);
@@ -68,10 +76,48 @@ namespace Game.Cards
         // Expands `faction`'s deck (card+count rows) into the flat pool CardHandUI/AiHandData
         // draw from without replacement — what deckIndices used to be, just CardDefinitions
         // instead of catalog-relative ints, since a card can now come from any of `catalogs`.
-        public List<CardDefinition> BuildDeckPool(Faction faction)
+        public List<CardDefinition> BuildDeckPool(Faction faction) => BuildPool(GetDeck(faction));
+
+        public IEnumerable<StartingDeck> GetAiDecks(Faction faction) =>
+            aiDecks.Where(d => d != null && d.faction == faction);
+
+        // Random AI deck name for `faction`; null when none is authored (callers then fall back
+        // to the faction's starting deck).
+        public string PickAiDeckName(Faction faction)
+        {
+            List<StartingDeck> options = GetAiDecks(faction).ToList();
+            return options.Count == 0 ? null : options[Random.Range(0, options.Count)].deckName;
+        }
+
+        public StartingDeck GetAiDeck(Faction faction, string deckName)
+        {
+            List<StartingDeck> options = GetAiDecks(faction).ToList();
+            return options.FirstOrDefault(d => d.deckName == deckName)
+                ?? (options.Count > 0 ? options[Random.Range(0, options.Count)] : null);
+        }
+
+        // The pool an AI player draws from: its chosen AI deck, else (no AI deck authored for the
+        // faction) the faction's starting deck. Human players keep BuildDeckPool(faction).
+        public List<CardDefinition> BuildAiDeckPool(Faction faction, string deckName) =>
+            BuildPool(GetAiDeck(faction, deckName) ?? GetDeck(faction));
+
+        // Keys of the AI deck's blueprints; null when the faction has no AI deck (no restriction).
+        public HashSet<string> BuildAiBlueprintKeys(Faction faction, string deckName)
+        {
+            StartingDeck deck = GetAiDeck(faction, deckName);
+            if (deck == null) return null;
+            var keys = new HashSet<string>();
+            foreach (DeckCardEntry e in (deck.equipment ?? new List<DeckCardEntry>()).Concat(deck.mutators ?? new List<DeckCardEntry>()))
+                if (e != null && e.count > 0 && !string.IsNullOrEmpty(e.cardKey)) keys.Add(e.cardKey);
+            return keys;
+        }
+
+        public List<CardDefinition> BuildDeckPool(PlayerSetupData player) =>
+            player.IsHuman ? BuildDeckPool(player.Faction) : BuildAiDeckPool(player.Faction, player.AiDeckName);
+
+        private List<CardDefinition> BuildPool(StartingDeck deck)
         {
             var pool = new List<CardDefinition>();
-            StartingDeck deck = GetDeck(faction);
             if (deck?.cards == null)
                 return pool;
 

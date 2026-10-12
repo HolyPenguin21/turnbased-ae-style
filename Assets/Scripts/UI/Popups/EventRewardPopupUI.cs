@@ -1,3 +1,4 @@
+using Game.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -83,7 +84,7 @@ namespace Game.UI
             var backdrop = panelRoot.GetComponent<Image>();
             if (backdrop != null) { backdrop.sprite = null; backdrop.color = Color.clear; }
             foreach (Transform child in panelRoot.transform) child.gameObject.SetActive(false);
-            rewardView = Instantiate(Resources.Load<GameObject>("Prefabs/Rewards/EventReward").GetComponent<CollectionRewardView>(), panelRoot.transform);
+            rewardView = Instantiate(GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/EventReward").GetComponent<CollectionRewardView>(), panelRoot.transform);
             unitImage = rewardView.RecipientImage;
             rewardCardImage = rewardView.RewardImage;
             summaryText = rewardView.Body;
