@@ -97,6 +97,7 @@ namespace Game.UI
             factionDropdown.ClearOptions(); factionDropdown.AddOptions(DeckRules.PlayableFactions.Select(LabelFaction).ToList());
             categoryDropdown.ClearOptions(); categoryDropdown.AddOptions(new List<string> { "All Cards", "Heroes", "Units", "Buildings", "Equipment", "Mutators" });
             ownershipDropdown.ClearOptions(); ownershipDropdown.AddOptions(new List<string> { "All Cards", "Owned Cards", "Not Owned" });
+            CollectionUIElements.ApplyCollectionScrollSkin(transform);
             factionDropdown.onValueChanged.AddListener(value => Guard(() =>
             { faction = DeckRules.PlayableFactions[value]; selected = null; draft = collection.DefaultDeck(faction) ?? NewDeck(); dirty = false; RefreshAll(true); }));
             categoryDropdown.onValueChanged.AddListener(value => { category = value; RefreshCards(true); });
@@ -256,7 +257,10 @@ namespace Game.UI
                 deckNames.Add((d.DeckId == draft.deckId ? draft.name + (dirty ? " *" : "") : d.Name) + (d.IsStarter ? " [Starter]" : ""));
             string key = string.Join("\n", deckNames);
             if (key != deckNamesKey)
-            { deckNamesKey = key; deckDropdown.ClearOptions(); deckDropdown.AddOptions(deckNames); }
+            {
+                deckNamesKey = key; deckDropdown.ClearOptions(); deckDropdown.AddOptions(deckNames);
+                CollectionUIElements.ConfigureDropdownScroll(deckDropdown);
+            }
             deckDropdown.SetValueWithoutNotify(index); deckDropdown.RefreshShownValue();
             if (deckNameInput.text != draft.name) deckNameInput.SetTextWithoutNotify(draft.name);
             deleteButton.interactable = !draft.isStarter && !collection.IsStarter(draft.deckId);
@@ -366,5 +370,6 @@ namespace Game.UI
         public static void ShowMessage(Transform parent, string message) => CollectionMessageUI.Show(message);
     }
 }
+
 
 
