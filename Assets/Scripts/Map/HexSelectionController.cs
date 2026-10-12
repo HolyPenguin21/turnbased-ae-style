@@ -504,6 +504,8 @@ namespace Game.Map
                 return;
             }
 
+            HexInteracted?.Invoke(hoverCoord.Value);
+
             if (Mouse.current != null)
             {
                 Vector2 screenPosition = Mouse.current.position.ReadValue();
@@ -1052,6 +1054,8 @@ namespace Game.Map
         // opens one closes the other first, funnelled through these two rather than repeating the
         // Hide-then-Show pairing at each call site.
         public event System.Action<ArmyData> ArmyInteracted;
+        // Actual map clicks only; SelectHex also runs during automatic UI refreshes.
+        public event System.Action<HexCoord> HexInteracted;
 
         private void ShowArmyModal(ArmyData army)
         {

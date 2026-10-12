@@ -20,11 +20,11 @@
 
 `Tools/ai-v2-decoupling-verify/`: `compare_traces.py`, `check_boundaries.py`, `selftest.py`, `README.md` (схема JSONL и правила R1–R6).
 `selftest.py`: хорошая трасса → exit 0; пять негативных фикстур (перестановка consume/reentry, стёртый owner, второй commit, income-cover release после старта первого tempo, просроченная строка на следующем ходу) → exit 1. Запущен, **SELFTEST PASSED**.
-Затем добавлены recorder `Assets/Editor/AiDecouplingTrace.cs` и золотые трассы двух банковских fixture (§4); `check_boundaries.py` на них — ok. Ограничение: recorder читает ledger из теста в точках, которые выбирает fixture; полного цикла `RunTurn` он не записывает (это появится в fixture этапов). Игровые логи нужных полей не содержат и численным сравнением не считаются.
+Затем добавлены recorder `Assets/Editor/Tests/AI/AiDecouplingTrace.cs` и золотые трассы двух банковских fixture (§4); `check_boundaries.py` на них — ok. Ограничение: recorder читает ledger из теста в точках, которые выбирает fixture; полного цикла `RunTurn` он не записывает (это появится в fixture этапов). Игровые логи нужных полей не содержат и численным сравнением не считаются.
 
 ## 3. Транскрипция цикла
 
-`Assets/Editor/AiTurnLoopTests.cs` уже содержит независимую транскрипцию исходного цикла (`Baseline`, снята с `c3cdde46`, до L4) и генератор 20 000 многошаговых сценариев против реального `TurnLoop.Run`. Для Э1 тест расширяется (исходы тел вместо записи состояния), второй похожий тест не создаётся. Транскрипция «текущего» `Run` как эталона для Э6 совпадает с этой, так как порядок переходов L4→L5 не менялся (`git log f46e4529..HEAD -- TurnLoop.cs` — пусто (до Э0 файл не менялся после `f46e4529`)).
+`Assets/Editor/Tests/AI/AiTurnLoopTests.cs` уже содержит независимую транскрипцию исходного цикла (`Baseline`, снята с `c3cdde46`, до L4) и генератор 20 000 многошаговых сценариев против реального `TurnLoop.Run`. Для Э1 тест расширяется (исходы тел вместо записи состояния), второй похожий тест не создаётся. Транскрипция «текущего» `Run` как эталона для Э6 совпадает с этой, так как порядок переходов L4→L5 не менялся (`git log f46e4529..HEAD -- TurnLoop.cs` — пусто (до Э0 файл не менялся после `f46e4529`)).
 
 ## 4. Сценарии §12 ТЗ: сопоставление с тестами на `717871b8`
 
@@ -90,7 +90,7 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 |---|---|
 | `Orchestration/TurnLoop.cs` | + `TurnLoopView` (readonly struct: значения `SettledSteps`, `NoProgressCycles`, `ReturnsMayWait`, `WithinStepBounds`; ссылки на состояние нет), + `ProgressUpdate`, + `AdmissionIterationOutcome` (одноразовый sink: `SettledStep`, `NoFundedMission`, `NoProvisionedTask`, `StopAfterSettledStep`, `DeferReturns`, `NoProgressAfter`), + `TurnLoop.ApplyIterationOutcome` (единственная запись счётчиков итерации); `TurnLoopWork.Iteration` принимает view и outcome вместо `Action<bool>` |
 | `Orchestration/AiStrategyV2Pipeline.cs` | `RunAdmissionIteration` и `RunMandatoryAviationStep` получают view/outcome; все записи `loop.SettledSteps/NoProgressCycles/ResidualWindow/ReturnsDeferred` и три `stopPass(true)` заменены вызовами outcome. Остальные записи уже были в `TurnLoop` |
-| `Assets/Editor/AiTurnLoopTests.cs` | драйвер проверяемого цикла использует outcome, **эталон-транскрипция baseline не менялась** (тела пишут состояние сами, как в исходнике); + таблица исходов с литеральными ожиданиями; + view без ссылки на состояние; + проверка исходников |
+| `Assets/Editor/Tests/AI/AiTurnLoopTests.cs` | драйвер проверяемого цикла использует outcome, **эталон-транскрипция baseline не менялась** (тела пишут состояние сами, как в исходнике); + таблица исходов с литеральными ожиданиями; + view без ссылки на состояние; + проверка исходников |
 
 Новый файл `AdmissionIterationOutcome.cs` ТЗ предлагало отдельным; типы размещены в `TurnLoop.cs` рядом с `TurnLoopWork`, потому что они часть контракта цикла и больше нигде не используются. Если нужен отдельный файл — перенос без изменений поведения.
 
@@ -178,7 +178,7 @@ Unity EditMode/PlayMode — берёт на себя владелец; нати�
 | `Provisioning/PassParking.cs` | парковка прохода: `Park` (множество прохода + `CarryRetryNextTurn`), `Filter` (+причина `retry_next_turn_after_provision_failure` для durable-ноги); создаётся при открытии прохода |
 | `Provisioning/ProvisioningSelectionOutcome.cs` | результат: `Selected`, `SelectedKey`, `SelectedIsCommitment`, `FinalAllocation`, `AttemptedKeys`, журнал `Events` (`ScoutBatchFailure` / `Failure` / `Success`), `FundedKeysAcrossPacks` — транзитный журнал одного вызова, не ledger |
 | `Orchestration/AiStrategyV2Pipeline.cs` | вызов `ProvisionNext`; журнал проигрывается в `MissionOutcomeLedger` и телеметрию сразу после вызова (до исполнения шага); `retryNextTurnThisPass` заменён `PassParking`; фильтр парковки — `passParking.Filter` в прежней точке (после ожидания возвратов, до `BindFunding`) |
-| `Assets/Editor/AiProvisioningSelectionTests.cs` | 11 тестов (ниже) |
+| `Assets/Editor/Tests/AI/AiProvisioningSelectionTests.cs` | 11 тестов (ниже) |
 
 Начальный `Pack` и выбор обязательной авиации остались в оркестраторе до первого вызова (иначе меняется порядок регистрации funded). `ProvisioningSession` по-прежнему открывается `using` на всю итерацию и не закрывается в `ProvisionNext`: выбранная миссия исполняется, наблюдается и повторно допускается под её claim-ами.
 
@@ -271,7 +271,7 @@ Managed (`e3-a-p`): 2151 тест, 1676 прошло, 475 упало; регре
 | `Continuity/LifecycleReturnPolicy.cs` | перенесён из `Orchestration/` через `git mv` вместе с `.meta` (GUID `cce6239d…` сохранён), namespace, `LastWait`, `ClearAll` не менялись |
 | `Continuity/MissionContinuityLayer.ReturnDeferral.cs` (новый partial) | `DeferReturnsBeforeTempo(snapshot, player, turn, proposals, activeIntents)`: `HomeThreatened` → `SelectWaiting` → `RecordWait` → `MarkProtectedThisTurn` → лог → `Retained/Waiting/Deferrals` в прежнем порядке |
 | `Orchestration/AiStrategyV2Pipeline.cs` | `MissionPortfolio.Build`; `if (view.ReturnsMayWait) DeferReturnsBeforeTempo(…)`; исход «возврат ждал» → `outcome.DeferReturns()`; фильтр парковки (Э3) стоит после ожидания, до `BindFunding`, как и был |
-| `Assets/Editor/AiMissionPortfolioTests.cs` (новый) | 10 тестов |
+| `Assets/Editor/Tests/AI/AiMissionPortfolioTests.cs` (новый) | 10 тестов |
 | `ARCHITECTURE.md` | путь правила возвратов исправлен |
 
 **Мёртвая ветка убрана.** `BuildMissionSet` имел единственного production-вызывающего (`RunAdmissionIteration`), и тот всегда передавал `aggressionPressureAlreadyRefreshed: true` — ветка повторного `RefreshAggressionOperationalFacts` не исполнялась. `Build` её не содержит; факты Aggression по-прежнему обновляет кадр решения (`RefreshOperationalFrame`) в том же шаге, что и objectives. `ReactionRoundExecutor` собирает свой набор отдельным кодом (Recon + Aggression, другие логи) и не менялся.
@@ -375,7 +375,7 @@ Managed (`e4-a-p`): 2162 теста, 1687 прошло, 475 упало, регр
 |---|---|
 | `Orchestration/DecisionFrame.cs` (новый) | `DecisionFrame` хранит `Snapshot`, `Recon`, `Aggression`, `Intents`, `Commitments`, `Demands`, `PostCommitments` (чтение снаружи, присваивает только сам класс) и маркер свежести; `FrameServices` — шов к мировым владельцам (`WorldAnalysis`, `StrategyLayer`, оценщики объектив, `MissionContinuityLayer`, `AiTurnSession`, `DemandLayer`, `CombatOpportunityAnalyzer`); `Production(...)` привязывает его к реальным методам |
 | `Orchestration/AiStrategyV2Pipeline.cs` | локали `snapshot`, `reconObjectives`, `aggressionObjectives`, `activeIntents`, `actorCommitments`, `demands`, `postCommitments`, флаг `ownershipFreshAfterPhaseA`, локальная функция `RefreshDecisionFrame` и статический `RefreshOperationalFrame` / `OperationalFrame` удалены; все чтения — `frame.X`, все присваивания — именованные операции |
-| `Assets/Editor/AiDecisionFrameTests.cs` (новый) | 11 тестов |
+| `Assets/Editor/Tests/AI/AiDecisionFrameTests.cs` (новый) | 11 тестов |
 
 **Отклонение от ТЗ (с обоснованием):** отдельного `DecisionFrameView.cs` нет. Свойства кадра имеют `private set`, поэтому снаружи они уже доступны только на чтение; отдельный тип-обёртка не добавил бы ограничения, только слой. Если вам нужен именно этот файл — это обёртка без изменения поведения.
 
@@ -520,7 +520,7 @@ Managed (`e5fix-a-p`): 2176 тестов, 1700 прошло, 475 упало; р�
 | `Orchestration/StepTriggerSequence.cs` | форма для production: `Run(pairs, session, frame, readmission, sink)` — сессия, кадр и компонент допуска напрямую; делегатное ядро осталось (его гоняют тесты) |
 | `Orchestration/TypedTriggerFanOut.cs` | `Split(pending, intents, snapshot)`: готовность строителя спрашивается у Continuity лениво внутри, без замыкания `RunTurn` |
 | `Orchestration/AiStrategyV2Pipeline.cs` | остались: старт, сборка компонентов, `TurnLoop.Run`, recall, итоговое владение, `SettleAfterTurn`, Housekeeping, аудит, cleanup |
-| `Assets/Editor/AiTurnWorkIntegrationTests.cs` (новый), `AiTurnLoopTests`, `AiDecisionFrameTests`, `AiMissionPortfolioTests` | 9 новых тестов; существующие переведены на компоненты и новые файлы |
+| `Assets/Editor/Tests/AI/AiTurnWorkIntegrationTests.cs` (новый), `AiTurnLoopTests`, `AiDecisionFrameTests`, `AiMissionPortfolioTests` | 9 новых тестов; существующие переведены на компоненты и новые файлы |
 
 Новый класс сверх перечня ТЗ — `TurnPhaseState.cs` (`PhaseResults`, `TurnTelemetry`): ТЗ требует «явные constructor dependencies … telemetry accumulator, phase results»; без него пришлось бы передавать `RunTurn`-переменные делегатами. `StrategicReadmission`, `StrategicAdmissionFingerprints`, `Development/Aggression/EconomyAdmission` не менялись — ТЗ оставляет их владельцами ключей (доменная связанность Orchestration, не заявлена как устранённая).
 

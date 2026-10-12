@@ -27,19 +27,42 @@ namespace Game.Campaign
     {
         public static CampaignController Controller { get; private set; }
         public static string Notice { get; private set; }
+        // A manual battle may commit in Game before CampaignUI exists. Keep one live receipt across
+        // that scene handoff, consume it once, and never reconstruct it from saved battle history.
+        private static CampaignRegionOwnershipChange? pendingOwnershipChange;
         public static CampaignStore Store => new CampaignStore(Application.persistentDataPath);
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void Reset() { Controller = null; Notice = null; }
+        private static void Reset() { SetController(null); pendingOwnershipChange = null; Notice = null; }
+        private static void SetController(CampaignController controller)
+        {
+            if (Controller != null) Controller.RegionOwnershipChanged -= RememberOwnershipChange;
+            Controller = controller;
+            if (Controller != null) Controller.RegionOwnershipChanged += RememberOwnershipChange;
+        }
+        private static void RememberOwnershipChange(CampaignRegionOwnershipChange change) => pendingOwnershipChange = change;
+        public static bool TryTakeOwnershipChange(out CampaignRegionOwnershipChange change)
+        {
+            var pending = pendingOwnershipChange;
+            pendingOwnershipChange = null;
+            change = pending.GetValueOrDefault();
+            return pending.HasValue && change.Matches(Controller?.View);
+        }
         public static bool Load(out string error)
         {
-            error = null; Controller = null;
-            try { var s = Store.Load(out string notice); Notice = notice; Controller = s == null ? null : new CampaignController(s, Store); return s != null; }
+            error = null; SetController(null);
+            try
+            {
+                var s = Store.Load(out string notice); Notice = notice;
+                SetController(s == null ? null : new CampaignController(s, Store));
+                if (pendingOwnershipChange.HasValue && !pendingOwnershipChange.Value.Matches(s)) pendingOwnershipChange = null;
+                return s != null;
+            }
             catch (Exception ex) { error = ex.Message; return false; }
         }
         public static void Create(Faction human)
         {
             var state = new CampaignMapGenerator().Generate(unchecked((int)DateTime.UtcNow.Ticks), human);
-            Store.Save(state); Controller = new CampaignController(state, Store);
+            Store.Save(state); pendingOwnershipChange = null; SetController(new CampaignController(state, Store));
         }
         public static bool PrepareMatch(GameConfig config, string deckId, out string error)
         {
@@ -140,3 +163,4 @@ namespace Game.Campaign
             && (Controller?.Snapshot.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId) ? SceneNames.Campaign : SceneNames.MainMenu;
     }
 }
+

@@ -17,6 +17,7 @@ namespace Game.Cards
     // has) — spent once, here, whichever target kind it's attached to.
     public static class EquipmentSystem
     {
+        public static event System.Action<ArmyData, UnitData, CardDefinition> LiveAttachmentReceived;
         public static CardDefinition GetAttachment(CardData host, CardDefinition attachment)
             => attachment?.attachmentSlot == AttachmentSlot.Mutator ? host?.Mutator : host?.Equipment;
 
@@ -424,7 +425,7 @@ namespace Game.Cards
             PayCost(equipment, equipment != null ? equipment.apCost : 0,
                 equipment != null ? equipment.resourceCost : null, owner);
             Install(equipment, target);
-            RefreshLiveHostObservation(target);
+            RefreshLiveHostObservation(target, equipment);
             return true;
         }
 
@@ -452,7 +453,7 @@ namespace Game.Cards
             PayCost(equipment, equipmentCard != null ? equipmentCard.EffectivePlayApCost : 0,
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
             Install(equipment, target);
-            RefreshLiveHostObservation(target);
+            RefreshLiveHostObservation(target, equipment);
             return true;
         }
 
@@ -467,7 +468,7 @@ namespace Game.Cards
             return true;
         }
 
-        private static void RefreshLiveHostObservation(UnitData target)
+        private static void RefreshLiveHostObservation(UnitData target, CardDefinition attachment)
         {
             ArmyData army = ArmyRegistry.FindArmyContaining(target);
             if (army == null)
@@ -478,6 +479,7 @@ namespace Game.Cards
             // player already watching the hex refreshes its honest content memory.
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(army.Hex);
+            LiveAttachmentReceived?.Invoke(army, target, attachment);
         }
 
         private static void PayCost(CardDefinition equipment, int apCost, ResourceCost resourceCost, PlayerRoot owner)

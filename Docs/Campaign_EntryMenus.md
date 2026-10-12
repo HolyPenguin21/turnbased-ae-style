@@ -20,7 +20,7 @@ existing calls to that method. It preserves resource names, sprite selection,
 frame densities, fillCenter and aspect handling. Collection/deck windows still
 use their existing `ApplySurface` path.
 
-The heading uses `Campaign/Plaque_880x58` with Simple rendering and preserved
+The heading uses `UI/Decorations/Campaign/Plaque_880x58` with Simple rendering and preserved
 aspect. Frame and metal are separate graphics, with the transparent frame above
 the metal. Decorative graphics and emblems do not receive clicks. Buttons retain
 the existing SceneUIAudioBinder callbacks and hover/pressed/disabled colors.

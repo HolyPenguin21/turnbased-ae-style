@@ -31,9 +31,9 @@ resampling or alpha reconstruction is performed.
 
 | Saved path | Size | Imported border | Canvas density |
 | --- | --- | --- | --- |
-| `Assets/Resources/Campaign/ConsoleFrame.png` | 1672 × 941 | 128, 112, 128, 112 | 3 |
-| `Assets/Resources/Campaign/InsetFrame.png` | 1239 × 1269 | 96, 96, 96, 96 | 2 |
-| `Assets/Resources/Campaign/SectionPlaque.png` (generation reference only) | 2170 × 725 | 180, 64, 180, 64 | — |
+| `Assets/Resources/UI/Panels/Campaign/ConsoleFrame.png` | 1672 × 941 | 128, 112, 128, 112 | 3 |
+| `Assets/Resources/UI/Panels/Campaign/InsetFrame.png` | 1239 × 1269 | 96, 96, 96, 96 | 2 |
+| `Assets/Resources/UI/Decorations/Campaign/SectionPlaque.png` (generation reference only) | 2170 × 725 | 180, 64, 180, 64 | — |
 
 SectionPlaque has one imported sprite, named SectionPlaque, rect
 `x=0, y=245, width=2170, height=240` (Unity bottom-left coordinates).
@@ -55,7 +55,7 @@ the outer density is 3 instead of 4. The header moves from y=12 to y=16 inside t
 console to clear the thicker top rail. Map layout and region geometry stay fixed.
 
 A calm matte replacement is saved at
-`Assets/Resources/Campaign/ConsoleMetalClean.png` (1254 × 1254, opaque PNG).
+`Assets/Resources/UI/Backgrounds/Campaign/ConsoleMetalClean.png` (1254 × 1254, opaque PNG).
 The existing ConsoleMetal asset and its GUID remain intact. The new texture is
 loaded by the existing Skin path, with ConsoleMetal as fallback, and retains
 full resolution and uncompressed Default/Standalone imports. It is copied

@@ -4,8 +4,8 @@ Run the structural integration gate from the repository root:
 
 ```sh
 python3 Tools/ui-audio-verify/verify.py
-node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/GameAudio.mixer
-node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/GameAudio.mixer
+node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
+node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Resources/Audio/GameAudio.prefab Assets/Audio/Mixers/GameAudio.mixer
 ```
 
 These checks do not compile C# or prove Unity imports or plays the assets correctly.
@@ -34,7 +34,7 @@ PopupPanelUI uses HumanTurnShown instead: AI/Neutral handoffs and hints are sile
 
 ## Game menu
 
-`Assets/Prefabs/UI/AudioOptionsPanel.prefab` is the shared owner-adjusted panel.
+`Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab` is the shared owner-adjusted panel.
 Both MainMenu and Game reference it. In Game, the gear and menu live under
 `Canvas_UI/GameMenuUI`, using the main Canvas scaler and raycaster. Gameplay
 sibling branches are blocked individually so the shared Canvas and menu controls
@@ -50,8 +50,8 @@ without stopping AI or changing Time.timeScale.
 
 ```sh
 python3 Tools/ui-audio-verify/game_menu_verify.py
-node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Scenes/Game.unity Assets/Prefabs/UI/AudioOptionsPanel.prefab
-node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Scenes/Game.unity Assets/Prefabs/UI/AudioOptionsPanel.prefab
+node Tools/unity-yaml-verify/verify_full.js Assets/Scenes/MainMenu.unity Assets/Scenes/Game.unity Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab
+node Tools/unity-yaml-verify/verify_types.js Assets/Scenes/MainMenu.unity Assets/Scenes/Game.unity Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab
 ```
 
 Check in Unity: gear positioning at different aspect ratios; options appearance

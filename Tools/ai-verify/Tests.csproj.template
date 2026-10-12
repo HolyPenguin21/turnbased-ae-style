@@ -13,7 +13,7 @@
     <AssemblyName>Assembly-CSharp</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="$(SrcAssets)/**/*.cs" Exclude="$(SrcAssets)/Editor/*Drawer*.cs" />
+    <Compile Include="$(SrcAssets)/**/*.cs" Exclude="$(SrcAssets)/Editor/**/*Drawer*.cs" />
     <Compile Include="EngineStubs.cs" />
     <Compile Include="TestRunStubs.cs" />
     <Compile Include="Program.cs" />

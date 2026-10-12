@@ -64,7 +64,10 @@ namespace Game.Campaign
         private int confirmFrom, confirmTarget;
         private string selectedDeckId;
         private Action cancelModal, retryAction;
-        private bool rewardOpen, defenceDeferred, acting;
+        private bool rewardOpen, defenceDeferred, acting, continueAfterCapture;
+        private bool started;
+        private CampaignController presentationOwner;
+        private string presentationOperationId;
         private readonly CampaignBattleResolver resolver = new CampaignBattleResolver();
         private CampaignController Controller => CampaignMatchBridge.Controller;
         private bool ModalOpen => modalContent != null;
@@ -74,10 +77,10 @@ namespace Game.Campaign
             CloseModal();
             SetupMaterials();
             if (!CampaignMatchBridge.Load(out string error)) { Failure(error ?? "No saved campaign.", () => SceneManager.LoadScene(SceneNames.MainMenu)); return; }
-            try { var state = Controller.View; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId); }
+            try { var state = Controller.View; map.Build(state.Regions, ClickRegion, HoverRegion, state.BackgroundId, gameConfig.moveArrowStyle); }
             catch (Exception ex) { Failure(ex.Message, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
             if (!ProgressionContext.Initialize(gameConfig)) { Failure(ProgressionContext.Error, () => SceneManager.LoadScene(SceneNames.Campaign)); return; }
-            Recover();
+            started = true; Recover();
         }
         private void BindStatic()
         {
@@ -86,7 +89,7 @@ namespace Game.Campaign
             attackButton.onClick.AddListener(AttackSelected);
             endTurnButton.onClick.AddListener(() => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
             resumeButton.onClick.AddListener(() => { defenceDeferred = false; OpenDeckSelection(); });
-            confirmChooseDeck.onClick.AddListener(() => Attempt(() => { Controller.BeginAttack(confirmFrom, confirmTarget, true); OpenDeckSelection(); }));
+            confirmChooseDeck.onClick.AddListener(() => Attempt(() => { if (acting) return; Controller.BeginAttack(confirmFrom, confirmTarget, true); PresentConfirmedAttack(); }));
             confirmCancel.onClick.AddListener(CancelAttackConfirmation);
             deckStart.onClick.AddListener(StartBattle);
             deckCancel.onClick.AddListener(CancelDeck);
@@ -98,7 +101,7 @@ namespace Game.Campaign
         // Shader-driven surfaces get per-screen material instances; the objects themselves are scene-authored.
         private void SetupMaterials()
         {
-            var cloudShader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            var cloudShader = Resources.Load<Shader>("Shaders/CampaignSurface");
             if (cloudShader == null) { cloudImage.enabled = false; return; }
             consoleMaterial = new Material(cloudShader) { name = "CampaignConsole (runtime)" };
             consoleMaterial.SetFloat("_Atmosphere", 1);
@@ -139,10 +142,22 @@ namespace Game.Campaign
             if (Controller.View.Phase == CampaignPhase.ShowingResult) ShowResult();
             else if (op?.Manual == true && !op.ResultRecorded && !defenceDeferred) OpenDeckSelection();
             else if (op != null && !op.Manual && !op.ResultRecorded)
-                Attempt(() => { Controller.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, ProgressionContext.Collection.Rules), CampaignDeck.Standard(op.DefenderFaction, ProgressionContext.Collection.Rules), resolver); Render(); ShowResult(); });
+                Attempt(() => { Controller.ResolveFast(CampaignDeck.Standard(op.AttackerFaction, ProgressionContext.Collection.Rules, Controller.View.Factions.Find(f => f.Faction == op.AttackerFaction).ActiveDeckReference), CampaignDeck.Standard(op.DefenderFaction, ProgressionContext.Collection.Rules, Controller.View.Factions.Find(f => f.Faction == op.DefenderFaction).ActiveDeckReference), resolver); Render(); ShowResult(); });
         }
         private void Update()
         {
+            if (continueAfterCapture)
+            {
+                if (map.IsCapturePlaying) return;
+                continueAfterCapture = false; CompleteResult(); return;
+            }
+            if (acting)
+            {
+                if (map.AttackAnimationPlaying) return;
+                map.CancelAttackAnimation(); acting = false;
+                if (Controller == presentationOwner && Controller.View.PendingOperation?.OperationId == presentationOperationId) Attempt(Recover);
+                return;
+            }
             bool escape = UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame;
             if (escape && !ModalOpen && !rewardOpen && selected.HasValue) { selected = null; hovered = null; Render(); return; }
             if (escape && ModalOpen)
@@ -153,14 +168,32 @@ namespace Game.Campaign
             }
             if (Controller == null || ModalOpen || rewardOpen || acting) return;
             if (Controller.Phase != CampaignPhase.AwaitingFactionAction || !Controller.IsAiTurn) return;
+            Attempt(() => { Controller.TakeAiTurn(ProgressionContext.Collection.Rules, resolver, resolveImmediately: false); selected = null; defenceDeferred = false; PresentConfirmedAttack(); });
+        }
+        // Uses the existing UI Update presentation gate; no timers or callbacks in strategic logic.
+        // This is the only attack animation launch point, reached only after a new attack is confirmed.
+        // Recover/load/resume/result rendering never launch an old operation again.
+        private void PresentConfirmedAttack()
+        {
+            if (acting || continueAfterCapture) return;
+            if (Controller.View.PendingOperation == null) { Recover(); return; }
             acting = true;
-            Attempt(() => { Controller.TakeAiTurn(ProgressionContext.Collection.Rules, resolver); selected = null; defenceDeferred = false; Recover(); });
-            acting = false;
+            presentationOwner = Controller; presentationOperationId = Controller.View.PendingOperation.OperationId;
+            CloseModal(); selected = null; hovered = null; hoverLabel.text = ""; Render();
+            map.PlayAttack(Controller.View.PendingOperation);
+        }
+        private void OnEnable() { if (started && Controller != null) Recover(); }
+        private void OnDisable()
+        {
+            acting = continueAfterCapture = false; presentationOwner = null; presentationOperationId = null;
+            if (map != null) { map.CancelAttackAnimation(); map.CancelCapture(); }
+            UIFocusUtility.SetOverlay(this, false);
         }
         private void Attempt(Action action)
         { try { action(); } catch (Exception ex) { Failure(ex.Message, Recover); } }
         private void HoverRegion(int? id)
         {
+            if (continueAfterCapture || acting) return;
             hovered = id;
             var r = id.HasValue ? Controller.View.Regions.Find(x => x.RegionId == id) : null;
             hoverLabel.text = r == null ? "" : r.Name + "  ·  " + FactionName(r.OwnerFaction);
@@ -168,7 +201,7 @@ namespace Game.Campaign
         }
         private void ClickRegion(int id)
         {
-            if (ModalOpen || rewardOpen) return;
+            if (ModalOpen || rewardOpen || acting || continueAfterCapture) return;
             var state = Controller.View;
             if (selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
@@ -265,7 +298,7 @@ namespace Game.Campaign
         {
             if (Controller == null || map == null) return;
             var s = Controller.View;
-            bool enabled = !ModalOpen && !rewardOpen && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
+            bool enabled = !ModalOpen && !rewardOpen && !acting && !continueAfterCapture && (s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction || s.Phase == CampaignPhase.CampaignFinished);
             map.Refresh(s, selected, hovered, enabled);
         }
         private void OpenModal(GameObject window, Action onCancel = null)
@@ -365,11 +398,27 @@ namespace Game.Campaign
         private void ContinueResult()
         {
             var op = Controller.View.PendingOperation;
-            if (op == null) return;
-            Attempt(() => { Controller.Continue(op.OperationId); CloseModal(); selected = null; Recover(); });
+            if (op == null || acting || continueAfterCapture) return;
+            presentationOwner = Controller; presentationOperationId = op.OperationId;
+            Attempt(() =>
+            {
+                // The result is acknowledged first; the existing capture presentation then precedes turn advance.
+                if (CampaignMatchBridge.TryTakeOwnershipChange(out var change) && map.PlayCapture(change, Controller.View))
+                {
+                    continueAfterCapture = true; selected = null; hovered = null; hoverLabel.text = "";
+                    CloseModal(); RefreshMap(); return;
+                }
+                CompleteResult();
+            });
+        }
+        private void CompleteResult()
+        {
+            if (Controller != presentationOwner || Controller.View.PendingOperation?.OperationId != presentationOperationId) return;
+            Attempt(() => { Controller.Continue(presentationOperationId); CloseModal(); selected = null; Recover(); });
         }
         private void Failure(string error, Action retry)
         {
+            acting = continueAfterCapture = false; map?.CancelAttackAnimation(); map?.CancelCapture();
             OpenModal(errorWindow); errorText.text = error; retryAction = retry;
         }
         public static string FactionName(Faction f) => f == Faction.IronConcord ? "Iron Concord" : f == Faction.Ashen ? "The Ashen" : "The Vessels";
@@ -390,3 +439,4 @@ namespace Game.Campaign
         }
     }
 }
+

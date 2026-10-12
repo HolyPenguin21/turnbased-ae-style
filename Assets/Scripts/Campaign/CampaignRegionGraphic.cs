@@ -12,12 +12,12 @@ namespace Game.Campaign
         private readonly List<Vector2> surfaceTriangles = new List<Vector2>();
         private readonly List<Vector2> screenTriangles = new List<Vector2>();
         private Vector2 marker, glowSize;
+        public Vector2 ProjectedMarker { get; private set; }
         private readonly List<float> glowWeights = new List<float>();
         private Texture2D surface;
         private Action clicked;
         private Action<bool> hovered;
-        private bool selected, hover, attackable, attacked, captured, enabledInput, silhouette;
-        private float changedTime;
+        private bool selected, hover, attackable, attacked, enabledInput, silhouette, captureReveal;
         public override Texture mainTexture => silhouette || surface == null ? Texture2D.whiteTexture : surface;
 
         public void SetSurface(Texture2D texture, Material sharedMaterial)
@@ -34,7 +34,26 @@ namespace Game.Campaign
                 Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]],
                     projected[indices[i]], projected[indices[i + 1]], projected[indices[i + 2]], isShadow ? 0 : 3);
             marker = VisibleCenter(region);
+            ProjectedMarker = CampaignMapView.Project(marker);
             clicked = click; hovered = onHover; SetVerticesDirty();
+        }
+
+        // Fraction of the center-to-center segment up to the first displayed boundary.
+        // Projected polygons/marker are already cached for rendering; no per-operation polygon copy.
+        public float BoundaryFractionTowards(Vector2 target)
+        {
+            var direction = target - ProjectedMarker; float nearest = 1;
+            for (int i = 0; i < projected.Count; i++)
+            {
+                var a = projected[i]; var edge = projected[(i + 1) % projected.Count] - a;
+                float denominator = direction.x * edge.y - direction.y * edge.x;
+                if (Math.Abs(denominator) < 1e-10f) continue;
+                var offset = a - ProjectedMarker;
+                float t = (offset.x * edge.y - offset.y * edge.x) / denominator;
+                float u = (offset.x * direction.y - offset.y * direction.x) / denominator;
+                if (t >= 0 && u >= 0 && u <= 1) nearest = Math.Min(nearest, t);
+            }
+            return nearest;
         }
 
         // Area weighting is independent of how densely individual borders were subdivided.
@@ -128,15 +147,16 @@ namespace Game.Campaign
             Subdivide(ab, bc, ca, screenAB, screenBC, screenCA, depth - 1);
         }
 
-        // Returns true when a capture flash has just started and the owner should call Tick() for FlashSeconds.
-        public bool Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool capture, bool input)
+        public void SetCaptureReveal(bool active)
+        { if (captureReveal == active) return; captureReveal = active; SetVerticesDirty(); }
+
+        // Refresh projects current state only; a refresh/load can never initiate capture presentation.
+        public void Refresh(Color tint, bool selection, bool over, bool legal, bool target, bool input)
         {
             if (color == tint && selected == selection && hover == over && attackable == legal
-                && attacked == target && captured == capture && enabledInput == input) return false;
-            if (color != tint) changedTime = Time.unscaledTime;
+                && attacked == target && enabledInput == input) return;
             color = tint; selected = selection; hover = over; attackable = legal;
-            attacked = target; captured = capture; enabledInput = input; SetVerticesDirty();
-            return capture && Time.unscaledTime - changedTime < FlashSeconds;
+            attacked = target; enabledInput = input; SetVerticesDirty();
         }
         public void OnPointerClick(PointerEventData data) { if (enabledInput) clicked?.Invoke(); }
         public void OnPointerEnter(PointerEventData data) { if (enabledInput) hovered?.Invoke(true); }
@@ -171,8 +191,6 @@ namespace Game.Campaign
             if (selected && !silhouette) CacheSelectionGlow();
             var ownership = color;
             if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .18f : .10f);
-            if (captured && Time.unscaledTime - changedTime < .6f)
-                ownership = Color.Lerp(ownership, Color.white, .18f * (1 - (Time.unscaledTime - changedTime) / .6f));
             for (int i = 0; i < surfaceTriangles.Count; i += 3)
             {
                 int start = vh.currentVertCount;
@@ -218,7 +236,7 @@ namespace Game.Campaign
             vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : silhouette ? -1 : 0, lighting, mapPoint.x, mapPoint.y);
             // UV data is not transformed by Canvas batching; POSITION may be in Canvas space.
             var viewport = CampaignMapView.FromPixel(rectTransform.rect, position) * .5f + new Vector2(.5f, .5f);
-            vertex.uv2 = new Vector4(glow, 0, viewport.x, viewport.y); vh.AddVert(vertex);
+            vertex.uv2 = new Vector4(glow, captureReveal && textured ? 1 : 0, viewport.x, viewport.y); vh.AddVert(vertex);
         }
         private void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 mapPoint)
         {
@@ -232,8 +250,6 @@ namespace Game.Campaign
                 if (i > 0) vh.AddTriangle(start, start + i, start + i + 1);
             }
         }
-        // Driven by CampaignMapView only while a capture flash plays; the component itself must stay enabled to render.
-        public const float FlashSeconds = .7f;
-        public void Tick() { if (captured && Time.unscaledTime - changedTime < FlashSeconds) SetVerticesDirty(); }
     }
 }
+

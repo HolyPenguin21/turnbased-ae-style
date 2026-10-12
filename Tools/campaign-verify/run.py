@@ -30,7 +30,7 @@ math=math[:i]+''' public static float Log10(float v) => (float)System.Math.Log10
  public static float SmoothDamp(float current,float target,ref float velocity,float smoothTime,float maxSpeed=float.PositiveInfinity,float deltaTime=.016f)=>target;
 '''+math[i:]
 (work/'TestRunStubs.cs').write_text(math)
-(work/'CampaignSystemTests.cs').write_text((repo/'Assets/Editor/CampaignSystemTests.cs').read_text().replace('Vector2','CampaignTestVector2'))
+(work/'CampaignSystemTests.cs').write_text((repo/'Assets/Editor/Tests/Campaign/CampaignSystemTests.cs').read_text().replace('Vector2','CampaignTestVector2'))
 for name in ['PortableJson.cs','PortableVector.cs','TestRunner.cs','ExtraStubs.cs','Experiments.cs']:shutil.copy(here/name,work/name)
 out=work/'bin';out.mkdir(exist_ok=True)
 refpack=sorted((dotnet.parent/'packs/Microsoft.NETCore.App.Ref').glob('8.*'))[-1]

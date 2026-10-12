@@ -11,9 +11,12 @@ namespace Game.Campaign
     public sealed class CampaignMapView : MonoBehaviour
     {
         private readonly Dictionary<int, CampaignRegionGraphic> graphics = new Dictionary<int, CampaignRegionGraphic>();
-        private CampaignArrowGraphic arrow;
+        [SerializeField] private CampaignArrowGraphic arrow;
+        public bool AttackAnimationPlaying => arrow != null && arrow.IsPlaying;
         private Material surfaceMaterial;
-        private float flashUntil;
+        [SerializeField] private CampaignCaptureSettings capture = new CampaignCaptureSettings();
+        private CampaignCaptureEffect captureEffect;
+        public bool IsCapturePlaying => captureEffect != null && captureEffect.IsPlaying;
         private RectTransform selectedLabelRoot;
         private TMPro.TMP_Text selectedLabel;
         public Texture2D SurfaceTexture { get; private set; }
@@ -34,14 +37,15 @@ namespace Game.Campaign
         public static string BackgroundResourcePath(int backgroundId)
         {
             if (backgroundId < 0 || backgroundId > CampaignMapGenerator.BackgroundCount) throw new ArgumentOutOfRangeException(nameof(backgroundId));
-            return backgroundId == 0 ? "Campaign/WastelandSurface" : "Campaign/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
+            return backgroundId == 0 ? "Campaign/Backgrounds/WastelandSurface" : "Campaign/Backgrounds/WastelandSurface_" + backgroundId.ToString("00", System.Globalization.CultureInfo.InvariantCulture);
         }
-        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0)
+        public void Build(IReadOnlyList<RegionState> regions, Action<int> clicked, Action<int?> hovered, int backgroundId = 0, Game.Styles.MoveArrowStyle arrowStyle = null)
         {
-            foreach (Transform child in transform) { child.gameObject.SetActive(false); Destroy(child.gameObject); }
+            CancelCapture(); CancelAttackAnimation();
+            foreach (Transform child in transform) { if (arrow != null && child == arrow.transform) continue; child.gameObject.SetActive(false); Destroy(child.gameObject); }
             graphics.Clear();
             SurfaceTexture = Resources.Load<Texture2D>(BackgroundResourcePath(backgroundId));
-            var shader = Resources.Load<Shader>("Campaign/CampaignSurface");
+            var shader = Resources.Load<Shader>("Shaders/CampaignSurface");
             if (SurfaceTexture == null || shader == null) throw new InvalidOperationException("Campaign surface assets are missing.");
             if (surfaceMaterial != null) Destroy(surfaceMaterial);
             surfaceMaterial = new Material(shader) { name = "CampaignSurface (runtime)" };
@@ -54,7 +58,7 @@ namespace Game.Campaign
                 var rect = (RectTransform)shadow.transform; rect.anchorMin = Vector2.zero; rect.anchorMax = Vector2.one;
                 rect.offsetMin = rect.offsetMax = new Vector2(0, -12);
                 var graphic = shadow.AddComponent<CampaignRegionGraphic>(); graphic.SetSurface(SurfaceTexture, surfaceMaterial); graphic.Configure(region, null, null, true);
-                graphic.Refresh(new Color(.023f, .027f, .027f), false, false, false, false, false, false);
+                graphic.Refresh(new Color(.023f, .027f, .027f), false, false, false, false, false);
             }
             foreach (var region in regions)
             {
@@ -64,9 +68,13 @@ namespace Game.Campaign
                 graphic.SetSurface(SurfaceTexture, surfaceMaterial);
                 graphic.Configure(region, () => clicked(region.RegionId), active => hovered(active ? (int?)region.RegionId : null)); graphics.Add(region.RegionId, graphic);
             }
-            var ar = new GameObject("AttackDirection", typeof(RectTransform), typeof(CanvasRenderer)); ar.transform.SetParent(transform, false);
-            var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
-            arrow = ar.AddComponent<CampaignArrowGraphic>(); arrow.raycastTarget = false;
+            if (arrow == null) // Compatibility for code-built maps/tests; the Campaign scene authors this child.
+            {
+                var ar = new GameObject("AttackDirection", typeof(RectTransform), typeof(CanvasRenderer)); ar.transform.SetParent(transform, false);
+                var rt = (RectTransform)ar.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one; rt.offsetMin = rt.offsetMax = Vector2.zero;
+                arrow = ar.AddComponent<CampaignArrowGraphic>();
+            }
+            arrow.Initialize(arrowStyle); arrow.transform.SetAsLastSibling();
             var labelRect = Game.UI.CollectionUIElements.Rect(transform, "SelectedRegionName");
             var text = Game.UI.CollectionUIElements.Label(labelRect, "", 0, 0, 190, 28, 18);
             text.alignment = TMPro.TextAlignmentOptions.Center;
@@ -75,7 +83,20 @@ namespace Game.Campaign
             text.enableAutoSizing = true; text.fontSizeMin = 12; text.fontSizeMax = 18;
             text.textWrappingMode = TMPro.TextWrappingModes.NoWrap; text.overflowMode = TMPro.TextOverflowModes.Ellipsis;
             selectedLabelRoot = labelRect; selectedLabel = text;
+            captureEffect = GetComponent<CampaignCaptureEffect>() ?? gameObject.AddComponent<CampaignCaptureEffect>();
+            captureEffect.Initialize(surfaceMaterial, capture);
         }
+        public bool PlayCapture(CampaignRegionOwnershipChange change, CampaignState state)
+        {
+            if (!change.Matches(state) || captureEffect == null || IsCapturePlaying
+                || !graphics.TryGetValue(change.TargetRegionId, out var graphic)) return false;
+            var target = state.Regions.Find(r => r.RegionId == change.TargetRegionId);
+            var source = state.Regions.Find(r => r.RegionId == change.SourceRegionId);
+            captureEffect.Play(graphic, source, target, ColorFor(change.PreviousOwner));
+            if (selectedLabelRoot != null) selectedLabelRoot.gameObject.SetActive(false);
+            return IsCapturePlaying;
+        }
+        public void CancelCapture() { if (captureEffect != null) captureEffect.Finish(); }
         public void Refresh(CampaignState state, int? selected, int? hovered, bool inputEnabled)
         {
             foreach (var r in state.Regions)
@@ -83,16 +104,12 @@ namespace Game.Campaign
                 bool attackable = selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, r.RegionId);
                 var op = state.PendingOperation;
                 if (!graphics.TryGetValue(r.RegionId, out var graphic)) continue;
-                if (graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
-                    op?.TargetRegionId == r.RegionId, op?.TargetRegionId == r.RegionId && op.OwnershipApplied && op.Outcome == CampaignOutcome.AttackerVictory, inputEnabled))
-                    flashUntil = Time.unscaledTime + CampaignRegionGraphic.FlashSeconds;
+                graphic.Refresh(ColorFor(r.OwnerFaction), selected == r.RegionId, hovered == r.RegionId, attackable,
+                    op?.TargetRegionId == r.RegionId, inputEnabled && !IsCapturePlaying);
             }
-            var operation = state.PendingOperation;
-            arrow?.Set(operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.VisibleCenter(state.Regions.Find(r => r.RegionId == operation.SourceRegionId))),
-                operation == null ? (Vector2?)null : Project(CampaignRegionGraphic.VisibleCenter(state.Regions.Find(r => r.RegionId == operation.TargetRegionId))));
             if (selectedLabelRoot == null) return;
             var labelRegion = selected.HasValue ? state.Regions.Find(r => r.RegionId == selected.Value) : null;
-            selectedLabelRoot.gameObject.SetActive(labelRegion != null);
+            selectedLabelRoot.gameObject.SetActive(labelRegion != null && !IsCapturePlaying);
             if (labelRegion != null)
             {
                 var rect = (RectTransform)transform;
@@ -107,13 +124,18 @@ namespace Game.Campaign
                 selectedLabel.text = labelRegion.Name.ToUpperInvariant();
             }
         }
+        public void PlayAttack(CampaignOperation operation)
+        {
+            CancelAttackAnimation();
+            if (operation == null || operation.ResultRecorded || arrow == null || !isActiveAndEnabled
+                || !graphics.TryGetValue(operation.SourceRegionId, out var from) || !graphics.TryGetValue(operation.TargetRegionId, out var to)) return;
+            var a = from.ProjectedMarker; var b = to.ProjectedMarker;
+            arrow.Play(a, b, from.BoundaryFractionTowards(b), to.BoundaryFractionTowards(a), ColorFor(operation.AttackerFaction));
+        }
+        public void CancelAttackAnimation() { if (arrow != null) arrow.Hide(); }
+        private void OnDisable() { CancelAttackAnimation(); CancelCapture(); }
         public static Color ColorFor(Game.Players.Faction faction) => faction == Game.Players.Faction.IronConcord ? new Color(.48f, .55f, .61f)
             : faction == Game.Players.Faction.Ashen ? new Color(.68f, .49f, .38f) : new Color(.46f, .49f, .37f);
-        private void Update()
-        {
-            if (Time.unscaledTime >= flashUntil) return;
-            foreach (var graphic in graphics.Values) graphic.Tick();
-        }
         private void OnRectTransformDimensionsChange()
         {
             if (surfaceMaterial == null) return;
@@ -123,4 +145,5 @@ namespace Game.Campaign
         private void OnDestroy() { if (surfaceMaterial != null) Destroy(surfaceMaterial); }
     }
 }
+
 

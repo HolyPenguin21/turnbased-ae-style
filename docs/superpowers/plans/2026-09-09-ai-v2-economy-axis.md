@@ -25,7 +25,7 @@
 
 ### Task 1: Economic snapshot and deficit model
 
-**Files:** Modify `WorldSnapshot.cs`, `WorldAnalysis.cs`, `AiConfigV2.cs`; test `Assets/Editor/AiEconomyDecisionTests.cs`.
+**Files:** Modify `WorldSnapshot.cs`, `WorldAnalysis.cs`, `AiConfigV2.cs`; test `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`.
 
 **Interfaces:** Extend `EconomyResourceStanding` with `OpponentMedianIncome`, hand/deck/reserved need, spendable stock, targets/gaps/runway/pressures and `DeficitScore`; retain `EconomyStanding` as the only economic snapshot.
 

@@ -17,7 +17,7 @@
 - Numeric Economy reservations remain turn-scoped and are written only by `InfrastructureFulfillment`.
 - Recovery movement uses `SafeStepPathing` through `TaskExecutor.RunEconomyStep`.
 - Low-risk Recon resumes immediately; high-risk Recon and non-Recon donors resume only after protected arrival.
-- Extend `Assets/Editor/AiEconomyDecisionTests.cs`; add no test framework or new test class.
+- Extend `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`; add no test framework or new test class.
 - Run `dotnet build Assembly-CSharp.csproj` when the Unity-generated project exists; otherwise report the missing build environment without claiming compilation.
 
 ---
@@ -25,7 +25,7 @@
 ### Task 1: Exact Economy Base-card option claim
 
 **Files:**
-- Modify: `Assets/Editor/AiEconomyDecisionTests.cs`
+- Modify: `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs`
 - Modify: `Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs`
@@ -85,7 +85,7 @@ Commit message: `Protect selected Economy Base card from Phase B`.
 ### Task 2: One-turn numeric commitment horizon
 
 **Files:**
-- Modify: `Assets/Editor/AiEconomyDecisionTests.cs`
+- Modify: `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs`
 
 **Interfaces:**
@@ -132,7 +132,7 @@ Commit message: `Delay Economy build resources until one-turn horizon`.
 ### Task 3: Recovery data, destination and mission emission
 
 **Files:**
-- Modify: `Assets/Editor/AiEconomyDecisionTests.cs`
+- Modify: `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`
 - Modify: `Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs`
 - Modify: `Assets/Scripts/Ai/V2/Continuity/MissionIntent.cs`
 - Modify: `Assets/Scripts/Ai/V2/Missions/EconomyMissionPlanner.cs`
@@ -185,7 +185,7 @@ Commit message: `Add durable Economy builder recovery mission`.
 ### Task 4: Recovery provisioning and execution
 
 **Files:**
-- Modify: `Assets/Editor/AiEconomyDecisionTests.cs`
+- Modify: `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`
 - Modify: `Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs`
 - Modify: `Assets/Scripts/Ai/V2/Execution/TaskExecutor.cs`
 - Modify: `Assets/Scripts/Ai/V2/Continuity/MissionIntent.cs`
@@ -234,7 +234,7 @@ Commit message: `Return Economy builder through existing executor`.
 ### Task 5: Unified build-to-recovery Continuity transition
 
 **Files:**
-- Modify: `Assets/Editor/AiEconomyDecisionTests.cs`
+- Modify: `Assets/Editor/Tests/AI/AiEconomyDecisionTests.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs`
 - Modify: `Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs`

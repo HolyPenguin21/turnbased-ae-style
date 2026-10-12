@@ -24,13 +24,13 @@
 - Disabled actions clear stale callbacks.
 
 ### Task 1: Panel movement and fixed sections
-**Files:** Assets/Scripts/UI/HexInfoPanelUI.cs; Assets/Editor/HexInfoDrawerTests.cs.
+**Files:** Assets/Scripts/UI/Panels/HexInfoPanelUI.cs; Assets/Editor/Tests/Map/HexInfoDrawerTests.cs.
 - [x] Replace old height/layout tests with fixed-layout, disabled callback, proportional offset, retarget and hidden/reopen tests.
 - [x] Replace height resizing with SmoothDamp Y movement (0.06-second smoothing), from a below-screen starting point; keep section objects active and clear callbacks when disabled.
 - [x] Run available source checks; leave Unity tests explicitly unexecuted.
 
 ### Task 2: Selection and resources
-**Files:** Assets/Scripts/Map/HexSelectionController.cs; Assets/Scripts/UI/ResourceActionRowUI.cs.
+**Files:** Assets/Scripts/Map/HexSelectionController.cs; Assets/Scripts/UI/Rows/ResourceActionRowUI.cs.
 - [x] Count types with positive remaining yield and no collector; show when resources, building or garrison exist.
 - [x] Stack resource action buttons vertically within the existing authored container; preserve container transform.
 - [x] Review changes against source and owner scene; commit atomically on current master with expected-SHA protection.

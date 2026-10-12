@@ -12,7 +12,7 @@ namespace AttackTacticalSim
     //   AttackTacticalOpportunity.CombatFingerprint — order-free identity of a fight's inputs
     //   GroundCombatAdmissionPolicy                — threshold and coverage as two independent facts
     // Everything world-dependent (honest sightings, view, route lookups, the estimator) needs a
-    // live HexMap/AiMapMemory and is exercised by Assets/Editor/AiAttackFieldContactTests and in the
+    // live HexMap/AiMapMemory and is exercised by Assets/Editor/Tests/AI/AiAttackFieldContactTests and in the
     // running game, not faked in a console. Replaces the retired raw-strength / "no extra turn"
     // harness: those rules (enemyRaw < ownRaw, ETA(A->E->B) <= ETA(A->B), leftover movement after
     // contact) were removed on purpose.

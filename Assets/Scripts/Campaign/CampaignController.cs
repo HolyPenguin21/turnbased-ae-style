@@ -16,6 +16,8 @@ namespace Game.Campaign
         public CampaignState View => state;
         public CampaignPhase Phase => state.Phase;
         public bool IsAiTurn => state.CurrentFaction != state.HumanFaction;
+        // Transient, post-commit fact. Loading a snapshot never publishes historical captures.
+        public event Action<CampaignRegionOwnershipChange> RegionOwnershipChanged;
         public CampaignController(CampaignState initial, CampaignStore store) { CampaignStore.Validate(initial); state = initial.Copy(); this.store = store; }
         private void Transact(Action<CampaignState> edit)
         { var next = state.Copy(); edit(next); store.Save(next); state = next; }
@@ -103,7 +105,12 @@ namespace Game.Campaign
         {
             var op = state.PendingOperation;
             if (op?.ResultRecorded != true || (op.Manual && !op.RewardAcknowledged) || op.OwnershipApplied) return;
+            var previousOwner = state.Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction;
             Transact(CampaignRules.ApplyRecordedResult);
+            var newOwner = state.Regions.Find(r => r.RegionId == op.TargetRegionId).OwnerFaction;
+            if (previousOwner != newOwner)
+                RegionOwnershipChanged?.Invoke(new CampaignRegionOwnershipChange(state.CampaignId, op.OperationId,
+                    op.SourceRegionId, op.TargetRegionId, previousOwner, newOwner));
         }
         public void Continue(string operationId)
         {
@@ -115,7 +122,9 @@ namespace Game.Campaign
             if (state.Phase != CampaignPhase.AwaitingFactionAction || state.PendingOperation != null || CampaignRules.HumanFinished(state)) throw new InvalidOperationException("Turn is blocked.");
             Transact(CampaignRules.Advance);
         }
-        public void TakeAiTurn(DeckRules rules, CampaignBattleResolver resolver)
+        // UI can present the already selected/persisted operation before resolution.
+        // Default preserves the atomic convenience flow for existing callers/tests.
+        public void TakeAiTurn(DeckRules rules, CampaignBattleResolver resolver, bool resolveImmediately = true)
         {
             if (state.CurrentFaction == state.HumanFaction) throw new InvalidOperationException("Human turn.");
             var attacks = CampaignRules.LegalAttacks(state).ToList();
@@ -132,7 +141,8 @@ namespace Game.Campaign
             }).OrderByDescending(a => a.Score).First().Pair;
             bool manual = state.Regions.Find(r => r.RegionId == selected.Target).OwnerFaction == state.HumanFaction;
             BeginAttack(selected.Source, selected.Target, manual);
-            if (!manual) ResolveFast(attacker, CampaignDeck.Standard(state.PendingOperation.DefenderFaction, rules, state.Factions.Find(f => f.Faction == state.PendingOperation.DefenderFaction).ActiveDeckReference), resolver);
+            if (!manual && resolveImmediately) ResolveFast(attacker, CampaignDeck.Standard(state.PendingOperation.DefenderFaction, rules, state.Factions.Find(f => f.Faction == state.PendingOperation.DefenderFaction).ActiveDeckReference), resolver);
         }
     }
 }
+

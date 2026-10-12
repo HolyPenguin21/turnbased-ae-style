@@ -13,8 +13,8 @@ Exit codes: `0` ok, `1` violation / divergence, `2` bad input.
 
 ## Recorder, golden traces, coupling matrix
 
-- Recorder: `Assets/Editor/AiDecouplingTrace.cs` (test-only, reads the ledger, writes JSONL when
-  `AI_V2_TRACE_DIR` is set). Fixtures: `Assets/Editor/AiDecouplingBaselineTests.cs`.
+- Recorder: `Assets/Editor/Tests/AI/AiDecouplingTrace.cs` (test-only, reads the ledger, writes JSONL when
+  `AI_V2_TRACE_DIR` is set). Fixtures: `Assets/Editor/Tests/AI/AiDecouplingBaselineTests.cs`.
 - Golden traces: `golden/*.jsonl` — written on the stage's input revision. After a stage, rerun the fixtures with a new
   `AI_V2_TRACE_DIR` and `compare_traces.py golden/S1_bank.jsonl <new>/S1_bank.jsonl`.
 - `coupling_matrix.py --rev <sha>` — the folder dependency matrix of `Ai/V2` and the exact foreign types of

@@ -58,7 +58,7 @@ padding at import; preview composition renders those imported rectangles.
 Six smaller fields used a two-input edit: image 1 was a centered exact geometry
 guide in a 1024×1024 transparent canvas, or 1888×1024 for Modal; silhouette width
 and height were exactly twice the logical field size, radius 8, perimeter 6 pixels.
-Image 2 was `Assets/Resources/Campaign/SectionPlaque.png`, material reference only.
+Image 2 was `Assets/Resources/UI/Decorations/Campaign/SectionPlaque.png`, material reference only.
 
 ```text
 Use case: precise-object-edit. Image 1 is the EDIT TARGET: an exact-size empty UI rectangle. Image 2 is a STYLE REFERENCE only.

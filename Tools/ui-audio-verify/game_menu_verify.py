@@ -4,7 +4,7 @@ import unittest
 ROOT=Path(__file__).resolve().parents[2]
 class MenuIntegration(unittest.TestCase):
  def test_shared_options_asset(self):
-  p=ROOT/'Assets/Prefabs/UI/AudioOptionsPanel.prefab'
+  p=ROOT/'Assets/Prefabs/UI/Panels/AudioOptionsPanel.prefab'
   self.assertTrue(p.exists())
   guid=Path(str(p)+'.meta').read_text().split('guid: ')[1].splitlines()[0]
   for name in ['MainMenu','Game']:

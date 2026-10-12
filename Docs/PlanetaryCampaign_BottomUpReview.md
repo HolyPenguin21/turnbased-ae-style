@@ -90,7 +90,7 @@ Missing Script/GUID-проверка при импорте, рендер и hit 
 - `Assets/Scripts/Campaign/CampaignController.cs`
 - `Assets/Scripts/Campaign/CampaignMatchBridge.cs`
 - `Assets/Scripts/Campaign/CampaignUI.cs`
-- `Assets/Editor/CampaignSystemTests.cs`
+- `Assets/Editor/Tests/Campaign/CampaignSystemTests.cs`
 - `Docs/PlanetaryCampaign_Implementation.md`
 - `Docs/PlanetaryCampaign_BottomUpReview.md`
 
