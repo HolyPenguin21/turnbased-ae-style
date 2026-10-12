@@ -10,7 +10,10 @@ namespace Game.UI
         [Range(0f, 20f)] [SerializeField] private float cornerRadius = 9f;
         [Min(0f)] [SerializeField] private float borderWidth = .9f;
         [SerializeField] private Color borderColor = new Color(.78f, .61f, .35f, .9f);
-        [Min(0f)] [SerializeField] private float backgroundFeather = 16f;
+        [Min(0f)] [SerializeField] private float backgroundFeather = 10f;
+        [Min(0f)] [SerializeField] private float backgroundTornDepth = 5f;
+        [Min(1f)] [SerializeField] private float backgroundGrainScale = 5f;
+        [Range(1f, 3f)] [SerializeField] private float edgeOpacityPower = 2f;
         [Min(0f)] [SerializeField] private float signalRadius = 2.5f;
         public float CornerRadius => Mathf.Clamp(cornerRadius, 0f, 20f);
         public float SignalExtent => Mathf.Max(0f, signalRadius) + 6f + Mathf.Max(0f, borderWidth);
@@ -47,28 +50,33 @@ namespace Game.UI
 
         private void Wash(VertexHelper vh, Rect rect)
         {
-            if (color.a <= 0f) return;
-            float feather = Mathf.Max(0f, backgroundFeather);
-            Rect inner = ArmyRadioLayout.Inset(rect, Mathf.Min(feather, Mathf.Min(rect.width, rect.height) * .25f));
-            Rect outer = rect;
-            Color clear = color; clear.a = 0f;
+            if (color.a <= 0f || rect.width <= 0f || rect.height <= 0f) return;
+            // A bounded grid gives the soft, torn alpha contour enough samples to avoid
+            // the old straight-edged quad wash. Reuse the portrait's edge calculation.
+            int columns = Mathf.Clamp(Mathf.CeilToInt(rect.width / 2.5f), 2, 128);
+            int rows = Mathf.Clamp(Mathf.CeilToInt(rect.height / 2.5f), 2, 96);
             int start = vh.currentVertCount;
-            vh.AddVert(new Vector2(inner.xMin, inner.yMin), color, Vector2.zero);
-            vh.AddVert(new Vector2(inner.xMax, inner.yMin), color, Vector2.zero);
-            vh.AddVert(new Vector2(inner.xMax, inner.yMax), color, Vector2.zero);
-            vh.AddVert(new Vector2(inner.xMin, inner.yMax), color, Vector2.zero);
-            vh.AddVert(new Vector2(outer.xMin, outer.yMin), clear, Vector2.zero);
-            vh.AddVert(new Vector2(outer.xMax, outer.yMin), clear, Vector2.zero);
-            vh.AddVert(new Vector2(outer.xMax, outer.yMax), clear, Vector2.zero);
-            vh.AddVert(new Vector2(outer.xMin, outer.yMax), clear, Vector2.zero);
-            vh.AddTriangle(start, start + 1, start + 2); vh.AddTriangle(start, start + 2, start + 3);
-            for (int i = 0; i < 4; i++)
-            {
-                int next = (i + 1) % 4;
-                vh.AddTriangle(start + i, start + 4 + i, start + 4 + next);
-                vh.AddTriangle(start + i, start + 4 + next, start + next);
-            }
+            for (int row = 0; row <= rows; row++)
+                for (int column = 0; column <= columns; column++)
+                {
+                    Vector2 point = new Vector2(rect.width * column / columns, rect.height * row / rows);
+                    Color tint = color;
+                    tint.a *= WashAlphaAt(point, rect.size, backgroundFeather, backgroundTornDepth,
+                        backgroundGrainScale, edgeOpacityPower);
+                    vh.AddVert(rect.min + point, tint, Vector2.zero);
+                }
+            for (int row = 0; row < rows; row++)
+                for (int column = 0; column < columns; column++)
+                {
+                    int a = start + row * (columns + 1) + column;
+                    int b = a + columns + 1;
+                    vh.AddTriangle(a, b, b + 1); vh.AddTriangle(b + 1, a + 1, a);
+                }
         }
+
+        public static float WashAlphaAt(Vector2 point, Vector2 size, float feather, float depth, float grain, float edgePower) =>
+            Mathf.Pow(ArmyRadioArtFeather.AlphaAt(point, size, feather, depth, grain), Mathf.Max(1f, edgePower));
+
         private void Disc(VertexHelper vh, Vector2 centre, float radius)
         {
             int start = vh.currentVertCount;

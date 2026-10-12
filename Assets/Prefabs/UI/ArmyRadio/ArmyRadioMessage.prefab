@@ -95,7 +95,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &100011
 RectTransform:
   m_ObjectHideFlags: 0
@@ -207,7 +207,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioBubbleGraphic
   m_Material: {fileID: 0}
-  m_Color: {r: 0.08, g: 0.065, b: 0.045, a: 0.22}
+  m_Color: {r: 0.18, g: 0.145, b: 0.105, a: 0.5}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -217,7 +217,10 @@ MonoBehaviour:
   cornerRadius: 9
   borderWidth: 1.1
   borderColor: {r: 0.78, g: 0.61, b: 0.35, a: 0.9}
-  backgroundFeather: 16
+  backgroundFeather: 10
+  backgroundTornDepth: 5
+  backgroundGrainScale: 5
+  edgeOpacityPower: 2
   signalRadius: 2.5
 --- !u!1 &100030
 GameObject:
