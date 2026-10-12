@@ -7,7 +7,7 @@ Approved behavior (2026-10-12):
 - Regeneration remains the separate strategic end-of-turn self-heal.
 - Transport is persistent, not a turn-start proc. Each carrier supports one slower non-hero, non-aviation Infantry in its own army, up to the carrier's permanent movement maximum (card plus attachments). It never lowers speed or chains temporary bonuses.
 - Keep a valid pair through reorder and turn changes. If either member leaves, dies, becomes a prisoner, or ceases to qualify, remove that pair and immediately assign an eligible replacement. Each carrier has at most one recipient; recipients do not stack carriers.
-- Selection uses a seeded pseudorandom hash of stable runtime identities, so hypothetical roster reads and the corresponding committed roster agree without changing the game's random stream. It is stable between roster changes.
+- Selection (revised 2026-10-12, see below): the carrier serves the slowest eligible Infantry; equal speeds are broken by a seeded hash of stable runtime identities, so hypothetical roster reads and the committed roster agree without changing the game's random stream.
 - Spent movement belongs to the unit. Losing, regaining, or transferring support never refunds it. Effective army movement continues to use the slowest member.
 
 ## Implementation boundaries
@@ -60,3 +60,11 @@ Built-in imagegen prompt:
 - Per the owner's request, `Assets/Resources/UI/Effects/HealCross.png` is delivered separately and excluded from this Git publication. Its existing `.meta` is included to preserve the Unity GUID and sprite import settings.
 - Add the supplied PNG at exactly that path without replacing its `.meta`. Until it is added, Heal gameplay remains functional but the cross overlay is intentionally skipped by the missing-sprite guard.
 - The portable and sprite validation results above refer to the complete local review copy, including the separately delivered PNG. Unity editor verification is still outstanding.
+
+## Audit fixes (2026-10-12)
+
+- Transport serves the slowest eligible Infantry instead of a random one: the army moves at its slowest member, so a random pick often gave no gain. A kept pair yields only to a strictly slower unassigned body. AI `ExpectedTransportGain` and the campaign heuristic follow the same rule.
+- AI army snapshots record each body's own speed (`WorldAnalysis.SoloMoveMax`/`SoloMoveCurrent`), so Economy escort subsets and garrison Recce extraction never assume a carrier's support follows a body that leaves alone.
+- Housekeeping refuses moves, seeds and swaps that slow a field donor by taking its carrier away (an incoming body may still limit it to its own speed).
+- Body-only forecasts in the Assault reinforcement projection and the assembly gather pass the roster, so secondary healing heroes are included.
+- Not changed: AI valuation constants for Heal/Transport (reuse Regeneration's) await a playtest log; movement-read cost of Transport awaits profiling.

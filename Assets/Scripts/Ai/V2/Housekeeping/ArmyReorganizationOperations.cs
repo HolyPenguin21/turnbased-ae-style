@@ -113,6 +113,8 @@ namespace Game.Ai.V2
                 return null;
             if (!CanAccept(c, to, u, dstMeta))
                 return null;
+            if (!KeepsTransportedMovement(from, from.Where(x => x != u).ToList(), srcMeta))
+                return null;
 
             from.Remove(u);
             ReorgViability.AddMemberSorted(to, u, dstMeta.IsGarrison);
@@ -151,6 +153,8 @@ namespace Game.Ai.V2
                 var after = donor.Where(x => x != u).ToList();
                 if (!donorMeta.IsGarrison && !ReorgViability.IsViable(after))
                     break;
+                if (!KeepsTransportedMovement(donor, after, donorMeta))
+                    continue;
 
                 donor.Remove(u);
                 ReorgViability.AddMemberSorted(weak, u, weakMeta.IsGarrison);
@@ -202,6 +206,9 @@ namespace Game.Ai.V2
             if (ReorgViability.Capacity(afterA, aMeta.IsGarrison) < afterA.Count
                 || ReorgViability.Capacity(afterB, bMeta.IsGarrison) < afterB.Count)
                 return null;
+            if (!KeepsTransportedMovement(a, afterA, aMeta, ub)
+                || !KeepsTransportedMovement(b, afterB, bMeta, ua))
+                return null;
 
             // §P1 — a garrison side of the swap must keep its defensive power reserve (same
             // "only if currently above it" semantics as GarrisonMayRelease).
@@ -217,6 +224,25 @@ namespace Game.Ai.V2
             c.MovedUnitKeys.Add(ua.Key);
             c.MovedUnitKeys.Add(ub.Key);
             return c;
+        }
+
+        // Removing a member never slowed an army until Transport: a departing carrier takes
+        // its support along and its passenger falls back to native speed. A field army may
+        // only slow down to an incoming body's own speed, never by losing that support.
+        private static bool KeepsTransportedMovement(List<ReorgUnit> before, List<ReorgUnit> after,
+            ReorgContainer meta, ReorgUnit incoming = null)
+        {
+            if (meta.IsGarrison || after.Count == 0 || !before.Any(u => !after.Contains(u)
+                    && (u.CombatProfile.Abilities?.Contains(Game.Cards.UnitAbilities.Transport) ?? false)))
+                return true;
+            var was = ReorgViability.Movement(before);
+            if (incoming != null)
+            {
+                var own = ReorgViability.Movement(new[] { incoming });
+                was = (System.Math.Min(was.current, own.current), System.Math.Min(was.maximum, own.maximum));
+            }
+            var now = ReorgViability.Movement(after);
+            return now.current >= was.current && now.maximum >= was.maximum;
         }
 
         private static bool CanAccept(VState state, List<ReorgUnit> dest, ReorgUnit u,

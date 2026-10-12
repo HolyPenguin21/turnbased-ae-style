@@ -417,6 +417,12 @@ namespace Game.Ai.V2
             self.DeployableCombatBodies = nonHeroBodies;
         }
 
+        // A body's own speed once split from its army: Transport support stays with the carrier.
+        // Every per-body projection selects subsets, so an aura must not follow a body alone.
+        internal static int SoloMoveMax(UnitData u) => u.PermanentMoveMax;
+        internal static int SoloMoveCurrent(UnitData u) => u.TransportCarrier == null
+            ? AviationRules.EffectiveMoveCurrent(u) : u.CurrentMoveAtMaximum(u.PermanentMoveMax);
+
         internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius, AiTurnContext ctx = null)
         {
             var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
@@ -479,14 +485,14 @@ namespace Game.Ai.V2
                 NonHeroRuntimeIds = isOwn ? nonHero.Select(u => u.RuntimeId).ToList() : System.Array.Empty<int>(),
                 NonHeroSpareable = isOwn && a.IsGarrison
                     ? nonHero.Select(u => AiArmyRoles.CanSpareGarrisonMember(viewer, a, u)).ToList() : null,
-                NonHeroCurrentMovement = nonHero.Select(u => AviationRules.EffectiveMoveCurrent(u)).ToList(),
+                NonHeroCurrentMovement = nonHero.Select(SoloMoveCurrent).ToList(),
                 EconomyRosterProtected = isOwn && MissionIntentRegistry.GetOrCreate(a.Owner).All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
                     && i.PreferredMoverArmyId == a.Id),
                 HeroCurrentMovement = a.Members.Where(u => u.IsHero)
                     .Select(AviationRules.EffectiveMoveCurrent).DefaultIfEmpty(a.CurrentMovement).Min(),
                 NonHeroActivationApCosts = nonHero.Select(u => u.ActivationApCost).ToList(),
-                NonHeroMoveMax = nonHero.Select(u => u.MoveMax).ToList(),
+                NonHeroMoveMax = nonHero.Select(SoloMoveMax).ToList(),
                 NonHeroIsAviation = nonHero.Select(u => u.IsAviation).ToList(),
                 HeroActivationApCost = a.Members.Where(u => u.IsHero)
                     .Sum(u => u.ActivationApCost),

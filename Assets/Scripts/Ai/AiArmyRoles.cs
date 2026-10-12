@@ -483,7 +483,8 @@ namespace Game.Ai
             return garrison.Members
                 .Where(u => u != null && !u.IsAviation && AbilityParams.UnitHasAnyRecce(u)
                     && CanSpareGarrisonMember(player, garrison, u))
-                .OrderByDescending(u => u.MoveMax)
+                // The carrier stays in the garrison, so its Transport support does not leave with u.
+                .OrderByDescending(u => u.PermanentMoveMax)
                 .ThenBy(u => u.Name)
                 .FirstOrDefault();
         }

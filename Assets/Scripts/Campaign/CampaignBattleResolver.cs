@@ -109,8 +109,9 @@ namespace Game.Campaign
                 var infantry = hosts.Where(h => h.Card.cardType == CardType.Unit && !h.Card.isAviation
                     && h.Card.unitTypeTags.Contains(UnitTypeTag.Infantry)
                     && h.Line.MoveMax < carrier.Line.MoveMax).ToList();
+                // Gameplay carries the slowest eligible Infantry.
                 if (infantry.Count > 0)
-                    value += infantry.Average(h => Math.Min(4, carrier.Line.MoveMax) - Math.Min(4, h.Line.MoveMax)) * .15;
+                    value += (Math.Min(4, carrier.Line.MoveMax) - Math.Min(4, infantry.Min(h => h.Line.MoveMax))) * .15;
             }
             return value * StrategicWeight;
         }

@@ -418,22 +418,19 @@ namespace Game.Ai.V2
         private static float ExpectedTransportGain(ArmySnapshot army, int carrierMove)
         {
             if (army?.Members == null || army.NonHeroMoveMax == null || army.IsAir || army.IsPrison) return 0f;
-            var candidates = new List<int>();
+            // Gameplay gives the carrier the slowest eligible Infantry (ArmyData.ProjectTransport).
+            int chosen = -1;
             for (int i = 0; i < army.Members.Count && i < army.NonHeroMoveMax.Count; i++)
-                if (army.Members[i].TypeTags.Contains(UnitTypeTag.Infantry) && army.NonHeroMoveMax[i] < carrierMove)
-                    candidates.Add(i);
-            if (candidates.Count == 0) return 0f;
+                if (army.Members[i].TypeTags.Contains(UnitTypeTag.Infantry) && army.NonHeroMoveMax[i] < carrierMove
+                    && (chosen < 0 || army.NonHeroMoveMax[i] < army.NonHeroMoveMax[chosen]))
+                    chosen = i;
+            if (chosen < 0) return 0f;
             int before = Mathf.Min(carrierMove, army.MaxMovement);
-            float gain = 0f;
-            foreach (int chosen in candidates)
-            {
-                int after = carrierMove;
-                for (int i = 0; i < army.NonHeroMoveMax.Count; i++)
-                    after = Mathf.Min(after, i == chosen ? carrierMove : army.NonHeroMoveMax[i]);
-                if (army.HasHero) after = Mathf.Min(after, army.HeroMoveMax);
-                gain += Mathf.Max(0, after - before);
-            }
-            return gain / candidates.Count;
+            int after = carrierMove;
+            for (int i = 0; i < army.NonHeroMoveMax.Count; i++)
+                after = Mathf.Min(after, i == chosen ? carrierMove : army.NonHeroMoveMax[i]);
+            if (army.HasHero) after = Mathf.Min(after, army.HeroMoveMax);
+            return Mathf.Max(0, after - before);
         }
 
         // AI-MGR — the ONE resolution point for "how much AP could the AI still USEFULLY spend this

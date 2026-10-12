@@ -240,6 +240,7 @@ namespace Game.Ai.V2
         // Parallel factual arrays for own non-hero Members. Demand uses them to price the exact
         // minimal Economy escort before Allocation; Provisioning only executes that decision.
         public IReadOnlyList<int> NonHeroActivationApCosts = System.Array.Empty<int>();
+        // Own speed of each body (WorldAnalysis.SoloMoveMax): Transport support is not included.
         public IReadOnlyList<int> NonHeroMoveMax = System.Array.Empty<int>();
         public IReadOnlyList<bool> NonHeroIsAviation = System.Array.Empty<bool>();
         // Identity and remaining MP are frozen in the same order as Members.

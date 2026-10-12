@@ -213,7 +213,8 @@ namespace Game.Ai.V2
                 ledRoster.Insert(0, lead);
             int capacity = ArmyData.ComputeCapacity(ledRoster, host.IsGarrison);
             int memberCount = roster.Count;
-            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
+            // The led roster also carries any secondary healing hero into the body-only forecast.
+            WorthIt.SideCommander commander = lead != null ? WorthIt.SideCommander.Of(ledRoster) : default;
 
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the
             // strongest bodies the whole pool holds. If even that misses the gate, skip this host.

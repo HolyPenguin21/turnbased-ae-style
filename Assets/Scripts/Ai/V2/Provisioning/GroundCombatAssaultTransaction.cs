@@ -315,7 +315,8 @@ namespace Game.Ai.V2
             int capacity = ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
             return GroundCombatAssemblyPlanner.TryProjectReinforcement(
                 primaryBodies, supportBodies, capacity, primary.Members.Count,
-                WorthIt.SideCommander.Of(primary.Commander), opposition, out _, out why,
+                // Body-only profiles: the roster form also carries secondary healing heroes.
+                WorthIt.SideCommander.Of(primary.Members), opposition, out _, out why,
                 defenderHexDefenseBonus);
         }
 

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -208,9 +207,9 @@ namespace Game.Ai.V2
                 && (snapshot.NonHeroRuntimeIds.Count == 0
                     || (snapshot.NonHeroRuntimeIds.SequenceEqual(bodies.Select(u => u.RuntimeId))
                         && snapshot.NonHeroActivationApCosts.SequenceEqual(bodies.Select(u => u.ActivationApCost))
-                        && snapshot.NonHeroMoveMax.SequenceEqual(bodies.Select(u => u.MoveMax))
+                        && snapshot.NonHeroMoveMax.SequenceEqual(bodies.Select(WorldAnalysis.SoloMoveMax))
                         && snapshot.NonHeroCurrentMovement.SequenceEqual(
-                            bodies.Select(AviationRules.EffectiveMoveCurrent))));
+                            bodies.Select(WorldAnalysis.SoloMoveCurrent))));
 
 #if UNITY_INCLUDE_TESTS
         // Compatibility seams for existing live preparation tests: Analysis creates the facts,
@@ -287,7 +286,7 @@ namespace Game.Ai.V2
             ArmySnapshot facts = WorldAnalysis.ToArmySnapshot(builder, builder.Owner, true, 0);
             facts.Members = pool.Select(WorthIt.FromLiveUnit).ToList();
             facts.NonHeroActivationApCosts = pool.Select(u => u.ActivationApCost).ToList();
-            facts.NonHeroMoveMax = pool.Select(u => u.MoveMax).ToList();
+            facts.NonHeroMoveMax = pool.Select(WorldAnalysis.SoloMoveMax).ToList();
             facts.NonHeroIsAviation = pool.Select(u => u.IsAviation).ToList();
             List<int> selected = DemandLayer.MinimumSafeEconomyEscortIndices(facts, threats, minimumEscort);
             return selected?.Select(i => pool[i]).ToList();

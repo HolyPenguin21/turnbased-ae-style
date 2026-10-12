@@ -62,18 +62,25 @@ namespace Game.Map
                     && TransportEligible(u, carrier) && !links.ContainsKey(u));
                 if (existing != null) links[existing] = carrier;
             }
+            // The army moves at its slowest member, so a carrier serves the slowest eligible
+            // Infantry. A kept pair yields only to a strictly slower unassigned body; the freed
+            // body stays available to the next carrier.
             foreach (UnitData carrier in carriers)
             {
-                if (links.Values.Contains(carrier)) continue;
+                UnitData current = links.FirstOrDefault(l => l.Value == carrier).Key;
                 UnitData target = roster.Where(u => TransportEligible(u, carrier) && !links.ContainsKey(u))
-                    .OrderBy(u => TransportChoiceKey(carrier.RuntimeId, u.RuntimeId)).FirstOrDefault();
-                if (target != null) links[target] = carrier;
+                    .OrderBy(u => u.PermanentMoveMax)
+                    .ThenBy(u => TransportChoiceKey(carrier.RuntimeId, u.RuntimeId)).FirstOrDefault();
+                if (target == null || current != null && target.PermanentMoveMax >= current.PermanentMoveMax)
+                    continue;
+                if (current != null) links.Remove(current);
+                links[target] = carrier;
             }
             return links;
         }
 
-        // Seeded pseudorandom selection by stable live identities: prediction and commit make
-        // the same choice, repeated reads cannot reroll it, and list reordering has no effect.
+        // Seeded tie-break between equally slow bodies by stable live identities: prediction
+        // and commit make the same choice, and list reordering has no effect.
         private static uint TransportChoiceKey(int carrier, int target)
         {
             unchecked
