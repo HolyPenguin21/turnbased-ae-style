@@ -134,17 +134,20 @@ namespace Game.Cards
         public string GetRandomArmyName(IEnumerable<string> takenNames = null)
         {
             var taken = takenNames != null ? new HashSet<string>(takenNames) : null;
-            if (armyNamePool != null && armyNamePool.Count > 0)
+            // Blank entries (an unfilled slot in the inspector list) are not names.
+            List<string> pool = armyNamePool == null ? new List<string>()
+                : armyNamePool.Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            if (pool.Count > 0)
             {
                 List<string> available = taken != null
-                    ? armyNamePool.Where(n => !taken.Contains(n)).ToList()
-                    : armyNamePool;
+                    ? pool.Where(n => !taken.Contains(n)).ToList()
+                    : pool;
                 if (available.Count > 0)
                     return available[Random.Range(0, available.Count)];
             }
 
-            string baseName = armyNamePool != null && armyNamePool.Count > 0
-                ? armyNamePool[Random.Range(0, armyNamePool.Count)]
+            string baseName = pool.Count > 0
+                ? pool[Random.Range(0, pool.Count)]
                 : "Army";
             if (taken == null)
                 return baseName;
