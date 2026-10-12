@@ -175,7 +175,7 @@ namespace Game.UI
             {
                 "Button" or "SquareButton" or "BackPlate" or "SavePlate" => "Buttons",
                 "Panel_Outer" or "Panel_Inset" => "Panels",
-                "Input" or "Meter" or "ScrollbarTrack" or "ScrollbarHandle" => "Controls",
+                "Input" or "Meter" or "ScrollbarTrack" or "ScrollbarHandle" or "DropdownBackground" => "Controls",
                 "Metal" => "Backgrounds",
                 _ => "Decorations"
             };
@@ -183,6 +183,7 @@ namespace Game.UI
             if (sprite == null) return;
             image.sprite = sprite; image.color = Color.white;
             image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 1.30625f;
+            if (asset == "DropdownBackground") image.pixelsPerUnitMultiplier = 2.5f;
             image.fillCenter = asset != "Panel_Inset";
             if (asset == "Panel_Inset")
             {
@@ -295,7 +296,6 @@ namespace Game.UI
                 if (arrow != null) arrow.color = CollectionInk;
                 if (dropdown.template == null) continue;
                 // One parchment surface for the popup; items are flat highlight strips.
-                ApplySurface(dropdown.template.GetComponent<Image>(), "Input");
                 var template = dropdown.template;
                 template.anchorMin = new Vector2(0, 0); template.anchorMax = new Vector2(1, 0);
                 template.pivot = new Vector2(.5f, 1); template.anchoredPosition = new Vector2(0, -4);
@@ -356,6 +356,7 @@ namespace Game.UI
             var template = dropdown.template;
             var popup = template.GetComponent<ScrollRect>();
             if (popup == null || popup.content == null || popup.viewport == null) return;
+            ApplySurface(template.GetComponent<Image>(), "DropdownBackground");
             bool needsScroll = dropdown.options.Count > DropdownVisibleRows;
             template.sizeDelta = new Vector2(template.sizeDelta.x,
                 DropdownVisibleRows * DropdownRowHeight + 2 * DropdownPadding);

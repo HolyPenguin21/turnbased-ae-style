@@ -62,6 +62,8 @@ public class CollectionScrollPresentationTests
         dropdown.Show();
         Canvas.ForceUpdateCanvases();
         var popup = dropdown.transform.Find("Dropdown List").GetComponent<ScrollRect>();
+        Assert.That(popup.GetComponent<Image>().sprite.name, Is.EqualTo("DropdownBackground"));
+        Assert.That(popup.GetComponent<Image>().type, Is.EqualTo(Image.Type.Sliced));
         Assert.That(popup.content.rect.height, Is.EqualTo(count * 32 + 16).Within(.01f));
         Assert.That(popup.viewport.rect.height, Is.EqualTo(Mathf.Min(count, 10) * 32 + 16).Within(.01f));
         Assert.That(popup.vertical, Is.EqualTo(count > 10));
