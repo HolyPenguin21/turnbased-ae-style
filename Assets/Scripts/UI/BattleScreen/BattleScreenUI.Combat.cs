@@ -180,7 +180,7 @@ namespace Game.UI
                     card.displayName, owner, card.moveMax, card.activationApCost, false,
                     card.commandRating, card.art, card.grantedAbilities, card.attack, card.range,
                     card.hitPoints, card.initiative, card.fate, card.defenseRating,
-                    card.resistanceRating, card.unitTypeTags, card.detailArt,
+                    card.unitTypeTags, card.detailArt,
                     card.apCost, card.resourceCost));
 
             if (result.Summoners > 0)

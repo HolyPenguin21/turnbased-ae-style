@@ -23,7 +23,7 @@ namespace Game.Map
     // action is shared by the human resource buttons and InfrastructureActions for AI.
     public partial class HexSelectionController
     {
-        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
+        public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
         {
             if (owner == null)
                 return null;
@@ -35,7 +35,7 @@ namespace Game.Map
                 ActivationApCost = activationApCost,
                 IsHero = isHero, CommandRating = commandRating,
                 Art = art, DetailArt = detailArt != null ? detailArt : art,
-                Attack = attack, Defense = defense, Resistance = resistance, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
+                Attack = attack, Defense = defense, Range = range, HitPointsMax = hitPoints, HitPointsCurrent = hitPoints,
                 Initiative = initiative, Fate = fate, FateMax = fate,
                 ApCost = apCost, OriginalResourceCost = resourceCost,
                 IsAviation = isAviation,
@@ -148,7 +148,6 @@ namespace Game.Map
                 StructurePointsMax = definition.hitPoints,
                 StructurePointsCurrent = definition.hitPoints,
                 Defense = definition.defenseRating,
-                Resistance = definition.resistanceRating,
                 Fate = definition.fate,
                 AirfieldCapacity = Mathf.Max(0, definition.airfieldCapacity),
             };
@@ -217,7 +216,6 @@ namespace Game.Map
                     StructurePointsMax = gameConfig.resourceSiteStructurePoints,
                     StructurePointsCurrent = gameConfig.resourceSiteStructurePoints,
                     Defense = gameConfig.resourceSiteDefense,
-                    Resistance = gameConfig.resourceSiteResistance,
                     Fate = gameConfig.resourceSiteFate,
                     HasTieredUnlock = false,
                 };

@@ -140,7 +140,6 @@ namespace Game.Map
                 Mutator = source.Mutator,
                 Attack = source.Attack,
                 Defense = source.Defense,
-                Resistance = source.Resistance,
                 Range = source.Range,
                 HitPointsMax = source.HitPointsMax,
                 HitPointsCurrent = source.HitPointsCurrent,

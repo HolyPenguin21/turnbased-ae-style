@@ -365,7 +365,7 @@ namespace Game.Map
         }
 
         // Same reasoning as OnArmyModalClosed — an Upgrade purchased inside the Base modal
-        // changes UnlockedFacilitySlots/Defense/Resistance, which the hex-side info panel
+        // changes UnlockedFacilitySlots/Defense, which the hex-side info panel
         // doesn't otherwise learn about until the player re-clicks the hex.
         private void OnBaseModalClosed()
         {

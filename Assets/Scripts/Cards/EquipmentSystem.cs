@@ -73,7 +73,6 @@ namespace Game.Cards
             {
                 [EquipmentStat.Attack] = host.attack,
                 [EquipmentStat.Defense] = host.defenseRating,
-                [EquipmentStat.Resistance] = host.resistanceRating,
                 [EquipmentStat.Range] = host.range,
                 [EquipmentStat.HitPoints] = host.hitPoints,
                 [EquipmentStat.MoveMax] = host.moveMax,
@@ -89,7 +88,6 @@ namespace Game.Cards
             {
                 [EquipmentStat.Attack] = host.Attack,
                 [EquipmentStat.Defense] = host.Defense,
-                [EquipmentStat.Resistance] = host.Resistance,
                 [EquipmentStat.Range] = host.Range,
                 [EquipmentStat.HitPoints] = host.HitPointsMax,
                 [EquipmentStat.MoveMax] = host.MoveMax,
@@ -110,7 +108,7 @@ namespace Game.Cards
             unit.Fate = Mathf.Clamp(stats[EquipmentStat.Fate] - fateSpent, 0, stats[EquipmentStat.Fate]);
             unit.AttachmentResources = new AttachmentResourceState(hpSpent, moveSpent, fateSpent, unit);
             unit.Attack = stats[EquipmentStat.Attack]; unit.Defense = stats[EquipmentStat.Defense];
-            unit.Resistance = stats[EquipmentStat.Resistance]; unit.Range = stats[EquipmentStat.Range];
+            unit.Range = stats[EquipmentStat.Range];
             unit.HitPointsMax = stats[EquipmentStat.HitPoints]; unit.MoveMax = stats[EquipmentStat.MoveMax];
             unit.Initiative = stats[EquipmentStat.Initiative]; unit.ActivationApCost = stats[EquipmentStat.ActivationApCost];
             unit.CommandRating = stats[EquipmentStat.CommandRating]; unit.FateMax = stats[EquipmentStat.Fate];
@@ -540,9 +538,6 @@ namespace Game.Cards
                     break;
                 case EquipmentStat.Defense:
                     unit.Defense = Combine(unit.Defense, change, FloorFor(EquipmentStat.Defense));
-                    break;
-                case EquipmentStat.Resistance:
-                    unit.Resistance = Combine(unit.Resistance, change, FloorFor(EquipmentStat.Resistance));
                     break;
                 case EquipmentStat.Range:
                     unit.Range = Combine(unit.Range, change, FloorFor(EquipmentStat.Range));

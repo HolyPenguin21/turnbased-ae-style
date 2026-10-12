@@ -20,7 +20,7 @@ namespace Game.EditorTests
         private static CardDefinition Infantry() => new CardDefinition
         {
             cardType = CardType.Unit, attack = 3, defenseRating = 1, hitPoints = 4, initiative = 1,
-            resistanceRating = 0, range = 2, unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry },
+            range = 2, unitTypeTags = new List<UnitTypeTag> { UnitTypeTag.Bio, UnitTypeTag.Infantry },
         };
 
         // 2026-10-01 — the identified peak (strike roster) is the SAME greedy as the scalar

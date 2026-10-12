@@ -241,7 +241,7 @@ namespace Game.Map
                     UnitData spawned = SpawnUnit(card.displayName, entry.GuardOwner, card.moveMax,
                         card.activationApCost, card.cardType == CardType.Hero, card.commandRating, card.art,
                         card.grantedAbilities, card.attack, card.range, card.hitPoints, card.initiative, card.fate,
-                        card.defenseRating, card.resistanceRating, card.unitTypeTags, card.detailArt,
+                        card.defenseRating, card.unitTypeTags, card.detailArt,
                         card.apCost, card.resourceCost);
                     if (spawned != null)
                         guard.AddMemberSorted(spawned);

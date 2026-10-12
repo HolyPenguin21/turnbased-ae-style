@@ -104,15 +104,14 @@ namespace Game.Core
         public MapObjectVisual facilityMarkerPrefab;
         // A hero-built resource site has no CardDefinition of its own to source stats from
         // (unlike a citadel/card-built Base, which now reads its own card's hitPoints/
-        // defenseRating/resistanceRating/fate — see CitadelSetupController.SpawnCitadelMarker/
+        // defenseRating/fate — see CitadelSetupController.SpawnCitadelMarker/
         // HexSelectionController.SpawnBuilding) — these are its baseline instead. See
         // TryBuildExtractionFacility. StructurePoints and Defense are both live (repair, and
         // Defense folds into a defending army's combat roll — see BattleContactPopupUI's
-        // buildingDefMod); Resistance/Fate aren't consumed by anything yet, same as
+        // buildingDefMod); Fate isn't consumed by anything yet, same as
         // BuildingData.Fate's own general status.
         public int resourceSiteStructurePoints = 6;
         public int resourceSiteDefense = 2;
-        public int resourceSiteResistance = 1;
         public int resourceSiteFate = 1;
 
         [Header("Ability Abbreviations")]

@@ -418,11 +418,11 @@ namespace Game.EditorTools
             finally { UnityEngine.Object.DestroyImmediate(go); }
         }
 
-        [TestCase(CardType.Base, 1, 2, 4, 5)]
-        [TestCase(CardType.Facility, 1, 2, 4, 5)]
-        [TestCase(CardType.Unit, 3, 2, 6, 9)]
-        [TestCase(CardType.Hero, 8, 5, 6, 7)]
-        public void CollectionPreviewUsesCardTypeStatOrder(CardType type, int first, int second, int fourth, int fifth)
+        [TestCase(CardType.Base, 1, 2, "-", 5)]
+        [TestCase(CardType.Facility, 1, 2, "-", 5)]
+        [TestCase(CardType.Unit, 3, 2, "6", 9)]
+        [TestCase(CardType.Hero, 8, 5, "6", 7)]
+        public void CollectionPreviewUsesCardTypeStatOrder(CardType type, int first, int second, string fourth, int fifth)
         {
             var go = new GameObject("preview", typeof(RectTransform));
             try
@@ -441,10 +441,10 @@ namespace Game.EditorTools
                 }
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 var definition = new CardDefinition { cardType = type, attack = 3, defenseRating = 2,
-                    hitPoints = 17, resistanceRating = 4, fate = 5, moveMax = 6, initiative = 7, commandRating = 8, range = 9 };
+                    hitPoints = 17, fate = 5, moveMax = 6, initiative = 7, commandRating = 8, range = 9 };
                 preview.SetupPreview(definition, null, _ => { });
                 Assert.That(row.activeSelf, Is.True);
-                Assert.That(labels.Select(t => t.text), Is.EqualTo(new[] { first.ToString(), second.ToString(), "17", fourth.ToString(), fifth.ToString() }));
+                Assert.That(labels.Select(t => t.text), Is.EqualTo(new[] { first.ToString(), second.ToString(), "17", fourth, fifth.ToString() }));
                 preview.SetupPreview(null, null, _ => { }); Assert.That(row.activeSelf, Is.False);
             }
             finally { UnityEngine.Object.DestroyImmediate(go); }

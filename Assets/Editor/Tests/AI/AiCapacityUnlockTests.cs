@@ -74,9 +74,9 @@ namespace Game.EditorTests
             _config = ScriptableObject.CreateInstance<GameConfig>();
             _config.baseUpgradeTiers = new[]
             {
-                new BaseUpgradeTier { apCost = 2, cost = new ResourceCost(1, 1, 1, 1), defenseGain = 1, resistanceGain = 1 },
-                new BaseUpgradeTier { apCost = 4, cost = new ResourceCost(2, 2, 2, 2), defenseGain = 1, resistanceGain = 1 },
-                new BaseUpgradeTier { apCost = 6, cost = new ResourceCost(4, 4, 4, 4), defenseGain = 1, resistanceGain = 1 },
+                new BaseUpgradeTier { apCost = 2, cost = new ResourceCost(1, 1, 1, 1), defenseGain = 1 },
+                new BaseUpgradeTier { apCost = 4, cost = new ResourceCost(2, 2, 2, 2), defenseGain = 1 },
+                new BaseUpgradeTier { apCost = 6, cost = new ResourceCost(4, 4, 4, 4), defenseGain = 1 },
             };
             _ctx = new AiTurnContext { TurnNumber = 2, ResearchProductionCatalog = _catalog, GameConfig = _config };
             _snapshot = new WorldSnapshot
@@ -242,7 +242,7 @@ namespace Game.EditorTests
             int[] before = Bank();
             int version = WorldDeltaLifecycle.Current;
             int levelBefore = _base.Level, unlockedBefore = _base.UnlockedFacilitySlots;
-            int defenseBefore = _base.Defense, resistanceBefore = _base.Resistance;
+            int defenseBefore = _base.Defense;
             var slotsBefore = (FacilityData[])_base.FacilitySlots.Clone();
             int cardsInHand = _hand.Hand.Count;
 
@@ -260,7 +260,6 @@ namespace Game.EditorTests
             Assert.That(_base.Level, Is.EqualTo(levelBefore + 1));
             Assert.That(_base.UnlockedFacilitySlots, Is.EqualTo(unlockedBefore + 1));
             Assert.That(_base.Defense, Is.EqualTo(defenseBefore + 1));
-            Assert.That(_base.Resistance, Is.EqualTo(resistanceBefore + 1));
             Assert.That(_base.FacilitySlots, Is.EqualTo(slotsBefore), "filled slots keep their indices and content");
             Assert.That(_hand.Hand.Count, Is.EqualTo(cardsInHand));
             Assert.That(_hand.Hand, Has.Member(_facility), "the same card instance waits in hand");

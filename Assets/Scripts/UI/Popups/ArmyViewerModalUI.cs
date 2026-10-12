@@ -385,8 +385,7 @@ namespace Game.UI
                 // deliberately left out (it's an army-level cost paid once per turn, not really
                 // "this unit's own stat"); Command Rating only means anything for a hero (see
                 // ArmyData.Capacity), so it's skipped entirely for a plain unit rather than
-                // showing a meaningless number. Resistance is deliberately left out too, per the
-                // user's own request.
+                // showing a meaningless number.
                 // Defense includes this army's own terrain/Base-building bonus — same figure it
                 // would actually defend with if attacked on this hex right now (see
                 // CurrentArmyDefenseBonus's own comment).

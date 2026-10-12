@@ -18,14 +18,13 @@ namespace Game.Map
         public Sprite DetailArt;
 
         // Runtime copy of the same five building-card values shown by CardUI for a Facility:
-        // Level / Defense / Structure Points / Resistance / Fate. UpgradeLevel remains the
+        // Level / Defense / Structure Points / Fate. UpgradeLevel remains the
         // existing zero-based progression counter; Level is its one-based presentation value.
         public int UpgradeLevel;
         public int Level => UpgradeLevel + 1;
         public int StructurePointsCurrent;
         public int StructurePointsMax;
         public int Defense;
-        public int Resistance;
         public int Fate;
 
         public readonly HashSet<string> Abilities = new HashSet<string>();
@@ -46,7 +45,6 @@ namespace Game.Map
                 StructurePointsCurrent = definition.hitPoints,
                 StructurePointsMax = definition.hitPoints,
                 Defense = definition.defenseRating,
-                Resistance = definition.resistanceRating,
                 Fate = definition.fate,
             };
             foreach (string ability in definition.grantedAbilities)

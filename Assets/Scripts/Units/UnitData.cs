@@ -165,11 +165,6 @@ namespace Game.Units
         // carried over from CardDefinition.defenseRating, named to avoid colliding with that
         // same class's unrelated BuildingData-facing `defense` field.
         public int Defense = 1;
-        // A separate damage-reduction stat from Defense (see the manual — several abilities key
-        // off it specifically, e.g. "-X damage against biologic units"). Same
-        // BuildingData-facing-field naming collision as Defense — carried over from
-        // CardDefinition.resistanceRating.
-        public int Resistance = 1;
         public int Range = 1;
         public int HitPointsMax = 1;
         public int HitPointsCurrent = 1;

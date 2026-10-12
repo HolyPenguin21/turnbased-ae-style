@@ -134,12 +134,12 @@ namespace Game.UI
             }
             else if (resolved == CardType.Facility || resolved == CardType.Base)
             {
-                // There is no EquipmentStat for building Level, so slot 1 is intentionally empty.
-                if (slot == 0)
+                // There is no EquipmentStat for building Level (slot 0), and slot 3 (the old Resistance
+                // position) no longer carries a stat, so both are intentionally empty.
+                if (slot == 0 || slot == 3)
                     return "-";
                 stat = slot == 1 ? EquipmentStat.Defense
                     : slot == 2 ? EquipmentStat.HitPoints
-                    : slot == 3 ? EquipmentStat.Resistance
                     : EquipmentStat.Fate;
             }
             else

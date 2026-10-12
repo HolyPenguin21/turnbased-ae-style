@@ -1318,7 +1318,6 @@ namespace Game.Ai.V2
             {
                 [EquipmentStat.Attack] = host.Attack,
                 [EquipmentStat.Defense] = host.Defense,
-                [EquipmentStat.Resistance] = host.Resistance,
                 [EquipmentStat.Range] = host.Range,
                 [EquipmentStat.HitPoints] = host.HitPointsMax,
                 [EquipmentStat.MoveMax] = host.MoveMax,
@@ -1343,7 +1342,7 @@ namespace Game.Ai.V2
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host);
         }
 
-        // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative/Resistance, hero Fate,
+        // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative, hero Fate,
         // added/lost damage abilities); Tactical = what it cannot (Move, Range, activation AP,
         // Command, strategic roles - roles already gate themselves on a present threat).
         private static EquipmentDelta ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,

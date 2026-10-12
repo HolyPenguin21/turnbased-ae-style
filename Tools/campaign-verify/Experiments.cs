@@ -10,7 +10,7 @@ public static class Experiments
   int N(string k,int fallback=0)=>e.TryGetProperty(k,out var v)?v.GetInt32():fallback;
   string S(string k)=>e.TryGetProperty(k,out var v)?v.GetString():null;
   return new CardDefinition { authoredKey=S("authoredKey"), displayName=S("displayName"), cardType=(CardType)N("cardType"), faction=(Game.Players.Faction)N("faction"),
-   attack=N("attack"),defenseRating=N("defenseRating",1),hitPoints=N("hitPoints",1),range=N("range",1),initiative=N("initiative",1),resistanceRating=N("resistanceRating"),
+   attack=N("attack"),defenseRating=N("defenseRating",1),hitPoints=N("hitPoints",1),range=N("range",1),initiative=N("initiative",1),
    commandRating=N("commandRating",2),fate=N("fate"),moveMax=N("moveMax",1),activationApCost=N("activationApCost",1),requiredBuildingAbility=S("requiredBuildingAbility"),
    isAviation=e.TryGetProperty("isAviation",out var air)&&air.GetInt32()!=0, attachmentSlot=(AttachmentSlot)N("attachmentSlot"),
    unitTypeTags=(e.GetProperty("unitTypeTags").ValueKind == System.Text.Json.JsonValueKind.Array ? e.GetProperty("unitTypeTags").EnumerateArray().ToArray() : Array.Empty<System.Text.Json.JsonElement>()).Select(v=>(UnitTypeTag)v.GetInt32()).ToList(),

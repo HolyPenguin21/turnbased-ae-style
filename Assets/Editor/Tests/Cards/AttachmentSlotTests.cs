@@ -14,7 +14,7 @@ namespace Game.EditorTests
         internal static CardDefinition Host(bool hero = false, bool bio = true) => new CardDefinition
         {
             cardType = hero ? CardType.Hero : CardType.Unit,
-            attack = 5, defenseRating = 3, resistanceRating = 1, range = 2,
+            attack = 5, defenseRating = 3, range = 2,
             hitPoints = 10, moveMax = 6, fate = 4, initiative = 2, activationApCost = 2,
             commandRating = 5,
             unitTypeTags = new List<UnitTypeTag> { bio ? UnitTypeTag.Bio : UnitTypeTag.Mechanical },
@@ -40,7 +40,7 @@ namespace Game.EditorTests
             host = host ?? Host();
             var unit = new UnitData
             {
-                Attack = host.attack, Defense = host.defenseRating, Resistance = host.resistanceRating,
+                Attack = host.attack, Defense = host.defenseRating,
                 Range = host.range, HitPointsMax = host.hitPoints, HitPointsCurrent = host.hitPoints,
                 MoveMax = host.moveMax, MoveCurrent = host.moveMax, FateMax = host.fate, Fate = host.fate,
                 Initiative = host.initiative, ActivationApCost = host.activationApCost,
@@ -80,11 +80,11 @@ namespace Game.EditorTests
                     body.Fate -= spentFate;
                     EquipmentSystem.ApplyAttachments(body, equipment, mutator);
                     string context = $"{item.authoredKey}/{host.authoredKey}/{other?.authoredKey}";
-                    Assert.That(new[] { body.Attack, body.Defense, body.Resistance, body.Range,
+                    Assert.That(new[] { body.Attack, body.Defense, body.Range,
                         body.HitPointsMax, body.MoveMax, body.Initiative, body.ActivationApCost,
                         body.CommandRating, body.FateMax }, Is.EqualTo(new[] {
                         expected.Stats[EquipmentStat.Attack], expected.Stats[EquipmentStat.Defense],
-                        expected.Stats[EquipmentStat.Resistance], expected.Stats[EquipmentStat.Range],
+                        expected.Stats[EquipmentStat.Range],
                         expected.Stats[EquipmentStat.HitPoints], expected.Stats[EquipmentStat.MoveMax],
                         expected.Stats[EquipmentStat.Initiative], expected.Stats[EquipmentStat.ActivationApCost],
                         expected.Stats[EquipmentStat.CommandRating], expected.Stats[EquipmentStat.Fate] }), context);

@@ -84,9 +84,9 @@ namespace Game.Ai.V2
 
             // The shortage (NumericPowerDeficit) is measured in the CANONICAL
             // own-force metric: ArmySnapshot.EffectiveArmyPower == AiPower.EffectiveArmyPower over
-            // AiPower.PowerUnit (Attack/Defense/HP/Init/Resistance/Fate/Range/IsHero + full ability
+            // AiPower.PowerUnit (Attack/Defense/HP/Init/Fate/Range/IsHero + full ability
             // multiplier + composition). The contribution MUST be a delta of that SAME metric —
-            // NOT WorthIt.DefenderProfile, which is a lossy enemy/fog line (no Resistance/Fate,
+            // NOT WorthIt.DefenderProfile, which is a lossy enemy/fog line (no Fate,
             // Range forced to 1, IsHero=false, reduced abilities).
             //
             // Per target army also carry the projected physical CAPACITY (canonical

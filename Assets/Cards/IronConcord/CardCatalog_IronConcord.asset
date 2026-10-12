@@ -39,7 +39,6 @@ MonoBehaviour:
     fate: 2
     attack: 0
     defenseRating: 2
-    resistanceRating: 5
     range: 0
     hitPoints: 12
     initiative: 0
@@ -91,7 +90,6 @@ MonoBehaviour:
     fate: 2
     attack: 0
     defenseRating: 1
-    resistanceRating: 4
     range: 0
     hitPoints: 8
     initiative: 0
@@ -144,7 +142,6 @@ MonoBehaviour:
     fate: 5
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 2
@@ -192,7 +189,6 @@ MonoBehaviour:
     fate: 4
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 1
@@ -239,7 +235,6 @@ MonoBehaviour:
     fate: 3
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 1
@@ -287,7 +282,6 @@ MonoBehaviour:
     fate: 4
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 1
@@ -335,7 +329,6 @@ MonoBehaviour:
     fate: 5
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 2
@@ -383,7 +376,6 @@ MonoBehaviour:
     fate: 4
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 1
@@ -430,7 +422,6 @@ MonoBehaviour:
     fate: 4
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 2
@@ -479,7 +470,6 @@ MonoBehaviour:
     fate: 2
     attack: 0
     defenseRating: 0
-    resistanceRating: 0
     range: 0
     hitPoints: 6
     initiative: 1
@@ -527,7 +517,6 @@ MonoBehaviour:
     fate: 0
     attack: 2
     defenseRating: 1
-    resistanceRating: 1
     range: 2
     hitPoints: 4
     initiative: 1
@@ -576,7 +565,6 @@ MonoBehaviour:
     fate: 0
     attack: 3
     defenseRating: 2
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 1
@@ -624,7 +612,6 @@ MonoBehaviour:
     fate: 0
     attack: 1
     defenseRating: 2
-    resistanceRating: 1
     range: 2
     hitPoints: 2
     initiative: 1
@@ -673,7 +660,6 @@ MonoBehaviour:
     fate: 0
     attack: 3
     defenseRating: 1
-    resistanceRating: 1
     range: 2
     hitPoints: 4
     initiative: 2
@@ -721,7 +707,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 2
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 1
@@ -769,7 +754,6 @@ MonoBehaviour:
     fate: 0
     attack: 3
     defenseRating: 1
-    resistanceRating: 0
     range: 2
     hitPoints: 4
     initiative: 1
@@ -816,7 +800,6 @@ MonoBehaviour:
     fate: 0
     attack: 3
     defenseRating: 2
-    resistanceRating: 1
     range: 2
     hitPoints: 4
     initiative: 1
@@ -863,7 +846,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 2
-    resistanceRating: 1
     range: 1
     hitPoints: 4
     initiative: 2
@@ -912,7 +894,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 2
-    resistanceRating: 2
     range: 2
     hitPoints: 4
     initiative: 1
@@ -960,7 +941,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 3
-    resistanceRating: 1
     range: 2
     hitPoints: 4
     initiative: 1
@@ -1008,7 +988,6 @@ MonoBehaviour:
     fate: 0
     attack: 5
     defenseRating: 3
-    resistanceRating: 2
     range: 2
     hitPoints: 5
     initiative: 1
@@ -1055,7 +1034,6 @@ MonoBehaviour:
     fate: 0
     attack: 5
     defenseRating: 4
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 1
@@ -1102,7 +1080,6 @@ MonoBehaviour:
     fate: 0
     attack: 6
     defenseRating: 4
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 1
@@ -1150,7 +1127,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 1
-    resistanceRating: 2
     range: 3
     hitPoints: 2
     initiative: 2
@@ -1198,7 +1174,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 1
-    resistanceRating: 2
     range: 3
     hitPoints: 2
     initiative: 2
@@ -1246,7 +1221,6 @@ MonoBehaviour:
     fate: 0
     attack: 7
     defenseRating: 3
-    resistanceRating: 3
     range: 4
     hitPoints: 3
     initiative: 2
@@ -1294,7 +1268,6 @@ MonoBehaviour:
     fate: 0
     attack: 5
     defenseRating: 2
-    resistanceRating: 3
     range: 3
     hitPoints: 3
     initiative: 2
@@ -1342,7 +1315,6 @@ MonoBehaviour:
     fate: 2
     attack: 8
     defenseRating: 4
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 2
@@ -1390,7 +1362,6 @@ MonoBehaviour:
     fate: 2
     attack: 5
     defenseRating: 3
-    resistanceRating: 2
     range: 2
     hitPoints: 6
     initiative: 2
@@ -1438,7 +1409,6 @@ MonoBehaviour:
     fate: 0
     attack: 1
     defenseRating: 2
-    resistanceRating: 2
     range: 1
     hitPoints: 4
     initiative: 1
@@ -1485,7 +1455,6 @@ MonoBehaviour:
     fate: 0
     attack: 4
     defenseRating: 3
-    resistanceRating: 2
     range: 2
     hitPoints: 4
     initiative: 1

@@ -42,12 +42,10 @@ namespace Game.UI
         // capacity slot so no empty banner shows behind the "+" placeholder art.
         [SerializeField] private GameObject titleRoot;
         [SerializeField] private TMP_Text moveText;
-        [SerializeField] private GameObject commandBadgeRoot;
-        [SerializeField] private TMP_Text commandBadgeText;
         // Same 5-slot layout as CardUI's own StatsRow (Card.prefab), cloned into this prefab for
         // visual consistency — see CardUI's own field comment for the fixed per-slot mapping.
         // Runtime army slots only hold Unit/Hero. Catalog previews additionally display
-        // Base/Facility as Level / Defense / Structure Points / Resistance / Fate.
+        // Base/Facility as Level / Defense / Structure Points / "-" / Fate.
         //   AttackBadge slot: Attack (Unit) / Command Rating (Hero)
         //   DefenseBadge slot: Defense (Unit) / Fate (Hero)
         //   HpBadge slot: HP, REAL current/max (unlike CardUI's hand cards, this unit actually
@@ -159,12 +157,6 @@ namespace Game.UI
 
             RefreshStatsRow(unit);
 
-            // Command Rating is already shown in the detail panel (ShowUnitDetail) once the
-            // card's clicked — repeating it as a badge on every hero card in the grid was just
-            // noise here.
-            if (commandBadgeRoot != null)
-                commandBadgeRoot.SetActive(false);
-
             // Hover-revealed (see OnPointerEnter/OnPointerExit) — hidden by default until then.
             if (repairButton != null)
             {
@@ -246,7 +238,6 @@ namespace Game.UI
 
             RefreshStatsRowForCard(card);
 
-            if (commandBadgeRoot != null) commandBadgeRoot.SetActive(false);
             if (repairButton != null) repairButton.gameObject.SetActive(false);
             if (stealthButton != null) stealthButton.gameObject.SetActive(false);
             if (hiddenBadgeRoot != null) hiddenBadgeRoot.SetActive(false);
@@ -351,7 +342,7 @@ namespace Game.UI
                 // Unbuilt cards start at level 1, exactly as in CardUI.RefreshStatsRow.
                 slot1 = 1;
                 slot2 = card.defenseRating;
-                slot4 = card.resistanceRating;
+                slot4 = 0; // no stat here for a Base/Facility — shown as "-" below
                 slot5 = card.fate;
             }
             else
@@ -365,7 +356,9 @@ namespace Game.UI
             if (attackStatText != null) attackStatText.text = slot1.ToString();
             if (defenseStatText != null) defenseStatText.text = slot2.ToString();
             if (hpStatText != null) hpStatText.text = card.hitPoints.ToString();
-            if (moveStatText != null) moveStatText.text = slot4.ToString();
+            if (moveStatText != null)
+                moveStatText.text = card.cardType == CardType.Base || card.cardType == CardType.Facility
+                    ? "-" : slot4.ToString();
             if (rangeStatText != null) rangeStatText.text = slot5.ToString();
         }
 
