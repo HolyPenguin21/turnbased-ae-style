@@ -88,8 +88,6 @@ MonoBehaviour:
   - deckName: The Ashen Starter
     faction: 4
     cards:
-    - cardKey: ashen.card.ashen-citadel
-      count: 0
     - cardKey: ashen.card.ashen-base
       count: 1
     - cardKey: ashen.card.miller-hayes
@@ -112,8 +110,6 @@ MonoBehaviour:
       count: 2
     - cardKey: ashen.card.dust-runner
       count: 1
-    - cardKey: ashen.card.tech-scrapper
-      count: 1
     - cardKey: ashen.card.rad-hunter
       count: 1
     - cardKey: ashen.unit.ashdrifter
@@ -122,10 +118,6 @@ MonoBehaviour:
       count: 3
     - cardKey: ashen.card.iron-husk
       count: 2
-    - cardKey: ashen.card.scav-carrier
-      count: 1
-    - cardKey: ashen.card.rad-brute
-      count: 0
     - cardKey: ashen.card.ash-walker
       count: 1
     - cardKey: ashen.card.grave-engine
@@ -134,17 +126,7 @@ MonoBehaviour:
       count: 2
     - cardKey: ashen.card.boomstick
       count: 1
-    - cardKey: ashen.card.leviathan
-      count: 0
     - cardKey: ashen.card.scrap-mortar
-      count: 1
-    - cardKey: ashen.card.colossus
-      count: 0
-    - cardKey: ashen.card.ash-howitzer
-      count: 0
-    - cardKey: ashen.card.striker
-      count: 1
-    - cardKey: ashen.card.scrapwing
       count: 1
     - cardKey: neutral.facility.lab
       count: 1
@@ -152,11 +134,13 @@ MonoBehaviour:
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
+    - cardKey: neutral.equipment.bio.claws
+      count: 1
+    - cardKey: neutral.mutator.dermal-plating
+      count: 1
   - deckName: Iron Concord Starter
     faction: 0
     cards:
-    - cardKey: concord.card.concord-citadel
-      count: 0
     - cardKey: concord.card.concord-base
       count: 1
     - cardKey: concord.card.dorian-kesh
@@ -179,20 +163,14 @@ MonoBehaviour:
       count: 1
     - cardKey: concord.card.rc-vehicle
       count: 1
-    - cardKey: concord.card.scrapper
-      count: 1
     - cardKey: concord.card.crawler
       count: 1
     - cardKey: concord.card.light-infantry
       count: 2
     - cardKey: concord.card.medium-infantry
       count: 2
-    - cardKey: concord.card.flamer
-      count: 1
     - cardKey: concord.card.at-infantry
       count: 1
-    - cardKey: concord.card.heavy-infantry
-      count: 0
     - cardKey: concord.card.light-tank
       count: 3
     - cardKey: concord.card.medium-tank
@@ -202,24 +180,16 @@ MonoBehaviour:
     - cardKey: concord.card.artillery-cannon
       count: 1
     - cardKey: concord.card.at-cannon
-      count: 0
-    - cardKey: concord.card.artillery-tank
-      count: 0
-    - cardKey: concord.card.pulse-cannon
-      count: 0
+      count: 1
     - cardKey: concord.card.watcher-drone
       count: 2
-    - cardKey: concord.card.wasp
-      count: 1
-    - cardKey: concord.card.rusty-vulture
-      count: 1
     - cardKey: neutral.facility.lab
       count: 1
     - cardKey: neutral.facility.factory
       count: 1
     - cardKey: neutral.facility.intel
       count: 1
-    - cardKey: neutral.equipment.bio.flamer
+    - cardKey: neutral.equipment.bio.heavy-mg
       count: 1
     - cardKey: neutral.equipment.bio.at-launcher
       count: 1

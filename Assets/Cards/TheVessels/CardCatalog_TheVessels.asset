@@ -60,6 +60,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -112,6 +113,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -159,6 +161,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -206,6 +209,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -253,6 +257,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -300,6 +305,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -346,6 +352,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -394,6 +401,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -441,6 +449,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -488,6 +497,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -536,6 +546,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -583,6 +594,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -630,6 +642,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -677,6 +690,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -723,6 +737,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -769,6 +784,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -816,6 +832,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -863,6 +880,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -910,6 +928,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -957,6 +976,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1003,6 +1023,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1049,6 +1070,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1096,6 +1118,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1143,6 +1166,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1190,6 +1214,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1238,6 +1263,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1285,6 +1311,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1302,7 +1329,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: c01965a8b73307e4797d3c7d744f00d7, type: 3}
     faction: 5
     cardType: 1
-    apCost: 3
+    apCost: 6
     resourceCost:
       human: 0
       energy: 3
@@ -1331,6 +1358,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1348,7 +1376,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 6f9bf8d5d1e6be644882257e28418780, type: 3}
     faction: 5
     cardType: 1
-    apCost: 2
+    apCost: 3
     resourceCost:
       human: 0
       energy: 1
@@ -1378,6 +1406,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1400,4 +1429,4 @@ MonoBehaviour:
   - Pale Watch
   - The Unbroken
   - Vessel Guard
-
+  - 

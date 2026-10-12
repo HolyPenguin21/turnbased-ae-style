@@ -60,6 +60,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -112,6 +113,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -159,6 +161,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -205,6 +208,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -252,6 +256,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -299,6 +304,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -346,6 +352,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -392,6 +399,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -440,6 +448,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -487,6 +496,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -535,6 +545,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -582,6 +593,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -630,6 +642,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -677,6 +690,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -724,6 +738,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -770,6 +785,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -816,6 +832,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -864,6 +881,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -911,6 +929,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -935,7 +954,7 @@ MonoBehaviour:
       materials: 2
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
     commandRating: 0
     fate: 0
@@ -958,6 +977,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1004,6 +1024,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1050,6 +1071,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1097,6 +1119,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1144,6 +1167,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1191,6 +1215,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1238,6 +1263,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1285,6 +1311,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1302,7 +1329,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 9ff958975ba2145429be228d6e50c7cf, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
@@ -1332,6 +1359,7 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1349,7 +1377,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
     faction: 0
     cardType: 1
-    apCost: 2
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
@@ -1379,6 +1407,102 @@ MonoBehaviour:
       energy: 0
       materials: 0
       tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 29
+    authoredKey: concord.card.dust-medic
+    deckPointCost: 4
+    deckCopyLimit: 2
+    deckBuilderExcluded: 0
+    displayName: Dust Medic
+    art: {fileID: 21300000, guid: 2260eeab45d068f459a245dbf012673e, type: 3}
+    detailArt: {fileID: 21300000, guid: 62545fa438591b245a309dc5bcd95923, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 1
+    defenseRating: 2
+    resistanceRating: 2
+    range: 1
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 000000000700000003000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 30
+    authoredKey: concord.card.siege-grenadier
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Siege Grenadier
+    art: {fileID: 21300000, guid: 3cc083b0199febd48a935a7d06995122, type: 3}
+    detailArt: {fileID: 21300000, guid: 71e1f71fc5c6f1646a8d14f4d4881888, type: 3}
+    faction: 0
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 2
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    resistanceRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Splash
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
     equipment:
       hostTypeTags: 
       hostKinds: 00000000
@@ -1413,4 +1537,4 @@ MonoBehaviour:
   - Grit Wolves
   - Steel Locusts
   - Nomads
-
+  - 

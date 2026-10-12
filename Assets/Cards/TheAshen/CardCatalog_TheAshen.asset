@@ -1325,7 +1325,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 52b44dec01bbb764ab4797240d80f9f1, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 6
     resourceCost:
       human: 0
       energy: 2
@@ -1373,7 +1373,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: de5cbecd1e1dd8c48a36d03cb7b4abe2, type: 3}
     faction: 4
     cardType: 1
-    apCost: 2
+    apCost: 4
     resourceCost:
       human: 0
       energy: 1
@@ -1438,4 +1438,4 @@ MonoBehaviour:
   - Decay
   - Swarm
   - Fester
-
+  - 
