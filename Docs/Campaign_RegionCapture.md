@@ -45,7 +45,7 @@ CampaignUI не принимает hover/click/ESC и не продолжает 
 Время используется unscaled, поэтому timeScale=0 не блокирует завершение.
 
 Параметры редактируются в компоненте CampaignMapView на объекте карты: Capture → SpreadSeconds, SpreadEasing, StampDelay, StampSeconds, StampPopFraction, StampStartScale, StampAlpha, StampSize, StampRotation, RevealFeather.
-По умолчанию: .85 s spread + .08 s delay + .65 s stamp, всего около 1.58 s. Значения длительности ограничены; отдельное аудио не добавлено.
+По умолчанию: 1.275 s spread + .08 s delay + .65 s stamp, всего около 2.005 s. Значения длительности ограничены; отдельное аудио не добавлено.
 Сцену/префаб вручную перепривязывать или пересобирать Campaign screen не требуется: локальный компонент эффекта подключается при обычном Build карты.
 
 ## Изменённые файлы

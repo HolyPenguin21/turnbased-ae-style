@@ -8,7 +8,7 @@ namespace Game.Campaign
     [Serializable]
     public sealed class CampaignCaptureSettings
     {
-        [Range(.1f, 3f)] public float SpreadSeconds = .85f;
+        [Range(.1f, 3f)] public float SpreadSeconds = 1.275f;
         public AnimationCurve SpreadEasing = AnimationCurve.EaseInOut(0, 0, 1, 1);
         [Range(0, .5f)] public float StampDelay = .08f;
         [Range(.1f, 2f)] public float StampSeconds = .65f;

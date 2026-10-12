@@ -18,7 +18,7 @@ namespace Game.Campaign
         [SerializeField, Min(7)] private float markerClearance = 24;
         [SerializeField, Range(0, .5f)] private float regionInsetFraction = .25f;
         [Header("Tint")]
-        [SerializeField] private Color attackTint = new Color(.68f, .28f, .24f, .92f);
+        [SerializeField] private Color attackTint = new Color(.85f, .16f, .10f, 1f);
         [SerializeField, Range(0, 1)] private float factionTintWeight = 0;
         [SerializeField, Range(0, .2f)] private float pulseAmount = .06f;
         [SerializeField, Min(0)] private float pulseFrequency = 1.5f;
