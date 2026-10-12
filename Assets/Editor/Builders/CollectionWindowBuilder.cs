@@ -297,10 +297,10 @@ public static class CollectionWindowBuilder
         if (scrollbar)
         {
             var track = Panel(root, "Scrollbar"); Place(track, w - 11, 12, 6, h - 24);
-            Skin(track.GetComponent<Image>(), "Meter");
+            Skin(track.GetComponent<Image>(), "ScrollbarTrack");
             var area = Rect(track, "SlidingArea"); Stretch(area);
             var handle = Panel(area, "Handle"); Stretch(handle);
-            Skin(handle.GetComponent<Image>(), "Button");
+            Skin(handle.GetComponent<Image>(), "ScrollbarHandle");
             var bar = track.gameObject.AddComponent<Scrollbar>();
             bar.direction = Scrollbar.Direction.BottomToTop; bar.handleRect = handle; bar.targetGraphic = handle.GetComponent<Image>();
             scroll.verticalScrollbar = bar; scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
@@ -335,6 +335,7 @@ public static class CollectionWindowBuilder
     }
 }
 #endif
+
 
 
 

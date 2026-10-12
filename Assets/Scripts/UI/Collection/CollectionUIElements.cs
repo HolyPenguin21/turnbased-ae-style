@@ -12,6 +12,9 @@ namespace Game.UI
         public static readonly Color CollectionText = new Color(.93f, .85f, .69f);
         public static readonly Color CollectionInk = new Color(.16f, .12f, .08f);
         private static TMP_FontAsset headingFont;
+        private const int DropdownVisibleRows = 10;
+        private const float DropdownRowHeight = 32f;
+        private const float DropdownPadding = 8f;
 
         // One visual application path for both editor authoring and opening existing windows.
         // An already-loaded scene may retain its old serialized appearance after a code/asset
@@ -172,7 +175,7 @@ namespace Game.UI
             {
                 "Button" or "SquareButton" or "BackPlate" or "SavePlate" => "Buttons",
                 "Panel_Outer" or "Panel_Inset" => "Panels",
-                "Input" or "Meter" => "Controls",
+                "Input" or "Meter" or "ScrollbarTrack" or "ScrollbarHandle" => "Controls",
                 "Metal" => "Backgrounds",
                 _ => "Decorations"
             };
@@ -296,7 +299,7 @@ namespace Game.UI
                 var template = dropdown.template;
                 template.anchorMin = new Vector2(0, 0); template.anchorMax = new Vector2(1, 0);
                 template.pivot = new Vector2(.5f, 1); template.anchoredPosition = new Vector2(0, -4);
-                template.sizeDelta = new Vector2(0, 240);
+                template.sizeDelta = new Vector2(0, DropdownVisibleRows * DropdownRowHeight + 2 * DropdownPadding);
                 foreach (var image in dropdown.template.GetComponentsInChildren<Image>(true))
                 {
                     if (image.name == "Item Background")
@@ -308,7 +311,7 @@ namespace Game.UI
                 {
                     var rect = (RectTransform)item.transform;
                     rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(1, 1);
-                    rect.pivot = new Vector2(.5f, 1); rect.anchoredPosition = Vector2.zero;
+                    rect.pivot = new Vector2(.5f, 1); rect.anchoredPosition = new Vector2(0, -DropdownPadding);
                     rect.sizeDelta = new Vector2(0, 32);
                     var colors = item.colors;
                     colors.normalColor = Color.clear;
@@ -328,37 +331,7 @@ namespace Game.UI
                         check.sizeDelta = new Vector2(10, 10);
                     }
                 }
-                var popup = template.GetComponent<ScrollRect>();
-                if (popup != null)
-                {
-                    popup.horizontal = false; popup.vertical = true;
-                    popup.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
-                    popup.verticalScrollbarSpacing = 2;
-                    if (popup.viewport != null)
-                    {
-                        Stretch(popup.viewport); popup.viewport.offsetMin = new Vector2(8, 8); popup.viewport.offsetMax = new Vector2(-22, -8);
-                        var mask = popup.viewport.GetComponent<Mask>();
-                        if (mask != null) mask.showMaskGraphic = false;
-                        else
-                        {
-                            var graphic = popup.viewport.GetComponent<Image>();
-                            if (graphic != null) graphic.color = Color.clear;
-                        }
-                    }
-                    if (popup.content != null)
-                    {
-                        popup.content.anchorMin = new Vector2(0, 1); popup.content.anchorMax = new Vector2(1, 1);
-                        popup.content.pivot = new Vector2(.5f, 1); popup.content.anchoredPosition = Vector2.zero;
-                        popup.content.sizeDelta = new Vector2(0, 32);
-                    }
-                    if (popup.verticalScrollbar != null)
-                    {
-                        var bar = (RectTransform)popup.verticalScrollbar.transform;
-                        bar.anchorMin = new Vector2(1, 0); bar.anchorMax = new Vector2(1, 1); bar.pivot = new Vector2(1, .5f);
-                        bar.anchoredPosition = new Vector2(-8, 0); bar.sizeDelta = new Vector2(10, -20);
-                        ApplyScrollbarSkin(popup.verticalScrollbar);
-                    }
-                }
+                ConfigureDropdownScroll(dropdown);
             }
             foreach (var input in root.GetComponentsInChildren<TMP_InputField>(true))
             {
@@ -366,6 +339,57 @@ namespace Game.UI
                 if (input.textComponent != null) input.textComponent.color = CollectionInk;
                 if (input.placeholder is TMP_Text text) text.color = new Color(.35f, .27f, .19f);
             }
+        }
+        // Scroll-only setup preserves manually authored window geometry, text and controls.
+        public static void ApplyCollectionScrollSkin(Transform root)
+        {
+            if (root == null) return;
+            foreach (var dropdown in root.GetComponentsInChildren<TMP_Dropdown>(true))
+                ConfigureDropdownScroll(dropdown);
+            foreach (var bar in root.GetComponentsInChildren<Scrollbar>(true))
+                ApplyScrollbarSkin(bar);
+        }
+
+        public static void ConfigureDropdownScroll(TMP_Dropdown dropdown)
+        {
+            if (dropdown == null || dropdown.template == null) return;
+            var template = dropdown.template;
+            var popup = template.GetComponent<ScrollRect>();
+            if (popup == null || popup.content == null || popup.viewport == null) return;
+            bool needsScroll = dropdown.options.Count > DropdownVisibleRows;
+            template.sizeDelta = new Vector2(template.sizeDelta.x,
+                DropdownVisibleRows * DropdownRowHeight + 2 * DropdownPadding);
+            popup.horizontal = false; popup.vertical = needsScroll;
+            popup.movementType = ScrollRect.MovementType.Clamped; popup.inertia = false;
+            // Count owns visibility. AutoHide tests pixel overflow and could fight this rule.
+            popup.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+            Stretch(popup.viewport);
+            popup.viewport.offsetMin = new Vector2(DropdownPadding, 0);
+            popup.viewport.offsetMax = new Vector2(needsScroll ? -22 : -DropdownPadding, 0);
+            var mask = popup.viewport.GetComponent<Mask>();
+            if (mask != null) mask.showMaskGraphic = false;
+            var content = popup.content;
+            content.anchorMin = new Vector2(0, 1); content.anchorMax = new Vector2(1, 1);
+            content.pivot = new Vector2(.5f, 1); content.anchoredPosition = Vector2.zero;
+            // TMP_Dropdown.Show shrinks the popup to Content. Padding belongs in Content,
+            // not in the viewport, or even a one-row popup clips and needs scrolling.
+            content.sizeDelta = new Vector2(0, DropdownRowHeight + 2 * DropdownPadding);
+            var item = content.GetComponentInChildren<Toggle>(true);
+            if (item != null)
+            {
+                var rect = (RectTransform)item.transform;
+                rect.anchorMin = new Vector2(0, 1); rect.anchorMax = new Vector2(1, 1);
+                rect.pivot = new Vector2(.5f, 1);
+                rect.anchoredPosition = new Vector2(0, -DropdownPadding);
+                rect.sizeDelta = new Vector2(0, DropdownRowHeight);
+            }
+            if (popup.verticalScrollbar == null) return;
+            var bar = (RectTransform)popup.verticalScrollbar.transform;
+            bar.anchorMin = new Vector2(1, 0); bar.anchorMax = new Vector2(1, 1);
+            bar.pivot = new Vector2(1, .5f); bar.anchoredPosition = new Vector2(-8, 0);
+            bar.sizeDelta = new Vector2(10, -16);
+            bar.gameObject.SetActive(needsScroll);
+            ApplyScrollbarSkin(popup.verticalScrollbar);
         }
         private static void ApplyScrollSkin(Transform root, bool inset)
         {
@@ -390,28 +414,25 @@ namespace Game.UI
             var track = bar.GetComponent<Image>();
             if (track != null)
             {
-                track.sprite = null; track.type = Image.Type.Simple;
-                track.color = new Color(.035f, .032f, .025f, .95f);
+                ApplySurface(track, "ScrollbarTrack"); track.pixelsPerUnitMultiplier = 3.2f;
+                track.raycastTarget = true;
                 var edge = track.GetComponent<Outline>();
-                if (edge == null) edge = track.gameObject.AddComponent<Outline>();
-                edge.effectColor = new Color(.38f, .25f, .12f, .85f); edge.effectDistance = new Vector2(.65f, .65f);
+                if (edge != null) edge.enabled = false;
             }
             if (bar.handleRect != null)
             {
                 var area = bar.handleRect.parent as RectTransform;
                 if (area != null && area != bar.transform)
                 { Stretch(area); area.offsetMin = new Vector2(1, 2); area.offsetMax = new Vector2(-1, -2); }
-                Surface(bar.handleRect, "SquareButton");
+                Surface(bar.handleRect, "ScrollbarHandle");
+                bar.handleRect.offsetMin = bar.handleRect.offsetMax = Vector2.zero;
                 var handle = bar.handleRect.GetComponent<Image>();
-                if (handle != null) { handle.pixelsPerUnitMultiplier = 3; handle.raycastTarget = true; bar.targetGraphic = handle; }
+                if (handle != null) { handle.pixelsPerUnitMultiplier = 3.2f; handle.raycastTarget = true; bar.targetGraphic = handle; }
                 for (int i = 0; i < 3; i++)
                 {
                     string name = "Grip" + i;
-                    var grip = bar.handleRect.Find(name) as RectTransform;
-                    if (grip == null) grip = Panel(bar.handleRect, name);
-                    grip.anchorMin = grip.anchorMax = new Vector2(.5f, .5f); grip.pivot = new Vector2(.5f, .5f);
-                    grip.anchoredPosition = new Vector2(0, (i - 1) * 3); grip.sizeDelta = new Vector2(4, 1);
-                    var line = grip.GetComponent<Image>(); line.sprite = null; line.color = CollectionText; line.raycastTarget = false;
+                    var grip = bar.handleRect.Find(name);
+                    if (grip != null) grip.gameObject.SetActive(false);
                 }
             }
             ControlColors(bar);
@@ -497,6 +518,7 @@ namespace Game.UI
         }
     }
 }
+
 
 
 
