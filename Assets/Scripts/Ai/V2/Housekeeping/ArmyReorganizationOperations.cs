@@ -229,14 +229,16 @@ namespace Game.Ai.V2
                 return false;
             if (destMeta.ChargesActivationFor(u))
                 return false; // TransferMember would spend AP, which Step 8C does not own.
-            // T05 — a route-bound operation keeps its speed: the army moves at its slowest member.
-            if (destMeta.MovementFloor >= 0 && u.MoveCurrent < destMeta.MovementFloor)
-                return false;
-            if (destMeta.MaxMovementFloor >= 0 && u.MoveMax < destMeta.MaxMovementFloor)
-                return false;
-
             var after = new List<ReorgUnit>(dest);
             ReorgViability.AddMemberSorted(after, u, destMeta.IsGarrison);
+            // Check the final roster under the SAME domain support rule as live transfer.
+            // A donor's buff cannot follow a passenger without its transport.
+            if (destMeta.MovementFloor >= 0 || destMeta.MaxMovementFloor >= 0)
+            {
+                var movement = ReorgViability.Movement(after);
+                if (destMeta.MovementFloor >= 0 && movement.current < destMeta.MovementFloor
+                    || destMeta.MaxMovementFloor >= 0 && movement.maximum < destMeta.MaxMovementFloor) return false;
+            }
             return ReorgViability.Capacity(after, destMeta.IsGarrison) >= after.Count;
         }
 

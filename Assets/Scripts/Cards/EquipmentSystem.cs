@@ -45,7 +45,7 @@ namespace Game.Cards
             bool first = unit.Equipment == null && unit.Mutator == null;
             if (first)
                 unit.AttachmentResources = new AttachmentResourceState(unit.HitPointsMax - unit.HitPointsCurrent,
-                    unit.MoveMax - unit.MoveCurrent, unit.FateMax - unit.Fate, unit);
+                    unit.MovementSpent, unit.FateMax - unit.Fate, unit);
             if (attachment.attachmentSlot == AttachmentSlot.Mutator) unit.Mutator = attachment;
             else unit.Equipment = attachment;
 
@@ -90,7 +90,7 @@ namespace Game.Cards
                 [EquipmentStat.Defense] = host.Defense,
                 [EquipmentStat.Range] = host.Range,
                 [EquipmentStat.HitPoints] = host.HitPointsMax,
-                [EquipmentStat.MoveMax] = host.MoveMax,
+                [EquipmentStat.MoveMax] = host.PermanentMoveMax,
                 [EquipmentStat.Initiative] = host.Initiative,
                 [EquipmentStat.ActivationApCost] = host.ActivationApCost,
                 [EquipmentStat.CommandRating] = host.CommandRating,
@@ -104,7 +104,8 @@ namespace Game.Cards
             int fateSpent = SpentResource(unit, EquipmentStat.Fate);
             unit.HitPointsCurrent = Mathf.Clamp(stats[EquipmentStat.HitPoints] - hpSpent,
                 unit.HitPointsCurrent > 0 ? 1 : 0, stats[EquipmentStat.HitPoints]);
-            unit.MoveCurrent = Mathf.Clamp(stats[EquipmentStat.MoveMax] - moveSpent, 0, stats[EquipmentStat.MoveMax]);
+            unit.MoveMax = stats[EquipmentStat.MoveMax];
+            unit.RestoreMovementSpent(moveSpent);
             unit.Fate = Mathf.Clamp(stats[EquipmentStat.Fate] - fateSpent, 0, stats[EquipmentStat.Fate]);
             unit.AttachmentResources = new AttachmentResourceState(hpSpent, moveSpent, fateSpent, unit);
             unit.Attack = stats[EquipmentStat.Attack]; unit.Defense = stats[EquipmentStat.Defense];
@@ -123,14 +124,15 @@ namespace Game.Cards
                 return Mathf.Max(0, usage.HasValue ? usage.Value.HpSpent + usage.Value.LastHp - unit.HitPointsCurrent
                     : unit.HitPointsMax - unit.HitPointsCurrent);
             if (stat == EquipmentStat.MoveMax)
-                return Mathf.Max(0, usage.HasValue ? usage.Value.MoveSpent + usage.Value.LastMove - unit.MoveCurrent
-                    : unit.MoveMax - unit.MoveCurrent);
+                return unit.MovementSpent;
             return Mathf.Max(0, usage.HasValue ? usage.Value.FateSpent + usage.Value.LastFate - unit.Fate
                 : unit.FateMax - unit.Fate);
         }
 
         public static int CurrentAfterAttachment(UnitData unit, EquipmentStat stat, int nextMax)
         {
+            if (stat == EquipmentStat.MoveMax)
+                return unit.CurrentMoveAtMaximum(Mathf.Max(nextMax, unit.TransportCarrier?.PermanentMoveMax ?? 0));
             if (unit.AttachmentResources.HasValue)
                 return Mathf.Clamp(nextMax - SpentResource(unit, stat),
                     stat == EquipmentStat.HitPoints && unit.HitPointsCurrent > 0 ? 1 : 0, nextMax);
@@ -148,7 +150,7 @@ namespace Game.Cards
             if (!unit.AttachmentResources.HasValue) return;
             unit.AttachmentResources = new AttachmentResourceState(
                 stat == EquipmentStat.HitPoints ? unit.HitPointsMax - unit.HitPointsCurrent : SpentResource(unit, EquipmentStat.HitPoints),
-                stat == EquipmentStat.MoveMax ? unit.MoveMax - unit.MoveCurrent : SpentResource(unit, EquipmentStat.MoveMax),
+                SpentResource(unit, EquipmentStat.MoveMax),
                 stat == EquipmentStat.Fate ? unit.FateMax - unit.Fate : SpentResource(unit, EquipmentStat.Fate), unit);
         }
 
@@ -475,6 +477,7 @@ namespace Game.Cards
             // Equipment can change Recce radius and combat facts. The gameplay owner publishes
             // both consequences once: the owner's visibility footprint is recomputed, while every
             // player already watching the hex refreshes its honest content memory.
+            army.RefreshTransport();
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(army.Hex);
             LiveAttachmentReceived?.Invoke(army, target, attachment);
@@ -563,10 +566,10 @@ namespace Game.Cards
                 }
                 case EquipmentStat.MoveMax:
                 {
-                    int newMove = Combine(unit.MoveMax, change, FloorFor(EquipmentStat.MoveMax));
-                    int delta = newMove - unit.MoveMax;
+                    int spent = unit.MovementSpent;
+                    int newMove = Combine(unit.PermanentMoveMax, change, FloorFor(EquipmentStat.MoveMax));
                     unit.MoveMax = newMove;
-                    unit.MoveCurrent = Mathf.Clamp(unit.MoveCurrent + Mathf.Max(0, delta), 0, newMove);
+                    unit.RestoreMovementSpent(spent);
                     break;
                 }
                 case EquipmentStat.Fate:

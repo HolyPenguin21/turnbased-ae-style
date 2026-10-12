@@ -120,6 +120,10 @@ namespace Game.Combat
                     hash = (hash * 31 + 101 + attackerCommander.Initiative) * 31 + attackerCommander.Fate;
                 if (defenderCommander.Present)
                     hash = (hash * 31 + 211 + defenderCommander.Initiative) * 31 + defenderCommander.Fate;
+                if (attackerCommander.HealingHeroes != null)
+                    foreach (DefenderProfile hero in attackerCommander.HealingHeroes) hash = AccumulateProfileHash(hash, hero);
+                if (defenderCommander.HealingHeroes != null)
+                    foreach (DefenderProfile hero in defenderCommander.HealingHeroes) hash = AccumulateProfileHash(hash, hero);
                 foreach (DefenderProfile p in attackerUnits)
                     hash = AccumulateProfileHash(hash, p);
                 hash = hash * 31 + 12345; // separates the two rosters — an empty attacker side must
@@ -175,26 +179,59 @@ namespace Game.Combat
         // (BattleTurnOrder) and its Fate buys rerolls in every exchange (BattleAttackPopupUI's
         // duel). Live reads retain current Fate: a preceding standalone air strike can spend it.
         // Completed ground encounters replenish Fate; card-only projections start full.
-        public readonly struct SideCommander
+        public readonly struct SideCommander : System.IEquatable<SideCommander>
         {
             public readonly bool Present;
             public readonly int Initiative;
             public readonly int Fate;
+            // Body-only army snapshots still need the actual passive healers, including
+            // secondary heroes. Their HP/tags/abilities are frozen knowledge, not live reads.
+            public readonly IReadOnlyList<DefenderProfile> HealingHeroes;
 
-            public SideCommander(int initiative, int fate)
+            public SideCommander(int initiative, int fate, IReadOnlyList<DefenderProfile> healingHeroes = null)
             {
                 Present = true;
                 Initiative = initiative;
                 Fate = Mathf.Max(0, fate);
+                HealingHeroes = healingHeroes;
             }
 
             public static SideCommander Of(UnitData hero) =>
-                hero == null ? default : new SideCommander(hero.Initiative, hero.Fate);
+                hero == null ? default : new SideCommander(hero.Initiative, hero.Fate,
+                    hero.HitPointsCurrent > 0 && !hero.IsPrisoner && hero.HasAbility(UnitAbilities.Heal)
+                    ? new[] { FromLiveUnit(hero) } : null);
             // A hero that is still a card (an event guard, a hero about to be played).
             public static SideCommander Of(CardDefinition hero) =>
-                hero == null ? default : new SideCommander(hero.initiative, hero.fate);
-            public static SideCommander Of(IEnumerable<UnitData> members) =>
-                Of(ArmyData.CommanderOf(members));
+                hero == null ? default : new SideCommander(hero.initiative, hero.fate,
+                    hero.grantedAbilities != null && hero.grantedAbilities.Contains(UnitAbilities.Heal)
+                    ? new[] { new DefenderProfile(hero.fate, false, hero.unitTypeTags, hero.attack,
+                        hero.hitPoints, hero.initiative, hero.grantedAbilities, hero.hitPoints,
+                        isGroundCombatant: false, isHero: true, fateMax: hero.fate, range: hero.range) } : null);
+            public static SideCommander Of(IEnumerable<UnitData> members)
+            {
+                var roster = members?.ToList();
+                UnitData commander = ArmyData.CommanderOf(roster);
+                if (commander == null) return default;
+                var healers = roster.Where(u => u != null && u.IsHero && !u.IsPrisoner
+                    && u.HitPointsCurrent > 0 && u.HasAbility(UnitAbilities.Heal)).Select(FromLiveUnit).ToList();
+                return new SideCommander(commander.Initiative, commander.Fate, healers.Count > 0 ? healers : null);
+            }
+
+            public bool Equals(SideCommander other)
+            {
+                if (Present != other.Present || Initiative != other.Initiative || Fate != other.Fate
+                    || (HealingHeroes?.Count ?? 0) != (other.HealingHeroes?.Count ?? 0)) return false;
+                for (int i = 0; i < (HealingHeroes?.Count ?? 0); i++)
+                {
+                    DefenderProfile a = HealingHeroes[i], b = other.HealingHeroes[i];
+                    if (a.HitPoints != b.HitPoints || a.MaxHitPoints != b.MaxHitPoints
+                        || a.Defense != b.Defense || a.FateMax != b.FateMax || a.Initiative != b.Initiative
+                        || !a.Abilities.SequenceEqual(b.Abilities) || !a.TypeTags.SequenceEqual(b.TypeTags)) return false;
+                }
+                return true;
+            }
+            public override bool Equals(object obj) => obj is SideCommander other && Equals(other);
+            public override int GetHashCode() => unchecked((Present ? 1 : 0) * 397 ^ Initiative * 31 ^ Fate);
         }
 
         // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
@@ -258,7 +295,7 @@ namespace Game.Combat
         private const int MaxSimulatedRounds = 50;
 
         private static List<BattleUnit> ToBattleUnits(IReadOnlyCollection<DefenderProfile> profiles,
-            float extraDefense = 0f, int initiativeBonus = 0)
+            float extraDefense = 0f, int initiativeBonus = 0, SideCommander commander = default)
         {
             var list = new List<BattleUnit>();
             if (profiles == null)
@@ -267,6 +304,9 @@ namespace Game.Combat
             {
                 list.Add(ToBattleUnit(p, extraDefense, initiativeBonus));
             }
+            int represented = list.Count(u => u.IsHero && u.HasAbility(UnitAbilities.Heal));
+            for (int i = represented; i < (commander.HealingHeroes?.Count ?? 0); i++)
+                list.Add(ToBattleUnit(commander.HealingHeroes[i], extraDefense, 0));
             return list;
         }
 
@@ -478,6 +518,19 @@ namespace Game.Combat
             }
         }
 
+        private static void ApplyHealing(List<BattleUnit> side, int carrierIndex, System.Random rng)
+        {
+            BattleUnit carrier = side[carrierIndex];
+            if (carrier.Hp <= 0f || !carrier.HasAbility(UnitAbilities.Heal)) return;
+            int index = BattleSimulationKernel.SelectHealingTarget(side.Count, i =>
+                side[i].Hp > 0f && side[i].Hp < side[i].MaxHp
+                && side[i].TypeTags != null && side[i].TypeTags.Contains(UnitTypeTag.Bio), rng);
+            if (index < 0) return;
+            BattleUnit target = side[index];
+            target.Hp = BattleSimulationKernel.HealedHitPoints(target.Hp, target.MaxHp);
+            side[index] = target;
+        }
+
         private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
             System.Random rng, int attackerFate = 0, int defenderFate = 0,
             AbilityMagnitudes? magnitudesOverride = null, SimulationScratch scratch = null)
@@ -491,6 +544,10 @@ namespace Game.Combat
             var livingTargets = scratch.LivingTargets;
             for (int round = 0; round < MaxSimulatedRounds && AnyCombatantAlive(attackers) && AnyCombatantAlive(defenders); round++)
             {
+                for (int i = 0; i < attackers.Count; i++)
+                    if (attackers[i].IsHero) ApplyHealing(attackers, i, rng);
+                for (int i = 0; i < defenders.Count; i++)
+                    if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
                 order.Clear();
                 for (int i = 0; i < attackers.Count; i++) if (!attackers[i].IsHero) order.Add((true, i));
                 for (int i = 0; i < defenders.Count; i++) if (!defenders[i].IsHero) order.Add((false, i));
@@ -522,6 +579,9 @@ namespace Game.Combat
                         acted.Add(turn);
                         continue; // ShockAttack removed this not-yet-taken action from the round
                     }
+
+                    ApplyHealing(ownList, turn.index, rng);
+                    actor = ownList[turn.index];
 
                     // A hero stands in the back row and the fight ends when the non-hero bodies
                     // are gone, so an attack is only spent on a hero once no body of that side
@@ -846,7 +906,7 @@ namespace Game.Combat
                         armies[0].Commander, magnitudes);
 
             attackerUnits = WithBattleSummons(attackerUnits);
-            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
+            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander);
             if (!baseline.Any(u => !u.IsHero))
                 return new BattleEstimate(0f, 0f, 0f);
 
@@ -868,7 +928,7 @@ namespace Game.Combat
             // Each defending army converted once; every trial fights a fresh copy (same values the
             // per-trial conversion produced).
             var defenderTemplates = order
-                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative))
+                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative, a.Commander))
                 .ToList();
             return CachedEstimate(2, seed, m,
                 buf =>
@@ -974,7 +1034,7 @@ namespace Game.Combat
                     AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
                 },
                 () => SimulateSingle(baseline,
-                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), seed, attackerCommander,
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed, attackerCommander,
                     defenderCommander, m));
         }
 
@@ -992,8 +1052,8 @@ namespace Game.Combat
                     AppendKey(buf, defenderCommander);
                     AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
                 },
-                () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative),
-                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), seed,
+                () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander),
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed,
                     attackerCommander, defenderCommander, m));
         }
 

@@ -37,7 +37,7 @@ namespace Game.Combat
             { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
                 "IsHero", "HeroFate", "IsSummoned" };
         internal static readonly string[] EstimateKeySideCommanderFields =
-            { "Present", "Initiative", "Fate" };
+            { "Present", "Initiative", "Fate", "HealingHeroes" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
         {
             "CriticalDamageMultiplier", "HyperkineticBonusDamage", "CeramicArmorReduction",
@@ -188,6 +188,9 @@ namespace Game.Combat
             buf.Add(c.Present ? 1 : 0);
             buf.Add(c.Initiative);
             buf.Add(c.Fate);
+            buf.Add(c.HealingHeroes?.Count ?? 0);
+            if (c.HealingHeroes != null)
+                foreach (DefenderProfile hero in c.HealingHeroes) AppendKey(buf, ToBattleUnit(hero, 0f, 0));
         }
 
         // Order-preserving on purpose: the simulation walks units, abilities and tags in list order.

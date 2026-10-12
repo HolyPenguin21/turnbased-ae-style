@@ -1320,7 +1320,7 @@ namespace Game.Ai.V2
                 [EquipmentStat.Defense] = host.Defense,
                 [EquipmentStat.Range] = host.Range,
                 [EquipmentStat.HitPoints] = host.HitPointsMax,
-                [EquipmentStat.MoveMax] = host.MoveMax,
+                [EquipmentStat.MoveMax] = host.PermanentMoveMax,
                 [EquipmentStat.Initiative] = host.Initiative,
                 [EquipmentStat.ActivationApCost] = host.ActivationApCost,
                 [EquipmentStat.CommandRating] = host.CommandRating,
@@ -1500,9 +1500,9 @@ namespace Game.Ai.V2
             {
                 var attachmentTargets = EquipmentTargetMemo.AttachmentTargets(snap, purpose, opposition, targets);
                 tactical += StrategicEffectRegistry.AttachmentValue(predicted.Stats, unpricedAfter, hostTags, opposition, army,
-                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets)
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit)
                     - StrategicEffectRegistry.AttachmentValue(before, unpricedBefore, hostTags, opposition, army,
-                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets);
+                        isHero, snap, includeStealthTrait, deployment, targets, hpSpent, attachmentTargets, hostUnit);
             }
 
             // The text is formatted only when something reads it. `before`, the predicted state and

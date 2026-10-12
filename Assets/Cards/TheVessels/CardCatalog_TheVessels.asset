@@ -857,6 +857,7 @@ MonoBehaviour:
     unitTypeTags: 0100000004000000
     grantedAbilities:
     - r1s5
+    - Transport
     resourceYield:
       human: 0
       energy: 0

@@ -111,6 +111,8 @@ namespace Game.UI
 
         private void RefreshGrid()
         {
+            foreach (BattleGridCellUI oldCell in _cells)
+                if (oldCell != null) oldCell.gameObject.SetActive(false);
             UIListUtility.DestroyAndClear(_cells);
             if (gridContainer == null || gridCellPrefab == null || _grid == null)
                 return;
@@ -142,6 +144,9 @@ namespace Game.UI
                     BattleGridCellUI cell = Instantiate(gridCellPrefab, gridContainer);
                     Game.Audio.SceneUIAudioBinder.BindCreatedRoot(cell);
                     cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
+                    if (unit != null && _healEffectStarts.TryGetValue(unit, out float started)
+                        && Time.unscaledTime - started < BattleHealEffect.Duration)
+                        BattleHealEffect.Show(cell.transform, started);
                     _cells.Add(cell);
                 }
         }

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Map;
 using Game.Units;
@@ -643,9 +644,12 @@ namespace Game.Combat
             ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0, System.Random rng = null,
             Dictionary<ArmyData, int> fateByArmy = null, Dictionary<UnitData, int> simulatedAttack = null,
             Dictionary<UnitData, int> simulatedDefense = null, ArmyData ownArmy = null, ArmyData enemyArmy = null,
-            Dictionary<UnitData, Vector2Int> previousPositions = null)
+            Dictionary<UnitData, Vector2Int> previousPositions = null, bool healHeroesAtStart = true)
         {
             var suppressed = new HashSet<UnitData>();
+            if (healHeroesAtStart)
+                foreach (UnitData hero in grid.AllUnits().Where(u => u.IsHero).ToList())
+                    ApplySimHeal(grid, hp, hero, rng, ownArmy, enemyArmy);
             for (int i = 0; i < order.Count; i++)
             {
                 if (ownArmy != null && enemyArmy != null
@@ -660,6 +664,8 @@ namespace Game.Combat
                     continue;
                 if (!grid.TryFindPosition(actor, out int row, out int col))
                     continue;
+
+                ApplySimHeal(grid, hp, actor, rng, ownArmy, enemyArmy);
 
                 if (BattleTargetSelector.TryFindBestReachableTarget(grid, hp, actor, row, col, magnitudes, order, i,
                     out UnitData target, out float expectedDamage, battleDefender, battleDefenderDefenseBonus,
@@ -748,6 +754,24 @@ namespace Game.Combat
                     grid.Set(row, col, null);
                     grid.Set(step.Value.row, step.Value.col, actor);
                 }
+            }
+        }
+
+        private static void ApplySimHeal(BattleGrid grid, Dictionary<UnitData, float> hp,
+            UnitData carrier, System.Random rng, ArmyData ownArmy, ArmyData enemyArmy)
+        {
+            if (!carrier.HasAbility(UnitAbilities.Heal)
+                || !hp.TryGetValue(carrier, out float carrierHp) || carrierHp <= 0f) return;
+            ArmyData side = FindSimulationArmy(carrier, ownArmy, enemyArmy);
+            var allies = grid.AllUnits().Where(u => !u.IsPrisoner
+                && (side != null ? side.Members.Contains(u) : u.Owner == carrier.Owner)).ToList();
+            int index = BattleSimulationKernel.SelectHealingTarget(allies.Count, i =>
+                hp.TryGetValue(allies[i], out float current) && current > 0f
+                && current < allies[i].HitPointsMax && allies[i].TypeTags.Contains(UnitTypeTag.Bio), rng);
+            if (index >= 0)
+            {
+                UnitData target = allies[index];
+                hp[target] = BattleSimulationKernel.HealedHitPoints(hp[target], target.HitPointsMax);
             }
         }
 
@@ -1232,7 +1256,8 @@ namespace Game.Combat
 
                 RunOneRound(grid, hp, BuildInitiativeOrderExcluding(grid, ownArmy, enemyArmy, actor,
                     unchecked(BuildSimulationSeed(ownArmy, enemyArmy) * 31 + 101)), magnitudes, null,
-                    battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus);
+                    battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
+                    healHeroesAtStart: false);
 
                 if (!isMelee && hp[actor] <= 0f)
                 {
@@ -1362,7 +1387,7 @@ namespace Game.Combat
                 // This round is spent moving to the candidate cell instead of acting normally.
                 RunOneRound(trialGrid, trialHp, orderExcludingActor, magnitudes, null,
                     battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
-                    simulatedAttack: trialAttack, simulatedDefense: trialDefense);
+                    simulatedAttack: trialAttack, simulatedDefense: trialDefense, healHeroesAtStart: false);
 
                 if (!trialHp.TryGetValue(actor, out float actorHpAfter))
                     continue;

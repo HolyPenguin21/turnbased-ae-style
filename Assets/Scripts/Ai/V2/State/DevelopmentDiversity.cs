@@ -35,7 +35,7 @@ namespace Game.Ai.V2
         private static readonly HashSet<string> SaturatingAbilities = new HashSet<string>
         {
             UnitAbilities.Splash, UnitAbilities.Scorcher, UnitAbilities.AntiAir,
-            UnitAbilities.Regeneration, UnitAbilities.RapidReaction,
+            UnitAbilities.Regeneration, UnitAbilities.RapidReaction, UnitAbilities.Heal, UnitAbilities.Transport,
         };
 
         internal static void ClearAll() => History.Clear();

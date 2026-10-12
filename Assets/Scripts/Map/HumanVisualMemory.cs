@@ -107,6 +107,16 @@ namespace Game.Map
             foreach (UnitData member in source.Members)
                 if (!StealthSystem.IsHiddenFrom(member, viewer))
                     snapshot.Members.Add(SnapshotUnit(member));
+            // These display-only units already contain their observed effective speed. Do not
+            // run Transport again over that frozen roster, granting a second passenger a bonus.
+            snapshot.VisualSnapshotCurrentMovement = snapshot.Members.Count == 0 ? 0 : int.MaxValue;
+            snapshot.VisualSnapshotMaxMovement = snapshot.Members.Count == 0 ? 0 : int.MaxValue;
+            foreach (UnitData member in snapshot.Members)
+            {
+                snapshot.VisualSnapshotCurrentMovement = System.Math.Min(snapshot.VisualSnapshotCurrentMovement.Value,
+                    Game.Aviation.AviationRules.EffectiveMoveCurrent(member));
+                snapshot.VisualSnapshotMaxMovement = System.Math.Min(snapshot.VisualSnapshotMaxMovement.Value, member.MoveMax);
+            }
             // HasActivatedThisTurn has no public setter any more (see ArmyData's own per-unit
             // activation ledger) — MarkActivated is the read-only display equivalent here: this
             // snapshot is never fed through ArmyActions, so the per-unit coverage it also seeds

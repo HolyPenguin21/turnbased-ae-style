@@ -452,7 +452,7 @@ namespace Game.Ai.V2
                 // A hero is public battle information once seen; a stealth-hidden commander is not.
                 Commander = a.Commander != null
                     && (isOwn || !StealthSystem.IsHiddenFrom(a.Commander, viewer))
-                    ? WorthIt.SideCommander.Of(a.Commander) : default,
+                    ? WorthIt.SideCommander.Of(a.Members.Where(m => isOwn || !StealthSystem.IsHiddenFrom(m, viewer))) : default,
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
                 // review-r4 P1 ARCH — the coverage roles come from StrategicEffectRegistry, so a new
                 // counter/support/mobility mechanic flows in without editing this file.

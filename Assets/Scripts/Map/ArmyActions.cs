@@ -63,6 +63,8 @@ namespace Game.Map
             root.SpendActionPoints(CreateArmyApCost);
             source.Members.Remove(member);
             ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, member);
+            source.RefreshTransport();
+            army.RefreshTransport();
             army.MarkUnitActivationPaid(member);
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (AbilityParams.GetBestRecceRadius(member) > 0)
@@ -333,6 +335,7 @@ namespace Game.Map
                 resultingArmy = destination;
             }
 
+            resultingArmy.RefreshTransport();
             hexSelectionController.RestackArmiesOn(deploymentHex, null);
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
@@ -790,6 +793,8 @@ namespace Game.Map
         // changes the owner's vision footprint. This is gameplay ownership, not AI policy.
         private static void PublishRosterChange(ArmyData source, ArmyData target, bool recceTransferred)
         {
+            source.RefreshTransport();
+            target.RefreshTransport();
             if (recceTransferred)
             {
                 VisionSystem.RecomputeFor(source.Owner);

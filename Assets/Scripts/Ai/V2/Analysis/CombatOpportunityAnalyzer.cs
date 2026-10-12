@@ -612,9 +612,12 @@ namespace Game.Ai.V2
         private static string Exact(float value) =>
             value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 
-        private static void AppendCommander(System.Text.StringBuilder sb, WorthIt.SideCommander c) =>
+        private static void AppendCommander(System.Text.StringBuilder sb, WorthIt.SideCommander c)
+        {
             sb.Append('<').Append(c.Present ? 1 : 0).Append(',').Append(c.Initiative).Append(',')
                 .Append(c.Fate).Append('>');
+            AppendProfiles(sb, c.HealingHeroes);
+        }
 
         // Order-preserving and full precision: the simulation (and its seed) depends on both.
         private static void AppendProfiles(System.Text.StringBuilder sb,
