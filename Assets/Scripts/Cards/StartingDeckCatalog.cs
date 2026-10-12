@@ -37,11 +37,6 @@ namespace Game.Cards
         public List<FactionCardCatalog> catalogs = new List<FactionCardCatalog>();
         public List<StartingDeck> decks = new List<StartingDeck>();
 
-        // Data-driven initial shared blueprints; they never enter the ordinary draw pool.
-        public List<StartingDeck> collectionBlueprints = new List<StartingDeck>();
-        public IEnumerable<DeckCardEntry> GetCollectionBlueprints(Faction faction)
-            => collectionBlueprints.Find(d => d.faction == faction)?.cards ?? new List<DeckCardEntry>();
-
         public FactionCardCatalog GetCatalog(Faction faction) =>
             catalogs.FirstOrDefault(c => c != null && c.faction == faction);
 

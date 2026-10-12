@@ -78,13 +78,6 @@ namespace Game.Progression
                     if (card == null || !Rules.Permitted(card, faction)) throw new InvalidOperationException("Invalid starter reference: " + e.cardKey);
                     DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = card.authoredKey, count = e.count });
                 }
-            foreach (var e in Rules.Starting.GetCollectionBlueprints(faction))
-            {
-                var card = Rules.Resolve(e.cardKey);
-                if (card == null || DeckRules.Category(card) == DeckCategory.Main || !Rules.Permitted(card, faction))
-                    throw new InvalidOperationException("Invalid initial blueprint: " + e.cardKey);
-                DeckRules.Entries(deck, DeckRules.Category(card)).Add(new DeckCardEntry { cardKey = e.cardKey, count = Math.Min(e.count, DeckRules.CopyLimit(card)) });
-            }
             return deck;
         }
         public void InitializeStarters(CollectionProfile target)
