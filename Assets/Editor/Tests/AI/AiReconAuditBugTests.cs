@@ -10,8 +10,8 @@ using NUnit.Framework;
 namespace Game.EditorTests
 {
     // Recon audit (2026-09-25) — one regression test per confirmed Recon-branch defect. Every test
-    // drives the real production owner with a frozen snapshot only (no live ArmyData), so it runs
-    // in the Tools/ai-verify harness as well as in Unity.
+    // drives the real production owner. The portable subset uses frozen snapshots; assignment
+    // tests that touch Unity object comparisons also require native EditMode.
     public class AiReconAuditBugTests
     {
         [TearDown]
@@ -131,6 +131,110 @@ namespace Game.EditorTests
             Assert.That(result.Rejected[StableMissionKey.For(sweep)],
                 Is.EqualTo(ScoutAssignmentFailureReason.NoExecutableStep),
                 "ground scouts are never AirSweep capacity, busy or not");
+        }
+
+        [Test]
+        public void FreshAirSweepWithoutCandidate_IsNotProposed_WhileObjectiveSurvives()
+        {
+            var player = new PlayerSetupData();
+            WorldSnapshot snap = Snapshot(player, 11, new HexCoord(4, 3));
+            var objective = new ReconObjective { Kind = ReconObjectiveKind.AirSweep,
+                FocusHex = new HexCoord(4, 3), TaskScore = new TaskScore(infoGain: 30f), BaseValue = 30f };
+            var objectives = new[] { objective };
+            Assert.That(ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
+                new MissionIntent[0], objectives), Is.Empty);
+            Assert.That(objectives.Single(), Is.SameAs(objective));
+            Assert.That(objective.TaskScore.Value, Is.EqualTo(30f));
+            Assert.That(MissionIntentRegistry.GetOrCreate(player).All, Is.Empty);
+        }
+
+        [Test]
+        public void GroundBootstrapWithoutScout_KeepsProposalAndCapabilityDemand()
+        {
+            var player = new PlayerSetupData();
+            WorldSnapshot snap = Snapshot(player, 11, new HexCoord(4, 3));
+            snap.Observer = player;
+            snap.Self.Armies = new ArmySnapshot[0];
+            var objectives = new[] { new ReconObjective { Kind = ReconObjectiveKind.Explore,
+                FocusHex = new HexCoord(4, 3), FreshNeighbors = 6,
+                TaskScore = new TaskScore(infoGain: 30f), BaseValue = 30f } };
+            var intents = new MissionIntent[0];
+            var bd = new DesireBreakdown { ReconExplorePressure = 1f };
+            MissionProposal proposal = ReconMissionPlanner.Propose(snap, bd, intents, objectives).Single();
+            Assert.That(proposal.Requirements.MoverKnown, Is.False);
+            var demands = DemandLayer.Generate(snap, bd, objectives, new RaidObjective[0], intents,
+                ActorCommitments.FromIntents(intents, snap, objectives), player,
+                dirtyAxes: new HashSet<DesireAxis> { DesireAxis.Recon });
+            Assert.That(demands.Any(d => d.Capability == CapabilityKind.ScoutCapability
+                && d.DesiredAmount > 0 && !d.IsPersistenceDeferred), Is.True);
+        }
+
+        [Test]
+        public void BlockedAirIncumbent_KeepsProposalAndUsesOrdinaryStallLifecycle()
+        {
+            var player = new PlayerSetupData();
+            var focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, 11, focus);
+            snap.TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] {
+                new ArmySnapshot { ArmyId = 99, Hex = focus, EffectiveArmyPower = 20f } } };
+            var intent = Incumbent(focus, 31);
+            intent.Scout.Kind = ScoutTargetKind.AirSweep;
+            intent.IntentKey = MissionIntentKey.For(intent);
+            var state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(intent);
+            MissionProposal proposal = ReconMissionPlanner.Propose(snap, new DesireBreakdown(),
+                new[] { intent }, new ReconObjective[0]).Single();
+            Assert.That(proposal.FromDurableIntent, Is.True);
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(new[] { proposal });
+            ledger.RecordProvisionFailure(proposal, ProvisionFailure.NoExecutableStep("blocked air"));
+            MissionStepResult result = ledger.FinalizeSteps().Single();
+            Assert.That(result.IsBlocked, Is.True);
+            MissionContinuityLayer.ReconcileStep(player, 11, result);
+            Assert.That(state.TryGet(intent.IntentKey, out var kept), Is.True);
+            Assert.That(kept.PreferredMoverArmyId, Is.EqualTo(31));
+            Assert.That(kept.StallTurns, Is.EqualTo(1));
+            Assert.That(kept.Suspended, Is.Not.EqualTo(SuspendReason.CapabilityUnavailable));
+        }
+
+        [TestCase(ScoutTargetKind.AirSweep)]
+        [TestCase(ScoutTargetKind.Explore)]
+        public void NoExecutableStepDiagnostic_DoesNotAssertAnEligibleActorExists(ScoutTargetKind kind)
+        {
+            var player = new PlayerSetupData();
+            var snap = Snapshot(player, 11, new HexCoord(4, 3));
+            foreach (ArmySnapshot army in snap.Self.Armies) army.CurrentMovement = 0;
+            MissionProposal mission = Scout(kind, new HexCoord(4, 3));
+            var funded = new FundedEntry { Mission = mission, Priority = 1 };
+            // Test the translator with the canonical rejection vocabulary; eligibility belongs
+            // to Assignment and is covered by its own tests, not re-derived in Provisioning.
+            var assignment = new ReconAssignmentResult();
+            assignment.Rejected[StableMissionKey.For(mission)] = ScoutAssignmentFailureReason.NoExecutableStep;
+            using var session = new ProvisioningSession(snap);
+            session.SetAssignment(assignment);
+            var allocation = new TentativeAllocation();
+            allocation.Funded.Add(funded);
+            ProvisionFailure failure = ProvisioningManager.ScoutAssignmentFailures(session, allocation).Single().Failure;
+            Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+            Assert.That(failure.Disposition, Is.EqualTo(ProvisionDisposition.RetryNextTurn));
+            Assert.That(failure.Detail, Does.Contain(kind.ToString()));
+            Assert.That(failure.Detail, Does.Contain("no executable"));
+            Assert.That(failure.Detail, Does.Not.Contain("eligible scout(s)/vantage exist"));
+            Assert.That(session.ClaimedArmyIds, Is.Empty);
+            Assert.That(session.ApClaimed, Is.Zero);
+        }
+
+        [Test]
+        public void SpentGroundPreference_CanUseAFreeAlternativeAfterFunding()
+        {
+            var player = new PlayerSetupData();
+            var snap = Snapshot(player, 11, new HexCoord(4, 3));
+            snap.Self.Armies[0].CurrentMovement = 0;
+            MissionProposal mission = Scout(ScoutTargetKind.Explore, new HexCoord(4, 3));
+            mission.PreferredMoverArmyId = 10;
+            var assignment = ReconAssignmentPlanner.AssignFunded(snap, null, player,
+                new List<FundedEntry> { new FundedEntry { Mission = mission, Priority = 1 } }, new HashSet<int>());
+            Assert.That(assignment.Assigned.Single().Value.ActorKey, Is.EqualTo(20));
         }
 
         // B5 — a tactical TargetInvalidated (opportunistic attack/sabotage target gone, stale vantage,
