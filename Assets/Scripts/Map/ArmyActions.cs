@@ -421,6 +421,7 @@ namespace Game.Map
             if (!target.Hex.Equals(source.Hex))
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
             PublishRosterChange(source, target, AbilityParams.GetBestRecceRadius(unit) > 0);
+            if (target.IsAirfield) AviationActions.NotifyLandingCompleted(source, target, unit);
             return true;
         }
 
@@ -605,6 +606,8 @@ namespace Game.Map
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
             PublishRosterChange(source, target,
                 units.Concat(back).Any(u => AbilityParams.GetBestRecceRadius(u) > 0));
+            if (target.IsAirfield) AviationActions.NotifyLandingCompleted(source, target, units[0]);
+            if (source.IsAirfield && back.Count > 0) AviationActions.NotifyLandingCompleted(target, source, back[0]);
             return true;
         }
 

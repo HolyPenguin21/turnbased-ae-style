@@ -52,9 +52,12 @@ namespace Game.UI
                     return unit != null && army.Members.Contains(unit) && unit.HitPointsCurrent > 0 && unit.Equipment != null;
                 case ArmyRadioCategory.AviationSortie: return army.IsAirArmy && !army.AirWingLanded;
                 case ArmyRadioCategory.AviationReturned:
-                    var storage = AviationRules.FindAirfieldAt(item.Hex, viewer);
-                    return army.Hex.Equals(item.Hex) && unit != null && storage != null && storage.Owner == viewer && storage.IsAirfield
-                        && storage.Hex.Equals(item.Hex) && storage.Members.Contains(unit) && unit.HitPointsCurrent > 0;
+                    var receiver = item.RelatedArmy;
+                    return army.Hex.Equals(item.Hex) && unit != null && unit.IsAviation && unit.HitPointsCurrent > 0
+                        && !unit.SortieLaunchPaid && receiver != null && ArmyRegistry.IsRegistered(receiver)
+                        && receiver.Owner == viewer && receiver.Hex.Equals(item.Hex) && receiver.Members.Contains(unit)
+                        && AviationRules.IsOwnedAirfieldAt(item.Hex, viewer)
+                        && (receiver.IsAirfield || AviationRules.IsAirArmy(receiver));
                 case ArmyRadioCategory.Contact: return contact;
                 case ArmyRadioCategory.Stealth: return StealthSystem.IsArmyFullyHidden(army);
                 case ArmyRadioCategory.Garrison: return army.IsGarrison || army.IsAirfield;

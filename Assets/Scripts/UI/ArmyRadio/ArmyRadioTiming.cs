@@ -55,5 +55,7 @@ namespace Game.UI
         // A dialogue reserves both participants, but its one scheduled reply bypasses the global gap.
         public void Reserve(int id, float now) => _lastSpoke[id] = now;
         public void Forget(int id) => _lastSpoke.Remove(id);
+        // Viewer changes discard speaker scope, never the channel's rolling density or gap.
+        public void ResetSpeakers() => _lastSpoke.Clear();
     }
 }

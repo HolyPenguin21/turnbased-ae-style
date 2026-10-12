@@ -22,13 +22,14 @@ namespace Game.UI
         public readonly ArmyData Speaker;
         public readonly PlayerSetupData Viewer;
         public readonly object Subject;
+        public readonly ArmyData RelatedArmy;
         public readonly HexCoord Hex;
         public readonly float CreatedAt, ExpiresAt;
         public readonly int Priority;
         public ArmyRadioCandidate(ArmyRadioCategory category, ArmyData speaker, PlayerSetupData viewer,
-            object subject, HexCoord hex, float now, float ttl)
+            object subject, HexCoord hex, float now, float ttl, ArmyData relatedArmy = null)
         {
-            Category = category; Speaker = speaker; Viewer = viewer; Subject = subject; Hex = hex;
+            Category = category; Speaker = speaker; Viewer = viewer; Subject = subject; Hex = hex; RelatedArmy = relatedArmy;
             CreatedAt = now; ExpiresAt = now + Math.Max(0f, ttl); Priority = ArmyRadioDispatch.Priority(category);
         }
         private static int EventFamily(ArmyRadioCategory category) => category == ArmyRadioCategory.BattleWon
@@ -36,7 +37,8 @@ namespace Game.UI
                 ? (int)ArmyRadioCategory.BattleWon : (int)category;
         public bool SameEvent(ArmyRadioCandidate other) => other != null && EventFamily(Category) == EventFamily(other.Category)
             && ReferenceEquals(Speaker, other.Speaker) && ReferenceEquals(Viewer, other.Viewer)
-            && ReferenceEquals(Subject, other.Subject) && Hex.Equals(other.Hex);
+            && ReferenceEquals(Subject, other.Subject)
+            && (EventFamily(Category) == (int)ArmyRadioCategory.BattleWon || Hex.Equals(other.Hex));
     }
 
     public sealed class ArmyRadioDispatch

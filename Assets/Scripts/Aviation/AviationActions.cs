@@ -13,7 +13,15 @@ namespace Game.Aviation
     // capacity, and slot order cannot drift between a modal button and autonomous behavior.
     public static class AviationActions
     {
-        public static event System.Action<ArmyData, UnitData> AircraftLanded;
+        public static event System.Action<ArmyData, ArmyData, UnitData> AircraftLanded;
+        // All landing/storage paths publish once after their roster/refuel transaction commits.
+        internal static void NotifyLandingCompleted(ArmyData wing, ArmyData receiver, UnitData aircraft)
+        {
+            if (wing != null && receiver != null && aircraft != null && aircraft.IsAviation
+                && receiver.Owner == wing.Owner && receiver.Members.Contains(aircraft)
+                && !aircraft.SortieLaunchPaid)
+                AircraftLanded?.Invoke(wing, receiver, aircraft);
+        }
         public static ArmyData EnsureAirfield(HexSelectionController hexSelection, PlayerSetupData owner, Game.HexGrid.HexCoord hex)
         {
             if (!AviationRules.IsOwnedAirfieldAt(hex, owner))
@@ -207,7 +215,7 @@ namespace Game.Aviation
                 AviationRules.SyncAirArmyShell(airArmy, hexSelection);
                 hexSelection?.RestackArmiesOn(airArmy.Hex, null);
                 VisionSystem.NotifyContentChanged(airArmy.Hex);
-                AircraftLanded?.Invoke(airfield, landing[0]);
+                NotifyLandingCompleted(airArmy, airfield, landing[0]);
             }
             return landing.Count;
         }

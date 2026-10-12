@@ -22,7 +22,8 @@ namespace Game.UI
         private readonly Dictionary<BattleState, BattleObservation> _battles = new Dictionary<BattleState, BattleObservation>();
         private readonly HashSet<BuildingData> _seenBases = new HashSet<BuildingData>();
         private readonly Dictionary<ArmyData, HexCoord> _exploredOnMove = new Dictionary<ArmyData, HexCoord>();
-        private readonly HashSet<ArmyData> _sorties = new HashSet<ArmyData>();
+        // Presentation identities for observed flights; never a second fuel/endurance state.
+        private readonly Dictionary<ArmyData, object> _sorties = new Dictionary<ArmyData, object>();
         private readonly Dictionary<ArmyData, ArmyRadioCandidate> _onAir = new Dictionary<ArmyData, ArmyRadioCandidate>();
         private Func<ArmyRadioCandidate, bool> _validCandidate, _readyCandidate;
         private Action<BuildingData> _observeBase;
@@ -71,12 +72,12 @@ namespace Game.UI
             && _turns != null && _turns.IsArmyRadioMatchActive
             && _viewer == VisionSystem.CurrentViewer && ArmyRegistry.IsRegistered(army)
             && !army.IsAirfield && ArmyRadioChatter.CanSpeak(army, _viewer);
-        private void Enqueue(ArmyRadioCategory category, ArmyData army, object subject, HexCoord hex)
+        private void Enqueue(ArmyRadioCategory category, ArmyData army, object subject, HexCoord hex, ArmyData relatedArmy = null)
         {
             if (!CanReceive(army)) return;
             float now = Time.unscaledTime;
             float ttl = ArmyRadioDispatch.Priority(category) == 1 ? _settings.operationalTtl : _settings.minorEventTtl;
-            var candidate = new ArmyRadioCandidate(category, army, _viewer, subject, hex, now, Mathf.Clamp(ttl, 1f, 12f));
+            var candidate = new ArmyRadioCandidate(category, army, _viewer, subject, hex, now, Mathf.Clamp(ttl, 1f, 12f), relatedArmy);
             _dispatch.Add(candidate, now, _settings.maximumPendingCandidates);
         }
         // A relay needs an actual own, living formation with direct knowledge of this hex.
@@ -166,19 +167,24 @@ namespace Game.UI
             if (gear != null && gear.attachmentSlot != AttachmentSlot.Mutator)
                 Enqueue(ArmyRadioCategory.EquipmentReceived, army, unit, army.Hex);
         }
-        private void OnAircraftLanded(ArmyData airfield, UnitData aircraft)
+        private void OnAircraftLanded(ArmyData wing, ArmyData receiver, UnitData aircraft)
         {
-            _retired.Clear();
-            foreach (var army in _sorties)
-                if (!ArmyRegistry.IsRegistered(army) || army.AirWingLanded) _retired.Add(army);
-            foreach (var army in _retired) _sorties.Remove(army);
-            if (airfield.Owner == _viewer)
-                Enqueue(ArmyRadioCategory.AviationReturned, FindReporter(airfield.Hex, true), aircraft, airfield.Hex);
+            bool observedSortie = _sorties.ContainsKey(wing);
+            bool stillOperating = false;
+            foreach (var member in wing.Members)
+                if (member != null && member.SortieLaunchPaid) { stillOperating = true; break; }
+            if (!stillOperating) _sorties.Remove(wing);
+            _dispatch.Prune(Time.unscaledTime, _validCandidate);
+            if (observedSortie && receiver.Owner == _viewer)
+                Enqueue(ArmyRadioCategory.AviationReturned, FindReporter(receiver.Hex, true), aircraft, receiver.Hex, receiver);
         }
         private void OnFlightOperation(ArmyData army)
         {
-            if (CanReceive(army) && army.IsAirArmy && _sorties.Add(army))
-                Enqueue(ArmyRadioCategory.AviationSortie, army, army, army.Hex);
+            if (!CanReceive(army) || !AviationRules.IsAirArmy(army) || _sorties.ContainsKey(army)) return;
+            var identity = new object();
+            _sorties.Add(army, identity);
+            _dispatch.Prune(Time.unscaledTime, _validCandidate);
+            Enqueue(ArmyRadioCategory.AviationSortie, army, identity, army.Hex);
         }
         private void ObserveBase(BuildingData building)
         {
@@ -195,6 +201,8 @@ namespace Game.UI
             && CanPresent(item.Speaker, out _, out _);
 
         private bool IsCurrent(ArmyRadioCandidate item) => ArmyRadioContext.IsCurrent(item, _viewer,
-            item.Subject is BattleState state && _battles.ContainsKey(state), _contacts.Contains(item.Speaker));
+            item.Subject is BattleState state && _battles.ContainsKey(state), _contacts.Contains(item.Speaker))
+            && (item.Category != ArmyRadioCategory.AviationSortie
+                || (_sorties.TryGetValue(item.Speaker, out var identity) && ReferenceEquals(item.Subject, identity)));
     }
 }

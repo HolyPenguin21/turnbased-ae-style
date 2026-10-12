@@ -176,8 +176,8 @@ namespace Game.UI
             new[]
             {
                 "Aircraft landed here. Flight crew checked in.",
-                "We have aircraft back in storage. Landing confirmed.",
-                "Wing return checked in at this station.",
+                "Aircraft are back at our station. Landing confirmed.",
+                "Landing checked in at this station.",
                 "Aircraft received on the ground. Command, over.",
                 "Landing completed here. Crew can stop gripping things.",
                 "Aircraft are back at the airfield. Report sent.",

@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using Game.Cards;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -115,7 +116,7 @@ namespace Game.EditorTests
             {
                 ArmyRegistry.MoveArmy(_army, new HexCoord(1, 0)); ArmyRegistry.MoveArmy(_army, default);
                 Assert.That(calls, Is.EqualTo(1));
-                _army.IsAirArmy = true;
+                _army.IsAirArmy = true; _army.Members[0].IsAviation = true;
                 ArmyRegistry.MoveArmy(_army, new HexCoord(2, 0)); Assert.That(calls, Is.EqualTo(1));
             }
             finally { VisionSystem.GroundHexVisited -= listener; }
@@ -188,6 +189,81 @@ namespace Game.EditorTests
             finally { BattleEngine.ArmyRetreated -= listener; }
             Assert.That(calls, Is.EqualTo(1));
             Assert.That(ArmyRadioContext.IsCurrent(Candidate(ArmyRadioCategory.Retreat), _viewer), Is.False);
+        }
+        private ArmyData Wing()
+        {
+            var wing = new ArmyData { Owner = _viewer, IsAirArmy = true, Hex = default };
+            wing.Members.Add(new UnitData { Owner = _viewer, IsAviation = true, HitPointsCurrent = 3, HitPointsMax = 3,
+                SortieLaunchPaid = true, ConsecutiveUnlandedEnds = 1, HasEmergencyFlightPenalty = true });
+            ArmyRegistry.Register(wing);
+            BuildingRegistry.Register(default, new BuildingData { Owner = _viewer, Hex = default, IsBase = true, AirfieldCapacity = 4 });
+            return wing;
+        }
+        [TestCase(true)] [TestCase(false)]
+        public void AutomaticLanding_PublishesAfterRefuelForHumanAndAi(bool human)
+        {
+            _viewer.IsHuman = human; var wing = Wing(); var aircraft = wing.Members[0]; int calls = 0;
+            Action<ArmyData, ArmyData, UnitData> listener = (source, receiver, landed) =>
+            {
+                Assert.That(source, Is.SameAs(wing)); Assert.That(landed, Is.SameAs(aircraft));
+                Assert.That(receiver.Members.Contains(landed), Is.True); Assert.That(receiver.IsAirfield, Is.EqualTo(!human));
+                Assert.That(landed.SortieLaunchPaid, Is.False); Assert.That(landed.ConsecutiveUnlandedEnds, Is.Zero);
+                Assert.That(landed.HasEmergencyFlightPenalty, Is.False);
+                Assert.That(ArmyRadioContext.IsCurrent(new ArmyRadioCandidate(ArmyRadioCategory.AviationReturned,
+                    _army, _viewer, landed, default, 0f, 6f, receiver), _viewer), Is.True); calls++;
+            };
+            AviationActions.AircraftLanded += listener;
+            try { AviationTurnLifecycle.ResolveEndOfTurn(_viewer, null); }
+            finally { AviationActions.AircraftLanded -= listener; }
+            Assert.That(calls, Is.EqualTo(1)); Assert.That(wing.Members.Contains(aircraft), Is.EqualTo(human));
+        }
+        [TestCase(false)] [TestCase(true)]
+        public void ManualLanding_SingleAndAtomicTransferPublishCommittedStorage(bool batch)
+        {
+            var wing = Wing(); var aircraft = wing.Members[0]; var airfield = AviationActions.EnsureAirfield(null, _viewer, default);
+            int calls = 0;
+            Action<ArmyData, ArmyData, UnitData> listener = (source, receiver, landed) =>
+            {
+                Assert.That(source, Is.SameAs(wing)); Assert.That(receiver, Is.SameAs(airfield));
+                Assert.That(source.Members.Contains(aircraft), Is.False); Assert.That(receiver.Members.Contains(aircraft), Is.True);
+                Assert.That(aircraft.SortieLaunchPaid, Is.False); calls++;
+            };
+            AviationActions.AircraftLanded += listener;
+            try
+            {
+                bool ok = batch ? ArmyActions.TransferMembersAtomic(new[] { aircraft }, wing, airfield, null, out _)
+                    : ArmyActions.TransferMember(aircraft, wing, airfield, null, out _);
+                Assert.That(ok, Is.True);
+            }
+            finally { AviationActions.AircraftLanded -= listener; }
+            Assert.That(calls, Is.EqualTo(1));
+        }
+        [Test] public void PartialLanding_PublishesOnlyTheLandedMemberAndPreservesRemainingFlight()
+        {
+            var wing = Wing(); var first = wing.Members[0]; var second = new UnitData
+                { Owner = _viewer, IsAviation = true, HitPointsCurrent = 3, HitPointsMax = 3, SortieLaunchPaid = true };
+            wing.Members.Add(second); BuildingRegistry.FindAt(default).AirfieldCapacity = 1; int calls = 0;
+            Action<ArmyData, ArmyData, UnitData> listener = (source, receiver, landed) =>
+            {
+                Assert.That(landed, Is.SameAs(first)); Assert.That(receiver.Members.Contains(first), Is.True);
+                Assert.That(source.Members.Contains(second), Is.True); Assert.That(second.SortieLaunchPaid, Is.True); calls++;
+            };
+            AviationActions.AircraftLanded += listener;
+            try { Assert.That(AviationActions.LandInSlotOrder(wing, null), Is.EqualTo(1)); }
+            finally { AviationActions.AircraftLanded -= listener; }
+            Assert.That(calls, Is.EqualTo(1));
+        }
+        [TestCase(false)] [TestCase(true)]
+        public void LandingContext_RejectsNewTakeoffForStoredAndRetainedAircraft(bool retained)
+        {
+            var wing = Wing(); var aircraft = wing.Members[0]; _viewer.IsHuman = retained;
+            AviationTurnLifecycle.ResolveEndOfTurn(_viewer, null);
+            var receiver = retained ? wing : AviationRules.FindAirfieldAt(default, _viewer);
+            var candidate = new ArmyRadioCandidate(ArmyRadioCategory.AviationReturned, _army, _viewer,
+                aircraft, default, 0f, 6f, receiver);
+            Assert.That(ArmyRadioContext.IsCurrent(candidate, _viewer), Is.True);
+            aircraft.SortieLaunchPaid = true;
+            Assert.That(ArmyRadioContext.IsCurrent(candidate, _viewer), Is.False);
         }
         [Test] public void Contact_DisappearingOrHiddenEnemyCannotRemainAuthorized()
         {

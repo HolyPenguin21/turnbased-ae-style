@@ -37,7 +37,11 @@ namespace Game.Aviation
                         }
                         landed = refuelledInPlace.Count;
                         humanLandingSlotsUsed[airArmy.Hex] = used + landed;
-                        if (landed > 0) VisionSystem.NotifyContentChanged(airArmy.Hex);
+                        if (landed > 0)
+                        {
+                            VisionSystem.NotifyContentChanged(airArmy.Hex);
+                            AviationActions.NotifyLandingCompleted(airArmy, airArmy, refuelledInPlace.First());
+                        }
                     }
                     else landed = AviationActions.LandInSlotOrder(airArmy, hexSelection);
                     int unlanded = airArmy.Members.Count - refuelledInPlace.Count;

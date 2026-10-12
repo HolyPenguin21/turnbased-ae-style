@@ -105,6 +105,50 @@ namespace Game.EditorTests
             Assert.That(clock.ChannelReady(20f, 3), Is.False);
             Assert.That(clock.ChannelReady(65f, 3), Is.True);
         }
+        [Test] public void ViewerReset_PreservesChannelGapAndRollingDensity()
+        {
+            var clock = new ArmyRadioCadence(0f); clock.Spoke(1, 2f, 3f);
+            clock.ResetSpeakers();
+            Assert.That(clock.ArmyReady(1, 3f, 45f), Is.True);
+            Assert.That(clock.RecentCount(3f), Is.EqualTo(1));
+            Assert.That(clock.ChannelReady(4.99f, 3), Is.False);
+            clock.Spoke(2, 5f, 3f); clock.Spoke(3, 8f, 3f); clock.ResetSpeakers();
+            Assert.That(clock.ChannelReady(30f, 3), Is.False);
+            Assert.That(clock.ChannelReady(62f, 3), Is.True);
+        }
+        [Test] public void RapidViewerChanges_CannotRefillThePerMinuteAllowance()
+        {
+            var clock = new ArmyRadioCadence(0f); var transmissions = new Queue<float>(); int total = 0;
+            for (int second = 0; second < 180; second++)
+            {
+                clock.ResetSpeakers();
+                if (clock.ChannelReady(second, 3))
+                { clock.Spoke(second, second, 3f); transmissions.Enqueue(second); total++; }
+                while (transmissions.Count > 0 && second - transmissions.Peek() >= 60f) transmissions.Dequeue();
+                Assert.That(transmissions.Count, Is.LessThanOrEqualTo(3));
+            }
+            Assert.That(total, Is.EqualTo(9));
+        }
+        [Test] public void EncounterOutcomeIdentity_IgnoresLaterSpeakerPosition()
+        {
+            object encounter = new object();
+            var retreat = Candidate(ArmyRadioCategory.Retreat, subject: encounter);
+            _dispatch.Add(retreat, 0f, 24); Take(1f, out _);
+            var later = new ArmyRadioCandidate(ArmyRadioCategory.HeavyLosses, _army, _viewer,
+                encounter, new HexCoord(1, 0), 2f, 10f);
+            Assert.That(_dispatch.Add(later, 2f, 24), Is.False);
+        }
+        [Test] public void ReusedWing_NewFlightIdentityCannotResurrectAnInvalidatedFlight()
+        {
+            object firstFlight = new object(), nextFlight = new object();
+            var first = Candidate(ArmyRadioCategory.AviationSortie, subject: firstFlight);
+            _dispatch.Add(first, 0f, 24);
+            _dispatch.Prune(1f, item => ReferenceEquals(item.Subject, nextFlight));
+            var next = Candidate(ArmyRadioCategory.AviationSortie, 2f, subject: nextFlight);
+            Assert.That(_dispatch.Add(next, 2f, 24), Is.True);
+            Assert.That(_dispatch.Add(first, 2f, 24), Is.False);
+            Assert.That(Take(3f, out var chosen), Is.True); Assert.That(chosen, Is.SameAs(next));
+        }
         [Test] public void PerArmyCooldown_DoesNotBlockAnotherEligibleSpeaker()
         {
             var other = new ArmyData { Owner = _viewer };

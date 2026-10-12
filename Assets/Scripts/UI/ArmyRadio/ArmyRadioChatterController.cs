@@ -63,6 +63,7 @@ namespace Game.UI
                 return;
             }
             _settings = settings ?? new ArmyRadioChatterSettings();
+            _cadence = new ArmyRadioCadence(Time.unscaledTime);
             _viewer = null; _actor = null; ResetChannel();
             if (isActiveAndEnabled) Subscribe();
         }
@@ -93,7 +94,7 @@ namespace Game.UI
         {
             _contacts.Clear(); _newContacts.Clear(); _moved.Clear(); _observations.Clear();
             ClearOperations();
-            _cadence = new ArmyRadioCadence(Time.unscaledTime); _lastSpeakerId = -1;
+            _cadence.ResetSpeakers(); _lastSpeakerId = -1;
             _nextAmbient = Time.unscaledTime + Mathf.Max(5f, _settings.ambientInterval);
             _nextObservation = 0f; _dirty = true;
         }
