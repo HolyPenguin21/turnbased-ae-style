@@ -16,6 +16,49 @@ namespace Game.EditorTests
 {
     public class ArmyRadioArtTests
     {
+        [Test]
+        public void ActualPrefab_WashHasTransparentUnevenEdgesAndTranslucentCentre()
+        {
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadio/ArmyRadioMessage.prefab");
+            var host = Object.Instantiate(prefab);
+            try
+            {
+                var view = host.GetComponent<ArmyRadioBubbleView>();
+                var bubble = (ArmyRadioBubbleGraphic)typeof(ArmyRadioBubbleView)
+                    .GetField("_bubble", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(view);
+                var shadow = (RectTransform)typeof(ArmyRadioBubbleView)
+                    .GetField("_shadow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(view);
+                Assert.That(shadow.gameObject.activeSelf, Is.False, "Use one wash rather than stacked shadows.");
+                Assert.That(bubble.color.a, Is.InRange(.4f, .55f));
+                using (var mesh = new UnityEngine.UI.VertexHelper())
+                {
+                    typeof(ArmyRadioBubbleGraphic).GetMethod("Wash", BindingFlags.Instance | BindingFlags.NonPublic)
+                        .Invoke(bubble, new object[] { mesh, new Rect(-90f, -28f, 180f, 56f) });
+                    var vertex = new UnityEngine.UIVertex();
+                    float minEdge = 1f, maxEdge = 0f, maxCentre = 0f;
+                    int edgeSamples = 0;
+                    for (int i = 0; i < mesh.currentVertCount; i++)
+                    {
+                        mesh.PopulateUIVertex(ref vertex, i);
+                        float alpha = vertex.color.a / 255f;
+                        Assert.That(alpha, Is.LessThanOrEqualTo(bubble.color.a + 1f / 255f));
+                        if (Mathf.Abs(vertex.position.x) >= 89.99f || Mathf.Abs(vertex.position.y) >= 27.99f)
+                            Assert.That(vertex.color.a, Is.EqualTo(0), "The perimeter must dissolve into the map.");
+                        if (Mathf.Abs(vertex.position.x) < 50f && vertex.position.y > 20f && vertex.position.y < 24f)
+                        { minEdge = Mathf.Min(minEdge, alpha); maxEdge = Mathf.Max(maxEdge, alpha); edgeSamples++; }
+                        if (Mathf.Abs(vertex.position.x) < 20f && Mathf.Abs(vertex.position.y) < 5f)
+                            maxCentre = Mathf.Max(maxCentre, alpha);
+                    }
+                    Assert.That(edgeSamples, Is.GreaterThan(4));
+                    Assert.That(maxEdge - minEdge, Is.GreaterThan(.025f), "Edge alpha must vary along its length.");
+                    Assert.That(maxEdge, Is.LessThan(maxCentre * .65f), "Edges need extra transparency.");
+                    Assert.That(maxCentre, Is.EqualTo(bubble.color.a).Within(1f / 255f));
+                    Assert.That(mesh.currentVertCount, Is.LessThanOrEqualTo(12513));
+                }
+            }
+            finally { Object.DestroyImmediate(host); }
+        }
+
         [TestCase(0f, 39f)]
         [TestCase(54f, 39f)]
         [TestCase(27f, 0f)]
@@ -83,6 +126,31 @@ namespace Game.EditorTests
 
     public class ArmyRadioLayoutTests
     {
+        [TestCase(2.6f)]
+        [TestCase(4f)]
+        [TestCase(7f)]
+        public void ActualOverlay_DoublesTheCompleteTransmissionAtEveryZoom(float orthographicSize)
+        {
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadio/ArmyRadioOverlay.prefab");
+            var host = Object.Instantiate(prefab);
+            var cameraHost = new GameObject("Radio scale camera", typeof(Camera));
+            try
+            {
+                var camera = cameraHost.GetComponent<Camera>();
+                camera.orthographic = true; camera.orthographicSize = orthographicSize;
+                var radio = host.GetComponent<ArmyRadioChatterController>();
+                typeof(ArmyRadioChatterController).GetField("_camera", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(radio, camera);
+                float scale = (float)typeof(ArmyRadioChatterController)
+                    .GetMethod("MessageScale", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(radio, null);
+                Assert.That(scale, Is.EqualTo(2f * ArmyRadioLayout.CameraScale(orthographicSize, 2.6f)).Within(.00001f));
+                camera.orthographic = false;
+                scale = (float)typeof(ArmyRadioChatterController)
+                    .GetMethod("MessageScale", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(radio, null);
+                Assert.That(scale, Is.EqualTo(2f));
+            }
+            finally { Object.DestroyImmediate(host); Object.DestroyImmediate(cameraHost); }
+        }
+
         [TestCase(2.6f, 1f)]
         [TestCase(4f, .65f)]
         [TestCase(7f, .3714286f)]
