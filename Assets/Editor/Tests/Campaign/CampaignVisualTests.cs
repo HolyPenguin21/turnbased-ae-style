@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Core;
 using System.Linq;
 using Game.Campaign;
 using Game.Players;
@@ -17,7 +18,7 @@ public sealed class CampaignVisualTests
     {
         if (SystemInfo.graphicsDeviceType == UnityEngine.Rendering.GraphicsDeviceType.Null)
             Assert.Ignore("A graphics device is required for the batched UI shader regression.");
-        var material = new Material(Resources.Load<Shader>("Shaders/CampaignSurface"));
+        var material = new Material(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
         var mesh = new Mesh();
         var target = RenderTexture.GetTemporary(512, 256, 0, RenderTextureFormat.ARGB32);
         var readback = new Texture2D(512, 256, TextureFormat.RGBA32, false);
@@ -115,14 +116,14 @@ public sealed class CampaignVisualTests
     [Test]
     public void SurfaceResourcesAndFrameImportAreReadyForAPlayerBuild()
     {
-        Assert.NotNull(Resources.Load<Texture2D>("Campaign/Backgrounds/WastelandSurface"));
+        Assert.NotNull(GameAssetCatalog.Load<Texture2D>("Campaign/Backgrounds/WastelandSurface"));
         for (int id = 1; id <= CampaignMapGenerator.BackgroundCount; id++)
-            Assert.NotNull(Resources.Load<Texture2D>(CampaignMapView.BackgroundResourcePath(id)), "Missing campaign background " + id);
-        Assert.NotNull(Resources.Load<Texture2D>("Campaign/Effects/AtmosphericClouds"));
-        Assert.NotNull(Resources.Load<Shader>("Shaders/CampaignSurface"));
-        Assert.NotNull(Resources.Load<Sprite>("UI/Backgrounds/Campaign/Parchment"));
-        Assert.NotNull(Resources.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal"));
-        var frame = Resources.Load<Sprite>("UI/Panels/Campaign/MetalFrameRounded");
+            Assert.NotNull(GameAssetCatalog.Load<Texture2D>(CampaignMapView.BackgroundResourcePath(id)), "Missing campaign background " + id);
+        Assert.NotNull(GameAssetCatalog.Load<Texture2D>("Campaign/Effects/AtmosphericClouds"));
+        Assert.NotNull(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
+        Assert.NotNull(GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/Parchment"));
+        Assert.NotNull(GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Campaign/ConsoleMetal"));
+        var frame = GameAssetCatalog.Load<Sprite>("UI/Panels/Campaign/MetalFrameRounded");
         Assert.NotNull(frame); Assert.That(frame.border.x, Is.GreaterThan(0));
     }
     [Test]
@@ -218,12 +219,12 @@ public sealed class CampaignVisualTests
         var state = new CampaignMapGenerator().Generate(73, Faction.IronConcord);
         var root = new GameObject("Campaign visual test", typeof(RectTransform), typeof(CanvasRenderer));
         var mesh = new Mesh();
-        var material = new Material(Resources.Load<Shader>("Shaders/CampaignSurface"));
+        var material = new Material(GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface"));
         try
         {
             var rect = root.GetComponent<RectTransform>(); rect.sizeDelta = new Vector2(1000, 600);
             var graphic = root.AddComponent<CampaignRegionGraphic>();
-            graphic.SetSurface(Resources.Load<Texture2D>("Campaign/Backgrounds/WastelandSurface"), material);
+            graphic.SetSurface(GameAssetCatalog.Load<Texture2D>("Campaign/Backgrounds/WastelandSurface"), material);
             graphic.Configure(state.Regions[0], () => { }, _ => { });
             graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), true, false, false, false, true);
             using (var vh = new VertexHelper())

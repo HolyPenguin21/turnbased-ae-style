@@ -1,3 +1,4 @@
+using Game.Core;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -37,8 +38,8 @@ namespace Game.Audio
                 existing.StartCoroutine(existing.RestartExistingService());
                 return;
             }
-            var prefab = Resources.Load<GameObject>("Audio/GameAudio");
-            if (prefab == null) { Debug.LogError("Missing Resources/Audio/GameAudio audio service prefab."); return; }
+            var prefab = GameAssetCatalog.Load<GameObject>("Audio/GameAudio");
+            if (prefab == null) { Debug.LogError("Missing Audio/GameAudio audio service prefab in GameAssetCatalog."); return; }
             Object.Instantiate(prefab);
         }
         private void Awake() => Initialize();

@@ -1,3 +1,4 @@
+using Game.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
@@ -26,7 +27,7 @@ namespace Game.UI
             showing++; UIFocusUtility.SetOverlay(owner, true);
             if (rewardStyle)
             {
-                var view = Instantiate(Resources.Load<GameObject>("Prefabs/Rewards/RewardDialog").GetComponent<CollectionRewardView>(), canvas);
+                var view = Instantiate(GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/RewardDialog").GetComponent<CollectionRewardView>(), canvas);
                 view.Title.text = rewardTitle;
                 view.Body.text = message;
                 view.PrimaryButton.onClick.AddListener(owner.Close);

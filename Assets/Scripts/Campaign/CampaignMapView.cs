@@ -1,3 +1,4 @@
+using Game.Core;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -44,8 +45,8 @@ namespace Game.Campaign
             CancelCapture(); CancelAttackAnimation();
             foreach (Transform child in transform) { if (arrow != null && child == arrow.transform) continue; child.gameObject.SetActive(false); Destroy(child.gameObject); }
             graphics.Clear();
-            SurfaceTexture = Resources.Load<Texture2D>(BackgroundResourcePath(backgroundId));
-            var shader = Resources.Load<Shader>("Shaders/CampaignSurface");
+            SurfaceTexture = GameAssetCatalog.Load<Texture2D>(BackgroundResourcePath(backgroundId));
+            var shader = GameAssetCatalog.Load<Shader>("Shaders/CampaignSurface");
             if (SurfaceTexture == null || shader == null) throw new InvalidOperationException("Campaign surface assets are missing.");
             if (surfaceMaterial != null) Destroy(surfaceMaterial);
             surfaceMaterial = new Material(shader) { name = "CampaignSurface (runtime)" };

@@ -1,0 +1,266 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d10e9e03c8314170bc3ff97029210982, type: 3}
+  m_Name: GameAssetCatalog
+  m_EditorClassIdentifier: 
+  entries:
+  - key: Audio/GameAudio
+    assets:
+    - {fileID: 100100000, guid: eef655d3d8ab4bc4818015eb76c4f552, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface
+    assets:
+    - {fileID: 2800000, guid: 311ed474e5b34832943f14173587b735, type: 3}
+    - {fileID: 21300000, guid: 311ed474e5b34832943f14173587b735, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_01
+    assets:
+    - {fileID: 2800000, guid: c7a75f28f4a441709452cba267a4dae2, type: 3}
+    - {fileID: 21300000, guid: c7a75f28f4a441709452cba267a4dae2, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_02
+    assets:
+    - {fileID: 2800000, guid: 72f2bb00f4ee409f8ed9983bf6f5f970, type: 3}
+    - {fileID: 21300000, guid: 72f2bb00f4ee409f8ed9983bf6f5f970, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_03
+    assets:
+    - {fileID: 2800000, guid: 54b6b15cd72d4b43bfaa8be5cbeed1bf, type: 3}
+    - {fileID: 21300000, guid: 54b6b15cd72d4b43bfaa8be5cbeed1bf, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_04
+    assets:
+    - {fileID: 2800000, guid: 0ed00b9b6fbf4c7fb8cf1d98893650d0, type: 3}
+    - {fileID: 21300000, guid: 0ed00b9b6fbf4c7fb8cf1d98893650d0, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_05
+    assets:
+    - {fileID: 2800000, guid: bef5bf57b1304a12bc51b2a9135b8851, type: 3}
+    - {fileID: 21300000, guid: bef5bf57b1304a12bc51b2a9135b8851, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_06
+    assets:
+    - {fileID: 2800000, guid: 96d10512479543cd987106dbe8c0a929, type: 3}
+    - {fileID: 21300000, guid: 96d10512479543cd987106dbe8c0a929, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_07
+    assets:
+    - {fileID: 2800000, guid: e111cb552d5a4c00a16b59fc3f05fba0, type: 3}
+    - {fileID: 21300000, guid: e111cb552d5a4c00a16b59fc3f05fba0, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_08
+    assets:
+    - {fileID: 2800000, guid: 6e43c981ac1146f8935e83af1eda5c07, type: 3}
+    - {fileID: 21300000, guid: 6e43c981ac1146f8935e83af1eda5c07, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_09
+    assets:
+    - {fileID: 2800000, guid: a22ae3de641e434ea912f76aa18535fa, type: 3}
+    - {fileID: 21300000, guid: a22ae3de641e434ea912f76aa18535fa, type: 3}
+  - key: Campaign/Backgrounds/WastelandSurface_10
+    assets:
+    - {fileID: 2800000, guid: c9e3de4320254acca97c97780e3675c4, type: 3}
+    - {fileID: 21300000, guid: c9e3de4320254acca97c97780e3675c4, type: 3}
+  - key: Campaign/Effects/AtmosphericClouds
+    assets:
+    - {fileID: 2800000, guid: e3fe78893ff9486daf0e4c3d1ff35507, type: 3}
+    - {fileID: 21300000, guid: e3fe78893ff9486daf0e4c3d1ff35507, type: 3}
+  - key: Effects/Overlay
+    assets:
+    - {fileID: 2800000, guid: e6efe6fe254c0334f90a94273179b0a5, type: 3}
+    - {fileID: 21300000, guid: e6efe6fe254c0334f90a94273179b0a5, type: 3}
+  - key: Effects/ScreenWear
+    assets:
+    - {fileID: 4800000, guid: b6f31d54aaf24b45a8f7c43cf25db870, type: 3}
+  - key: Fonts/GameMenuFont
+    assets:
+    - {fileID: 11400000, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 3}
+  - key: Fonts/Rajdhani-Bold
+    assets:
+    - {fileID: 12800000, guid: addc1df243e384f45a4178cd534b1923, type: 3}
+  - key: Fonts/Rajdhani-Light
+    assets:
+    - {fileID: 12800000, guid: 16430b0a1dfa93045ad7dc78798d0aae, type: 3}
+  - key: Fonts/Rajdhani-Medium
+    assets:
+    - {fileID: 12800000, guid: ca55d4caf6284cd4dbac5eaad1c53488, type: 3}
+  - key: Fonts/Rajdhani-Regular
+    assets:
+    - {fileID: 12800000, guid: 17858308d7fc88d4ab278bb27ed6fdc2, type: 3}
+  - key: Fonts/Rajdhani-SemiBold
+    assets:
+    - {fileID: 12800000, guid: fefd05210ec15f342b6f0ae67a5b2031, type: 3}
+  - key: Fonts/Rajdhani-SemiBold SDF
+    assets:
+    - {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 3}
+  - key: Materials/FogOfWar
+    assets:
+    - {fileID: 2100000, guid: f3bf9f380fd94fc3aa312732f2d0b29b, type: 3}
+  - key: Prefabs/Rewards/CollectionRewardCard
+    assets:
+    - {fileID: 100100000, guid: 377ba38ca73a43208b204a4b4de8c3bb, type: 3}
+  - key: Prefabs/Rewards/CollectionRewards
+    assets:
+    - {fileID: 100100000, guid: 3852179eca984d7192c20690cb4e7273, type: 3}
+  - key: Prefabs/Rewards/EventReward
+    assets:
+    - {fileID: 100100000, guid: 3a634a77d35d4ac88b0253996b1945b7, type: 3}
+  - key: Prefabs/Rewards/RewardDialog
+    assets:
+    - {fileID: 100100000, guid: 83608cf1ca5642b2bdb03f1c6b06f07e, type: 3}
+  - key: Shaders/CampaignSurface
+    assets:
+    - {fileID: 4800000, guid: 17ab6d85e2eb43138e0dd5f53b0a7c99, type: 3}
+  - key: Shaders/FogOfWar
+    assets:
+    - {fileID: 4800000, guid: 4fc2f5083a680066fdae2f5eba301157, type: 3}
+  - key: Shaders/HexBlend
+    assets:
+    - {fileID: 4800000, guid: c5faf94afc23ec54488079a0fa7755a0, type: 3}
+  - key: Shaders/HexClusterGlow
+    assets:
+    - {fileID: 4800000, guid: 8e91a59d2fc64586a63e8a0a70059c2d, type: 3}
+  - key: Shaders/MoveArrowGlow
+    assets:
+    - {fileID: 4800000, guid: 0424f210b6664812912a8c22b2d4fcf0, type: 3}
+  - key: Shaders/ScreenWear
+    assets:
+    - {fileID: 4800000, guid: b6f31d54aaf24b45a8f7c43cf25db870, type: 3}
+  - key: Shaders/UIRaggedGlow
+    assets:
+    - {fileID: 4800000, guid: 7a55ac960446ee0b294822eab480d6f2, type: 3}
+  - key: UI/Backgrounds/Campaign/ConsoleMetal
+    assets:
+    - {fileID: 2800000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
+    - {fileID: 21300000, guid: b400f34acadc4433957760eaae115eaf, type: 3}
+  - key: UI/Backgrounds/Campaign/ConsoleMetalClean
+    assets:
+    - {fileID: 2800000, guid: 4ede968517a5482babcfdf788edfd6b4, type: 3}
+    - {fileID: 21300000, guid: 4ede968517a5482babcfdf788edfd6b4, type: 3}
+  - key: UI/Backgrounds/Campaign/Parchment
+    assets:
+    - {fileID: 2800000, guid: bdc5e49e3d354be1acf1b66cef61b7cf, type: 3}
+    - {fileID: 21300000, guid: bdc5e49e3d354be1acf1b66cef61b7cf, type: 3}
+  - key: UI/Backgrounds/Collection/Metal
+    assets:
+    - {fileID: 2800000, guid: a97af7f80bdb4726ad2264d83b8df979, type: 3}
+    - {fileID: 21300000, guid: a97af7f80bdb4726ad2264d83b8df979, type: 3}
+  - key: UI/Buttons/Collection/BackPlate
+    assets:
+    - {fileID: 2800000, guid: 0adff2f4e1e64a08b4ce327e0395c1b7, type: 3}
+    - {fileID: 21300000, guid: 0adff2f4e1e64a08b4ce327e0395c1b7, type: 3}
+  - key: UI/Buttons/Collection/Button
+    assets:
+    - {fileID: 2800000, guid: 983eb5f4b7ad5f87bace4b3d6237c48b, type: 3}
+    - {fileID: 21300000, guid: 983eb5f4b7ad5f87bace4b3d6237c48b, type: 3}
+  - key: UI/Buttons/Collection/SavePlate
+    assets:
+    - {fileID: 2800000, guid: 8ff6d522ad9549209fb1337671a243b6, type: 3}
+    - {fileID: 21300000, guid: 8ff6d522ad9549209fb1337671a243b6, type: 3}
+  - key: UI/Buttons/Collection/SquareButton
+    assets:
+    - {fileID: 2800000, guid: 1b570dfcb4604502b3f5d5005bca2519, type: 3}
+    - {fileID: 21300000, guid: 1b570dfcb4604502b3f5d5005bca2519, type: 3}
+  - key: UI/Controls/Collection/DropdownBackground
+    assets:
+    - {fileID: 2800000, guid: c865512bd08e45ec9edcbde5ba934ba1, type: 3}
+    - {fileID: 21300000, guid: c865512bd08e45ec9edcbde5ba934ba1, type: 3}
+  - key: UI/Controls/Collection/Input
+    assets:
+    - {fileID: 2800000, guid: 28a270cf84cb5df9a90b964ce702197e, type: 3}
+    - {fileID: 21300000, guid: 28a270cf84cb5df9a90b964ce702197e, type: 3}
+  - key: UI/Controls/Collection/Meter
+    assets:
+    - {fileID: 2800000, guid: 5be063c15261538a935b055193d930ef, type: 3}
+    - {fileID: 21300000, guid: 5be063c15261538a935b055193d930ef, type: 3}
+  - key: UI/Controls/Collection/ScrollbarHandle
+    assets:
+    - {fileID: 2800000, guid: 1cdf102784c54c4ea476a8e02091329e, type: 3}
+    - {fileID: 21300000, guid: 1cdf102784c54c4ea476a8e02091329e, type: 3}
+  - key: UI/Controls/Collection/ScrollbarTrack
+    assets:
+    - {fileID: 2800000, guid: d30bf20b3bf04747bc71cec3ca286a0d, type: 3}
+    - {fileID: 21300000, guid: d30bf20b3bf04747bc71cec3ca286a0d, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_1376x70
+    assets:
+    - {fileID: 2800000, guid: 5fe79522ff4944f084959f7f26b9c8be, type: 3}
+    - {fileID: 21300000, guid: 5fe79522ff4944f084959f7f26b9c8be, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_176x48
+    assets:
+    - {fileID: 2800000, guid: 755114f7d28e4a638af491d87164ec14, type: 3}
+    - {fileID: 21300000, guid: 755114f7d28e4a638af491d87164ec14, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_205x46
+    assets:
+    - {fileID: 2800000, guid: 91afcfc484144b738f90c4e42c9ed6d6, type: 3}
+    - {fileID: 21300000, guid: 91afcfc484144b738f90c4e42c9ed6d6, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_374x34
+    assets:
+    - {fileID: 2800000, guid: e396a199257e4749af3c5838f3228471, type: 3}
+    - {fileID: 21300000, guid: e396a199257e4749af3c5838f3228471, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_382x46
+    assets:
+    - {fileID: 2800000, guid: 416eb4b2f43a4ebc9ac7a4d56c21f5b3, type: 3}
+    - {fileID: 21300000, guid: 416eb4b2f43a4ebc9ac7a4d56c21f5b3, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_382x62
+    assets:
+    - {fileID: 2800000, guid: 046e92cba3cd46d4bf9e8640f266d9db, type: 3}
+    - {fileID: 21300000, guid: 046e92cba3cd46d4bf9e8640f266d9db, type: 3}
+  - key: UI/Decorations/Campaign/Plaque_880x58
+    assets:
+    - {fileID: 2800000, guid: 58d238cd8c12455a8159cb455657464d, type: 3}
+    - {fileID: 21300000, guid: 58d238cd8c12455a8159cb455657464d, type: 3}
+  - key: UI/Decorations/Campaign/SectionPlaque
+    assets:
+    - {fileID: 2800000, guid: 5ebe416fa2c34c3096ac73ee1ddecd2f, type: 3}
+    - {fileID: 21300000, guid: 5ebe416fa2c34c3096ac73ee1ddecd2f, type: 3}
+  - key: UI/Decorations/Collection/DeckHeader
+    assets:
+    - {fileID: 2800000, guid: f9e1a130249745959c78fcf5699389d6, type: 3}
+    - {fileID: 21300000, guid: f9e1a130249745959c78fcf5699389d6, type: 3}
+  - key: UI/Decorations/Collection/Divider
+    assets:
+    - {fileID: 2800000, guid: 973a6d6cfbea476987520e49f0186190, type: 3}
+    - {fileID: 21300000, guid: 973a6d6cfbea476987520e49f0186190, type: 3}
+  - key: UI/Decorations/Collection/Plaque
+    assets:
+    - {fileID: 2800000, guid: e789740b4d8b52aab99c9010ba93ae7e, type: 3}
+    - {fileID: 21300000, guid: e789740b4d8b52aab99c9010ba93ae7e, type: 3}
+  - key: UI/Decorations/Collection/RowPlate
+    assets:
+    - {fileID: 2800000, guid: 00bf205727fc48089dfcf2bccaf50a36, type: 3}
+    - {fileID: 21300000, guid: 00bf205727fc48089dfcf2bccaf50a36, type: 3}
+  - key: UI/Effects/HealCross
+    assets:
+    - {fileID: 2800000, guid: 8bc6f93356dd7174bb59f7fc60005449, type: 3}
+    - {fileID: 21300000, guid: 8bc6f93356dd7174bb59f7fc60005449, type: 3}
+  - key: UI/Panels/Campaign/ConsoleFrame
+    assets:
+    - {fileID: 2800000, guid: b34ce1623f6e4d448460d9308d6d4985, type: 3}
+    - {fileID: 21300000, guid: b34ce1623f6e4d448460d9308d6d4985, type: 3}
+  - key: UI/Panels/Campaign/InsetFrame
+    assets:
+    - {fileID: 2800000, guid: 3ad2b326940b4b8596cf484571ab9cf3, type: 3}
+    - {fileID: 21300000, guid: 3ad2b326940b4b8596cf484571ab9cf3, type: 3}
+  - key: UI/Panels/Campaign/MetalFrame
+    assets:
+    - {fileID: 2800000, guid: f0ff40967c084e9f8c4be4373337f943, type: 3}
+    - {fileID: 21300000, guid: f0ff40967c084e9f8c4be4373337f943, type: 3}
+  - key: UI/Panels/Campaign/MetalFrameRounded
+    assets:
+    - {fileID: 2800000, guid: 0ba868b5ec5c450db73c6bfe7de79d05, type: 3}
+    - {fileID: 21300000, guid: 0ba868b5ec5c450db73c6bfe7de79d05, type: 3}
+  - key: UI/Panels/Collection/Panel_Inset
+    assets:
+    - {fileID: 2800000, guid: c887db87b7f75e7ebb299cc0a69315c1, type: 3}
+    - {fileID: 21300000, guid: c887db87b7f75e7ebb299cc0a69315c1, type: 3}
+  - key: UI/Panels/Collection/Panel_Outer
+    assets:
+    - {fileID: 2800000, guid: 35006a71d1cc5ee6bcf88505a2ca1402, type: 3}
+    - {fileID: 21300000, guid: 35006a71d1cc5ee6bcf88505a2ca1402, type: 3}
+  - key: UI/Panels/Rewards/RewardConsole_1440x900
+    assets:
+    - {fileID: 2800000, guid: 2b3380d0ab2b48959d28e58e14332a66, type: 3}
+    - {fileID: 21300000, guid: 2b3380d0ab2b48959d28e58e14332a66, type: 3}
+  - key: UI/Panels/Rewards/RewardDialog_1060x630
+    assets:
+    - {fileID: 2800000, guid: c90615e9534d4d59b243fd16e793bcfc, type: 3}
+    - {fileID: 21300000, guid: c90615e9534d4d59b243fd16e793bcfc, type: 3}

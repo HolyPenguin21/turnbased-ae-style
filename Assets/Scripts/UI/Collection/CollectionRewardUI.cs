@@ -47,8 +47,8 @@ namespace Game.UI
             if (canvas == null)
             {
                 canvas = CollectionUIElements.Canvas("CollectionRewards", new Vector2(1920, 1080));
-                view = Instantiate(Resources.Load<GameObject>("Prefabs/Rewards/CollectionRewards").GetComponent<CollectionRewardView>(), canvas);
-                cardTemplate = Resources.Load<GameObject>("Prefabs/Rewards/CollectionRewardCard").GetComponent<CollectionRewardCardView>();
+                view = Instantiate(GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/CollectionRewards").GetComponent<CollectionRewardView>(), canvas);
+                cardTemplate = GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/CollectionRewardCard").GetComponent<CollectionRewardCardView>();
             }
             UIFocusUtility.SetOverlay(this, true);
             CollectionUIElements.Clear(view.CardsHost);

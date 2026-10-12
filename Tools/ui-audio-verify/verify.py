@@ -4,7 +4,7 @@ import re, unittest
 ROOT=Path(__file__).resolve().parents[2]
 class AudioIntegration(unittest.TestCase):
  def test_runtime_service_asset_exists(self):
-  self.assertTrue((ROOT/'Assets/Resources/Audio/GameAudio.prefab').is_file())
+  self.assertTrue((ROOT/'Assets/Prefabs/Audio/GameAudio.prefab').is_file())
  def test_legacy_audio_removed(self):
   self.assertFalse((ROOT/'Assets/Scripts/PersistentAudio.cs').exists())
   scene=(ROOT/'Assets/Scenes/MainMenu.unity').read_text()

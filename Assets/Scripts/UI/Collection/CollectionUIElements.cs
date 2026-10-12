@@ -1,3 +1,4 @@
+using Game.Core;
 using System;
 using TMPro;
 using UnityEngine;
@@ -162,7 +163,7 @@ namespace Game.UI
         private static void Heading(TMP_Text text, int size)
         {
             if (text == null) return;
-            if (headingFont == null) headingFont = Resources.Load<TMP_FontAsset>("Fonts/Rajdhani-SemiBold SDF");
+            if (headingFont == null) headingFont = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/Rajdhani-SemiBold SDF");
             if (headingFont != null) text.font = headingFont;
             text.fontSize = size; text.fontStyle = FontStyles.Bold;
             text.color = CollectionInk; text.alignment = TextAlignmentOptions.Center;
@@ -179,7 +180,7 @@ namespace Game.UI
                 "Metal" => "Backgrounds",
                 _ => "Decorations"
             };
-            var sprite = Resources.Load<Sprite>($"UI/{directory}/Collection/{asset}");
+            var sprite = GameAssetCatalog.Load<Sprite>($"UI/{directory}/Collection/{asset}");
             if (sprite == null) return;
             image.sprite = sprite; image.color = Color.white;
             image.type = Image.Type.Sliced; image.pixelsPerUnitMultiplier = 1.30625f;
@@ -192,7 +193,7 @@ namespace Game.UI
                 if (metal == null) metal = Panel(image.transform, "MetalBackground");
                 Stretch(metal); metal.offsetMin = new Vector2(19, 19); metal.offsetMax = new Vector2(-19, -19);
                 var background = metal.GetComponent<Image>();
-                background.sprite = Resources.Load<Sprite>("UI/Backgrounds/Collection/Metal"); background.color = Color.white;
+                background.sprite = GameAssetCatalog.Load<Sprite>("UI/Backgrounds/Collection/Metal"); background.color = Color.white;
                 background.type = Image.Type.Tiled; background.pixelsPerUnitMultiplier = 1.30625f; background.raycastTarget = false;
                 metal.SetAsFirstSibling();
             }
@@ -207,7 +208,7 @@ namespace Game.UI
             window.anchoredPosition = Vector2.zero;
             window.sizeDelta = large ? new Vector2(1440, 900) : new Vector2(1060, 630);
             var image = window.GetComponent<Image>();
-            image.sprite = Resources.Load<Sprite>(large ? "UI/Panels/Rewards/RewardConsole_1440x900" : "UI/Panels/Rewards/RewardDialog_1060x630");
+            image.sprite = GameAssetCatalog.Load<Sprite>(large ? "UI/Panels/Rewards/RewardConsole_1440x900" : "UI/Panels/Rewards/RewardDialog_1060x630");
             image.type = Image.Type.Simple; image.preserveAspect = true; image.color = Color.white;
             if (image.sprite == null) ApplyCampaignSurface(window, "Panel_Outer");
             return window;
@@ -258,10 +259,10 @@ namespace Game.UI
             {
                 if (asset == "Plaque")
                 {
-                    var sprites = Resources.LoadAll<Sprite>(path);
+                    var sprites = GameAssetCatalog.LoadAll<Sprite>(path);
                     if (sprites.Length > 0) sprite = sprites[0];
                 }
-                else sprite = Resources.Load<Sprite>(path);
+                else sprite = GameAssetCatalog.Load<Sprite>(path);
             }
             if (sprite == null) { ApplySurface(image, asset); return; }
             image.sprite = sprite; image.color = Color.white;
@@ -468,7 +469,7 @@ namespace Game.UI
         {
             var r = Rect(parent, "Label"); Place(r, x, y, w, h);
             var text = r.gameObject.AddComponent<TextMeshProUGUI>();
-            text.font = Resources.Load<TMP_FontAsset>("Fonts/GameMenuFont") ?? TMP_Settings.defaultFontAsset;
+            text.font = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/GameMenuFont") ?? TMP_Settings.defaultFontAsset;
             text.text = value; text.fontSize = size; text.color = new Color(.82f, .85f, .8f);
             text.raycastTarget = false; text.textWrappingMode = TextWrappingModes.Normal; return text;
         }
