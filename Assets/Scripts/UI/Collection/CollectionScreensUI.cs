@@ -192,6 +192,11 @@ namespace Game.UI
             => card == null ? 5 : card.cardType == CardType.Base || card.cardType == CardType.Facility ? 0
                 : card.cardType == CardType.Hero ? 1 : card.cardType == CardType.Unit ? 2
                 : DeckRules.Category(card) == DeckCategory.Equipment ? 3 : 4;
+        private static int DeckSection(CardDefinition card)
+        {
+            int order = CollectionOrder(card);
+            return card == null || order > 4 ? 5 : order;
+        }
         private static IOrderedEnumerable<T> OrderCards<T>(IEnumerable<T> rows, Func<T, CardDefinition> resolve)
             => rows.OrderBy(row => CollectionOrder(resolve(row)))
                 .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
@@ -275,11 +280,15 @@ namespace Game.UI
             RefreshTotalCost();
 
             int n = 0;
-            foreach (var c in new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator })
+            var allEntries = new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator }
+                .SelectMany(c => DeckRules.Entries(draft, c)).ToList();
+            // Same section order as CollectionOrder: Buildings, Heroes, Units, Equipment, Mutators.
+            string[] sections = { "Buildings", "Heroes", "Units", "Equipment", "Mutators", "Other" };
+            for (int s = 0; s < sections.Length; s++)
             {
-                var entries = DeckRules.Entries(draft, c);
+                var entries = allEntries.Where(e => DeckSection(collection.Rules.Resolve(e.cardKey)) == s).ToList();
                 if (entries.Count == 0) continue;
-                DeckItem(n++).SetHeader(c.ToString());
+                DeckItem(n++).SetHeader(sections[s]);
                 foreach (var entry in OrderCards(entries, e => collection.Rules.Resolve(e.cardKey)))
                 {
                     var card = collection.Rules.Resolve(entry.cardKey);
