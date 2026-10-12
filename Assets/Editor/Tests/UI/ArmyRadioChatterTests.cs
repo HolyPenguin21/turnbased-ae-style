@@ -534,7 +534,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ArmyInteraction_FadesItsMessageCancelsTheReplyAndUnsubscribes()
+        public void ArmyInteraction_HidesItsMessageCancelsTheReplyAndUnsubscribes()
         {
             var host = new GameObject("Inactive interaction host"); host.SetActive(false);
             var radioObject = CreateRadioPrefab();
@@ -557,13 +557,57 @@ namespace Game.EditorTests
                 exchangeType.GetField("Second").SetValue(exchange, new ArmyData());
                 typeof(ArmyRadioChatterController).GetField("_exchange", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(radio, exchange);
                 typeof(HexSelectionController).GetMethod("ShowArmyModal", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(selection, new object[] { army });
-                var timing = (ArmyRadioTiming)view.GetType().GetProperty("Timing").GetValue(view);
-                Assert.That(timing.IsDismissing, Is.True);
+                Assert.That(view.GetType().GetProperty("Active").GetValue(view), Is.False);
+                Assert.That(view.GetType().GetProperty("Timing").GetValue(view), Is.Null);
                 Assert.That(Field(radio, "_exchange"), Is.Null);
                 Assert.That(((ArmyRadioCadence)Field(radio, "_cadence")).ArmyReady(army.Id, Time.unscaledTime, 45f), Is.False);
                 radio.enabled = false;
                 var listeners = (Delegate)typeof(HexSelectionController).GetField("ArmyInteracted", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(selection);
                 Assert.That(listeners == null || !Array.Exists(listeners.GetInvocationList(), d => ReferenceEquals(d.Target, radio)), Is.True);
+                listeners = (Delegate)typeof(HexSelectionController).GetField("HexInteracted", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(selection);
+                Assert.That(listeners == null || !Array.Exists(listeners.GetInvocationList(), d => ReferenceEquals(d.Target, radio)), Is.True);
+            }
+            finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); }
+        }
+
+        [TestCase(0, true, false)]
+        [TestCase(1, false, false)]
+        [TestCase(3, false, true)]
+        public void HexInteraction_HidesOnlyLocalSpeakersAndCancelsAnInteractedReply(int q, bool hidden, bool keepsReply)
+        {
+            var host = new GameObject("Inactive hex interaction host"); host.SetActive(false);
+            var radioObject = CreateRadioPrefab();
+            try
+            {
+                var selection = host.AddComponent<HexSelectionController>();
+                var radio = radioObject.GetComponent<ArmyRadioChatterController>();
+                var settings = new ArmyRadioChatterSettings();
+                radio.Configure(host.AddComponent<Game.Turns.GameTurnController>(), null, null, settings, selection);
+                var owner = new PlayerSetupData();
+                typeof(ArmyRadioChatterController).GetField("_viewer", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(radio, owner);
+                var first = new ArmyData { Owner = owner, Hex = new HexCoord(0, 0) };
+                var sameHex = new ArmyData { Owner = owner, Hex = first.Hex };
+                var unrelated = new ArmyData { Owner = owner, Hex = new HexCoord(2, 0) };
+                foreach (var army in new[] { first, sameHex, unrelated }) army.Members.Add(new UnitData());
+                var views = (ArmyRadioBubbleView[])Field(radio, "_views");
+                views[0].Show(first, "Radio check.", Time.unscaledTime, settings);
+                views[1].Show(sameHex, "Copy that.", Time.unscaledTime, settings);
+                views[2].Show(unrelated, "Standing by.", Time.unscaledTime, settings);
+                Type exchangeType = typeof(ArmyRadioChatterController).GetNestedType("Exchange", BindingFlags.NonPublic);
+                object exchange = Activator.CreateInstance(exchangeType);
+                exchangeType.GetField("First").SetValue(exchange, first);
+                exchangeType.GetField("Second").SetValue(exchange, new ArmyData { Owner = owner, Hex = new HexCoord(1, 0) });
+                typeof(ArmyRadioChatterController).GetField("_exchange", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(radio, exchange);
+                var clicked = (Action<HexCoord>)typeof(HexSelectionController)
+                    .GetField("HexInteracted", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(selection);
+                Assert.That(clicked, Is.Not.Null);
+                clicked(new HexCoord(q, 0));
+                Assert.That(views[0].Active, Is.EqualTo(!hidden));
+                Assert.That(views[1].Active, Is.EqualTo(!hidden));
+                Assert.That(views[2].Active, Is.True, "A click on another hex must leave this transmission alone.");
+                Assert.That(Field(radio, "_exchange") != null, Is.EqualTo(keepsReply));
+                if (hidden)
+                    Assert.That(((ArmyRadioCadence)Field(radio, "_cadence")).ArmyReady(first.Id, Time.unscaledTime, settings.armyCooldown), Is.False);
             }
             finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); }
         }
