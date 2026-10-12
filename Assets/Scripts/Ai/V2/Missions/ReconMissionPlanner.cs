@@ -254,6 +254,12 @@ namespace Game.Ai.V2
             ScoutExecutionCandidate? air = ReconScoutKinds.IsAirSweep(c.Target.Kind)
                 ? ReconAssignmentPlanner.PlanAirCandidate(snap, ctx, c.Target, c.PreferredMover, excluded) : null;
             airWitness = air.HasValue;
+            // A fresh aviation-only task needs a concrete, mission-specific route witness.
+            // Keep strategic objectives/Demand intact, and let an incumbent without a step
+            // follow its existing blocked/stall lifecycle. This probe neither binds an actor
+            // nor forms a wing; final assignment and resource admission remain after funding.
+            if (ReconScoutKinds.IsAirSweep(c.Target.Kind) && !c.IsIncumbent && !airWitness)
+                return null;
             int? preferred = c.PreferredMover;
             if (ReconScoutKinds.IsCapture(c.Target.Kind))
             {

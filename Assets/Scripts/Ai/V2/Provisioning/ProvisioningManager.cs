@@ -493,7 +493,7 @@ namespace Game.Ai.V2
                         $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})");
                 case ScoutAssignmentFailureReason.NoExecutableStep:
                     return ProvisionFailure.NoExecutableStep(
-                        $"eligible scout(s)/vantage exist but none reachable this turn toward "
+                        $"assignment found no executable {target.Kind} candidate this pass toward "
                         + $"({target.FocusHex.Q},{target.FocusHex.R})");
                 default:
                     return ProvisionFailure.MoverContended(
