@@ -504,6 +504,49 @@ namespace Game.EditorTests
 
     public class ArmyRadioLifecycleTests
     {
+        [TestCase(1f, "Shadows make good neighbors.")]
+        [TestCase(.5f, "Shadows make good neighbors.")]
+        [TestCase(1f, "Radio check. Holding position and watching the perimeter. All eyes open. Reporting in.")]
+        [TestCase(.5f, "Radio check. Holding position and watching the perimeter. All eyes open. Reporting in.")]
+        public void ActualPrefab_RenderedPanelMatchesPlacementGeometry(float scale, string text)
+        {
+            var host = CreateRadioPrefab();
+            var texture = new Texture2D(772, 1124);
+            var art = Sprite.Create(texture, new Rect(0, 0, 772, 1124), new Vector2(.5f, .5f));
+            try
+            {
+                var view = host.GetComponentInChildren<ArmyRadioBubbleView>(true);
+                var army = new ArmyData(); army.Members.Add(new UnitData { DetailArt = art });
+                view.Show(army, text, 0f, new ArmyRadioChatterSettings());
+                Assert.That(view.Follow(new Rect(-640f, -180f, 1280f, 540f), Vector2.zero, 12f * scale, new Rect[0], scale), Is.True);
+                var panel = (RectTransform)Field(view, "_panel");
+                var shadow = (RectTransform)Field(view, "_shadow");
+                var portrait = (UnityEngine.UI.Image)Field(view, "_art");
+                var label = view.GetComponentInChildren<TMPro.TMP_Text>(true);
+                float width = (float)Field(view, "messageWidth");
+                Vector2 padding = label.rectTransform.offsetMin - label.rectTransform.offsetMax;
+                float height = Mathf.Max((float)Field(view, "minimumPanelHeight"),
+                    label.GetPreferredValues(text, width - padding.x, 1000f).y + padding.y);
+                Assert.That(panel.rect.width, Is.EqualTo(width).Within(.01f));
+                Assert.That(panel.rect.height, Is.EqualTo(height).Within(.01f));
+                Assert.That(shadow.rect.size.x, Is.EqualTo(panel.rect.size.x).Within(.01f));
+                Assert.That(shadow.rect.size.y, Is.EqualTo(panel.rect.size.y).Within(.01f));
+                float gap = Mathf.Abs(panel.anchoredPosition.x - portrait.rectTransform.anchoredPosition.x)
+                    - (panel.rect.width + portrait.rectTransform.rect.width) * .5f;
+                Assert.That(gap, Is.EqualTo((float)Field(view, "cardGap")).Within(.01f), "Background must not cover the portrait.");
+                var expected = ArmyRadioLayout.PanelBounds(view.Bounds.center, view.Bounds.size,
+                    (portrait.rectTransform.rect.width + gap) * scale, height * scale, view.Bounds.center.x > 0f);
+                var corners = new Vector3[4]; panel.GetWorldCorners(corners);
+                Vector3 min = host.transform.InverseTransformPoint(corners[0]);
+                Vector3 max = host.transform.InverseTransformPoint(corners[2]);
+                Assert.That(min.x, Is.EqualTo(expected.xMin).Within(.01f));
+                Assert.That(min.y, Is.EqualTo(expected.yMin).Within(.01f));
+                Assert.That(max.x, Is.EqualTo(expected.xMax).Within(.01f));
+                Assert.That(max.y, Is.EqualTo(expected.yMax).Within(.01f));
+            }
+            finally { Object.DestroyImmediate(host.transform.root.gameObject); Object.DestroyImmediate(art); Object.DestroyImmediate(texture); }
+        }
+
         [Test]
         public void ActualPrefab_ZoomScalesArtTextAndBoundsWithoutChangingTheInspectorFont()
         {

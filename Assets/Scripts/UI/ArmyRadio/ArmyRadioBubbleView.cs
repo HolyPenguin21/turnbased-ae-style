@@ -100,7 +100,12 @@ namespace Game.UI
                 _hasPointer = true;
             }
             else _hasPointer = false;
-            _panel.sizeDelta = _shadow.sizeDelta = new Vector2(width, _messageHeight);
+            // These are absolute measured sizes. With stretch anchors, sizeDelta is
+            // relative to the parent and would enlarge the drawn panel beyond Bounds.
+            _panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
+            _panel.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _messageHeight);
+            _shadow.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width);
+            _shadow.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, _messageHeight);
             _panel.anchoredPosition = panelPosition; _shadow.anchoredPosition = panelPosition + shadowOffset;
             _bubble.AimAt((anchor - position) / scale - panelPosition, radius / scale + 2f);
             _bubbleShadow.AimAt((anchor - position) / scale - _shadow.anchoredPosition, radius / scale + 2f);

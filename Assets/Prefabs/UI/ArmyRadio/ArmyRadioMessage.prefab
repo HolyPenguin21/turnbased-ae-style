@@ -136,7 +136,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioBubbleGraphic
   m_Material: {fileID: 0}
-  m_Color: {r: 0.13, g: 0.1, b: 0.07, a: 0.78431374}
+  m_Color: {r: 0.13, g: 0.1, b: 0.07, a: 0.16}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -207,7 +207,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyRadioBubbleGraphic
   m_Material: {fileID: 0}
-  m_Color: {r: 0.08, g: 0.065, b: 0.045, a: 0}
+  m_Color: {r: 0.08, g: 0.065, b: 0.045, a: 0.22}
   m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
