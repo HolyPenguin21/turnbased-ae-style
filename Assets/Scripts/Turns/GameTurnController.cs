@@ -478,6 +478,7 @@ namespace Game.Turns
                 hero.IsPrisoner = false;
                 hero.CapturedFrom = null;
                 garrison.AddMemberSorted(hero);
+                garrison.RefreshTransport();
             }
         }
 
@@ -1115,6 +1116,7 @@ namespace Game.Turns
                         unit.HasAirAttackedThisTurn = false;
                 }
                 army.ResetActivationForNewTurn();
+                army.RefreshTransport();
             }
         }
 

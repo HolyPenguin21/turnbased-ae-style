@@ -241,6 +241,19 @@ namespace Game.Combat
             }
         }
 
+        // Shared by live combat, shadow-grid playouts and roster Monte Carlo. Eligibility
+        // comes from each representation's CURRENT HP, never from the real unit in a projection.
+        public static int SelectHealingTarget(int count, Func<int, bool> eligible, System.Random rng = null)
+        {
+            var candidates = new List<int>();
+            for (int i = 0; i < count; i++)
+                if (eligible(i)) candidates.Add(i);
+            return candidates.Count == 0 ? -1 : candidates[rng != null ? rng.Next(candidates.Count) : 0];
+        }
+
+        public static float HealedHitPoints(float current, float maximum)
+            => current > 0f ? Mathf.Min(maximum, current + 1f) : current;
+
         private static bool HasAbility(IEnumerable<string> abilities, string ability)
         {
             if (abilities == null)

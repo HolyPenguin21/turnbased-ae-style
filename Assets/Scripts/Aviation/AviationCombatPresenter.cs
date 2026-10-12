@@ -228,6 +228,7 @@ namespace Game.Aviation
                     if (application.DefenderDied)
                     {
                         targetArmy.Members.Remove(target);
+                        targetArmy.RefreshTransport();
                         Game.Map.StealthSystem.OnUnitRemoved(target);
                     }
                 }

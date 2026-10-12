@@ -296,6 +296,7 @@ namespace Game.Ai.V2
             {
                 switch (a)
                 {
+                    case UnitAbilities.Heal: bump += AiConfigV2.powerBumpRegeneration; break;
                     case UnitAbilities.CeramicArmor: bump += AiConfigV2.powerBumpCeramicArmor; break;
                     case UnitAbilities.ShockAttack: bump += AiConfigV2.powerBumpShockAttack; break;
                     case UnitAbilities.CriticalDamage: bump += AiConfigV2.powerBumpCriticalDamage; break;

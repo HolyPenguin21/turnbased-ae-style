@@ -57,6 +57,8 @@ namespace Game.UI
                 text += $"\nEquipment: {unit.Equipment.displayName}";
             if (unit.Mutator != null)
                 text += $"\nMutator: {unit.Mutator.displayName}";
+            if (unit.TransportCarrier != null)
+                text += $"\nTransport: {unit.TransportCarrier.Name} (base Move {unit.PermanentMoveMax})";
             return text;
         }
     }

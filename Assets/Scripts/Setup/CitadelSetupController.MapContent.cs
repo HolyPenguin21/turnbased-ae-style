@@ -431,6 +431,8 @@ namespace Game.Setup
             if (army.Members.Count == 0)
                 return null; // every entry failed to resolve — nothing to actually show on this hex
 
+            army.RefreshTransport();
+
             // Only now, once every member's already in — CreateArmyMarker's very first
             // RestackArmiesOn needs a non-empty army to have anything to show (see
             // HexSelectionController.NonEmptyArmiesAt).

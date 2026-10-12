@@ -303,6 +303,7 @@ namespace Game.Ai.V2
 
         private static bool SameCombatCapability(ArmySnapshot a, ArmySnapshot b) =>
             a.AttackSum == b.AttackSum
+            && a.MaxMovement == b.MaxMovement
             && a.DefenseSum == b.DefenseSum
             && a.EffectiveArmyPower == b.EffectiveArmyPower
             && a.CompositionQuality == b.CompositionQuality

@@ -52,6 +52,12 @@ namespace Game.Ai.V2
         // an inbound member of a moving operation is checked against its route before planning.
         public int MoveCurrent;
         public int MoveMax;
+        // Native movement and spent budget are required when projecting a DIFFERENT roster:
+        // the donor's Transport bonus is never a permanent characteristic of this member.
+        public int NativeMoveMax = -1;
+        public int MovementSpent = -1;
+        public int RuntimeIdentity = -1;
+        public int TransportCarrierIdentity = -1;
         public bool HasRecce;
         public bool IsAviation;
         public bool IsCommitted;
@@ -228,6 +234,31 @@ namespace Game.Ai.V2
 
     public static class ReorgViability
     {
+        internal static (int current, int maximum) Movement(IReadOnlyList<ReorgUnit> roster)
+        {
+            var army = ArmyData.CreateVisualSnapshot();
+            foreach (ReorgUnit u in roster)
+            {
+                UnitData member = UnitData.CreateProjection(u.RuntimeIdentity);
+                member.IsHero = u.IsHero;
+                member.MoveMax = u.NativeMoveMax >= 0 ? u.NativeMoveMax : u.MoveMax;
+                member.MoveCurrent = u.MoveCurrent;
+                member.RestoreMovementSpent(u.MovementSpent >= 0 ? u.MovementSpent
+                    : System.Math.Max(0, member.PermanentMoveMax - u.MoveCurrent));
+                member.HitPointsCurrent = member.HitPointsMax = 1;
+                member.TypeTags.UnionWith(u.TypeTags ?? System.Array.Empty<UnitTypeTag>());
+                member.Abilities.UnionWith(u.CombatProfile.Abilities ?? System.Array.Empty<string>());
+                army.Members.Add(member);
+            }
+            for (int i = 0; i < roster.Count; i++)
+                if (roster[i].TransportCarrierIdentity > 0)
+                {
+                    UnitData carrier = army.Members.FirstOrDefault(u => u.RuntimeId == roster[i].TransportCarrierIdentity);
+                    if (carrier != null) army.Members[i].SetTransportCarrier(carrier, army);
+                }
+            return (ArmyData.ComputeCurrentMovement(army.Members), ArmyData.ComputeMaxMovement(army.Members));
+        }
+
         private static List<AiPower.PowerUnit> ToPowerUnits(IEnumerable<ReorgUnit> units)
         {
             if (units == null)

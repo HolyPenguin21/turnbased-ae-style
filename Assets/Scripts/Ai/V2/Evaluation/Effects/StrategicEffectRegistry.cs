@@ -43,6 +43,8 @@ namespace Game.Ai.V2
         TargetDensity,      // AoE   — BaseFit scaled by EXPECTED AFFECTED ENEMY BODIES near the deploy
         ExpectedSustain,    // regen — BaseFit scaled by expected combat DURATION × projected survivability
         EligibleAllies,     // aura (candidate -> army) — BaseFit scaled by eligible friendly units in the dest army
+        AllyHealing,       // one wounded Bio ally, per carrier action/hero round
+        TransportMobility, // actual expected movement gain of the whole recipient army
         FreeBattleSlots,    // summon— BaseFit scaled by min(free slots, CapacityRequirement) / CapacityRequirement
     }
 
@@ -306,6 +308,7 @@ namespace Game.Ai.V2
         public readonly float ExpectedCombatRounds;
         public readonly AiPower.ProjectedStrategicLine ProjectedLine;
         public readonly IReadOnlyList<WorthIt.DefenderProfile> DestArmyMembers;
+        public readonly float TransportMovementGain;
         public readonly int FreeBattleSlots;
         // AI-MGR — the destination army's capacity/occupancy INPUTS behind FreeBattleSlots, exposed
         // so a caller needing the marginal effect of ITS OWN primary body's Command (StrategicCardEvaluator's
@@ -345,6 +348,8 @@ namespace Game.Ai.V2
         public readonly int TurnNumber;
 
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
+        public bool ProjectedIsBio => (Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef)
+            ?.unitTypeTags.Contains(UnitTypeTag.Bio) == true;
 
         // Plan-less overloads — the non-combat lane (Base / Facility / Aviation / Equipment) has no
         // MaterializationPlan but still needs the PlayerGlobal effect priced identically.
@@ -401,12 +406,34 @@ namespace Game.Ai.V2
 
             ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers,
                 out ArmySnapshot destArmy, out DestNominalCapacity, out DestOccupiedSlots, out DestHasHero);
+            TransportMovementGain = ExpectedTransportGain(destArmy, ProjectedLine.MoveMax);
 
             DestCommander = destArmy?.Commander ?? default;
             DestHeroCount = destArmy?.HeroCount ?? 0;
 
             IncomingAuraSynergy = ComputeIncomingAuraSynergy(
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);
+        }
+
+        private static float ExpectedTransportGain(ArmySnapshot army, int carrierMove)
+        {
+            if (army?.Members == null || army.NonHeroMoveMax == null || army.IsAir || army.IsPrison) return 0f;
+            var candidates = new List<int>();
+            for (int i = 0; i < army.Members.Count && i < army.NonHeroMoveMax.Count; i++)
+                if (army.Members[i].TypeTags.Contains(UnitTypeTag.Infantry) && army.NonHeroMoveMax[i] < carrierMove)
+                    candidates.Add(i);
+            if (candidates.Count == 0) return 0f;
+            int before = Mathf.Min(carrierMove, army.MaxMovement);
+            float gain = 0f;
+            foreach (int chosen in candidates)
+            {
+                int after = carrierMove;
+                for (int i = 0; i < army.NonHeroMoveMax.Count; i++)
+                    after = Mathf.Min(after, i == chosen ? carrierMove : army.NonHeroMoveMax[i]);
+                if (army.HasHero) after = Mathf.Min(after, army.HeroMoveMax);
+                gain += Mathf.Max(0, after - before);
+            }
+            return gain / candidates.Count;
         }
 
         // AI-MGR — the ONE resolution point for "how much AP could the AI still USEFULLY spend this
@@ -759,6 +786,21 @@ namespace Game.Ai.V2
                         eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Bio),
                         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.6f,
                         stacking: EffectStacking.Unique, stackingKey: "Scorcher", requiresHit: true, secondaryTargets: 1, secondaryPriority: 1),
+                },
+                [UnitAbilities.Heal] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectRegenerationFit,
+                        StrategicEffectContext.AllyHealing, EffectField.Synergy, coverage: true,
+                        eligiblePredicate: p => p.HitPoints > 0 && p.MaxHitPoints > 1
+                            && p.TypeTags.Contains(UnitTypeTag.Bio), scope: EffectScope.DestArmy,
+                        timing: EffectTiming.DuringCombat, stacking: EffectStacking.Stack, stackingKey: "Heal"),
+                },
+                [UnitAbilities.Transport] = new[]
+                {
+                    new StrategicEffect(IntendedRole.MobileCombat, AiConfigV2.effectRegenerationFit,
+                        StrategicEffectContext.TransportMobility, EffectField.Synergy, coverage: true,
+                        eligiblePredicate: p => p.TypeTags.Contains(UnitTypeTag.Infantry),
+                        scope: EffectScope.DestArmy, stacking: EffectStacking.Stack, stackingKey: "Transport"),
                 },
                 [UnitAbilities.Regeneration] = new[]
                 {
@@ -1143,7 +1185,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmyData army, bool hero, WorldSnapshot snap,
             bool includeGlobal = true, MaterializationPlan deployment = null,
             IReadOnlyList<WorthIt.DefenderProfile> referenceTargets = null, int hpSpent = 0,
-            AttachmentTargetSet prepared = null)
+            AttachmentTargetSet prepared = null, UnitData host = null)
         {
             var ctx = new EffectEvaluationContext(snap, deployment);
             float total = 0;
@@ -1153,7 +1195,7 @@ namespace Game.Ai.V2
             List<WorthIt.DefenderProfile> targets = set.Targets;
             var effects = Resolve(abilities?.Distinct(), 0).Where(e => !e.PrimaryExchange
                 && !(e.Context == StrategicEffectContext.Flat && e.StackingKey == DevelopmentOperatorSkillKey)
-                && (!hero || e.Scope == EffectScope.PlayerGlobal)
+                && (!hero || e.Scope == EffectScope.PlayerGlobal || e.Scope == EffectScope.DestArmy)
                 && (includeGlobal || e.Scope != EffectScope.PlayerGlobal)).ToList();
             foreach (var group in effects.Select((e, index) => (e, index)).GroupBy(x => x.e.StackingKey ?? "effect:" + x.index))
             {
@@ -1216,6 +1258,37 @@ namespace Game.Ai.V2
                         battles++;
                     }
                     value /= Mathf.Max(1, battles);
+                }
+                else if (e.Context == StrategicEffectContext.AllyHealing)
+                {
+                    int eligible = army != null
+                        ? army.Members.Count(u => u != null && u.HitPointsCurrent > 0 && u.HitPointsMax > 1
+                            && u.TypeTags.Contains(UnitTypeTag.Bio))
+                        : ctx.CountEligibleAllies(e.EligiblePredicate);
+                    if (army == null && tags != null && tags.Contains(UnitTypeTag.Bio)
+                        && stats[EquipmentStat.HitPoints] > 1) eligible++;
+                    value = eligible > 0 ? e.BaseFit * Mathf.Max(1f, ctx.ExpectedCombatRounds) : 0f;
+                }
+                else if (e.Context == StrategicEffectContext.TransportMobility)
+                {
+                    if (army?.Members != null)
+                    {
+                        var baseline = army.Members.Where(u => u != host).ToList();
+                        // A pure replacement projection retains every other member's native
+                        // speed and support; it never changes the real army's links.
+                        UnitData candidate = UnitData.CreateProjection(host?.RuntimeId ?? -1);
+                        candidate.MoveMax = stats[EquipmentStat.MoveMax];
+                        candidate.MoveCurrent = candidate.MoveMax;
+                        candidate.HitPointsCurrent = candidate.HitPointsMax = stats[EquipmentStat.HitPoints];
+                        candidate.Abilities.UnionWith(abilities);
+                        if (tags != null) candidate.TypeTags.UnionWith(tags);
+                        candidate.Owner = army.Owner;
+                        candidate.IsHero = hero;
+                        baseline.Add(candidate);
+                        value = e.BaseFit * Mathf.Max(0, ArmyData.ComputeMaxMovement(baseline)
+                            - Mathf.Min(army.MaxMovement, candidate.PermanentMoveMax));
+                    }
+                    else value = e.BaseFit * ctx.TransportMovementGain;
                 }
                 else if (e.Context == StrategicEffectContext.ExpectedSustain)
                 {
@@ -1342,6 +1415,12 @@ namespace Game.Ai.V2
                         affected / Mathf.Max(1f, AiConfigV2.effectAoeBodiesNorm));
                     return e.BaseFit * magP * coverage;
                 }
+                case StrategicEffectContext.AllyHealing:
+                    return ctx.CountEligibleAllies(e.EligiblePredicate) > 0
+                        || ctx.ProjectedIsBio && ctx.ProjectedHitPoints > 1
+                        ? e.BaseFit * Mathf.Max(1f, ctx.ExpectedCombatRounds) : 0f;
+                case StrategicEffectContext.TransportMobility:
+                    return e.BaseFit * ctx.TransportMovementGain;
                 case StrategicEffectContext.ExpectedSustain:
                 {
                     // §3.2 — regen value ≈ BaseFit × (usable rounds / norm) × HP factor × magP.

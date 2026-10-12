@@ -253,6 +253,7 @@ namespace Game.Map
                 ArmyRegistry.Unregister(guard);
                 return null;
             }
+            guard.RefreshTransport();
             return guard;
         }
 
