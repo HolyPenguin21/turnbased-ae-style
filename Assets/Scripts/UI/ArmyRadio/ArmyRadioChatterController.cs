@@ -77,7 +77,11 @@ namespace Game.UI
             _turns.TurnChanging += Invalidate; _turns.TurnStateChanged += OnTurnStateChanged;
             VisionSystem.VisibilityChanged += OnVision; VisionSystem.VisibleContentChanged += OnContent;
             ArmyRegistry.ArmyRelocated += OnRelocated; StealthSystem.StealthChanged += Invalidate;
-            if (_selection != null) _selection.ArmyInteracted += OnArmyInteracted;
+            if (_selection != null)
+            {
+                _selection.ArmyInteracted += OnArmyInteracted;
+                _selection.HexInteracted += OnHexInteracted;
+            }
             OnTurnStateChanged();
         }
         private void Unsubscribe()
@@ -88,7 +92,11 @@ namespace Game.UI
             if (_turns != null) { _turns.TurnChanging -= Invalidate; _turns.TurnStateChanged -= OnTurnStateChanged; }
             VisionSystem.VisibilityChanged -= OnVision; VisionSystem.VisibleContentChanged -= OnContent;
             ArmyRegistry.ArmyRelocated -= OnRelocated; StealthSystem.StealthChanged -= Invalidate;
-            if (_selection != null) _selection.ArmyInteracted -= OnArmyInteracted;
+            if (_selection != null)
+            {
+                _selection.ArmyInteracted -= OnArmyInteracted;
+                _selection.HexInteracted -= OnHexInteracted;
+            }
         }
         private void ResetChannel()
         {
@@ -134,10 +142,22 @@ namespace Game.UI
         { if (_exchange != null && (army == _exchange.First || army == _exchange.Second)) _exchange = null; }
         private void OnArmyInteracted(ArmyData army)
         {
+            if (army == null) return;
             float now = Time.unscaledTime;
-            foreach (var view in _views) if (view.Speaker == army) view.Dismiss(now);
+            foreach (var view in _views) if (view.Speaker == army) view.Hide();
             CancelExchangeFor(army);
-            if (army != null && army.Owner == _viewer) _cadence.Reserve(army.Id, now);
+            if (army.Owner == _viewer) _cadence.Reserve(army.Id, now);
+        }
+        private void OnHexInteracted(HexCoord hex)
+        {
+            // A click on the waiting partner must cancel its reply as well.
+            if (_exchange != null)
+            {
+                if (_exchange.First.Hex.Equals(hex)) OnArmyInteracted(_exchange.First);
+                else if (_exchange.Second.Hex.Equals(hex)) OnArmyInteracted(_exchange.Second);
+            }
+            foreach (var view in _views)
+                if (view.Speaker != null && view.Speaker.Hex.Equals(hex)) OnArmyInteracted(view.Speaker);
         }
 
         private void Update()
