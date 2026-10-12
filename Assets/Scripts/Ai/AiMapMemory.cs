@@ -918,7 +918,7 @@ namespace Game.Ai
                         SeenTurn = _currentTurn,
                         IsGarrison = enemy.IsGarrison,
                         Commander = enemy.Commander != null && !StealthSystem.IsHiddenFrom(enemy.Commander, player)
-                            ? WorthIt.SideCommander.Of(enemy.Commander) : default,
+                            ? WorthIt.SideCommander.Of(visibleMembers) : default,
                         RecceRadius = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
                             .Select(m => AbilityParams.GetBestRecceRadius(m)).DefaultIfEmpty(0).Max(),
                         RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))

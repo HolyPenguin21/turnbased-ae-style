@@ -192,6 +192,7 @@ namespace Game.Map
                     army.Members.Clear();
                     if (rostersBefore.TryGetValue(army, out UnitData[] members))
                         army.Members.AddRange(members);
+                    army.RefreshTransport();
                 }
                 root.ActionPoints = apBefore;
                 RestoreResources(root, resourcesBefore);
@@ -427,7 +428,7 @@ namespace Game.Map
                 if (army == null || army.Owner != owner || !army.Members.Exists(m => m.IsHero))
                     continue;
                 foreach (UnitData member in army.Members)
-                    snap.Add((member, member.MoveCurrent));
+                    snap.Add((member, member.MovementSpent));
             }
             return snap;
         }
@@ -437,7 +438,7 @@ namespace Game.Map
             if (before == null) return;
             foreach ((UnitData member, int move) in before)
                 if (member != null)
-                    member.MoveCurrent = move;
+                    member.RestoreMovementSpent(move);
         }
 
         private static void Refund(PlayerRoot root, ResourceCost cost)

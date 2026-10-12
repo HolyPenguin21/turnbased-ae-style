@@ -92,11 +92,28 @@ namespace Game.Campaign
                 * AiPower.CompositionQuality(bodies.Select(Power).ToList());
             double ground = powers.Take(first).Sum() + powers.Skip(first).Take(second).Sum() * SecondArmyWeight;
             double air = hosts.Where(h => h.Card.isAviation).Select(h => (double)h.Line.BasePower).OrderByDescending(p => p).Take(2).Sum();
+            // Passive hero healing needs living Bio bodies; it is a formation option, not
+            // extra hero attack power. Campaign scoring remains an explicit heuristic.
+            if (bodies.Any(h => h.Card.unitTypeTags.Contains(UnitTypeTag.Bio) && h.Line.HitPoints > 1))
+                ground *= 1 + hosts.Count(h => h.Card.cardType == CardType.Hero
+                    && h.Line.EffectiveAbilities.Contains(UnitAbilities.Heal)) * AiConfigV2.powerBumpRegeneration;
             return ground * quality + air * AviationWeight;
         }
         private static double CommanderValue(List<Host> hosts) => hosts.Where(h => h.Card.cardType == CardType.Hero)
             .Select(h => HeroValue(h.Line)).OrderByDescending(v => v).Take(3).Sum() * CommanderWeight;
-        private static double MobilityValue(List<Host> hosts) => hosts.Select(h => StrategicValue(h.Line)).OrderByDescending(v => v).Take(4).Sum() * StrategicWeight;
+        private static double MobilityValue(List<Host> hosts)
+        {
+            double value = hosts.Select(h => StrategicValue(h.Line)).OrderByDescending(v => v).Take(4).Sum();
+            foreach (Host carrier in hosts.Where(h => h.Line.EffectiveAbilities.Contains(UnitAbilities.Transport)))
+            {
+                var infantry = hosts.Where(h => h.Card.cardType == CardType.Unit && !h.Card.isAviation
+                    && h.Card.unitTypeTags.Contains(UnitTypeTag.Infantry)
+                    && h.Line.MoveMax < carrier.Line.MoveMax).ToList();
+                if (infantry.Count > 0)
+                    value += infantry.Average(h => Math.Min(4, carrier.Line.MoveMax) - Math.Min(4, h.Line.MoveMax)) * .15;
+            }
+            return value * StrategicWeight;
+        }
         private readonly Dictionary<string, CampaignDeckScore> scores = new Dictionary<string, CampaignDeckScore>(StringComparer.Ordinal);
         private static CampaignDeckScore Copy(CampaignDeckScore s) => new CampaignDeckScore { CombatPotential = s.CombatPotential,
             CommanderPotential = s.CommanderPotential, StrategicPotential = s.StrategicPotential, AttachmentPotential = s.AttachmentPotential,

@@ -1,0 +1,26 @@
+{
+  "review_base_sha": "34e4df4c0c9821860a00ac9e6da6e644b7c0415e",
+  "baseline_portable_passed": 1534,
+  "current_portable_passed": 1534,
+  "original_passing_tests_verified": 1365,
+  "new_portable_passed": 24,
+  "new_portable_total": 24,
+  "regressions": [],
+  "missing_original_passing_tests": [],
+  "portable_test_assembly_compiled": true,
+  "compile_baseline_diagnostics": 4,
+  "new_compile_diagnostics": 0,
+  "unity_yaml_reference_check": true,
+  "unity_yaml_type_check": true,
+  "unity_yaml_parse": true,
+  "git_diff_check": true,
+  "sprite_rgba": true,
+  "unity_editor_version": "6000.5.4f1",
+  "unity_editor_run": false,
+  "excluded_portable_test_files": [
+    "CollectionScrollPresentationTests.cs",
+    "DeckCollectionTests.cs",
+    "AiUnifiedTaskScoreTests.cs"
+  ],
+  "new_unity_only_test": "HealAbilityTests.ShadowSimulationLeavesLiveHitPointsUntouched"
+}

@@ -17,6 +17,8 @@ namespace Game.Map
 
         public static void Clear()
         {
+            foreach (List<ArmyData> armies in ByHex.Values)
+                foreach (ArmyData army in armies) army.ClearTransport();
             ByHex.Clear();
             ArmyData.ResetIdentitySequence();
         }
@@ -31,6 +33,7 @@ namespace Game.Map
                 ByHex[army.Hex] = list;
             }
             list.Add(army);
+            army.RefreshTransport();
             VisionSystem.RecomputeFor(army.Owner);
             // Anyone else already watching this hex needs to know it just gained content too —
             // see VisionSystem.NotifyContentChanged's own comment.
@@ -48,6 +51,7 @@ namespace Game.Map
                 return;
             HexCoord origin = army.Hex;
             ByHex[origin].Remove(army);
+            army.ClearTransport();
             if (finalHex.HasValue) army.Hex = finalHex.Value;
             VisionSystem.RecomputeFor(army.Owner);
             VisionSystem.NotifyContentChanged(origin);

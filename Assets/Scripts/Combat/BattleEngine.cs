@@ -273,6 +273,9 @@ namespace Game.Combat
         private readonly BattleState _state;
         private readonly AbilityMagnitudes _magnitudes;
         private readonly System.Random _random;
+        private int _startedRound;
+        private readonly HashSet<UnitData> _startedTurns = new HashSet<UnitData>();
+        public event Action<UnitData> UnitHealed;
 
         public BattleState State => _state;
 
@@ -295,6 +298,11 @@ namespace Game.Combat
 
         public void StartRound()
         {
+            if (_startedRound == _state.Round) return;
+            _startedRound = _state.Round;
+            _startedTurns.Clear();
+            HealRoundHeroes(_state.Attacker);
+            HealRoundHeroes(_state.Defender);
             _state.TurnOrder = BattleTurnOrder.BuildOrder(_state.Grid, _state.Attacker, _state.Defender,
                 unchecked(_state.BattleSeed * 31 + _state.Round));
             if (_state.RetreatingArmy != null)
@@ -302,6 +310,41 @@ namespace Game.Combat
                     .Where(u => _state.OwningArmy(u) != _state.RetreatingArmy)
                     .ToList();
             _state.TurnIndex = 0;
+            BeginCurrentUnitTurn();
+        }
+
+        private void HealRoundHeroes(ArmyData army)
+        {
+            if (army == null || army == _state.RetreatingArmy) return;
+            foreach (UnitData hero in army.Members.Where(u => u.IsHero).ToList())
+                ApplyHeal(hero, army);
+        }
+
+        private void BeginCurrentUnitTurn()
+        {
+            if (_state.TurnIndex < 0 || _state.TurnIndex >= _state.TurnOrder.Count) return;
+            UnitData actor = _state.TurnOrder[_state.TurnIndex];
+            if (_startedTurns.Add(actor)) ApplyHeal(actor, _state.OwningArmy(actor));
+        }
+
+        private void ApplyHeal(UnitData carrier, ArmyData army)
+        {
+            if (carrier == null || army == null || carrier.HitPointsCurrent <= 0
+                || !carrier.HasAbility(UnitAbilities.Heal) || carrier.IsPrisoner
+                || _state.Grid == null || !_state.Grid.TryFindPosition(carrier, out _, out _)) return;
+            int index = BattleSimulationKernel.SelectHealingTarget(army.Members.Count, i =>
+            {
+                UnitData u = army.Members[i];
+                return u != null && !u.IsPrisoner && u.HitPointsCurrent > 0
+                    && u.HitPointsCurrent < u.HitPointsMax && u.TypeTags.Contains(UnitTypeTag.Bio)
+                    && _state.Grid.TryFindPosition(u, out _, out _);
+            }, _random);
+            if (index < 0) return;
+            UnitData target = army.Members[index];
+            target.HitPointsCurrent = (int)BattleSimulationKernel.HealedHitPoints(target.HitPointsCurrent, target.HitPointsMax);
+            EquipmentSystem.ReconcileResourceRefill(target, EquipmentStat.HitPoints);
+            VisionSystem.NotifyContentChanged(army.Hex);
+            UnitHealed?.Invoke(target);
         }
 
         public BattleTurnAdvance AdvanceTurn()
@@ -311,7 +354,10 @@ namespace Game.Combat
 
             _state.TurnIndex++;
             if (_state.TurnIndex < _state.TurnOrder.Count)
+            {
+                BeginCurrentUnitTurn();
                 return BattleTurnAdvance.NextUnit;
+            }
 
             if (_state.RetreatingArmy != null)
                 return BattleTurnAdvance.ResolveRetreat;
@@ -555,6 +601,8 @@ namespace Game.Combat
                 _state.Grid.Set(row, col, null);
             _state.Attacker?.Members.Remove(unit);
             _state.Defender?.Members.Remove(unit);
+            _state.Attacker?.RefreshTransport();
+            _state.Defender?.RefreshTransport();
             StealthSystem.OnUnitRemoved(unit);
 
             if (_state.TurnOrder != null)
@@ -940,6 +988,7 @@ namespace Game.Combat
                 army.Members.RemoveAt(i);
                 StealthSystem.OnUnitRemoved(member);
             }
+            army.RefreshTransport();
         }
 
         private bool TryFindFreeDeploymentCell(int frontRow, int backRow, out int row, out int col)
@@ -1034,6 +1083,7 @@ namespace Game.Combat
                 state.Grid.Set(row, col, null);
             state?.TurnOrder?.Remove(hero);
             army?.Members.Remove(hero);
+            army?.RefreshTransport();
             StealthSystem.OnUnitRemoved(hero);
         }
 
@@ -1058,6 +1108,8 @@ namespace Game.Combat
             hero.Owner = capturer;
             hero.IsPrisoner = true;
             prison.Members.Add(hero);
+            heroArmy.RefreshTransport();
+            prison.RefreshTransport();
             VisionSystem.NotifyContentChanged(citadelHex);
             return true;
         }

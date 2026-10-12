@@ -75,6 +75,10 @@ MonoBehaviour:
     description: 'Passive: +1 M/turn'
   - tag: ProduceTech
     description: 'Passive: +1 T/turn'
+  - tag: Heal
+    description: "Restores 1 HP to one random wounded living Bio ally in this army. Units activate at the start of their combat turn; heroes activate at the start of each combat round."
+  - tag: Transport
+    description: "Continuously raises one random slower Infantry ally's movement maximum to this carrier's permanent maximum. Reassigns when the carrier or recipient changes armies or dies."
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1

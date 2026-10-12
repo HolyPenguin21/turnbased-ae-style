@@ -19,9 +19,9 @@ namespace Game.Units
         // before execution. It is intentionally runtime-only; UnitData itself is runtime state.
         public readonly int RuntimeId;
         public UnitData() : this(true) { }
-        private UnitData(bool live) => RuntimeId = live ? Interlocked.Increment(ref _nextRuntimeId) : -1;
+        private UnitData(bool live, int projectionId = -1) => RuntimeId = live ? Interlocked.Increment(ref _nextRuntimeId) : projectionId;
         // Read-only AI projection, never published to the game registries.
-        internal static UnitData CreateProjection() => new UnitData(false);
+        internal static UnitData CreateProjection(int identity = -1) => new UnitData(false, identity);
 
         public string Name;
         public PlayerSetupData Owner;
@@ -74,8 +74,54 @@ namespace Game.Units
         // Restored at the start of every turn. A move never spends more than what's left — an
         // army stops short of any hex it can't fully afford (see ArmyController.MoveRoutine) —
         // so this never goes negative; only ever capped from above at Max.
-        public int MoveMax;
-        public int MoveCurrent;
+        private int _moveMax;
+        private int _moveCurrent;
+        private int? _moveSpent;
+        private UnitData _transportCarrier;
+        private Game.Map.ArmyData _transportArmy;
+
+        // Permanent card/attachment speed stays separate from the army's temporary support.
+        public int PermanentMoveMax => _moveMax;
+        internal UnitData AssignedTransportCarrier => _transportCarrier;
+        internal Game.Map.ArmyData TransportArmy => _transportArmy;
+        public UnitData TransportCarrier => _transportCarrier != null && _transportArmy != null
+            && !_transportArmy.IsPrison && !_transportArmy.IsAirfield && !_transportArmy.IsAirArmy
+            && HitPointsCurrent > 0 && !IsPrisoner && TypeTags.Contains(UnitTypeTag.Infantry)
+            && _transportCarrier.HitPointsCurrent > 0 && !_transportCarrier.IsPrisoner
+            && _transportCarrier.HasAbility(UnitAbilities.Transport)
+            && _transportArmy.Members.Contains(this) && _transportArmy.Members.Contains(_transportCarrier)
+            ? _transportCarrier : null;
+
+        public int MoveMax
+        {
+            get => System.Math.Max(_moveMax, TransportCarrier?.PermanentMoveMax ?? 0);
+            set => _moveMax = value;
+        }
+        public int MoveCurrent
+        {
+            get => _moveSpent.HasValue ? System.Math.Max(0, MoveMax - _moveSpent.Value) : _moveCurrent;
+            set
+            {
+                if (!_moveSpent.HasValue) { _moveCurrent = value; return; }
+                // A clamp to zero must not erase spending beyond the reduced native maximum.
+                _moveSpent = value <= 0 ? System.Math.Max(_moveSpent.Value, MoveMax)
+                    : System.Math.Max(0, MoveMax - value);
+            }
+        }
+        internal int MovementSpent => _moveSpent ?? System.Math.Max(0, _moveMax - _moveCurrent);
+        internal int CurrentMoveAtMaximum(int maximum) => System.Math.Max(0, maximum - MovementSpent);
+        internal void RestoreMovementSpent(int spent)
+        {
+            _moveSpent = System.Math.Max(0, spent);
+            _moveCurrent = System.Math.Max(0, _moveMax - _moveSpent.Value);
+        }
+        internal void SetTransportCarrier(UnitData carrier, Game.Map.ArmyData army)
+        {
+            if (_transportCarrier == carrier && _transportArmy == army) return;
+            RestoreMovementSpent(MovementSpent);
+            _transportCarrier = carrier;
+            _transportArmy = carrier != null ? army : null;
+        }
 
         // How much AP it costs to activate THIS unit's army for its first move order of the
         // turn — per-unit, not a shared constant, so heavier units (tanks, etc.) cost more to
@@ -196,7 +242,8 @@ namespace Game.Units
 
         public void ReplenishMoveForNewTurn()
         {
-            MoveCurrent = Mathf.Min(MoveCurrent + MoveMax, MoveMax);
+            _moveSpent = 0;
+            _moveCurrent = _moveMax;
             EquipmentSystem.ReconcileResourceRefill(this, EquipmentStat.MoveMax);
         }
 

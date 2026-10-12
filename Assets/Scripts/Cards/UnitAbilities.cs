@@ -83,6 +83,10 @@ namespace Game.Cards
         // scratch. Which card they spawn is chosen in UnitAbilityCatalog (raiseTheRotsUnitCatalog
         // + raiseTheRotsUnitKey). See BattleScreenUI.Show / StripSummonedUnits.
         public const string RaiseTheRots = "RaiseTheRots";
+        // Unit: beginning of its own combat turn. Hero: beginning of each combat round.
+        public const string Heal = "Heal";
+        // Persistent support for one slower Infantry in the same army, up to the carrier's MoveMax.
+        public const string Transport = "Transport";
 
         // Parameterized reconnaissance tags (replaced the old bool "Recce" + shared
         // UnitAbilityCatalog.recceRadius/recceStrength — project owner's own call, see the
@@ -213,7 +217,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,

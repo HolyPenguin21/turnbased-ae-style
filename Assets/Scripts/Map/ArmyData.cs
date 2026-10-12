@@ -16,7 +16,7 @@ namespace Game.Map
     // with (see CitadelSetupController) — deployed Unit/Hero cards land in the garrison first
     // (see CardHandUI.TryPlayCard), same as the original game's manual describes it, rather than
     // needing a separate "unassigned pile" data structure of its own.
-    public class ArmyData
+    public partial class ArmyData
     {
         // Stable identity across the army's whole lifetime, independent of Hex — a move only ever
         // updates Hex on this SAME instance (see ArmyRegistry.MoveArmy), never recreates the object,
@@ -43,6 +43,8 @@ namespace Game.Map
         // never consults a building that may have changed later behind fog.
         public int? VisualSnapshotDefenseBonus;
         public int? VisualSnapshotConstructionDefense;
+        public int? VisualSnapshotCurrentMovement;
+        public int? VisualSnapshotMaxMovement;
         public string Name;
         public HexCoord Hex;
         public PlayerSetupData Owner;
@@ -213,10 +215,10 @@ namespace Game.Map
         // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
         // empty army rather than throwing on Members[0].
-        public int CurrentMovement => ComputeCurrentMovement(Members);
+        public int CurrentMovement => VisualSnapshotCurrentMovement ?? ComputeCurrentMovement(Members);
         // The fuel penalty reduces this turn's remaining MP only. Keep the printed maximum
         // unmodified so UI correctly reads, for example, 5/10 rather than 5/5.
-        public int MaxMovement => ComputeMaxMovement(Members);
+        public int MaxMovement => VisualSnapshotMaxMovement ?? ComputeMaxMovement(Members);
 
         // Same slowest-member rule as the two properties above, as a pure function of a candidate
         // roster — a planner that projects a transfer has to know that recruiting a slower body
@@ -224,18 +226,26 @@ namespace Game.Map
         public static int ComputeCurrentMovement(IReadOnlyList<UnitData> members)
         {
             if (members == null || members.Count == 0) return 0;
+            Dictionary<UnitData, UnitData> transports = ProjectTransport(members);
             int min = int.MaxValue;
             foreach (UnitData member in members)
-                if (member != null) min = System.Math.Min(min, AviationRules.EffectiveMoveCurrent(member));
+                if (member != null)
+                {
+                    int maximum = ProjectedMemberMoveMax(member, transports);
+                    int current = maximum == member.MoveMax ? member.MoveCurrent : member.CurrentMoveAtMaximum(maximum);
+                    if (member.HasEmergencyFlightPenalty) current /= 2;
+                    min = System.Math.Min(min, current);
+                }
             return min == int.MaxValue ? 0 : min;
         }
 
         public static int ComputeMaxMovement(IReadOnlyList<UnitData> members)
         {
             if (members == null || members.Count == 0) return 0;
+            Dictionary<UnitData, UnitData> transports = ProjectTransport(members);
             int min = int.MaxValue;
             foreach (UnitData member in members)
-                if (member != null) min = System.Math.Min(min, member.MoveMax);
+                if (member != null) min = System.Math.Min(min, ProjectedMemberMoveMax(member, transports));
             return min == int.MaxValue ? 0 : min;
         }
 

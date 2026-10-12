@@ -135,6 +135,7 @@ namespace Game.Ai.V2
             foreach (var target in targets)
             {
                 var bodies = new List<WorthIt.DefenderProfile>();
+                var healers = new List<WorthIt.DefenderProfile>();
                 WorthIt.SideCommander CommanderAt(int index, WorthIt.DefenderProfile hero) =>
                     new WorthIt.SideCommander(hero.Initiative,
                         survivorFates.TryGetValue(offset + index, out int remaining)
@@ -143,6 +144,8 @@ namespace Game.Ai.V2
                 for (int i = 0; i < target.Roster.Units.Count; i++)
                     if (survivors.TryGetValue(offset + i, out var unit))
                     {
+                        if (unit.IsHero && unit.HitPoints > 0 && unit.Abilities.Contains(Game.Cards.UnitAbilities.Heal))
+                            healers.Add(unit);
                         if (unit.IsGroundCombatant) bodies.Add(unit);
                         if (unit.IsHero && !commander.Present && target.Roster.CommanderIndex >= 0)
                             commander = CommanderAt(i, unit);
@@ -150,6 +153,8 @@ namespace Game.Ai.V2
                 if (target.Roster.CommanderIndex >= 0
                     && survivors.TryGetValue(offset + target.Roster.CommanderIndex, out var survivingCommander))
                     commander = CommanderAt(target.Roster.CommanderIndex, survivingCommander);
+                if (commander.Present && healers.Count > 0)
+                    commander = new WorthIt.SideCommander(commander.Initiative, commander.Fate, healers);
                 projected[target.ArmyId] = (bodies, commander);
                 offset += target.Roster.Units.Count;
             }

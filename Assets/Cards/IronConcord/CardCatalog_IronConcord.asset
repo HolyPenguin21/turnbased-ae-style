@@ -385,7 +385,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Heal
     resourceYield:
       human: 0
       energy: 0
@@ -1418,7 +1419,8 @@ MonoBehaviour:
     antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 000000000700000003000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Heal
     resourceYield:
       human: 0
       energy: 0

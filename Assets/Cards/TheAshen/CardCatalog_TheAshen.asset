@@ -855,6 +855,7 @@ MonoBehaviour:
     unitTypeTags: 0100000004000000
     grantedAbilities:
     - RaiseTheRots
+    - Transport
     resourceYield:
       human: 0
       energy: 0
