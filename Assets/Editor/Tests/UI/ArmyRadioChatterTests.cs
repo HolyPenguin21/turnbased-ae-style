@@ -17,9 +17,10 @@ namespace Game.EditorTests
     public class ArmyRadioArtTests
     {
         [Test]
-        public void ActualPrefab_WashHasTransparentUnevenEdgesAndTranslucentCentre()
+        public void ActualPrefab_UsesAuthoredSpriteBackingWithoutStackedShadows()
         {
             var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadio/ArmyRadioMessage.prefab");
+            Assert.That(prefab, Is.Not.Null);
             var host = Object.Instantiate(prefab);
             try
             {
@@ -28,33 +29,23 @@ namespace Game.EditorTests
                     .GetField("_bubble", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(view);
                 var shadow = (RectTransform)typeof(ArmyRadioBubbleView)
                     .GetField("_shadow", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(view);
-                Assert.That(shadow.gameObject.activeSelf, Is.False, "Use one wash rather than stacked shadows.");
-                Assert.That(bubble.color.a, Is.InRange(.4f, .55f));
-                using (var mesh = new UnityEngine.UI.VertexHelper())
-                {
-                    typeof(ArmyRadioBubbleGraphic).GetMethod("Wash", BindingFlags.Instance | BindingFlags.NonPublic)
-                        .Invoke(bubble, new object[] { mesh, new Rect(-90f, -28f, 180f, 56f) });
-                    var vertex = new UnityEngine.UIVertex();
-                    float minEdge = 1f, maxEdge = 0f, maxCentre = 0f;
-                    int edgeSamples = 0;
-                    for (int i = 0; i < mesh.currentVertCount; i++)
-                    {
-                        mesh.PopulateUIVertex(ref vertex, i);
-                        float alpha = vertex.color.a / 255f;
-                        Assert.That(alpha, Is.LessThanOrEqualTo(bubble.color.a + 1f / 255f));
-                        if (Mathf.Abs(vertex.position.x) >= 89.99f || Mathf.Abs(vertex.position.y) >= 27.99f)
-                            Assert.That(vertex.color.a, Is.EqualTo(0), "The perimeter must dissolve into the map.");
-                        if (Mathf.Abs(vertex.position.x) < 50f && vertex.position.y > 20f && vertex.position.y < 24f)
-                        { minEdge = Mathf.Min(minEdge, alpha); maxEdge = Mathf.Max(maxEdge, alpha); edgeSamples++; }
-                        if (Mathf.Abs(vertex.position.x) < 20f && Mathf.Abs(vertex.position.y) < 5f)
-                            maxCentre = Mathf.Max(maxCentre, alpha);
-                    }
-                    Assert.That(edgeSamples, Is.GreaterThan(4));
-                    Assert.That(maxEdge - minEdge, Is.GreaterThan(.025f), "Edge alpha must vary along its length.");
-                    Assert.That(maxEdge, Is.LessThan(maxCentre * .65f), "Edges need extra transparency.");
-                    Assert.That(maxCentre, Is.EqualTo(bubble.color.a).Within(1f / 255f));
-                    Assert.That(mesh.currentVertCount, Is.LessThanOrEqualTo(12513));
-                }
+                Assert.That(shadow.gameObject.activeSelf, Is.False);
+                var backing = bubble.transform.Find("Backing");
+                Assert.That(backing, Is.Not.Null, "The agreed backing must be a real sprite in the prefab.");
+                var image = backing.GetComponent<UnityEngine.UI.Image>();
+                Assert.That(image, Is.Not.Null);
+                Assert.That(image.sprite, Is.Not.Null);
+                Assert.That(UnityEditor.AssetDatabase.GetAssetPath(image.sprite),
+                    Is.EqualTo("Assets/Textures/UI/ArmyRadio_Background.png"));
+                Assert.That(image.type, Is.EqualTo(UnityEngine.UI.Image.Type.Sliced));
+                Assert.That(image.color.a, Is.InRange(.45f, .6f));
+                Assert.That(image.raycastTarget, Is.False);
+                Assert.That(backing.GetSiblingIndex(), Is.Zero, "Draw the backing beneath the text.");
+                var rect = (RectTransform)backing;
+                Assert.That(rect.anchorMin, Is.EqualTo(Vector2.zero));
+                Assert.That(rect.anchorMax, Is.EqualTo(Vector2.one));
+                Assert.That(rect.offsetMin, Is.EqualTo(Vector2.zero));
+                Assert.That(rect.offsetMax, Is.EqualTo(Vector2.zero));
             }
             finally { Object.DestroyImmediate(host); }
         }
