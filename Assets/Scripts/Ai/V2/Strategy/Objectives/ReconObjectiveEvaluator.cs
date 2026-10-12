@@ -203,7 +203,7 @@ namespace Game.Ai.V2
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
                 || !ReconIntelSnapshotRegistry.IsStaleAge(age))
                 return null;
-            if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
+            if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, hex))
                 return null;
             return BuildRefresh(snap, hex, age, preferredMoverArmyId);
         }
@@ -316,7 +316,9 @@ namespace Game.Ai.V2
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
                 if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
                     continue;
-                if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(kv.Key, stealthCapable: false))
+                // Visibility footprints may extend beyond the generated playfield. Use the same
+                // actual-map gate as durable Refresh validity, before pricing or beam selection.
+                if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
                     continue;
                 if (direction == null)
                     direction = ReconDirectionModel.Build(snap);

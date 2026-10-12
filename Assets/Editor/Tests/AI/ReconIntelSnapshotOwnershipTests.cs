@@ -1,12 +1,14 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using Game.Ai.V2;
 using Game.Ai;
 using Game.Map;
 using Game.HexGrid;
 using Game.Players;
+using Game.Terrain;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -188,6 +190,92 @@ namespace Game.EditorTests
 
             var old = new WorldSnapshot { Observer = player, TurnNumber = 4, KnowledgeVersion = 7 };
             Assert.That(Read(old).Count, Is.Zero, "a new turn drops the previous turn's revisions");
+        }
+
+        private static IEnumerable<MapSize> GeneratedMapSizes =>
+            Enum.GetValues(typeof(MapSize)).Cast<MapSize>();
+
+        private static WorldSnapshot RefreshSnapshot(IEnumerable<HexCoord> hexes,
+            IReadOnlyDictionary<HexCoord, int> observed)
+        {
+            var player = new PlayerSetupData();
+            const int turn = 20;
+            Capture(player, turn, observed);
+            return new WorldSnapshot
+            {
+                Observer = player,
+                TurnNumber = turn,
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new List<HexCoord> { new HexCoord(0, 0) },
+                    Armies = new List<ArmySnapshot>(),
+                },
+                Known = new KnownSnapshot(),
+                MapKnowledge = new MapKnowledgeSnapshot
+                {
+                    AllHexes = hexes.ToList(),
+                    VisitedHexSet = new HashSet<HexCoord>(hexes),
+                },
+            };
+        }
+
+        [TestCaseSource(nameof(GeneratedMapSizes))]
+        public void RefreshUsesGeneratedFieldInsteadOfVisionBorder(MapSize size)
+        {
+            int radius = (int)size;
+            var edge = new HexCoord(radius, 0);
+            var border = new HexCoord(radius + 1, 0);
+            WorldSnapshot snap = RefreshSnapshot(HexGridMath.HexesInRange(new HexCoord(0, 0), radius),
+                new Dictionary<HexCoord, int> { [edge] = 0, [border] = 0 });
+
+            var refreshes = ReconObjectiveEvaluator.Enumerate(snap)
+                .Where(o => o.Kind == ReconObjectiveKind.Refresh).Select(o => o.FocusHex).ToList();
+            Assert.That(refreshes, Is.EquivalentTo(new[] { edge }));
+            Assert.That(ReconObjectiveEvaluator.RefreshAt(snap, edge), Is.Not.Null,
+                "visited edge terrain is still a legitimate stale-information target");
+            Assert.That(ReconObjectiveEvaluator.RefreshAt(snap, border), Is.Null);
+            var oldIntent = new ScoutIntent { Kind = ScoutTargetKind.Refresh, FocusHex = border };
+            Assert.That(ReconObjectiveEvaluator.ForIntent(snap, oldIntent), Is.Null);
+            Assert.That(ScoutObjectiveEvaluator.IsIntentStillValid(snap, oldIntent), Is.False);
+        }
+
+        [Test]
+        public void RefreshAndPressureUseActualMembershipAfterGeometryReplacement()
+        {
+            var real = new HexCoord(12, -9);
+            var hole = new HexCoord(0, 0);
+            WorldSnapshot snap = RefreshSnapshot(new[] { real },
+                new Dictionary<HexCoord, int> { [real] = 20, [hole] = 0 });
+
+            Assert.That(ReconObjectiveEvaluator.RefreshAt(snap, hole), Is.Null,
+                "being inside a radius is insufficient when the hex is absent");
+            Assert.That(ReconObjectiveEvaluator.Enumerate(snap)
+                .Any(o => o.Kind == ReconObjectiveKind.Refresh), Is.False);
+            Assert.That(ReconIntelSnapshotRegistry.StalePressure(snap), Is.Zero,
+                "out-of-map stale entries must affect neither numerator nor denominator");
+            Assert.That(Read(snap).ContainsKey(hole), Is.True, "published observation history stays frozen");
+
+            snap.MapKnowledge.AllHexes = new[] { real, hole };
+            Assert.That(ReconObjectiveEvaluator.RefreshAt(snap, hole), Is.Not.Null);
+            Assert.That(ReconIntelSnapshotRegistry.StalePressure(snap), Is.GreaterThan(0f));
+            snap.MapKnowledge.AllHexes = new[] { hole };
+            Assert.That(ReconIntelSnapshotRegistry.StalePressure(snap), Is.EqualTo(1f),
+                "excluded fresh observations must not dilute real stale information");
+        }
+
+        [Test]
+        public void DangerousRealHexStillContributesIntelPressure()
+        {
+            var hex = new HexCoord(0, 0);
+            WorldSnapshot snap = RefreshSnapshot(new[] { hex },
+                new Dictionary<HexCoord, int> { [hex] = 0 });
+            snap.MapKnowledge.ScoutHardBlockedHexes = new HashSet<HexCoord> { hex };
+            Assert.That(ReconObjectiveEvaluator.RefreshAt(snap, hex), Is.Null);
+            Assert.That(ReconObjectiveEvaluator.Enumerate(snap)
+                .Any(o => o.Kind == ReconObjectiveKind.Refresh), Is.False);
+            Assert.That(ReconIntelSnapshotRegistry.StalePressure(snap), Is.EqualTo(1f),
+                "unsafe ground access does not erase a real intelligence need");
         }
     }
 }

@@ -108,10 +108,16 @@ namespace Game.Ai.V2
                 return 0f;
 
             float floor = Mathf.Max(0f, AiConfigV2.reconRefreshPressureFloorWeight);
+            ISet<HexCoord> onMap = snapshot.MapKnowledge?.OnMapSet();
             float sum = 0f;
             float weight = 0f;
             foreach (KeyValuePair<HexCoord, int> kv in observed)
             {
+                // Observation footprints include off-map coordinates near the field edge. They
+                // carry no map intelligence; keep the captured revision intact but omit them
+                // from both sums. Real dangerous terrain still carries an intelligence need.
+                if (onMap != null && !onMap.Contains(kv.Key))
+                    continue;
                 int age = Mathf.Max(0, snapshot.TurnNumber - kv.Value);
                 float stale = Staleness(age);
                 float w = floor + RefreshRelevance(snapshot, kv.Key);
