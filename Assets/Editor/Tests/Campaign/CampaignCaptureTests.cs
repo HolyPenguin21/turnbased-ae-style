@@ -157,7 +157,7 @@ public sealed class CampaignCaptureVisualTests
             var graphic = root.AddComponent<CampaignRegionGraphic>(); graphic.Configure(region, null, null); graphic.SetSurface(Texture2D.whiteTexture, material);
             var effect = root.AddComponent<CampaignCaptureEffect>(); effect.Initialize(material, new CampaignCaptureSettings());
             effect.Play(graphic, null, region, Color.white);
-            typeof(CampaignCaptureEffect).GetMethod("UpdateVisual", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(effect, new object[] { .425f });
+            typeof(CampaignCaptureEffect).GetMethod("UpdateVisual", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(effect, new object[] { new CampaignCaptureSettings().SpreadSeconds * .5f });
             var rendered = graphic.materialForRendering;
             Assert.AreNotSame(material, rendered, "The campaign panel uses a stencil material copy");
             Assert.That(rendered.GetFloat("_CaptureProgress"), Is.EqualTo(.5f).Within(.001f));

@@ -11754,7 +11754,7 @@ MonoBehaviour:
   visualScale: 28
   markerClearance: 24
   regionInsetFraction: 0.25
-  attackTint: {r: 0.68, g: 0.28, b: 0.24, a: 0.92}
+  attackTint: {r: 0.85, g: 0.16, b: 0.10, a: 1}
   factionTintWeight: 0
   pulseAmount: 0.06
   pulseFrequency: 1.5
