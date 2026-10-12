@@ -57,7 +57,7 @@ public static class GameAssetCatalogBuilder
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (AssetDatabase.IsValidFolder(path)) continue;
                 string relative = path.Substring(folder.Length + 1);
-                AddEntry(entries, prefix + "/" + Path.ChangeExtension(relative, null).Replace('\', '/'), path);
+                AddEntry(entries, prefix + "/" + Path.ChangeExtension(relative, null).Replace('\\', '/'), path);
             }
         }
         foreach (var (file, key) in SingleFiles) AddEntry(entries, key, file);
