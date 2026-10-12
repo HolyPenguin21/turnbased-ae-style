@@ -26,6 +26,7 @@ namespace Game.Core
             CampaignContext = null; FinalResult = null;
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one local human profile is supported."; return false; }
+            AssignAiDecks(players, config?.collectionDeckCatalog);
             if (!players.Exists(p => p.IsHuman))
             {
                 foreach (var player in players) { player.MatchLoadout = null; player.BlueprintQuota = null; }
@@ -56,6 +57,20 @@ namespace Game.Core
             MatchId = System.Guid.NewGuid().ToString("N");
             RewardsEligible = players.Exists(p => p.IsHuman);
             return true;
+        }
+        // Each AI player plays one random AI deck of its faction; a choice already made (shown on
+        // the setup row) is kept while it is still an authored deck of that faction.
+        public static void AssignAiDecks(List<PlayerSetupData> players, Game.Cards.StartingDeckCatalog catalog)
+        {
+            foreach (var player in players)
+            {
+                if (player.IsHuman || player.IsNeutral) { player.AiDeckName = null; player.AiBlueprints = null; continue; }
+                if (catalog == null) continue;
+                bool valid = player.AiDeckName != null && System.Linq.Enumerable.Any(
+                    catalog.GetAiDecks(player.Faction), d => d.deckName == player.AiDeckName);
+                if (!valid) player.AiDeckName = catalog.PickAiDeckName(player.Faction);
+                player.AiBlueprints = catalog.BuildAiBlueprintKeys(player.Faction, player.AiDeckName);
+            }
         }
         public static void EndRewardEligibility() => RewardsEligible = false;
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]

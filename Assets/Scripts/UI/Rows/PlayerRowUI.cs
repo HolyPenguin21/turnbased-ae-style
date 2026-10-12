@@ -89,9 +89,28 @@ namespace Game.UI
         {
             if (deckDropdown == null) return;
             refreshingDecks = true;
-            if (deckSelectionRoot != null) deckSelectionRoot.SetActive(Data.IsHuman);
+            if (deckSelectionRoot != null) deckSelectionRoot.SetActive(true);
             deckDropdown.ClearOptions();
-            if (!Data.IsHuman) { refreshingDecks = false; return; }
+            if (editDecksButton != null) editDecksButton.gameObject.SetActive(Data.IsHuman);
+            if (!Data.IsHuman)
+            {
+                // AI rows show the deck the AI will play this match (chosen randomly among its
+                // faction's AI decks, see GameSession.AssignAiDecks); it is not editable.
+                Data.SelectedDeckId = null;
+                deckDropdown.interactable = false;
+                if (Data.Faction == Faction.Random)
+                { Data.AiDeckName = null; deckDropdown.AddOptions(new List<string> { "Random AI deck after Random faction resolves" }); }
+                else
+                {
+                    if (startingDeckCatalog != null && !startingDeckCatalog.GetAiDecks(Data.Faction).Any(d => d.deckName == Data.AiDeckName))
+                        Data.AiDeckName = startingDeckCatalog.PickAiDeckName(Data.Faction);
+                    deckDropdown.AddOptions(new List<string> { Data.AiDeckName ?? "No AI deck — faction starter deck" });
+                }
+                deckDropdown.SetValueWithoutNotify(0);
+                deckDropdown.RefreshShownValue();
+                refreshingDecks = false; return;
+            }
+            Data.AiDeckName = null;
             if (Data.Faction == Faction.Random)
             { Data.SelectedDeckId = null; deckDropdown.AddOptions(new List<string> { "Default deck after Random faction resolves" }); deckDropdown.interactable = false; refreshingDecks = false; return; }
             if (!Game.Progression.ProgressionContext.Initialize(deckConfig))
@@ -191,7 +210,7 @@ namespace Game.UI
                 if (value < 0 || value >= SelectableFactions.Length) return;
                 Data.Faction = SelectableFactions[value];
                 RefreshFactionLogo();
-                Data.SelectedDeckId = null; RefreshDeckOptions();
+                Data.SelectedDeckId = null; Data.AiDeckName = null; RefreshDeckOptions();
                 _onChanged?.Invoke();
             });
         }

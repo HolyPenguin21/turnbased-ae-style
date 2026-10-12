@@ -15,7 +15,7 @@ MonoBehaviour:
   entries:
   - key: Audio/GameAudio
     assets:
-    - {fileID: 100100000, guid: eef655d3d8ab4bc4818015eb76c4f552, type: 3}
+    - {fileID: 1000, guid: eef655d3d8ab4bc4818015eb76c4f552, type: 3}
   - key: Campaign/Backgrounds/WastelandSurface
     assets:
     - {fileID: 2800000, guid: 311ed474e5b34832943f14173587b735, type: 3}
@@ -73,7 +73,7 @@ MonoBehaviour:
     - {fileID: 4800000, guid: b6f31d54aaf24b45a8f7c43cf25db870, type: 3}
   - key: Fonts/GameMenuFont
     assets:
-    - {fileID: 11400000, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 3}
+    - {fileID: 11400000, guid: d095f7d087314d42b29a06f3d95b8e2b, type: 2}
   - key: Fonts/Rajdhani-Bold
     assets:
     - {fileID: 12800000, guid: addc1df243e384f45a4178cd534b1923, type: 3}
@@ -91,22 +91,22 @@ MonoBehaviour:
     - {fileID: 12800000, guid: fefd05210ec15f342b6f0ae67a5b2031, type: 3}
   - key: Fonts/Rajdhani-SemiBold SDF
     assets:
-    - {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 3}
+    - {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   - key: Materials/FogOfWar
     assets:
-    - {fileID: 2100000, guid: f3bf9f380fd94fc3aa312732f2d0b29b, type: 3}
+    - {fileID: 2100000, guid: f3bf9f380fd94fc3aa312732f2d0b29b, type: 2}
   - key: Prefabs/Rewards/CollectionRewardCard
     assets:
-    - {fileID: 100100000, guid: 377ba38ca73a43208b204a4b4de8c3bb, type: 3}
+    - {fileID: 1001, guid: 377ba38ca73a43208b204a4b4de8c3bb, type: 3}
   - key: Prefabs/Rewards/CollectionRewards
     assets:
-    - {fileID: 100100000, guid: 3852179eca984d7192c20690cb4e7273, type: 3}
+    - {fileID: 1001, guid: 3852179eca984d7192c20690cb4e7273, type: 3}
   - key: Prefabs/Rewards/EventReward
     assets:
-    - {fileID: 100100000, guid: 3a634a77d35d4ac88b0253996b1945b7, type: 3}
+    - {fileID: 1001, guid: 3a634a77d35d4ac88b0253996b1945b7, type: 3}
   - key: Prefabs/Rewards/RewardDialog
     assets:
-    - {fileID: 100100000, guid: 83608cf1ca5642b2bdb03f1c6b06f07e, type: 3}
+    - {fileID: 1001, guid: 83608cf1ca5642b2bdb03f1c6b06f07e, type: 3}
   - key: Shaders/CampaignSurface
     assets:
     - {fileID: 4800000, guid: 17ab6d85e2eb43138e0dd5f53b0a7c99, type: 3}

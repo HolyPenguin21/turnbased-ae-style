@@ -73,6 +73,8 @@ namespace Game.UI
                 string faction = cardHand.StartingDeckCatalog?.GetCatalog(player.Faction)?.displayName
                     ?? player.Faction.ToString();
                 output.Append(player.Nickname).Append(" — ").Append(faction);
+                if (!player.IsHuman && !string.IsNullOrEmpty(player.AiDeckName))
+                    output.Append("\nDeck: ").Append(player.AiDeckName);
                 if (player.IsEliminated)
                 {
                     output.Append(" (eliminated)");
@@ -92,7 +94,7 @@ namespace Game.UI
                     AiHandData aiHand = AiHandRegistry.Peek(player);
                     hand = aiHand?.Hand;
                     deck = aiHand != null ? aiHand.RemainingDeck
-                        : cardHand.StartingDeckCatalog?.BuildDeckPool(player.Faction);
+                        : cardHand.StartingDeckCatalog?.BuildDeckPool(player);
                 }
                 PlayerForceAnalysis force = PlayerForceAnalysis.Calculate(player,
                     ArmyRegistry.AllForOwner(player), hand, deck);
