@@ -464,6 +464,9 @@ namespace Game.Ai.V2
                 ?? p.GeneratedBaseDef?.displayName ?? "?";
             float tolerance = IdleBuilderDeliveryTolerance(demand, turnNumber);
             float siteAllowance = demand.EconomySiteValue * (1f + tolerance);
+            if (!DemandLayer.EconomyExtractionDeliveryAllowed(choice))
+                return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
+                    "extraction_delivery_horizon");
             if (demand.EconomySiteValue > AiConfigV2.allocatorSliceEpsilon
                 && newDelivery >= siteAllowance)
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,

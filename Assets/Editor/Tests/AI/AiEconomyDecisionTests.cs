@@ -16,6 +16,48 @@ namespace Game.EditorTests
     public class AiEconomyDecisionTests
     {
         [Test]
+        [Category("UnityEngine")]
+        public void LongExtraction_DoesNotBecomeAnImpossibleReservedHeroPrerequisite()
+        {
+            var target = new HexCoord(-3, 5);
+            var snap = SnapshotWithDeficits(0.8f, 0.2f, true);
+            var site = ExtractionOpportunity(target, ResourceType.Human, 1);
+            site.MinimumNewBuilderDeliveryTurns = 5;
+            snap.Economy.ExtractionOpportunities = new[] { site };
+            Assert.That(DemandLayer.EconomyDemands(snap, new DesireBreakdown(), null, null, null)
+                .Any(d => d.Capability == CapabilityKind.Hero && d.TargetHex.HasValue && d.TargetHex.Value.Equals(target)), Is.False,
+                "Phase A must not receive a pending-Hero build obligation that cannot meet the horizon");
+            site.MinimumNewBuilderDeliveryTurns = 2;
+            snap.Economy.ExtractionOpportunities = new[] { site };
+            Assert.That(DemandLayer.EconomyDemands(snap, new DesireBreakdown(), null, null, null)
+                .Any(d => d.Capability == CapabilityKind.Hero && d.TargetHex.HasValue && d.TargetHex.Value.Equals(target)), Is.True,
+                "a nearby project may still ask Materialization for its missing builder");
+        }
+
+        [Test]
+        public void ExtractionDeliveryHorizon_KeepsTheExistingProjectButRejectsFreshLongWalks()
+        {
+            var target = new HexCoord(-3, 5);
+            var builder = new ArmySnapshot { ArmyId = 34, Hex = new HexCoord(0, 0), HasHero = true,
+                IsMobileEconomyBuilder = true, MemberCount = 1, MaxMovement = 2,
+                CurrentMovement = 2, HeroMoveMax = 2, ActivationApCost = 1, HeroActivationApCost = 1,
+                Members = System.Array.Empty<Game.Combat.WorthIt.DefenderProfile>() };
+            var snap = SnapshotWithDeficits(0.5f, 0.2f, true);
+            snap.Self.Armies = new[] { builder };
+            var routes = new[] { BuilderRoute(builder, 9, 9, 1) };
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+                20f, 1f, true), Is.Null, "Iri's five-turn trip is not a new local extraction project");
+            var intent = new MissionIntent { Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                PreferredMoverArmyId = 34, Objective = new EconomyIntent
+                { Kind = EconomyTaskKind.BuildExtraction, TargetHex = target, BuilderArmyId = 34 } };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
+                20f, 1f, true), Is.Not.Null, "continuity owns completion/recovery of earlier obligations");
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+                20f, 1f, true), Is.Null, "allowing a commitment must not poison the snapshot assessment cache");
+        }
+
+        [Test]
         public void EmptyDeck_WitnessedFutureCostsMakeEnergyIncomeUseful()
         {
             // Tessek T24: hand E=1, deck=0, stock E=1, income E=1. Three useful

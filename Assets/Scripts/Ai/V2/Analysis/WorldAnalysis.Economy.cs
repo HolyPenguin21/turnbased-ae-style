@@ -125,6 +125,26 @@ namespace Game.Ai.V2
                 return routes;
             }
             var extraction = new List<EconomyExtractionOpportunity>();
+            // A capability fact, never a card choice: even the fastest known prospective hero
+            // cannot beat this optimistic terrain-only preparation bound. Exact safety/escort
+            // and the chosen card's route remain Materialization's responsibility.
+            int prospectiveHeroMovement = (snap.Self.PoolCards
+                    ?? System.Array.Empty<(CardDefinition Card, CardDefinition Equipment, CardDefinition Mutator, bool InHand)>())
+                .Where(c => c.Card?.cardType == CardType.Hero)
+                .Select(c => AiPower.EffectiveLine(c.Card, c.Equipment?.equipment, c.Mutator?.equipment).MoveMax)
+                .DefaultIfEmpty(0).Max();
+            var newBuilderDeliveryByHex = new Dictionary<HexCoord, int>();
+            int MinimumNewBuilderTurns(HexCoord hex)
+            {
+                if (newBuilderDeliveryByHex.TryGetValue(hex, out int turns)) return turns;
+                int travel = prospectiveHeroMovement > 0 && snap.Self.BaseHexes?.Count > 0
+                    ? SafeStepPathing.FindSafeBasePreparationCost(ctx.Map, player, snap.Self.BaseHexes, hex)
+                    : int.MaxValue;
+                turns = travel == int.MaxValue ? int.MaxValue
+                    : Mathf.CeilToInt(travel / (float)prospectiveHeroMovement);
+                newBuilderDeliveryByHex[hex] = turns;
+                return turns;
+            }
             var collectorSites = new List<EconomyExtractionOpportunity>();
             var guardedExtraction = new List<EconomyExtractionOpportunity>();
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
@@ -199,6 +219,7 @@ namespace Game.Ai.V2
                     MarginalIncomeGain = facilityGain,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
                     BuilderRoutes = BuilderRoutesFor(site.Hex),
+                    MinimumNewBuilderDeliveryTurns = MinimumNewBuilderTurns(site.Hex),
                 });
             }
             eco.CollectorSites = collectorSites;

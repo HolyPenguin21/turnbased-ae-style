@@ -22,6 +22,15 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
+        // The funded value/envelope belongs to this builder witness, for fresh work as well as
+        // continuations. Another actor requires a new strategic assessment before funding.
+        internal static bool IsEligibleEconomyBuildActor(MissionProposal mission, int actorId)
+        {
+            if (!(mission?.Target is EconomyMissionTarget target)) return false;
+            int? witness = mission.PreferredMoverArmyId ?? target.BuilderArmyId;
+            return !witness.HasValue || witness.Value == actorId;
+        }
+
         internal static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player,
             ActorCommitments commitments = null,
             Func<ResearchProductionMode, HexCoord?> preparationSite = null,
@@ -74,9 +83,7 @@ namespace Game.Ai.V2
                     target.BuildValue, target.BuildApCost,
                     includeReturn: target.Kind == EconomyTaskKind.BuildExtraction);
             IEnumerable<DemandLayer.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
-            if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
-                eligibleBuilders = eligibleBuilders.Where(
-                    x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
+            eligibleBuilders = eligibleBuilders.Where(x => IsEligibleEconomyBuildActor(m, x.Route.ArmyId));
 
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             float rawApRemaining = root.ActionPoints - session.ApClaimed;
@@ -379,6 +386,9 @@ namespace Game.Ai.V2
                         economyBuilderShortfallAp.Value,
                         $"garrison-extraction builder needs {economyBuilderShortfallAp.Value:0.##} AP, "
                         + "envelope/pool too small"));
+                if ((m.PreferredMoverArmyId ?? target.BuilderArmyId).HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        "priced economy builder unavailable; replan before assigning another actor"));
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
             }

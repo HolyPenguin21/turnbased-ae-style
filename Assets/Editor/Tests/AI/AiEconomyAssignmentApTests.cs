@@ -11,6 +11,35 @@ namespace Game.EditorTests
     // the first leg, not merely off HasActivatedThisTurn.
     public class AiEconomyAssignmentApTests
     {
+        [TestCase(6, 2, true)]
+        [TestCase(7, 2, false)]
+        [TestCase(9, 2, false)]
+        [TestCase(9, 3, true)]
+        public void NewExtraction_BoundsRealDeliveryTimeEvenWhenActivationIsFree(
+            int travel, int movement, bool allowed)
+        {
+            var choice = new DemandLayer.EconomyBuilderChoice
+            {
+                Route = Route(travel, movement, movement, false, activationApCost: 0),
+            };
+            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.EqualTo(allowed));
+            Assert.That(DemandLayer.EstimateEconomyAssignmentAp(choice.Route, 1f, true), Is.EqualTo(1f),
+                "zero AP does not make a five-owner-turn delivery local");
+        }
+
+        [Test]
+        public void ExtractionHorizon_DoesNotConstrainFoundingOrOnSiteCompletion()
+        {
+            var choice = new DemandLayer.EconomyBuilderChoice
+            {
+                Route = Route(20, 2, 2, false), FoundsBase = true,
+            };
+            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.True);
+            choice.FoundsBase = false;
+            choice.Route = Route(0, 0, 2, true, isOnTarget: true);
+            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.True);
+        }
+
         private static EconomyBuilderRouteSnapshot Route(int travelCost, int currentMovement,
             int maxMovement, bool hasActivatedThisTurn, int activationApCost = 4,
             int returnTravelCost = 0, bool isOnTarget = false) => new EconomyBuilderRouteSnapshot

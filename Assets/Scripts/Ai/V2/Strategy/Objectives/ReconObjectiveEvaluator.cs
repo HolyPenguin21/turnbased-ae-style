@@ -366,15 +366,17 @@ namespace Game.Ai.V2
                         ? launchEnergy : 0f, snap)));
         }
 
-        private static TaskScore BuildExploreScore(WorldSnapshot snap, HexCoord hex,
+        internal static TaskScore BuildExploreScore(WorldSnapshot snap, HexCoord hex,
             float infoGainRaw, int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
+            float homeWeight = Mathf.Lerp(1f, AiConfigV2.scoutExploreHomeProximityWeight,
+                ScoutObjectiveEvaluator.LocalExplorationGap(snap));
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(RuinsRelevance(snap, hex)),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance) * homeWeight,
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
                     cost.RecurringActivationAp, cost.EtaTurns)),

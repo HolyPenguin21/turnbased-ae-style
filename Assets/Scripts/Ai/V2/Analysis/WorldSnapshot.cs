@@ -836,6 +836,9 @@ namespace Game.Ai.V2
         public int MarginalIncomeGain;
         public float BaseNetworkSynergy;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
+        // Optimistic base-to-site delivery time of the fastest prospective Hero in the known
+        // card pool. Null only in detached fixtures without this observation; MaxValue = none.
+        public int? MinimumNewBuilderDeliveryTurns;
     }
 
     public readonly struct MobileCollectionOpportunity

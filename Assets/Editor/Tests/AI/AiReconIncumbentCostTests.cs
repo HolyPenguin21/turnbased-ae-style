@@ -10,6 +10,51 @@ namespace Game.EditorTests
 {
     public class AiReconIncumbentCostTests
     {
+        [Test]
+        public void LocalCoverageGap_OutscoresDistantRuinsWithAFreeScout_ThenFades()
+        {
+            // Tessek T1: a distant ruins focus has 4 fresh neighbours and 6 relevance points;
+            // the local frontier has only 3 fresh neighbours, some already observed.
+            HexCoord home = new HexCoord(-1, -4);
+            HexCoord near = new HexCoord(0, -5);
+            HexCoord far = new HexCoord(-5, 5);
+            var cells = HexGridMath.HexesInRange(home, 4).ToList();
+            cells.Add(far);
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Citadel = home, BaseHexes = new[] { home },
+                    Armies = new[] { new ArmySnapshot { ArmyId = 15, Owner = new PlayerSetupData(),
+                        Hex = home, IsSoloRecce = true, MemberCount = 1, CurrentMovement = 2,
+                        MaxMovement = 2, ActivationApCost = 0, HasActivatedThisTurn = true } } },
+                MapKnowledge = new MapKnowledgeSnapshot { AllHexes = cells,
+                    VisitedHexSet = new HashSet<HexCoord> { home },
+                    ScoutHardBlockedHexes = new HashSet<HexCoord>(),
+                    UnvisitedRuinsHexes = new HashSet<HexCoord> { far } },
+            };
+            var cost = new ScoutCostEstimate { ActivationApNow = 0f, RecurringActivationAp = 0f, EtaTurns = 5 };
+            TaskScore local = ReconObjectiveEvaluator.BuildExploreScore(snap, near, 0.63f, 1, cost, 0f);
+            TaskScore ruins = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);
+            Assert.That(local.Value, Is.GreaterThan(ruins.Value),
+                "a reachable local knowledge gap must not lose to the public ruins bonus");
+            Assert.That(ruins.StrategicRelevance, Is.EqualTo(6f),
+                "ruins keep their real opportunity value");
+            snap.MapKnowledge.VisitedHexSet.UnionWith(cells.Where(h => !h.Equals(far)));
+            TaskScore afterCoverage = ReconObjectiveEvaluator.BuildExploreScore(snap, far, 1f, 9, cost, 0f);
+            Assert.That(ScoutObjectiveEvaluator.LocalExplorationGap(snap), Is.Zero);
+            Assert.That(afterCoverage.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.001f));
+            Assert.That(afterCoverage.Value, Is.GreaterThan(ruins.Value));
+        }
+
+        [Test]
+        public void CompleteStepForecast_AppliesHomePressureToLookaheadAsWellAsImmediateValue()
+        {
+            float plain = ReconGroundStepPlanner.CompleteStepScore(9f, 1f, 1f, 1f, 1f);
+            float pressured = ReconGroundStepPlanner.CompleteStepScore(9f, 1f, 1f, 1f, 0.6f);
+            Assert.That(pressured, Is.EqualTo(plain * 0.6f).Within(0.001f));
+            Assert.That(ReconGroundStepPlanner.CompleteStepScore(0f, 0f, 1f, 1f, 0.6f), Is.Zero,
+                "direction and movement efficiency cannot invent useful work");
+        }
+
         [TearDown]
         public void ClearState() => MissionIntentRegistry.Clear();
 

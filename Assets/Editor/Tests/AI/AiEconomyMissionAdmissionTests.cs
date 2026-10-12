@@ -7,6 +7,28 @@ namespace Game.EditorTests
 {
     public class AiEconomyMissionAdmissionTests
     {
+        [TestCase(false)]
+        [TestCase(true)]
+        public void EconomyProvisioning_KeepsThePricedBuilderForFreshAndDurableWork(bool durable)
+        {
+            var mission = new MissionProposal
+            {
+                Kind = MissionKind.Economy, FromDurableIntent = durable,
+                PreferredMoverArmyId = 19,
+                Target = new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(-3, 5), BuilderArmyId = 19,
+                },
+            };
+            Assert.That(ProvisioningManager.IsEligibleEconomyBuildActor(mission, 19), Is.True);
+            Assert.That(ProvisioningManager.IsEligibleEconomyBuildActor(mission, 34), Is.False,
+                "Iri Vane cannot inherit the delivery price/envelope of builder #19");
+            mission.PreferredMoverArmyId = null;
+            Assert.That(ProvisioningManager.IsEligibleEconomyBuildActor(mission, 34), Is.False,
+                "the target's builder witness is still binding");
+        }
+
         [Test]
         public void CommittedBuilder_SpentTravelIsDeferredButArrivalAndRefillAreAdmitted()
         {
