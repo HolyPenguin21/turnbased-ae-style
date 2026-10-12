@@ -48,8 +48,11 @@ namespace Game.UI
         {
             var next = armies == null ? new List<ArmyData>() : armies.Where(a => a != null)
                 .OrderBy(a => a.IsAirfield ? 0 : a.IsGarrison ? 1 : 2).ToList();
+            // The map row follows the selected army across hexes. Only a count change
+            // needs new slots and a slide; roster/context changes just rebind those slots.
             bool samePresentation = _wantsVisible && _showStats == showStats
-                && Equals(_presentationContext, presentationContext) && _armies.SequenceEqual(next);
+                && (showStats ? _armies.Count == next.Count
+                    : Equals(_presentationContext, presentationContext) && _armies.SequenceEqual(next));
             _armies = next;
             _onArmyClicked = onArmyClicked;
             _selectedArmy = selectedArmy;
@@ -261,10 +264,13 @@ namespace Game.UI
 
         private void RefreshButtons()
         {
-            foreach (ArmyButtonUI button in _buttons)
+            for (int i = 0; i < _buttons.Count; i++)
             {
-                if (button == null) continue;
-                ArmyData army = button.Army;
+                ArmyButtonUI button = _buttons[i];
+                int armyIndex = _scrollOffset + i;
+                // Retiring buttons may outnumber the pending roster during a count change.
+                if (button == null || armyIndex >= _armies.Count) continue;
+                ArmyData army = _armies[armyIndex];
                 bool selected = army == _selectedArmy;
                 button.Setup(army, _onArmyClicked, _showStats && selected && !army.IsGarrison, _showStats);
                 button.SetSelected(selected);
