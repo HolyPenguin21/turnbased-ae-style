@@ -146,6 +146,75 @@ namespace Game.EditorTests
         }
 
         [UnityTest]
+        public IEnumerator MovingArmyAcrossHexesKeepsItsMapButtonInPlace()
+        {
+            var army = new ArmyData { Name = "Moving" };
+            _row.Show(new[] { army }, null, army, true, new Game.HexGrid.HexCoord(0, 0));
+            yield return new WaitForSecondsRealtime(0.5f);
+            ArmyButtonUI button = _row.Buttons[0];
+            for (int step = 1; step <= 3; step++)
+            {
+                army.Hex = new Game.HexGrid.HexCoord(step, 0);
+                _row.Show(new[] { army }, null, army, true, army.Hex);
+                yield return null;
+                Assert.That(_row.Buttons[0], Is.SameAs(button));
+                Assert.That(button.gameObject.activeSelf, Is.True);
+                Assert.That(button.RectTransform.anchoredPosition, Is.EqualTo(Vector2.zero));
+                Assert.That(button.transform.Find("Image_LampOn").gameObject.activeSelf, Is.True);
+                yield return new WaitForSecondsRealtime(0.5f);
+                Assert.That(_row.Buttons[0], Is.SameAs(button), "Arrival must not rebuild the row.");
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator SameArmyCountRebindsMapButtonsAndTheirClickTargetsWithoutSliding()
+        {
+            var a = new ArmyData { Name = "A" };
+            var b = new ArmyData { Name = "B" };
+            var c = new ArmyData { Name = "C" };
+            var d = new ArmyData { Name = "D" };
+            ArmyData clicked = null;
+            _row.Show(new[] { a, b }, army => clicked = a, a, true, new Game.HexGrid.HexCoord(0, 0));
+            yield return new WaitForSecondsRealtime(0.5f);
+            ArmyButtonUI first = _row.Buttons[0], second = _row.Buttons[1];
+            _row.Show(new[] { c, d }, army => clicked = army, d, true, new Game.HexGrid.HexCoord(1, 0));
+            Assert.That(_row.Buttons[0], Is.SameAs(first));
+            Assert.That(_row.Buttons[1], Is.SameAs(second));
+            Assert.That(first.Army, Is.SameAs(c));
+            Assert.That(second.Army, Is.SameAs(d));
+            Assert.That(first.transform.Find("Image_LampOff").gameObject.activeSelf, Is.True);
+            Assert.That(second.transform.Find("Image_LampOn").gameObject.activeSelf, Is.True);
+            first.GetComponent<Button>().onClick.Invoke();
+            Assert.That(clicked, Is.SameAs(c), "A reused button must invoke the current callback with the current army.");
+            yield return null;
+            Assert.That(first.RectTransform.anchoredPosition, Is.EqualTo(Vector2.zero));
+            Assert.That(second.RectTransform.anchoredPosition, Is.EqualTo(Vector2.zero));
+        }
+
+        [UnityTest]
+        public IEnumerator ChangingArmyCountStillAnimatesAndRendersTheLatestRoster()
+        {
+            var a = new ArmyData { Name = "A" };
+            var b = new ArmyData { Name = "B" };
+            _row.Show(new[] { a }, null, a, true);
+            yield return new WaitForSecondsRealtime(0.5f);
+            ArmyButtonUI old = _row.Buttons[0];
+            _row.Show(new[] { a, b }, null, b, true);
+            yield return new WaitForSecondsRealtime(0.1f);
+            Assert.That(old.RectTransform.anchoredPosition.x, Is.LessThan(0f));
+            yield return new WaitForSecondsRealtime(0.7f);
+            Assert.That(_row.Buttons.Count, Is.EqualTo(2));
+            Assert.That(_row.Buttons[0], Is.Not.SameAs(old));
+            Assert.That(_row.Buttons[0].Army, Is.SameAs(a));
+            Assert.That(_row.Buttons[1].Army, Is.SameAs(b));
+            Assert.That(_row.Buttons[1].transform.Find("Image_LampOn").gameObject.activeSelf, Is.True);
+            _row.Show(new[] { b }, null, b, true);
+            yield return new WaitForSecondsRealtime(0.7f);
+            Assert.That(_row.Buttons.Count, Is.EqualTo(1));
+            Assert.That(_row.Buttons[0].Army, Is.SameAs(b));
+        }
+
+        [UnityTest]
         public IEnumerator ModalUsesItsOwnPrefabAndUpdatesLampsOnClick()
         {
             var modalPrefab = Object.Instantiate(_config.armyButtonPrefab, _canvas.transform);
