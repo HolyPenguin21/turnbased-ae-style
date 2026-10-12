@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -131,21 +132,23 @@ namespace Game.Ai.V2
             if (!worst.HasValue || worstWin >= StrongEnemyFleeWinChance)
                 return null;
 
-            HexCoord fleeTo = PickFleeTarget(player, map, army, worst.Value.Hex);
+            HexCoord? fleeTo = PickFleeTarget(player, map, army, worst.Value.Hex);
             return new ReconReactionDecision(ReconReactionAction.Flee, fleeTo, worst.Value.ArmyId,
-                worstWin, $"exposed to stronger known enemy near ({worst.Value.Hex.Q},{worst.Value.Hex.R})");
+                worstWin, fleeTo.HasValue
+                    ? $"exposed to stronger known enemy near ({worst.Value.Hex.Q},{worst.Value.Hex.R})"
+                    : "exposed to stronger known enemy; no safe affordable escape, hold position");
         }
 
-        // §14 — a real flee-destination evaluator. The nearest owned garrison is only the fallback
-        // and the friendly-approach term; the chosen hex also maximises distance from the threat,
+        // §14 — a real flee-destination evaluator. The nearest owned garrison supplies only the
+        // friendly-approach term; the chosen hex also maximises distance from the threat,
         // keeps recon useful, and avoids known detectors / hostile zones / backtracking. Running
         // home to the citadel is no longer the automatic answer to any strong sighting.
-        private static HexCoord PickFleeTarget(PlayerSetupData player, HexMap map, ArmyData army,
+        private static HexCoord? PickFleeTarget(PlayerSetupData player, HexMap map, ArmyData army,
             HexCoord threatHex)
         {
-            HexCoord fallback = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
+            HexCoord friendlyAnchor = AiTurnController.NearestOwnGarrisonHex(player, army.Hex);
             int radius = Math.Max(2, AiConfig.scoutFleeRadius);
-            HexCoord best = fallback;
+            HexCoord? best = null;
             float bestScore = float.NegativeInfinity;
 
             foreach (HexCoord h in HexGridMath.HexesInRange(army.Hex, radius))
@@ -158,7 +161,7 @@ namespace Game.Ai.V2
                     continue;
 
                 float fromThreat = HexGridMath.Distance(h, threatHex);
-                float toFriendly = HexGridMath.Distance(h, fallback);
+                float toFriendly = HexGridMath.Distance(h, friendlyAnchor);
                 float detector = ScoutRiskModel.DetectorRiskLive(player, h);
                 int freshNeighbors = ReconGroundStepPlanner.FreshNeighborCount(player, map, h);
                 float futureRecon = freshNeighbors / 6f;
@@ -181,6 +184,9 @@ namespace Game.Ai.V2
                     best = h;
                 }
             }
+            // The search includes every adjacent hex, so any safe affordable first step is
+            // itself a candidate, even if the preferred destination or garrison is unreachable.
+            // With none left, end movement in place rather than emit an unproved home route.
             return best;
         }
 
@@ -194,7 +200,9 @@ namespace Game.Ai.V2
             float bestWin = AttackOpportunityWinChance;
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h))
+                if (!map.CanEnter(h, army) || !VisionSystem.IsVisible(player, h)
+                    || !map.TryGetTerrainAt(h, out var terrain)
+                    || AviationRules.MovementCost(army, terrain.moveCost) > army.CurrentMovement)
                     continue;
                 ArmyData target = BattleInitiator.FindEnemyAt(h, army);
                 if (target == null || target.Owner == null || target.Owner.IsNeutral
