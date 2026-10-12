@@ -26,10 +26,21 @@ namespace Game.UI
         [Range(0f, 1f)] public float jokeChance = .3f;
         [Range(0f, 1f)] public float dialogueChance = .25f;
         [Min(.5f)] public float replyDelay = 2f;
+        [Header("Radio dispatch")]
+        [Range(0f, 1f)] public float criticalChance = .6f;
+        [Range(0f, 1f)] public float operationalChance = .3f;
+        [Range(0f, 1f)] public float situationalChance = .2f;
+        [Range(0f, 1f)] public float ambientChance = .1f;
+        [Range(1, 6)] public int maximumPerMinute = 3;
+        [Range(1, 64)] public int maximumPendingCandidates = 24;
+        [Min(1f)] public float operationalTtl = 10f;
+        [Min(1f)] public float minorEventTtl = 6f;
+        [Min(1f)] public float categoryCooldown = 25f;
+        [Range(1, 64)] public int recentPhraseHistorySize = 16;
     }
 
     // Cosmetic read-only policy. No tactical evaluation, purchases, or random game rolls.
-    public static class ArmyRadioChatter
+    public static partial class ArmyRadioChatter
     {
         public static UnitData FirstUnit(ArmyData army)
         {
@@ -48,21 +59,34 @@ namespace Game.UI
             && !listener.IsEliminated && !army.IsPrison && FirstUnit(army) != null;
 
         public static bool SeesEnemy(ArmyData army)
+            => Observe(army, null);
+
+        // Contact and base discovery share one observer-authorized range scan.
+        public static bool Observe(ArmyData army, Action<BuildingData> visibleBase)
         {
             if (army == null || army.Owner == null) return false;
+            bool contact = false;
             HexCoord origin = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
             foreach (HexCoord hex in HexGridMath.HexesInRange(origin, VisionSystem.ArmyVisionRadius(army)))
             {
                 if (!VisionSystem.IsVisible(army.Owner, hex)) continue;
+                if (visibleBase != null) visibleBase(BuildingRegistry.FindAt(hex));
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                     if (other != army && other.Owner != army.Owner && !other.IsPrison
                         && FirstUnit(other) != null && (other.Controller == null || !other.Controller.IsMoving)
                         && StealthSystem.HasAnyTargetableMember(other, army.Owner))
-                        return true;
+                    { if (visibleBase == null) return true; contact = true; }
             }
-            return false;
+            return contact;
         }
 
+        public static bool CanIdleFlavor(ArmyData army)
+        {
+            if (army == null || StealthSystem.IsArmyFullyHidden(army)) return false;
+            foreach (var unit in army.Members)
+                if (unit != null && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax) return false;
+            return true;
+        }
         public static ArmyRadioSituation Situation(ArmyData army, bool contact, bool moved, float quietSeconds)
         {
             if (contact) return ArmyRadioSituation.Contact;
@@ -135,11 +159,13 @@ namespace Game.UI
 
         public static int PhraseCount(ArmyRadioSituation situation) => English[(int)situation].Length;
         public static int JokeCount => Jokes.Length;
-        public static int DialogueCount => Dialogues.Length;
+        public static int DialogueCount => Dialogues.Length + AdditionalDialogues.Length;
         public static string Phrase(ArmyRadioSituation situation, int variation) =>
             English[(int)situation][Index(variation, PhraseCount(situation))];
         public static string Joke(int variation) => Jokes[Index(variation, Jokes.Length)];
-        public static string Dialogue(int variation, bool reply) => Dialogues[Index(variation, Dialogues.Length)][reply ? 1 : 0];
+        public static string Dialogue(int variation, bool reply) => Index(variation, DialogueCount) < Dialogues.Length
+                ? Dialogues[Index(variation, DialogueCount)][reply ? 1 : 0]
+                : AdditionalDialogues[Index(variation, DialogueCount) - Dialogues.Length][reply ? 1 : 0];
         private static int Index(int variation, int count) => (variation % count + count) % count;
     }
 }

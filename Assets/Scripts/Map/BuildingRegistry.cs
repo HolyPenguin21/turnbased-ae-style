@@ -26,6 +26,8 @@ namespace Game.Map
         // ever actually call Unregister, same "wired for correctness, currently unreachable"
         // status as BaseViewerModalUI's own Repair button.
         public static event Action<BuildingData> BuildingDestroyed;
+        // Post-commit ownership transition; unlike VisualStateChanged, never observes a no-op.
+        public static event Action<BuildingData, PlayerSetupData> BaseCaptured;
         // Fired after the building's visible state changes but before that change can remove its
         // former owner's own vision source. HumanVisualMemory and AiMapMemory both use this
         // narrow pre-recompute window to record a capture/destruction the player was genuinely
@@ -86,6 +88,7 @@ namespace Game.Map
         {
             if (building == null)
                 return;
+            PlayerSetupData ownerBefore = building.Owner;
             if (building.IsBase)
             {
                 PlayerSetupData previousOwner = building.Owner;
@@ -148,6 +151,9 @@ namespace Game.Map
             // armies stuck hovering over a just-captured base, and a now-empty army's marker
             // sitting stale rather than actually hidden).
             hexSelection?.RestackArmiesOn(building.Hex, null);
+            if (building.IsBase && newOwner != null && ownerBefore != newOwner && building.Owner == newOwner
+                && ReferenceEquals(FindAt(building.Hex), building))
+                BaseCaptured?.Invoke(building, ownerBefore);
         }
 
         // A defeated owner's non-base buildings (resource facilities) are razed; its Bases and

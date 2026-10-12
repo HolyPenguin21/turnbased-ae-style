@@ -185,6 +185,7 @@ namespace Game.Turns
 
         // The non-interactive "other player's turn" banner leaves the map visible.
         // Every actual modal/confirmation hides cosmetic radio messages immediately.
+        public bool IsArmyRadioMatchActive => !_gameOver && isActiveAndEnabled;
         public bool CanPresentArmyRadio => !_gameOver && !IsAiObserverPaused && !IsMapModalShowing && CurrentPlayer != null
             && (!CurrentPlayer.IsHuman || TurnConfirmed)
             && (popupPanel == null || !popupPanel.IsShowing || popupPanel.IsOtherTurnShowing);

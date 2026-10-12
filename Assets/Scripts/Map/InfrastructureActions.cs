@@ -62,6 +62,7 @@ namespace Game.Map
     // Changes to already-visible hex contents are published here, after the final commit.
     public static class InfrastructureActions
     {
+        public static event Action<BuildingData> BaseFounded;
         internal const string NoFreeFacilitySlotReason = "Base has no free Facility slot";
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
@@ -200,6 +201,7 @@ namespace Game.Map
             }
             if (oldVisual != null)
                 UnityEngine.Object.Destroy(oldVisual.gameObject);
+            BaseFounded?.Invoke(building);
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 

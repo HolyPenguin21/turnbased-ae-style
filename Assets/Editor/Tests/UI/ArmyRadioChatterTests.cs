@@ -588,6 +588,32 @@ namespace Game.EditorTests
             finally { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); }
         }
 
+        [Test]
+        public void ViewerSwitch_ClearsCandidatesButKeepsTheGlobalCadence()
+        {
+            var host = new GameObject("Inactive radio viewer host"); host.SetActive(false);
+            var radioObject = CreateRadioPrefab(); var previousViewer = VisionSystem.CurrentViewer;
+            try
+            {
+                var radio = radioObject.GetComponent<ArmyRadioChatterController>();
+                radio.Configure(host.AddComponent<Game.Turns.GameTurnController>(), null, null, new ArmyRadioChatterSettings());
+                var old = new PlayerSetupData(); var next = new PlayerSetupData(); var army = new ArmyData { Owner = old };
+                typeof(ArmyRadioChatterController).GetField("_viewer", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(radio, old);
+                var clock = (ArmyRadioCadence)Field(radio, "_cadence"); float now = Time.unscaledTime;
+                clock.Spoke(army.Id, now, 3f);
+                var dispatch = (ArmyRadioDispatch)Field(radio, "_dispatch");
+                dispatch.Add(new ArmyRadioCandidate(ArmyRadioCategory.BattleWon, army, old, new object(), default, now, 10f), now, 24);
+                VisionSystem.CurrentViewer = next;
+                typeof(ArmyRadioChatterController).GetMethod("OnTurnStateChanged", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(radio, null);
+                Assert.That(Field(radio, "_cadence"), Is.SameAs(clock));
+                Assert.That(dispatch.PendingCount, Is.Zero);
+                Assert.That(clock.RecentCount(now), Is.EqualTo(1));
+                Assert.That(clock.ChannelReady(now + 1f, 3), Is.False);
+            }
+            finally
+            { Object.DestroyImmediate(radioObject.transform.root.gameObject); Object.DestroyImmediate(host); VisionSystem.CurrentViewer = previousViewer; }
+        }
+
         private static GameObject CreateRadioPrefab()
         {
             var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadio/ArmyRadioOverlay.prefab");

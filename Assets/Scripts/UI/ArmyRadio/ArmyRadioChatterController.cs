@@ -9,12 +9,13 @@ using UnityEngine;
 namespace Game.UI
 {
     // Owns the channel, bounded view pool and a single two-army exchange. Cosmetic only.
-    public sealed class ArmyRadioChatterController : MonoBehaviour
+    public sealed partial class ArmyRadioChatterController : MonoBehaviour
     {
         private sealed class Observation
         {
             public float StationarySince;
             public HexCoord Hex;
+            public float ContactAt;
         }
         private sealed class Exchange
         {
@@ -41,13 +42,12 @@ namespace Game.UI
         private readonly HashSet<ArmyData> _moved = new HashSet<ArmyData>();
         private readonly HashSet<ArmyData> _contacts = new HashSet<ArmyData>();
         private readonly HashSet<ArmyData> _newContacts = new HashSet<ArmyData>();
-        private readonly int[] _variations = new int[8];
         private readonly System.Random _random = new System.Random();
         private ArmyRadioCadence _cadence;
         private ArmyRadioChatterSettings _settings;
         private PlayerSetupData _viewer, _actor;
         private Exchange _exchange;
-        private int _lastSpeakerId = -1, _lastJoke = -1, _lastDialogue = -1;
+        private int _lastSpeakerId = -1;
         private bool _dirty = true, _subscribed;
         private float _nextAmbient, _nextObservation;
 
@@ -63,9 +63,8 @@ namespace Game.UI
                 return;
             }
             _settings = settings ?? new ArmyRadioChatterSettings();
+            _cadence = new ArmyRadioCadence(Time.unscaledTime);
             _viewer = null; _actor = null; ResetChannel();
-            for (int i = 0; i < _variations.Length; i++)
-                _variations[i] = _random.Next(ArmyRadioChatter.PhraseCount((ArmyRadioSituation)i));
             if (isActiveAndEnabled) Subscribe();
         }
         private void OnEnable() { if (_turns != null) Subscribe(); }
@@ -74,6 +73,7 @@ namespace Game.UI
         {
             if (_subscribed || _turns == null || _settings == null) return;
             _subscribed = true;
+            SubscribeOperations();
             _turns.TurnChanging += Invalidate; _turns.TurnStateChanged += OnTurnStateChanged;
             VisionSystem.VisibilityChanged += OnVision; VisionSystem.VisibleContentChanged += OnContent;
             ArmyRegistry.ArmyRelocated += OnRelocated; StealthSystem.StealthChanged += Invalidate;
@@ -84,6 +84,7 @@ namespace Game.UI
         {
             if (!_subscribed) return;
             _subscribed = false;
+            UnsubscribeOperations();
             if (_turns != null) { _turns.TurnChanging -= Invalidate; _turns.TurnStateChanged -= OnTurnStateChanged; }
             VisionSystem.VisibilityChanged -= OnVision; VisionSystem.VisibleContentChanged -= OnContent;
             ArmyRegistry.ArmyRelocated -= OnRelocated; StealthSystem.StealthChanged -= Invalidate;
@@ -92,7 +93,8 @@ namespace Game.UI
         private void ResetChannel()
         {
             _contacts.Clear(); _newContacts.Clear(); _moved.Clear(); _observations.Clear();
-            _cadence = new ArmyRadioCadence(Time.unscaledTime); _lastSpeakerId = -1;
+            ClearOperations();
+            _cadence.ResetSpeakers(); _lastSpeakerId = -1;
             _nextAmbient = Time.unscaledTime + Mathf.Max(5f, _settings.ambientInterval);
             _nextObservation = 0f; _dirty = true;
         }
@@ -118,6 +120,12 @@ namespace Game.UI
                 if (_observations.TryGetValue(army, out var state))
                 { state.Hex = to; state.StationarySince = Time.unscaledTime; }
                 CancelExchangeFor(army);
+                OnFlightOperation(army);
+                if (_exploredOnMove.TryGetValue(army, out var visited))
+                {
+                    if (visited.Equals(to)) Enqueue(ArmyRadioCategory.TerritoryExplored, army, null, to);
+                    _exploredOnMove.Remove(army);
+                }
             }
             Invalidate();
         }
@@ -140,68 +148,157 @@ namespace Game.UI
             if (_turns == null || !_settings.enabled || !_turns.isActiveAndEnabled || _camera == null)
             { Clear(); return; }
             if (_viewer != VisionSystem.CurrentViewer) OnTurnStateChanged();
-            if (_viewer == null) { Clear(); return; }
+            if (_viewer == null || !_turns.IsArmyRadioMatchActive) { Clear(); return; }
+            if (now >= _nextObservation) _dispatch.Prune(now, _validCandidate);
             if (!_turns.CanPresentArmyRadio)
             {
                 _exchange = null;
-                foreach (var view in _views) view.Dismiss(now);
+                foreach (var view in _views) view.Hide();
+                if (now >= _nextObservation) _nextObservation = now + 1f;
                 return;
             }
-            if (_dirty || now >= _nextObservation)
+            if (now >= _nextObservation)
             { Sample(now); _dirty = false; _nextObservation = now + 1f; }
             Follow();
+            // An operational report may suppress a future ambient reply, without cutting off art.
+            if (_dispatch.PendingCount > 0) _exchange = null;
             PresentReply(now);
-            if (ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)) return;
+            if (ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)
+                || !_cadence.ChannelReady(now, _settings.maximumPerMinute)) return;
+            if (_dispatch.PendingCount == 0 && _newContacts.Count == 0 && now < _nextAmbient) return;
+            if (_dispatch.TryTake(now, _lastSpeakerId, _settings.categoryCooldown,
+                _validCandidate, _readyCandidate, out var operation))
+            {
+                Decide(operation, now);
+                return;
+            }
             bool ambient = now >= _nextAmbient;
+            ArmyData selected = null;
+            bool newContact = false;
             foreach (var army in _candidates)
             {
                 bool contact = _newContacts.Contains(army);
+                if (contact && now - _observations[army].ContactAt >= 6f)
+                { _newContacts.Remove(army); contact = false; }
                 if ((!contact && !ambient) || Busy(army) || IsReserved(army)
                     || !_cadence.CanSpeak(army.Id, now, _settings.armyCooldown) || !CanPresent(army, out _, out _)) continue;
-                float stationary = now - _observations[army].StationarySince;
-                bool waiting = _actor == _viewer && stationary >= Mathf.Max(1f, _settings.waitingSeconds);
-                var situation = ArmyRadioChatter.Situation(army, _contacts.Contains(army), _moved.Contains(army), waiting ? 1f : 0f);
-                string text;
-                ArmyData partner = null; int dialogue = -1;
-                bool quiet = !contact && !_contacts.Contains(army) && CanIdleFlavor(army)
-                    && stationary >= Mathf.Max(1f, _settings.waitingSeconds);
-                if (quiet && _exchange == null && ActiveCount() == 0 && Mathf.Min(_settings.maximumMessages, _views.Length) > 1
-                    && _random.NextDouble() < Mathf.Clamp01(_settings.dialogueChance)) partner = FindPartner(army, now);
-                if (partner != null)
-                { dialogue = NextDifferent(ArmyRadioChatter.DialogueCount, ref _lastDialogue); text = ArmyRadioChatter.Dialogue(dialogue, false); }
-                else if (quiet && stationary >= Mathf.Max(10f, _settings.jokeIdleSeconds)
-                    && _random.NextDouble() < Mathf.Clamp01(_settings.jokeChance))
-                    text = ArmyRadioChatter.Joke(NextDifferent(ArmyRadioChatter.JokeCount, ref _lastJoke));
-                else text = ArmyRadioChatter.Phrase(situation, _variations[(int)situation]++);
-                if (!Show(army, text, now)) continue;
-                _cadence.Spoke(army.Id, now, _settings.minimumGap);
-                _newContacts.Remove(army); _lastSpeakerId = army.Id;
-                _nextAmbient = now + Mathf.Max(5f, _settings.ambientInterval);
-                if (partner != null)
-                {
-                    _cadence.Reserve(partner.Id, now);
-                    _exchange = new Exchange { First = army, Second = partner,
-                        FirstUnit = ArmyRadioChatter.FirstUnit(army), SecondUnit = ArmyRadioChatter.FirstUnit(partner),
-                        FirstHex = army.Hex, SecondHex = partner.Hex, Variation = dialogue,
-                        ReplyAt = now + Mathf.Max(.5f, _settings.replyDelay),
-                        ExpiresAt = now + Mathf.Max(.5f, _settings.replyDelay) + 1.5f };
-                }
-                return;
+                float idle = now - _observations[army].StationarySince;
+                var stateSituation = CurrentSituation(army, now, _contacts.Contains(army));
+                var stateCategory = (ArmyRadioCategory)((int)ArmyRadioCategory.Contact + (int)stateSituation);
+                bool idleFlavor = _dispatch.PendingCount == 0 && !_contacts.Contains(army)
+                    && idle >= Mathf.Max(1f, _settings.waitingSeconds) && ArmyRadioChatter.CanIdleFlavor(army);
+                if (!_dispatch.CategoryReady(stateCategory, now, _settings.categoryCooldown)
+                    && (!idleFlavor || !_dispatch.CategoryReady(ArmyRadioCategory.Atmosphere, now, _settings.categoryCooldown))) continue;
+                // Preserve new-contact preference and speaker rotation without sorting the roster.
+                if (selected == null || (contact && !newContact)
+                    || (contact == newContact && PreferSpeaker(army, selected)))
+                { selected = army; newContact = contact; }
             }
-            if (ambient) _nextAmbient = now + 2f; // Retry briefly if every visible army is cooling down.
+            if (selected == null) { _cadence.Quiet(now, 1f); return; }
+            var speaker = selected;
+            float stationary = now - _observations[speaker].StationarySince;
+            bool hasContact = ArmyRadioChatter.SeesEnemy(speaker);
+            if (hasContact && _contacts.Add(speaker)) _observations[speaker].ContactAt = now;
+            if (!hasContact) { _contacts.Remove(speaker); _newContacts.Remove(speaker); }
+            if (newContact && !hasContact) { _cadence.Quiet(now, 1f); return; }
+            var situation = CurrentSituation(speaker, now, hasContact);
+            bool quiet = _dispatch.PendingCount == 0 && !hasContact && stationary >= Mathf.Max(1f, _settings.waitingSeconds)
+                && ArmyRadioChatter.CanIdleFlavor(speaker);
+            // Atmosphere is generated only in this open opportunity, never queued ahead of time.
+            var stateCategoryForSpeaker = (ArmyRadioCategory)((int)ArmyRadioCategory.Contact + (int)situation);
+            bool flavor = quiet && _dispatch.CategoryReady(ArmyRadioCategory.Atmosphere, now, _settings.categoryCooldown)
+                && (!_dispatch.CategoryReady(stateCategoryForSpeaker, now, _settings.categoryCooldown) || _random.NextDouble() < .5d);
+            var category = flavor ? ArmyRadioCategory.Atmosphere : (ArmyRadioCategory)((int)ArmyRadioCategory.Contact + (int)situation);
+            _newContacts.Remove(speaker); // One decision for this contact, including a refusal.
+            _nextAmbient = now + Mathf.Max(5f, _settings.ambientInterval);
+            _cadence.Quiet(now, _settings.minimumGap);
+            if (!_dispatch.CategoryReady(category, now, _settings.categoryCooldown)
+                || !ArmyRadioDispatch.Accept(_random.NextDouble(), ArmyRadioDispatch.Chance(category, _settings), _cadence.RecentCount(now))) return;
+            var candidate = new ArmyRadioCandidate(category, speaker, _viewer, null, speaker.Hex, now, 0f);
+            if (!IsCurrent(candidate)) return;
+            ArmyData partner = null; int dialogue = -1;
+            string text;
+            if (flavor && _exchange == null && ActiveCount() == 0 && _cadence.DensityReady(now, _settings.maximumPerMinute, 2)
+                && Mathf.Min(_settings.maximumMessages, _views.Length) > 1
+                && _random.NextDouble() < Mathf.Clamp01(_settings.dialogueChance)) partner = FindPartner(speaker, now);
+            if (partner != null)
+            {
+                dialogue = ChooseDialogue();
+                if (dialogue < 0) return;
+                text = ArmyRadioChatter.Dialogue(dialogue, false);
+            }
+            else if (flavor && stationary >= Mathf.Max(10f, _settings.jokeIdleSeconds)
+                && _random.NextDouble() < Mathf.Clamp01(_settings.jokeChance))
+                text = ChoosePhrase(ArmyRadioChatter.JokeCount, ArmyRadioChatter.Joke);
+            else if (flavor && speaker.IsAirArmy) text = ChoosePhrase(ArmyRadioChatter.PilotAmbientCount, ArmyRadioChatter.PilotAmbient);
+            else if (flavor) text = ChoosePhrase(ArmyRadioChatter.AmbientCount, ArmyRadioChatter.Ambient);
+            else text = ChoosePhrase(ArmyRadioChatter.PhraseCount(situation), i => ArmyRadioChatter.Phrase(situation, i));
+            if (text == null || !Show(speaker, text, now)) return;
+            RecordShown(candidate, text, now);
+            if (partner != null)
+            {
+                _cadence.Reserve(partner.Id, now);
+                _exchange = new Exchange { First = speaker, Second = partner,
+                    FirstUnit = ArmyRadioChatter.FirstUnit(speaker), SecondUnit = ArmyRadioChatter.FirstUnit(partner),
+                    FirstHex = speaker.Hex, SecondHex = partner.Hex, Variation = dialogue,
+                    ReplyAt = now + Mathf.Max(.5f, _settings.replyDelay),
+                    ExpiresAt = now + Mathf.Max(.5f, _settings.replyDelay) + 1.5f };
+            }
         }
-        private static bool CanIdleFlavor(ArmyData army)
+        private ArmyRadioSituation CurrentSituation(ArmyData army, float now, bool contact)
         {
-            if (army.IsAirArmy || StealthSystem.IsArmyFullyHidden(army)) return false;
-            foreach (var unit in army.Members)
-                if (unit != null && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax) return false;
-            return true;
+            float stationary = now - _observations[army].StationarySince;
+            bool waiting = _actor == _viewer && stationary >= Mathf.Max(1f, _settings.waitingSeconds);
+            var situation = ArmyRadioChatter.Situation(army, contact, _moved.Contains(army), waiting ? 1f : 0f);
+            // Activation alone is not arrival; do not recycle old arrival claims later in the turn.
+            if (situation == ArmyRadioSituation.Moving && (!_moved.Contains(army) || stationary >= 6f))
+                return waiting ? ArmyRadioSituation.Waiting : ArmyRadioSituation.Ready;
+            return situation;
         }
-        private int NextDifferent(int count, ref int previous)
+        private bool PreferSpeaker(ArmyData a, ArmyData b)
         {
-            int next = _random.Next(previous < 0 ? count : count - 1);
-            if (next >= previous && previous >= 0) next++;
-            previous = next; return next;
+            bool wrapA = a.Id <= _lastSpeakerId, wrapB = b.Id <= _lastSpeakerId;
+            return wrapA != wrapB ? !wrapA : a.Id < b.Id;
+        }
+        private string ChoosePhrase(int count, System.Func<int, string> phrase)
+        {
+            int start = _random.Next(count);
+            for (int i = 0; i < count; i++)
+            {
+                string text = phrase((start + i) % count);
+                if (!_dispatch.Recent(text)) return text;
+            }
+            return null;
+        }
+        private int ChooseDialogue()
+        {
+            int start = _random.Next(ArmyRadioChatter.DialogueCount);
+            for (int i = 0; i < ArmyRadioChatter.DialogueCount; i++)
+            {
+                int index = (start + i) % ArmyRadioChatter.DialogueCount;
+                if (!_dispatch.Recent(ArmyRadioChatter.Dialogue(index, false))
+                    && !_dispatch.Recent(ArmyRadioChatter.Dialogue(index, true))) return index;
+            }
+            return -1;
+        }
+        private void Decide(ArmyRadioCandidate candidate, float now)
+        {
+            _cadence.Quiet(now, _settings.minimumGap);
+            _nextAmbient = now + Mathf.Max(5f, _settings.ambientInterval);
+            if (!ArmyRadioDispatch.Accept(_random.NextDouble(), ArmyRadioDispatch.Chance(candidate.Category, _settings), _cadence.RecentCount(now))) return;
+            string text = ChoosePhrase(ArmyRadioChatter.OperationalPhraseCount(candidate.Category),
+                i => ArmyRadioChatter.OperationalPhrase(candidate.Category, i));
+            if (text != null && IsCurrent(candidate) && Show(candidate.Speaker, text, now)) RecordShown(candidate, text, now);
+        }
+        private void RecordShown(ArmyRadioCandidate candidate, string text, float now)
+        {
+            _dispatch.Shown(candidate.Category, text, now, _settings.recentPhraseHistorySize);
+            _cadence.Spoke(candidate.Speaker.Id, now, _settings.minimumGap);
+            _lastSpeakerId = candidate.Speaker.Id;
+            _retired.Clear();
+            foreach (var pair in _onAir) if (!Busy(pair.Key)) _retired.Add(pair.Key);
+            foreach (var army in _retired) _onAir.Remove(army);
+            _onAir[candidate.Speaker] = candidate;
         }
         private int ActiveCount() { int count = 0; foreach (var view in _views) if (view.Active) count++; return count; }
         private bool Busy(ArmyData army) { foreach (var view in _views) if (view.Speaker == army) return true; return false; }
@@ -212,7 +309,7 @@ namespace Game.UI
                 if (second != first && !Busy(second) && !_contacts.Contains(second)
                     && HexGridMath.Distance(first.Hex, second.Hex) == 1
                     && now - _observations[second].StationarySince >= Mathf.Max(1f, _settings.waitingSeconds)
-                    && CanIdleFlavor(second)
+                    && ArmyRadioChatter.CanIdleFlavor(second)
                     && _cadence.ArmyReady(second.Id, now, _settings.armyCooldown) && CanPresent(second, out _, out _)) return second;
             return null;
         }
@@ -222,15 +319,19 @@ namespace Game.UI
             if (exchange == null) return;
             bool firstSpeaking = false;
             foreach (var view in _views)
-                if (view.Speaker == exchange.First && !view.Timing.IsDismissing) firstSpeaking = true;
-            if (!firstSpeaking || now > exchange.ExpiresAt || _contacts.Contains(exchange.First) || _contacts.Contains(exchange.Second)
+                if (view.Active && view.Speaker == exchange.First && !view.Timing.IsDismissing) firstSpeaking = true;
+            if (!firstSpeaking || !ArmyRadioChatter.CanIdleFlavor(exchange.First) || !ArmyRadioChatter.CanIdleFlavor(exchange.Second) || now > exchange.ExpiresAt || _contacts.Contains(exchange.First) || _contacts.Contains(exchange.Second)
                 || !exchange.First.Hex.Equals(exchange.FirstHex) || !exchange.Second.Hex.Equals(exchange.SecondHex)
                 || ArmyRadioChatter.FirstUnit(exchange.First) != exchange.FirstUnit || ArmyRadioChatter.FirstUnit(exchange.Second) != exchange.SecondUnit
                 || !CanPresent(exchange.First, out _, out _) || !CanPresent(exchange.Second, out _, out _))
             { _exchange = null; return; }
-            if (now < exchange.ReplyAt || ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)) return;
-            if (!Show(exchange.Second, ArmyRadioChatter.Dialogue(exchange.Variation, true), now)) return;
-            _cadence.Spoke(exchange.Second.Id, now, _settings.minimumGap);
+            if (now < exchange.ReplyAt || !_cadence.DensityReady(now, _settings.maximumPerMinute) || ActiveCount() >= Mathf.Clamp(_settings.maximumMessages, 1, _views.Length)) return;
+            if (ArmyRadioChatter.SeesEnemy(exchange.First) || ArmyRadioChatter.SeesEnemy(exchange.Second))
+            { _exchange = null; Invalidate(); return; }
+            string reply = ArmyRadioChatter.Dialogue(exchange.Variation, true);
+            if (_dispatch.Recent(reply) || !Show(exchange.Second, reply, now)) { _exchange = null; return; }
+            RecordShown(new ArmyRadioCandidate(ArmyRadioCategory.Atmosphere, exchange.Second, _viewer,
+                null, exchange.Second.Hex, now, 0f), reply, now);
             _exchange = null;
         }
 
@@ -246,8 +347,9 @@ namespace Game.UI
                 if (army.Controller != null && army.Controller.IsMoving)
                 { _moved.Add(army); state.StationarySince = now; CancelExchangeFor(army); }
                 if (!state.Hex.Equals(army.Hex)) { state.Hex = army.Hex; state.StationarySince = now; }
-                bool contact = ArmyRadioChatter.SeesEnemy(army);
-                if (contact) { if (_contacts.Add(army)) _newContacts.Add(army); }
+                _samplingArmy = army;
+                bool contact = _dirty || _primeObservation ? ArmyRadioChatter.Observe(army, _observeBase) : _contacts.Contains(army);
+                if (contact) { if (_contacts.Add(army)) { _newContacts.Add(army); state.ContactAt = now; } }
                 else { _contacts.Remove(army); _newContacts.Remove(army); }
             }
             _retired.Clear();
@@ -255,23 +357,16 @@ namespace Game.UI
                 if (!ArmyRegistry.IsRegistered(pair.Key) || !ArmyRadioChatter.CanSpeak(pair.Key, _viewer)) _retired.Add(pair.Key);
             foreach (var army in _retired)
             {
-                _observations.Remove(army); _cadence.Forget(army.Id); _moved.Remove(army);
+                _observations.Remove(army); _cadence.Forget(army.Id); _moved.Remove(army); _sorties.Remove(army); _onAir.Remove(army); _exploredOnMove.Remove(army);
                 _contacts.Remove(army); _newContacts.Remove(army); CancelExchangeFor(army);
             }
-            _candidates.Sort((a, b) =>
-            {
-                int contact = _newContacts.Contains(b).CompareTo(_newContacts.Contains(a));
-                if (contact != 0) return contact;
-                int wrap = (a.Id <= _lastSpeakerId).CompareTo(b.Id <= _lastSpeakerId);
-                return wrap != 0 ? wrap : a.Id.CompareTo(b.Id);
-            });
+            _samplingArmy = null; _primeObservation = false;
         }
         private bool CanPresent(ArmyData army, out Vector2 anchor, out float markerRadius)
         {
             anchor = Vector2.zero; markerRadius = 0f;
             if (!ArmyRegistry.IsRegistered(army) || !ArmyRadioChatter.CanSpeak(army, _viewer)
-                || army.Controller == null || !army.Controller.isActiveAndEnabled || army.Controller.IsMoving
-                || army.Controller.Visual == null || ArmyRadioChatter.DetailArt(ArmyRadioChatter.FirstUnit(army)) == null
+                || !HasSpeakerVisual(army) || army.Controller.IsMoving
                 || !army.Controller.Visual.TryGetScreenAnchor(_camera, out var screen, out float pixels)) return false;
             if (!ScreenToLocal(screen, out anchor) || !SafeRect().Contains(anchor)) return false;
             markerRadius = pixels / Mathf.Max(.01f, _overlayCanvas.rootCanvas.scaleFactor); return true;
@@ -296,7 +391,8 @@ namespace Game.UI
             foreach (var view in _views)
             {
                 if (!view.Active) continue;
-                if (_viewer != VisionSystem.CurrentViewer || view.Unit != ArmyRadioChatter.FirstUnit(view.Speaker)
+                if ((_onAir.TryGetValue(view.Speaker, out var current) && !IsCurrent(current))
+                    || _viewer != VisionSystem.CurrentViewer || view.Unit != ArmyRadioChatter.FirstUnit(view.Speaker)
                     || !CanPresent(view.Speaker, out var anchor, out float radius)
                     || !view.Follow(SafeRect(), anchor, radius, _occupied, MessageScale()))
                 {
@@ -333,6 +429,10 @@ namespace Game.UI
         private void Clear()
         {
             _exchange = null;
+            ClearOperations();
+            foreach (var army in _observations.Keys) _cadence?.Forget(army.Id);
+            _observations.Clear(); _contacts.Clear(); _newContacts.Clear(); _moved.Clear(); _candidates.Clear();
+            _dirty = true;
             if (_views == null) return;
             foreach (var view in _views) if (view != null) view.Hide();
         }
