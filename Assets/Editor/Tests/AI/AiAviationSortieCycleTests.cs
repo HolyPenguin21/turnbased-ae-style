@@ -1117,6 +1117,122 @@ namespace Game.EditorTests
             finally { Object.DestroyImmediate(actorObject); Object.DestroyImmediate(mapObject); }
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void ReconDefenceHandoff_PreservesLandingAndBankUntilFundedExecution(bool launchPaid)
+        {
+            HexMap map = Line(2, out GameObject mapObject);
+            var actorObject = new GameObject("recon-defence-handoff");
+            MissionLeaseBook.BeginTurn(_owner, 1);
+            ReconAirSortieRegistry.ClearAll(); ReconPatrolStateRegistry.ClearAll();
+            AiMapMemory.Clear(); AiReconIntelMemory.Clear(); ReconIntelSnapshotRegistry.Clear();
+            try
+            {
+                using var estimates = WorthIt.OpenEstimateCacheScope();
+                Airfield(default, 2);
+                var target = new HexCoord(2, 0);
+                UnitData aircraft = Plane(1, 1); aircraft.SortieLaunchPaid = launchPaid;
+                ArmyData wing = Wing(new HexCoord(1, 0), aircraft);
+                wing.Controller = actorObject.AddComponent<ArmyController>();
+                var flight = new AirSortie { Army = wing, Kind = AirSortieKind.Recon,
+                    TargetHex = target, LandingHex = default, Outbound = true };
+                AirSortieRegistry.Add(_owner, flight);
+                var recon = ReconAirSortieRegistry.GetOrCreate(_owner, wing.Id, default);
+                recon.LastProcessedTurn = 1;
+                ReconPatrolStateRegistry.GetOrCreate(_owner, wing.Id, wing.Hex, target, ReconMode.Refresh, 1);
+                var enemy = new PlayerSetupData(); var roster = new[] { Profile(attack: 8, hp: 100) };
+                var contact = new EnemyContactSnapshot { Position = target, Knowledge = ContactKnowledge.Exact,
+                    LastObservedTurn = 1, Confidence = 1, Army = new ArmySnapshot { ArmyId = 7,
+                        Owner = enemy, Hex = target, Members = roster, MemberCount = 1, EffectiveArmyPower = 30 } };
+                var snap = new WorldSnapshot { Observer = _owner, TurnNumber = 1, Map = map,
+                    Self = new SelfSnapshot { BaseHexes = new[] { default(HexCoord) },
+                        Armies = new[] { new ArmySnapshot { ArmyId = wing.Id, Owner = _owner, Hex = wing.Hex,
+                            IsAir = true, MemberCount = 1, CurrentMovement = 6, MaxMovement = 6 } } },
+                    Known = new KnownSnapshot {
+                        EnemySightings = new[] { new AiMapMemory.KnownEnemySighting(target, enemy, "enemy", 1,
+                            8f, 8f, roster, false, 0, 0, 1, 7) },
+                        AirSightings = new[] { new AiMapMemory.KnownAirSighting(target, enemy, 1, true,
+                            new AviationCombatEstimator.DefendingAirArmy(7, roster, new[] { 0 })) } },
+                    Threat = new ThreatModel { Contacts = new[] { contact }, Threats = new[] {
+                        new AssetThreatSnapshot { Contact = contact, CanDamage = true, EnemyEta = 1,
+                            PotentialDamage = 1, Severity = 1, Confidence = 1,
+                            Asset = new StrategicAssetSnapshot { Kind = AssetKind.Citadel, Hex = default, Value = 10 } } } } };
+                var policy = AirStrikePolicy.DefenceSupport(7);
+                Assert.That(GroundCombatAirSupport.HasImmediateDefenceService(snap, wing, 7), Is.True);
+                Assert.That(GroundCombatAirSupport.HasImmediateDefenceService(snap, wing, 8), Is.False);
+                recon.Phase = ReconAirPhase.Return;
+                Assert.That(GroundCombatAirSupport.CanYieldReconSortie(_owner, wing, 1), Is.False);
+                recon.Phase = ReconAirPhase.Hold; recon.LastProcessedTurn = 0;
+                Assert.That(GroundCombatAirSupport.CanYieldReconSortie(_owner, wing, 1), Is.False,
+                    "an exhausted old Hold remains mandatory recovery");
+                Assert.That(recon.Phase, Is.EqualTo(ReconAirPhase.Hold), "phase projection is read-only");
+                recon.Phase = ReconAirPhase.Outbound; recon.LastProcessedTurn = 1;
+                flight.Kind = AirSortieKind.Rebase;
+                Assert.That(GroundCombatAirSupport.CanYieldReconSortie(_owner, wing, 1), Is.False);
+                flight.Kind = AirSortieKind.Recon;
+                var proposals = new List<MissionProposal>();
+                typeof(AggressionMissionLayer).GetMethod("AppendActiveDefenceAirSupport",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null,
+                    new object[] { snap, System.Array.Empty<MissionIntent>(), new HashSet<int>(), proposals, null });
+                Assert.That(proposals.Single().PreferredMoverArmyId, Is.EqualTo(wing.Id));
+                Assert.That(GroundCombatAirSupport.Options(snap,
+                    new[] { new WorthIt.DefendingArmy(roster, default, armyId: 7) }, target,
+                    AirStrikePolicy.Standard, null, 0f, null), Is.Empty, "Attack cannot borrow a Recon flight");
+                using var session = new ProvisioningSession(snap);
+                Assert.That(GroundCombatAirSupport.TryResolveWing(_owner, session, wing.Id, "active-defence",
+                    out var resolved, out _, defenceHandoffEnemyId: 7), Is.True);
+                var funded = new FundedEntry { Mission = proposals.Single(),
+                    Tentative = new ResourceVector(1), PhysicalDraw = new ResourceVector(0, 0, 1, 0, 0) };
+                Root().ActionPoints = 0;
+                var ctx = new AiTurnContext { Map = map, TurnNumber = 1 };
+                bool Probe(out HexCoord landing) => GroundCombatAirSupport.TryFinishWing(_owner, _root,
+                    ctx, session, funded, resolved, target, "active-defence", AiConfigV2.allocatorSliceEpsilon,
+                    out landing, out _, out _, out _);
+                Assert.That(Probe(out _), Is.EqualTo(launchPaid), "live AP/energy, not snapshot budget");
+                Assert.That(flight.Kind, Is.EqualTo(AirSortieKind.Recon));
+                Assert.That(flight.LandingHex, Is.EqualTo(default(HexCoord)));
+                Assert.That(ReconAirSortieRegistry.TryGet(_owner, wing.Id, out var before), Is.True);
+                Assert.That(before, Is.SameAs(recon));
+                Root().ActionPoints = 1; _root.AddResource(ResourceType.Energy, 1);
+                MissionLeaseBook.Upsert(_owner, 1, new StrategicResourceReservation {
+                    Identity = ReservationOwner.ForPass("other-reaction"), Reason = StrategicReservationReason.StrategicReactionPass,
+                    Resource = StrategicReservedResource.Energy, Amount = 1,
+                    ExpirationStage = StrategicReservationExpiry.EndOfReaction });
+                Assert.That(Probe(out _), Is.EqualTo(launchPaid), "other owner's energy hold remains protected");
+                MissionLeaseBook.ReleaseByOwner(_owner, 1, "other-reaction");
+                Assert.That(Probe(out HexCoord landing), Is.True, "released hold is visible immediately");
+                aircraft.HasAirAttackedThisTurn = true;
+                Assert.That(GroundCombatAirSupport.HasImmediateDefenceService(snap, wing), Is.False,
+                    "the same snapshot must not cache the wing's spent strike");
+                aircraft.HasAirAttackedThisTurn = false;
+                int version = WorldDeltaLifecycle.Current;
+                var pm = new ProvisionedMission { MoverArmyId = wing.Id, Kind = MissionKind.ActiveDefence,
+                    Mission = funded.Mission, ActiveDefenceTarget = (ActiveDefenceMissionTarget)funded.Mission.Target };
+                var result = new ExecutionResult();
+                var execution = GroundCombatLegStep.AirStrikeSortie(_owner, _root, ctx, pm, result,
+                    wing, target, landing, policy, "DefenceSupport", "handoff-test");
+                execution.MoveNext(); // stop before executing the nested movement command
+                (execution as System.IDisposable)?.Dispose();
+                Assert.That(AirSortieRegistry.For(_owner), Has.Count.EqualTo(1));
+                Assert.That(AirSortieRegistry.ForArmy(_owner, wing), Is.SameAs(flight));
+                Assert.That(flight.Kind, Is.EqualTo(AirSortieKind.Strike));
+                Assert.That(flight.LandingHex, Is.EqualTo(landing));
+                Assert.That(aircraft.SortieLaunchPaid, Is.EqualTo(launchPaid));
+                Assert.That(_root.ActionPoints, Is.EqualTo(1));
+                Assert.That(_root.GetResource(ResourceType.Energy), Is.EqualTo(1));
+                Assert.That(ReconAirSortieRegistry.TryGet(_owner, wing.Id, out _), Is.False);
+                Assert.That(ReconPatrolStateRegistry.TryGet(_owner, wing.Id, out _), Is.False);
+                Assert.That(result.StateVersionAfter, Is.EqualTo(version + 1));
+            }
+            finally
+            {
+                MissionLeaseBook.ExpireStage(_owner, 1, StrategicReservationExpiry.EndOfReaction);
+                ReconAirSortieRegistry.ClearAll(); ReconPatrolStateRegistry.ClearAll();
+                AiMapMemory.Clear(); AiReconIntelMemory.Clear(); ReconIntelSnapshotRegistry.Clear();
+                Object.DestroyImmediate(actorObject); Object.DestroyImmediate(mapObject);
+            }
+        }
+
         [Test]
         public void CombatCoverage_UsesJointLandingCapacity_WithoutPublishingClaims()
         {

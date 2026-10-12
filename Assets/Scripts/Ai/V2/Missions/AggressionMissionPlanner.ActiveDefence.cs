@@ -260,7 +260,9 @@ namespace Game.Ai.V2
             var unavailable = new HashSet<int>(committed ?? (ISet<int>)new HashSet<int>());
             foreach (ArmySnapshot w in snap.Self.Armies)
                 if (w != null && w.IsAir && AirSortieRegistry.ForArmy(snap.Observer,
-                        AiV2Util.ResolveArmy(snap.Observer, w.ArmyId)) != null)
+                        AiV2Util.ResolveArmy(snap.Observer, w.ArmyId)) != null
+                    && !GroundCombatAirSupport.HasImmediateDefenceService(snap,
+                        AiV2Util.ResolveArmy(snap.Observer, w.ArmyId)))
                     unavailable.Add(w.ArmyId);
 
             foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap)

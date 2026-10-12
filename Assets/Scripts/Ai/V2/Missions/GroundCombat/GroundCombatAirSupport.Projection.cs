@@ -39,16 +39,33 @@ namespace Game.Ai.V2
 
     internal static partial class GroundCombatAirSupport
     {
+        // The physical Recon flight can change owners without losing its paid launch or
+        // reserving a second landing. Return/Turning and an exhausted old Hold stay recovery.
+        internal static bool CanYieldReconSortie(PlayerSetupData player, ArmyData wing, int turn)
+        {
+            AirSortie active = AirSortieRegistry.ForArmy(player, wing);
+            if (active?.Kind != AirSortieKind.Recon || !active.Outbound
+                || !ReconAirSortieRegistry.TryGet(player, wing.Id, out ReconAirSortieState state))
+                return false;
+            ReconAirPhase phase = ReconAirSortieLifecycle.PhaseAfterHold(state.Phase,
+                state.LastProcessedTurn != turn, AviationRange.SafeUnlandedEndsRemaining(wing));
+            return phase == ReconAirPhase.Outbound || phase == ReconAirPhase.Hold;
+        }
+
         // Recon may yield an already formed wing only to a known, useful strike THIS turn
         // against an imminent base threat. Route, damage and endurance have one existing owner.
         // No resource is reserved here; allocation/provisioning still fund and revalidate it.
-        internal static bool HasImmediateDefenceService(WorldSnapshot snap, ArmyData wing)
+        internal static bool HasImmediateDefenceService(WorldSnapshot snap, ArmyData wing,
+            int? enemyArmyId = null)
         {
             if (snap?.Map == null || wing == null || wing.CurrentMovement <= 0
-                || AirSortieRegistry.ForArmy(snap.Observer, wing) != null)
+                || (AirSortieRegistry.ForArmy(snap.Observer, wing) != null
+                    && !CanYieldReconSortie(snap.Observer, wing, snap.TurnNumber)))
                 return false;
             foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
             {
+                if (enemyArmyId.HasValue && objective.Target.EnemyArmyId != enemyArmyId.Value)
+                    continue;
                 if (!objective.Target.EnemyEta.HasValue
                     || objective.Target.EnemyEta.Value > AiConfigV2.activeDefenceWithdrawMaxEnemyEta)
                     continue;

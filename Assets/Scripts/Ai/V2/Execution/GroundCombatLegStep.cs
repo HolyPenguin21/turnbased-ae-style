@@ -83,6 +83,21 @@ namespace Game.Ai.V2
             string flyReason)
         {
             AirSortie sortie = AirSortieRegistry.ForArmy(player, wing);
+            bool starting = sortie == null;
+            bool reconHandoff = sortie?.Kind == AirSortieKind.Recon
+                && policy.Kind == AirStrikePolicyKind.DefenceSupport
+                && GroundCombatAirSupport.CanYieldReconSortie(player, wing, ctx.TurnNumber);
+            if (reconHandoff)
+            {
+                // Provisioning proved the exact defence service and landing. Change the
+                // existing physical record atomically; retain member SortieLaunchPaid flags.
+                sortie.Kind = AirSortieKind.Strike;
+                sortie.TargetHex = targetHex;
+                sortie.LandingHex = landingHex;
+                sortie.Outbound = true;
+                sortie.HeldTurn = null;
+                WorldDeltaLifecycle.RecordExecutionMutation(result, true);
+            }
             if (sortie == null)
             {
                 sortie = new AirSortie
@@ -93,6 +108,9 @@ namespace Game.Ai.V2
                     Outbound = true,
                 };
                 AirSortieRegistry.Add(player, sortie);
+            }
+            if (reconHandoff || starting)
+            {
                 // A funded combat sortie now owns the wing. Drop Recon's coverage/heading
                 // bookkeeping only here, after handoff, never during read-only nomination.
                 ReconAirSortieRegistry.Retire(player, wing.Id);
