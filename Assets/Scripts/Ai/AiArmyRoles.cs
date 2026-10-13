@@ -436,7 +436,13 @@ namespace Game.Ai
         // one hero a local facility depends on.
         public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison,
             System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
-            BestSparableHero(player, garrison, null, preparationSite);
+            EconomyHeroCandidates(player, garrison, preparationSite).FirstOrDefault();
+
+        internal static IEnumerable<UnitData> EconomyHeroCandidates(PlayerSetupData player,
+            ArmyData garrison, System.Func<ResearchProductionMode, HexCoord?> preparationSite = null) =>
+            SparableHeroes(player, garrison, null, preparationSite)
+                .OrderBy(u => IsGarrisonHero(u) || HeroRoleEvaluator.HasSupportVocation(u))
+                .ThenByDescending(u => u.MoveMax).ThenByDescending(u => u.CommandRating).ThenBy(u => u.Name);
 
         // Development and Economy use the SAME garrison protection and extraction eligibility.
         // The role filter only narrows the candidates; it cannot bypass the source's active
@@ -448,23 +454,23 @@ namespace Game.Ai
         private static UnitData BestSparableHero(PlayerSetupData player, ArmyData garrison,
             string requiredRole, System.Func<ResearchProductionMode, HexCoord?> preparationSite = null)
         {
-            if (player == null || garrison == null || !garrison.IsGarrison)
-                return null;
+            return SparableHeroes(player, garrison, requiredRole, preparationSite)
+                .OrderBy(u => requiredRole == null && IsGarrisonHero(u))
+                .ThenByDescending(u => u.MoveMax).ThenByDescending(u => u.CommandRating)
+                .ThenBy(u => u.Name).FirstOrDefault();
+        }
 
-            // Facility operators are refused by CanSpareGarrisonMember itself.
+        private static IEnumerable<UnitData> SparableHeroes(PlayerSetupData player, ArmyData garrison,
+            string requiredRole, System.Func<ResearchProductionMode, HexCoord?> preparationSite)
+        {
+            if (player == null || garrison == null || !garrison.IsGarrison)
+                return Enumerable.Empty<UnitData>();
             return garrison.Members
                 .Where(u => u != null && u.IsHero
                     && (requiredRole == null || u.HasAbility(requiredRole))
                     && CanSpareGarrisonMember(player, garrison, u)
                     && (requiredRole != null || !FacilityNeedsHero(player, garrison, u,
-                        preparationSite, new[] { u })))
-                // A garrison hero leaves for Economy only when no other hero qualifies; Development
-                // (a required role) asks for exactly those heroes.
-                .OrderBy(u => requiredRole == null && IsGarrisonHero(u))
-                .ThenByDescending(u => u.MoveMax)
-                .ThenByDescending(u => u.CommandRating)
-                .ThenBy(u => u.Name)
-                .FirstOrDefault();
+                        preparationSite, new[] { u })));
         }
 
         // The best Recce-capable, non-aviation unit or hero Recon may pull straight out of

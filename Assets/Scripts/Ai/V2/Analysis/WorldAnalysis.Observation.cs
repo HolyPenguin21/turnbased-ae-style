@@ -469,7 +469,8 @@ namespace Game.Ai.V2
                 .Select(r => $"{r.ArmyId}"
                     + $"{(r.HasActiveEconomyCommitment ? "c" : "")}"
                     + $"{(r.IsOnTarget ? "t" : "")}"
-                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}")
+                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}:hero={r.BuilderHeroRuntimeId}"
+                    + $":homeRole={r.BuilderHasHomeVocation}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"{(int)site.ResourceType}:{site.EffectiveYield}:"
                 + $"{site.CurrentBuildingCollection}:{site.MarginalIncomeGain}:[{actors}]"
@@ -492,7 +493,8 @@ namespace Game.Ai.V2
                 .Select(r => $"{r.ArmyId}"
                     + $"{(r.HasActiveEconomyCommitment ? "c" : "")}"
                     + $"{(r.IsOnTarget ? "t" : "")}"
-                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}")
+                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}:hero={r.BuilderHeroRuntimeId}"
+                    + $":homeRole={r.BuilderHasHomeVocation}")
                 .OrderBy(x => x, System.StringComparer.Ordinal));
             return $"{site.HexYield.Human.ToString("R", CultureInfo.InvariantCulture)}:"
                 + $"{site.HexYield.Energy.ToString("R", CultureInfo.InvariantCulture)}:"

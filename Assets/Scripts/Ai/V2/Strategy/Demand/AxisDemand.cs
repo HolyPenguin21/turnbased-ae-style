@@ -118,6 +118,7 @@ namespace Game.Ai.V2
         // in TaskScore units (delivery + mover opportunity). A new-hero chain is admitted only when
         // its own card price plus delivery is lower. Null — no ready hero to compare against.
         public float? EconomyReadyDeliveryCost;
+        public bool EconomyReadyBuilderIsSupport;
         public bool IsEconomyNewHeroAlternative => EconomyReadyDeliveryCost.HasValue;
         // Analysis-owned structural routes for the selected site. Demand applies intent/commitment
         // policy; no downstream stage has to query Provisioning or live registries to rediscover it.

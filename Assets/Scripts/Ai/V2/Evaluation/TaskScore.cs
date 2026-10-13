@@ -458,6 +458,11 @@ namespace Game.Ai.V2
             return quality * AiConfigV2.taskScoreProximityMax;
         }
 
+        internal static float ExtractionProximity(int nearestHomeDistance) =>
+            OwnTerritoryProximity(nearestHomeDistance)
+            - Mathf.Max(0, nearestHomeDistance - AiConfigV2.economyExtractionHomeRadius)
+                * AiConfigV2.economyExtractionDistanceCostPerHex;
+
         // ActiveDefence's proximity: the common signed slope, steepened past the leash radius so
         // a pursuit far from home loses its desire gradually (no hard gate).
         internal static float ActiveDefenceProximity(int nearestHomeDistance) =>

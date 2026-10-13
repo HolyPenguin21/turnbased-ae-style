@@ -65,7 +65,7 @@ namespace Game.Ai.V2
             IsHeroCard(hero) && SupportVocation(
                 a => hero.grantedAbilities != null && hero.grantedAbilities.Contains(a), hero.moveMax);
 
-        private static bool SupportVocation(Func<string, bool> hasAbility, int moveMax) =>
+        internal static bool SupportVocation(Func<string, bool> hasAbility, int moveMax) =>
             hasAbility(UnitAbilities.Researcher) || hasAbility(UnitAbilities.Assembler)
             || hasAbility(UnitAbilities.ApBonus)
             || moveMax <= AiConfigV2.homeHeroMoveMaxThreshold;

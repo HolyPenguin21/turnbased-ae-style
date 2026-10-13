@@ -98,6 +98,15 @@ namespace Game.Ai.V2
                 builderRoutes, activeIntents, commitments,
                 demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                 demand.EconomyBuildApCost, includeReturn: !foundBase);
+            if (DemandLayer.EconomyBuilderIsSupport(choice))
+            {
+                var ordinary = DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
+                    witnessed, activeIntents, commitments,
+                    demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
+                    demand.EconomyBuildApCost, includeReturn: !foundBase);
+                if (ordinary != null && !DemandLayer.EconomyBuilderIsSupport(ordinary))
+                    return null;
+            }
             if (choice != null || prepared == null)
                 return choice;
             // This actor was legitimately prepared FOR Economy, not taken from an existing fist.
@@ -209,6 +218,7 @@ namespace Game.Ai.V2
                     ready.EconomyPreferredBuilderArmyId = builderId;
                     ready.EconomyBuilderRoutes = routes;
                     ready.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
+                    ready.EconomyReadyBuilderIsSupport = DemandLayer.EconomyBuilderIsSupport(choice);
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.
                     MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
@@ -224,6 +234,7 @@ namespace Game.Ai.V2
                     EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                         player, ctx.TurnNumber, delivery);
                     demand.EconomyPreferredBuilderArmyId = builderId;
+                    demand.EconomyReadyBuilderIsSupport = DemandLayer.EconomyBuilderIsSupport(choice);
                     delivered = 1f;
                     break;
                 }

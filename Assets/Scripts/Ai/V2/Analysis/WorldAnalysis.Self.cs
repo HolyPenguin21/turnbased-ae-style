@@ -499,7 +499,7 @@ namespace Game.Ai.V2
                 HeroMoveMax = a.Members.Where(u => u.IsHero)
                     .Select(u => u.MoveMax).DefaultIfEmpty(a.MaxMovement).Min(),
                 HeroIsHomeVocation = a.Members.Where(u => u.IsHero)
-                    .Any(HeroRoleEvaluator.HasSupportVocation),
+                    .Any(u => AiArmyRoles.IsGarrisonHero(u) || HeroRoleEvaluator.HasSupportVocation(u)),
                 HasResearchOperator = a.Members.Any(u => u.IsHero && !u.IsPrisoner
                     && u.HasAbility(UnitAbilities.Researcher)),
                 HasProductionOperator = a.Members.Any(u => u.IsHero && !u.IsPrisoner
