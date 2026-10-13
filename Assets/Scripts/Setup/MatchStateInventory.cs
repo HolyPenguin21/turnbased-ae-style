@@ -30,15 +30,19 @@ namespace Game.Setup
     {
         public string TypeName { get; }
         public MatchStateKind Kind { get; }
-        // Clears the holder for a new match. Null when ResetNote names who does it instead.
+        // Clears the holder for a new match. Null when another entry's Reset clears it
+        // (ResetBy, a type name in this table) or an owner outside the table does (ResetNote).
         public Action Reset { get; }
+        public string ResetBy { get; }
         public string ResetNote { get; }
 
-        internal MatchStateEntry(string typeName, MatchStateKind kind, Action reset = null, string resetNote = null)
+        internal MatchStateEntry(string typeName, MatchStateKind kind, Action reset = null,
+            string resetBy = null, string resetNote = null)
         {
             TypeName = typeName;
             Kind = kind;
             Reset = reset;
+            ResetBy = resetBy;
             ResetNote = resetNote;
         }
 
@@ -53,15 +57,21 @@ namespace Game.Setup
     //  The checklist a save/load feature works from (World + AiMemory + IdentitySequence are what a
     //  save writes) and the one place a new match is reset. MatchStateInventoryTests fails when a
     //  type gains static state without an entry here, or an entry outlives its state.
-    //  Entries with a Reset run in table order (the order the setup scene always used); wiring
-    //  that needs the live map or config (VisionSystem.Configure, StealthSystem providers,
+    //  Entries with a Reset run in table order; no Clear raises an event, and wiring that needs
+    //  the live map or config (VisionSystem.Configure, StealthSystem providers,
     //  AiMapMemory.EnsureSubscribed) is done by CitadelSetupController right after.
+    //
+    //  Only STATIC state is listed. A save also needs the instance state the World registries do
+    //  not reach: HexMap terrain (HexMap._hexData), the turn position in GameTurnController
+    //  (TurnNumber, current player index, game over), each PlayerRoot (AP, stock, initiative
+    //  dice) and PlayerSetupData (elimination, citadel hex). Objects the registries hold
+    //  (ArmyData, UnitData, BuildingData, AiHandData) are written with them.
     // ===========================================================================================
     public static class MatchStateInventory
     {
-        private const string ByVisionClear = "VisionSystem.Clear";
-        private const string ByReconClear = "AiReconMemory.Clear";
-        private const string ByIntentClear = "MissionIntentRegistry.Clear";
+        private const string ByVision = "Game.Map.VisionSystem";
+        private const string ByRecon = "Game.Ai.V2.AiReconMemory";
+        private const string ByIntents = "Game.Ai.V2.MissionIntentRegistry";
 
         public static readonly IReadOnlyList<MatchStateEntry> All = new[]
         {
@@ -71,13 +81,15 @@ namespace Game.Setup
             World("Game.Map.HexEventRegistry", HexEventRegistry.Clear),
             World("Game.Map.ArmyRegistry", ArmyRegistry.Clear),
             World("Game.Map.PlayerRootRegistry", PlayerRootRegistry.Clear),
-            Turn("Game.Aviation.AntiAirState", AntiAirState.Clear),
+            // Spent until the AA unit's OWNER starts a turn, so it survives other players' turns.
+            World("Game.Aviation.AntiAirState", AntiAirState.Clear),
+            // Resolved before the next ROUND, so pending between the players' turns of a round.
             // Coordinate-keyed: a leftover entry would report a pending battle at that hex in a
             // brand new game and be drained against the previous session's armies.
-            Turn("Game.Combat.DelayedBattleRegistry", DelayedBattleRegistry.Clear),
+            World("Game.Combat.DelayedBattleRegistry", DelayedBattleRegistry.Clear),
             World("Game.Ai.AiHandRegistry", AiHandRegistry.Clear),
             World("Game.Map.VisionSystem", VisionSystem.Clear),
-            new MatchStateEntry("Game.Map.HumanVisualMemory", MatchStateKind.World, resetNote: ByVisionClear),
+            new MatchStateEntry("Game.Map.HumanVisualMemory", MatchStateKind.World, resetBy: ByVision),
             World("Game.Map.StealthSystem", StealthSystem.Clear),
             World("Game.Turns.InitiativePublicHistory", InitiativePublicHistory.Clear),
             new MatchStateEntry("Game.Core.GameSession", MatchStateKind.World,
@@ -90,13 +102,13 @@ namespace Game.Setup
             Memory("Game.Ai.V2.ForceBaselineRegistry", ForceBaselineRegistry.Clear),
             Memory("Game.Ai.V2.PreparationDeliveryMemory", PreparationDeliveryMemory.Clear),
             Memory("Game.Ai.V2.AiReconMemory", AiReconMemory.Clear),
-            new MatchStateEntry("Game.Ai.V2.AiReconIntelMemory", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.ReconIntelSnapshotRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.ReconPatrolStateRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.ReconAirSortieRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.AirReconCoverageRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.ReconCapacityDeficitRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
-            new MatchStateEntry("Game.Ai.V2.ScoutTrailRegistry", MatchStateKind.AiMemory, resetNote: ByReconClear),
+            new MatchStateEntry("Game.Ai.V2.AiReconIntelMemory", MatchStateKind.AiMemory, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.ReconIntelSnapshotRegistry", MatchStateKind.TurnScoped, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.ReconPatrolStateRegistry", MatchStateKind.AiMemory, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.ReconAirSortieRegistry", MatchStateKind.AiMemory, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.AirReconCoverageRegistry", MatchStateKind.AiMemory, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.ReconCapacityDeficitRegistry", MatchStateKind.AiMemory, resetBy: ByRecon),
+            new MatchStateEntry("Game.Ai.V2.ScoutTrailRegistry", MatchStateKind.AiMemory, resetBy: ByRecon),
             Memory("Game.Ai.V2.ResourceStarvationRegistry", ResourceStarvationRegistry.Clear),
             Memory("Game.Ai.V2.DevelopmentInvestmentGate", DevelopmentInvestmentGate.Clear),
             Memory("Game.Ai.V2.AiAllocatorStateRegistry", AiAllocatorStateRegistry.Clear),
@@ -116,8 +128,8 @@ namespace Game.Setup
             Turn("Game.Ai.V2.StrategicResourceReservationLedger", StrategicResourceReservationLedger.ClearAll),
             Turn("Game.Ai.V2.ReservationInvariants", ReservationInvariants.ClearAll),
             Turn("Game.Ai.V2.StrategicTempoBudget", StrategicTempoBudget.ClearAll),
-            new MatchStateEntry("Game.Ai.V2.AiTurnSession", MatchStateKind.TurnScoped, resetNote: ByIntentClear),
-            new MatchStateEntry("Game.Ai.V2.ReconTurnStateStore", MatchStateKind.TurnScoped, resetNote: ByIntentClear),
+            new MatchStateEntry("Game.Ai.V2.AiTurnSession", MatchStateKind.TurnScoped, resetBy: ByIntents),
+            new MatchStateEntry("Game.Ai.V2.ReconTurnStateStore", MatchStateKind.TurnScoped, resetBy: ByIntents),
             new MatchStateEntry("Game.Ai.V2.WorldDeltaLifecycle", MatchStateKind.TurnScoped,
                 resetNote: "monotonic revision counters; the mutation transaction closes with its step"),
             new MatchStateEntry("Game.Ai.V2.GroundCombatAdmissionRegistry", MatchStateKind.Scoped),
@@ -125,7 +137,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Scoped),
 
             // --- identities ------------------------------------------------------------------------
-            new MatchStateEntry("Game.Map.ArmyData", MatchStateKind.IdentitySequence, resetNote: "ArmyRegistry.Clear"),
+            new MatchStateEntry("Game.Map.ArmyData", MatchStateKind.IdentitySequence, resetBy: "Game.Map.ArmyRegistry"),
             new MatchStateEntry("Game.Units.UnitData", MatchStateKind.IdentitySequence),
             new MatchStateEntry("Game.Cards.CardData", MatchStateKind.IdentitySequence),
 
@@ -134,7 +146,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.AiV2Trace", MatchStateKind.Diagnostics, AiV2Trace.Clear),
             new MatchStateEntry("Game.Ai.V2.ApBudgetTelemetry", MatchStateKind.Diagnostics, ApBudgetTelemetry.ClearAll),
             new MatchStateEntry("Game.Ai.V2.DevelopmentOutcomeTelemetry", MatchStateKind.Diagnostics, DevelopmentOutcomeTelemetry.ClearAll),
-            new MatchStateEntry("Game.Ai.V2.ReconAcceptanceAudit", MatchStateKind.Diagnostics, resetNote: ByReconClear),
+            new MatchStateEntry("Game.Ai.V2.ReconAcceptanceAudit", MatchStateKind.Diagnostics, resetBy: ByRecon),
             new MatchStateEntry("Game.Ai.AiDebugLog", MatchStateKind.Diagnostics),
             new MatchStateEntry("Game.Ai.AiMatchStats", MatchStateKind.Diagnostics),
             new MatchStateEntry("Game.Combat.BattleDebugLog", MatchStateKind.Diagnostics),
@@ -171,7 +183,6 @@ namespace Game.Setup
             new MatchStateEntry("Game.Progression.ProgressionContext", MatchStateKind.Profile),
             new MatchStateEntry("Game.Campaign.CampaignMatchBridge", MatchStateKind.Profile),
             new MatchStateEntry("Game.Ai.V2.StrategicEffectRegistry", MatchStateKind.Constant),
-            new MatchStateEntry("Game.Ai.V2.MissionContinuityLayer", MatchStateKind.Constant),
         };
 
         public static readonly IReadOnlyDictionary<string, MatchStateEntry> ByType =

@@ -70,7 +70,7 @@ namespace Game.Ai.V2
         internal static bool IsMobilizationHeld(PlayerSetupData player, int turn) =>
             player != null && MobilizationHoldUntil.TryGetValue(player, out int until) && turn <= until;
 
-        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll()
         {
             SettledTurn.Clear();

@@ -11,7 +11,7 @@ namespace Game.Ai.V2
     //  turns compare P_deck against it to see how much of the starting force is gone.
     //
     //  Written once per player by the pipeline right after the turn's scan; Analysis only reads
-    //  it. Cleared with the other V2 registries in CitadelSetupController.
+    //  it. Cleared at match start by MatchStateInventory.ResetForNewMatch.
     // ===========================================================================================
     public static class ForceBaselineRegistry
     {

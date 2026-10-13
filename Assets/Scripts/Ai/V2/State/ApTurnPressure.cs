@@ -50,7 +50,7 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, List<(int Turn, float Demand)>> ByPlayer =
             new Dictionary<PlayerSetupData, List<(int, float)>>();
 
-        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
 
         internal static ApTurnMeasure Measure(PlayerSetupData player, PlayerRoot root, AiHandData hand,

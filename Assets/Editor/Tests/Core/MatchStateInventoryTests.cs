@@ -19,30 +19,37 @@ namespace Game.EditorTests
             { typeof(string), typeof(Type), typeof(System.Text.RegularExpressions.Regex) };
 
         // A readonly field whose value cannot change after type initialization holds no state.
-        private static bool IsConstantTable(FieldInfo f)
+        private static bool IsConstantTable(FieldInfo f) => f.IsInitOnly && IsImmutable(f.FieldType, 0);
+
+        // Conventions: arrays of immutable elements and IReadOnly* views are constant tables (the
+        // project never writes into them); a delegate is a constant function. A class is immutable
+        // only when every instance field is readonly and itself immutable; a struct reached through
+        // a readonly field cannot be reassigned, but its reference members still can be mutated.
+        private static bool IsImmutable(Type t, int depth)
         {
-            if (!f.IsInitOnly) return false;
-            Type t = f.FieldType;
-            if (t.IsPrimitive || t.IsEnum || ImmutableElements.Contains(t)) return true;
-            if (t.IsValueType) return true; // readonly struct copy: callers cannot mutate the field
+            if (t.IsPrimitive || t.IsEnum || ImmutableElements.Contains(t) || typeof(Delegate).IsAssignableFrom(t))
+                return true;
             if (t.IsArray)
-            {
-                Type e = t.GetElementType();
-                return e.IsPrimitive || e.IsEnum || ImmutableElements.Contains(e) || e.IsValueType
-                    || (e.IsArray && (e.GetElementType() == typeof(string)));
-            }
+                return IsImmutable(t.GetElementType(), depth + 1);
             if (t.IsGenericType)
             {
                 Type g = t.GetGenericTypeDefinition();
                 if (g == typeof(IReadOnlyDictionary<,>) || g == typeof(IReadOnlyList<>)
                     || g == typeof(IReadOnlyCollection<>))
                     return true;
+                if (g == typeof(Nullable<>))
+                    return IsImmutable(t.GetGenericArguments()[0], depth + 1);
+                if (g == typeof(ConditionalWeakTable<,>))
+                    return false;
             }
-            // Immutable reference values (comparers, sentinel instances) declare no mutable fields.
-            return !typeof(IEnumerable).IsAssignableFrom(t)
-                && !(t.IsGenericType && t.GetGenericTypeDefinition() == typeof(ConditionalWeakTable<,>))
-                && t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
-                    .All(x => x.IsInitOnly);
+            if (typeof(IEnumerable).IsAssignableFrom(t))
+                return false;
+            if (t.IsInterface || t.IsAbstract)
+                return true; // comparers and strategies typed by their contract
+            if (depth > 4)
+                return false;
+            return t.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                .All(x => (t.IsValueType || x.IsInitOnly) && IsImmutable(x.FieldType, depth + 1));
         }
 
         internal static List<(Type Owner, FieldInfo Field)> StatefulStatics()
@@ -54,7 +61,6 @@ namespace Game.EditorTests
                 if (type.Namespace == null || !type.Namespace.StartsWith("Game", StringComparison.Ordinal)
                     || type.Namespace.StartsWith("Game.EditorTests", StringComparison.Ordinal)) continue;
                 if (type.IsDefined(typeof(CompilerGeneratedAttribute), false)) continue;
-                if (type.IsGenericTypeDefinition) continue;
                 foreach (FieldInfo f in type.GetFields(BindingFlags.Static | BindingFlags.Public
                              | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
                 {
@@ -102,9 +108,84 @@ namespace Game.EditorTests
         public void PerMatchStateIsResetOrNamesItsReset()
         {
             var missing = MatchStateInventory.All
-                .Where(e => e.RequiresMatchReset && e.Reset == null && string.IsNullOrWhiteSpace(e.ResetNote))
+                .Where(e => e.RequiresMatchReset && e.Reset == null && e.ResetBy == null
+                    && string.IsNullOrWhiteSpace(e.ResetNote))
                 .Select(e => e.TypeName).ToList();
             Assert.That(missing, Is.Empty);
+        }
+
+        [Test]
+        public void ResetByNamesAnEntryThatResets()
+        {
+            var broken = MatchStateInventory.All
+                .Where(e => e.ResetBy != null && (!MatchStateInventory.ByType.TryGetValue(e.ResetBy, out var by)
+                    || by.Reset == null))
+                .Select(e => e.TypeName + " -> " + e.ResetBy).ToList();
+            Assert.That(broken, Is.Empty);
+        }
+
+        // A chained reset is a claim about another class's Clear. Put one dummy row into every
+        // static collection of the chained holder, run the named reset, and require them empty.
+        [Test]
+        public void ChainedResetsReallyEmptyTheirHolders()
+        {
+            Assembly game = typeof(MatchStateInventory).Assembly;
+            var notEmptied = new List<string>();
+            int checkedCollections = 0;
+            foreach (MatchStateEntry entry in MatchStateInventory.All.Where(e => e.ResetBy != null
+                         && e.Kind != MatchStateKind.IdentitySequence))
+            {
+                Type type = game.GetType(ToClrName(game, entry.TypeName), true);
+                var filled = new List<FieldInfo>();
+                foreach (FieldInfo f in type.GetFields(BindingFlags.Static | BindingFlags.Public
+                             | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
+                    if (TryAddDummy(f.GetValue(null)))
+                        filled.Add(f);
+                checkedCollections += filled.Count;
+                MatchStateInventory.ByType[entry.ResetBy].Reset();
+                foreach (FieldInfo f in filled)
+                    if (((ICollection)f.GetValue(null)).Count != 0)
+                        notEmptied.Add($"{entry.TypeName}.{f.Name} (reset by {entry.ResetBy})");
+            }
+            Assert.That(checkedCollections, Is.GreaterThanOrEqualTo(10), "the check must not pass vacuously");
+            Assert.That(notEmptied, Is.Empty);
+        }
+
+        private static string ToClrName(Assembly game, string name)
+        {
+            // Nested types are listed with '.', the CLR spells them with '+'.
+            while (game.GetType(name) == null && name.Contains('.'))
+            {
+                int i = name.LastIndexOf('.');
+                string candidate = name.Substring(0, i) + "+" + name.Substring(i + 1);
+                if (game.GetType(candidate) != null) return candidate;
+                break;
+            }
+            return name;
+        }
+
+        private static bool TryAddDummy(object collection)
+        {
+            if (!(collection is ICollection)) return false;
+            Type t = collection.GetType();
+            Type[] args = t.IsGenericType ? t.GetGenericArguments() : Type.EmptyTypes;
+            if (args.Any(a => typeof(IDisposable).IsAssignableFrom(a))) return false; // needs a real lifecycle
+            if (collection is IDictionary dictionary && args.Length == 2)
+            {
+                dictionary[Dummy(args[0])] = Dummy(args[1]);
+                return true;
+            }
+            MethodInfo add = t.GetMethod("Add", args);
+            if (args.Length != 1 || add == null) return false;
+            add.Invoke(collection, new[] { Dummy(args[0]) });
+            return true;
+        }
+
+        private static object Dummy(Type t)
+        {
+            if (t == typeof(string)) return "dummy";
+            if (t.IsValueType || t.GetConstructor(Type.EmptyTypes) != null) return Activator.CreateInstance(t);
+            return System.Runtime.Serialization.FormatterServices.GetUninitializedObject(t);
         }
     }
 }
