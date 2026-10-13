@@ -156,7 +156,7 @@ namespace Game.Ai.V2
             PhaseAApBudget apBudget, MaterializationReservation reservation,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments) =>
             demand.Capability == CapabilityKind.EconomicInfrastructure
-                ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand)
+                ? BuildEconomyCandidate(snap, player, root, hand, ctx, demand, activeIntents, commitments)
                 : demand.Capability == CapabilityKind.EconomicExpansionBase
                     ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand, apBudget,
                         reservation, activeIntents, commitments)
@@ -419,26 +419,24 @@ namespace Game.Ai.V2
             };
         }
 
-        private static int? EconomyBuilderAtTarget(
-            WorldSnapshot snap, AxisDemand demand, HexCoord target)
+        internal static int? EconomyBuilderAtTarget(WorldSnapshot snap, AxisDemand demand, HexCoord target,
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
-            if (snap?.Self?.Armies == null)
-                return null;
-            var candidates = snap.Self.Armies.Where(a => a != null && a.HasHero
-                    && !a.IsPrison && !a.IsAir && a.Hex.Equals(target))
-                .OrderBy(a => demand?.EconomyPreferredBuilderArmyId == a.ArmyId ? 0 : 1)
-                .ThenBy(a => demand?.EconomyBuilderRoutes != null
-                    && demand.EconomyBuilderRoutes.Any(r => r.ArmyId == a.ArmyId && r.IsOnTarget)
-                        ? 0 : 1)
-                .ThenBy(a => a.ArmyId)
-                .ToList();
-            return candidates.Count > 0 ? candidates[0].ArmyId : (int?)null;
+            var choice = DemandLayer.SelectEconomyBuilder(snap, target,
+                (routes ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                    .Where(r => r.IsOnTarget && !r.RequiresGarrisonExtraction).ToList(),
+                activeIntents, commitments, demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
+                demand.EconomyBuildApCost, includeReturn: true,
+                pinnedBuilderArmyId: demand.EconomyPreferredBuilderArmyId);
+            return choice?.Suitability == DemandLayer.EconomyArmySuitability.Ready ? choice.Army.ArmyId : (int?)null;
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt
         // site with a hero present. No generic-Base fallback (spec §4).
         private static InfraCandidate BuildEconomyCandidate(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
             ResourceType? type = demand.EconomyResourceType ?? ResourceTypeAt(snap, demand.TargetHex);
             if (type == null)
@@ -453,7 +451,9 @@ namespace Game.Ai.V2
                 || !HexSelectionController.HasOwnHeroArmyAt(demand.TargetHex.Value, player))
                 return null;
             HexCoord built = demand.TargetHex.Value;
-            int? builderId = EconomyBuilderAtTarget(snap, demand, built);
+            int? builderId = EconomyBuilderAtTarget(snap, demand, built,
+                WorldAnalysis.EconomyBuilderRoutes(snap, player, ctx, built), activeIntents, commitments);
+            if (!builderId.HasValue) return null;
             return new InfraCandidate
             {
                 ApCost = facilityDef.apCost,

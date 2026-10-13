@@ -1024,6 +1024,7 @@ namespace Game.Ai.V2
                 EconomySourceCard = d.EconomySourceCard,
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
+                EconomyReadyBuilderIsSupport = d.EconomyReadyBuilderIsSupport,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyEscortArmyId = d.EconomyEscortArmyId,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,

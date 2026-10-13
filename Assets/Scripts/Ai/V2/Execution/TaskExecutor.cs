@@ -782,6 +782,14 @@ namespace Game.Ai.V2
             // passes this straight through as the Actor-invalidation id.
             result.ActualActorArmyId = army.Id;
             EconomyMissionTarget target = pm.EconomyTarget;
+            if (target.Kind == EconomyTaskKind.MobileCollection
+                && !WorldAnalysis.CollectorRouteSafeLive(player, ctx, army, target.TargetHex, target.ResourceType))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                result.FinalHex = army.Hex;
+                yield break;
+            }
             if (army.Hex.Equals(target.TargetHex))
             {
                 result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder

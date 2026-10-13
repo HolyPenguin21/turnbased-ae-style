@@ -26,6 +26,12 @@ namespace Game.Ai.V2
                 && a.ArmyId == intent.PreferredMoverArmyId.Value);
             if (actor == null)
                 return null;
+            if (e.Kind == EconomyTaskKind.MobileCollection
+                && (!WorldAnalysis.CollectorRouteSafe(snapshot, actor, e.TargetHex)
+                    || !e.ResourceType.HasValue
+                    || WorldAnalysis.CollectorMarginalIncome(snapshot, actor,
+                        e.TargetHex, e.ResourceType.Value) <= 0))
+                return "collector_site_unavailable";
             if (actor.CurrentMovement <= 0 && !actor.Hex.Equals(e.TargetHex))
                 return "actor_no_movement_this_cycle";
             if (e.Kind == EconomyTaskKind.MobileCollection && actor.Hex.Equals(e.TargetHex))

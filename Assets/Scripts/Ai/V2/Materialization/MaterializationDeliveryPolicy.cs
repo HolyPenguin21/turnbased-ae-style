@@ -192,6 +192,7 @@ namespace Game.Ai.V2
                         {
                             ArmyId = recipient?.ArmyId ?? -1, Owner = player, Hex = p.Deploy.Hex,
                             HasHero = true, IsMobileEconomyBuilder = true,
+                            HeroIsHomeVocation = EconomyHeroHasHomeVocation(p),
                             // The recipient has no hero, so the played hero becomes its commander.
                             Commander = WorthIt.SideCommander.Of(
                                 p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef),
@@ -455,7 +456,7 @@ namespace Game.Ai.V2
         //  · for a new-hero alternative (demand.EconomyReadyDeliveryCost set), the chain's card
         //    price plus that delivery must be lower than the ready hero's cost — a tie keeps the
         //    ready hero, which spends no card.
-        private static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
+        internal static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
             AxisDemand demand, DemandLayer.EconomyBuilderChoice choice, int turnNumber)
         {
             float newDelivery = TaskScoreEvaluator.Price(
@@ -467,6 +468,13 @@ namespace Game.Ai.V2
             if (!DemandLayer.EconomyExtractionDeliveryAllowed(choice))
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
                     "extraction_delivery_horizon");
+            if (!DemandLayer.EconomySupportBuilderAllowed(choice))
+                return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
+                    "support_builder_local_horizon");
+            if (EconomyHeroHasHomeVocation(p) && demand.EconomyReadyDeliveryCost.HasValue
+                && !demand.EconomyReadyBuilderIsSupport)
+                return Decide(false, DeliveryFailureReason.NotCheaperThanReadyHero,
+                    "support_builder_is_fallback");
             if (demand.EconomySiteValue > AiConfigV2.allocatorSliceEpsilon
                 && newDelivery >= siteAllowance)
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
@@ -476,6 +484,9 @@ namespace Game.Ai.V2
             float newCost = TaskScoreEvaluator.Price(ActionPrice.Ap(p.ApCost)
                     + ActionPrice.Resources(p.ResCost))
                 + newDelivery;
+            if (demand.EconomyReadyBuilderIsSupport && !EconomyHeroHasHomeVocation(p))
+                return Decide(newCost < siteAllowance, DeliveryFailureReason.DeliveryExceedsSiteValue,
+                    $"ordinary_builder={newCost:0.##} site={siteAllowance:0.##}");
             return Decide(newCost + AiConfigV2.allocatorSliceEpsilon
                     < demand.EconomyReadyDeliveryCost.Value,
                 DeliveryFailureReason.NotCheaperThanReadyHero,
@@ -489,6 +500,15 @@ namespace Game.Ai.V2
                     + $"decision={(ok ? "NEW_HERO" : reason.ToString())}");
                 return ok ? DeliveryAssessment.Ok : DeliveryAssessment.No(reason, detail);
             }
+        }
+
+        internal static bool EconomyHeroHasHomeVocation(MaterializationPlan plan)
+        {
+            CardDefinition card = plan?.BaseCardInHand?.Definition ?? plan?.GeneratedBaseDef;
+            if (card?.cardType != CardType.Hero) return false;
+            AiPower.ProjectedStrategicLine line = AiPower.ProjectMaterialization(plan);
+            return card.unitTypeTags?.Contains(UnitTypeTag.Support) == true
+                || HeroRoleEvaluator.SupportVocation(a => line.EffectiveAbilities.Contains(a), line.MoveMax);
         }
 
         // Extra fraction of the site value a NEW builder's delivery may cost: grows with how long

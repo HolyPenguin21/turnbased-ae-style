@@ -352,6 +352,12 @@ namespace Game.Ai.V2
                 p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
                 + urgency * GenerationChanceForDecision(p);
 
+            if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand)
+                && candidates.Any(c => !MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(c.plan)
+                    && Decide(c.plan) > AiConfigV2.allocatorSliceEpsilon))
+                candidates = candidates.Where(c =>
+                    !MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(c.plan)).ToList();
+
             var ranked = candidates
                 .OrderByDescending(c => Decide(c.plan))
                 .ThenByDescending(c => c.plan.Score)
@@ -497,6 +503,19 @@ namespace Game.Ai.V2
                     ? DemandUrgencyPolicy.Bonus(d) : 0f;
                 return p.Score + urgency * GenerationChanceForDecision(p);
             }
+
+            // The terminal/residual path follows the same builder preference as Phase A.
+            // Unclaimed Support plays (including global-source demands) retain their own uses.
+            candidates = candidates.Where(p =>
+            {
+                AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
+                return !MaterializationDeliveryPolicy.IsEconomyHeroDemand(d)
+                    || !MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(p)
+                    || !candidates.Any(other => !MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(other)
+                        && other.FinalCapability == CapabilityKind.Hero
+                        && DecisionScore(other) > AiConfigV2.allocatorSliceEpsilon
+                        && CanDeliverDemandOperationally(other, d, snap, player, ctx));
+            }).ToList();
 
             List<(MaterializationPlan plan, float utility)> ranked = candidates
                 .Select(p => (plan: p, utility: DecisionScore(p)))

@@ -14,6 +14,145 @@ namespace Game.EditorTests
     // Pure ledger / Continuity / registry level: no map, no PlayerRoot, no live ArmyData.
     public class AiEconomyContinuityAuditTests
     {
+        private static WorldSnapshot CollectorFixSnapshot(PlayerSetupData player, bool arrived, int building = 0)
+        {
+            var actor = new ArmySnapshot { ArmyId = Actor, Hex = arrived ? Site : new HexCoord(2, 0),
+                MaxMovement = 3, CurrentMovement = 3, MemberCount = 1,
+                CollectionCapacity = new ResourceBundle { Materials = 2 },
+                EconomyHomeRouteCosts = new Dictionary<HexCoord, int> { [Home] = 2 } };
+            return new WorldSnapshot { Observer = player, TurnNumber = 4,
+                Self = new SelfSnapshot { BaseHexes = new[] { Home }, Armies = new[] { actor } },
+                Known = new KnownSnapshot
+                {
+                    Buildings = new[]
+                    {
+                        new Game.Ai.AiMapMemory.KnownBuilding(Home, player, true, new string[0], isBase: true),
+                        new Game.Ai.AiMapMemory.KnownBuilding(Site, player, false, new string[0],
+                            new[] { 0, 0, building, 0 }),
+                    },
+                    ResourceHexes = new[] { new Game.Ai.AiMapMemory.KnownResourceHex(Site,
+                        ResourceType.Materials, new ResourceYields { materials = 2 }) },
+                },
+                Economy = new EconomyStanding
+                { CollectorRoutes = new Dictionary<(int, HexCoord), HexPath>
+                    { [(Actor, Site)] = new HexPath(arrived ? new List<HexCoord> { Site }
+                        : new List<HexCoord> { actor.Hex, new HexCoord(3, 0), new HexCoord(4, -1),
+                            new HexCoord(5, -2), Site }, 4) },
+                    PerType = new[] { new EconomyResourceStanding
+                    { Type = ResourceType.Materials, HandResourceNeed = 12, OwnIncome = arrived ? 2 : 0 } } },
+            };
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void EconomyFix_CollectorReturnsImmediatelyWhenEnemyApproaches(bool arrived)
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, arrived);
+            snap.Known.EnemySightings = new[] { new Game.Ai.AiMapMemory.KnownEnemySighting(
+                new HexCoord(Site.Q + 1, Site.R), new PlayerSetupData(), "enemy", 1, 1, 1,
+                new Game.Combat.WorthIt.DefenderProfile[0]) };
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.ReturnCollector));
+            Assert.That(intent.Economy.TargetHex, Is.EqualTo(Home));
+        }
+
+        [Test]
+        public void EconomyFix_CollectorCannotDepartWithoutCurrentRouteWitness()
+        {
+            var snap = CollectorFixSnapshot(new PlayerSetupData(), false);
+            snap.Economy.CollectorRoutes = null;
+            Assert.That(WorldAnalysis.CollectorRouteSafe(snap, snap.Self.Armies[0], Site), Is.False);
+        }
+
+        [Test]
+        public void EconomyFix_CollectorContinuationChecksActualDetourRoute()
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, false);
+            var detour = new HexCoord(8, -7);
+            snap.Economy.CollectorRoutes = new Dictionary<(int, HexCoord), HexPath>
+                { [(Actor, Site)] = new HexPath(new List<HexCoord> { snap.Self.Armies[0].Hex, detour, Site }, 8) };
+            snap.Known.EnemySightings = new[] { new Game.Ai.AiMapMemory.KnownEnemySighting(
+                new HexCoord(8, -8), new PlayerSetupData(), "enemy", 1, 1, 1,
+                new Game.Combat.WorthIt.DefenderProfile[0]) };
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.ReturnCollector));
+        }
+
+        [Test]
+        public void EconomyFix_CollectorWithNoShelterWaitsWithoutHoldingProgress()
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, true, 2);
+            snap.Self.Armies[0].EconomyHomeRouteCosts = new Dictionary<HexCoord, int>();
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            var active = MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(active, Does.Contain(intent));
+            Assert.That(intent.LastProgressTurn, Is.EqualTo(3));
+            Assert.That(EconomyMissionPlanner.DeferredThisPass(intent, snap), Is.EqualTo("collector_site_unavailable"));
+            Assert.That(EconomyMissionPlanner.Propose(snap, new DesireBreakdown(), active, null), Is.Empty);
+        }
+
+        [TestCase(0, 2)]
+        [TestCase(1, 1)]
+        [TestCase(2, 0)]
+        public void EconomyFix_CollectorContributionUsesCurrentBuildingShare(int building, int expected)
+        {
+            var snap = CollectorFixSnapshot(new PlayerSetupData(), true, building);
+            Assert.That(WorldAnalysis.CollectorMarginalIncome(snap, snap.Self.Armies[0], Site,
+                ResourceType.Materials), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void EconomyFix_CollectorStopsWhenBuildingConsumesEntireYield()
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, true, 2);
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.ReturnCollector));
+            Assert.That(intent.Economy.ExpectedMarginalYield, Is.Zero);
+        }
+
+        [Test]
+        public void EconomyFix_CollectorKeepsPartialUsefulContribution()
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, true, 1);
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.MobileCollection));
+            Assert.That(intent.Economy.ExpectedMarginalYield, Is.EqualTo(1));
+            Assert.That(intent.LastProgressTurn, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void EconomyFix_CollectorPotentialIsJudgedBeforeItsIncomeExists()
+        {
+            var player = new PlayerSetupData();
+            var snap = CollectorFixSnapshot(player, false);
+            snap.Economy.PerType = new[] { new EconomyResourceStanding
+                { Type = ResourceType.Materials, OwnIncome = 4, HandResourceNeed = 12 } };
+            var intent = DurableIntent(player, Proposal(EconomyTaskKind.MobileCollection, Site), 3);
+            MissionContinuityLayer.ResolveActive(player, snap);
+            Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.ReturnCollector),
+                "a travelling collector is not yet part of OwnIncome and must not subtract a fictional contribution");
+        }
+
+        [Test]
+        public void EconomyFix_CollectorAccountsForOtherArmiesOnSite()
+        {
+            var snap = CollectorFixSnapshot(new PlayerSetupData(), true);
+            var other = new ArmySnapshot { ArmyId = 99, Hex = Site,
+                CollectionCapacity = new ResourceBundle { Materials = 2 } };
+            snap.Self.Armies = new[] { snap.Self.Armies[0], other };
+            Assert.That(WorldAnalysis.CollectorMarginalIncome(snap, snap.Self.Armies[0], Site,
+                ResourceType.Materials), Is.Zero);
+        }
+
         private const int Actor = 21;
         private static readonly HexCoord Site = new HexCoord(6, -2);
         private static readonly HexCoord Home = new HexCoord(0, 0);

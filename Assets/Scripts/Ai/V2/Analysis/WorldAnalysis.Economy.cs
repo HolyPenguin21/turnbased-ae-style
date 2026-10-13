@@ -229,6 +229,7 @@ namespace Game.Ai.V2
             eco.GuardedExtractionSites = guardedExtraction;
 
             var mobileCollection = new List<MobileCollectionOpportunity>();
+            var collectorRoutes = new Dictionary<(int, HexCoord), HexPath>();
             var committedCollectors = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.PreferredMoverArmyId.HasValue)
@@ -257,6 +258,7 @@ namespace Game.Ai.V2
                         collector.Hex, site.Hex, collector.MaxMovement);
                     if (route == null)
                         continue;
+                    collectorRoutes[(collector.ArmyId, site.Hex)] = route;
                     // A collector travels alone: any listed threat rejects the site.
                     if (KnownThreatsAffectingEconomyRoute(snap, route.Hexes).Count > 0)
                         continue;
@@ -293,6 +295,21 @@ namespace Game.Ai.V2
                 }
             }
             eco.MobileCollectionOpportunities = mobileCollection;
+
+            // Free candidates already supplied their route above. Only bound site-holders need
+            // an additional witness; never rescan every collector against the whole map.
+            foreach (MissionIntent intent in MissionIntentRegistry.GetOrCreate(player).All.Where(i =>
+                         i?.Economy?.Kind == EconomyTaskKind.MobileCollection && i.PreferredMoverArmyId.HasValue))
+            {
+                ArmySnapshot collector = snap.Self.Armies.FirstOrDefault(a => a != null
+                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
+                if (collector == null) continue;
+                HexCoord target = intent.Economy.TargetHex;
+                HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player,
+                    collector.Hex, target, collector.MaxMovement);
+                if (route != null) collectorRoutes[(collector.ArmyId, target)] = route;
+            }
+            eco.CollectorRoutes = collectorRoutes;
 
             // Base opportunities are structural site facts only. Card-specific value/cost remains
             // Strategy/Demand's responsibility, but Analysis owns the one legal candidate set so
@@ -457,6 +474,55 @@ namespace Game.Ai.V2
                 effectiveYield, buildingCollection, ownArmyCollectors + 1,
                 armiesCanCollect) - before);
             return (facility, collector);
+        }
+
+        internal static int CollectorMarginalIncome(WorldSnapshot snap, ArmySnapshot actor,
+            HexCoord target, ResourceType type)
+        {
+            if (actor == null || KnownHostileAtHex(snap, target)) return 0;
+            int yield = KnownExtractionYields(snap).Where(x => x.Hex.Equals(target) && x.Type == type)
+                .Select(x => x.Yield).DefaultIfEmpty(0).Max();
+            int building = (snap?.Known?.Buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Where(b => b.Hex.Equals(target)).Select(b => b.CollectedAmount(type)).DefaultIfEmpty(0).Max();
+            int otherCollectors = Mathf.RoundToInt((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.ArmyId != actor.ArmyId && a.Hex.Equals(target))
+                .Sum(a => a.CollectionCapacity.Get(type)));
+            int capacity = Mathf.RoundToInt(actor.CollectionCapacity.Get(type));
+            return Mathf.Max(0, IncomeProjection.OwnerCollectionAtHex(yield, building,
+                    otherCollectors + capacity, true)
+                - IncomeProjection.OwnerCollectionAtHex(yield, building, otherCollectors, true));
+        }
+
+        internal static bool CollectorRouteSafe(WorldSnapshot snap, ArmySnapshot actor, HexCoord target)
+        {
+            if (actor == null || KnownHostileAtHex(snap, target)) return false;
+            IReadOnlyList<HexCoord> path;
+            if (actor.Hex.Equals(target)) path = new[] { target };
+            else if (snap?.Economy?.CollectorRoutes != null)
+            {
+                if (!snap.Economy.CollectorRoutes.TryGetValue((actor.ArmyId, target), out HexPath route))
+                    return false;
+                path = route.Hexes;
+            }
+            else return false;
+            return KnownThreatsAffectingEconomyRoute(snap, path).Count == 0;
+        }
+
+        internal static bool CollectorRouteSafeLive(PlayerSetupData player, AiTurnContext ctx,
+            ArmyData actor, HexCoord target, ResourceType? resourceType)
+        {
+            if (actor == null || ctx?.Map == null) return false;
+            if (!resourceType.HasValue || actor.IsGarrison || actor.IsPrison || actor.IsAirArmy || actor.IsAirfield
+                || !actor.Members.Any(u => u != null && u.HasAbility(UnitAbilities.CollectAbilityFor(resourceType.Value))))
+                return false;
+            var knowledge = new WorldSnapshot { Known = new KnownSnapshot
+            {
+                EnemySightings = AiMapMemory.AllKnownEnemySightings(player).ToList(),
+                NeutralSightings = AiMapMemory.AllKnownNeutralSightings(player).ToList(),
+            } };
+            if (KnownHostileAtHex(knowledge, target)) return false;
+            HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player, actor.Hex, target, actor.MaxMovement);
+            return route != null && KnownThreatsAffectingEconomyRoute(knowledge, route.Hexes).Count == 0;
         }
 
         // AiMapMemory owns the complete last-observed resource line. Economy enumerates that
@@ -625,83 +691,82 @@ namespace Game.Ai.V2
                         continue;
                     var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
                         player, AiHandRegistry.Peek(player), ctx);
-                    UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison, site);
-                    if (sparableHero == null)
-                        continue;
-                    ProvisioningManager.GarrisonExtractionCandidate extraction =
-                        ProvisioningManager.ResolveGarrisonExtractionCandidate(player, liveGarrison,
-                            commitments: null, session: null, root: null,
-                            ecoApEnvelopeRemaining: float.MaxValue, preparationSite: site);
-                    if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
-                        continue;
-                    if (army.Hex.Equals(target))
+                    foreach (UnitData sparableHero in AiArmyRoles.EconomyHeroCandidates(player, liveGarrison, site))
                     {
-                        // A garrison is NEVER a mobile hero army. Even when it already occupies
-                        // the build hex, Provisioning must extract a genuinely sparable hero into
-                        // a field container before Economy can execute the build.
-                        result.Add(new EconomyBuilderRouteSnapshot
+                        ProvisioningManager.GarrisonExtractionCandidate extraction =
+                            ProvisioningManager.ResolveGarrisonExtractionCandidate(player, liveGarrison,
+                                commitments: null, session: null, root: null,
+                                ecoApEnvelopeRemaining: float.MaxValue, preparationSite: site,
+                                exactEconomyHeroId: sparableHero.RuntimeId);
+                        if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
+                            continue;
+                        if (army.Hex.Equals(target))
                         {
-                            ArmyId = army.ArmyId, TravelCost = 0, ReturnTravelCost = 0,
-                            CurrentMovement = sparableHero.MoveMax, MaxMovement = sparableHero.MoveMax,
-                            ActivationApCost = sparableHero.ActivationApCost, ArmySize = 1,
-                            HasActivatedThisTurn = false,
-                            EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
-                            HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
-                            IsOnTarget = true, RequiresGarrisonExtraction = true,
-                            ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
-                            ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
-                            ExtractedHeroCapacity = sparableHero.CommandRating,
-                            ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
-                            PathHexes = new[] { target },
-                            RouteThreats = KnownThreatsAffectingEconomyRoute(snap, new[] { target }),
-                        });
-                        continue;
-                    }
+                            // A garrison is NEVER a mobile hero army. Even when it already occupies
+                            // the build hex, Provisioning must extract a genuinely sparable hero into
+                            // a field container before Economy can execute the build.
+                            result.Add(new EconomyBuilderRouteSnapshot
+                            {
+                                ArmyId = army.ArmyId, TravelCost = 0, ReturnTravelCost = 0,
+                                CurrentMovement = sparableHero.MoveMax, MaxMovement = sparableHero.MoveMax,
+                                ActivationApCost = sparableHero.ActivationApCost, ArmySize = 1,
+                                HasActivatedThisTurn = false,
+                                EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
+                                HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
+                                IsOnTarget = true, RequiresGarrisonExtraction = true,
+                                BuilderHeroRuntimeId = sparableHero.RuntimeId,
+                                BuilderHasHomeVocation = AiArmyRoles.IsGarrisonHero(sparableHero)
+                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
+                                ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
+                                ExtractedHeroCapacity = sparableHero.CommandRating,
+                                ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
+                                PathHexes = new[] { target },
+                                RouteThreats = KnownThreatsAffectingEconomyRoute(snap, new[] { target }),
+                            });
+                            continue;
+                        }
 
-                    // An idle hero sitting in this Garrison is a legitimate mobile_hero candidate
-                    // too — priced with the exact same SafeStepPathing math as any field army below,
-                    // just rooted at the hero's own MoveMax rather than an already-existing army's.
-                    // AiArmyRoles.CanSpareGarrisonMember (the canonical predicate Raid's own donor
-                    // path already trusts) gates which hero, if any, is even considered — the
-                    // Citadel/base secure floor is never at risk. Analysis only prices the option;
-                    // it never spends AP. The actual extraction (ArmyActions.TransferMember into an
-                    // already-existing free reusable shell) happens later, transactionally, in
-                    // ProvisioningManager — if no free shell exists this turn the candidate is
-                    // simply not offered, and Economy falls back to its existing card-materialization
-                    // path unchanged.
-                    HexPath garrisonRoute = SafeStepPathing.FindSafePath(
-                        ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
-                    if (garrisonRoute != null)
-                    {
-                        int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
-                            ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
-                        if (garrisonReturnCost == int.MaxValue)
-                            garrisonReturnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
-                                target, army.Hex, sparableHero.MoveMax);
-
-                        result.Add(new EconomyBuilderRouteSnapshot
+                        // Price each canonical sparable hero on its own movement and exact
+                        // Shell/Host/Create witness. Demand compares roles and delivery; execution
+                        // later revalidates the selected runtime identity before extraction.
+                        HexPath garrisonRoute = SafeStepPathing.FindSafePath(
+                            ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
+                        if (garrisonRoute != null)
                         {
-                            ArmyId = army.ArmyId,
-                            TravelCost = garrisonRoute.TotalCost,
-                            ReturnTravelCost = garrisonReturnCost,
-                            CurrentMovement = sparableHero.MoveMax,
-                            MaxMovement = sparableHero.MoveMax,
-                            ActivationApCost = sparableHero.ActivationApCost,
-                            HasActivatedThisTurn = false,
-                            ArmySize = 1,
-                            EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
-                            HasActiveEconomyCommitment = false,
-                            IsOnTarget = false,
-                            RequiresGarrisonExtraction = true,
-                            ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
-                            ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
-                            ExtractedHeroCapacity = sparableHero.CommandRating,
-                            ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
-                            MaximumStepCost = EconomyMaximumStepCost(ctx, garrisonRoute.Hexes),
-                            PathHexes = garrisonRoute.Hexes.ToList(),
-                            RouteThreats = KnownThreatsAffectingEconomyRoute(
-                                snap, garrisonRoute.Hexes),
-                        });
+                            int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
+                                ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
+                            if (garrisonReturnCost == int.MaxValue)
+                                garrisonReturnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                                    target, army.Hex, sparableHero.MoveMax);
+
+                            result.Add(new EconomyBuilderRouteSnapshot
+                            {
+                                ArmyId = army.ArmyId,
+                                TravelCost = garrisonRoute.TotalCost,
+                                ReturnTravelCost = garrisonReturnCost,
+                                CurrentMovement = sparableHero.MoveMax,
+                                MaxMovement = sparableHero.MoveMax,
+                                ActivationApCost = sparableHero.ActivationApCost,
+                                HasActivatedThisTurn = false,
+                                ArmySize = 1,
+                                EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
+                                HasActiveEconomyCommitment = false,
+                                IsOnTarget = false,
+                                RequiresGarrisonExtraction = true,
+                                BuilderHeroRuntimeId = sparableHero.RuntimeId,
+                                BuilderHasHomeVocation = AiArmyRoles.IsGarrisonHero(sparableHero)
+                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                ExtractionContainerAvailable = true, ExtractionApCost = extraction.ApCost,
+                                ExtractedHeroCommander = WorthIt.SideCommander.Of(sparableHero),
+                                ExtractedHeroCapacity = sparableHero.CommandRating,
+                                ExtractionContainerActivated = extraction.Container?.HasActivatedThisTurn == true,
+                                MaximumStepCost = EconomyMaximumStepCost(ctx, garrisonRoute.Hexes),
+                                PathHexes = garrisonRoute.Hexes.ToList(),
+                                RouteThreats = KnownThreatsAffectingEconomyRoute(
+                                    snap, garrisonRoute.Hexes),
+                            });
+                        }
                     }
                     continue;
                 }
@@ -740,6 +805,7 @@ namespace Game.Ai.V2
                 {
                     ArmyId = army.ArmyId,
                     TravelCost = cost,
+                    BuilderHasHomeVocation = army.HeroIsHomeVocation,
                     ReturnTravelCost = returnCost,
                     CurrentMovement = army.CurrentMovement,
                     MaxMovement = army.MaxMovement,
