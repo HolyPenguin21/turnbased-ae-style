@@ -128,7 +128,7 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, V2TraceScope> Scopes =
             new Dictionary<PlayerSetupData, V2TraceScope>();
 
-        // Wired next to the other V2 per-player registry resets in CitadelSetupController.
+        // Reset at match start by MatchStateInventory.ResetForNewMatch.
         public static void Clear() => Scopes.Clear();
 
         private static string PlayerTag(PlayerSetupData p) =>

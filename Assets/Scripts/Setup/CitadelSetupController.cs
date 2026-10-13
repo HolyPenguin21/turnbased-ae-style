@@ -116,71 +116,24 @@ namespace Game.Setup
             if (gameConfig == null || map == null || GameSession.Players == null || GameSession.Players.Count == 0)
                 return;
 
-            BuildingRegistry.Clear();
-            HexResourceBonusRegistry.Clear();
-            HexEventRegistry.Clear();
-            ArmyRegistry.Clear();
-            PlayerRootRegistry.Clear();
-            AntiAirState.Clear();
-            // Coordinate-keyed (not object-reference-keyed like the registries above) — a leftover
-            // entry here would misreport a pending battle at that hex in a BRAND NEW game, and
-            // GameTurnController's own end-of-turn drain could resolve it against destroyed
-            // previous-session armies/players. Found missing during the same audit that caught
-            // AntiAirState above.
-            Game.Combat.DelayedBattleRegistry.Clear();
-            AiHandRegistry.Clear();
-            Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
-            Game.Ai.V2.ReconCapacityDeficitRegistry.ClearAll();
+            // Every per-match static holder starts empty (MatchStateInventory owns the list).
+            MatchStateInventory.ResetForNewMatch();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
             // need to already be known by then, not set afterward.
-            VisionSystem.Clear();
             VisionSystem.Configure(gameConfig);
             // Stealth detection needs the terrain move-cost at a hidden unit's hex for its
             // hide-dice bump; hand StealthSystem a lookup into the live map here, same
             // ordering rationale as VisionSystem.Configure above.
-            StealthSystem.Clear();
             StealthSystem.TerrainMoveCostProvider = hex =>
                 map.TryGetTerrainAt(hex, out TerrainTypeEntry terrainEntry) && terrainEntry != null
                     ? Mathf.Max(1, terrainEntry.moveCost)
                     : 1;
             // Same ordering requirement as VisionSystem.Configure above — AiMapMemory listens to
             // VisionSystem.VisibilityChanged, which the very first Register call below can
-            // already fire, so the subscription (and a clean slate from any previous game) both
-            // need to be in place before that happens.
-            AiMapMemory.Clear();
+            // already fire, so the subscription needs to be in place before that happens.
             AiMapMemory.EnsureSubscribed(map);
-            Game.Ai.V2.AirSortieRegistry.Clear();
-            Game.Ai.V2.AviationObligationStallRegistry.Clear(); // Recon audit B1 — per-turn stalled air obligations
-            Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
-            Game.Ai.V2.ForceBaselineRegistry.Clear(); // Strategy V2 per-player first-turn force ceiling (P_start)
-            Game.Ai.V2.PreparationDeliveryMemory.Clear(); // Phase A verdict on cards for an Attack preparation host
-            Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
-            Game.Ai.V2.ScoutTrailRegistry.ClearAll(); // Strategy V2 bounded per-scout backtrack trail (spec §5)
-            Game.Ai.V2.ResourceStarvationRegistry.Clear(); // Strategy V2 decaying resource-starvation economic feedback (spec §17)
-            Game.Ai.V2.DevelopmentInvestmentGate.Clear();  // Strategy V2 Research/Production investment-window streak
-            Game.Ai.V2.AiAllocatorStateRegistry.Clear(); // Strategy V2 per-player allocator reject-cooldown map
-            Game.Ai.V2.MissionIntentRegistry.Clear();    // Strategy V2 per-player durable mission-intent store (step 7)
-            Game.Ai.V2.CapabilityPoolExhaustionRegistry.Clear(); // Strategy V2 per-turn capability-pool exhaustion scope
-            Game.Ai.V2.V2TurnActivityTelemetry.Clear();          // Strategy V2 per-turn main/reaction/total activity record
-            Game.Ai.V2.AiV2Trace.Clear();                        // Strategy V2 per-player debuggability trace scopes (correlation ids)
-            Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
-            Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
-            // Turn-stamped V2 state keyed by player (audit P3): not a logic leak (players are new
-            // objects every match) but they would otherwise retain the previous match's players.
-            Game.Ai.V2.StrategicInterruptRegistry.ClearAll();
-            Game.Ai.V2.StrategicResourceReservationLedger.ClearAll();
-            Game.Ai.V2.ReservationInvariants.ClearAll();
-            Game.Ai.V2.OperationContinuationWindow.ClearAll();
-            Game.Ai.V2.EconomyReservationLifecycle.ClearAll();
-            Game.Ai.V2.StrategicTempoBudget.ClearAll();
-            Game.Ai.V2.ApBudgetTelemetry.ClearAll();
-            Game.Ai.V2.DevelopmentOutcomeTelemetry.ClearAll();
-            Game.Ai.V2.DevelopmentDiversity.ClearAll();
-            Game.Ai.V2.ApTurnPressure.ClearAll();
-            Game.Ai.V2.LifecycleReturnPolicy.ClearAll();
-            Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
             AssignStartingHexes(GameSession.Players);
 
             _allPlayers.Clear();

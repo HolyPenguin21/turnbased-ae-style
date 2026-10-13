@@ -29,12 +29,19 @@ namespace Game.Map
         public readonly int Id;
         public ArmyData() : this(assignIdentity: true) { }
         private ArmyData(bool assignIdentity) => Id = assignIdentity ? _nextId++ : -1;
+        private ArmyData(int restoredId)
+        {
+            Id = restoredId;
+            if (_nextId <= restoredId) _nextId = restoredId + 1;
+        }
+        // Load path: an army rebuilt under its saved identity; later armies are numbered above it.
+        internal static ArmyData WithIdentity(int id) => new ArmyData(restoredId: id);
 
-        // Brand-new game/session (see ArmyRegistry.Clear, called from CitadelSetupController.
-        // Start alongside every other registry wipe) — without this the id sequence just kept
-        // climbing across sessions in the same process. Never compared across sessions today, so
-        // purely cosmetic, but kept in sync with ArmyRegistry.Clear for the same reason every
-        // other static registry gets a full wipe there.
+        // Brand-new game/session (see ArmyRegistry.Clear, run by MatchStateInventory.
+        // ResetForNewMatch with every other registry wipe) — without this the id sequence just
+        // kept climbing across sessions in the same process. Never compared across sessions
+        // today, so purely cosmetic, but kept in sync with ArmyRegistry.Clear for the same reason
+        // every other static registry gets a full wipe there.
         internal static void ResetIdentitySequence() => _nextId = 0;
         // A last-seen roster is display-only and never enters ArmyRegistry, so it must not burn
         // a live identity merely because a human observer refreshed the same sighting.

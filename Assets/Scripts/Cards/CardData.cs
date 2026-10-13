@@ -9,7 +9,7 @@ namespace Game.Cards
     {
         // Runtime identity, like UnitData.RuntimeId: preserved when hand order changes.
         private static int _nextRuntimeId;
-        public readonly int RuntimeId = Interlocked.Increment(ref _nextRuntimeId);
+        public readonly int RuntimeId;
 
         public CardDefinition Definition;
 
@@ -41,7 +41,23 @@ namespace Game.Cards
 
         public CardData(CardDefinition definition)
         {
+            RuntimeId = Interlocked.Increment(ref _nextRuntimeId);
             Definition = definition;
+        }
+
+        private CardData(CardDefinition definition, int runtimeId)
+        {
+            RuntimeId = runtimeId;
+            Definition = definition;
+        }
+
+        // Load path: a card rebuilt under its saved identity; later cards are numbered above it.
+        internal static CardData WithRuntimeId(CardDefinition definition, int runtimeId)
+        {
+            int issued;
+            while ((issued = Volatile.Read(ref _nextRuntimeId)) < runtimeId
+                && Interlocked.CompareExchange(ref _nextRuntimeId, runtimeId, issued) != issued) { }
+            return new CardData(definition, runtimeId);
         }
 
         // Play-time AP cost of THIS instance — activationApCost for a Research/Production card,

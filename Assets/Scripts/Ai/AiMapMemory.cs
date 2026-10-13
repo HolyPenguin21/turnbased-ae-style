@@ -476,7 +476,7 @@ namespace Game.Ai
         }
 
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
-        // (see CitadelSetupController, which calls this alongside VisionSystem.Clear/Configure).
+        // (see CitadelSetupController, which calls this right after VisionSystem.Configure).
         public static void EnsureSubscribed(HexMap map = null)
         {
             if (map != null)

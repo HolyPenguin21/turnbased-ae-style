@@ -34,7 +34,7 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, StrategicTempoBudget> ByPlayer =
             new Dictionary<PlayerSetupData, StrategicTempoBudget>();
 
-        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
 
         // The live budget for this player/turn (created empty on first read of a new turn).

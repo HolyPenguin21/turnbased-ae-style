@@ -73,7 +73,7 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
             new Dictionary<PlayerSetupData, Entry>();
 
-        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        // Match-start reset (MatchStateInventory.ResetForNewMatch).
         internal static void ClearAll() => ByPlayer.Clear();
 
         public static void BeginTurn(PlayerSetupData player, int turn)
