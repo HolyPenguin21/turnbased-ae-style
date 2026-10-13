@@ -231,53 +231,57 @@ namespace Game.Ai.V2
             }
         }
 
-        // Called ONCE per turn (each Phase B entry path of AiStrategyV2Pipeline.RunTurn), after the operational loop has settled and every surviving
-        // Completion owner has been reconciled — i.e. at the point where each remaining
-        // EconomyDeferredBuild owner is proven NOT to complete this turn. Such a build is paid from
-        // the stock of a later turn, and that stock always includes at least one more income tick
-        // (IncomeProjection.IncomeFor — the same number the round-start grant pays). Holding the
-        // full vector from today's stock froze exactly that part for Phase B while the build
-        // could not use it anyway. The tick is shared by every deferred owner (deterministic owner
-        // order), never counted twice. Next turn's Phase A re-writes the full vector
-        // (OwnerReasonMatches mismatch), before Provisioning can promote it to Completion, so the
-        // build turn still sees its whole cost protected. Phase A never calls this: there the
-        // deferred stage is not yet proof that completion is impossible this turn.
+        // Called ONCE per turn (each Phase B entry path of AiStrategyV2Pipeline.RunTurn), after the
+        // operational loop has settled and every surviving Completion owner has been reconciled -
+        // i.e. at the point where each remaining EconomyDeferredBuild owner is proven NOT to
+        // complete this turn. Such a build is paid from the stock of a later turn, and that stock
+        // always includes at least one more income tick (IncomeProjection.IncomeFor - the same
+        // number the round-start grant pays). Holding the full vector from today's stock froze
+        // exactly that part for Phase B while the build could not use it anyway.
+        //
+        // The tick is fixed here once for the rest of the turn; the ledger keeps every deferred
+        // owner's FULL vector and TurnResourceBook.LedgerClaims subtracts the cover when it lists
+        // the rows as claims (shared by every deferred owner in deterministic owner order, never
+        // counted twice). A later Phase A re-statement of the full vector (a re-admission after a
+        // Phase B round) or a Completion downgraded after this point therefore keeps the cover.
+        // Phase A never calls this: there the deferred stage is not yet proof that completion is
+        // impossible this turn.
         internal static void ReleaseDeferredEconomyIncomeCover(PlayerSetupData player,
             AiTurnContext ctx)
         {
             if (player == null || ctx?.Map == null)
                 return;
             int turn = ctx.TurnNumber;
-            IReadOnlyList<string> owners = StrategicResourceReservationLedger.OwnersWithReason(
-                player, turn, StrategicReservationReason.EconomyDeferredBuild);
-            if (owners.Count == 0)
-                return;
-            List<StrategicResourceReservation> rows = StrategicResourceReservationLedger
-                .Rows(player, turn)
-                .Where(r => r.Reason == StrategicReservationReason.EconomyDeferredBuild)
-                .OrderBy(r => r.Owner, System.StringComparer.Ordinal)
-                .ToList();
+            var cover = new float[System.Enum.GetValues(typeof(StrategicReservedResource)).Length];
             foreach (ResourceType type in ResourceBundle.All)
-            {
-                float cover = IncomeProjection.IncomeFor(player, type, ctx.Map);
-                StrategicReservedResource resource = StrategicResourceReservationLedger.Map(type);
-                foreach (StrategicResourceReservation row in rows.Where(r => r.Resource == resource))
-                {
-                    if (cover <= 0f)
-                        break;
-                    float released = UnityEngine.Mathf.Min(cover, row.Amount);
-                    cover -= released;
-                    MissionLeaseBook.Upsert(player, turn,
-                        new StrategicResourceReservation
-                        {
-                            Identity = row.Identity, Reason = row.Reason, Resource = row.Resource,
-                            Amount = row.Amount - released, ExpirationStage = row.ExpirationStage,
-                        });
-                }
-            }
-            AiDebugLog.Write($"[AI][V2][Economy][DeferredIncomeCover] turn={turn} owners={owners.Count} "
-                + $"active [{StrategicResourceReservationLedger.DebugLine(player, turn)}]");
+                cover[(int)StrategicResourceReservationLedger.Map(type)] =
+                    System.Math.Max(0, IncomeProjection.IncomeFor(player, type, ctx.Map));
+            OpenDeferredIncomeCover(player, turn, cover);
+            AiDebugLog.Write($"[AI][V2][Economy][DeferredIncomeCover] turn={turn} cover=["
+                + string.Join(" ", ResourceBundle.All.Select(t =>
+                    $"{t}={cover[(int)StrategicResourceReservationLedger.Map(t)]:0.##}"))
+                + $"] active [{StrategicResourceReservationLedger.DebugLine(player, turn)}]");
         }
+
+        // `cover` is indexed by (int)StrategicReservedResource.
+        internal static void OpenDeferredIncomeCover(PlayerSetupData player, int turn, float[] cover)
+        {
+            if (player != null && cover != null)
+                IncomeCoverByPlayer[player] = (turn, cover);
+        }
+
+        // The income tick this turn's deferred holds may count as already paid (0 before the cover
+        // opens and for AP, which has no deferred state).
+        internal static float DeferredIncomeCover(PlayerSetupData player, int turn,
+            StrategicReservedResource resource) =>
+            player != null && IncomeCoverByPlayer.TryGetValue(player, out var entry) && entry.Turn == turn
+                ? entry.Cover[(int)resource] : 0f;
+
+        private static readonly Dictionary<PlayerSetupData, (int Turn, float[] Cover)> IncomeCoverByPlayer =
+            new Dictionary<PlayerSetupData, (int Turn, float[] Cover)>();
+
+        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        internal static void ClearAll() => IncomeCoverByPlayer.Clear();
 
         // owner == null is the whole-reason reset (no Economy obligation survived this pass); an
         // explicit owner drops only that build's deferred rows and leaves every other build's hold.

@@ -173,6 +173,7 @@ namespace Game.Setup
             Game.Ai.V2.StrategicResourceReservationLedger.ClearAll();
             Game.Ai.V2.ReservationInvariants.ClearAll();
             Game.Ai.V2.OperationContinuationWindow.ClearAll();
+            Game.Ai.V2.EconomyReservationLifecycle.ClearAll();
             Game.Ai.V2.StrategicTempoBudget.ClearAll();
             Game.Ai.V2.ApBudgetTelemetry.ClearAll();
             Game.Ai.V2.DevelopmentOutcomeTelemetry.ClearAll();

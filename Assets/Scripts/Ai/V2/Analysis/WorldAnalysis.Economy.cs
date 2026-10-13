@@ -79,8 +79,10 @@ namespace Game.Ai.V2
                 // Unknown opponents contribute zero rather than a fabricated income estimate.
                 var otherIncomes = others.Select(p => ObservedOpponentIncomeFloor(snap, p, t)).ToList();
                 float median = Median(otherIncomes);
-                float reserved = StrategicResourceReservationLedger.Active(
-                    player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t));
+                float reserved = 0f;
+                foreach (ResourceClaim claim in TurnResourceBook.LedgerClaims(
+                             player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t)))
+                    reserved += Mathf.Max(0f, claim.Amount);
                 float spendable = StrategicSpendability.SpendableAmount(player, root, ctx, t);
                 reservedNeed.Add(t, reserved);
                 spendableStock.Add(t, spendable);

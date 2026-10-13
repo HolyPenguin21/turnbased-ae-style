@@ -121,7 +121,9 @@ namespace Game.Ai.V2
             };
         }
 
-        // The ledger rows of `turn` as claims, without the live derived claim.
+        // The ledger rows of `turn` as claims, without the live derived claim. EconomyDeferred
+        // rows are listed net of the turn's income cover once it is open
+        // (EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover).
         internal static List<ResourceClaim> LedgerClaims(PlayerSetupData player, int turn,
             StrategicReservedResource? only = null)
         {
@@ -130,7 +132,39 @@ namespace Game.Ai.V2
                      StrategicResourceReservationLedger.LiveRows(player, turn))
                 if (only == null || r.Resource == only.Value)
                     claims.Add(new ResourceClaim(r.Owner, KindOf(r.Reason), r.Resource, r.Amount));
+            ApplyDeferredIncomeCover(claims, player, turn);
             return claims;
+        }
+
+        // The cover is shared by the deferred owners of one resource in ordinal owner order; a
+        // fully covered claim is dropped, exactly as the ledger drops a non-positive row.
+        private static void ApplyDeferredIncomeCover(List<ResourceClaim> claims,
+            PlayerSetupData player, int turn)
+        {
+            List<int> deferred = null;
+            for (int i = 0; i < claims.Count; i++)
+                if (claims[i].Kind == ResourceClaimKind.EconomyDeferred
+                    && EconomyReservationLifecycle.DeferredIncomeCover(player, turn, claims[i].Resource) > 0f)
+                    (deferred ??= new List<int>()).Add(i);
+            if (deferred == null)
+                return;
+            var cover = new Dictionary<StrategicReservedResource, float>();
+            deferred.Sort((a, b) => System.StringComparer.Ordinal.Compare(claims[a].Owner, claims[b].Owner));
+            var drop = new List<int>();
+            foreach (int i in deferred)
+            {
+                ResourceClaim c = claims[i];
+                if (!cover.TryGetValue(c.Resource, out float left))
+                    left = EconomyReservationLifecycle.DeferredIncomeCover(player, turn, c.Resource);
+                float released = Mathf.Min(left, Mathf.Max(0f, c.Amount));
+                cover[c.Resource] = left - released;
+                float held = c.Amount - released;
+                if (held <= 0f) drop.Add(i);
+                else claims[i] = new ResourceClaim(c.Owner, c.Kind, c.Resource, held);
+            }
+            drop.Sort();
+            for (int k = drop.Count - 1; k >= 0; k--)
+                claims.RemoveAt(drop[k]);
         }
 
         // Every claim of this turn. `only` limits the list to one resource, so a query for
