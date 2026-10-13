@@ -43,7 +43,7 @@ public static class CollectionWindowBuilder
         if (dropdown == null || input == null) { EditorUtility.DisplayDialog("Collection window", "PlayerRow prefab has no faction dropdown / nickname field to copy the style from.", "OK"); return; }
         var font = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/GameMenuFont");
 
-        var cell = LoadOrCreatePrefab("CollectionCardCell", () => BuildCell(font).gameObject).GetComponent<CollectionCardCellView>();
+        var cell = LoadOrCreatePrefab("CollectionCard", () => BuildCell(font).gameObject).GetComponent<CollectionCardCellView>();
         var row = LoadOrCreatePrefab("CollectionDeckRow", () => BuildRow(font).gameObject).GetComponent<CollectionDeckRowView>();
         var window = BuildWindow(canvas.transform, cell, row, dropdown, input, font);
         Undo.RegisterCreatedObjectUndo(window.gameObject, "Build Collection Window");
@@ -175,9 +175,11 @@ public static class CollectionWindowBuilder
     }
 
     // ---- prefabs ---------------------------------------------------------------------------------
+    // Bare fallback only: the real Assets/Prefabs/UI/Collection/CollectionCard.prefab is authored by hand
+    // (nested Card_Army, mask, fonts) and is loaded by LoadOrCreatePrefab; this stub has no card preview.
     internal static CollectionCardCellView BuildCell(TMP_FontAsset font)
     {
-        var root = Panel(null, "CollectionCardCell"); root.sizeDelta = new Vector2(140, 194);
+        var root = Panel(null, "CollectionCard"); root.sizeDelta = new Vector2(140, 194);
         var host = Rect(root, "Card");
         host.anchorMin = host.anchorMax = new Vector2(.5f, 1); host.pivot = new Vector2(.5f, 1);
         host.anchoredPosition = Vector2.zero; host.sizeDelta = new Vector2(106, 155);
@@ -191,7 +193,6 @@ public static class CollectionWindowBuilder
         so.FindProperty("addButton").objectReferenceValue = add;
         so.FindProperty("addLabel").objectReferenceValue = add.GetComponentInChildren<TMP_Text>();
         so.ApplyModifiedPropertiesWithoutUndo();
-        CollectionUIElements.ApplyCellSkin(root);
         return view;
     }
 

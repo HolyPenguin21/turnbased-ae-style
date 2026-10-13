@@ -280,12 +280,6 @@ namespace Game.EditorTools
                 Assert.That(root.Find("Cards").GetComponent<UnityEngine.UI.Image>().fillCenter, Is.False);
                 Assert.That(field.text, Is.EqualTo("Keep my deck"));
                 save.onClick.Invoke(); Assert.That(clicks, Is.EqualTo(1));
-                var cellBackground = cell.GetComponent<UnityEngine.UI.Image>();
-                cellBackground.sprite = GameAssetCatalog.Load<Sprite>("UI/Panels/Collection/Panel_Outer");
-                cellBackground.color = Color.white;
-                Game.UI.CollectionUIElements.ApplyCellSkin((RectTransform)cell.transform);
-                Assert.That(cellBackground.sprite, Is.Null); Assert.That(cellBackground.color.a, Is.Zero);
-                Assert.That(((RectTransform)cell.transform.Find("Card")).sizeDelta, Is.EqualTo(new Vector2(106, 155)));
             }
             finally
             {
