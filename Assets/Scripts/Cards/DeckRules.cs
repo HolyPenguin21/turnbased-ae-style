@@ -96,6 +96,9 @@ namespace Game.Cards
                 result.Warnings.Add("No base cards: expansion may be limited.");
             return result;
         }
+        // True when one more copy of the card fits: owned copies, copy limit and the deck point cap (via TryChange on a copy).
+        public bool CanAdd(SavedDeck draft, string key, Func<string, int> owned)
+            => TryChange(CollectionProfile.CopyDeck(draft), key, 1, owned, out _);
         public bool TryChange(SavedDeck draft, string key, int delta, Func<string, int> owned, out string reason)
         {
             reason = null;

@@ -30,7 +30,12 @@ namespace Game.UI
         [SerializeField] private CollectionCardCellView cellPrefab;
         [SerializeField] private ScrollRect detailsScroll;
         [SerializeField] private Image detailsArt;
+        // Frame around the selected card's art; hidden while the faction logo is shown instead.
+        [SerializeField] private GameObject detailsCardFrame;
         [SerializeField] private TMP_Text detailsText;
+        // Found by object name when not assigned.
+        [SerializeField] private TMP_Text cardTitle, cardType, cardDescription;
+        [SerializeField] private Button addToDeckButton;
         [Header("Deck panel")]
         [SerializeField] private TMP_Dropdown deckDropdown;
         [SerializeField] private TMP_InputField deckNameInput;
@@ -243,13 +248,67 @@ namespace Game.UI
             selected = card; RefreshDetails(); UpdateSelectionGlow();
             detailsScroll.verticalNormalizedPosition = 1f;
         }
+        // Details-panel "add to deck" button: hidden without a selected card, disabled when no further copy can be added.
+        private void RefreshAddButton()
+        {
+            if (addToDeckButton == null)
+            {
+                foreach (var b in GetComponentsInChildren<Button>(true))
+                    if (b.name == "Button_AddToDeck") { addToDeckButton = b; break; }
+                if (addToDeckButton == null) return;
+                addToDeckButton.onClick.AddListener(() =>
+                { if (selected != null && CardInputAllowed()) Change(selected.authoredKey, 1); });
+            }
+            addToDeckButton.gameObject.SetActive(selected != null);
+            if (selected != null)
+                addToDeckButton.interactable = collection.Rules.CanAdd(draft, selected.authoredKey, collection.Owned);
+        }
+        // The details scroll only scrolls if its Content grows with the text: Content and each text field must size to
+        // their preferred height (a fixed-height Content leaves nothing to scroll).
+        private void FitDetailsContent()
+        {
+            if (detailsScroll == null || detailsScroll.content == null) return;
+            FitHeight(detailsScroll.content.gameObject);
+            if (cardTitle != null) FitHeight(cardTitle.gameObject);
+            if (cardType != null) FitHeight(cardType.gameObject);
+            if (cardDescription != null) FitHeight(cardDescription.gameObject);
+            Canvas.ForceUpdateCanvases();
+            LayoutRebuilder.ForceRebuildLayoutImmediate(detailsScroll.content);
+        }
+        private static void FitHeight(GameObject go)
+        {
+            var fitter = go.GetComponent<ContentSizeFitter>() ?? go.AddComponent<ContentSizeFitter>();
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        }
+        private TMP_Text FindDetailText(string objectName)
+        {
+            foreach (var t in GetComponentsInChildren<TMP_Text>(true))
+                if (t.name == objectName) return t;
+            return null;
+        }
         private void RefreshDetails()
         {
             var sprite = selected == null ? collection.Rules.Starting.GetCatalog(faction)?.logo
                 : selected.detailArt != null ? selected.detailArt : selected.art;
             detailsArt.sprite = sprite; detailsArt.enabled = sprite != null;
-            detailsText.text = selected == null ? LabelFaction(faction) + "\nSelect a card."
-                : CollectionCardDetail.Describe(selected, config, collection.Owned(selected.authoredKey));
+            if (detailsCardFrame == null)
+                foreach (var t in GetComponentsInChildren<Transform>(true))
+                    if (t.name == "Image_CardFrame") { detailsCardFrame = t.gameObject; break; }
+            if (detailsCardFrame != null) detailsCardFrame.SetActive(selected != null);
+            RefreshAddButton();
+            string title = selected == null ? LabelFaction(faction) : CollectionCardDetail.Title(selected);
+            string type = selected == null ? string.Empty : CollectionCardDetail.Type(selected);
+            string description = CollectionCardDetail.Description(selected, config, selected == null ? 0 : collection.Owned(selected.authoredKey));
+            if (cardTitle == null) cardTitle = FindDetailText("CardTitle");
+            if (cardType == null) cardType = FindDetailText("CardType");
+            if (cardDescription == null) cardDescription = FindDetailText("CardDescription");
+            if (cardTitle != null) cardTitle.text = title;
+            if (cardType != null) cardType.text = type;
+            if (cardDescription != null) cardDescription.text = description;
+            FitDetailsContent();
+            // Old single-label layout, until the scene has the three fields.
+            if (cardDescription == null && detailsText != null)
+                detailsText.text = (type.Length > 0 ? title + "\n" + type + "\n" : title + "\n") + description;
         }
         private void RefreshDeck()
         {
@@ -278,6 +337,7 @@ namespace Game.UI
             budgetFill.offsetMax = new Vector2(4f - 8f * budgetFill.anchorMax.x, -4f);
             budgetFill.GetComponent<Image>().color = validation.Points > DeckRules.MaximumPoints ? Color.red : BudgetOk;
             RefreshTotalCost();
+            RefreshAddButton();
 
             int n = 0;
             var allEntries = new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator }

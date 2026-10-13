@@ -20,16 +20,29 @@ namespace Game.UI
         {
             if (unit == null) return string.Empty;
 
-            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
+            string text = $"{unit.Name}\n";
+            if (unit.TypeTags.Count > 0)
+                text += $"{string.Join(", ", unit.TypeTags)}\n";
+            return text + FormatBody(unit, defenseBonus, bonusColor, penaltyColor, abilities);
+        }
 
+        // Stats, then abilities: everything below the name / type-tag header lines. The collection
+        // window shows name and tags in its own fields and reuses only this part.
+        internal static string FormatBody(UnitData unit, GameConfig gameConfig)
+            => unit == null ? string.Empty : FormatBody(unit, 0,
+                gameConfig != null ? gameConfig.statBonusColor : StatSuffixFormatter.DefaultBonusColor,
+                gameConfig != null ? gameConfig.statPenaltyColor : StatSuffixFormatter.DefaultPenaltyColor,
+                gameConfig != null ? gameConfig.FormatAbilitiesDetailed(unit.Abilities) : null);
+
+        private static string FormatBody(UnitData unit, int defenseBonus,
+            Color bonusColor, Color penaltyColor, string abilities)
+        {
+            string defenseLine = StatSuffixFormatter.WithBonusSuffix($"Defense {unit.Defense + defenseBonus}", defenseBonus, bonusColor);
             string hpLine = StatSuffixFormatter.WithPenaltySuffix(
                 $"HP {unit.HitPointsCurrent}/{unit.HitPointsMax}", AviationRules.EmergencyHpPenalty(unit), penaltyColor);
             string moveLine = StatSuffixFormatter.WithPenaltySuffix(
                 $"Move {AviationRules.EffectiveMoveCurrent(unit)}/{unit.MoveMax}", AviationRules.EmergencyMovePenalty(unit), penaltyColor);
-
-            string text = $"{unit.Name}\n";
-            if (unit.TypeTags.Count > 0)
-                text += $"{string.Join(", ", unit.TypeTags)}\n";
+            string text = string.Empty;
             // Attack / Defense / Range are omitted for a hero card — a hero fights through
             // Command Rating / Fate / Initiative, not a per-unit combat stat block, so those
             // three numbers are meaningless noise on a hero (per the user's own request).
