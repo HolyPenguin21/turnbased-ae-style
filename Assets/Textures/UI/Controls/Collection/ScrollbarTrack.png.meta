@@ -49,7 +49,7 @@ TextureImporter:
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
   spritePixelsToUnits: 100
-  spriteBorder: {x: 4, y: 8, z: 4, w: 8}
+  spriteBorder: {x: 9, y: 12, z: 9, w: 12}
   spriteGenerateFallbackPhysicsShape: 0
   alphaUsage: 1
   alphaIsTransparency: 1
@@ -101,7 +101,7 @@ TextureImporter:
     physicsShape: []
     bones: []
     spriteID: d92233470f1144fea89e96142e169b3e
-    internalID: 0
+    internalID: -1739693679
     vertices: []
     indices: 
     edges: []
@@ -114,5 +114,4 @@ TextureImporter:
   pSDRemoveMatte: 0
   userData: 
   assetBundleName: 
-  assetBundleVariant:
-
+  assetBundleVariant: 
