@@ -133,6 +133,20 @@ namespace Game.EditorTests
             Assert.That(DemandLayer.EconomySupportBuilderAllowed(choice), Is.EqualTo(allowed));
         }
 
+        [TestCase(true, int.MaxValue, int.MaxValue, false)]
+        [TestCase(true, 4, 4, false)]
+        [TestCase(false, int.MaxValue, 1, true)]
+        [TestCase(false, 4, 4, false)]
+        public void EconomyFix_FieldOriginCannotProveSupportHomeProximity(bool support,
+            int homeCost, int expected, bool fallbackExpected)
+        {
+            bool fallbackUsed = false;
+            int cost = WorldAnalysis.EconomyBuilderReturnCost(homeCost, support,
+                () => { fallbackUsed = true; return 1; });
+            Assert.That(cost, Is.EqualTo(expected));
+            Assert.That(fallbackUsed, Is.EqualTo(fallbackExpected));
+        }
+
         [Test]
         public void EconomyFix_GarrisonRoleBelongsToSelectedHero()
         {

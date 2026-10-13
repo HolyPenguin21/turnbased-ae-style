@@ -707,7 +707,11 @@ namespace Game.Ai.V2
                             // a field container before Economy can execute the build.
                             result.Add(new EconomyBuilderRouteSnapshot
                             {
-                                ArmyId = army.ArmyId, TravelCost = 0, ReturnTravelCost = 0,
+                                ArmyId = army.ArmyId, TravelCost = 0,
+                                ReturnTravelCost = AiArmyRoles.IsGarrisonHero(sparableHero)
+                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero)
+                                    ? SafeStepPathing.FindNearestBaseReturnCost(ctx.Map, player,
+                                        target, snap.Self.BaseHexes, sparableHero.MoveMax) : 0,
                                 CurrentMovement = sparableHero.MoveMax, MaxMovement = sparableHero.MoveMax,
                                 ActivationApCost = sparableHero.ActivationApCost, ArmySize = 1,
                                 HasActivatedThisTurn = false,
@@ -736,9 +740,11 @@ namespace Game.Ai.V2
                         {
                             int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
                                 ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
-                            if (garrisonReturnCost == int.MaxValue)
-                                garrisonReturnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
-                                    target, army.Hex, sparableHero.MoveMax);
+                            garrisonReturnCost = EconomyBuilderReturnCost(garrisonReturnCost,
+                                AiArmyRoles.IsGarrisonHero(sparableHero)
+                                    || HeroRoleEvaluator.HasSupportVocation(sparableHero),
+                                () => SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                                    target, army.Hex, sparableHero.MoveMax));
 
                             result.Add(new EconomyBuilderRouteSnapshot
                             {
@@ -798,9 +804,9 @@ namespace Game.Ai.V2
                     continue;
                 int returnCost = SafeStepPathing.FindNearestBaseReturnCost(
                     ctx.Map, player, target, snap.Self.BaseHexes, army.MaxMovement);
-                if (returnCost == int.MaxValue)
-                    returnCost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
-                        target, army.Hex, army.MaxMovement);
+                returnCost = EconomyBuilderReturnCost(returnCost, army.HeroIsHomeVocation,
+                    () => SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                        target, army.Hex, army.MaxMovement));
                 result.Add(new EconomyBuilderRouteSnapshot
                 {
                     ArmyId = army.ArmyId,
@@ -823,6 +829,12 @@ namespace Game.Ai.V2
             }
             return result;
         }
+
+        // Returning to a field origin is a valid ordinary-builder pricing fallback, but
+        // cannot prove a Support job is close to an owned base.
+        internal static int EconomyBuilderReturnCost(int homeCost, bool hasHomeVocation,
+            System.Func<int> originReturnCost) => homeCost != int.MaxValue || hasHomeVocation
+                ? homeCost : originReturnCost();
 
         // The ONE economy threat witness (builders, escorts and collectors): known mobile armies of
         // other players within 1 hex of the SafeStepPathing route or within 2 hexes of the site
