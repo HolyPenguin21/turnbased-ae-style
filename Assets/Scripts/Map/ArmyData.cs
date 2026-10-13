@@ -29,6 +29,13 @@ namespace Game.Map
         public readonly int Id;
         public ArmyData() : this(assignIdentity: true) { }
         private ArmyData(bool assignIdentity) => Id = assignIdentity ? _nextId++ : -1;
+        private ArmyData(int restoredId)
+        {
+            Id = restoredId;
+            if (_nextId <= restoredId) _nextId = restoredId + 1;
+        }
+        // Load path: an army rebuilt under its saved identity; later armies are numbered above it.
+        internal static ArmyData WithIdentity(int id) => new ArmyData(restoredId: id);
 
         // Brand-new game/session (see ArmyRegistry.Clear, called from CitadelSetupController.
         // Start alongside every other registry wipe) — without this the id sequence just kept

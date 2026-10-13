@@ -22,6 +22,14 @@ namespace Game.Units
         private UnitData(bool live, int projectionId = -1) => RuntimeId = live ? Interlocked.Increment(ref _nextRuntimeId) : projectionId;
         // Read-only AI projection, never published to the game registries.
         internal static UnitData CreateProjection(int identity = -1) => new UnitData(false, identity);
+        // Load path: a unit rebuilt under its saved identity; later units are numbered above it.
+        internal static UnitData WithRuntimeId(int runtimeId)
+        {
+            int issued;
+            while ((issued = Volatile.Read(ref _nextRuntimeId)) < runtimeId
+                && Interlocked.CompareExchange(ref _nextRuntimeId, runtimeId, issued) != issued) { }
+            return new UnitData(false, runtimeId);
+        }
 
         public string Name;
         public PlayerSetupData Owner;
