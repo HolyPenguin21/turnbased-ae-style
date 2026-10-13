@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     //
     //    · CommittedHoldUncovered — the claims that must be honoured THIS turn exceed the physical
     //      stock: every TurnResourceBook claim except EconomyDeferred (ledger rows plus the derived
-    //      air-recovery and operation-continuation claims). EconomyDeferred is excluded on purpose:
+    //      operation-continuation claim). EconomyDeferred is excluded on purpose:
     //      it holds a build's full cost while the stock is still being saved up, so it may
     //      legitimately exceed it. Reported once when a resource BECOMES uncovered, labelled with
     //      the step that did it.

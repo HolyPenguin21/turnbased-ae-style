@@ -221,6 +221,40 @@ namespace Game.EditorTests
                 player, turn, StrategicReservedResource.ActionPoints), Is.EqualTo(4f),
                 "completion AP becomes protected exactly when the actor can finish this turn");
         }
+
+        // A repeated Provisioning pass restating the same completion keeps the held rows; a
+        // changed vector replaces them without leaving a resource the new cost no longer needs.
+        [Test]
+        public void RepeatedCompletionKeepsRowsAndChangedVectorReplacesThem()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 11;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            ReservationOwner owner = ReservationOwner.ForPass("Economy:build");
+            ReservationOwner other = ReservationOwner.ForPass("Economy:other");
+            var cost = new ResourceCost(energy: 2, materials: 1);
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, other, cost, 1f);
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner, cost, 3f);
+            var before = new System.Collections.Generic.List<StrategicResourceReservation>(
+                StrategicResourceReservationLedger.LiveRows(player, turn));
+
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner, cost, 3f);
+
+            CollectionAssert.AreEqual(before, StrategicResourceReservationLedger.LiveRows(player, turn),
+                "an identical completion repeat must not drop and re-add its rows");
+
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner,
+                new ResourceCost(materials: 4), 2f);
+
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
+                StrategicReservationReason.EconomyBuildCompletion, new ResourceCost(materials: 4), 2f), Is.True);
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, other,
+                StrategicReservationReason.EconomyBuildCompletion, cost, 1f), Is.True,
+                "another build's completion hold is untouched");
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, turn, StrategicReservedResource.Energy), Is.EqualTo(2f),
+                "only the other build still holds Energy");
+        }
     }
 }
 #endif

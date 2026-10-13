@@ -90,21 +90,13 @@ namespace Game.Ai.V2
                 return;
 
             ReservationOwner owner = EconomyMissionPlanner.ReservationIdentity(intent.LastAttemptKey);
-            // AP is turn-local execution capacity and has no legal deferred state:
-            // StrategicResourceReservationLedger.Upsert clamps any EconomyDeferredBuild
-            // ActionPoints write to zero, and OwnerReasonMatches expects zero for the same reason.
-            // A build's AP is reserved only at EconomyBuildCompletion, after Provisioning has
-            // proved this concrete actor can finish the build THIS turn (ProvisioningManager →
-            // ReserveEconomyCost). The value below is the build's declared follow-up envelope
-            // carried for idempotence comparison only, not a hold, and is computed FoundBase-only.
-            // Changing that policy needs its own reproduced defect.
-            float followupAp = economy.Kind == EconomyTaskKind.FoundBase
-                ? UnityEngine.Mathf.Max(economy.BuildApCost, economy.MinimumFollowupAp)
-                : 0f;
+            // AP is turn-local execution capacity and has no legal deferred state: a build's AP is
+            // reserved only at EconomyBuildCompletion, after Provisioning has proved this concrete
+            // actor can finish the build THIS turn (ProvisioningManager -> ReserveEconomyCost).
             ReserveDeferredEconomyResourcesCore(player, turn, owner, new AxisDemand
             {
                 EconomyBuildResourceCost = economy.BuildResourceCost,
-            }, followupAp);
+            });
         }
 
         // A bare Hero or pinned escort prerequisite has no ready builder/route to witness.
@@ -126,7 +118,7 @@ namespace Game.Ai.V2
         }
 
         private static void ReserveDeferredEconomyResourcesCore(
-            PlayerSetupData player, int turn, ReservationOwner owner, AxisDemand demand, float buildAp = 0f)
+            PlayerSetupData player, int turn, ReservationOwner owner, AxisDemand demand)
         {
             // Every test here is OWNER-specific, and the completion test must run BEFORE the
             // deferred replacement:
@@ -144,12 +136,12 @@ namespace Game.Ai.V2
                 return;
             if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                     StrategicReservationReason.EconomyDeferredBuild,
-                    demand.EconomyBuildResourceCost, buildAp))
+                    demand.EconomyBuildResourceCost, 0f))
                 return;
             MissionLeaseBook.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner,
                 replaceOwnerRows: true);
-            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, buildAp,
+            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f,
                 StrategicReservationReason.EconomyDeferredBuild);
         }
 
@@ -311,16 +303,16 @@ namespace Game.Ai.V2
                 return;
             if (reason == StrategicReservationReason.EconomyBuildCompletion)
             {
-                // This owner's own deferred hold is being promoted to completion — downgrade only
-                // ITS rows; every other Economy build's deferred H/E/M/T hold stays.
+                // This owner's own deferred hold is being promoted to completion — drop only ITS
+                // deferred rows; every other Economy build's deferred H/E/M/T hold stays. An equal
+                // completion vector already held is kept as is (idempotent repeat).
                 MissionLeaseBook.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
+                    StrategicReservationReason.EconomyDeferredBuild, owner);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                         reason, cost, buildAp))
                     return;
                 MissionLeaseBook.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyBuildCompletion, owner,
-                    replaceOwnerRows: true);
+                    StrategicReservationReason.EconomyBuildCompletion, owner);
             }
             if (buildAp > 0f)
                 MissionLeaseBook.Upsert(player, turn,

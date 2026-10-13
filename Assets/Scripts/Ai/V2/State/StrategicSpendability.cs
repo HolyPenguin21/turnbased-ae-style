@@ -310,7 +310,7 @@ namespace Game.Ai.V2
         // owner's EconomyDeferredBuild hold is ignored — by contract such a hold belongs to a
         // build that cannot complete this turn and only shields H/E/M/T from non-Economy spending
         // (cards, Phase B, reactions), which keep using FitsSpendableResources. Reaction holds,
-        // other builds' proven EconomyBuildCompletion rows and unpaid air-recovery activation
+        // other builds' proven EconomyBuildCompletion rows and the operation-continuation hold
         // still count, so two builds completing in the same turn are ordered by whoever claims first.
         internal static bool FitsSpendableForEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ResourceCost cost, string owner)
