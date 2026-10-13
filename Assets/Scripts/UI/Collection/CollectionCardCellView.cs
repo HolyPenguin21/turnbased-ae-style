@@ -22,8 +22,6 @@ namespace Game.UI
 
         public void Init(Action<CardDefinition> onAdd)
         {
-            CollectionUIElements.ApplyControlsSkin(addButton.transform);
-            infoLabel.color = CollectionUIElements.CollectionText;
             addButton.onClick.AddListener(() => { if (Card != null) onAdd(Card); });
         }
 
@@ -37,7 +35,7 @@ namespace Game.UI
         public void SetCounts(int owned, int inDeck)
         {
             if (Card == null) return;
-            infoLabel.text = $"{owned}/{DeckRules.CopyLimit(Card)}   {Card.deckPointCost} pt" + (owned >= DeckRules.CopyLimit(Card) ? " MAX" : "");
+            infoLabel.text = $"{Card.deckPointCost}pt. In deck: {inDeck}/{DeckRules.CopyLimit(Card)}";
             addLabel.text = "+  In deck: " + inDeck;
             previewGroup.alpha = owned == 0 ? .4f : 1f;
         }

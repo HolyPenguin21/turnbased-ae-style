@@ -128,8 +128,8 @@ namespace Game.UI
         public void Setup(ArmyViewerModalUI modal, UnitData unit)
         {
             _actionHoverText?.Restore();
-            equipmentArtToggle?.Revert();
-            mutatorArtToggle?.Revert();
+            if (equipmentArtToggle != null) equipmentArtToggle.Revert();
+            if (mutatorArtToggle != null) mutatorArtToggle.Revert();
             _previewMode = false;
             _modal = modal;
             Unit = unit;
@@ -184,11 +184,11 @@ namespace Game.UI
             if (hiddenBadgeRoot != null)
                 hiddenBadgeRoot.SetActive(unit != null && unit.IsHidden);
 
-            equipmentArtToggle?.SetPeer(mutatorArtToggle);
-            mutatorArtToggle?.SetPeer(equipmentArtToggle);
-            equipmentArtToggle?.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null,
+            if (equipmentArtToggle != null) equipmentArtToggle.SetPeer(mutatorArtToggle);
+            if (mutatorArtToggle != null) mutatorArtToggle.SetPeer(equipmentArtToggle);
+            if (equipmentArtToggle != null) equipmentArtToggle.Configure(unit?.Equipment, _modal != null ? _modal.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
-            mutatorArtToggle?.Configure(unit?.Mutator, _modal != null ? _modal.GameConfig : null,
+            if (mutatorArtToggle != null) mutatorArtToggle.Configure(unit?.Mutator, _modal != null ? _modal.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
 
             // Preview-only element — never part of the Army Viewer's own card face. On the
@@ -208,8 +208,8 @@ namespace Game.UI
             Func<bool> inputAllowed = null, Action<CardDefinition> onHover = null)
         {
             _actionHoverText?.Restore();
-            equipmentArtToggle?.Revert();
-            mutatorArtToggle?.Revert();
+            if (equipmentArtToggle != null) equipmentArtToggle.Revert();
+            if (mutatorArtToggle != null) mutatorArtToggle.Revert();
             _previewMode = true;
             _previewCard = card;
             _previewClick = onClick;
@@ -241,8 +241,8 @@ namespace Game.UI
             if (repairButton != null) repairButton.gameObject.SetActive(false);
             if (stealthButton != null) stealthButton.gameObject.SetActive(false);
             if (hiddenBadgeRoot != null) hiddenBadgeRoot.SetActive(false);
-            equipmentArtToggle?.Configure(null, null);
-            mutatorArtToggle?.Configure(null, null);
+            if (equipmentArtToggle != null) equipmentArtToggle.Configure(null, null);
+            if (mutatorArtToggle != null) mutatorArtToggle.Configure(null, null);
 
             ShowCardCostPreview(card);
             RefreshSkillsText(card, config);
@@ -476,7 +476,7 @@ namespace Game.UI
                 return;
             }
             bool repair = Unit != null && _modal != null && _modal.CanRepairUnit(Unit);
-            repairButton?.gameObject.SetActive(repair);
+            if (repairButton != null) repairButton.gameObject.SetActive(repair);
 
             RefreshStealthButton(out bool stealthHasCost);
             bool hasAction = (repairButton != null && repairButton.gameObject.activeSelf)
@@ -498,10 +498,10 @@ namespace Game.UI
         {
             if (_previewMode)
                 return;
-            repairButton?.gameObject.SetActive(false);
-            stealthButton?.gameObject.SetActive(false);
-            equipmentArtToggle?.Revert();
-            mutatorArtToggle?.Revert();
+            if (repairButton != null) repairButton.gameObject.SetActive(false);
+            if (stealthButton != null) stealthButton.gameObject.SetActive(false);
+            if (equipmentArtToggle != null) equipmentArtToggle.Revert();
+            if (mutatorArtToggle != null) mutatorArtToggle.Revert();
             _actionHoverText?.Restore();
             HideCostPreview();
         }
@@ -515,7 +515,7 @@ namespace Game.UI
             hasCost = false;
             if (stealthButton == null || Unit == null || _modal == null)
             {
-                stealthButton?.gameObject.SetActive(false);
+                if (stealthButton != null) stealthButton.gameObject.SetActive(false);
                 return;
             }
             bool canEnter = _modal.CanEnterStealthUnit(Unit);
