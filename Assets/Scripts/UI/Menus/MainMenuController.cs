@@ -128,9 +128,7 @@ namespace Game.UI
         }
         private void ConfirmCampaign(Game.Players.Faction human)
         {
-            bool previous = System.IO.File.Exists(System.IO.Path.Combine(Application.persistentDataPath, "campaign-v1.json"))
-                || System.IO.File.Exists(System.IO.Path.Combine(Application.persistentDataPath, "campaign-v1.json.bak"));
-            if (!previous) { StartCampaign(human); return; }
+            if (!Game.Campaign.CampaignMatchBridge.Store.Exists) { StartCampaign(human); return; }
             var window = CampaignSetupWindow("OverwriteCampaign", "REPLACE SAVED CAMPAIGN?");
             CampaignFactionLogo(window, human, 419, 128, 112);
             CampaignSetupLabel(window, "The current planet and campaign progress will be replaced.\nYour collection and saved decks are retained.", 35, 270, 880, 128, 26);

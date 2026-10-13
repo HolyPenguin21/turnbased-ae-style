@@ -1032,6 +1032,8 @@ namespace Game.Combat
                     AppendKey(buf, baseline);
                     AppendKey(buf, defenderCommander);
                     AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+                    // The simulated commander healing heroes also receive the hex bonus.
+                    buf.Add(System.BitConverter.SingleToInt32Bits(hexDefenseBonus));
                 },
                 () => SimulateSingle(baseline,
                     ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed, attackerCommander,
@@ -1051,6 +1053,8 @@ namespace Game.Combat
                     AppendKey(buf, attackerUnits, 0f, attackerCommander.Initiative);
                     AppendKey(buf, defenderCommander);
                     AppendKey(buf, defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+                    // The simulated commander healing heroes also receive the hex bonus.
+                    buf.Add(System.BitConverter.SingleToInt32Bits(hexDefenseBonus));
                 },
                 () => SimulateSingle(ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative, attackerCommander),
                     ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative, defenderCommander), seed,

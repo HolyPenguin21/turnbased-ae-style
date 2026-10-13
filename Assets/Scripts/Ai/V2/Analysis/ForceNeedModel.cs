@@ -133,11 +133,7 @@ namespace Game.Ai.V2
         {
             if (snap?.Self == null)
                 return default;
-            if (Cache.TryGetValue(snap, out Box cached))
-                return cached.Value;
-            ForceNeed need = Compute(snap);
-            Cache.Add(snap, new Box { Value = need });
-            return need;
+            return Cache.GetValue(snap, s => new Box { Value = Compute(s) }).Value;
         }
 
         private static ForceNeed Compute(WorldSnapshot snap)
