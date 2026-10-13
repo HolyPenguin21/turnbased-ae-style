@@ -191,7 +191,6 @@ public static class CollectionWindowBuilder
         so.FindProperty("cardHost").objectReferenceValue = host;
         so.FindProperty("infoLabel").objectReferenceValue = info;
         so.FindProperty("addButton").objectReferenceValue = add;
-        so.FindProperty("addLabel").objectReferenceValue = add.GetComponentInChildren<TMP_Text>();
         so.ApplyModifiedPropertiesWithoutUndo();
         return view;
     }

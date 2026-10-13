@@ -219,13 +219,15 @@ namespace Game.UI
                 selectionGlow = go.AddComponent<UIRaggedGlowUI>();
             }
             var glowRect = (RectTransform)selectionGlow.transform;
-            glowRect.SetParent(cell.CardHost, false);
+            // Whole cell (card + counters + Add), and outside the Card host's RectMask2D that would clip the glow.
+            var cellRect = (RectTransform)cell.transform;
+            glowRect.SetParent(cellRect, false);
             glowRect.anchorMin = glowRect.anchorMax = new Vector2(.5f, .5f);
             glowRect.pivot = new Vector2(.5f, .5f);
             glowRect.anchoredPosition = Vector2.zero;
             selectionGlow.ApplyStyle(config.battleActingUnitHighlightStyle);
             selectionGlow.SetColor(TechnicalColors.BattleActingUnit);
-            selectionGlow.ShowAt(cell.CardHost.rect.size);
+            selectionGlow.ShowAt(cellRect.rect.size);
             glowRect.SetAsLastSibling();
         }
         private void RebuildUsed()

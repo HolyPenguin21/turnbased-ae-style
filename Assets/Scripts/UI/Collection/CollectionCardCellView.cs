@@ -14,7 +14,6 @@ namespace Game.UI
         [SerializeField] private RectTransform cardHost;
         [SerializeField] private TMP_Text infoLabel;
         [SerializeField] private Button addButton;
-        [SerializeField] private TMP_Text addLabel;
         [SerializeField] private ArmyUnitCardUI preview;
         [SerializeField] private CanvasGroup previewGroup;
         public CardDefinition Card { get; private set; }
@@ -36,7 +35,6 @@ namespace Game.UI
         {
             if (Card == null) return;
             infoLabel.text = $"{Card.deckPointCost}pt. In deck: {inDeck}/{DeckRules.CopyLimit(Card)}";
-            addLabel.text = "+  In deck: " + inDeck;
             previewGroup.alpha = owned == 0 ? .4f : 1f;
         }
     }
