@@ -105,7 +105,7 @@
         //  Live step level: an adjacent step that increases distance from the nearest home asset is
         //  penalized while local unexplored coverage is still materially incomplete; the penalty
         //  fades to nothing once the local ring is well covered or the scout is already outside it.
-        public const int scoutStepHomeLocalRingRadius = 4;          // hexes from nearest home asset that count as "local"
+        public const int scoutStepHomeLocalRingRadius = 3;          // hexes from nearest home asset that count as "local"
         public const float scoutExploreHomeProximityWeight = 3f;   // Explore-only span at full local coverage deficit; fades to the common span
         public const float scoutStepHomeOutwardPenaltyWeight = 0.45f; // max fraction shaved off an outward step's score when localGap=1
         public const float scoutStepHomeInwardBonusWeight = 0.10f;  // small reward for a step that closes home distance while local gaps remain
