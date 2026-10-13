@@ -3,21 +3,12 @@ using UnityEngine;
 namespace Game.Styles
 {
     // Reserved colours used for UI/highlight purposes across the project — never offered as
-    // a player colour (see PlayerColorPalette, which deliberately excludes these two).
+    // a player colour (see PlayerColorPalette).
     public static class TechnicalColors
     {
-        // Citadel-hex selection marker (CitadelSetupController).
-        public static readonly Color CitadelSelection = new Color(0.55f, 0.45f, 0.05f);
-
         // General hex inspection highlight (HexSelectionController): neutral sun-bleached paint,
         // deliberately kept away from the old olive/yellow shader colour.
         public static readonly Color HexSelection = new Color(0.97f, 0.96f, 0.92f);
-
-
-        // The round-start title's "X is retreating this round!" callout (BattleRoundStartPopupUI)
-        // — a warning orange so it reads as an alert rather than blending into the plain "Round N"
-        // text next to it (see the user's own "easy to miss" report on this line).
-        public static readonly Color RetreatWarning = new Color(0.95f, 0.5f, 0.1f);
     }
 }
 

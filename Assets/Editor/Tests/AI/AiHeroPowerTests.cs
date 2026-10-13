@@ -178,6 +178,26 @@ namespace Game.EditorTests
             Assert.That(AiPower.EffectiveArmyPowerFromProfiles(new[] { body, hero }),
                 Is.EqualTo(AiPower.EffectiveArmyPowerFromProfiles(new[] { body })).Within(0.001f));
         }
+
+        // A remembered enemy's combat abilities count with the same bump our own units get
+        // (AiPower.AbilityMultiplier); a flag-only CeramicArmor is bumped once, never twice.
+        [Test]
+        public void EnemyProfilePower_CountsCombatAbilities()
+        {
+            WorthIt.DefenderProfile P(bool ceramicFlag, params string[] abilities) =>
+                new WorthIt.DefenderProfile(2f, ceramicFlag, null, 3f, 4f, 1, abilities);
+            float Power(WorthIt.DefenderProfile p) => AiPower.EffectiveArmyPowerFromProfiles(new[] { p });
+
+            float plain = Power(P(false));
+            Assert.That(Power(P(false, UnitAbilities.Splash)),
+                Is.EqualTo(plain * (1f + AiConfigV2.powerBumpSplash)).Within(1e-3f));
+            Assert.That(Power(P(false, UnitAbilities.ShockAttack, UnitAbilities.RaiseTheRots)),
+                Is.EqualTo(plain * (1f + AiConfigV2.powerBumpShockAttack + AiConfigV2.powerBumpRaiseTheRots))
+                    .Within(1e-3f));
+            float ceramic = plain * (1f + AiConfigV2.powerBumpCeramicArmor);
+            Assert.That(Power(P(true)), Is.EqualTo(ceramic).Within(1e-3f));
+            Assert.That(Power(P(true, UnitAbilities.CeramicArmor)), Is.EqualTo(ceramic).Within(1e-3f));
+        }
     }
 }
 #endif

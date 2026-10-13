@@ -82,9 +82,6 @@ namespace Game.Ai.V2
             InterruptVersion = interruptVersion;
             ApAtProbe = apAtProbe;
         }
-
-        public bool Matches(int turnNumber, int interruptVersion) =>
-            TurnNumber == turnNumber && InterruptVersion == interruptVersion;
     }
 
     internal readonly struct ReactionWitness

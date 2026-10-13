@@ -559,18 +559,6 @@ namespace Game.UI
             Relayout(animated: false);
         }
 
-        // Single entry point for a card entering the human's hand from OUTSIDE the normal draw —
-        // challenge rewards, event rewards (via HexSelectionController.GrantCard), returned
-        // aircraft. Enforces the hand cap; returns false (card lost, hint shown) if the hand is
-        // already full. Equipment cards reach the hand only through here (temporarily also via a
-        // StartingDeck entry for testing — see StartingDeckCatalog).
-        public bool AddCardToHand(CardDefinition definition)
-        {
-            if (definition == null)
-                return false;
-            return AddCardToHand(new CardData(definition));
-        }
-
         // Research/Production output is the one intentional hand-cap exception. The explicit
         // instance flag prevents rewards, draws or returned aircraft from accidentally using this
         // boundary to bypass the normal cap. Being over capacity naturally keeps ordinary draws
@@ -583,17 +571,18 @@ namespace Game.UI
             return true;
         }
 
-        // Read-only ordinary-hand capacity probe. Research/Production output deliberately uses
-        // AddProducedCardToHand instead and may exceed this cap.
-        public bool HasFreeHandSlot => _cards.Count < maxHandSize;
-
         // The shared hand capacity (spec P0 §10 — one hand cap for human and AI). Read once into
         // AiTurnContext.HandCapacity the same way StartingHandSize/DrawApCost already are, so the
         // AI's Development planner refuses a Research/Production Create into a full AiHandData.
         public int MaxHandSize => maxHandSize;
 
-        // Same, but for a card instance that already exists and must be preserved as-is rather
-        // than rebuilt from its definition — an aircraft returning from an airfield/air army
+        // Single entry point for a card entering the human's hand from OUTSIDE the normal draw —
+        // challenge rewards, event rewards (via HexSelectionController.GrantCard), returned
+        // aircraft. Enforces the hand cap; returns false (card lost, hint shown) if the hand is
+        // already full. Equipment cards reach the hand only through here (temporarily also via a
+        // StartingDeck entry for testing — see StartingDeckCatalog).
+        // The card instance is preserved as-is rather than rebuilt from its definition — an
+        // aircraft returning from an airfield/air army
         // still carries its attached Equipment on the CardData (see AviationActions.
         // ReturnAircraftToDeck). The Equipment's cost was already paid when it was attached, so
         // this is a restore, not a fresh attach — nothing is charged here.

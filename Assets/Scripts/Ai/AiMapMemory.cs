@@ -1300,11 +1300,7 @@ namespace Game.Ai
         //   * a fogged hex contributes the last OBSERVED Defense of the building remembered
         //     there, and nothing at all where no building was ever seen.
         // Two players' answers are independent because KnownBuildings is per-player.
-        // Snapshot-only callers (no HexMap in hand) read terrain from the map this memory is bound
-        // to (EnsureSubscribed) — terrain never changes, so it is the same answer a map holder gets.
-        public static float KnownHexDefenseBonus(PlayerSetupData actor, HexCoord hex) =>
-            KnownHexDefenseBonus(actor, _map, hex);
-
+        //
         // Combat-owner-aware form: terrain belongs to the hex and applies to every defender,
         // while a Base's structural Defense applies only to an army owned by that Base's owner.
         // A null defendingOwner intentionally means terrain only (for example an event guard).

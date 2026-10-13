@@ -151,7 +151,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public sealed class AttackObjective
     {
-        public AggressionObjectiveKind Kind => AggressionObjectiveKind.Attack;
         public AttackTargetRef Target;
         // The known opposition on the target site (§31): its garrison and every known enemy army
         // on that same hex, each its own battle with its own commander — one objective.
@@ -175,7 +174,6 @@ namespace Game.Ai.V2
         public bool LocationOnly;
 
         public HexCoord Hex => Target.Hex;
-        public string ObjectiveId => $"Attack#{Target.DiagnosticLabel}";
         public MissionIntentKey IntentKey => MissionIntentKey.ForAttack(Target);
     }
 

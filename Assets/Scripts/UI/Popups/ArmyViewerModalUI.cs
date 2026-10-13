@@ -263,17 +263,10 @@ namespace Game.UI
         // Create Army/Rename), PLUS the button row itself is hidden — nothing here should let
         // the player wander off to inspect a DIFFERENT one of that owner's armies; that's the
         // battle popup's own side list's job, not this modal's.
-        public void ShowLocked(ArmyData army)
-        {
-            ShowLocked(army, null);
-        }
-
-        // Same as ShowLocked(army) but with an explicit read-only observer — see
-        // _readOnlyObserver's own comment for why the caller (BattleContactPopupUI) can't just
-        // rely on VisionSystem.CurrentViewer here: in a hot-seat delayed battle the global viewer
-        // and this encounter's PresentationObserver can be two different humans. Passing null
-        // (or using the overload above) falls back to VisionSystem.CurrentViewer in
-        // VisibleMembers, same as before this overload existed.
+        // `observer` is an explicit read-only observer — see _readOnlyObserver's own comment for
+        // why the caller can't just rely on VisionSystem.CurrentViewer here: in a hot-seat delayed
+        // battle the global viewer and this encounter's PresentationObserver can be two different
+        // humans. Passing null falls back to VisionSystem.CurrentViewer in VisibleMembers.
         public void ShowLocked(ArmyData army, Game.Players.PlayerSetupData observer)
         {
             LastClosedSelectableArmy = null;

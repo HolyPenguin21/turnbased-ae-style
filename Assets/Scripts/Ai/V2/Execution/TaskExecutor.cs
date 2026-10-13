@@ -64,7 +64,6 @@ namespace Game.Ai.V2
         public bool AttackIntermediateCaptured;
         public bool AttackCaptureHadBattle;
         public bool AirSupportStrikeSucceeded;
-        public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
         public ResourceVector ResourcesSpent;
 

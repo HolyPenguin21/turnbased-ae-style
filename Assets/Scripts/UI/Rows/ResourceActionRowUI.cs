@@ -39,8 +39,6 @@ namespace Game.UI
 
         private readonly List<ResourceActionButtonUI> _buttons = new List<ResourceActionButtonUI>();
 
-        public int VisibleButtonCount => _buttons.Count;
-
         private void LayoutButtons()
         {
             if (!(buttonContainer is RectTransform container)) return;

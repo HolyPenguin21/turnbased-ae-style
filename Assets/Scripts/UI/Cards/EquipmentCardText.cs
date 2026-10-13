@@ -10,14 +10,6 @@ namespace Game.UI
     // button (see EquipmentArtToggle). One place so both read the EquipmentGrant identically.
     public static class EquipmentCardText
     {
-        // "Infantry, Vehicle" — the unit type tags this equipment fits. Empty string when
-        // hostTypeTags is empty (fits anything).
-        public static string HostTags(EquipmentGrant grant)
-        {
-            if (grant?.hostTypeTags == null || grant.hostTypeTags.Count == 0)
-                return string.Empty;
-            return string.Join(", ", grant.hostTypeTags.Select(t => t.ToString()).Distinct());
-        }
 
         // One compact compatibility line: authored tags followed by allowed host kinds.
         // The tags retain EquipmentSystem's ANY-match semantics; this is presentation only.

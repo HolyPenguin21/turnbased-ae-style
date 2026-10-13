@@ -92,8 +92,6 @@ namespace Game.Ai.V2
         // False only for a T01 preparation plan (PlanGather allowPartial): the chosen supports
         // raise the host but do not yet take it past the power threshold / coverage.
         public bool ReachesThreshold = true;
-        // Everything still to be paid on later turns (the rest of the walks, handoffs, assault).
-        public int FutureAp => System.Math.Max(0, TotalAp - CurrentTurnAp);
         public int GatherFutureAp => System.Math.Max(0, GatherAp - CurrentTurnAp);
         public int TotalEta => GatherTurns + AssaultEta;
 

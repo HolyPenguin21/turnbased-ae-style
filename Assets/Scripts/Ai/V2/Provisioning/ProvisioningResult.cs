@@ -26,8 +26,6 @@ namespace Game.Ai.V2
         public readonly ProvisionRequirement Requirement;
         public readonly string Detail;
 
-        public float RequiredAp => Requirement.Ap;
-
         public ProvisionFailure(ProvisionFailureKind kind, ProvisionDisposition disposition, ProvisionRequirement requirement, string detail)
         {
             Kind = kind;

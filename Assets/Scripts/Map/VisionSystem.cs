@@ -218,14 +218,6 @@ namespace Game.Map
                 VisibilityChanged?.Invoke(player);
         }
 
-        public static void RecomputeFor(IEnumerable<PlayerSetupData> players)
-        {
-            if (players == null)
-                return;
-            foreach (PlayerSetupData player in players)
-                RecomputeFor(player);
-        }
-
         // RecomputeFor above only ever recomputes and fires for the mover/builder's own owner
         // (see ArmyRegistry.Register/Unregister, BuildingRegistry.Register/Unregister/
         // CaptureOrDestroy) — a bystander who already has `hex` inside their own Visible set

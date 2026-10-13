@@ -56,7 +56,6 @@ namespace Game.UI
             if (Timing.Finished(now)) Hide();
             else _fade.alpha = Timing.Alpha(now);
         }
-        public void Dismiss(float now) { if (Active) Timing.Dismiss(now); }
         public void Hide()
         {
             Speaker = null; Unit = null; Timing = null; _offset = null;

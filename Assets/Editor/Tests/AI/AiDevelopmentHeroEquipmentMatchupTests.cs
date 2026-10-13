@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace Game.EditorTests
 {
     // Heroes may receive Equipment, but WorthIt's combat roster excludes Hero members.
-    // EquipmentUpgradeUtilityFor evaluates their actual marginal benefits separately;
+    // EquipmentDeltaParts evaluates their actual marginal benefits separately;
     // a Hero's Attack increase must not fabricate an additional damage-dealing body.
     public sealed class AiDevelopmentHeroEquipmentMatchupTests
     {

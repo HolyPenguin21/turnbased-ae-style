@@ -135,9 +135,7 @@ namespace Game.Ai.V2
         // SurplusPlacementBonus). No caller re-adjusts it on read.
         public float Score;
         public string StableKey;
-        public string Explain;
 
-        public bool UsesGenerator => Generation != null;
         public bool UsesEquipment => Kind == MaterializationChainKind.AttachDeploy
                                      || Kind == MaterializationChainKind.GenerateAttachDeploy
                                      || Kind == MaterializationChainKind.GenerateAttachUpgrade;

@@ -86,33 +86,6 @@ namespace Game.Ai.V2
             (card?.equipment?.addAbilities ?? new List<string>())
                 .Select(FamilyOf).Where(f => f != null).Distinct().ToList();
 
-        // Own units (map + hand) that already carry at least one of the families.
-        internal static int Carriers(PlayerSetupData player, AiHandData hand, ICollection<string> families)
-        {
-            if (player == null || families == null || families.Count == 0)
-                return 0;
-            int count = 0;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-            {
-                if (army == null || army.IsPrison)
-                    continue;
-                foreach (UnitData unit in army.Members)
-                    if (unit != null && unit.Abilities.Any(a => families.Contains(FamilyOf(a))))
-                        count++;
-            }
-            foreach (CardData card in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-            {
-                if (card?.Definition == null
-                    || (card.Definition.cardType != CardType.Unit && card.Definition.cardType != CardType.Hero))
-                    continue;
-                IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(
-                    card.Definition, card.Equipment, card.Mutator);
-                if (abilities.Any(a => families.Contains(FamilyOf(a))))
-                    count++;
-            }
-            return count;
-        }
-
         // Pure rule (EditMode-testable): 1 for a card not attempted lately, falling with every recent
         // attempt. Ability saturation by carriers is priced where the ability is valued
         // (EquipmentEfficiency), so existing hand items saturate too.

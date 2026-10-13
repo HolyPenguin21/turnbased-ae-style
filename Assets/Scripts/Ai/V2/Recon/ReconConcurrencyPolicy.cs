@@ -98,18 +98,5 @@ namespace Game.Ai.V2
             }
             return regions;
         }
-
-        public static string Explain(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable)
-        {
-            float first = runnable != null && runnable.Count > 0 ? runnable[0].BaseValue : 0f;
-            float second = runnable != null && runnable.Count > 1 ? runnable[1].BaseValue : 0f;
-            float ratio = first > 0f ? second / first : 0f;
-            float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
-            int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
-            float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
-            return $"desired={DesiredTotal(snap, runnable)} hard={HardCap} "
-                + $"best={first:0.0} second={second:0.0} r2={ratio:0.00} "
-                + $"dark={dark:0.00} regions={regions} refresh={refresh:0.00}";
-        }
     }
 }

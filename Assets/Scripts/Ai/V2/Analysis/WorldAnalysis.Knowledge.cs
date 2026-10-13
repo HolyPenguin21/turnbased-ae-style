@@ -51,7 +51,7 @@ namespace Game.Ai.V2
                 ResourceHexes = AiMapMemory.AllKnownResourceHexes(player).ToList(),
             };
 
-            known.EnemyKnownStrength = known.EnemySightings.Sum(s => s.DefenseSum + s.AttackSum);
+            known.EnemyKnownStrength = known.EnemySightings.Sum(AiPower.SightingPower);
 
             int nearest = int.MaxValue;
             float nearBases = 0f;
@@ -62,7 +62,7 @@ namespace Game.Ai.V2
                     : 99;
                 if (d < nearest) nearest = d;
                 if (d <= AiConfig.raidThreatRadius + 2)
-                    nearBases += s.DefenseSum + s.AttackSum;
+                    nearBases += AiPower.SightingPower(s);
             }
             known.NearestEnemyToBase = nearest == int.MaxValue ? 99 : nearest;
             known.EnemyStrengthNearBases = nearBases;

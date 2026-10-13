@@ -93,7 +93,6 @@ namespace Game.Ai
         public HexCoord TargetHex;
         public CardData Card;
         public string Reason;
-        public ResourceType? EconomyResourceType;
         public IReadOnlyList<UnitData> AircraftToLaunch;
         public HexCoord AirActionHex;
         public HexCoord AirLandingHex;

@@ -35,8 +35,6 @@ namespace Game.Ai.V2
         public string UnreachableReason;
 
         public bool ReadyExecutable => ReadyPlan != null && ReadyPlan.Feasible;
-        // Not ready now, but nothing proves the known pool cannot get there.
-        public bool AttainableWithKnownPool => !ReadyExecutable && !ProvenUnreachableWithinKnownPool;
 
         public static RaidOperationalReadiness Evaluate(WorldSnapshot snap, RaidObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ActorCommitments commitments,

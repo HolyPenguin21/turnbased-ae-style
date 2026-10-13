@@ -24,7 +24,6 @@ namespace Game.Ai.V2
         }
 
         public static readonly ResourceVector Zero = new ResourceVector(0f, 0f, 0f, 0f, 0f);
-        public bool IsPositive => Ap > AiConfigV2.allocatorSliceEpsilon;
         public bool AnyPhysical => Human > AiConfigV2.allocatorSliceEpsilon || Energy > AiConfigV2.allocatorSliceEpsilon
             || Materials > AiConfigV2.allocatorSliceEpsilon || Tech > AiConfigV2.allocatorSliceEpsilon;
 
@@ -37,11 +36,9 @@ namespace Game.Ai.V2
 
         public ResourceVector ClampLow0() => new ResourceVector(
             Mathf.Max(0f, Ap), Mathf.Max(0f, Human), Mathf.Max(0f, Energy), Mathf.Max(0f, Materials), Mathf.Max(0f, Tech));
-        public float Magnitude => Ap;
         public bool CoversPhysical(ResourceVector need, float eps) =>
             Human + eps >= need.Human && Energy + eps >= need.Energy
             && Materials + eps >= need.Materials && Tech + eps >= need.Tech;
-        public string Fmt() => Ap.ToString("0.00", CultureInfo.InvariantCulture);
         public string FmtPhysical() =>
             $"H{Human.ToString("0.#", CultureInfo.InvariantCulture)} "
             + $"E{Energy.ToString("0.#", CultureInfo.InvariantCulture)} "
@@ -322,7 +319,6 @@ namespace Game.Ai.V2
     {
         public MissionProposal Mission;
         public DeferReason Reason;
-        public DesireAxis? BottleneckAxis;
         public ResourceVector Required;
         public ResourceVector Available;
         public ResourceVector Missing;
@@ -383,8 +379,6 @@ namespace Game.Ai.V2
             if (!_cooldowns.TryGetValue(k, out MissionCooldownInfo cur) || untilTurn > cur.UntilTurn)
                 _cooldowns[k] = next;
         }
-        public void StartCooldown(StableMissionKey k, int untilTurn) =>
-            StartCooldown(k, Mathf.Max(0, untilTurn - AiConfigV2.allocatorRejectCooldownTurns), untilTurn, "LegacySeed");
         // Live cooldown keys at `turn`, ordered — an admission-fingerprint input (a cooldown
         // started mid-turn blocks a Raid target the Aggression demand would otherwise name).
         public string CooldownDigest(int turn) => string.Join(";", _cooldowns

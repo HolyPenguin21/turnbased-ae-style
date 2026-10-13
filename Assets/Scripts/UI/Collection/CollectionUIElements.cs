@@ -183,44 +183,6 @@ namespace Game.UI
         private static void Surface(Transform target, string asset)
         { if (target != null) ApplySurface(target.GetComponent<Image>(), asset); }
 
-        internal static RectTransform RewardWindow(Transform parent, string name, bool large = false)
-        {
-            var window = Panel(parent, name);
-            window.anchorMin = window.anchorMax = window.pivot = new Vector2(.5f, .5f);
-            window.anchoredPosition = Vector2.zero;
-            window.sizeDelta = large ? new Vector2(1440, 900) : new Vector2(1060, 630);
-            var image = window.GetComponent<Image>();
-            image.sprite = GameAssetCatalog.Load<Sprite>(large ? "UI/Panels/Rewards/RewardConsole_1440x900" : "UI/Panels/Rewards/RewardDialog_1060x630");
-            image.type = Image.Type.Simple; image.preserveAspect = true; image.color = Color.white;
-            if (image.sprite == null) ApplyCampaignSurface(window, "Panel_Outer");
-            return window;
-        }
-        internal static TMP_Text RewardTitle(Transform parent, string value, bool large = false, TMP_Text existing = null)
-        {
-            var title = existing != null ? existing : Label(parent, value, 0, 0, 1, 1);
-            title.text = value;
-            Place((RectTransform)title.transform, large ? 280 : 210, large ? 26 : 19, large ? 880 : 640, large ? 70 : 58);
-            Heading(title, large ? 38 : 30);
-            return title;
-        }
-        internal static Button RewardButton(Transform parent, string value, float x, float y, float w, float h, Action action, int size = 22)
-        {
-            var button = Button(parent, value, x, y, w, h, action, size);
-            ApplyControlsSkin(button.transform);
-            var label = button.GetComponentInChildren<TMP_Text>();
-            label.fontStyle = FontStyles.Bold;
-            Place((RectTransform)label.transform, 10, 4, w - 20, h - 8);
-            return button;
-        }
-        internal static RectTransform RewardScroll(Transform parent, string name, float x, float y, float w, float h)
-        {
-            var content = Scroll(parent, name, x, y, w, h, true);
-            var root = content.parent.parent;
-            root.GetComponent<Image>().color = Color.clear;
-            ApplyScrollbarSkin(root.GetComponent<ScrollRect>().verticalScrollbar);
-            return content;
-        }
-
         // Campaign and its entry dialogs share the same transparent frame/plaque imports.
         // Collection windows continue to use ApplySurface and their authored control templates.
         public static void ApplyCampaignSurface(RectTransform rect, string asset)

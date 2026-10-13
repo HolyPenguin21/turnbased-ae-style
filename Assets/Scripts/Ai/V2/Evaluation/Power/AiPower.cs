@@ -280,12 +280,41 @@ namespace Game.Ai.V2
                            + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
                            + p.HitPoints * AiConfigV2.powerHitPointsWeight
                            + p.Initiative * AiConfigV2.powerInitiativeWeight;
-                if (p.HasCeramicArmor)
-                    line *= 1f + AiConfigV2.powerBumpCeramicArmor;
+                // Same ability bump as our own units (ToPowerUnit), so an enemy's Splash/Shock/
+                // RaiseTheRots/... count on the scale our power is compared against.
+                line *= ProfileAbilityMultiplier(p);
                 pus.Add(new PowerUnit(Mathf.Max(0f, line), p.TypeTags, 1, false));
             }
             return EffectiveArmyPower(pus);
         }
+
+        // A remembered enemy stack on the same scale as our own EffectiveArmyPower (stats, HP,
+        // skills, composition), so ratios against FieldPower / BasePower compare like with like.
+        public static float SightingPower(Game.Ai.AiMapMemory.KnownEnemySighting s) =>
+            EffectiveArmyPowerFromProfiles(s.Defenders);
+
+        // AbilityMultiplier for a profile. A profile whose CeramicArmor is only carried by the
+        // flag still gets that one bump, never two.
+        private static float ProfileAbilityMultiplier(WorthIt.DefenderProfile p)
+        {
+            float multiplier = AbilityMultiplier(p.Abilities);
+            if (p.HasCeramicArmor
+                && (p.Abilities == null || !p.Abilities.Contains(UnitAbilities.CeramicArmor)))
+                multiplier += AiConfigV2.powerBumpCeramicArmor;
+            return multiplier;
+        }
+
+        // WorthIt.CombatValue's raw stat sum with the same ability bump, for the per-body
+        // comparisons (weakest body, donor, pre-filter ratio) — a Splash or RaiseTheRots body
+        // must not rank as weaker than a plain body with the same stats.
+        public static float SkilledCombatValue(WorthIt.DefenderProfile p, float extraDefense = 0f) =>
+            WorthIt.CombatValue(p.Attack, p.Defense + extraDefense, p.HitPoints, p.Initiative)
+            * ProfileAbilityMultiplier(p);
+
+        public static float SkilledCombatValue(UnitData u) =>
+            u == null ? 0f
+                : WorthIt.CombatValue(u.Attack, u.Defense, u.HitPointsCurrent, u.Initiative)
+                  * AbilityMultiplier(u.Abilities);
 
         private static float AbilityMultiplier(IEnumerable<string> abilities)
         {
@@ -306,6 +335,7 @@ namespace Game.Ai.V2
                     case UnitAbilities.Scorcher: bump += AiConfigV2.powerBumpScorcher; break;
                     case UnitAbilities.RaiseTheRots: bump += AiConfigV2.powerBumpRaiseTheRots; break;
                     case UnitAbilities.Regeneration: bump += AiConfigV2.powerBumpRegeneration; break;
+                    case UnitAbilities.Berserk: bump += AiConfigV2.powerBumpBerserk; break;
                 }
             }
             return 1f + bump;
@@ -519,12 +549,6 @@ namespace Game.Ai.V2
             front |= unit.Range <= 1;
             reach |= unit.Range > 1;
         }
-
-        // Strongest single stack assemblable from `available`, capped at `cap` slots (the best
-        // available hero's CommandRating, or the no-hero baseline). Dynamic — loses a strong unit
-        // and this drops. Comparison scalar only; gates nothing.
-        public static float BestStackPotential(IReadOnlyList<PowerUnit> available, int cap)
-            => EffectiveArmyPower(ComposeStack(available, cap));
 
         // Current ceiling: the strongest ONE stack from own units, hand and remaining deck.
         // Each candidate hero sets its own capacity, including the no-hero two-body case — not

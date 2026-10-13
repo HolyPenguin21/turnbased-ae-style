@@ -54,8 +54,6 @@ namespace Game.UI
         private readonly List<int> _colorOptionIndices = new List<int>();
         private Action _onChanged;
 
-        internal TMP_Dropdown FactionTemplate => factionDropdown;
-        internal TMP_InputField NicknameTemplate => nicknameField;
         private Game.Core.GameConfig deckConfig;
         private bool refreshingDecks;
         public void ConfigureDeckSelection(Game.Core.GameConfig config)

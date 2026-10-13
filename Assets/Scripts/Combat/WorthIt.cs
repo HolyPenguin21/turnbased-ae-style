@@ -637,8 +637,19 @@ namespace Game.Combat
                     // "neighbours" is approximated as random OTHER living enemies. No-op for an
                     // actor with neither ability, so every existing trial is unchanged.
                     if (exchange.Damage > 0)
+                    {
+                        int commanderBefore = FirstLivingHeroIndex(enemyList);
                         ApplyRosterSplash(enemyList, targetIndex, actor, exchange.Damage, rng, magnitudes,
                             scratch.SecondaryTargets);
+                        // A Commander killed by a side-hit hands over command like a primary kill.
+                        if (commanderBefore >= 0 && enemyList[commanderBefore].Hp <= 0f)
+                        {
+                            if (turn.isAttacker)
+                                TransferCommanderAfterHeroDeath(defenders, commanderBefore, ref defenderFate);
+                            else
+                                TransferCommanderAfterHeroDeath(attackers, commanderBefore, ref attackerFate);
+                        }
+                    }
 
                     acted.Add(turn);
                 }
@@ -766,14 +777,12 @@ namespace Game.Combat
                 attackerCommander, defenderCommander, magnitudes);
         }
 
-        // THE quick "how much fight is in this body" number (Attack + Defense + HitPoints +
-        // 0.25 × Initiative) every roster pick uses: strongest-first ordering, swap candidates,
-        // the Monte-Carlo pre-filter. One formula, never re-typed at a call site.
+        // THE quick "how much fight is in this body" stat sum (Attack + Defense + HitPoints +
+        // 0.25 × Initiative). Roster picks (strongest-first ordering, swap candidates, the
+        // Monte-Carlo pre-filter) read it through AiPower.SkilledCombatValue, which adds the
+        // skill bump. One formula, never re-typed at a call site.
         public static float CombatValue(float attack, float defense, float hitPoints, int initiative) =>
             attack + defense + hitPoints + 0.25f * initiative;
-
-        public static float CombatValue(DefenderProfile p) =>
-            CombatValue(p.Attack, p.Defense, p.HitPoints, p.Initiative);
 
         // Every defending body of an opposition, in army order — the flat roster callers use for
         // counts, power and coverage. Built from the per-army list, never kept as a second source.

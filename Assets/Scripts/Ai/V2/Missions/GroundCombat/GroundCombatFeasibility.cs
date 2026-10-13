@@ -47,9 +47,7 @@ namespace Game.Ai.V2
                     float bonus = System.Math.Max(0f,
                         defendingArmy.DefenseBonus(defenderHexDefenseBonus));
                     foreach (WorthIt.DefenderProfile profile in defendingArmy.Units)
-                        defenderPower += WorthIt.CombatValue(
-                            profile.Attack, profile.Defense + bonus,
-                            profile.HitPoints, profile.Initiative);
+                        defenderPower += AiPower.SkilledCombatValue(profile, bonus);
                 }
                 if (defenderPower > 0f
                     && attackerPower / defenderPower < AiConfigV2.raidPowerRatioPreFilter)
@@ -105,7 +103,7 @@ namespace Game.Ai.V2
             for (int i = 0; i < profiles.Count; i++)
             {
                 WorthIt.DefenderProfile p = profiles[i];
-                sum += WorthIt.CombatValue(p);
+                sum += AiPower.SkilledCombatValue(p);
             }
             return sum;
         }

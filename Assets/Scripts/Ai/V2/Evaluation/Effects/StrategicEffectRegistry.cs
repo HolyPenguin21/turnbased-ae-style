@@ -153,6 +153,9 @@ namespace Game.Ai.V2
         public readonly bool RequiresHit;
         public readonly int SecondaryTargets;
         public readonly int SecondaryPriority;
+        // Worth something only on a body that attacks: a hero never acts in battle, so an
+        // attacker-side skill on a hero card adds nothing (EquipmentEfficiency prices them 0 too).
+        public readonly bool BodyOnly;
 
         public StrategicEffect(IntendedRole role, float baseFit, StrategicEffectContext context,
             EffectField field, bool coverage,
@@ -163,7 +166,7 @@ namespace Game.Ai.V2
             string stackingKey = null,
             GlobalResourceKind globalResource = GlobalResourceKind.None, float globalYieldPerTurn = 0f,
             bool primaryExchange = false, bool requiresHit = false,
-            int secondaryTargets = 0, int secondaryPriority = 0)
+            int secondaryTargets = 0, int secondaryPriority = 0, bool bodyOnly = false)
         {
             Role = role;
             BaseFit = baseFit;
@@ -187,6 +190,7 @@ namespace Game.Ai.V2
             RequiresHit = requiresHit;
             SecondaryTargets = System.Math.Max(0, secondaryTargets);
             SecondaryPriority = secondaryPriority;
+            BodyOnly = bodyOnly;
         }
     }
 
@@ -253,11 +257,6 @@ namespace Game.Ai.V2
         public RoleCoverage With(IntendedRole r) => new RoleCoverage(_bits | (1 << (int)r));
         public RoleCoverage Union(RoleCoverage other) => new RoleCoverage(_bits | other._bits);
         public bool Any => _bits != 0;
-        // The lossless bit pattern itself. Exposed so a long-lived invalidation key can
-        // carry the exact coverage set instead of resting on GetHashCode(), which is a hash by
-        // contract even where an implementation happens to be injective today.
-        public int Bits => _bits;
-
         public static bool operator ==(RoleCoverage a, RoleCoverage b) => a._bits == b._bits;
         public static bool operator !=(RoleCoverage a, RoleCoverage b) => a._bits != b._bits;
         public bool Equals(RoleCoverage other) => _bits == other._bits;
@@ -348,6 +347,8 @@ namespace Game.Ai.V2
         public readonly int TurnNumber;
 
         public float ProjectedHitPoints => ProjectedLine.HitPoints;
+        public bool ProjectedIsHero => (Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef)
+            ?.cardType == CardType.Hero;
         public bool ProjectedIsBio => (Plan?.BaseCardInHand?.Definition ?? Plan?.GeneratedBaseDef)
             ?.unitTypeTags.Contains(UnitTypeTag.Bio) == true;
 
@@ -389,7 +390,7 @@ namespace Game.Ai.V2
                         continue;
                     LocalEnemyArmies++;
                     LocalEnemyBodies += System.Math.Max(1, s.MemberCount);
-                    enemyPowerNear += s.DefenseSum + s.AttackSum;
+                    enemyPowerNear += AiPower.SightingPower(s);
                     if (s.Defenders != null && s.Defenders.Count > 0)
                         (enemyProfiles ??= new List<WorthIt.DefenderProfile>()).AddRange(s.Defenders);
                 }
@@ -712,7 +713,7 @@ namespace Game.Ai.V2
                 {
                     new StrategicEffect(IntendedRole.AntiArmor, AiConfigV2.threatResponseValueWeight,
                         StrategicEffectContext.EnemyThreatScaled, EffectField.ThreatResponse, coverage: true,
-                        primaryExchange: true),
+                        primaryExchange: true, bodyOnly: true),
                 },
                 [UnitAbilities.ApBonus] = new[]
                 {
@@ -763,7 +764,8 @@ namespace Game.Ai.V2
                 {
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectCriticalDamageFit,
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
-                        stacking: EffectStacking.Stack, stackingKey: "CriticalDamage", primaryExchange: true),
+                        stacking: EffectStacking.Stack, stackingKey: "CriticalDamage", primaryExchange: true,
+                        bodyOnly: true),
                 },
                 // ---- New skills (2026-09), each ONE row on the existing machinery — the AoE /
                 // regen / summon contexts below were already scored by ContextualValue, just never
@@ -774,7 +776,8 @@ namespace Game.Ai.V2
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectSplashFit,
                         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
                         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.9f,
-                        stacking: EffectStacking.Unique, stackingKey: "Splash", requiresHit: true, secondaryTargets: 2),
+                        stacking: EffectStacking.Unique, stackingKey: "Splash", requiresHit: true, secondaryTargets: 2,
+                        bodyOnly: true),
                 },
                 [UnitAbilities.Scorcher] = new[]
                 {
@@ -782,7 +785,41 @@ namespace Game.Ai.V2
                         StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
                         eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Bio),
                         scope: EffectScope.EnemiesNearDeploy, magnitude: 0.5f, probability: 0.6f,
-                        stacking: EffectStacking.Unique, stackingKey: "Scorcher", requiresHit: true, secondaryTargets: 1, secondaryPriority: 1),
+                        stacking: EffectStacking.Unique, stackingKey: "Scorcher", requiresHit: true, secondaryTargets: 1, secondaryPriority: 1,
+                        bodyOnly: true),
+                },
+                // Pyrokinetic / ShockAttack / Berserk / CeramicArmor: the combat kernel already prices their
+                // exchange (primaryExchange keeps them out of AttachmentValue); these rows give the
+                // card scoring the same CombatBody fit CriticalDamage has. Pyrokinetic is the Bio
+                // counterpart of Hyperkinetic, scaled by the known Bio enemies near the deploy.
+                [UnitAbilities.Pyrokinetic] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectPyrokineticFit,
+                        StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
+                        eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Bio),
+                        scope: EffectScope.EnemiesNearDeploy,
+                        stacking: EffectStacking.Unique, stackingKey: "Pyrokinetic", primaryExchange: true,
+                        bodyOnly: true),
+                },
+                [UnitAbilities.ShockAttack] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectShockAttackFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: "ShockAttack", primaryExchange: true,
+                        bodyOnly: true),
+                },
+                [UnitAbilities.Berserk] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectBerserkFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: "Berserk", primaryExchange: true,
+                        bodyOnly: true),
+                },
+                [UnitAbilities.CeramicArmor] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectCeramicArmorFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: "CeramicArmor", primaryExchange: true),
                 },
                 [UnitAbilities.Heal] = new[]
                 {
@@ -966,8 +1003,10 @@ namespace Game.Ai.V2
                     bodyEffects = Resolve(before.Abilities, effectiveMoveMax);
                 }
             }
+            bool heroCard = ctx.ProjectedIsHero;
             List<StrategicEffect> forRole = bodyEffects
-                .Where(e => e.Role == role && e.Scope != EffectScope.PlayerGlobal).ToList();
+                .Where(e => e.Role == role && e.Scope != EffectScope.PlayerGlobal
+                    && !(e.BodyOnly && heroCard)).ToList();
 
             // An effect with NO StackingKey stands alone — evaluated individually with its OWN
             // context (predicate / scope / duration), never merged with anything (every existing

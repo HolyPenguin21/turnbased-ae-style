@@ -231,11 +231,6 @@ namespace Game.Ai.V2
             return sighting.HasValue ? Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
                 snap.Observer, sighting.Value.Hex, sighting.Value.Owner) : 0f;
         }
-
-        // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid
-        // consumers must call the RaidTargetRef overload above instead of duplicating this switch.
-        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId) =>
-            KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(armyId));
     }
 }
 

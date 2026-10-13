@@ -34,7 +34,6 @@ namespace Game.Ai.V2
 
     internal static class DevelopmentUpgradeFulfillment
     {
-        public static bool Handles(CapabilityKind k) => k == CapabilityKind.CardUpgrade;
 
         public static DevUpgradeResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,

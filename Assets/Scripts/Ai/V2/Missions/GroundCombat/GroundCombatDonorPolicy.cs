@@ -109,7 +109,6 @@ namespace Game.Ai.V2
                 || (preparation && !donor.IsGarrison && donor.Members.Count == 1
                     && donor.Members[0] != null && donor.Members[0].IsHero));
 
-        internal static float UnitCombatValue(UnitData u) =>
-            u == null ? 0f : WorthIt.CombatValue(u.Attack, u.Defense, u.HitPointsCurrent, u.Initiative);
+        internal static float UnitCombatValue(UnitData u) => AiPower.SkilledCombatValue(u);
     }
 }

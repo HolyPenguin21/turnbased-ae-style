@@ -141,7 +141,7 @@ namespace Game.Ai.V2
             int slots = Math.Max(0, commandRating - 1 - Math.Max(0, otherHeroes));
             List<WorthIt.DefenderProfile> roster = (bodies ?? Array.Empty<WorthIt.DefenderProfile>())
                 .Where(p => p.IsGroundCombatant)
-                .OrderByDescending(WorthIt.CombatValue)
+                .OrderByDescending(p => AiPower.SkilledCombatValue(p))
                 .Take(slots)
                 .ToList();
             float win = opposition == null || opposition.Count == 0

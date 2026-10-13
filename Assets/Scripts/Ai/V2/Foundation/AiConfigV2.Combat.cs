@@ -31,6 +31,7 @@ namespace Game.Ai.V2
         public const float powerBumpScorcher = 0.06f;           // Scorcher — half-damage to 1 neighbour, Bio-gated
         public const float powerBumpRaiseTheRots = 0.30f;       // RaiseTheRots — conjures extra bodies each battle
         public const float powerBumpRegeneration = 0.10f;       // Regeneration — end-of-turn self heal
+        public const float powerBumpBerserk = 0.08f;            // Berserk — +Attack / -Defense per hit taken
 
         // Composition quality maps [0..1] onto a multiplier of (compoFloor .. 1). A single unit or
         // an all-one-type stack still counts for compoFloor of its raw power; a balanced,
