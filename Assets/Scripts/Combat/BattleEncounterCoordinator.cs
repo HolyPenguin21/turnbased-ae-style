@@ -11,8 +11,6 @@ namespace Game.Combat
         public readonly BattleEncounterContext NextEncounter;
         public readonly bool CanTriggerEvent;
 
-        public bool HasNextEncounter => NextEncounter != null;
-
         public BattleEncounterContinuation(bool hexPending,
             BattleEncounterContext nextEncounter, bool canTriggerEvent)
         {

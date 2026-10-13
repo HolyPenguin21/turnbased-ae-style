@@ -35,7 +35,6 @@ namespace Game.UI
         private bool _readOnly;
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
-        public bool IsReadOnly => _readOnly;
         public bool CanManageCurrentBuilding => !_readOnly && _currentBuilding != null
             && (turnController == null || turnController.CurrentPlayer == null
                 || turnController.CurrentPlayer == _currentBuilding.Owner);

@@ -335,7 +335,7 @@ namespace Game.Ai.V2
                             && !u.IsCommitted)
                         .OrderBy(u => u.CombatProfile.MaxHitPoints > 0f
                             ? u.CombatProfile.HitPoints / u.CombatProfile.MaxHitPoints : 1f)
-                        .ThenBy(u => WorthIt.CombatValue(u.CombatProfile))
+                        .ThenBy(u => AiPower.SkilledCombatValue(u.CombatProfile))
                         .ThenBy(u => u.Key)
                         .FirstOrDefault();
                     if (body == null

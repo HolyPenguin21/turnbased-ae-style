@@ -435,17 +435,6 @@ namespace Game.Ai.V2
             return facts;
         }
 
-        private static HashSet<HexCoord> NewHexes(
-            IEnumerable<HexCoord> before, IEnumerable<HexCoord> after)
-        {
-            var old = new HashSet<HexCoord>(before ?? System.Array.Empty<HexCoord>());
-            var result = new HashSet<HexCoord>();
-            if (after != null)
-                foreach (HexCoord hex in after)
-                    if (!old.Contains(hex)) result.Add(hex);
-            return result;
-        }
-
         private static HashSet<HexCoord> NewActionableResourceSites(
             WorldSnapshot before, WorldSnapshot after)
         {

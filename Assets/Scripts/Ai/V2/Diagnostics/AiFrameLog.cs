@@ -137,7 +137,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"{P}   enemy: {contacts.Count} contacts ({exact} exact, {lk} last-known)");
             if (known != null)
                 AiDebugLog.Write($"{P}          seen force ~{N(known.EnemyKnownStrength)} "
-                    + $"(Σ raw atk+def of remembered stacks)   "
+                    + $"(Σ effective power of remembered stacks)   "
                     + $"nearest-to-base {known.NearestEnemyToBase} hex   near-bases ~{N(known.EnemyStrengthNearBases)}");
 
             float maxSev = threat?.Threats == null || threat.Threats.Count == 0

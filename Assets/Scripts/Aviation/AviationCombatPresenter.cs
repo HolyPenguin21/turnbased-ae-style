@@ -105,9 +105,6 @@ namespace Game.Aviation
 
         // Shared endpoint strike for movement and stationary repeat strikes. Publish the
         // final defenders once after the entire aircraft group has finished resolving.
-        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex, AirStrikeResult result = null)
-            => ResolveAirStrikeAtCurrentHex(airArmy, hex, AirStrikePolicy.Standard, result);
-
         public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
             AirStrikePolicy policy, AirStrikeResult result = null)
         {

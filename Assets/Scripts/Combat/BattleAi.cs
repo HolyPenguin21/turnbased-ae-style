@@ -699,17 +699,45 @@ namespace Game.Combat
                     {
                         damage = expectedDamage;
                         hp[target] -= damage;
+                        // Deterministic lookahead: an expected hit that rounds to a landed point
+                        // applies the target's Berserk and the actor's ShockAttack, the same
+                        // rounding SimSideHit gives a Splash side-hit.
+                        int landed = Mathf.RoundToInt(damage);
+                        if (landed > 0 && simulatedAttack != null && simulatedDefense != null)
+                        {
+                            int attack = simulatedAttack.TryGetValue(target, out int atk) ? atk : target.Attack;
+                            int defense = simulatedDefense.TryGetValue(target, out int def)
+                                ? def : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
+                            BattleSimulationKernel.ApplyBerserkIfHit(
+                                true, target.Abilities, ref attack, ref defense, magnitudes);
+                            simulatedAttack[target] = attack;
+                            simulatedDefense[target] = defense;
+                        }
+                        suppressTarget = BattleSimulationKernel.SuppressesTurn(landed, actor.Abilities);
                     }
 
                     if (damageDealtByUnit != null)
                         damageDealtByUnit[actor] = damageDealtByUnit.TryGetValue(actor, out float dealt)
                             ? dealt + damage : damage;
 
-                    if (rng != null && suppressTarget && order.IndexOf(target) > i)
+                    if (suppressTarget && order.IndexOf(target) > i)
                         suppressed.Add(target);
 
+                    bool trackSplashCommanders = fateByArmy != null
+                        && (actor.HasAbility(UnitAbilities.Splash) || actor.HasAbility(UnitAbilities.Scorcher));
+                    UnitData ownCommander = trackSplashCommanders
+                        ? BattleTurnOrder.LivingCommanderOnGrid(grid, ownArmy) : null;
+                    UnitData enemyCommander = trackSplashCommanders
+                        ? BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy) : null;
                     ApplySimSplash(grid, hp, actor, target, damage, magnitudes, rng,
                         simulatedAttack, simulatedDefense);
+                    // A Commander killed by a side-hit (either side: Splash hits allies too) hands
+                    // command and its Fate pool over exactly like a primary kill below.
+                    if (trackSplashCommanders)
+                    {
+                        HandOverSplashKilledCommander(grid, ownArmy, ownCommander, fateByArmy);
+                        HandOverSplashKilledCommander(grid, enemyArmy, enemyCommander, fateByArmy);
+                    }
                     if (hp[target] <= 0f && grid.TryFindPosition(target, out int tRow, out int tCol))
                     {
                         grid.Set(tRow, tCol, null);
@@ -755,6 +783,15 @@ namespace Game.Combat
                     grid.Set(step.Value.row, step.Value.col, actor);
                 }
             }
+        }
+
+        private static void HandOverSplashKilledCommander(BattleGrid grid, ArmyData army,
+            UnitData commanderBefore, Dictionary<ArmyData, int> fateByArmy)
+        {
+            if (army == null || commanderBefore == null || grid.TryFindPosition(commanderBefore, out _, out _))
+                return;
+            UnitData replacement = BattleTurnOrder.LivingCommanderOnGrid(grid, army);
+            fateByArmy[army] = Mathf.Max(0, replacement?.Fate ?? 0);
         }
 
         private static void ApplySimHeal(BattleGrid grid, Dictionary<UnitData, float> hp,

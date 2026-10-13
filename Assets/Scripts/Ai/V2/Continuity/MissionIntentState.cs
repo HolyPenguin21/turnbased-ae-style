@@ -59,7 +59,6 @@ namespace Game.Ai.V2
                 _retreatWitnesses[witness.Target] = witness;
         }
         internal void ClearRetreatWitness(AttackTargetRef target) => _retreatWitnesses.Remove(target);
-        internal int RetreatWitnessCount => _retreatWitnesses.Count;
         internal string RetreatWitnessDigest() => _retreatWitnesses.Count == 0 ? "-"
             : string.Join(";", _retreatWitnesses.Values
                 .OrderBy(w => w.Target.Hex.Q).ThenBy(w => w.Target.Hex.R)

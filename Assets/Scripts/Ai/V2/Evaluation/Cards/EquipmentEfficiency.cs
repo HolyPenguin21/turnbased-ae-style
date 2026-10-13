@@ -197,16 +197,6 @@ namespace Game.Ai.V2
             return 1f / (1f + Mathf.Max(0, ctx.Carriers(family)));
         }
 
-        // Which group an ability's value belongs to and what it is worth on host stats `s`.
-        // false: the ability has no row here (StrategicEffectRegistry prices it, e.g. global effects).
-        internal static bool TryValue(string ability, EfficiencyStats s, EfficiencyContext ctx,
-            out string group, out float value)
-        {
-            bool ok = TryValue(ability, s, ctx, out Group g, out value);
-            group = g.ToString();
-            return ok;
-        }
-
         private static bool TryValue(string ability, EfficiencyStats s, EfficiencyContext ctx,
             out Group group, out float value)
         {

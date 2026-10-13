@@ -58,14 +58,7 @@ namespace Game.UI
                 image.rectTransform.localScale = Vector3.one;
         }
 
-        // onComplete (optional): fired once the flip settles on its final face. A single-die
-        // roll with no group of its own — lands after the full-roll duration, same as index 0
-        // of a 1-die group.
-        public void PlayRoll(bool hit, System.Action onComplete = null)
-        {
-            PlayRoll(hit, 0, 1, FullRollDuration, onComplete);
-        }
-
+        // onComplete (optional): fired once the flip settles on its final face.
         // index/count: this die's position (0-based) among the `count` dice rolled together in
         // this same call (see DiceRowUI.ShowRoll/BattleCombatantRowUI.SetDice) — dice land one
         // after another from index 0 to count-1, spaced evenly across the supplied duration, so

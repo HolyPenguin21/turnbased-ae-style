@@ -117,6 +117,5 @@ namespace Game.Ai.V2
 
         public float ContinuationValue;     // intrinsic merit of completing (== current proposal BaseValue in step 7)
         public float SwitchingCost;         // real loss from abandoning + restarting elsewhere (0 until pre-emption, step 9+)
-        public float ProtectedValue => ContinuationValue + SwitchingCost;
     }
 }

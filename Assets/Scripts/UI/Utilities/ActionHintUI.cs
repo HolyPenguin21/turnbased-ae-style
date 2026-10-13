@@ -17,8 +17,6 @@ namespace Game.UI
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text infoText;
 
-        public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
-
         // Relies solely on the scene's own initial inactive state for "hidden until shown" —
         // panelRoot may be this component's own GameObject, so a SetActive(false) here could
         // undo the very activation that ran Awake.

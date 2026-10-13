@@ -18,7 +18,6 @@ namespace Game.Ai.V2
         // floor. Every Attack ratio below is measured on it, as the AI measures it, so the panel
         // and the log show the same numbers. GroundArmyPotential stays the whole-deck ceiling.
         public readonly float AttackPeak;
-        public float AttackBar => AttackForceReadiness.RequiredPower(AttackPeak);
         public float ReadinessPercent => AttackPeak > 0f
             ? 100f * StrongestArmyPower / AttackPeak : 0f;
         public bool ForceReady => AttackForceReadiness.ForceReady(StrongestArmyPower, AttackPeak);
@@ -33,8 +32,6 @@ namespace Game.Ai.V2
         public readonly float FieldStrikePotential;
         public float FieldStrikePercent => AttackPeak > 0f
             ? 100f * FieldStrikePotential / AttackPeak : 0f;
-        public bool FieldStrikeReady =>
-            AttackForceReadiness.FieldStrikeForceReady(FieldStrikePotential, AttackPeak);
 
         private PlayerForceAnalysis(float deployed, float total, ArmyData army, float armyPower, float potential,
             float fieldStrike, float attackPeak)

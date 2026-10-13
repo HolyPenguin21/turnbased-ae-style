@@ -165,7 +165,6 @@ namespace Game.Ai.V2
         public List<ReorgContainer> Containers = new List<ReorgContainer>();
         public List<ReorgThreatBenchmark> ThreatBenchmarks = new List<ReorgThreatBenchmark>();
 
-        public string HexKey => Q + "," + R;
         public ReorgContainer Garrison => Containers.FirstOrDefault(c => c.IsGarrison);
 
         public bool WorthPlanning()

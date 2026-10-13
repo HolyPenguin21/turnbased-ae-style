@@ -27,7 +27,6 @@ namespace Game.Ai.V2
         // Single source of truth for this provisioned task's Raid target. RaidTargetArmyId below is
         // a read-only projection for existing non-Raid/logging readers — never a second settable copy.
         public RaidTargetRef RaidTarget;
-        public int RaidTargetArmyId => RaidTarget.Kind == RaidTargetKind.NeutralArmy ? RaidTarget.ArmyId : 0;
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
         // Which leg of the Raid this provisioned task is, and the concrete actors /

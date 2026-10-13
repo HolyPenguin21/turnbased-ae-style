@@ -18,7 +18,6 @@ namespace Game.UI
         [SerializeField] private CanvasGroup previewGroup;
         [SerializeField] private GameObject selection;
         public CardDefinition Card { get; private set; }
-        public RectTransform CardHost => cardHost;
 
         public void Init(Action<CardDefinition> onAdd)
         {

@@ -82,15 +82,7 @@ namespace Game.UI
         // Create, the page buttons, card selection, the close button and ESC are all inert while
         // true. The modal itself stays visible and open — the player closes it when they're done.
         private bool _busy;
-        public bool IsBusy => _busy;
 
-        // The faction-filtered CardDefinition list currently shown (post pagination filter,
-        // pre-pagination) — HexSelectionController re-checks that the card a Create names is
-        // still in here before committing the transaction.
-        public System.Collections.Generic.IReadOnlyList<CardDefinition> CurrentCards => _cards;
-        // True if `card` is one of the currently displayed (mode + faction filtered) cards.
-        public bool Offers(CardDefinition card) => card != null && _cards.Contains(card);
-        public CardDefinition SelectedCard => _selected;
         public UnitData Hero => _hero;
         public ResearchProductionMode Mode => _mode;
 

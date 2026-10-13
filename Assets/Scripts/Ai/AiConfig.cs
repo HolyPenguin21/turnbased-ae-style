@@ -19,11 +19,10 @@ namespace Game.Ai
         public const float aggressionBaseWeight = 100f;
         public const int raidThreatRadius = 2;
 
-        // Siege geometry + minimum garrison bodies. (Renamed from the
-        // old defence* naming: these are shared Analysis/Economy facts, not a Defence lane.)
-        public const int siegeRadius = 4;
         // The minimum win chance an Economy escort must project before it is considered safe.
         public const float economyEscortMinWinChance = 0.6f;
+        // Minimum garrison bodies. (Renamed from the old defence* naming: a shared
+        // Analysis/Economy fact, not a Defence lane.)
         public const int secureBaseMinNonHeroUnits = 2;
         // Garrison defence floor (user decision 2026-09-30): the non-hero power a garrison keeps is
         // this share of the player's whole ground force (map + hand + deck, aviation excluded —

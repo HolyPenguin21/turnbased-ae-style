@@ -391,7 +391,6 @@ namespace Game.Ai.V2
             RepairCost = repairCost;
         }
 
-        public bool IsWounded => CurrentProfile.HitPoints < FullHealthProfile.MaxHitPoints;
         public float FullCombatValue => FullHealthProfile.Attack + FullHealthProfile.Defense
             + FullHealthProfile.MaxHitPoints + 0.25f * FullHealthProfile.Initiative;
     }
@@ -644,7 +643,8 @@ namespace Game.Ai.V2
         public IReadOnlyList<KnownEventGuardSnapshot> EventGuards;
         public IReadOnlyList<AiMapMemory.KnownResourceHex> ResourceHexes;
 
-        // Aggregates ported verbatim from AiStrategyDirector.Evaluate's own "shared readings".
+        // Remembered enemy strength on the AiPower scale (AiPower.SightingPower), so it compares
+        // directly with our own FieldPower / BestStackPotential.
         public float EnemyKnownStrength;
         public int NearestEnemyToBase;
         public float EnemyStrengthNearBases;

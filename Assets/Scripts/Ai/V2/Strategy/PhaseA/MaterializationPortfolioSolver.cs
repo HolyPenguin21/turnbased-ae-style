@@ -24,7 +24,6 @@ namespace Game.Ai.V2
 
         public MaterializationPlan Plan => Cand.Plan;
         public float FollowupAp => Cand.FollowupAp;
-        public float DecisionScore => Cand.DecisionScore;
     }
 
     // ARCH-02 §18 — the constrained portfolio solver. Given per-demand candidate chains plus the
@@ -430,71 +429,6 @@ namespace Game.Ai.V2
                 Rec(i + 1, apSum, generationsLeft); // this demand spends no card AP
             }
             Rec(0, 0f, generationLimit);
-            return best;
-        }
-
-        // FLAT overload — Phase B (surplus) / any lane that has ONE undivided pool of feasible plans
-        // rather than a per-demand partition. Take-or-skip subset search, joint feasibility (H/E/M/T /
-        // the one generation / card-disjointness / physical recipient capacity) enforced by the SAME
-        // JointFeasibility with AP admission DISABLED — AP is the measured quantity, never a ceiling.
-        // `plans` MUST already be deduped to one representative per physical consumption signature (so
-        // the pool is small — bounded by hand size). Iteration is AP-DESCENDING so the search sees
-        // the expensive AP opportunities that PROVE AP pressure first, and a hand pathological enough
-        // to exceed apWorkloadExactSearchMax falls back to an AP-descending greedy admission rather
-        // than dropping the costly plans.
-        internal static float EstimateLegalApWorkload(
-            IReadOnlyList<(MaterializationPlan plan, float followupAp)> plans,
-            PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
-            int genAttemptsRemaining)
-        {
-            if (plans == null || plans.Count == 0)
-                return 0f;
-
-            var pool = plans
-                .Where(p => p.plan != null)
-                .OrderByDescending(p => p.plan.ApCost + p.followupAp)
-                .ThenBy(p => p.plan.StableKey, System.StringComparer.Ordinal)
-                .ToList();
-            if (pool.Count == 0)
-                return 0f;
-
-            var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
-                pool.Select(p => p.plan), enforceApPool: false);
-
-            float ApOf((MaterializationPlan plan, float followupAp) c)
-                => Mathf.Max(0f, c.plan.ApCost) + Mathf.Max(0f, c.followupAp);
-
-            // Pool too large for an exact 2^N sweep — AP-descending greedy admission (each accepted
-            // plan consumes its real H/E/M/T / generation / slot, so the next Fits sees the truth).
-            if (pool.Count > AiConfigV2.apWorkloadExactSearchMax)
-            {
-                float greedy = 0f;
-                foreach ((MaterializationPlan plan, float followupAp) c in pool)
-                    if (jf.CardsDisjoint(c.plan) && jf.Fits(c.plan, c.followupAp))
-                    {
-                        jf.Push(c.plan, c.followupAp);
-                        greedy += ApOf(c);
-                    }
-                return greedy;
-            }
-
-            float best = 0f;
-
-            void Rec(int i, float apSum)
-            {
-                if (apSum > best) best = apSum;
-                if (i == pool.Count)
-                    return;
-                (MaterializationPlan plan, float followupAp) c = pool[i];
-                if (jf.CardsDisjoint(c.plan) && jf.Fits(c.plan, c.followupAp))
-                {
-                    JointFeasibility.Token token = jf.Push(c.plan, c.followupAp);
-                    Rec(i + 1, apSum + ApOf(c));
-                    jf.Pop(token);
-                }
-                Rec(i + 1, apSum); // skip plan i
-            }
-            Rec(0, 0f);
             return best;
         }
 

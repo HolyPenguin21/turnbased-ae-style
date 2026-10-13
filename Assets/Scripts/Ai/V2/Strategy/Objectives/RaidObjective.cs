@@ -76,7 +76,6 @@ namespace Game.Ai.V2
         public float CombatPowerDeficit;
 
         public string ObjectiveId => $"Raid#{Target.DiagnosticLabel}";
-        public MissionIntentKey IntentKey => MissionIntentKey.ForRaid(Target);
 
         public RaidMissionTarget ToTarget() => new RaidMissionTarget
         {
@@ -115,9 +114,6 @@ namespace Game.Ai.V2
         public int EstimatedEta;
         public int AirSupportAttemptedTurn;
         public bool AirSupportStrikeSucceeded;
-        public RaidRefitAction RefitAction;
-
-        public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
     }
 
 }

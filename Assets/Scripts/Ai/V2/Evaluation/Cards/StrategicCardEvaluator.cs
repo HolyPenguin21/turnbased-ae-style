@@ -173,8 +173,6 @@ namespace Game.Ai.V2
 
         public bool HasAntiAir  => Coverage.Has(IntendedRole.AntiAir);
         public bool HasAntiArmor => Coverage.Has(IntendedRole.AntiArmor);
-        public bool HasMobile    => Coverage.Has(IntendedRole.MobileCombat);
-        public bool HasSupport   => Coverage.Has(IntendedRole.Support);
 
         public BaselineForceReadiness(float need, bool hasScout, bool hasFieldBody, bool hasHero,
             bool hasAir, RoleCoverage coverage, int combatActors, float freeFieldPower,
@@ -1231,16 +1229,6 @@ namespace Game.Ai.V2
             return EquipmentUpgradeValue(delta) * productionScale;
         }
 
-        // A deployed unit inside `army` (hand Equipment played onto the map).
-        internal static float EquipmentUpgradeValue(CardDefinition equipDef, UnitData host, ArmyData army,
-            WorldSnapshot snap = null, CapabilityInventory inv = null)
-        {
-            if (equipDef?.equipment == null || host == null)
-                return 0f;
-            EquipmentDelta delta = EquipmentDeltaParts(equipDef, host, snap, inv);
-            return EquipmentUpgradeValue(delta);
-        }
-
         private static List<WorthIt.DefendingArmy> EquipmentValuationThreats(WorldSnapshot snap)
         {
             var result = new List<WorthIt.DefendingArmy>();
@@ -1270,10 +1258,6 @@ namespace Game.Ai.V2
             return result;
         }
 
-        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData host,
-            WorldSnapshot snap = null, CapabilityInventory inv = null)
-            => EquipmentUpgradeUtilityFor(equipDef, host, host?.Definition, snap, inv);
-
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData host,
             WorldSnapshot snap = null, CapabilityInventory inv = null)
             => EquipmentDeltaParts(equipDef, host, host?.Definition, snap, inv);
@@ -1281,10 +1265,6 @@ namespace Game.Ai.V2
         // A host that is still only a definition (a deck card): nothing is attached to it yet.
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardDefinition host)
             => EquipmentDeltaParts(equipDef, null, host, null, null);
-
-        private static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData hostCard,
-            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
-            => EquipmentDeltaParts(equipDef, hostCard, host, snap, inv).Total;
 
         private static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData hostCard,
             CardDefinition host, WorldSnapshot snap, CapabilityInventory inv, bool includeStealthTrait = true,
@@ -1300,13 +1280,6 @@ namespace Game.Ai.V2
                 EquipmentSystem.Project(host, hostCard?.Equipment, hostCard?.Mutator, equipDef), includeStealthTrait,
                 host.unitTypeTags, EquipmentPurpose(snap, hostCard, null), deployment?.Deploy.Army, deployment);
         }
-
-        // P1(review-r2) — standalone Equipment scored by the REAL predicted before/after delta on a
-        // concrete live host, not by the host's raw power. NonCombatCardPlayer picks the (equipment,
-        // host) pair that maximises this.
-        internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, UnitData host,
-            WorldSnapshot snap = null, CapabilityInventory inv = null)
-            => EquipmentDeltaParts(equipDef, host, snap, inv).Total;
 
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
             WorldSnapshot snap = null, CapabilityInventory inv = null)
@@ -1670,9 +1643,6 @@ namespace Game.Ai.V2
             [System.ThreadStatic] private static EquipmentTargetMemo s_current;
             private readonly EquipmentTargetMemo _outer;
             private readonly Dictionary<(WorldSnapshot, MissionIntent), List<WorthIt.DefenderProfile>> _sets = new();
-            // Own units already carrying a saturating ability family: the roster does not change inside
-            // one Enumerate, so each family is counted once.
-            private readonly Dictionary<(PlayerSetupData, string), int> _carriers = new();
 
             // Opposition and the owning purpose depend only on snapshot + mission / recipient inside
             // one Enumerate. Consumers treat the cached list as read-only.
@@ -1754,14 +1724,6 @@ namespace Game.Ai.V2
                     targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Aircraft)) / n);
                 if (s_current != null) s_current._shares[targets] = shares;
                 return shares;
-            }
-
-            internal static int Carriers(PlayerSetupData player, string family, System.Func<int> count)
-            {
-                if (s_current == null) return count();
-                if (!s_current._carriers.TryGetValue((player, family), out int n))
-                    s_current._carriers[(player, family)] = n = count();
-                return n;
             }
         }
 
@@ -1932,9 +1894,6 @@ namespace Game.Ai.V2
                 || (abilities.Contains(UnitAbilities.Assembler)
                 && (snap?.Development?.ProductionPreparationViable == true
                     || snap?.Development?.Facilities?.Any(f => f.Mode == ResearchProductionMode.Production) == true)));
-
-        internal static float StrategicResourceCostValue(ResourceCost c) =>
-            StrategicResourceCostValue(c, null);
 
         // The resources' price from the ONE price table (ActionPrice: each type at its scarcity
         // against pending hand/deck demand) in card units, plus the preservation value of a

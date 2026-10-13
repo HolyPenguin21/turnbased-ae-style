@@ -448,6 +448,19 @@ namespace Game.Ai.V2
                         + (int)System.Math.Round(p.HitPoints * 10f) * 1031
                         + p.Initiative * 10007 + (p.HasCeramicArmor ? 7 : 0) + (p.IsHero ? 13 : 0)
                         + (p.Abilities?.Count ?? 0) * 100003;
+                    // Which skills, not only how many: swapping Splash for Pyrokinetic at equal
+                    // stats is a different fight. Order-free, and stable across runs (no
+                    // string.GetHashCode).
+                    if (p.Abilities != null)
+                        for (int a = 0; a < p.Abilities.Count; a++)
+                        {
+                            string ability = p.Abilities[a];
+                            if (ability == null) continue;
+                            int ah = 7;
+                            for (int c = 0; c < ability.Length; c++)
+                                ah = ah * 31 + ability[c];
+                            h += ah * 1000003;
+                        }
                     sum += h;
                     xor ^= h * 397;
                 }

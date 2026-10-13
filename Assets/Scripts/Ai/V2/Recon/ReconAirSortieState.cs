@@ -138,22 +138,6 @@ namespace Game.Ai.V2
                 && byArmy.TryGetValue(armyId, out state);
         }
 
-        // How many OTHER active air sorties are currently claiming `sector` (spec §49 coverage
-        // deconfliction). Never a hard reservation — a step into a claimed sector is only penalised.
-        public static int OtherSectorClaims(PlayerSetupData player, int armyId, ReconSector sector)
-        {
-            if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))
-                return 0;
-            // Recon audit B8 — a sortie of an army that no longer exists is not a live claim.
-            var live = new HashSet<int>(ArmyRegistry.AllForOwner(player).Where(a => a != null).Select(a => a.Id));
-            int n = 0;
-            foreach (KeyValuePair<int, ReconAirSortieState> kv in byArmy)
-                if (kv.Key != armyId && kv.Value.HasClaim && kv.Value.ClaimedSector == sector
-                    && live.Contains(kv.Key))
-                    n++;
-            return n;
-        }
-
         public static void Retire(PlayerSetupData player, int armyId)
         {
             if (player != null && ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))

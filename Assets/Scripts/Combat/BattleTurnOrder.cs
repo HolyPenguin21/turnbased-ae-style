@@ -20,18 +20,12 @@ namespace Game.Combat
     // never whichever hero happens to stand first on the grid.
     public static class BattleTurnOrder
     {
+
         // Both armies are required (not just the grid) because a non-hero unit can advance
         // across the neutral row into the opposing side's own rows during a Round's movement
         // step to reach melee range (see BattleGrid's row-layout comment) — at that point "which
         // row group a unit sits in" no longer matches "which army it belongs to", so side
-        // identity has to come from ArmyData.Members, not grid position. Same class of bug as
-        // the Spend-button fix noted on BattleScreenUI.OwningArmy: this used to derive a unit's
-        // side purely from its row, which silently dropped/misfiled units that had moved into
-        // the enemy's rows — most visibly, the defending side's Round 2+ initiative roster
-        // going blank once its melee units had crossed over.
-        public static List<UnitData> BuildOrder(BattleGrid grid, ArmyData attacker, ArmyData defender)
-            => BuildOrder(grid, attacker, defender, 0);
-
+        // identity has to come from ArmyData.Members, not grid position.
         // Explicit deterministic tie-break. Equal effective Initiative is extremely common in the
         // authored decks, so relying on List.Sort's incidental ordering made first-strike results
         // depend on roster/list history. A round-specific seed gives a pseudo-random but fully
