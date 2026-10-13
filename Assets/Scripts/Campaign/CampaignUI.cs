@@ -433,7 +433,7 @@ namespace Game.Campaign
             if (s.Phase == CampaignPhase.BattleInProgress) message += "\nInterrupted battle: restart with a fresh tactical map. Territory unchanged.";
             deckInfo.text = message;
             ClearChildren(deckListContent);
-            var decks = ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == s.HumanFaction).ToList();
+            var decks = ProgressionContext.Collection.Decks(s.HumanFaction);
             if (!decks.Any(d => d.deckId == selectedDeckId))
                 selectedDeckId = decks.Find(d => d.deckId == op.SelectedHumanDeckId)?.deckId
                     ?? ProgressionContext.Collection.DefaultDeck(s.HumanFaction)?.deckId;
@@ -464,7 +464,7 @@ namespace Game.Campaign
         {
             var s = Controller.View; var op = s.PendingOperation;
             if (!enableHumanTestAutoResolve && !op.TestAutoResolve) throw new InvalidOperationException("Test Auto Resolve is disabled.");
-            var deck = ProgressionContext.Collection.Snapshot.savedDecks.Find(d => d.deckId == deckId && d.faction == s.HumanFaction)
+            var deck = ProgressionContext.Collection.GetDeck(deckId, s.HumanFaction)
                 ?? throw new InvalidOperationException("Test deck is no longer available.");
             var human = CampaignDeck.Saved(deck, ProgressionContext.Collection);
             var enemy = CampaignDeck.Standard(op.AttackerFaction == s.HumanFaction ? op.DefenderFaction : op.AttackerFaction, ProgressionContext.Collection.Rules);

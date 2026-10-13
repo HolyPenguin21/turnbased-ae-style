@@ -67,6 +67,14 @@ namespace Game.Progression
             var deck = profile.savedDecks.Find(d => d.deckId == id);
             return deck == null ? null : CollectionProfile.CopyDeck(deck);
         }
+        public SavedDeck GetDeck(string id, Faction faction)
+        {
+            var deck = profile.savedDecks.Find(d => d.deckId == id && d.faction == faction);
+            return deck == null ? null : CollectionProfile.CopyDeck(deck);
+        }
+        // Copies of one faction's saved decks in profile order, without copying the whole profile.
+        public System.Collections.Generic.List<SavedDeck> Decks(Faction faction)
+            => profile.savedDecks.Where(d => d.faction == faction).Select(CollectionProfile.CopyDeck).ToList();
         public SavedDeck Starter(Faction faction)
         {
             var deck = new SavedDeck { isStarter = true, deckId = Guid.NewGuid().ToString("N"), name = Rules.Starting.GetDeck(faction)?.deckName ?? "Starter", faction = faction };

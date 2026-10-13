@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Game.Cards;
+using Game.Core;
 using UnityEngine;
 
 namespace Game.Campaign
@@ -10,21 +11,8 @@ namespace Game.Campaign
     {
         private readonly string path;
         public CampaignStore(string directory) { path = Path.Combine(directory, "campaign-v1.json"); }
-        public CampaignState Load(out string notice)
-        {
-            notice = null;
-            if (!File.Exists(path) && !File.Exists(path + ".bak")) return null;
-            try { return Read(path); }
-            catch (NotSupportedException) { throw; }
-            catch (Exception ex)
-            {
-                var restored = Read(path + ".bak");
-                notice = "Campaign recovered from backup: " + ex.Message;
-                if (File.Exists(path)) File.Move(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
-                // Keep the known-good backup during recovery's next atomic write.
-                return restored;
-            }
-        }
+        public bool Exists => AtomicJsonFile.Exists(path);
+        public CampaignState Load(out string notice) => AtomicJsonFile.Load(path, Read, "Campaign recovered from backup: ", out notice);
         private static CampaignState Read(string file)
         {
             if (new FileInfo(file).Length > 16 * 1024 * 1024) throw new InvalidDataException("Campaign file too large.");
@@ -91,15 +79,10 @@ namespace Game.Campaign
         }
         public void Save(CampaignState s)
         {
-            Validate(s); Directory.CreateDirectory(Path.GetDirectoryName(path)); string temporary = path + ".tmp";
-            try
-            {
-                byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(s, true));
-                if (bytes.Length > 16 * 1024 * 1024) throw new InvalidDataException("Campaign save exceeds the supported size.");
-                using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None)) { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); }
-                if (File.Exists(path)) File.Replace(temporary, path, path + ".bak"); else File.Move(temporary, path);
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            Validate(s);
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(s, true));
+            if (bytes.Length > 16 * 1024 * 1024) throw new InvalidDataException("Campaign save exceeds the supported size.");
+            AtomicJsonFile.Save(path, bytes);
         }
     }
 }

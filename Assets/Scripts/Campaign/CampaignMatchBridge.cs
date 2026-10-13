@@ -52,8 +52,9 @@ namespace Game.Campaign
             error = null; SetController(null);
             try
             {
-                var s = Store.Load(out string notice); Notice = notice;
-                SetController(s == null ? null : new CampaignController(s, Store));
+                var store = Store;
+                var s = store.Load(out string notice); Notice = notice;
+                SetController(s == null ? null : new CampaignController(s, store));
                 if (pendingOwnershipChange.HasValue && !pendingOwnershipChange.Value.Matches(s)) pendingOwnershipChange = null;
                 return s != null;
             }
@@ -62,7 +63,8 @@ namespace Game.Campaign
         public static void Create(Faction human)
         {
             var state = new CampaignMapGenerator().Generate(unchecked((int)DateTime.UtcNow.Ticks), human);
-            Store.Save(state); pendingOwnershipChange = null; SetController(new CampaignController(state, Store));
+            var store = Store;
+            store.Save(state); pendingOwnershipChange = null; SetController(new CampaignController(state, store));
         }
         public static bool PrepareMatch(GameConfig config, string deckId, out string error)
         {
@@ -70,11 +72,11 @@ namespace Game.Campaign
             try
             {
                 if (Controller == null) throw new InvalidOperationException("Campaign is not loaded.");
-                var s = Controller.Snapshot; var op = s.PendingOperation;
+                var s = Controller.View; var op = s.PendingOperation;
                 if (op == null || !op.Manual || op.TestAutoResolve || op.ResultRecorded) throw new InvalidOperationException("No pending manual battle.");
                 if (!ProgressionContext.Initialize(config)) throw new InvalidOperationException(ProgressionContext.Error);
                 var collection = ProgressionContext.Collection;
-                var deck = collection.Snapshot.savedDecks.Find(d => d.deckId == deckId && d.faction == s.HumanFaction);
+                var deck = collection.GetDeck(deckId, s.HumanFaction);
                 if (deck == null) throw new InvalidOperationException("Select a saved deck of your faction.");
                 var validation = collection.Rules.Validate(deck, collection.Owned);
                 if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
@@ -105,7 +107,7 @@ namespace Game.Campaign
                 var final = GameSession.FinalResult ?? throw new InvalidOperationException("Match has not finished.");
                 if (final.MatchId != context.MatchId) throw new InvalidOperationException("Match identity mismatch.");
                 if (Controller == null && !Load(out error)) return false;
-                var state = Controller.Snapshot; var op = state.PendingOperation;
+                var state = Controller.View; var op = state.PendingOperation;
                 if (state.CampaignId != context.CampaignId || state.HumanFaction != context.HumanFaction) throw new InvalidOperationException("Campaign context mismatch.");
                 if (op?.OperationId == context.OperationId)
                 {
@@ -133,7 +135,7 @@ namespace Game.Campaign
             error = null;
             try
             {
-                var s = Controller.Snapshot; var op = s.PendingOperation;
+                var s = Controller.View; var op = s.PendingOperation;
                 if (op?.ResultRecorded != true) return true;
                 if (!op.Manual || op.RewardAcknowledged) { Controller.ApplyResult(); return true; }
                 if (!ProgressionContext.Initialize(config)) throw new InvalidOperationException(ProgressionContext.Error);
@@ -154,13 +156,13 @@ namespace Game.Campaign
             if (string.IsNullOrWhiteSpace(matchId)) return true;
             try
             {
-                if (Controller?.Snapshot.PendingOperation?.MatchId == matchId) Controller.AcknowledgeReward(matchId);
+                if (Controller?.View.PendingOperation?.MatchId == matchId) Controller.AcknowledgeReward(matchId);
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }
         }
         public static string ReturnScene(string matchId) => !string.IsNullOrWhiteSpace(matchId)
-            && (Controller?.Snapshot.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId) ? SceneNames.Campaign : SceneNames.MainMenu;
+            && (Controller?.View.PendingOperation?.MatchId == matchId || GameSession.CampaignContext?.MatchId == matchId) ? SceneNames.Campaign : SceneNames.MainMenu;
     }
 }
 

@@ -66,7 +66,7 @@ namespace Game.UI
             deckDropdown.onValueChanged.AddListener(index =>
             {
                 if (refreshingDecks) return;
-                var decks = Game.Progression.ProgressionContext.Collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
+                var decks = Game.Progression.ProgressionContext.Collection.Decks(Data.Faction);
                 if (index >= 0 && index < decks.Count) Data.SelectedDeckId = decks[index].deckId;
             });
             if (editDecksButton != null)
@@ -116,7 +116,7 @@ namespace Game.UI
             if (!Game.Progression.ProgressionContext.Initialize(deckConfig))
             { deckDropdown.AddOptions(new List<string> { Game.Progression.ProgressionContext.Error }); refreshingDecks = false; return; }
             var collection = Game.Progression.ProgressionContext.Collection;
-            var decks = collection.Snapshot.savedDecks.Where(d => d.faction == Data.Faction).ToList();
+            var decks = collection.Decks(Data.Faction);
             if (!decks.Any(d => d.deckId == Data.SelectedDeckId)) Data.SelectedDeckId = collection.DefaultDeck(Data.Faction)?.deckId;
             deckDropdown.AddOptions(decks.Count == 0 ? new List<string> { "No saved decks — open editor" } : decks.Select(d =>
             { var validation = collection.Rules.Validate(d, collection.Owned); return d.name + " — " + validation.Points + "/100" + (validation.IsValid ? "" : " — " + string.Join("; ", validation.Errors)); }).ToList());

@@ -42,7 +42,7 @@ namespace Game.Core
             {
                 if (!player.IsHuman) continue;
                 var deck = string.IsNullOrEmpty(player.SelectedDeckId) ? collection.DefaultDeck(player.Faction)
-                    : collection.Snapshot.savedDecks.Find(d => d.deckId == player.SelectedDeckId && d.faction == player.Faction);
+                    : collection.GetDeck(player.SelectedDeckId, player.Faction);
                 if (deck == null) { error = "Select a saved deck for " + player.Faction; return false; }
                 selectedHumanDeck = deck;
                 try { snapshots[player] = new Game.Cards.MatchLoadout(deck, collection.Rules, collection.Owned); }

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Game.Core;
 using UnityEngine;
 
 namespace Game.Progression
@@ -11,21 +12,7 @@ namespace Game.Progression
     {
         private readonly string path;
         public CollectionProfileStore(string directory) { path = Path.Combine(directory, "collection-v1.json"); }
-        public CollectionProfile Load(out string notice)
-        {
-            notice = null;
-            if (!File.Exists(path) && !File.Exists(path + ".bak")) return null;
-            try { return Read(path); }
-            catch (Exception ex)
-            {
-                // Future schemas must never be replaced by an older client's backup.
-                if (ex is NotSupportedException) throw;
-                notice = "Profile recovered from backup: " + ex.Message;
-                var restored = Read(path + ".bak");
-                if (File.Exists(path)) File.Move(path, path + ".corrupt-" + Guid.NewGuid().ToString("N"));
-                return restored;
-            }
-        }
+        public CollectionProfile Load(out string notice) => AtomicJsonFile.Load(path, Read, "Profile recovered from backup: ", out notice);
         private static CollectionProfile Read(string file)
         {
             var profile = JsonUtility.FromJson<CollectionProfile>(File.ReadAllText(file));
@@ -66,17 +53,7 @@ namespace Game.Progression
         public void Save(CollectionProfile profile)
         {
             ValidateShape(profile);
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string temporary = path + ".tmp";
-            try
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(profile, true));
-                using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
-                { stream.Write(bytes, 0, bytes.Length); stream.Flush(true); }
-                if (File.Exists(path)) File.Replace(temporary, path, path + ".bak");
-                else File.Move(temporary, path);
-            }
-            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            AtomicJsonFile.Save(path, System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(profile, true)));
         }
     }
 }
