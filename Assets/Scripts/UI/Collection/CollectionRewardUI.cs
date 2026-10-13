@@ -89,29 +89,10 @@ namespace Game.UI
             {
                 string key = keys[i]; var card = ProgressionContext.Collection.Rules.Resolve(key);
                 var cell = Instantiate(cardTemplate, view.CardsHost);
-                var art = cell.ArtHost;
                 cell.CopyCountLabel.text = $"Owned: {ProgressionContext.Collection.Owned(key)} / {DeckRules.CopyLimit(card)}";
-                if (config != null && config.armyUnitCardPrefab != null)
-                {
-                    var preview = Instantiate(config.armyUnitCardPrefab, art);
-                    preview.gameObject.AddComponent<RectMask2D>();
-                    foreach (var label in preview.GetComponentsInChildren<TMP_Text>(true))
-                    {
-                        label.overflowMode = TextOverflowModes.Ellipsis;
-                        label.enableAutoSizing = true;
-                        label.fontSizeMax = label.fontSize;
-                        label.fontSizeMin = Mathf.Min(label.fontSize, 5f);
-                    }
-                    preview.SetupPreview(card, config,
-                        selectedCard => CollectionMessageUI.ShowReward(CollectionCardDetail.Describe(selectedCard, config, ProgressionContext.Collection.Owned(key))),
-                        () => !CollectionMessageUI.IsShowing);
-                    CollectionUIElements.FitCardPreview((RectTransform)preview.transform, art);
-                }
-                else
-                {
-                    var image = art.gameObject.AddComponent<Image>(); image.sprite = card?.art;
-                    image.preserveAspect = true; image.raycastTarget = false;
-                }
+                cell.Preview.SetupPreview(card, config,
+                    selectedCard => CollectionMessageUI.ShowReward(CollectionCardDetail.Describe(selectedCard, config, ProgressionContext.Collection.Owned(key))),
+                    () => !CollectionMessageUI.IsShowing);
                 cell.DetailsButton.GetComponentInChildren<TMP_Text>().text = card?.displayName ?? key;
                 cell.DetailsButton.onClick.AddListener(() => CollectionMessageUI.ShowReward(
                     CollectionCardDetail.Describe(card, config, ProgressionContext.Collection.Owned(key))));

@@ -118,24 +118,6 @@ namespace Game.UI
                 root.Find(path)?.SetAsFirstSibling();
         }
 
-        public static void ApplyCellSkin(RectTransform root)
-        {
-            if (root == null) return;
-            root.sizeDelta = new Vector2(140, 198);
-            var background = root.GetComponent<Image>();
-            if (background != null) { background.sprite = null; background.color = Color.clear; background.raycastTarget = false; }
-            if (root.Find("Card") is RectTransform card) card.sizeDelta = new Vector2(106, 155);
-            if (root.Find("Info") is RectTransform info)
-            {
-                Place(info, 1, 158, 138, 15);
-                var text = info.GetComponent<TMP_Text>();
-                if (text != null) { text.alignment = TextAlignmentOptions.Center; text.color = CollectionText; }
-            }
-            if (root.Find("Add") is RectTransform add) Place(add, 5, 174, 130, 24);
-            if (root.Find("Add/Label") is RectTransform label) Place(label, 5, 3, 120, 18);
-            ApplyControlsSkin(root);
-        }
-
         public static void ApplyDeckRowSkin(RectTransform root)
         {
             if (root == null) return;
@@ -237,13 +219,6 @@ namespace Game.UI
             root.GetComponent<Image>().color = Color.clear;
             ApplyScrollbarSkin(root.GetComponent<ScrollRect>().verticalScrollbar);
             return content;
-        }
-        internal static void FitCardPreview(RectTransform card, RectTransform host)
-        {
-            Vector2 area = host.rect.size;
-            float scale = Mathf.Min(area.x / Mathf.Max(1, card.rect.width), area.y / Mathf.Max(1, card.rect.height));
-            card.localScale = Vector3.one * scale;
-            card.anchorMin = card.anchorMax = new Vector2(.5f, 1); card.pivot = new Vector2(.5f, 1); card.anchoredPosition = Vector2.zero;
         }
 
         // Campaign and its entry dialogs share the same transparent frame/plaque imports.

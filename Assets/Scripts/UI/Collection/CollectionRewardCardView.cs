@@ -10,7 +10,9 @@ namespace Game.UI
         [SerializeField] private Button detailsButton, chooseButton;
         [SerializeField] private TMP_Text copyCountLabel;
         [SerializeField] private Image selectionFrame;
+        [SerializeField] private ArmyUnitCardUI preview;
         public RectTransform ArtHost => artHost;
+        public ArmyUnitCardUI Preview => preview;
         public Button DetailsButton => detailsButton;
         public Button ChooseButton => chooseButton;
         public TMP_Text CopyCountLabel => copyCountLabel;
