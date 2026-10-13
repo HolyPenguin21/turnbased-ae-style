@@ -274,10 +274,6 @@ namespace Game.UI
         // for the duration of their own movement operation; chained and hero-only fights
         // publish individually before their participant objects can be unregistered.
         public event Action<ArmyData, ArmyData> EncounterResolved;
-        // Read by BattleGridCellUI for the acting-unit ring (UIRaggedGlowUI) — settings live in
-        // GameConfig rather than baked into the prefab, per the user's own spec.
-        public HexHighlightStyle ActingHighlightStyle => gameConfig != null ? gameConfig.battleActingUnitHighlightStyle : null;
-
         // Read by BattleGridCellUI so a cell's EquipmentArtToggle can abbreviate ability tags
         // the same way the rest of the UI does (see EquipmentCardText).
         public GameConfig GameConfig => gameConfig;

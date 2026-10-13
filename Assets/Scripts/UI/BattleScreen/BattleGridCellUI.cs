@@ -63,16 +63,10 @@ namespace Game.UI
         [SerializeField] private TMP_Text moveStatText;
         [SerializeField] private TMP_Text rangeStatText;
 
-        // The fixed size GridLayoutGroup assigns every cell (see gridContainer's own
-        // GridLayoutGroup.cellSize) — used as the acting-unit highlight's "true size" rather
-        // than reading rectTransform.rect.size live, since that reflects the layout group's
-        // last completed pass, not necessarily this frame's (Setup runs synchronously right
-        // after Instantiate, before layout rebuilds).
-        [SerializeField] private Vector2 cellSize = new Vector2(92f, 134f);
         // Shown for whichever unit is currently up in the turn order (see
-        // BattleScreenUI.RefreshTurnOrder) — a UI-space ragged glow ring, same technique as the
-        // map's own hex selection highlight (see UIRaggedGlowUI's own comment).
-        [SerializeField] private UIRaggedGlowUI actingHighlight;
+        // BattleScreenUI.RefreshTurnOrder) — the shared amber selection frame (UI_CardSelection,
+        // sliced), authored on the prefab and only toggled here. Same look as collection selection.
+        [SerializeField] private GameObject actingHighlight;
 
         // How far above every other cell this one's drag-ghost renders — same idea/value as
         // ArmyUnitCardUI.DragSortingOrder, just applied to a standalone ghost object instead of
@@ -90,7 +84,6 @@ namespace Game.UI
         private bool _draggable;
         private Canvas _rootCanvas;
         private RectTransform _ghost;
-        private bool _isActingUnit;
 
         private void Awake()
         {
@@ -158,25 +151,8 @@ namespace Game.UI
 
         private void RefreshActingHighlight(bool isActingUnit)
         {
-            _isActingUnit = isActingUnit;
-            if (actingHighlight == null)
-                return;
-            if (!isActingUnit)
-            {
-                actingHighlight.Hide();
-                return;
-            }
-            actingHighlight.ApplyStyle(_screen != null ? _screen.ActingHighlightStyle : null);
-            actingHighlight.SetColor(TechnicalColors.BattleActingUnit);
-            GridLayoutGroup layout = transform.parent != null
-                ? transform.parent.GetComponent<GridLayoutGroup>() : null;
-            actingHighlight.ShowAt(layout != null ? layout.cellSize : cellSize);
-        }
-
-        private void OnRectTransformDimensionsChange()
-        {
-            if (_isActingUnit)
-                RefreshActingHighlight(true);
+            if (actingHighlight != null)
+                actingHighlight.SetActive(isActingUnit);
         }
 
         private void RefreshStatsRow(UnitData unit)

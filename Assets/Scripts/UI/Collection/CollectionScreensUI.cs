@@ -63,7 +63,6 @@ namespace Game.UI
         private int category, ownership;
         private string status = "";
         private CardDefinition selected;
-        private UIRaggedGlowUI selectionGlow;
         private Action closed, pendingAction;
         private GameObject hiddenPanel, modal;
         private List<DeckSummary> deckList = new List<DeckSummary>();
@@ -191,7 +190,8 @@ namespace Game.UI
         private bool CardInputAllowed() => modal == null && !CollectionMessageUI.IsShowing;
         private void RefreshCardCounters()
         {
-            for (int i = 0; i < visible.Count; i++) cells[i].SetCounts(collection.Owned(visible[i].authoredKey), Used(visible[i].authoredKey));
+            for (int i = 0; i < visible.Count; i++) cells[i].SetCounts(collection.Owned(visible[i].authoredKey), Used(visible[i].authoredKey),
+                collection.Rules.CanAdd(draft, visible[i].authoredKey, collection.Owned));
         }
         private static int CollectionOrder(CardDefinition card)
             => card == null ? 5 : card.cardType == CardType.Base || card.cardType == CardType.Facility ? 0
@@ -206,29 +206,10 @@ namespace Game.UI
             => rows.OrderBy(row => CollectionOrder(resolve(row)))
                 .ThenBy(row => resolve(row)?.deckPointCost ?? 0)
                 .ThenBy(row => resolve(row)?.displayName ?? "", StringComparer.Ordinal);
+        // The highlight frame is authored on the CollectionCard prefab ("Selection"); only toggled here.
         private void UpdateSelectionGlow()
         {
-            CollectionCardCellView cell = null;
-            if (selected != null)
-                for (int i = 0; i < visible.Count; i++) if (visible[i] == selected) { cell = cells[i]; break; }
-            if (cell == null) { if (selectionGlow != null) selectionGlow.Hide(); return; }
-            if (selectionGlow == null)
-            {
-                var go = new GameObject("SelectedCardGlow", typeof(RectTransform));
-                go.AddComponent<Image>().raycastTarget = false;
-                selectionGlow = go.AddComponent<UIRaggedGlowUI>();
-            }
-            var glowRect = (RectTransform)selectionGlow.transform;
-            // Whole cell (card + counters + Add), and outside the Card host's RectMask2D that would clip the glow.
-            var cellRect = (RectTransform)cell.transform;
-            glowRect.SetParent(cellRect, false);
-            glowRect.anchorMin = glowRect.anchorMax = new Vector2(.5f, .5f);
-            glowRect.pivot = new Vector2(.5f, .5f);
-            glowRect.anchoredPosition = Vector2.zero;
-            selectionGlow.ApplyStyle(config.battleActingUnitHighlightStyle);
-            selectionGlow.SetColor(TechnicalColors.BattleActingUnit);
-            selectionGlow.ShowAt(cellRect.rect.size);
-            glowRect.SetAsLastSibling();
+            for (int i = 0; i < visible.Count; i++) cells[i].SetSelected(selected != null && visible[i] == selected);
         }
         private void RebuildUsed()
         {

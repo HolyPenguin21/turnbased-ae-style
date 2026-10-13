@@ -328,16 +328,6 @@ MonoBehaviour:
     glowIntensity: 0.25
     glowWidth: 0.25
     sortingOrder: 1
-  battleActingUnitHighlightStyle:
-    radiusScale: 1
-    margin: 5
-    lineThickness: 1.2
-    noiseReach: 0
-    noiseScale: 0.15
-    noiseSpeed: 0
-    glowIntensity: 0.45
-    glowWidth: 4
-    sortingOrder: 1
   resourceIconPrefab: {fileID: 200002, guid: 93f949af926942fabf01ccfa62c900e1, type: 3}
   resourceIconSpacing: 0.4
   resourceRowOffset: 0.6

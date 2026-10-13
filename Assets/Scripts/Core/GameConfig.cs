@@ -231,21 +231,6 @@ namespace Game.Core
         // tunable here: the actual values are authored once in HexShaderHighlight.
         public HexHighlightStyle hexSelectionStyle => HexShaderHighlight.FixedMapSelectionStyle;
 
-        // The currently-acting unit's cell in the Tactical Battle Module grid (UIRaggedGlowUI,
-        // Custom/UIRaggedGlow.shader — see BattleGridCellUI/BattleScreenUI). Same style class as
-        // the two configurable world-space highlights above even though this one drives a UI
-        // shader; the knobs mean the same thing, just in UI-rect units instead of world units.
-        public HexHighlightStyle battleActingUnitHighlightStyle = new HexHighlightStyle
-        {
-            margin = 6f,
-            lineThickness = 2f,
-            noiseReach = 4f,
-            noiseScale = 0.15f,
-            noiseSpeed = 1.2f,
-            glowIntensity = 0.8f,
-            glowWidth = 6f,
-        };
-
         [Header("Resources")]
         public ResourceIconVisual resourceIconPrefab;
         // Horizontal gap between icons in the row, and how far above the hex centre the row

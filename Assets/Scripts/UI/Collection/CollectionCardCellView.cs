@@ -16,6 +16,7 @@ namespace Game.UI
         [SerializeField] private Button addButton;
         [SerializeField] private ArmyUnitCardUI preview;
         [SerializeField] private CanvasGroup previewGroup;
+        [SerializeField] private GameObject selection;
         public CardDefinition Card { get; private set; }
         public RectTransform CardHost => cardHost;
 
@@ -31,11 +32,14 @@ namespace Game.UI
             preview.SetupPreview(card, config, onSelect, inputAllowed);
         }
 
-        public void SetCounts(int owned, int inDeck)
+        public void SetSelected(bool on) { if (selection != null) selection.SetActive(on); }
+
+        public void SetCounts(int owned, int inDeck, bool canAdd)
         {
             if (Card == null) return;
             infoLabel.text = $"{Card.deckPointCost}pt. In deck: {inDeck}/{DeckRules.CopyLimit(Card)}";
             previewGroup.alpha = owned == 0 ? .4f : 1f;
+            addButton.interactable = canAdd;
         }
     }
 }
