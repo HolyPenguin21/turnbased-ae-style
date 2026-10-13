@@ -189,10 +189,163 @@ public static class CampaignScreenBuilder
         Set("confirmChooseDeck", confirmChoose); Set("confirmCancel", confirmCancel); Set("deckStart", deckStart); Set("deckCancel", deckCancel);
         Set("deckAutoResolve", deckAuto); Set("resultContinue", resultContinue); Set("errorRetry", errorRetry); Set("errorMenu", errorMenu);
         Set("deckListContent", deckList); Set("deckRowPrefab", deckRow);
+        AddReferenceSlots(so);
         so.ApplyModifiedProperties();
         EditorSceneManager.MarkSceneDirty(ui.gameObject.scene);
         Selection.activeObject = canvas.gameObject;
         Debug.Log("Campaign screen built under PlanetaryCampaign. Save the scene.", canvas.gameObject);
+    }
+
+    // Adds the reference-layout slots (header plaques, faction bars, neighbor emblems, available attacks,
+    // history columns, player emblem, map region markers) to an already built and hand-edited Campaign scene.
+    // Idempotent: a slot whose CampaignUI/CampaignMapView field is already assigned is left untouched.
+    [MenuItem("Tools/UI/Add Campaign Reference Slots")]
+    private static void AddReferenceSlotsMenu()
+    {
+        var ui = Object.FindAnyObjectByType<CampaignUI>();
+        if (ui == null) { EditorUtility.DisplayDialog("Campaign screen", "Open the Campaign scene first (no CampaignUI found).", "OK"); return; }
+        var so = new SerializedObject(ui);
+        endTurnSprite = so.FindProperty("endTurnSprite").objectReferenceValue as Sprite;
+        actionSprite = so.FindProperty("actionButtonSprite").objectReferenceValue as Sprite;
+        font = GameAssetCatalog.Load<TMP_FontAsset>("Fonts/GameMenuFont");
+        Undo.SetCurrentGroupName("Add Campaign Reference Slots");
+        Undo.RecordObject(ui, "Add Campaign Reference Slots");
+        AddReferenceSlots(so);
+        so.ApplyModifiedProperties();
+        EditorSceneManager.MarkSceneDirty(ui.gameObject.scene);
+        Debug.Log("Campaign reference slots added. Review the new objects and save the scene.", ui);
+    }
+    private static void AddReferenceSlots(SerializedObject so)
+    {
+        T Get<T>(string field) where T : Object => so.FindProperty(field).objectReferenceValue as T;
+        bool Missing(string field) => so.FindProperty(field).objectReferenceValue == null;
+        void Set(string field, Object value) => so.FindProperty(field).objectReferenceValue = value;
+        T Created<T>(T rect) where T : Component
+        {
+            foreach (var t in rect.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = 5;
+            Undo.RegisterCreatedObjectUndo(rect.gameObject, "Add Campaign Reference Slots"); return rect;
+        }
+        void Hide(Component c) { if (c == null) return; Undo.RecordObject(c.gameObject, "Add Campaign Reference Slots"); c.gameObject.SetActive(false); }
+
+        // Header: planet / round / turn faction plaques replace the single heading line.
+        var heading = Get<TMP_Text>("heading");
+        if (heading != null && Missing("planetNameLabel"))
+        {
+            var header = (RectTransform)heading.transform.parent;
+            var plaques = Created(Rect(header, "HeaderPlaques")); Stretch(plaques);
+            var planet = Panel(plaques, "PlanetPlaque"); Place(planet, 0, 0, 560, 70); CollectionUIElements.ApplyCampaignSurface(planet, "Plaque");
+            Place(Panel(planet, "Icon"), 16, 9, 52, 52);
+            Set("planetNameLabel", Text(planet, "PlanetName", "PLANET", 80, 6, 460, 36, 30, Ink, true));
+            Set("campaignIdLabel", Text(planet, "CampaignId", "ID", 80, 42, 460, 22, 16, Ink));
+            var round = Panel(plaques, "RoundPlaque"); Place(round, 572, 0, 250, 70); CollectionUIElements.ApplyCampaignSurface(round, "Plaque");
+            Place(Panel(round, "Icon"), 16, 9, 52, 52);
+            Set("roundLabel", Text(round, "Round", "ROUND 1", 76, 15, 160, 40, 30, Ink, true));
+            var faction = Panel(plaques, "TurnFactionPlaque"); Place(faction, 834, 0, 542, 70); CollectionUIElements.ApplyCampaignSurface(faction, "Plaque");
+            Set("turnFactionLogo", LogoImage(faction, "Logo", 16, 7, 56));
+            Set("turnFactionName", Text(faction, "Name", "FACTION", 84, 6, 440, 36, 30, Ink, true));
+            Set("turnFactionCaption", Text(faction, "Caption", "YOUR TURN", 84, 42, 440, 22, 16, Ink));
+            foreach (var image in plaques.GetComponentsInChildren<Image>(true)) image.raycastTarget = false;
+            var headerImage = header.GetComponent<Image>();
+            if (headerImage != null) { Undo.RecordObject(headerImage, "Add Campaign Reference Slots"); headerImage.enabled = false; }
+            Hide(heading);
+        }
+
+        // Territory bars under each faction name; the bar is stretched across its track by anchors.
+        var standings = so.FindProperty("standings");
+        for (int i = 0; i < standings.arraySize; i++)
+        {
+            var element = standings.GetArrayElementAtIndex(i);
+            var root = element.FindPropertyRelative("root").objectReferenceValue as GameObject;
+            if (root == null || element.FindPropertyRelative("bar").objectReferenceValue != null) continue;
+            var track = Created(Panel(root.transform, "TerritoryTrack")); Place(track, 60, 38, 296, 5);
+            track.GetComponent<Image>().color = new Color(0, 0, 0, .55f); track.GetComponent<Image>().raycastTarget = false;
+            var bar = Panel(track, "Bar"); Stretch(bar);
+            var barImage = bar.GetComponent<Image>(); barImage.color = Color.white; barImage.raycastTarget = false;
+            element.FindPropertyRelative("bar").objectReferenceValue = barImage;
+        }
+
+        var regionPanel = Get<GameObject>("regionPanel");
+        if (regionPanel != null && Missing("neighborEmblemsContent"))
+        {
+            var row = Created(Rect(regionPanel.transform, "NeighborEmblemsRow")); Place(row, 28, 528, 374, 40);
+            Text(row, "Caption", "NEIGHBORS", 2, 8, 130, 26, 18, Cream);
+            var content = Rect(row, "Emblems"); Place(content, 140, 2, 234, 36);
+            var layout = content.gameObject.AddComponent<HorizontalLayoutGroup>();
+            layout.spacing = 6; layout.childAlignment = TextAnchor.MiddleLeft;
+            layout.childControlWidth = layout.childControlHeight = false; layout.childForceExpandWidth = layout.childForceExpandHeight = false;
+            Set("neighborEmblemsContent", content);
+            Set("neighborEmblemPrefab", LoadOrCreatePrefab("CampaignNeighborEmblem", BuildNeighborEmblem).GetComponent<Image>());
+            var neighbors = Get<RectTransform>("neighborsContent");
+            // Content -> Viewport -> scroll root; the plaque is its sibling.
+            if (neighbors != null && neighbors.parent != null) Hide(neighbors.parent.parent);
+            var plaque = regionPanel.transform.Find("NeighborsPlaque"); if (plaque != null) Hide(plaque);
+        }
+        if (regionPanel != null && Missing("attacksContent"))
+        {
+            var group = Created(Rect(regionPanel.transform, "AvailableAttacks")); Stretch(group);
+            Plaque(group, "AvailableAttacksPlaque", "AVAILABLE ATTACKS", 28, 578, 374, 34, 20);
+            var content = Scroll(group, "AttackList", 28, 620, 374, 134, new Color(0, 0, 0, .32f));
+            var layout = content.gameObject.AddComponent<VerticalLayoutGroup>();
+            layout.spacing = 4; layout.childControlWidth = true; layout.childControlHeight = false;
+            layout.childForceExpandWidth = true; layout.childForceExpandHeight = false;
+            content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            Set("attacksContent", content);
+            Set("attackRowPrefab", LoadOrCreatePrefab("CampaignAttackRow", BuildAttackRow).GetComponent<CampaignAttackRowView>());
+            Set("noAttacksLabel", Text(group, "NoAttacks", "Attack unavailable this turn.", 36, 628, 350, 48, 18, Cream));
+        }
+
+        // Footer: status title, history columns and the player's emblem next to End Turn.
+        var status = Get<TMP_Text>("statusLabel");
+        if (status != null && Missing("statusTitle"))
+        {
+            var footer = status.transform.parent;
+            var icon = Created(Panel(footer, "StatusIcon")); Place(icon, 28, 14, 34, 34); icon.GetComponent<Image>().raycastTarget = false;
+            var title = Created(Text(footer, "StatusTitle", "YOUR TURN:", 70, 16, 170, 32, 23, new Color(.93f, .62f, .25f), true)); NoWrap(title);
+            Set("statusTitle", title);
+            Undo.RecordObject(status.rectTransform, "Add Campaign Reference Slots");
+            status.rectTransform.anchoredPosition = new Vector2(246, status.rectTransform.anchoredPosition.y);
+            status.rectTransform.sizeDelta = new Vector2(660, status.rectTransform.sizeDelta.y);
+        }
+        var history = so.FindProperty("historyRows");
+        var noBattles = Get<TMP_Text>("noBattlesLabel");
+        if (noBattles != null && history.arraySize == 0)
+        {
+            var table = Created(Rect(noBattles.transform.parent, "HistoryTable")); Place(table, 248, 64, 1330, 50);
+            history.arraySize = 4;
+            for (int i = 0; i < 4; i++)
+            {
+                var row = Rect(table, "HistoryRow" + i); Place(row, (i % 2) * 665, (i / 2) * 25, 650, 24);
+                var refs = history.GetArrayElementAtIndex(i);
+                refs.FindPropertyRelative("root").objectReferenceValue = row.gameObject;
+                refs.FindPropertyRelative("round").objectReferenceValue = NoWrap(Text(row, "Round", "Round 1", 0, 0, 70, 24, 17, Cream));
+                refs.FindPropertyRelative("attackerLogo").objectReferenceValue = LogoImage(row, "AttackerLogo", 74, 2, 20);
+                refs.FindPropertyRelative("attacker").objectReferenceValue = NoWrap(Text(row, "Attacker", "Faction", 98, 0, 170, 24, 17, Cream));
+                Text(row, "Arrow", "→", 272, 0, 24, 24, 17, Cream);
+                refs.FindPropertyRelative("region").objectReferenceValue = NoWrap(Text(row, "Region", "Region", 300, 0, 200, 24, 17, Cream));
+                refs.FindPropertyRelative("outcome").objectReferenceValue = NoWrap(Text(row, "Outcome", "Defended", 504, 0, 140, 24, 17, Cream));
+                row.gameObject.SetActive(false);
+            }
+        }
+        var endTurn = Get<Button>("endTurnButton");
+        if (endTurn != null && Missing("playerEmblem"))
+        {
+            var block = Created(Rect(endTurn.transform.parent, "PlayerFaction")); Place(block, 1430, 8, 150, 114);
+            Set("playerEmblem", LogoImage(block, "Emblem", 43, 4, 64));
+            Set("playerFactionName", NoWrap(Text(block, "Name", "FACTION", 0, 74, 150, 30, 16, Cream, true, TextAlignmentOptions.Center)));
+        }
+
+        // Map: emblem + name over each region (instantiated at run time by CampaignMapView).
+        var map = Get<CampaignMapView>("map");
+        if (map != null)
+        {
+            var mapProperties = new SerializedObject(map);
+            var marker = mapProperties.FindProperty("markerPrefab");
+            if (marker.objectReferenceValue == null)
+            {
+                marker.objectReferenceValue = LoadOrCreatePrefab("CampaignRegionMarker", BuildRegionMarker).GetComponent<CampaignRegionMarkerView>();
+                mapProperties.ApplyModifiedProperties();
+            }
+        }
     }
 
     // ---- row prefabs -----------------------------------------------------------------------------
@@ -215,6 +368,46 @@ public static class CampaignScreenBuilder
         var view = root.gameObject.AddComponent<CampaignNeighborRowView>();
         var so = new SerializedObject(view);
         so.FindProperty("dot").objectReferenceValue = dot.GetComponent<Image>(); so.FindProperty("label").objectReferenceValue = label;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        return root.gameObject;
+    }
+    private static GameObject BuildNeighborEmblem()
+    {
+        var root = LogoImage(null, "CampaignNeighborEmblem", 0, 0, 32);
+        return root.gameObject;
+    }
+    private static GameObject BuildAttackRow()
+    {
+        var root = Rect(null, "CampaignAttackRow"); Place(root, 0, 0, 352, 62);
+        var background = root.gameObject.AddComponent<Image>(); background.color = new Color(0, 0, 0, .25f); background.raycastTarget = false;
+        var preview = Rect(root, "TerrainPreview"); Place(preview, 4, 4, 96, 54);
+        var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.raycastTarget = false;
+        var logo = LogoImage(root, "OwnerLogo", 106, 15, 32);
+        var name = NoWrap(Text(root, "RegionName", "Region", 144, 6, 110, 26, 18, Cream, true));
+        var owner = NoWrap(Text(root, "OwnerName", "Owner: Faction", 144, 32, 110, 22, 14, Cream));
+        var attack = MakeButton(root, "Attack", "ATTACK", 258, 10, 90, 42, 16, "Action");
+        var view = root.gameObject.AddComponent<CampaignAttackRowView>();
+        var so = new SerializedObject(view);
+        so.FindProperty("terrainPreview").objectReferenceValue = terrain; so.FindProperty("ownerLogo").objectReferenceValue = logo;
+        so.FindProperty("regionName").objectReferenceValue = name; so.FindProperty("ownerName").objectReferenceValue = owner;
+        so.FindProperty("attackButton").objectReferenceValue = attack;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        return root.gameObject;
+    }
+    private static GameObject BuildRegionMarker()
+    {
+        var root = Rect(null, "CampaignRegionMarker"); root.sizeDelta = new Vector2(160, 66); root.pivot = new Vector2(.5f, .5f);
+        var selected = Panel(root, "Selected"); Place(selected, 54, -2, 52, 52);
+        selected.GetComponent<Image>().color = new Color(1f, .70f, .26f, .45f); selected.gameObject.SetActive(false);
+        var emblem = LogoImage(root, "Emblem", 58, 2, 44);
+        var plate = Panel(root, "Plate"); Place(plate, 8, 44, 144, 24); plate.GetComponent<Image>().color = new Color(.05f, .042f, .032f, .6f);
+        var plateRim = plate.gameObject.AddComponent<Outline>(); plateRim.effectColor = new Color(.78f, .56f, .27f, .75f); plateRim.effectDistance = new Vector2(1, -1);
+        var label = NoWrap(Text(plate, "Label", "REGION", 0, 0, 144, 24, 14, new Color(.95f, .89f, .78f), true, TextAlignmentOptions.Center));
+        foreach (var g in root.GetComponentsInChildren<Graphic>(true)) g.raycastTarget = false;
+        var view = root.gameObject.AddComponent<CampaignRegionMarkerView>();
+        var so = new SerializedObject(view);
+        so.FindProperty("emblem").objectReferenceValue = emblem; so.FindProperty("label").objectReferenceValue = label;
+        so.FindProperty("selectedState").objectReferenceValue = selected.gameObject;
         so.ApplyModifiedPropertiesWithoutUndo();
         return root.gameObject;
     }
@@ -323,7 +516,7 @@ public static class CampaignScreenBuilder
         text.raycastTarget = false; text.textWrappingMode = TextWrappingModes.Normal;
         return text;
     }
-    private static void NoWrap(TMP_Text text)
-    { text.textWrappingMode = TextWrappingModes.NoWrap; text.overflowMode = TextOverflowModes.Ellipsis; }
+    private static TMP_Text NoWrap(TMP_Text text)
+    { text.textWrappingMode = TextWrappingModes.NoWrap; text.overflowMode = TextOverflowModes.Ellipsis; return text; }
 }
 #endif

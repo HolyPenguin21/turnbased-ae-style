@@ -11,9 +11,9 @@ namespace Game.Campaign
         private List<Vector2> polygon, projected;
         private readonly List<Vector2> surfaceTriangles = new List<Vector2>();
         private readonly List<Vector2> screenTriangles = new List<Vector2>();
-        private Vector2 marker, glowSize;
+        private Vector2 marker;
         public Vector2 ProjectedMarker { get; private set; }
-        private readonly List<float> glowWeights = new List<float>();
+        private CampaignHighlightSettings highlight;
         private Texture2D surface;
         private Action clicked;
         private Action<bool> hovered;
@@ -22,13 +22,17 @@ namespace Game.Campaign
 
         public void SetSurface(Texture2D texture, Material sharedMaterial)
         { surface = texture; material = sharedMaterial; SetMaterialDirty(); }
+        public void SetHighlight(CampaignHighlightSettings settings) { highlight = settings; SetVerticesDirty(); }
+        // The center dot is a fallback marker; emblem markers replace it.
+        private bool centerDot = true;
+        public void SetCenterDot(bool visible) { if (centerDot == visible) return; centerDot = visible; SetVerticesDirty(); }
 
         public void Configure(RegionState region, Action click, Action<bool> onHover, bool isShadow = false)
         {
             silhouette = isShadow; raycastTarget = !isShadow;
             polygon = new List<Vector2>(region.PolygonVertices);
             projected = polygon.ConvertAll(CampaignMapView.Project);
-            surfaceTriangles.Clear(); screenTriangles.Clear(); glowWeights.Clear();
+            surfaceTriangles.Clear(); screenTriangles.Clear();
             var indices = CampaignGeometry.Triangulate(projected);
             for (int i = 0; i < indices.Count; i += 3)
                 Subdivide(polygon[indices[i]], polygon[indices[i + 1]], polygon[indices[i + 2]],
@@ -171,26 +175,12 @@ namespace Game.Campaign
         }
         private Vector2 Pixel(Vector2 p) => CampaignMapView.ToPixel(rectTransform.rect, CampaignMapView.Project(p));
 
-        private void CacheSelectionGlow()
-        {
-            var rect = rectTransform.rect; var size = new Vector2(rect.width, rect.height);
-            if (glowWeights.Count == screenTriangles.Count && (glowSize - size).sqrMagnitude == 0) return;
-            glowWeights.Clear(); glowSize = size;
-            var boundary = projected.ConvertAll(p => CampaignMapView.ToPixel(rect, p));
-            float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
-            foreach (var point in boundary)
-            { minX = Math.Min(minX, point.x); minY = Math.Min(minY, point.y); maxX = Math.Max(maxX, point.x); maxY = Math.Max(maxY, point.y); }
-            float width = Math.Max(18f, Math.Min(48f, Math.Min(maxX - minX, maxY - minY) * .30f));
-            foreach (var point in screenTriangles)
-                glowWeights.Add(SelectionGlow(CampaignMapView.ToPixel(rect, point), boundary, width));
-        }
-
         protected override void OnPopulateMesh(VertexHelper vh)
         {
             vh.Clear(); if (polygon == null) return;
-            if (selected && !silhouette) CacheSelectionGlow();
-            var ownership = color;
-            if (hover || selected) ownership = Color.Lerp(ownership, new Color(.96f, .75f, .38f), selected ? .18f : .10f);
+            var style = highlight ?? DefaultHighlight;
+            // Hover/selection/attack shading is drawn by the shader from these flags and the region distance field.
+            var state = silhouette ? Vector4.zero : new Vector4(selected ? 1 : 0, hover ? 1 : 0, attackable ? 1 : 0, attacked ? 1 : 0);
             for (int i = 0; i < surfaceTriangles.Count; i += 3)
             {
                 int start = vh.currentVertCount;
@@ -198,18 +188,17 @@ namespace Game.Campaign
                 {
                     var p = surfaceTriangles[i + j];
                     // Shared map coordinates produce continuous lighting and horizon fading.
-                    var tint = silhouette ? color : ownership; tint.a = 1;
+                    var tint = color; tint.a = 1;
                     // Linear screen UVs preserve texture scale inside subdivided triangles.
                     AddVertex(vh, CampaignMapView.ToPixel(rectTransform.rect, screenTriangles[i + j]), tint,
-                        TerrainUV(screenTriangles[i + j]), !silhouette,
-                        1, selected && !silhouette ? glowWeights[i + j] : 0, p);
+                        TerrainUV(screenTriangles[i + j]), !silhouette, 1, state, p);
                 }
                 vh.AddTriangle(start, start + 1, start + 2);
             }
             if (silhouette) return;
-            var border = selected ? new Color(1f, .68f, .18f) : attacked ? new Color(.94f, .47f, .24f)
-                : attackable ? new Color(.61f, .43f, .23f) : new Color(.105f, .09f, .065f, .96f);
-            float width = selected || attacked ? 1.65f : hover ? 1.15f : .95f;
+            var border = selected ? Color.Lerp(style.SelectionColor, Color.white, .25f) : attacked ? style.AttackColor
+                : attackable ? Color.Lerp(style.AttackColor, style.BorderColor, .35f) : style.BorderColor;
+            float width = selected || attacked ? style.SelectionBorderWidth : hover ? style.BorderWidth * 1.2f : style.BorderWidth;
             for (int i = 0; i < polygon.Count; i++)
             {
                 var a = Pixel(polygon[i]); var b = Pixel(polygon[(i + 1) % polygon.Count]);
@@ -221,22 +210,25 @@ namespace Game.Campaign
                 AddVertex(vh, b + n, border, uvB, false, mapPoint: polygon[(i + 1) % polygon.Count]); AddVertex(vh, b - n, border, uvB, false, mapPoint: polygon[(i + 1) % polygon.Count]);
                 vh.AddTriangle(start, start + 1, start + 2); vh.AddTriangle(start, start + 2, start + 3);
             }
+            if (!centerDot) return;
             Circle(vh, Pixel(marker), 6.4f, new Color(.11f, .10f, .085f), marker);
-            Circle(vh, Pixel(marker), selected ? 4.9f : 4.7f, selected ? new Color(.88f, .53f, .15f) : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), marker);
+            Circle(vh, Pixel(marker), selected ? 4.9f : 4.7f, selected ? style.SelectionColor : Color.Lerp(color, new Color(.15f, .12f, .08f), .35f), marker);
         }
         private Vector2 TerrainUV(Vector2 point)
         {
             var rect = rectTransform.rect;
             return CampaignMapView.ProjectedSurfaceUV(point, rect.width / Math.Max(1, rect.height), surface == null ? 1 : (float)surface.width / surface.height);
         }
-        private void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, float glow = 0, Vector2 mapPoint = default)
+        private static readonly CampaignHighlightSettings DefaultHighlight = new CampaignHighlightSettings();
+        private void AddVertex(VertexHelper vh, Vector2 position, Color tint, Vector2 uv, bool textured, float lighting = 1, Vector4 state = default, Vector2 mapPoint = default)
         {
             var vertex = UIVertex.simpleVert; vertex.position = position; vertex.color = tint;
             // -1 is the depth silhouette: solid color with terrain's horizon fade, without sampling.
             vertex.uv0 = uv; vertex.uv1 = new Vector4(textured ? 1 : silhouette ? -1 : 0, lighting, mapPoint.x, mapPoint.y);
             // UV data is not transformed by Canvas batching; POSITION may be in Canvas space.
             var viewport = CampaignMapView.FromPixel(rectTransform.rect, position) * .5f + new Vector2(.5f, .5f);
-            vertex.uv2 = new Vector4(glow, captureReveal && textured ? 1 : 0, viewport.x, viewport.y); vh.AddVert(vertex);
+            vertex.uv2 = new Vector4(0, captureReveal && textured ? 1 : 0, viewport.x, viewport.y);
+            vertex.uv3 = state; vh.AddVert(vertex);
         }
         private void Circle(VertexHelper vh, Vector2 center, float radius, Color tint, Vector2 mapPoint)
         {

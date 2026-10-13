@@ -213,6 +213,48 @@ public sealed class CampaignVisualTests
             new Vector2(40, 40), new Vector2(40, 100), new Vector2(0, 100) };
         Assert.That(CampaignRegionGraphic.SelectionGlow(new Vector2(39, 60), concave, 12), Is.GreaterThan(.9f));
     }
+    [TestCase(73)] [TestCase(5)]
+    public void RegionFieldMeasuresOwnAndSelectedBorders(int seed)
+    {
+        var state = new CampaignMapGenerator().Generate(seed, Faction.IronConcord);
+        var field = new CampaignRegionField(state.Regions, new Vector2(1360, 740));
+        try
+        {
+            var rect = new Rect(-680, -370, 1360, 740);
+            var region = state.Regions[0];
+            var boundary = region.PolygonVertices.ConvertAll(p => CampaignMapView.ToPixel(rect, CampaignMapView.Project(p)));
+            var center = CampaignMapView.Project(CampaignRegionGraphic.VisibleCenter(region));
+            // The field matches the exact distance to the displayed contour within its 2-unit resolution.
+            float exact = Distance(CampaignMapView.ToPixel(rect, center), boundary);
+            Assert.That(field.OwnDistance(center), Is.EqualTo(Mathf.Min(exact, CampaignRegionField.Range)).Within(4f));
+            Assert.That(field.SelectedDistance(center), Is.EqualTo(CampaignRegionField.Range).Within(.3f), "Nothing is selected yet");
+            field.SetSelected(region.RegionId);
+            Assert.That(field.SelectedDistance(center), Is.EqualTo(field.OwnDistance(center)).Within(.3f));
+            // Just across a shared border, the neighbour sees the selected contour nearby.
+            var neighbor = state.Regions.Find(r => r.RegionId == region.NeighborIds[0]);
+            System.Func<Vector2, bool> isShared = a => neighbor.PolygonVertices.Any(b => (a - b).sqrMagnitude < 1e-10f);
+            var p = region.PolygonVertices;
+            int i0 = Enumerable.Range(0, p.Count).First(i => isShared(p[i]) && isShared(p[(i + 1) % p.Count]));
+            var edge = CampaignMapView.Project((p[i0] + p[(i0 + 1) % p.Count]) * .5f);
+            var inward = CampaignMapView.Project(CampaignRegionGraphic.VisibleCenter(neighbor)) - edge;
+            var probe = edge + inward.normalized * (6f / 680);
+            Assert.That(field.SelectedDistance(probe), Is.LessThan(10f));
+            field.SetSelected(null);
+            Assert.That(field.SelectedDistance(probe), Is.EqualTo(CampaignRegionField.Range).Within(.3f));
+        }
+        finally { Object.DestroyImmediate(field.Texture); }
+    }
+    private static float Distance(Vector2 point, System.Collections.Generic.IReadOnlyList<Vector2> boundary)
+    {
+        float best = float.MaxValue;
+        for (int i = 0; i < boundary.Count; i++)
+        {
+            var a = boundary[i]; var d = boundary[(i + 1) % boundary.Count] - a;
+            float t = Mathf.Clamp01(Vector2.Dot(point - a, d) / Mathf.Max(1e-12f, d.sqrMagnitude));
+            best = Mathf.Min(best, (point - a - d * t).magnitude);
+        }
+        return best;
+    }
     [Test]
     public void RegionMeshSeparatesTexturedTerrainFromSolidBordersAndMarkers()
     {
@@ -255,8 +297,9 @@ public sealed class CampaignVisualTests
                 Assert.That(effects[i].z, Is.EqualTo((positions[i].x - rect.rect.xMin) / rect.rect.width).Within(1e-6));
                 Assert.That(effects[i].w, Is.EqualTo((positions[i].y - rect.rect.yMin) / rect.rect.height).Within(1e-6));
             }
-            Assert.True(mesh.uv3.Any(v => v.x > .9f));
-            Assert.True(mesh.uv3.Any(v => v.x > .01f && v.x < .99f));
+            // Selection is a per-vertex flag on terrain only; the glow itself comes from the distance field.
+            var states = new System.Collections.Generic.List<Vector4>(); mesh.GetUVs(3, states);
+            for (int i = 0; i < states.Count; i++) Assert.That(states[i].x, Is.EqualTo(surfaceData[i].x == 1 ? 1 : 0));
             graphic.Refresh(CampaignMapView.ColorFor(state.Regions[0].OwnerFaction), false, false, false, false, true);
             using (var vh = new VertexHelper())
             {
@@ -264,7 +307,7 @@ public sealed class CampaignVisualTests
                     .Invoke(graphic, new object[] { vh });
                 vh.FillMesh(mesh);
             }
-            Assert.True(mesh.uv3.All(v => v.x == 0));
+            mesh.GetUVs(3, states); Assert.True(states.All(v => v.x == 0));
             graphic.Configure(state.Regions[0], null, null, true);
             using (var vh = new VertexHelper())
             {
