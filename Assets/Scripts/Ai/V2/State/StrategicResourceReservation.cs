@@ -44,7 +44,7 @@ namespace Game.Ai.V2
     }
 
     // The stage by which the reservation is guaranteed gone in the normal (non-aborted) flow.
-    public enum StrategicReservationExpiry { EndOfPhaseB, EndOfReaction, EndOfTurn }
+    public enum StrategicReservationExpiry { EndOfReaction, EndOfTurn }
 
     public sealed class StrategicResourceReservation
     {

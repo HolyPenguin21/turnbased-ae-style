@@ -3,6 +3,7 @@ using Game.Ai.V2;
 using Game.Cards;
 using Game.HexGrid;
 using Game.Players;
+using System.Linq;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -220,6 +221,82 @@ namespace Game.EditorTests
             Assert.That(StrategicResourceReservationLedger.Active(
                 player, turn, StrategicReservedResource.ActionPoints), Is.EqualTo(4f),
                 "completion AP becomes protected exactly when the actor can finish this turn");
+        }
+
+        // A repeated Provisioning pass restating the same completion keeps the held rows; a
+        // changed vector replaces them without leaving a resource the new cost no longer needs.
+        [Test]
+        public void RepeatedCompletionKeepsRowsAndChangedVectorReplacesThem()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 11;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            ReservationOwner owner = ReservationOwner.ForPass("Economy:build");
+            ReservationOwner other = ReservationOwner.ForPass("Economy:other");
+            var cost = new ResourceCost(energy: 2, materials: 1);
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, other, cost, 1f);
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner, cost, 3f);
+            var before = new System.Collections.Generic.List<StrategicResourceReservation>(
+                StrategicResourceReservationLedger.LiveRows(player, turn));
+
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner, cost, 3f);
+
+            CollectionAssert.AreEqual(before, StrategicResourceReservationLedger.LiveRows(player, turn),
+                "an identical completion repeat must not drop and re-add its rows");
+
+            EconomyReservationLifecycle.ReserveEconomyCost(player, turn, owner,
+                new ResourceCost(materials: 4), 2f);
+
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
+                StrategicReservationReason.EconomyBuildCompletion, new ResourceCost(materials: 4), 2f), Is.True);
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, other,
+                StrategicReservationReason.EconomyBuildCompletion, cost, 1f), Is.True,
+                "another build's completion hold is untouched");
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, turn, StrategicReservedResource.Energy), Is.EqualTo(2f),
+                "only the other build still holds Energy");
+        }
+
+        // The income cover opened before the first Phase B is applied when the rows are read, so a
+        // later Phase A re-statement of the full deferred vector (re-admission after a Phase B
+        // round) neither loses nor doubles it, and it never reaches the next turn.
+        [Test]
+        public void IncomeCoverSurvivesARestatedDeferredVectorAndExpiresWithTheTurn()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 12;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            ReservationOwner a = ReservationOwner.ForPass("Economy:a");
+            ReservationOwner b = ReservationOwner.ForPass("Economy:b");
+            try
+            {
+                EconomyReservationLifecycle.ReserveEconomyCost(player, turn, a,
+                    new ResourceCost(materials: 3), 0f, StrategicReservationReason.EconomyDeferredBuild);
+                EconomyReservationLifecycle.ReserveEconomyCost(player, turn, b,
+                    new ResourceCost(materials: 2), 0f, StrategicReservationReason.EconomyDeferredBuild);
+                var cover = new float[System.Enum.GetValues(typeof(StrategicReservedResource)).Length];
+                cover[(int)StrategicReservedResource.Materials] = 4f;
+                EconomyReservationLifecycle.OpenDeferredIncomeCover(player, turn, cover);
+
+                float Held(int t) => TurnResourceBook.Outstanding(
+                    TurnResourceBook.LedgerClaims(player, t), StrategicReservedResource.Materials, default);
+                Assert.That(Held(turn), Is.EqualTo(1f), "4 income covers a (3) fully and 1 of b (2)");
+                Assert.That(TurnResourceBook.LedgerClaims(player, turn).Select(c => c.Owner),
+                    Is.EqualTo(new[] { "Economy:b" }), "a fully covered hold is not listed");
+
+                // Phase A re-entry re-states the full vector: the ledger keeps it, the cover holds.
+                EconomyReservationLifecycle.ReserveEconomyCost(player, turn, a,
+                    new ResourceCost(materials: 3), 0f, StrategicReservationReason.EconomyDeferredBuild);
+                Assert.That(StrategicResourceReservationLedger.Active(
+                    player, turn, StrategicReservedResource.Materials), Is.EqualTo(5f));
+                Assert.That(Held(turn), Is.EqualTo(1f));
+
+                StrategicResourceReservationLedger.BeginTurn(player, turn + 1);
+                EconomyReservationLifecycle.ReserveEconomyCost(player, turn + 1, a,
+                    new ResourceCost(materials: 3), 0f, StrategicReservationReason.EconomyDeferredBuild);
+                Assert.That(Held(turn + 1), Is.EqualTo(3f), "the cover belongs to its own turn only");
+            }
+            finally { EconomyReservationLifecycle.ClearAll(); }
         }
     }
 }
