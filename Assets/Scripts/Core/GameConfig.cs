@@ -21,6 +21,10 @@ namespace Game.Core
         [Header("Army radio (presentation only)")]
         public ArmyRadioChatterSettings armyRadioChatter = new ArmyRadioChatterSettings();
 
+        [Header("Screen wear overlay")]
+        // Full-screen HUD wear texture drawn by ScreenWearOverlay (edge scratches/grime, clean centre).
+        public Texture2D screenWearTexture;
+
         [Header("Collection content")]
         public Game.Cards.StartingDeckCatalog collectionDeckCatalog;
         public Game.Cards.ResearchProductionCatalog collectionResearchCatalog;

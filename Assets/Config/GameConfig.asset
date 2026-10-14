@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c5b1afee3e364ca4943bf350e7f4b360, type: 3}
   m_Name: GameConfig
   m_EditorClassIdentifier: Assembly-CSharp::Game.Core.GameConfig
+  screenWearTexture: {fileID: 2800000, guid: e6efe6fe254c0334f90a94273179b0a5, type: 3}
   collectionDeckCatalog: {fileID: 11400000, guid: 6ae207ae03ca453cae0b8ec5f668372d, type: 2}
   collectionResearchCatalog: {fileID: 11400000, guid: d4e5f60718192a3b4c5d6e7f80911223, type: 2}
   eventMarkerPrefab: {fileID: 1514539978742884714, guid: 55c207a3e28f969499cd6921199964be, type: 3}

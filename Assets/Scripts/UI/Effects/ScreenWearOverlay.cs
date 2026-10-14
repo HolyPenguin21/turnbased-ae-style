@@ -6,7 +6,8 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // Screen-space wear overlay for the Game scene HUD: a static authored texture (edge
-    // scratches/grime, clean centre) alpha-blended over everything. Never receives raycasts.
+    // scratches/grime, clean centre) alpha-blended over everything, covering the whole screen.
+    // The texture is configured in GameConfig.screenWearTexture. Never receives raycasts.
     //
     // Spawns as an ordinary child of the scene's own Canvas_UI (same as every other HUD element)
     // instead of a separate persistent cross-scene canvas — it lives and is torn down with the
@@ -15,11 +16,10 @@ namespace Game.UI
     public sealed class ScreenWearOverlay : MonoBehaviour
     {
         private const string MainCanvasName = "Canvas_UI";
-        private const string HandPanelName = "CardHandPanel";
         private const int OverlaySortingOrder = 32760;
 
-        // Kept in Resources alongside the shader itself, so both are guaranteed to be included in
-        // a player build the same way (see the shader lookup below).
+        // Fallback when GameConfig has no texture assigned. Kept in Resources alongside the
+        // shader itself, so both are guaranteed to be included in a player build.
         private const string TextureResourcePath = "Effects/Overlay";
 
         private static readonly int MainTexId = Shader.PropertyToID("_MainTex");
@@ -31,10 +31,7 @@ namespace Game.UI
 
         private Material _material;
         private Texture2D _texture;
-        private RectTransform _rect;
         private RawImage _image;
-        private RectTransform _handPanelRect;
-        private float _lastHandPanelHeight = -1f;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -63,9 +60,6 @@ namespace Game.UI
             rect.offsetMax = Vector2.zero;
             rect.offsetMin = Vector2.zero;
 
-            // CardHandPanel is populated later in the scene's setup, so the overlay stays
-            // hidden (see Awake/Update) until it actually appears — anchoring against it (or
-            // the full-screen fallback) before then would be based on stale/absent geometry.
             overlayObject.AddComponent<ScreenWearOverlay>();
         }
 
@@ -90,7 +84,7 @@ namespace Game.UI
                 return;
             }
 
-            _texture = GameAssetCatalog.Load<Texture2D>(TextureResourcePath);
+            _texture = ResolveConfiguredTexture() ?? GameAssetCatalog.Load<Texture2D>(TextureResourcePath);
             if (_texture == null)
                 Debug.LogWarning($"ScreenWearOverlay: texture '{TextureResourcePath}' was not found.");
 
@@ -101,47 +95,22 @@ namespace Game.UI
             };
             ApplyMaterialSettings();
 
-            _rect = (RectTransform)transform;
             _image = gameObject.AddComponent<RawImage>();
             _image.texture = _texture != null ? _texture : Texture2D.whiteTexture;
             _image.material = _material;
             _image.color = Color.white;
             _image.raycastTarget = false;
             _image.maskable = false;
-
-            // Hidden until CardHandPanel actually appears — see Update.
-            _image.enabled = false;
         }
 
-        private void Update()
+        // The scene's controllers already reference the shared GameConfig, so it is loaded by
+        // the time this overlay spawns after the scene.
+        private static Texture2D ResolveConfiguredTexture()
         {
-            // Resolve the hand lazily because the Game scene initializes it after this overlay.
-            // Once resolved, track its current RectTransform height: proportional anchors and
-            // CanvasScaler can change that height when the window is resized.
-            if (_handPanelRect == null)
-            {
-                GameObject handPanelObject = FindInScene(gameObject.scene, HandPanelName);
-                if (handPanelObject == null)
-                    return;
-                _handPanelRect = handPanelObject.GetComponent<RectTransform>();
-            }
-
-            if (_handPanelRect == null || !_handPanelRect.gameObject.activeInHierarchy)
-            {
-                if (_image != null)
-                    _image.enabled = false;
-                return;
-            }
-
-            float handPanelHeight = _handPanelRect.rect.height;
-            if (!Mathf.Approximately(_lastHandPanelHeight, handPanelHeight))
-            {
-                _rect.offsetMin = new Vector2(0f, handPanelHeight);
-                _lastHandPanelHeight = handPanelHeight;
-            }
-
-            if (_image != null && !_image.enabled)
-                _image.enabled = true;
+            foreach (GameConfig config in Resources.FindObjectsOfTypeAll<GameConfig>())
+                if (config != null && config.screenWearTexture != null)
+                    return config.screenWearTexture;
+            return null;
         }
 
         private void OnValidate()
