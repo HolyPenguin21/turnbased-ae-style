@@ -28,12 +28,15 @@ namespace Game.Ai.V2
             // to BuildProposal so the proposal's envelope is priced off the SAME projection the
             // score was folded from, instead of re-deriving a host-only cost a second time.
             public readonly int? ProjectedActivationAp;
+            public readonly int? ProjectedMaxMovement;
+            public readonly int? ProjectedCurrentMovement;
             public readonly bool IsCompletedTargetFallback;
 
             public RaidCandidate(RaidMissionTarget target, TaskScore score, float localAdmissionScore,
                 string explain, bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None,
                 int? preferredMover = null, int? costedMover = null,
-                int? projectedActivationAp = null, bool isCompletedTargetFallback = false)
+                int? projectedActivationAp = null, bool isCompletedTargetFallback = false,
+                int? projectedMaxMovement = null, int? projectedCurrentMovement = null)
             {
                 Target = target;
                 Score = score;
@@ -44,6 +47,8 @@ namespace Game.Ai.V2
                 PreferredMover = preferredMover;
                 CostedMover = costedMover;
                 ProjectedActivationAp = projectedActivationAp;
+                ProjectedMaxMovement = projectedMaxMovement;
+                ProjectedCurrentMovement = projectedCurrentMovement;
                 IsCompletedTargetFallback = isCompletedTargetFallback;
             }
 
@@ -54,7 +59,8 @@ namespace Game.Ai.V2
                 // cheap army's score but funded the durable primary's more expensive route.
                 return new RaidCandidate(Target, Score, LocalAdmissionScore,
                     Explain + $" [incumbent {tier}; funding protected separately]",
-                    true, tier, preferredMover, CostedMover, ProjectedActivationAp);
+                    true, tier, preferredMover, CostedMover, ProjectedActivationAp,
+                    projectedMaxMovement: ProjectedMaxMovement, projectedCurrentMovement: ProjectedCurrentMovement);
             }
         }
 
@@ -498,8 +504,12 @@ namespace Game.Ai.V2
                     ? GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, live)
                     : null;
 
+            int? projectedMax = projectedActivationAp.HasValue
+                ? GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, live) : null;
+            int? projectedNow = projectedActivationAp.HasValue
+                ? GroundCombatAssemblyPlanner.ProjectedCurrentMovement(snap, live) : null;
             RaidCostEstimate estimate = RaidCostModel.Estimate(snap, target, costedMover,
-                projectedActivationAp);
+                projectedActivationAp, projectedMax, projectedNow);
             MissionRequirements req = estimate.Requirements;
             float currentActivationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
             float recurringActivationAp = UnityEngine.Mathf.Max(0f, estimate.RecurringActivationAp);
@@ -515,7 +525,8 @@ namespace Game.Ai.V2
                 + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")}";
             return new RaidCandidate(target, score, las, explain,
                 costedMover: estimate.PlannedMoverArmyId ?? costedMover,
-                projectedActivationAp: projectedActivationAp);
+                projectedActivationAp: projectedActivationAp,
+                projectedMaxMovement: projectedMax, projectedCurrentMovement: projectedNow);
         }
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c,
@@ -534,7 +545,9 @@ namespace Game.Ai.V2
                 && pricedMover.Value == c.CostedMover.Value
                     ? c.ProjectedActivationAp : null;
             RaidCostEstimate estimate = RaidCostModel.Estimate(snap, c.Target, pricedMover,
-                projectedActivationAp);
+                projectedActivationAp,
+                projectedActivationAp.HasValue ? c.ProjectedMaxMovement : null,
+                projectedActivationAp.HasValue ? c.ProjectedCurrentMovement : null);
             MissionRequirements req = estimate.Requirements;
             if (c.Target.Phase == RaidMissionPhase.AirSupport)
             {
@@ -588,4 +601,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

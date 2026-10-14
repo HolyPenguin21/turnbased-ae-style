@@ -102,6 +102,19 @@ namespace Game.EditorTests
             },
         };
 
+        [Test]
+        public void DepartureRoster_PricingUsesItsMovementAndKeepsFutureApOutsideTheReservation()
+        {
+            WorldSnapshot snap = Snapshot(5, currentMovement: 3, maxMovement: 3,
+                activated: false, activationAp: 3);
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, Target(5), 9,
+                projectedRosterActivationAp: 1, projectedMaxMovement: 2, projectedCurrentMovement: 1);
+            Assert.That(estimate.Requirements.ApMinimum, Is.EqualTo(1));
+            Assert.That(estimate.Requirements.ApDesired, Is.EqualTo(1));
+            Assert.That(estimate.Requirements.EtaTurns, Is.EqualTo(3));
+            Assert.That(estimate.RecurringActivationAp, Is.EqualTo(1));
+        }
+
         private static RaidMissionTarget Target(int distance) => new RaidMissionTarget
         {
             Phase = RaidMissionPhase.Assault,
@@ -111,3 +124,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

@@ -943,6 +943,13 @@ namespace Game.Ai.V2
             };
 
         // Every strategic effect a card's EFFECTIVE ability set + stat line yields.
+        // A secondary hero may carry army support without commanding it. Housekeeping retains
+        // these semantic carriers for the mission's full counterfactual (battle and movement),
+        // instead of maintaining a second list of Heal/Drill/Transport/Summon ability names.
+        internal static bool HasArmySupportEffect(IEnumerable<string> abilities, int moveMax) =>
+            Resolve(abilities, moveMax).Any(e => e.Scope == EffectScope.DestArmy
+                || e.Context == StrategicEffectContext.FreeBattleSlots);
+
         public static List<StrategicEffect> Resolve(IEnumerable<string> effectiveAbilities, int effectiveMoveMax)
         {
             var list = new List<StrategicEffect>();
@@ -1588,3 +1595,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

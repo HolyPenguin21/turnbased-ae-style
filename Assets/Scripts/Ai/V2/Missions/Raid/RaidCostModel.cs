@@ -31,8 +31,10 @@ namespace Game.Ai.V2
     {
         // Compatibility projection for callers that only need the current-turn allocator envelope.
         public static MissionRequirements Build(WorldSnapshot snap, RaidMissionTarget target,
-            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null) =>
-            Estimate(snap, target, selectedMoverArmyId, projectedRosterActivationAp).Requirements;
+            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null,
+            int? projectedMaxMovement = null, int? projectedCurrentMovement = null) =>
+            Estimate(snap, target, selectedMoverArmyId, projectedRosterActivationAp,
+                projectedMaxMovement, projectedCurrentMovement).Requirements;
 
         // `projectedRosterActivationAp` (AI-01) — the full activation AP of the roster
         // GroundCombatAssemblyPlanner will ACTUALLY produce for an Assault (host members plus every
@@ -42,7 +44,8 @@ namespace Game.Ai.V2
         // rejected by MissionRevalidator at its real 4 AP. Null keeps the host-only pricing used by
         // every non-Assault phase, whose cost contracts are unchanged.
         public static RaidCostEstimate Estimate(WorldSnapshot snap, RaidMissionTarget target,
-            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null)
+            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null,
+            int? projectedMaxMovement = null, int? projectedCurrentMovement = null)
         {
             float currentTurnActivationAp = AiConfigV2.raidNotionalActivationAp;
             float recurringActivationAp = AiConfigV2.raidNotionalActivationAp;
@@ -99,9 +102,12 @@ namespace Game.Ai.V2
                     // ceil(distance / MaxMovement) underpriced a pinned, already-activated mover
                     // with 0 MP as a same-turn Raid, omitting its next-turn activation from Delivery.
                     // Match ScoutCostModel.PairCost's remaining-MP ETA without reserving future AP.
-                    int moveBudget = Mathf.Max(1, mover.MaxMovement);
-                    eta = mover.CurrentMovement >= distance ? 1
-                        : 1 + CeilDiv(distance - Mathf.Max(0, mover.CurrentMovement), moveBudget);
+                    int moveBudget = Mathf.Max(1, isAssault && projectedMaxMovement.HasValue
+                        ? projectedMaxMovement.Value : mover.MaxMovement);
+                    int currentMove = isAssault && projectedCurrentMovement.HasValue
+                        ? projectedCurrentMovement.Value : mover.CurrentMovement;
+                    eta = currentMove >= distance ? 1
+                        : 1 + CeilDiv(distance - Mathf.Max(0, currentMove), moveBudget);
                 }
             }
 
@@ -150,4 +156,5 @@ namespace Game.Ai.V2
         private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }
+
 

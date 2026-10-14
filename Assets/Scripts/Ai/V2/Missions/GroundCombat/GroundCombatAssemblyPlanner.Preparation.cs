@@ -34,7 +34,7 @@ namespace Game.Ai.V2
         private static GroundCombatAssemblyPlan AssembleSameHex(WorldSnapshot snap,
             PlayerSetupData owner, ArmyData host, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> excludeArmyIds, float minWinChance, float defenderHexDefenseBonus,
-            float minimumArmyPower, bool preparation)
+            float minimumArmyPower, bool preparation, bool? requireCoverage = null)
         {
             float hostPower = AiPower.EffectiveArmyPower(host.Members);
             var projectedUnits = new List<UnitData>(host.Members);
@@ -68,11 +68,13 @@ namespace Game.Ai.V2
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
-                        if (!preparation && (minimumArmyPower <= 0f
-                                || AiPower.EffectiveArmyPower(projectedUnits) > minimumArmyPower)
-                            && GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
-                                defenderHexDefenseBonus, out float hWin, out bool hCover))
-                            return FinishAssembly(host, selected, hWin, hCover, minWinChance, projectedUnits);
+                        if (!preparation)
+                        {
+                            GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
+                                projectedUnits, selected, opposition, minWinChance,
+                                defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                            if (ready.Feasible) return ready;
+                        }
                     }
                 }
             }
@@ -114,7 +116,8 @@ namespace Game.Ai.V2
                         continue;
                     }
                     var withPick = new List<UnitData>(projectedUnits) { pick };
-                    if (!ArmyData.RosterFits(withPick, host.IsGarrison))
+                    if (!ArmyData.RosterFits(withPick, host.IsGarrison)
+                        && (preparation || minWinChance <= 0f || !HasDepartureRoom(snap, host, withPick)))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
@@ -129,11 +132,13 @@ namespace Game.Ai.V2
                     projectedUnits.Add(pick);
                     projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
                     selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
-                    if (!preparation && (minimumArmyPower <= 0f
-                            || AiPower.EffectiveArmyPower(projectedUnits) > minimumArmyPower)
-                        && GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
-                            defenderHexDefenseBonus, out float win, out bool cover))
-                        return FinishAssembly(host, selected, win, cover, minWinChance, projectedUnits);
+                    if (!preparation)
+                    {
+                        GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
+                            projectedUnits, selected, opposition, minWinChance,
+                            defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                        if (ready.Feasible) return ready;
+                    }
                 }
             }
 
@@ -154,13 +159,36 @@ namespace Game.Ai.V2
             }
 
             // The hero alone (no bodies available/needed) may already clear.
-            if (selected.Count > 0 && (minimumArmyPower <= 0f
-                    || AiPower.EffectiveArmyPower(projectedUnits) > minimumArmyPower)
-                && GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition,
-                    minWinChance, defenderHexDefenseBonus, out float wOnly, out bool cOnly))
-                return FinishAssembly(host, selected, wOnly, cOnly, minWinChance, projectedUnits);
+            if (selected.Count > 0)
+            {
+                GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
+                    projectedUnits, selected, opposition, minWinChance,
+                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                if (ready.Feasible) return ready;
+            }
 
             return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
+        }
+
+        private static GroundCombatAssemblyPlan CompleteAssaultAssembly(WorldSnapshot snap,
+            ArmyData host, IReadOnlyList<UnitData> members,
+            IReadOnlyList<GroundCombatAssemblyTransfer> transfers,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float gate, float hexBonus,
+            float minimumPower, bool? requireCoverage)
+        {
+            if (gate > 0f)
+                return PlanDepartureRoster(snap, host, members, transfers, opposition,
+                    gate, hexBonus, minimumPower, requireCoverage);
+            if ((minimumPower <= 0f || AiPower.EffectiveArmyPower(members) > minimumPower)
+                && GroundCombatFeasibility.Clears(members.Select(WorthIt.FromLiveUnit).ToList(),
+                    WorthIt.SideCommander.Of(members), opposition, gate, hexBonus,
+                    out float win, out bool cover, requireCoverage))
+            {
+                GroundCombatAssemblyPlan plan = FinishAssembly(host, transfers, win, cover, gate, members);
+                plan.RequireCoverage = requireCoverage;
+                return plan;
+            }
+            return GroundCombatAssemblyPlan.Infeasible("assembled roster does not clear the combat gate");
         }
 
         private static GroundCombatAssemblyPlan FinishAssembly(ArmyData host,
@@ -187,3 +215,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

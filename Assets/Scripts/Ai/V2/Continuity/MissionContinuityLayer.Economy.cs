@@ -577,7 +577,11 @@ namespace Game.Ai.V2
             o.EconomyFactsForWrite().EconomyBuildCompleted = e.InfrastructureChanged;
             o.PayloadForWrite<EconomyStepPayload>().DeliveryReady = e.EconomyDeliveryReady;
             o.PayloadForWrite<EconomyStepPayload>().Holding = e.EconomyHolding;
+            if (e.ActorMaterialized)
+                o.PayloadForWrite<EconomyStepPayload>().MaterializationSourceArmyId =
+                    e.EconomyMaterializationSourceArmyId;
         }
 
     }
 }
+

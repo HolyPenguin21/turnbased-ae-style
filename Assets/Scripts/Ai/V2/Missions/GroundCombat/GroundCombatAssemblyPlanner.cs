@@ -37,6 +37,11 @@ namespace Game.Ai.V2
         public bool NeedsAssembly;
         public readonly List<int> MergeArmyIds = new List<int>();
         public readonly List<GroundCombatAssemblyTransfer> Transfers = new List<GroundCombatAssemblyTransfer>();
+        // Same-hex departure plan, priced before Allocation. Secondary heroes go home only
+        // when the remaining roster clears this request's combat and physical constraints.
+        public readonly List<UnitData> ReturnHeroes = new List<UnitData>();
+        public int? HeroReturnArmyId;
+        public UnitData Commander;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public float ProjectedPower;
@@ -202,7 +207,7 @@ namespace Game.Ai.V2
         public float MinimumArmyPower;
         // Overrides GroundCombatAdmissionPolicy.RequiresCoverage(WinChanceGate) for a request whose
         // ACTION, not its gate value, decides (an optional intermediate Base at 0.40 needs none).
-        // Honoured by the already-formed-army checks; same-hex assembly keeps the gate's default.
+        // Honoured by the exact and assembled departure-roster checks alike.
         public bool? RequireCoverage;
     }
 
@@ -258,7 +263,7 @@ namespace Game.Ai.V2
             {
                 GroundCombatAssemblyPlan assembled = TryAssembleForHost(
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
-                    request.DefenderHexDefenseBonus, request.MinimumArmyPower);
+                    request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage);
                 if (assembled.Feasible)
                     return assembled;
             }
@@ -301,7 +306,7 @@ namespace Game.Ai.V2
                 if (excluded.Contains(a.ArmyId))
                     continue;
                 if (TryAssembleForHost(snap, opposition, a, excluded, request.WinChanceGate,
-                        request.DefenderHexDefenseBonus, request.MinimumArmyPower).Feasible)
+                        request.DefenderHexDefenseBonus, request.MinimumArmyPower, request.RequireCoverage).Feasible)
                 {
                     ids.Add(a.ArmyId);
                     excluded.Add(a.ArmyId);
@@ -318,7 +323,8 @@ namespace Game.Ai.V2
             GroundCombatAssemblyRequest request)
         {
             List<ArmySnapshot> eligible = GroundCombatActorEligibility
-                .EligibleReadyArmies(snap, request.ExcludedArmyIds)
+                .EligibleReadyArmies(snap, request.ExcludedArmyIds,
+                    allowHeroAssemblyHost: request.AllowSameHexAssembly && request.WinChanceGate > 0f)
                 .Where(a => Admissible(a, request))
                 .OrderByDescending(a => a.EffectiveArmyPower)
                 .ToList();
@@ -368,6 +374,12 @@ namespace Game.Ai.V2
             if (a == null || !a.IsStructuralRaidActor)
                 return GroundCombatAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
+            ArmyData live = LiveArmy(a);
+            if (live != null && minWinChance > 0f)
+                return PlanDepartureRoster(snap, live, live.Members,
+                    System.Array.Empty<GroundCombatAssemblyTransfer>(), opposition, minWinChance,
+                    defenderHexDefenseBonus, 0f, requireCoverage);
+
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
@@ -392,7 +404,8 @@ namespace Game.Ai.V2
 
         private static GroundCombatAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
-            float minWinChance, float defenderHexDefenseBonus, float minimumArmyPower = 0f)
+            float minWinChance, float defenderHexDefenseBonus, float minimumArmyPower = 0f,
+            bool? requireCoverage = null)
         {
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
@@ -402,10 +415,11 @@ namespace Game.Ai.V2
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0)
                 return GroundCombatAssemblyPlan.Infeasible("assembly host is no longer live/mobile");
             return AssembleSameHex(snap, owner, host, opposition, excludeArmyIds, minWinChance,
-                defenderHexDefenseBonus, minimumArmyPower, preparation: false);
+                defenderHexDefenseBonus, minimumArmyPower, preparation: false, requireCoverage: requireCoverage);
         }
 
     }
 }
+
 
 

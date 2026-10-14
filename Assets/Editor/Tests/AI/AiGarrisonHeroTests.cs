@@ -63,6 +63,185 @@ namespace Game.EditorTests
             Self = new SelfSnapshot { Armies = new List<ArmySnapshot>(), BaseHexes = new List<HexCoord> { Staging } },
         };
 
+        private static WorldSnapshot DepartureSnapshot()
+        {
+            WorldSnapshot snap = Snap();
+            snap.Self.Armies = ArmyRegistry.AllForOwner(Us).Select(a => new ArmySnapshot
+            {
+                ArmyId = a.Id, Owner = Us, Hex = a.Hex, IsGarrison = a.IsGarrison,
+                IsStructuralRaidActor = AiArmyRoles.IsStructuralGroundCombatActor(a),
+                MemberCount = a.Members.Count, HasHero = a.Commander != null,
+                HeroCount = a.Members.Count(u => u.IsHero), Capacity = a.Capacity,
+                CurrentMovement = a.CurrentMovement, MaxMovement = a.MaxMovement,
+                ActivationApCost = a.ActivationApCost, HasActivatedThisTurn = a.HasActivatedThisTurn,
+                EffectiveArmyPower = AiPower.EffectiveArmyPower(a.Members),
+                Commander = WorthIt.SideCommander.Of(a.Members),
+                Members = a.Members.Where(u => u.IsGroundCombatant).Select(WorthIt.FromLiveUnit).ToList(),
+            }).ToList();
+            return snap;
+        }
+
+        private static ArmyData DepartureHome()
+        {
+            ArmyData home = Army(Staging, Hero("Home", 9, support: true), Body("Guard", 12));
+            home.IsGarrison = true;
+            return home;
+        }
+
+        private static IReadOnlyList<WorthIt.DefendingArmy> WeakOpposition()
+        {
+            UnitData enemy = Body("Enemy", 1);
+            enemy.Defense = 0; enemy.HitPointsCurrent = enemy.HitPointsMax = 2;
+            enemy.Initiative = 0; enemy.IsSummoned = true;
+            return new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(enemy) }, default) };
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void DepartureProjection_PricesOneCommanderAndReturnsSecondaryHeroes(bool supportTagged)
+        {
+            ArmyData home = DepartureHome();
+            UnitData mara = Hero("Mara", 8), edda = Hero("Edda", 8), sol = Hero("Sol", 7);
+            mara.Abilities.Add(UnitAbilities.ProduceEnergy); edda.Abilities.Add(UnitAbilities.ProduceTech);
+            if (supportTagged)
+            {
+                mara.TypeTags.Add(UnitTypeTag.Support);
+                edda.TypeTags.Add(UnitTypeTag.Support);
+            }
+            sol.Abilities.Add(UnitAbilities.RapidReaction); sol.ActivationApCost = 0;
+            UnitData body = Body("Fighter", 20); body.IsSummoned = true;
+            ArmyData host = Army(Staging, mara, edda, sol, body);
+            WorldSnapshot snap = DepartureSnapshot();
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                snap, WeakOpposition(), host.Id, 0.8f);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.Commander, Is.SameAs(sol));
+            Assert.That(plan.ReturnHeroes, Is.EquivalentTo(new[] { mara, edda }));
+            Assert.That(plan.HeroReturnArmyId, Is.EqualTo(home.Id));
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan), Is.EqualTo(new[] { sol, body }));
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan), Is.EqualTo(1));
+            Assert.That(host.Members.Count, Is.EqualTo(4), "planning is read-only");
+            Assert.That(home.Members.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void DepartureProjection_DoesNotPromiseHeroReturnWithoutRoomAtHome()
+        {
+            ArmyData home = DepartureHome();
+            while (home.Members.Count < home.Capacity) home.Members.Add(Body("Guard", 12));
+            UnitData body = Body("Fighter", 20); body.IsSummoned = true;
+            ArmyData host = Army(Staging, Hero("Lead", 8), Hero("Extra", 7), body);
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                DepartureSnapshot(), WeakOpposition(), host.Id, 0.8f);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.ReturnHeroes, Is.Empty);
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan).Count, Is.EqualTo(3));
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void LoneHeroIsOnlyAnAssemblyHostWhenALegalEscortExists(bool escortAvailable)
+        {
+            UnitData hero = Hero("Commander", 7); hero.ActivationApCost = 0;
+            ArmyData host = Army(Staging, hero);
+            if (escortAvailable)
+            {
+                UnitData first = Body("Escort", 20), second = Body("Guard", 20);
+                first.IsSummoned = second.IsSummoned = true;
+                Army(Staging, first, second);
+            }
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(),
+                new GroundCombatAssemblyRequest { Opposition = WeakOpposition(), WinChanceGate = 0.8f });
+            if (!escortAvailable) { Assert.That(plan.Feasible, Is.False); return; }
+            // A ready donor wins by the existing precedence; pin to exercise the solo host's
+            // assembled alternative, without making it a ready actor by itself.
+            plan = GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), new GroundCombatAssemblyRequest
+            {
+                Opposition = WeakOpposition(), WinChanceGate = 0.8f,
+                PreferredPrimaryArmyId = host.Id, PinToPreferred = true,
+            });
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.NeedsAssembly, Is.True);
+            Assert.That(plan.Transfers.Count, Is.EqualTo(1));
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan).Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void SoloHeroWithoutMovementOrClaimedByAnotherTask_IsNotAnAssemblyHost()
+        {
+            UnitData hero = Hero("Commander", 7);
+            ArmyData host = Army(Staging, hero);
+            Army(Staging, Body("Escort", 20), Body("Guard", 20));
+            var request = new GroundCombatAssemblyRequest { Opposition = WeakOpposition(), WinChanceGate = 0.8f,
+                PreferredPrimaryArmyId = host.Id, PinToPreferred = true, ExcludedArmyIds = new HashSet<int> { host.Id } };
+            Assert.That(GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), request).Feasible, Is.False);
+            request.ExcludedArmyIds.Clear(); hero.MoveCurrent = 0;
+            Assert.That(GroundCombatAssemblyPlanner.Plan(DepartureSnapshot(), request).Feasible, Is.False);
+        }
+
+        [Test]
+        public void NecessaryPassiveHealingHero_IsKeptByTheWholeRosterCombatGate()
+        {
+            DepartureHome();
+            UnitData leader = Hero("Lead", 7), healer = Hero("Healer", 1);
+            healer.Abilities.Add(UnitAbilities.Heal);
+            UnitData body = Body("Bio", 4), enemy = Body("Enemy", 4);
+            body.TypeTags.Add(UnitTypeTag.Bio);
+            body.HitPointsCurrent = 1;
+            body.IsSummoned = enemy.IsSummoned = true;
+            ArmyData host = Army(Staging, leader, healer, body);
+            var opposition = new[] { new WorthIt.DefendingArmy(new[] { WorthIt.FromLiveUnit(enemy) }, default) };
+            float plain = WorthIt.EstimateSequential(new[] { WorthIt.FromLiveUnit(leader), WorthIt.FromLiveUnit(body) },
+                WorthIt.SideCommander.Of(leader), opposition, 0f).WinChance;
+            float healed = WorthIt.EstimateSequential(host.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                WorthIt.SideCommander.Of(host.Members), opposition, 0f).WinChance;
+            Assert.That(healed, Is.GreaterThan(plain), "fixture must witness real passive benefit");
+            float gate = (plain + healed) / 2f;
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                DepartureSnapshot(), opposition, host.Id, gate);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.ReturnHeroes, Does.Not.Contain(healer));
+            Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan), Does.Contain(healer));
+        }
+
+        [Test]
+        public void DepartureReturnAndCommanderPromotion_RollBackTogether()
+        {
+            ArmyData home = DepartureHome();
+            UnitData old = Hero("Old", 8), keep = Hero("Keep", 7), extra = Hero("Extra", 8);
+            ArmyData host = Army(Staging, old, keep, extra, Body("Fighter", 20));
+            var returned = new[] { old, extra };
+            Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep, returned), Is.True);
+            host.TryReorderCommander(keep, out _);
+            Assert.That(ArmyActions.TransferMembersAtomic(returned, host, home, null, out _), Is.True);
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            Assert.That(GroundCombatAssemblyTransaction.Rollback(Us, host, applied,
+                new AiTurnContext(), "raid", home, returned, old), Is.True);
+            Assert.That(host.Commander, Is.SameAs(old));
+            Assert.That(host.Members, Does.Contain(extra));
+            Assert.That(home.Members.Count, Is.EqualTo(2));
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, returned, old), Is.Zero);
+        }
+
+        [Test]
+        public void UsefulSecondaryTransportHero_IsNotRemovedForACheaperActivation()
+        {
+            DepartureHome();
+            UnitData lead = Hero("Lead", 8), transport = Hero("Transport", 1);
+            lead.MoveMax = lead.MoveCurrent = transport.MoveMax = transport.MoveCurrent = 4;
+            transport.Abilities.Add(UnitAbilities.Transport);
+            UnitData infantry = Body("Infantry", 20);
+            infantry.TypeTags.Add(UnitTypeTag.Infantry);
+            infantry.MoveMax = infantry.MoveCurrent = 2;
+            ArmyData host = Army(Staging, lead, transport, infantry);
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
+                DepartureSnapshot(), WeakOpposition(), host.Id, 0.8f);
+            Assert.That(plan.Feasible, Is.True, plan.Reason);
+            Assert.That(plan.ReturnHeroes, Does.Not.Contain(transport));
+            Assert.That(ArmyData.ComputeMaxMovement(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan)),
+                Is.EqualTo(4));
+        }
+
         // ---- the Support tag on the catalog heroes -------------------------------------------
 
         // Every hero that grants AP, researches or assembles is authored as a garrison hero; a new
@@ -300,4 +479,5 @@ namespace Game.EditorTests
     }
 }
 #endif
+
 

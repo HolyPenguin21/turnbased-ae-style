@@ -253,6 +253,56 @@ namespace Game.EditorTests
         private static bool Has(PlayerSetupData player, MissionIntent intent) =>
             MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _);
 
+        [TestCase(EconomyTaskKind.FoundBase)]
+        [TestCase(EconomyTaskKind.BuildExtraction)]
+        public void MaterializedBuilder_ReplacesItsPinnedGarrisonWithoutRestartingTheProject(EconomyTaskKind kind)
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(kind, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            var key = intent.IntentKey;
+            Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, ActorMaterialized = true,
+                EconomyMaterializationSourceArmyId = Actor, ActualActorArmyId = 22, ApSpent = 2,
+            });
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(22));
+            Assert.That(intent.Economy.BuilderArmyId, Is.EqualTo(22));
+            Assert.That(intent.IntentKey, Is.EqualTo(key));
+            Assert.That(intent.CreatedTurn, Is.EqualTo(3));
+            Assert.That(intent.CumulativeApSpent, Is.EqualTo(2));
+            var snapshot = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[]
+                { new ArmySnapshot { ArmyId = Actor, HasHero = true, IsGarrison = true },
+                  new ArmySnapshot { ArmyId = 22, HasHero = true } } } };
+            var claims = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
+            Assert.That(claims.ClaimedArmyIdSet, Does.Contain(22));
+            Assert.That(claims.ClaimedArmyIdSet, Does.Not.Contain(Actor));
+
+            // Later admission does not adopt a different builder just because it reported progress.
+            Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, EconomyPrepared = true,
+                ActualActorArmyId = 23,
+            });
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(22));
+        }
+
+        [TestCase(false, Actor)]
+        [TestCase(true, 99)]
+        public void UnprovenOrDifferentSourceMaterialization_CannotReplacePinnedBuilder(bool materialized, int source)
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, ActorMaterialized = materialized,
+                EconomyPrepared = true, EconomyMaterializationSourceArmyId = source, ActualActorArmyId = 22,
+            });
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(Actor));
+            Assert.That(intent.Economy.BuilderArmyId, Is.EqualTo(Actor));
+        }
+
         // --- B1: productive hold on target is progress, not a failure ------------------------
 
         [Test]
@@ -865,3 +915,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

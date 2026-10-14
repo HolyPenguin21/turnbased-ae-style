@@ -61,6 +61,12 @@ namespace Game.Ai.V2
                     commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
                 if (meta.MayReleaseExcessHeroes)
                     preparationSlotWaste += PreparationSlotWaste(units);
+                else if (meta.IsMutableGround && meta.CanDonate)
+                    // Ordinary secondary heroes add no command or force. Keep canonical passive
+                    // battle carriers (Heal/Drill) for the mission's own counterfactual check.
+                    preparationSlotWaste += units.Where(u => u != null && u.IsHero).Skip(1)
+                        .Count(u => !u.IsCommitted && !u.IsDevelopmentOperator
+                            && !StrategicEffectRegistry.HasArmySupportEffect(u.CombatProfile.Abilities, u.MoveMax));
                 if (meta.PreparationTargetKeys != null)
                     preparationSlotWaste += ReorgViability.PreparationRosterWaste(meta, units,
                         s.Meta.Select(kv => new KeyValuePair<ReorgContainer, List<ReorgUnit>>(
@@ -103,6 +109,11 @@ namespace Game.Ai.V2
                 if (loneHero && meta.CanDonate && units[0].HeroRole != HeroOperationalRole.SupportOperator
                     && !units[0].IsGarrisonHero)
                     benchedCombatCapable++;
+
+                // A commander/worker waiting for a task is a bench, not a weak fighting army.
+                // Folding three zero-power hero benches into one must not improve NonViable.
+                if (!units.Any(u => u != null && u.IsGroundCombatant))
+                    continue;
 
                 if (ReorgViability.IsViable(units))
                 {
@@ -253,3 +264,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
