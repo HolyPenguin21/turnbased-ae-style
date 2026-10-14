@@ -101,9 +101,6 @@ MonoBehaviour:
   - key: Prefabs/Rewards/CollectionRewards
     assets:
     - {fileID: 1001, guid: 3852179eca984d7192c20690cb4e7273, type: 3}
-  - key: Prefabs/Rewards/EventReward
-    assets:
-    - {fileID: 1001, guid: 3a634a77d35d4ac88b0253996b1945b7, type: 3}
   - key: Prefabs/Rewards/RewardDialog
     assets:
     - {fileID: 1001, guid: 83608cf1ca5642b2bdb03f1c6b06f07e, type: 3}

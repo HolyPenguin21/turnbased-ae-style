@@ -25,7 +25,6 @@ namespace Game.UI
         [SerializeField] private TMP_Text summaryText;
         [SerializeField] private Image rewardCardImage;
         [SerializeField] private Button okButton;
-        private CollectionRewardView rewardView;
 
         private static readonly (ResourceType type, string label)[] ResourceLabels =
         {
@@ -41,7 +40,6 @@ namespace Game.UI
             if (entry?.Definition == null || panelRoot == null)
                 return;
 
-            ApplyRewardSkin();
             if (unitImage != null)
             {
                 Sprite portrait = EventChoicePopupUI.ResolvePortrait(recipient);
@@ -59,8 +57,6 @@ namespace Game.UI
 
             if (summaryText != null)
                 summaryText.text = BuildSummary(entry, recipient);
-            rewardView.RecipientImage.transform.parent.gameObject.SetActive(unitImage.gameObject.activeSelf);
-            rewardView.RewardImage.transform.parent.gameObject.SetActive(rewardCardImage.gameObject.activeSelf);
 
             if (okButton != null)
             {
@@ -73,22 +69,6 @@ namespace Game.UI
                 panelRoot.transform.SetAsLastSibling();
             }
             VisibilityChanged?.Invoke();
-        }
-
-        private void ApplyRewardSkin()
-        {
-            if (panelRoot == null || rewardView != null) return;
-            // Keep the scene's visibility owner and external reference. Presentation is authored
-            // in a prefab, so opening the popup never overwrites the designer's layout.
-            CollectionUIElements.Stretch((RectTransform)panelRoot.transform);
-            var backdrop = panelRoot.GetComponent<Image>();
-            if (backdrop != null) { backdrop.sprite = null; backdrop.color = Color.clear; }
-            foreach (Transform child in panelRoot.transform) child.gameObject.SetActive(false);
-            rewardView = Instantiate(GameAssetCatalog.Load<GameObject>("Prefabs/Rewards/EventReward").GetComponent<CollectionRewardView>(), panelRoot.transform);
-            unitImage = rewardView.RecipientImage;
-            rewardCardImage = rewardView.RewardImage;
-            summaryText = rewardView.Body;
-            okButton = rewardView.PrimaryButton;
         }
 
         private static string BuildSummary(HexEventRegistry.Entry entry, ArmyData recipient)
