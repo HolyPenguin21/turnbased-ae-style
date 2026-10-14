@@ -257,6 +257,8 @@ namespace Game.UI
         // Start times survive grid rebuilds and movement. Rendering never triggers gameplay.
         private readonly Dictionary<UnitData, float> _healEffectStarts = new Dictionary<UnitData, float>();
         private void OnUnitHealed(UnitData target) => _healEffectStarts[target] = Time.unscaledTime;
+        private readonly Dictionary<UnitData, float> _drillEffectStarts = new Dictionary<UnitData, float>();
+        private void OnUnitDrilled(UnitData target) => _drillEffectStarts[target] = Time.unscaledTime;
         private readonly List<BattleTurnOrderIconUI> _queueIcons = new List<BattleTurnOrderIconUI>();
 
         // Also true while a standalone Capture Kill Challenge is up (see
@@ -371,11 +373,17 @@ namespace Game.UI
             _battleState = new BattleState(hex, attacker, defender, grid, battleSeed);
             AbilityMagnitudes battleMagnitudes = attackPopup != null
                 ? attackPopup.Magnitudes : AbilityMagnitudes.Default;
-            if (_battleEngine != null) _battleEngine.UnitHealed -= OnUnitHealed;
+            if (_battleEngine != null)
+            {
+                _battleEngine.UnitHealed -= OnUnitHealed;
+                _battleEngine.UnitDrilled -= OnUnitDrilled;
+            }
             _healEffectStarts.Clear();
+            _drillEffectStarts.Clear();
             _battleEngine = new BattleEngine(_battleState, battleMagnitudes,
                 new System.Random(battleSeed));
             _battleEngine.UnitHealed += OnUnitHealed;
+            _battleEngine.UnitDrilled += OnUnitDrilled;
 
             // STEALTH-COMBAT-01: reveal is no longer primarily done here — every real entry
             // point (HexSelectionController.Movement.cs's TryBeginBattleAt, BattleScreenUI.
@@ -841,8 +849,13 @@ namespace Game.UI
             UIListUtility.DestroyAndClear(_queueIcons);
             _turnOrder = null;
             _retreatingArmy = null;
-            if (_battleEngine != null) _battleEngine.UnitHealed -= OnUnitHealed;
+            if (_battleEngine != null)
+            {
+                _battleEngine.UnitHealed -= OnUnitHealed;
+                _battleEngine.UnitDrilled -= OnUnitDrilled;
+            }
             _healEffectStarts.Clear();
+            _drillEffectStarts.Clear();
             _battleEngine = null;
             _battleState = null;
             _currentActingUnit = null;
