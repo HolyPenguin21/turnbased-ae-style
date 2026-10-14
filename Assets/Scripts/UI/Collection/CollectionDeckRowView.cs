@@ -20,7 +20,6 @@ namespace Game.UI
 
         public void Init(Action<CardDefinition> onSelect, Action<string, int> onChange)
         {
-            CollectionUIElements.ApplyDeckRowSkin((RectTransform)transform);
             nameButton.onClick.AddListener(() => onSelect(card));
             minusButton.onClick.AddListener(() => onChange(key, -1));
             plusButton.onClick.AddListener(() => onChange(key, 1));

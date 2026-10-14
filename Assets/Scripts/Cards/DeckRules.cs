@@ -38,7 +38,8 @@ namespace Game.Cards
         {
             if (card == null) return 0;
             var category = Category(card);
-            return category == DeckCategory.Equipment || category == DeckCategory.Mutator ? Math.Min(card.deckCopyLimit, 1) : card.deckCopyLimit;
+            return category == DeckCategory.Equipment || category == DeckCategory.Mutator || card.cardType == CardType.Hero
+                ? Math.Min(card.deckCopyLimit, 1) : card.deckCopyLimit;
         }
         public CardDefinition Resolve(string key)
         {

@@ -30,12 +30,14 @@ namespace Game.Progression
             {
                 foreach (var e in rows)
                 {
-                    int limit = DeckRules.CopyLimit(Rules.Resolve(e.cardKey));
-                    if (limit > 0 && DeckRules.Category(Rules.Resolve(e.cardKey)) != DeckCategory.Main && e.count > limit) e.count = limit;
+                    var card = Rules.Resolve(e.cardKey);
+                    int limit = DeckRules.CopyLimit(card);
+                    bool capped = card != null && (DeckRules.Category(card) != DeckCategory.Main || card.cardType == CardType.Hero);
+                    if (limit > 0 && capped && e.count > limit) e.count = limit;
                 }
             }
             Clamp(target.ownedCards);
-            foreach (var deck in target.savedDecks) { Clamp(deck.equipment); Clamp(deck.mutators); }
+            foreach (var deck in target.savedDecks) { Clamp(deck.mainCards); Clamp(deck.equipment); Clamp(deck.mutators); }
         }
         public bool Transact(Action<CollectionProfile> edit, out string error)
         {

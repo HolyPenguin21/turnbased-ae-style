@@ -607,7 +607,7 @@ MonoBehaviour:
   - id: 12
     authoredKey: neutral.equipment.bio.flamer
     deckPointCost: 2
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Flamer
     art: {fileID: 21300000, guid: 722a979b88144404f8ddf52f8f25d938, type: 3}
@@ -668,7 +668,7 @@ MonoBehaviour:
   - id: 13
     authoredKey: neutral.equipment.bio.plasma-gun
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Plasma Gun
     art: {fileID: 21300000, guid: de22b0baefe9b8843aa700aeb2bb47c5, type: 3}
@@ -727,7 +727,7 @@ MonoBehaviour:
   - id: 14
     authoredKey: neutral.equipment.bio.at-launcher
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: AT Launcher
     art: {fileID: 21300000, guid: 6ae9a075cf39d004f97bb73777208eff, type: 3}
@@ -787,7 +787,7 @@ MonoBehaviour:
   - id: 15
     authoredKey: neutral.equipment.bio.claws
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Claws
     art: {fileID: 21300000, guid: f200a00df07ad50489e13d79b95241d4, type: 3}
@@ -847,7 +847,7 @@ MonoBehaviour:
   - id: 16
     authoredKey: neutral.equipment.bio.heavy-mg
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Heavy MG
     art: {fileID: 21300000, guid: 241d483b351130549a4cf5634570cc5e, type: 3}
@@ -906,7 +906,7 @@ MonoBehaviour:
   - id: 17
     authoredKey: neutral.equipment.mechanical.armor-plate
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Armor Plate
     art: {fileID: 21300000, guid: 256d9285399b10f40b2d7111eeb46e30, type: 3}
@@ -955,7 +955,7 @@ MonoBehaviour:
   - id: 18
     authoredKey: neutral.equipment.armored.artillery-cannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Artillery Cannon
     art: {fileID: 21300000, guid: aaf34abea493b524f972e053d36fa487, type: 3}
@@ -1011,7 +1011,7 @@ MonoBehaviour:
   - id: 19
     authoredKey: neutral.equipment.armored.at-vh-launcher
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: AT VH Launcher
     art: {fileID: 21300000, guid: 8ef91b58941520d4eb693ce10497b537, type: 3}
@@ -1071,7 +1071,7 @@ MonoBehaviour:
   - id: 20
     authoredKey: neutral.equipment.armored.double-barrel
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Double Barrel
     art: {fileID: 21300000, guid: 426c2efbb82e49a4ca6a7ced0da88131, type: 3}
@@ -1118,7 +1118,7 @@ MonoBehaviour:
   - id: 21
     authoredKey: neutral.equipment.mechanical.nuclear-engine
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nuclear Engine
     art: {fileID: 21300000, guid: 8b5fad7103118a4499a4a14e1c933e14, type: 3}
@@ -1167,7 +1167,7 @@ MonoBehaviour:
   - id: 22
     authoredKey: neutral.equipment.armored.plasma-cannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Plasma Cannon
     art: {fileID: 21300000, guid: 026d627248b59b648a474c5418508e54, type: 3}
@@ -1283,7 +1283,7 @@ MonoBehaviour:
   - id: 24
     authoredKey: neutral.mutator.dermal-plating
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Dermal Plating
     art: {fileID: 21300000, guid: f953c6494cc360548bf17f83d4282521, type: 3}
@@ -1332,7 +1332,7 @@ MonoBehaviour:
   - id: 25
     authoredKey: neutral.mutator.reactive-marrow
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Reactive Marrow
     art: {fileID: 21300000, guid: 31124208dccd2264bb76062501a13a94, type: 3}
@@ -1381,7 +1381,7 @@ MonoBehaviour:
   - id: 26
     authoredKey: neutral.mutator.reinforced-skeleton
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Reinforced Skeleton
     art: {fileID: 21300000, guid: c77db1e872a5a834ba1c81c32ebdc0a0, type: 3}
@@ -1436,7 +1436,7 @@ MonoBehaviour:
   - id: 27
     authoredKey: neutral.mutator.pain-suppression
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Pain Suppression
     art: {fileID: 21300000, guid: 32b5338baf7b7544d879f23c045251c1, type: 3}
@@ -1491,7 +1491,7 @@ MonoBehaviour:
   - id: 28
     authoredKey: neutral.mutator.regenerative-culture
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Regenerative Culture
     art: {fileID: 21300000, guid: 990fd4b70b713994caed7ca345bce9a5, type: 3}
@@ -1541,7 +1541,7 @@ MonoBehaviour:
   - id: 29
     authoredKey: neutral.mutator.hyper-regeneration
     deckPointCost: 2
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Hyper-Regeneration
     art: {fileID: 21300000, guid: 8315826a889a3de4fa25aac293056154, type: 3}
@@ -1595,7 +1595,7 @@ MonoBehaviour:
   - id: 30
     authoredKey: neutral.mutator.survivor-strain
     deckPointCost: 2
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Survivor Strain
     art: {fileID: 21300000, guid: bae94b9e24131ae4093ddee5f09faab9, type: 3}
@@ -1651,7 +1651,7 @@ MonoBehaviour:
   - id: 31
     authoredKey: neutral.mutator.adrenal-surge
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Adrenal Surge
     art: {fileID: 21300000, guid: 91bd2c8e69de11248ac4e62acee2f0ef, type: 3}
@@ -1706,7 +1706,7 @@ MonoBehaviour:
   - id: 32
     authoredKey: neutral.mutator.metabolic-overdrive
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Metabolic Overdrive
     art: {fileID: 21300000, guid: 0aeb930b26c57654d85622d4a785b756, type: 3}
@@ -1758,7 +1758,7 @@ MonoBehaviour:
   - id: 33
     authoredKey: neutral.mutator.predator-reflexes
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Predator Reflexes
     art: {fileID: 21300000, guid: 34caabfccad6aad42a6831d2ca73ea85, type: 3}
@@ -1813,7 +1813,7 @@ MonoBehaviour:
   - id: 34
     authoredKey: neutral.mutator.neural-accelerator
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Neural Accelerator
     art: {fileID: 21300000, guid: 9e1391bb2497a474190c44b1efcacc64, type: 3}
@@ -1868,7 +1868,7 @@ MonoBehaviour:
   - id: 35
     authoredKey: neutral.mutator.rapid-synapse
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Rapid Synapse
     art: {fileID: 21300000, guid: c326c35b5cca74b409afac480c9a5f1d, type: 3}
@@ -1918,7 +1918,7 @@ MonoBehaviour:
   - id: 36
     authoredKey: neutral.mutator.hunter-glands
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Hunter Glands
     art: {fileID: 21300000, guid: 3529523b3a533ee4bb89798de47496f5, type: 3}
@@ -1968,7 +1968,7 @@ MonoBehaviour:
   - id: 37
     authoredKey: neutral.mutator.enhanced-senses
     deckPointCost: 2
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Enhanced Senses
     art: {fileID: 21300000, guid: 7db4feb32d3999c4c9d99a744a3e2cad, type: 3}
@@ -2022,7 +2022,7 @@ MonoBehaviour:
   - id: 38
     authoredKey: neutral.mutator.wanderer-strain
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Wanderer Strain
     art: {fileID: 21300000, guid: 136d73d6ad5883e43aa14a0a0d8f6b5c, type: 3}
@@ -2078,7 +2078,7 @@ MonoBehaviour:
   - id: 39
     authoredKey: neutral.mutator.chameleon-tissue
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Chameleon Tissue
     art: {fileID: 21300000, guid: 0417d8a0d2f001347bee3295600677ea, type: 3}
@@ -2131,7 +2131,7 @@ MonoBehaviour:
   - id: 40
     authoredKey: neutral.mutator.fortunate-genome
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Fortunate Genome
     art: {fileID: 21300000, guid: 2767d1b4adcebc345b23f84b481cf080, type: 3}
@@ -2180,7 +2180,7 @@ MonoBehaviour:
   - id: 41
     authoredKey: neutral.mutator.ghost-genome
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Ghost Genome
     art: {fileID: 21300000, guid: 7830718655edbed49bcb6b356c8fbc76, type: 3}
@@ -2227,7 +2227,7 @@ MonoBehaviour:
   - id: 42
     authoredKey: neutral.mutator.hunter-genome
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Hunter Genome
     art: {fileID: 21300000, guid: e907f43c0049e25479acb94a50c03875, type: 3}
@@ -2274,7 +2274,7 @@ MonoBehaviour:
   - id: 43
     authoredKey: neutral.mutator.reflex-genome
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Reflex Genome
     art: {fileID: 21300000, guid: 7666ab34d640b1c4ba497ea1ef9e46f9, type: 3}
@@ -2321,7 +2321,7 @@ MonoBehaviour:
   - id: 44
     authoredKey: neutral.equipment.infantry.ballistic-shield
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Ballistic Shield
     art: {fileID: 21300000, guid: 7c8a934c1ba7c5a48954c10e2c8ddc20, type: 3}
@@ -2370,7 +2370,7 @@ MonoBehaviour:
   - id: 45
     authoredKey: neutral.equipment.infantry.ceramic-vest
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Ceramic Vest
     art: {fileID: 21300000, guid: 1babbe881c34f324889cb1c9343510f6, type: 3}
@@ -2417,7 +2417,7 @@ MonoBehaviour:
   - id: 46
     authoredKey: neutral.equipment.infantry.assault-rifle-kit
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Assault Rifle Kit
     art: {fileID: 21300000, guid: c9bf30f245064194aaf26e001a1ddedf, type: 3}
@@ -2466,7 +2466,7 @@ MonoBehaviour:
   - id: 47
     authoredKey: neutral.equipment.infantry.marksman-rifle
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Marksman Rifle
     art: {fileID: 21300000, guid: 61081d1b99b911d48952963fae9264c5, type: 3}
@@ -2525,7 +2525,7 @@ MonoBehaviour:
   - id: 48
     authoredKey: neutral.equipment.infantry.shotgun
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Shotgun
     art: {fileID: 21300000, guid: 68ecbc16d26e13d42bbc2b89b472f184, type: 3}
@@ -2584,7 +2584,7 @@ MonoBehaviour:
   - id: 49
     authoredKey: neutral.equipment.infantry.grenade-launcher
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Grenade Launcher
     art: {fileID: 21300000, guid: dd7edec085e6c0748879d534d5e959a2, type: 3}
@@ -2641,7 +2641,7 @@ MonoBehaviour:
   - id: 50
     authoredKey: neutral.equipment.infantry.shock-rifle
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Shock Rifle
     art: {fileID: 21300000, guid: 21950ad5968b8504982e8acf2fa4a71c, type: 3}
@@ -2701,7 +2701,7 @@ MonoBehaviour:
   - id: 51
     authoredKey: neutral.equipment.infantry.incendiary-rifle
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Incendiary Rifle
     art: {fileID: 21300000, guid: bea0a2a40d3756648ac17ee793e3c62d, type: 3}
@@ -2758,7 +2758,7 @@ MonoBehaviour:
   - id: 52
     authoredKey: neutral.equipment.infantry.rail-rifle
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Rail Rifle
     art: {fileID: 21300000, guid: 439aba3b9e6ed1d46bcd7f1d255adb19, type: 3}
@@ -2815,7 +2815,7 @@ MonoBehaviour:
   - id: 53
     authoredKey: neutral.equipment.infantry.twin-smg
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Twin SMG
     art: {fileID: 21300000, guid: b5c677f616bfc5a489df03300e064858, type: 3}
@@ -2875,7 +2875,7 @@ MonoBehaviour:
   - id: 54
     authoredKey: neutral.equipment.infantry.portable-mortar
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Portable Mortar
     art: {fileID: 21300000, guid: 1d4aeea0b7328714aaaf3592d7d5b948, type: 3}
@@ -2935,7 +2935,7 @@ MonoBehaviour:
   - id: 55
     authoredKey: neutral.equipment.infantry.recoil-cannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Recoil Cannon
     art: {fileID: 21300000, guid: 1bcba23409fce744b87704fadcc90d09, type: 3}
@@ -2997,7 +2997,7 @@ MonoBehaviour:
   - id: 56
     authoredKey: neutral.equipment.infantry.aa-launcher
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: AA Launcher
     art: {fileID: 21300000, guid: cb070cb85e3e71f4db1e575cae080a60, type: 3}
@@ -3047,7 +3047,7 @@ MonoBehaviour:
   - id: 57
     authoredKey: neutral.equipment.mechanical.reinforced-chassis
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Reinforced Chassis
     art: {fileID: 21300000, guid: 3d403cf7505b8064f8f9362c670bbb49, type: 3}
@@ -3099,7 +3099,7 @@ MonoBehaviour:
   - id: 58
     authoredKey: neutral.equipment.mechanical.servo-actuators
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Servo Actuators
     art: {fileID: 21300000, guid: ab102f0df6e7c66498035758fbe71aa3, type: 3}
@@ -3148,7 +3148,7 @@ MonoBehaviour:
   - id: 59
     authoredKey: neutral.equipment.mechanical.ceramic-plating
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Ceramic Plating
     art: {fileID: 21300000, guid: effc2e1b6ea4e454ab30bf45213c8d04, type: 3}
@@ -3195,7 +3195,7 @@ MonoBehaviour:
   - id: 60
     authoredKey: neutral.equipment.mechanical.reactive-armor
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Reactive Armor
     art: {fileID: 21300000, guid: 8335c56dd784e504c8815731ab581383, type: 3}
@@ -3247,7 +3247,7 @@ MonoBehaviour:
   - id: 61
     authoredKey: neutral.equipment.vehicle.turbocharger
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Turbocharger
     art: {fileID: 21300000, guid: 899e046c9716ba245bcae3c6570be16c, type: 3}
@@ -3299,7 +3299,7 @@ MonoBehaviour:
   - id: 62
     authoredKey: neutral.equipment.vehicle.autocannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Autocannon
     art: {fileID: 21300000, guid: 847509c4f5fc2b24888383243d2504ad, type: 3}
@@ -3358,7 +3358,7 @@ MonoBehaviour:
   - id: 63
     authoredKey: neutral.equipment.vehicle.he-cannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: HE Cannon
     art: {fileID: 21300000, guid: 6122f8c528c2a684f892ce852302cca7, type: 3}
@@ -3415,7 +3415,7 @@ MonoBehaviour:
   - id: 64
     authoredKey: neutral.equipment.vehicle.flame-projector
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Flame Projector
     art: {fileID: 21300000, guid: 974effb2ff10e6f4b9bd758fac41b4bd, type: 3}
@@ -3473,7 +3473,7 @@ MonoBehaviour:
   - id: 65
     authoredKey: neutral.equipment.vehicle.rail-cannon
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Rail Cannon
     art: {fileID: 21300000, guid: ca1d0ff35712f4f4a976d8a7f432f53d, type: 3}
@@ -3533,7 +3533,7 @@ MonoBehaviour:
   - id: 66
     authoredKey: neutral.equipment.vehicle.shock-projector
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Shock Projector
     art: {fileID: 21300000, guid: 6a1d0153ec8cef64392d3fd3020d8c94, type: 3}
@@ -3580,7 +3580,7 @@ MonoBehaviour:
   - id: 67
     authoredKey: neutral.equipment.vehicle.aa-mount
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: AA Mount
     art: {fileID: 21300000, guid: 11e702606ce730b4fa767759656cb1eb, type: 3}
@@ -3627,7 +3627,7 @@ MonoBehaviour:
   - id: 68
     authoredKey: neutral.equipment.vehicle.dozer-blade
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Dozer Blade
     art: {fileID: 21300000, guid: f0b238d3abebd2347a557d6412eecbdc, type: 3}
@@ -3689,7 +3689,7 @@ MonoBehaviour:
   - id: 69
     authoredKey: neutral.equipment.vehicle.siege-ram
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Siege Ram
     art: {fileID: 21300000, guid: 69f871d35cbd0d14fad26db6c2f67db8, type: 3}
@@ -3749,7 +3749,7 @@ MonoBehaviour:
   - id: 70
     authoredKey: neutral.equipment.vehicle.spiked-ram
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Spiked Ram
     art: {fileID: 21300000, guid: e3112c6a532b17943a17d8d44f165aed, type: 3}
@@ -3809,7 +3809,7 @@ MonoBehaviour:
   - id: 71
     authoredKey: neutral.equipment.vehicle.mortar-rack
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Mortar Rack
     art: {fileID: 21300000, guid: 4a88125f485739341b71f8ac4e0e7f46, type: 3}
@@ -3869,7 +3869,7 @@ MonoBehaviour:
   - id: 72
     authoredKey: neutral.equipment.vehicle.assault-conversion-kit
     deckPointCost: 2
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Assault Conversion Kit
     art: {fileID: 21300000, guid: 9c156d1d89dd1e44b83134bb0e055763, type: 3}
@@ -3932,7 +3932,7 @@ MonoBehaviour:
   - id: 73
     authoredKey: neutral.equipment.infantry.optical-scope
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Optical Scope
     art: {fileID: 21300000, guid: 32734e0672643854b993250833c7058d, type: 3}
@@ -3981,7 +3981,7 @@ MonoBehaviour:
   - id: 74
     authoredKey: neutral.equipment.infantry.mobility-harness
     deckPointCost: 1
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Mobility Harness
     art: {fileID: 21300000, guid: 0321765228ae4c95ab5f761bac9262e6, type: 3}

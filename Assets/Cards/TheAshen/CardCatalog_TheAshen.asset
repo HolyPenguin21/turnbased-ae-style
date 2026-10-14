@@ -122,7 +122,7 @@ MonoBehaviour:
   - id: 2
     authoredKey: ashen.card.miller-hayes
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Miller Hayes
     art: {fileID: 21300000, guid: 635be53d8df3f854faf16b0258ba7866, type: 3}
@@ -169,7 +169,7 @@ MonoBehaviour:
   - id: 3
     authoredKey: ashen.card.hank-mercer
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Hank Mercer
     art: {fileID: 21300000, guid: 0785c4685b5c641448644f9c2e538736, type: 3}
@@ -215,7 +215,7 @@ MonoBehaviour:
   - id: 4
     authoredKey: ashen.card.rusty-miller
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Rusty Miller
     art: {fileID: 21300000, guid: 7d977972b96b70641af85d6112c9fe3e, type: 3}
@@ -262,7 +262,7 @@ MonoBehaviour:
   - id: 5
     authoredKey: ashen.card.nora-blackwell
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nora Blackwell
     art: {fileID: 21300000, guid: 6adf37dce67aeb74b94e117adabc35e6, type: 3}
@@ -310,7 +310,7 @@ MonoBehaviour:
   - id: 6
     authoredKey: ashen.card.elena-hayes
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Elena Hayes
     art: {fileID: 21300000, guid: 866c080e6078278498ffe58939d48f6f, type: 3}
@@ -356,7 +356,7 @@ MonoBehaviour:
   - id: 7
     authoredKey: ashen.card.vera-sterling
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Vera Sterling
     art: {fileID: 21300000, guid: 6ae26c3c6892ece42a6eb11e8d5f6f88, type: 3}
@@ -402,7 +402,7 @@ MonoBehaviour:
   - id: 8
     authoredKey: ashen.card.nova-sterling
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nova Sterling
     art: {fileID: 21300000, guid: 8a4ccc1987fe3644a8cf2d5cd6777f55, type: 3}
@@ -449,7 +449,7 @@ MonoBehaviour:
   - id: 9
     authoredKey: ashen.card.iri-vane
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Iri Vane
     art: {fileID: 21300000, guid: 2436afe4b26d04045b6f955eaae3d63a, type: 3}

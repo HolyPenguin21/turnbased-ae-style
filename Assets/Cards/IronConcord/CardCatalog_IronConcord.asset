@@ -122,7 +122,7 @@ MonoBehaviour:
   - id: 2
     authoredKey: concord.card.dorian-kesh
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Dorian Kesh
     art: {fileID: 21300000, guid: 81e76679aeae3504d92152a36584c601, type: 3}
@@ -169,7 +169,7 @@ MonoBehaviour:
   - id: 3
     authoredKey: concord.card.aldric-voss
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Aldric Voss
     art: {fileID: 21300000, guid: 4f3b2dda16ebdf54ab56eefc909d531a, type: 3}
@@ -215,7 +215,7 @@ MonoBehaviour:
   - id: 4
     authoredKey: concord.card.vector-vance
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Vector Vance
     art: {fileID: 21300000, guid: 1ee024c8651845945a0fc99d9a00b216, type: 3}
@@ -262,7 +262,7 @@ MonoBehaviour:
   - id: 5
     authoredKey: concord.card.bolt-jax
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Bolt Jax
     art: {fileID: 21300000, guid: 062378205ca3d4d49951c7547900e907, type: 3}
@@ -309,7 +309,7 @@ MonoBehaviour:
   - id: 6
     authoredKey: concord.card.nadia-thorne
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nadia Thorne
     art: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
@@ -356,7 +356,7 @@ MonoBehaviour:
   - id: 7
     authoredKey: concord.card.kessa-vrail
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Kessa Vrail
     art: {fileID: 21300000, guid: cc4787e37aa8ed04eb111dcd564de512, type: 3}
@@ -403,7 +403,7 @@ MonoBehaviour:
   - id: 8
     authoredKey: concord.card.lira-sable
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Lira Sable
     art: {fileID: 21300000, guid: 36aa1715422b00c47995b2a802d4b470, type: 3}
@@ -451,7 +451,7 @@ MonoBehaviour:
   - id: 9
     authoredKey: concord.card.tessa-rourke
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Tessa Rourke
     art: {fileID: 21300000, guid: 8a3f4d19c983c894d9e724a358cb96e3, type: 3}

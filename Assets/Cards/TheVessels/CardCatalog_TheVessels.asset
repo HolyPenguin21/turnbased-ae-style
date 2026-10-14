@@ -122,7 +122,7 @@ MonoBehaviour:
   - id: 2
     authoredKey: vessels.02.mara-the-archivist
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Mara the Archivist
     art: {fileID: 21300000, guid: 11e5c3321b61c6a4db9bcb5d8e511606, type: 3}
@@ -169,7 +169,7 @@ MonoBehaviour:
   - id: 3
     authoredKey: vessels.09.edda-the-conductor
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Edda the Conductor
     art: {fileID: 21300000, guid: acedf4127e469c54d92de56eb2d00b59, type: 3}
@@ -216,7 +216,7 @@ MonoBehaviour:
   - id: 4
     authoredKey: vessels.08.thren-the-scholar
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Thren the Scholar
     art: {fileID: 21300000, guid: b0d47349fc247a74bb11deda22c26be1, type: 3}
@@ -263,7 +263,7 @@ MonoBehaviour:
   - id: 5
     authoredKey: vessels.04.vale-the-machinist
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Vale the Machinist
     art: {fileID: 21300000, guid: c48831f6287269b4984ca899855f45c1, type: 3}
@@ -310,7 +310,7 @@ MonoBehaviour:
   - id: 6
     authoredKey: vessels.03.orr-the-keeper
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Orr the Keeper
     art: {fileID: 21300000, guid: 60b355088ca34f34bb59c3ce984813d2, type: 3}
@@ -356,7 +356,7 @@ MonoBehaviour:
   - id: 7
     authoredKey: vessels.05.ilex-the-surveyor
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Ilex the Surveyor
     art: {fileID: 21300000, guid: a614cce712235234eb5a54a1e4ce24fb, type: 3}
@@ -404,7 +404,7 @@ MonoBehaviour:
   - id: 8
     authoredKey: vessels.06.sol-the-warden
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Sol the Warden
     art: {fileID: 21300000, guid: cee75655fff09514a8de0b85addce953, type: 3}
@@ -451,7 +451,7 @@ MonoBehaviour:
   - id: 9
     authoredKey: vessels.07.nyx-the-cartographer
     deckPointCost: 3
-    deckCopyLimit: 4
+    deckCopyLimit: 1
     deckBuilderExcluded: 0
     displayName: Nyx the Cartographer
     art: {fileID: 21300000, guid: 9f98cdb77c73767438073303e658eff7, type: 3}
