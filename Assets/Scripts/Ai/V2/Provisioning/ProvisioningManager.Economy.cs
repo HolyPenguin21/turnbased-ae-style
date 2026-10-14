@@ -111,7 +111,9 @@ namespace Game.Ai.V2
                     ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
                     var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx);
-                    UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g, site);
+                    UnitData sparable = AiArmyRoles.EconomyHeroCandidates(player, g, site)
+                        .FirstOrDefault(u => !x.Route.BuilderHeroRuntimeId.HasValue
+                            || u.RuntimeId == x.Route.BuilderHeroRuntimeId.Value);
                     if (sparable == null) return "no_sparable_hero";
                     if (session.ClaimedArmyIds.Contains(g.Id)) return "claimed_this_pass";
                     // A garrison's facility operators are never sparable (CanSpareGarrisonMember); the
@@ -163,7 +165,8 @@ namespace Game.Ai.V2
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
                     player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
-                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx));
+                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx),
+                    exactEconomyHeroId: candidate.Route.BuilderHeroRuntimeId);
                 if (plan.Tier == GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
                     // positive value is the cheapest tier's real cost, rejected purely for
@@ -492,6 +495,15 @@ namespace Game.Ai.V2
             EconomyMissionTarget target, StableMissionKey key)
         {
             bool returning = target.Kind == EconomyTaskKind.ReturnCollector;
+            if (!returning)
+            {
+                ArmySnapshot collector = session.Snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == (funded.Mission.PreferredMoverArmyId ?? target.CollectorArmyId));
+                ArmyData live = collector == null ? null : AiV2Util.ResolveArmy(player, collector.ArmyId);
+                if (!WorldAnalysis.CollectorRouteSafe(session.Snapshot, collector, target.TargetHex)
+                    || !WorldAnalysis.CollectorRouteSafeLive(player, ctx, live, target.TargetHex, target.ResourceType))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("collector route or site became unsafe"));
+            }
             if (returning && !IsLiveEconomyShelter(player, target.TargetHex))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("collector home lost"));
             return ProvisionEconomyTransport(player, root, ctx, session, funded, target, key,

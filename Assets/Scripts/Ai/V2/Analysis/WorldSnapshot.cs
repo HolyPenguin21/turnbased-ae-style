@@ -798,6 +798,8 @@ namespace Game.Ai.V2
     public struct EconomyBuilderRouteSnapshot
     {
         public int ArmyId;
+        public int? BuilderHeroRuntimeId;
+        public bool? BuilderHasHomeVocation;
         public int TravelCost;
         public int ReturnTravelCost;
         public int CurrentMovement;
@@ -917,6 +919,9 @@ namespace Game.Ai.V2
             System.Array.Empty<EconomyExtractionOpportunity>();
         public IReadOnlyList<MobileCollectionOpportunity> MobileCollectionOpportunities =
             System.Array.Empty<MobileCollectionOpportunity>();
+        // Current safe routes for collectors, including actors already committed to a site.
+        // An absent route cannot authorize outbound movement.
+        public IReadOnlyDictionary<(int ArmyId, HexCoord Hex), HexPath> CollectorRoutes;
         public IReadOnlyList<EconomyBaseOpportunity> BaseOpportunities =
             System.Array.Empty<EconomyBaseOpportunity>();
         // Raid-only facts (see GuardedBaseSite): resource and Base sites blocked only by a neutral.
@@ -1008,7 +1013,7 @@ namespace Game.Ai.V2
             float wanted = handNeed
                 + remainingDeckNeed * AiConfigV2.economyDeckNeedDiscount
                 + reservedOperationalNeed + forecastOperationalNeed;
-            float runway = Mathf.Clamp01((spendableStockpile
+            float runway = wanted <= AiConfigV2.allocatorSliceEpsilon ? 1f : Mathf.Clamp01((spendableStockpile
                     + ownIncome * AiConfigV2.economyRunwayHorizonTurns)
                 / Mathf.Max(wanted, 1f));
             float operational = Mathf.Clamp01(reservedOperationalNeed

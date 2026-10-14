@@ -24,13 +24,15 @@ namespace Game.Ai.V2
         // New extraction work stays local in DELIVERY time, including slow terrain/escorts.
         // FoundBase and already committed deliveries retain their own lifecycle policies.
         public const int economyExtractionMaxDeliveryTurns = 3;
+        // Territorial exposure is independent of the builder's current position and speed.
+        public const int economyExtractionHomeRadius = 3;
+        public const float economyExtractionDistanceCostPerHex = 4f;
+        public const int economySupportBuilderMaxDeliveryTurns = 2;
         public const int economyBaseFoundScanRadius = 3;
         // Enemy-Citadel perimeter; also the zero-cost distance for soft own-home crowding.
         public const int economyBaseMinSpacing = 3;
         public const float economyBaseMaxDefenseModifier = 2f;
         // Base expansion value, cluster count and switch hysteresis: AiConfigV2.TaskScore.cs.
-
-        public const float economyHomeHeroAssignmentApPenalty = 1.5f;
 
         public const int mobileCollectionMinMarginalYield = 1;
         // WorldAnalysis.KnownThreatsAffectingEconomyRoute: a known enemy (other player) army this

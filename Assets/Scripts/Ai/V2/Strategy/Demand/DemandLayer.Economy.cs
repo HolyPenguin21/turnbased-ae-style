@@ -22,7 +22,7 @@ namespace Game.Ai.V2
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                     usefulGain, resourcePriority),
                 payback: TaskScoreEvaluator.Payback(paybackTurns),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                ownTerritoryProximity: TaskScoreEvaluator.ExtractionProximity(homeDistance),
                 cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(cardAp) + resourceApEquivalent),
                 delivery: TaskScoreEvaluator.Price(extraActivationAp),
                 moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost),
@@ -260,6 +260,7 @@ namespace Game.Ai.V2
                         ? null : builder?.Army.ArmyId,
                     EconomyReadyDeliveryCost = readyLossToNewHero
                         ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
+                    EconomyReadyBuilderIsSupport = EconomyBuilderIsSupport(builder),
                     EconomyBuilderRoutes = site.BuilderRoutes,
                     WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
                     Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
@@ -651,6 +652,7 @@ namespace Game.Ai.V2
             EconomyPaybackTurns = source.EconomyPaybackTurns,
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
             EconomyReadyDeliveryCost = source.EconomyReadyDeliveryCost,
+            EconomyReadyBuilderIsSupport = source.EconomyReadyBuilderIsSupport,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             WorldTaskScore = source.WorldTaskScore,
             Value = source.Value,
@@ -683,7 +685,7 @@ namespace Game.Ai.V2
             float readyCost = ReadyDeliveryCost(
                 ready.EconomyAssignmentApCost - ready.EconomyBuildApCost,
                 ready.EconomyHeroOpportunityCost);
-            if (readyCost <= AiConfigV2.allocatorSliceEpsilon)
+            if (readyCost <= AiConfigV2.allocatorSliceEpsilon && !ready.EconomyReadyBuilderIsSupport)
                 return null;
             AxisDemand alternative = EconomyHeroPrerequisite(ready);
             alternative.EconomyPreferredBuilderArmyId = null;
@@ -749,10 +751,15 @@ namespace Game.Ai.V2
             float buildValue, float buildApCost, bool includeReturn,
             int? pinnedBuilderArmyId = null, bool? requiresFoundingGarrison = null)
         {
-            return RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
-                buildValue, buildApCost, includeReturn, requiresFoundingGarrison)
-                .FirstOrDefault(x => !pinnedBuilderArmyId.HasValue
-                    || x.Army?.ArmyId == pinnedBuilderArmyId.Value);
+            var ranked = RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
+                buildValue, buildApCost, includeReturn, requiresFoundingGarrison);
+            if (pinnedBuilderArmyId.HasValue)
+                return ranked.FirstOrDefault(x => x.Army?.ArmyId == pinnedBuilderArmyId.Value);
+            // An ordinary hero whose delivered task loses money is not a usable alternative.
+            return ranked.FirstOrDefault(x => buildValue
+                    - TaskScoreEvaluator.Price(Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost))
+                    - EconomyMissionOpportunityCost(x, activeIntents, target) > AiConfigV2.allocatorSliceEpsilon)
+                ?? ranked.FirstOrDefault();
         }
 
         internal static IReadOnlyList<EconomyBuilderChoice> RankEconomyBuilders(WorldSnapshot snap,
@@ -770,6 +777,9 @@ namespace Game.Ai.V2
                 .Where(x => EconomyExtractionDeliveryAllowed(x)
                     || activeIntents?.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target)
                         && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
+                .Where(x => EconomySupportBuilderAllowed(x)
+                    || activeIntents?.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target)
+                        && i.PreferredMoverArmyId == x.Route.ArmyId) == true)
                 .Where(x => x.Route.IsOnTarget
                     || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
                     || ActiveAssignment(activeIntents, x.Army.ArmyId).Kind == MissionKind.Economy
@@ -778,7 +788,8 @@ namespace Game.Ai.V2
                 // Economy's own builders come first only while taking them is free (this
                 // site's own build, or a builder already walking home); a builder busy on
                 // another site is priced like any other donor below.
-                .OrderByDescending(x => (x.Route.HasActiveEconomyCommitment
+                .OrderBy(x => EconomyBuilderIsSupport(x) ? 1 : 0)
+                .ThenByDescending(x => (x.Route.HasActiveEconomyCommitment
                         || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
                     && EconomyMissionOpportunityCost(x, activeIntents, target)
                         <= AiConfigV2.allocatorSliceEpsilon)
@@ -790,9 +801,7 @@ namespace Game.Ai.V2
                 .ThenBy(x => TaskScoreEvaluator.Price(
                         Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost))
                     + EconomyMissionOpportunityCost(x, activeIntents, target))
-                .ThenBy(x => x.TotalAssignmentApCost
-                    + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
-                        ? AiConfigV2.economyHomeHeroAssignmentApPenalty : 0f))
+                .ThenBy(x => x.TotalAssignmentApCost)
                 .ThenBy(x => x.Route.EffectiveArmyPower)
                 .ThenBy(x => x.Route.ArmySize)
                 .ThenBy(x => x.Route.TravelCost + (includeReturn ? x.Route.ReturnTravelCost : 0))
@@ -1184,6 +1193,22 @@ namespace Game.Ai.V2
                 + (paidOutboundActivations + returnTurns) * Mathf.Max(0, route.ActivationApCost);
         }
 
+        internal static bool EconomyBuilderIsSupport(EconomyBuilderChoice choice) => choice != null
+            && (choice.Route.BuilderHasHomeVocation ?? choice.Army?.HeroIsHomeVocation ?? false);
+
+        internal static bool EconomySupportBuilderAllowed(EconomyBuilderChoice choice)
+        {
+            if (!EconomyBuilderIsSupport(choice)) return true;
+            EconomyBuilderRouteSnapshot route = choice.Route;
+            int move = Mathf.Max(1, route.MaxMovement);
+            int delivery = (route.CurrentMovement > 0 && route.TravelCost > 0 ? 1 : 0)
+                + Mathf.CeilToInt(Mathf.Max(0, route.TravelCost - route.CurrentMovement) / (float)move);
+            int home = route.ReturnTravelCost == int.MaxValue ? int.MaxValue
+                : Mathf.CeilToInt(Mathf.Max(0, route.ReturnTravelCost) / (float)move);
+            return delivery <= AiConfigV2.economySupportBuilderMaxDeliveryTurns
+                && home <= AiConfigV2.economySupportBuilderMaxDeliveryTurns;
+        }
+
         // Admission of a NEW extraction delivery, shared by existing-builder ranking and
         // prospective hero materialization. AP-free movement still consumes owner turns.
         internal static bool EconomyExtractionDeliveryAllowed(EconomyBuilderChoice choice)
@@ -1520,6 +1545,7 @@ namespace Game.Ai.V2
                                 activeIntents, commitments, card.EffectivePlayApCost)?.ArmyId : null,
                         EconomyReadyDeliveryCost = readyLossToNewHero
                             ? ReadyDeliveryCost(extraAp, heroCost) : (float?)null,
+                        EconomyReadyBuilderIsSupport = EconomyBuilderIsSupport(builder),
                         EconomyBuilderRoutes = site.BuilderRoutes,
                         WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
                         Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,

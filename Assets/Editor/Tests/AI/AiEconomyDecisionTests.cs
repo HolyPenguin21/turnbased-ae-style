@@ -15,6 +15,295 @@ namespace Game.EditorTests
 {
     public class AiEconomyDecisionTests
     {
+        [TestCase(ResourceType.Human)]
+        [TestCase(ResourceType.Energy)]
+        [TestCase(ResourceType.Materials)]
+        [TestCase(ResourceType.Tech)]
+        public void EconomyFix_UnusedResourceHasNoRunwayDeficit(ResourceType type)
+        {
+            var standing = EconomyStanding.CalculateResource(type, 0, 0, 0, 0, 0, 0, 0);
+            Assert.That(standing.RunwayCoverage, Is.EqualTo(1));
+            Assert.That(standing.DeficitScore, Is.Zero);
+        }
+
+        [Test]
+        public void EconomyFix_NoRunwayNeedPreservesOtherPressure()
+        {
+            var standing = EconomyStanding.CalculateResource(ResourceType.Tech, 0, 4, 0, 0, 0, 0, 1);
+            Assert.That(standing.RunwayCoverage, Is.EqualTo(1));
+            Assert.That(standing.DeficitScore, Is.EqualTo(0.3f).Within(0.0001f));
+            var future = EconomyStanding.CalculateResource(ResourceType.Tech, 0, 0, 0, 0, 0, 0, 0, 9);
+            Assert.That(future.DeficitScore, Is.EqualTo(0.55f).Within(0.0001f));
+        }
+
+        [Test]
+        public void EconomyFix_ProduceKeepsForecastWhenMeasuringRelief()
+        {
+            var forecast = SnapshotWithDeficits(0.5f, 0, true);
+            var hand = SnapshotWithDeficits(0.5f, 0, true);
+            forecast.Economy.PerType = new[] { EconomyStanding.CalculateResource(
+                ResourceType.Energy, 0, 0, 0, 0, 0, 0, 0, 9) };
+            hand.Economy.PerType = new[] { EconomyStanding.CalculateResource(
+                ResourceType.Energy, 0, 0, 9, 0, 0, 0, 0) };
+            float Value(WorldSnapshot s) => StrategicEffectRegistry.Contributions(IntendedRole.Economy,
+                new[] { UnitAbilities.ProduceEnergy }, 0, new EffectEvaluationContext(s)).GlobalRoleFit;
+            Assert.That(Value(forecast), Is.GreaterThan(0));
+            Assert.That(Value(forecast), Is.EqualTo(Value(hand)).Within(0.0001f),
+                "equal future resource workload must not vanish from the after-income projection");
+        }
+
+        [TestCase(3, 0)]
+        [TestCase(4, 4)]
+        [TestCase(6, 12)]
+        [TestCase(8, 20)]
+        public void EconomyFix_ExtractionPricesTerritorialExposure(int distance, int additionalCost)
+        {
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(distance)
+                - TaskScoreEvaluator.ExtractionProximity(distance), Is.EqualTo(additionalCost).Within(0.0001f));
+        }
+
+        [Test]
+        public void EconomyFix_ExtractionDistanceCostKeepsGrowingBeyondOldFloor()
+        {
+            Assert.That(TaskScoreEvaluator.ExtractionProximity(12),
+                Is.LessThan(TaskScoreEvaluator.ExtractionProximity(9)));
+        }
+
+        [Test]
+        [Category("UnityEngine")]
+        public void EconomyFix_FastRemoteBuilderCannotOriginateExposedExtraction()
+        {
+            var target = new HexCoord(8, 0);
+            var snap = SnapshotWithDeficits(1, 1, true);
+            var builder = EconomyBuilder(123, 1, 0);
+            builder.Hex = new HexCoord(7, 0);
+            builder.MaxMovement = builder.CurrentMovement = builder.HeroMoveMax = 20;
+            snap.Self.Armies = new[] { builder };
+            var site = ExtractionOpportunity(target, ResourceType.Materials, 2);
+            site.BuilderRoutes = new[] { BuilderRoute(builder, 1, 8, 1) };
+            site.MinimumNewBuilderDeliveryTurns = 1;
+            snap.Economy.ExtractionOpportunities = new[] { site };
+            Assert.That(DemandLayer.EconomyDemands(snap, new DesireBreakdown(), null, null, null)
+                .Any(d => d.Capability == CapabilityKind.EconomicInfrastructure || d.Capability == CapabilityKind.Hero), Is.False);
+        }
+
+        [Test]
+        public void EconomyFix_OrdinaryBuilderWinsBeforeCheapSupport()
+        {
+            var ordinary = EconomyBuilder(10, 1, 0);
+            var support = EconomyBuilder(11, 1, 0);
+            support.HeroIsHomeVocation = true;
+            support.HeroActivationApCost = support.ActivationApCost = 0;
+            var snap = SnapshotWithDeficits(1, 1, true);
+            snap.Self.Armies = new[] { support, ordinary };
+            var choice = DemandLayer.SelectEconomyBuilder(snap, new HexCoord(2, 0),
+                new[] { BuilderRoute(support, 2, 2, 0), BuilderRoute(ordinary, 2, 2, 1) },
+                null, null, 20, 1, true);
+            Assert.That(choice.Army.ArmyId, Is.EqualTo(10));
+        }
+
+        [Test]
+        public void EconomyFix_UnprofitableOrdinaryBuilderAllowsLocalSupportFallback()
+        {
+            var ordinary = EconomyBuilder(10, 1, 0);
+            ordinary.HeroActivationApCost = ordinary.ActivationApCost = 10;
+            var support = EconomyBuilder(11, 1, 0);
+            support.HeroIsHomeVocation = true;
+            support.HeroActivationApCost = support.ActivationApCost = 0;
+            var snap = SnapshotWithDeficits(1, 1, true);
+            snap.Self.Armies = new[] { support, ordinary };
+            var choice = DemandLayer.SelectEconomyBuilder(snap, new HexCoord(2, 0),
+                new[] { BuilderRoute(support, 2, 2, 0), BuilderRoute(ordinary, 2, 2, 10) },
+                null, null, 3, 1, true);
+            Assert.That(choice.Army.ArmyId, Is.EqualTo(11));
+        }
+
+        [TestCase(4, 4, true)]
+        [TestCase(5, 4, false)]
+        [TestCase(1, 9, false)]
+        [TestCase(0, 9, false)]
+        [TestCase(1, int.MaxValue, false)]
+        public void EconomyFix_SupportMustBeCloseToJobAndHome(int travel, int home, bool allowed)
+        {
+            var support = EconomyBuilder(11, 1, 0);
+            support.HeroIsHomeVocation = true;
+            support.MaxMovement = support.CurrentMovement = support.HeroMoveMax = 2;
+            var choice = new DemandLayer.EconomyBuilderChoice
+                { Army = support, Route = BuilderRoute(support, travel, home, 0) };
+            Assert.That(DemandLayer.EconomySupportBuilderAllowed(choice), Is.EqualTo(allowed));
+        }
+
+        [TestCase(true, int.MaxValue, int.MaxValue, false)]
+        [TestCase(true, 4, 4, false)]
+        [TestCase(false, int.MaxValue, 1, true)]
+        [TestCase(false, 4, 4, false)]
+        public void EconomyFix_FieldOriginCannotProveSupportHomeProximity(bool support,
+            int homeCost, int expected, bool fallbackExpected)
+        {
+            bool fallbackUsed = false;
+            int cost = WorldAnalysis.EconomyBuilderReturnCost(homeCost, support,
+                () => { fallbackUsed = true; return 1; });
+            Assert.That(cost, Is.EqualTo(expected));
+            Assert.That(fallbackUsed, Is.EqualTo(fallbackExpected));
+        }
+
+        [Test]
+        public void EconomyFix_GarrisonRoleBelongsToSelectedHero()
+        {
+            var mixed = EconomyBuilder(15, 1, 0);
+            mixed.HeroIsHomeVocation = true;
+            var route = BuilderRoute(mixed, 8, 8, 1);
+            route.BuilderHasHomeVocation = false;
+            var choice = new DemandLayer.EconomyBuilderChoice { Army = mixed, Route = route };
+            Assert.That(DemandLayer.EconomyBuilderIsSupport(choice), Is.False);
+            Assert.That(DemandLayer.EconomySupportBuilderAllowed(choice), Is.True);
+        }
+
+        [Test]
+        public void EconomyFix_ExistingSupportDeliveryKeepsItsBoundActor()
+        {
+            var target = new HexCoord(8, 0);
+            var support = EconomyBuilder(11, 1, 0);
+            support.HeroIsHomeVocation = true;
+            var snap = SnapshotWithDeficits(1, 1, true);
+            snap.Self.Armies = new[] { support };
+            var intent = new MissionIntent { Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                PreferredMoverArmyId = 11, Objective = new EconomyIntent
+                { Kind = EconomyTaskKind.BuildExtraction, TargetHex = target, BuilderArmyId = 11 } };
+            var routes = new[] { BuilderRoute(support, 8, 8, 1) };
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null, 20, 1, true), Is.Null);
+            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
+                20, 1, true, pinnedBuilderArmyId: 11).Army.ArmyId, Is.EqualTo(11));
+        }
+
+        [TestCase(true, false, 2, false)]
+        [TestCase(false, true, 2, true)]
+        [TestCase(false, true, 30, false)]
+        public void EconomyFix_NewHeroHonorsReadyBuilderRoleAndNetValue(
+            bool newSupport, bool readySupport, int cardAp, bool allowed)
+        {
+            var card = new CardDefinition { displayName = "builder", cardType = CardType.Hero,
+                moveMax = 5, unitTypeTags = new List<UnitTypeTag>(),
+                grantedAbilities = new List<string>() };
+            if (newSupport) card.grantedAbilities.Add(UnitAbilities.ApBonus);
+            var plan = new MaterializationPlan { BaseCardInHand = new CardData(card), ApCost = cardAp };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.Hero,
+                TargetHex = new HexCoord(2, 0), EconomySiteValue = 20, EconomyBuildApCost = 1,
+                EconomyReadyDeliveryCost = 1, EconomyReadyBuilderIsSupport = readySupport };
+            var route = new EconomyBuilderRouteSnapshot { TravelCost = 2, ReturnTravelCost = 2,
+                CurrentMovement = 5, MaxMovement = 5, BuilderHasHomeVocation = newSupport };
+            var choice = new DemandLayer.EconomyBuilderChoice { Route = route, TotalAssignmentApCost = 1 };
+            Assert.That(MaterializationDeliveryPolicy.EconomyNewHeroWorthIt(plan, demand, choice, 1)
+                .CanDeliver, Is.EqualTo(allowed));
+        }
+
+        [Test]
+        public void EconomyFix_NewSupportCannotUseRemoteHomeEvenWithFreeActivation()
+        {
+            var card = new CardDefinition { displayName = "support", cardType = CardType.Hero,
+                moveMax = 2, grantedAbilities = new List<string> { UnitAbilities.ApBonus } };
+            var plan = new MaterializationPlan { GeneratedBaseDef = card };
+            var demand = new AxisDemand { TargetHex = new HexCoord(1, 0), EconomySiteValue = 20 };
+            var choice = new DemandLayer.EconomyBuilderChoice { TotalAssignmentApCost = 0,
+                Route = new EconomyBuilderRouteSnapshot { TravelCost = 1, ReturnTravelCost = 9,
+                    CurrentMovement = 2, MaxMovement = 2, BuilderHasHomeVocation = true } };
+            Assert.That(MaterializationDeliveryPolicy.EconomyNewHeroWorthIt(plan, demand, choice, 1)
+                .CanDeliver, Is.False);
+        }
+
+        [Test]
+        public void EconomyFix_FinalExtractionDoesNotSubstituteSupportForPinnedBuilder()
+        {
+            var target = new HexCoord(5, 0);
+            var ordinary = EconomyBuilder(10, 1, 0);
+            var support = EconomyBuilder(11, 1, 0);
+            support.Hex = target; support.HeroIsHomeVocation = true;
+            var snap = SnapshotWithDeficits(1, 1, true); snap.Self.Armies = new[] { ordinary, support };
+            var route = BuilderRoute(support, 0, 9, 1); route.IsOnTarget = true;
+            var demand = new AxisDemand { EconomyPreferredBuilderArmyId = 10, EconomySiteValue = 20,
+                EconomyBuildApCost = 1, TargetHex = target };
+            Assert.That(InfrastructureFulfillment.EconomyBuilderAtTarget(snap, demand, target,
+                new[] { route }, null, null), Is.Null);
+            demand.EconomyPreferredBuilderArmyId = null;
+            Assert.That(InfrastructureFulfillment.EconomyBuilderAtTarget(snap, demand, target,
+                new[] { route }, null, null), Is.Null, "an on-site hero still has to pass the Support home-radius rule");
+            support.HeroIsHomeVocation = false;
+            Assert.That(InfrastructureFulfillment.EconomyBuilderAtTarget(snap, demand, target,
+                new[] { route }, null, null), Is.EqualTo(11));
+        }
+
+        [Test]
+        public void EconomyFix_PostDeploymentSupportWaitsForOrdinaryBuilder()
+        {
+            var target = new HexCoord(2, 0);
+            var ordinary = EconomyBuilder(10, 1, 0);
+            var support = EconomyBuilder(11, 1, 0);
+            support.HeroIsHomeVocation = true;
+            var snap = SnapshotWithDeficits(1, 1, true); snap.Self.Armies = new[] { ordinary, support };
+            var site = ExtractionOpportunity(target, ResourceType.Materials, 1);
+            site.BuilderRoutes = new[] { BuilderRoute(ordinary, 2, 2, 1), BuilderRoute(support, 2, 2, 1) };
+            snap.Economy.ExtractionOpportunities = new[] { site };
+            var demand = new AxisDemand { RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.Hero,
+                TargetHex = target, EconomyResourceType = ResourceType.Materials, EconomySiteValue = 20,
+                EconomyBuildApCost = 1 };
+            Assert.That(CapabilityDeliveryEvaluator.EconomyDeliveryChoice(snap, demand, 11,
+                null, null, out _), Is.Null);
+            snap.Self.Armies = new[] { support };
+            Assert.That(CapabilityDeliveryEvaluator.EconomyDeliveryChoice(snap, demand, 11,
+                null, null, out _).Army.ArmyId, Is.EqualTo(11));
+        }
+
+        [Test]
+        public void EconomyFix_HeroAlternativePreservesReadySupportFact()
+        {
+            var source = new AxisDemand { EconomyReadyBuilderIsSupport = true, EconomyReadyDeliveryCost = 0,
+                TargetHex = new HexCoord(2, 0), EconomySiteValue = 20 };
+            var prerequisite = DemandLayer.EconomyHeroPrerequisite(source);
+            Assert.That(prerequisite.EconomyReadyBuilderIsSupport, Is.True);
+            Assert.That(prerequisite.IsEconomyNewHeroAlternative, Is.True);
+        }
+
+        [Test]
+        public void EconomyFix_NewHomeReadmitsTerritorialEconomyScore()
+        {
+            var snap = SnapshotWithDeficits(1, 1, true);
+            var ctx = new Game.Ai.AiTurnContext { TurnNumber = 1 };
+            string Key() => EconomyAdmission.Fingerprint(DesireAxis.Economy, snap, null, null,
+                null, null, ctx, "unchanged");
+            string oldKey = Key();
+            snap.Self.BaseHexes = new[] { new HexCoord(0, 0), new HexCoord(6, 0) };
+            Assert.That(Key(), Is.Not.EqualTo(oldKey));
+        }
+
+        [Test]
+        public void EconomyFix_ChangingSelectedGarrisonHeroReadmitsEconomy()
+        {
+            var site = ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 1);
+            var route = new EconomyBuilderRouteSnapshot { ArmyId = 1, BuilderHeroRuntimeId = 10,
+                BuilderHasHomeVocation = false, RequiresGarrisonExtraction = true };
+            site.BuilderRoutes = new[] { route };
+            string previous = WorldAnalysis.EconomyOpportunitySignature(site);
+            route.BuilderHeroRuntimeId = 11; route.BuilderHasHomeVocation = true;
+            site.BuilderRoutes = new[] { route };
+            Assert.That(WorldAnalysis.EconomyOpportunitySignature(site), Is.Not.EqualTo(previous));
+        }
+
+        [Test]
+        public void EconomyFix_NewHeroProjectionIncludesEffectiveSupportRole()
+        {
+            var card = new CardDefinition { cardType = CardType.Hero, moveMax = 5,
+                unitTypeTags = new List<UnitTypeTag>(),
+                grantedAbilities = new List<string> { UnitAbilities.ApBonus } };
+            var direct = new MaterializationPlan { BaseCardInHand = new CardData(card) };
+            var generated = new MaterializationPlan { GeneratedBaseDef = card };
+            Assert.That(MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(direct), Is.True);
+            Assert.That(MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(generated), Is.True);
+            card.grantedAbilities.Clear();
+            Assert.That(MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(generated), Is.False);
+            card.unitTypeTags.Add(UnitTypeTag.Support);
+            Assert.That(MaterializationDeliveryPolicy.EconomyHeroHasHomeVocation(generated), Is.True);
+        }
+
         [Test]
         [Category("UnityEngine")]
         public void LongExtraction_DoesNotBecomeAnImpossibleReservedHeroPrerequisite()

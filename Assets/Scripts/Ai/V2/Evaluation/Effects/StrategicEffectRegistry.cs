@@ -1186,7 +1186,8 @@ namespace Game.Ai.V2
                 before.RemainingDeckResourceNeed,
                 before.ReservedOperationalNeed,
                 before.SpendableStockpile,
-                before.StarvationPressure);
+                before.StarvationPressure,
+                before.ForecastOperationalNeed);
 
             float relativeRelief = before.DeficitScore <= AiConfigV2.allocatorSliceEpsilon
                 ? 0f

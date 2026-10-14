@@ -29,6 +29,7 @@ namespace Game.Ai.V2
                 .Select(a => $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}"
                     // A served facility's / selected site's operator duty decides builder admissibility.
                     + $":duty{(a.OperatorDutyBlocksDeparture ? 1 : 0)}"
+                    + $":homeRole{(a.HeroIsHomeVocation ? 1 : 0)}"
                     // Availability and prices can change when a legal zero-AP release
                     // becomes possible, even though the real army's roster is unchanged.
                     + (a.EconomyDeparture != null
@@ -80,6 +81,8 @@ namespace Game.Ai.V2
             // Economy may spend, so they are input; Economy's own rows are its output and
             // stay out (they would re-admit the axis on its own writes).
             return $"axis={axis}|ap={root?.ActionPoints ?? 0}"
+                + "|homes=" + string.Join(";", (snapshot?.Self?.BaseHexes ?? System.Array.Empty<Game.HexGrid.HexCoord>())
+                    .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"))
                 + $"|res={resources}|hand={hand?.MutationVersion ?? -1}"
                 + "|held=" + StrategicResourceReservationLedger.ReasonDigest(player,
                     ctx.TurnNumber, StrategicReservationReason.StrategicReactionPass)

@@ -397,17 +397,20 @@ namespace Game.Ai.V2
                 if (arrived && ei.ArrivalTurn < 0)
                     ei.ArrivalTurn = snap.TurnNumber;
                 if (arrived && snap.TurnNumber > ei.ArrivalTurn)
-                    ei.LastConfirmedIncomeTick = snap.TurnNumber;
+                    ei.LastIncomeOpportunityTurn = snap.TurnNumber;
                 // Economy audit B12 — the SAME usefulness test Analysis admits a collector
                 // with (UsefulMarginalIncomeGain), judged without the income this collector
                 // itself now produces; a second "income below target" rule sent a still
                 // useful collector home and Analysis sent it straight back.
-                bool useful = capable && ei.ResourceType.HasValue
-                    && CollectorStillUseful(snap, ei.ResourceType.Value, ei.ExpectedMarginalYield)
-                    && WorldAnalysis.KnownExtractionYields(snap).Any(x =>
-                        x.Hex.Equals(ei.TargetHex) && x.Type == ei.ResourceType.Value
-                        && x.Yield > 0);
-                bool safe = !WorldAnalysis.KnownHostileAtHex(snap, ei.TargetHex);
+                int contribution = capable ? WorldAnalysis.CollectorMarginalIncome(snap, actor,
+                    ei.TargetHex, ei.ResourceType.Value) : 0;
+                EconomyResourceStanding standing = snap?.Economy?.PerType?
+                    .FirstOrDefault(x => x.Type == ei.ResourceType) ?? default;
+                bool useful = contribution > 0 && (arrived
+                    ? standing.UsefulRetainedIncomeGain(contribution)
+                    : standing.UsefulMarginalIncomeGain(contribution)) > AiConfigV2.allocatorSliceEpsilon;
+                bool safe = WorldAnalysis.CollectorRouteSafe(snap, actor, ei.TargetHex);
+                ei.ExpectedMarginalYield = contribution;
                 if (!capable)
                 {
                     RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
@@ -415,14 +418,24 @@ namespace Game.Ai.V2
                         + "reason=collector_lost_or_capability_lost");
                     return;
                 }
-                if (arrived && ei.LastConfirmedIncomeTick >= 0 && (!useful || !safe))
+                if (!safe || contribution <= 0
+                    || (!useful && (!arrived || ei.LastIncomeOpportunityTurn >= 0)))
                 {
                     HexCoord? home = ei.SafeReturnHex;
-                    if (!home.HasValue || !IsProtectedEconomyHex(snap, player, home.Value))
-                        home = SelectEconomyRecoveryTarget(snap, player, actor);
+                    bool ShelterSafe(HexCoord h) => IsProtectedEconomyHex(snap, player, h)
+                        && !WorldAnalysis.KnownHostileAtHex(snap, h)
+                        && WorldAnalysis.KnownThreatsAffectingEconomyRoute(snap, new[] { h }).Count == 0
+                        && actor.EconomyHomeRouteCosts?.ContainsKey(h) == true;
+                    if (!home.HasValue || !ShelterSafe(home.Value))
+                        home = SelectEconomyHome(snap, actor.Hex,
+                            (actor.EconomyHomeRouteCosts ?? new Dictionary<HexCoord, int>())
+                                .Where(x => ShelterSafe(x.Key)).ToDictionary(x => x.Key, x => x.Value));
                     if (!home.HasValue)
                     {
-                        RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
+                        // Keep ownership for the bounded ordinary stall lifecycle. The planner
+                        // defers this unsafe/unproductive site; a later scan may prove a shelter.
+                        ResumeTransientSuspension(intent);
+                        active.Add(intent);
                         return;
                     }
                     MissionIntentKey oldKey = intent.IntentKey;
@@ -438,7 +451,7 @@ namespace Game.Ai.V2
                 }
                 // Holding the site IS the collector's activity (the planner proposes no
                 // step for it): record it as progress so it neither stalls nor ages out.
-                if (arrived)
+                if (arrived && useful && safe)
                 {
                     intent.LastProgressTurn = snap.TurnNumber;
                     intent.LastProtectedTurn = snap.TurnNumber;

@@ -292,7 +292,8 @@ namespace Game.Ai.V2
         public int ExpectedMarginalYield;
         public HexCoord? SafeReturnHex;
         public int ArrivalTurn = -1;
-        public int LastConfirmedIncomeTick = -1;
+        // Grace-period clock only: passage of a round is not proof of a resource grant.
+        public int LastIncomeOpportunityTurn = -1;
         public CardData BuildCard;
         public ResourceCost BuildResourceCost;
         public float BuildApCost;
