@@ -117,6 +117,19 @@ namespace Game.EditorTests
 
     public class ArmyRadioLayoutTests
     {
+        [Test]
+        public void ActualOverlay_CanvasFollowsSceneSiblingOrderInsteadOfOverridingSorting()
+        {
+            // An overriding sort order would draw the radio above every modal in Canvas_UI.
+            var prefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Prefabs/UI/ArmyRadio/ArmyRadioOverlay.prefab");
+            Assert.That(prefab, Is.Not.Null);
+            var canvas = prefab.GetComponent<Canvas>();
+            Assert.That(canvas, Is.Not.Null);
+            // Read the serialized flag: a root Canvas in the asset may not report it through the API.
+            bool overrides = new UnityEditor.SerializedObject(canvas).FindProperty("m_OverrideSorting").boolValue;
+            Assert.That(overrides, Is.False);
+        }
+
         [TestCase(2.6f)]
         [TestCase(4f)]
         [TestCase(7f)]

@@ -69,7 +69,9 @@ removed or re-ordered speakers also cancel immediately.
   scales with the same parent transform as the rest of the callout. Simple Image mode
   is required; other meshes pass through unchanged. Set width/depth to zero to disable
   the edge, or disable the component. Editor changes dirty the Image through BaseMeshEffect.
-- `ArmyRadioOverlay.prefab` controls child-Canvas sorting and the three slot references.
+- `ArmyRadioOverlay.prefab` holds the child Canvas and the three slot references. The child
+  Canvas does not override sorting: it draws in `Canvas_UI` sibling order, so the scene keeps
+  the overlay right after `CardHandPanel` — above the map HUD, below every popup and modal.
   Its `referenceOrthographicSize` controls the zoom at which authored message sizes are 1:1.
   It stretches inside the existing `Canvas_UI`, inherits its CanvasScaler, and isolates
   radio geometry/batching without adding a second root Canvas. Marker radius uses the
