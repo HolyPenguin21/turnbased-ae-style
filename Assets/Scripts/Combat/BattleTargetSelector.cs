@@ -76,21 +76,35 @@ namespace Game.Combat
         // TryFindBestReachableTarget's deterministic expected-value model has no such variance to
         // hope for, so it skips a false return entirely and lets the actor advance instead — see
         // each caller's own handling.
+        // interceptor (UnitAbilities.Bodyguard): the guard that takes any landed hit on
+        // `candidate` — the dice are still rolled against the candidate, but the damage, kill and
+        // denied-output terms describe the guard, since it is the unit that actually gets hit.
+        // counterExpectedDamage (UnitAbilities.Counterattack): what the hit unit's immediate answer
+        // is expected to deal the actor; it costs the score on the same x100 scale as damage dealt,
+        // weighted by the chance that answer really comes (the victim survives, and a ShockAttack
+        // actor did not land a hit).
         public static bool TryScoreTarget(UnitData actor, UnitData candidate, float candidateHp,
             AbilityMagnitudes magnitudes, bool candidateNotYetActedThisRound,
             out float score, out float expectedDamage, out AiThoughtCategory reason,
             int defenderBonusDice = 0, int? actorAttackOverride = null, int? candidateDefenseOverride = null,
-            int? candidateAttackOverride = null)
+            int? candidateAttackOverride = null, UnitData interceptor = null, float interceptorHp = 0f,
+            bool interceptorNotYetActed = false, int? interceptorAttackOverride = null,
+            float counterExpectedDamage = 0f)
         {
+            UnitData victim = interceptor ?? candidate;
+            float victimHp = interceptor != null ? interceptorHp : candidateHp;
+            bool victimNotYetActed = interceptor != null ? interceptorNotYetActed : candidateNotYetActedThisRound;
+            int victimAttack = (interceptor != null ? interceptorAttackOverride : candidateAttackOverride)
+                ?? victim.Attack;
+
             BattleCombatOdds.ExchangeOdds odds = BattleCombatOdds.Evaluate(
-                actor, candidate, defenderBonusDice, magnitudes, candidateHp,
-                actorAttackOverride, candidateDefenseOverride);
+                actor, candidate, defenderBonusDice, magnitudes, victimHp,
+                actorAttackOverride, candidateDefenseOverride, interceptor);
             expectedDamage = odds.ExpectedDamage;
 
             if (expectedDamage <= 0.0001f)
             {
-                int candidateAttack = candidateAttackOverride ?? candidate.Attack;
-                score = -1000f + candidateAttack + candidate.Initiative;
+                score = -1000f + victimAttack + victim.Initiative;
                 reason = AiThoughtCategory.LowDamageAttack;
                 return false;
             }
@@ -99,23 +113,53 @@ namespace Game.Combat
             // and the amount of enemy output being denied. This replaces the old binary
             // "expected damage >= HP" shortcut, which could not distinguish a likely kill from a
             // one-in-many lucky roll and undervalued high-impact units about to act.
-            int threatAttack = candidateAttackOverride ?? candidate.Attack;
+            int threatAttack = victimAttack;
             score = odds.KillProbability * 10000f
-                + Mathf.Min(expectedDamage, Mathf.Max(0f, candidateHp)) * 100f
+                + Mathf.Min(expectedDamage, Mathf.Max(0f, victimHp)) * 100f
                 + threatAttack * 2f
-                + candidate.Initiative * 1.5f;
+                + victim.Initiative * 1.5f;
 
-            if (candidateNotYetActedThisRound)
-                score += threatAttack * 1.5f + candidate.Initiative * 2f;
+            if (victimNotYetActed)
+                score += threatAttack * 1.5f + victim.Initiative * 2f;
 
             reason = odds.KillProbability >= 0.5f
                 ? AiThoughtCategory.FinishingBlow
                 : AiThoughtCategory.PriorityTarget;
 
-            if (actor.HasAbility(UnitAbilities.ShockAttack) && candidateNotYetActedThisRound)
+            if (actor.HasAbility(UnitAbilities.ShockAttack) && victimNotYetActed)
                 score += ShockAttackTargetBonus;
 
+            if (counterExpectedDamage > 0f)
+            {
+                float answered = actor.HasAbility(UnitAbilities.ShockAttack)
+                    ? 1f - odds.HitProbability
+                    : 1f - odds.KillProbability;
+                score -= Mathf.Clamp01(answered) * counterExpectedDamage * 100f;
+            }
+
             return true;
+        }
+
+        // UnitAbilities.Counterattack — expected damage `victim`'s answer would deal `actor`
+        // (0 when it cannot answer: no skill, a hero, already spent this round, or not within 1
+        // cell). The answer is an ordinary exchange, so the actor defends with its own bonuses.
+        private static float ExpectedCounterDamage(BattleGrid grid, UnitData actor, UnitData victim,
+            float actorHp, AbilityMagnitudes magnitudes, BattleReactionState reactions,
+            ArmyData battleDefender, int battleDefenderDefenseBonus,
+            Dictionary<UnitData, int> simulatedAttack = null, Dictionary<UnitData, int> simulatedDefense = null)
+        {
+            if (victim == null || victim.IsHero || !victim.HasAbility(UnitAbilities.Counterattack)
+                || (reactions != null && reactions.CountersUsed.Contains(victim))
+                || !grid.TryFindPosition(actor, out int ar, out int ac)
+                || !grid.TryFindPosition(victim, out int vr, out int vc)
+                || !BattleGrid.IsInRange(vr, vc, ar, ac, 1))
+                return 0f;
+            int actorBonus = BattleProtectionRules.GetTotalDefenseBonus(
+                grid, actor, battleDefender, battleDefenderDefenseBonus);
+            int? victimAttack = simulatedAttack != null && simulatedAttack.TryGetValue(victim, out int a) ? a : (int?)null;
+            int? actorDefense = simulatedDefense != null && simulatedDefense.TryGetValue(actor, out int d) ? d : (int?)null;
+            return BattleCombatOdds.Evaluate(victim, actor, actorBonus, magnitudes, actorHp,
+                victimAttack, actorDefense).ExpectedDamage;
         }
 
         // order/currentIndex: the SAME simulated turn-order list/position RunOneRound is already
@@ -131,11 +175,12 @@ namespace Game.Combat
             int actorRow, int actorCol, AbilityMagnitudes magnitudes, List<UnitData> order, int currentIndex,
             out UnitData bestTarget, out float bestDamage, ArmyData battleDefender = null,
             int battleDefenderDefenseBonus = 0, Dictionary<UnitData, int> simulatedAttack = null,
-            Dictionary<UnitData, int> simulatedDefense = null)
+            Dictionary<UnitData, int> simulatedDefense = null, BattleReactionState reactions = null)
         {
             bestTarget = null;
             bestDamage = 0f;
             float bestScore = float.NegativeInfinity;
+            float actorHp = hp.TryGetValue(actor, out float ownHp) ? ownHp : actor.HitPointsCurrent;
             foreach (UnitData candidate in grid.AllUnits())
             {
                 if (candidate.Owner == actor.Owner
@@ -154,9 +199,18 @@ namespace Game.Combat
                     ? simCandidateDefense : (int?)null;
                 int? candidateAttackOverride = simulatedAttack != null && simulatedAttack.TryGetValue(candidate, out int simCandidateAttack)
                     ? simCandidateAttack : (int?)null;
+                UnitData guard = BattleProtectionRules.FindBodyguard(grid, candidate, actor,
+                    u => hp.TryGetValue(u, out float guardHp) ? guardHp : 0f, reactions);
+                int? guardAttackOverride = guard != null && simulatedAttack != null
+                    && simulatedAttack.TryGetValue(guard, out int simGuardAttack) ? simGuardAttack : (int?)null;
+                float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actorHp, magnitudes,
+                    reactions, battleDefender, battleDefenderDefenseBonus, simulatedAttack, simulatedDefense);
                 if (!TryScoreTarget(actor, candidate, candidateHp, magnitudes, notYetActed,
                     out float score, out float damage, out _, defenderBonus,
-                    actorAttackOverride, candidateDefenseOverride, candidateAttackOverride))
+                    actorAttackOverride, candidateDefenseOverride, candidateAttackOverride,
+                    guard, guard != null ? hp[guard] : 0f,
+                    guard != null && order != null && order.IndexOf(guard) > currentIndex,
+                    guardAttackOverride, counter))
                     continue;
 
                 score += SplashSpreadBonus(grid, actor, candRow, candCol);
@@ -177,7 +231,8 @@ namespace Game.Combat
         // BattleAi.ChooseAction, which has no turn-order concept of its own.
         public static bool TryChooseAttackTarget(BattleGrid grid, UnitData actor, int actorRow, int actorCol,
             AbilityMagnitudes magnitudes, List<UnitData> turnOrder, int turnIndex, out BattleAi.AiAction action,
-            ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0)
+            ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0,
+            BattleReactionState reactions = null)
         {
             UnitData bestTarget = null;
             int bestRow = -1, bestCol = -1;
@@ -207,14 +262,22 @@ namespace Game.Combat
                 int defenderBonus = battleDefender != null && battleDefender.Members.Contains(candidate)
                     ? battleDefenderDefenseBonus : 0;
                 defenderBonus += BattleProtectionRules.GetGuardedDefenseBonus(grid, candidate, battleDefender);
+                UnitData guard = BattleProtectionRules.FindBodyguard(grid, candidate, actor,
+                    u => u.HitPointsCurrent, reactions);
+                float counter = ExpectedCounterDamage(grid, actor, guard ?? candidate, actor.HitPointsCurrent,
+                    magnitudes, reactions, battleDefender, battleDefenderDefenseBonus);
                 TryScoreTarget(actor, candidate, candidate.HitPointsCurrent, magnitudes, notYetActed,
-                    out float score, out float damage, out AiThoughtCategory reason, defenderBonus);
+                    out float score, out float damage, out AiThoughtCategory reason, defenderBonus,
+                    interceptor: guard, interceptorHp: guard?.HitPointsCurrent ?? 0,
+                    interceptorNotYetActed: guard != null && turnOrder != null && turnOrder.IndexOf(guard) > turnIndex,
+                    counterExpectedDamage: counter);
                 score += SplashSpreadBonus(grid, actor, candRow, candCol);
 
                 int loggedDefense = candidate.IsHero ? Mathf.Max(0, candidate.FateMax) : candidate.Defense;
                 BattleDebugLog.Write($"[TargetDiag] candidate {candidate.Name}: hp={candidate.HitPointsCurrent} " +
                     $"defense={loggedDefense} ceramicArmor={candidate.HasAbility(UnitAbilities.CeramicArmor)} " +
-                    $"actorAttack={actor.Attack} damage={damage} score={score} reason={reason} notYetActed={notYetActed}");
+                    $"actorAttack={actor.Attack} damage={damage} score={score} reason={reason} notYetActed={notYetActed}" +
+                    $"{(guard != null ? $" bodyguard={guard.Name}" : string.Empty)}{(counter > 0f ? $" counterRisk={counter:0.##}" : string.Empty)}");
 
                 if (score > bestScore)
                 {

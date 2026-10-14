@@ -79,12 +79,13 @@ namespace Game.Ai.V2
         // as a unit, NOT army combat power. Only for readers pricing the unit itself, e.g. the
         // repair of a wounded hero (StrategicMaintenancePolicy); army strength reads ToPowerUnit.
         //
-        // In-battle Berserk stacks are read out (BattleEngine reverts them when the battle ends):
+        // In-battle Berserk stacks and a Drill round bonus are read out (BattleEngine reverts them):
         // a unit's strength between battles is its pre-battle line, so the panel and any AI read
         // taken while a battle runs do not see a transient spike (playtest 2026-10-01 #7).
         public static float StatLinePower(UnitData u)
         {
-            int attack = u.Attack - u.BerserkStacks * AbilityMagnitudes.Default.BerserkAttackGain;
+            int attack = u.Attack - u.BerserkStacks * AbilityMagnitudes.Default.BerserkAttackGain
+                - u.DrillAttackBonus;
             int defense = u.Defense + u.BerserkDefenseLost;
             float line = attack * AiConfigV2.powerAttackWeight
                        + defense * AiConfigV2.powerDefenseWeight
@@ -330,12 +331,16 @@ namespace Game.Ai.V2
                     case UnitAbilities.ShockAttack: bump += AiConfigV2.powerBumpShockAttack; break;
                     case UnitAbilities.CriticalDamage: bump += AiConfigV2.powerBumpCriticalDamage; break;
                     case UnitAbilities.Hyperkinetic:
-                    case UnitAbilities.Pyrokinetic: bump += AiConfigV2.powerBumpSituationalCounter; break;
+                    case UnitAbilities.Pyrokinetic:
+                    case UnitAbilities.Ionic: bump += AiConfigV2.powerBumpSituationalCounter; break;
                     case UnitAbilities.Splash: bump += AiConfigV2.powerBumpSplash; break;
                     case UnitAbilities.Scorcher: bump += AiConfigV2.powerBumpScorcher; break;
                     case UnitAbilities.RaiseTheRots: bump += AiConfigV2.powerBumpRaiseTheRots; break;
                     case UnitAbilities.Regeneration: bump += AiConfigV2.powerBumpRegeneration; break;
                     case UnitAbilities.Berserk: bump += AiConfigV2.powerBumpBerserk; break;
+                    case UnitAbilities.Bodyguard: bump += AiConfigV2.powerBumpBodyguard; break;
+                    case UnitAbilities.Counterattack: bump += AiConfigV2.powerBumpCounterattack; break;
+                    case UnitAbilities.Drill: bump += AiConfigV2.powerBumpDrill; break;
                 }
             }
             return 1f + bump;

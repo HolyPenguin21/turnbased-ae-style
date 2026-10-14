@@ -28,8 +28,8 @@ namespace Game.Combat
         public int Damage => System.Math.Max(0, AttackerSuccesses - DefenderSuccesses);
 
         // Attacker/defender ability modifiers on top of a raw roll — CriticalDamage (x2) then
-        // Hyperkinetic (+flat vs Armored) then Pyrokinetic (+flat vs Bio) then CeramicArmor
-        // (-flat), same order the manual's "multiply then subtract flat armor" stat stack always
+        // Hyperkinetic (+flat vs Armored) then Pyrokinetic (+flat vs Bio) then Ionic (+flat vs
+        // Mechanical) then CeramicArmor (-flat), same order the manual's "multiply then subtract flat armor" stat stack always
         // applies in. Each step is gated on damage already being > 0 — a miss has nothing for
         // either side's ability to modify, and neither bonus-damage ability turns a miss into a
         // hit on its own.
@@ -88,6 +88,12 @@ namespace Game.Combat
             {
                 damage += magnitudes.PyrokineticBonusDamage;
                 appliedAbilities?.Add(UnitAbilities.Pyrokinetic);
+            }
+            if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Ionic)
+                && HasTag(defenderTypeTags, UnitTypeTag.Mechanical))
+            {
+                damage += magnitudes.IonicBonusDamage;
+                appliedAbilities?.Add(UnitAbilities.Ionic);
             }
             if (damage > 0 && HasAbility(defenderAbilities, UnitAbilities.CeramicArmor))
             {

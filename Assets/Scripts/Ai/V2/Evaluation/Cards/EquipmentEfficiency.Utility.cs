@@ -295,6 +295,7 @@ namespace Game.Ai.V2
             bool targetShock = targetAbilities.Contains(UnitAbilities.ShockAttack);
             bool targetBerserk = targetAbilities.Contains(UnitAbilities.Berserk);
             bool regeneration = abilities.Contains(UnitAbilities.Regeneration);
+            bool counterattack = abilities.Contains(UnitAbilities.Counterattack);
 
             // Splash / Scorcher recipients: the REAL neighbours of the primary target when its battle is
             // known, else the known composition stands in for unknown ones. Each neighbour is judged by its
@@ -390,10 +391,15 @@ namespace Game.Ai.V2
                 return enemy[(hostHp, raised)] = (e, hit, Mathf.Clamp01(e - below));
             }
 
-            float Series(bool hostCan, bool targetCan)
+            // adjacent: the contact is at distance 1, where a Counterattack host answers every enemy
+            // strike it survives (unless an enemy Shock hit cancelled it) with one more plain strike.
+            float Series(bool hostCan, bool targetCan, bool adjacent = false)
             {
                 float hDealtA = hostCan ? dealtA : 0f, hKillA = hostCan ? killA : 0f, hHitA = hostCan ? hitA : 0f;
                 float hBoosted = hostCan ? boosted : 0f;
+                bool answers = counterattack && adjacent && hostCan && targetCan;
+                float Answered((float expected, float hit, float dies) strike) =>
+                    answers ? (targetShock ? 1f - strike.hit : 1f - strike.dies) : 0f;
                 float cumulativeWound = Mathf.Max(0, ctx.HpSpent);
                 float alive = 1f, total = 0f;
                 for (int contact = 0; contact < AiConfigV2.equipContactCount; contact++)
@@ -415,7 +421,11 @@ namespace Game.Ai.V2
                     float woundB = plain.expected;
                     float deathB = plain.dies;
 
-                    total += alive * (hostFirst * hDealtA + (1f - hostFirst) * answerB);
+                    // Counterattack answers to the enemy strike of either ordering.
+                    float counterA = (answerUnhurt * Answered(plain) + answerHurt * Answered(raised)) * hDealtA;
+                    float counterB = Answered(plain) * hDealtA;
+
+                    total += alive * (hostFirst * (hDealtA + counterA) + (1f - hostFirst) * (answerB + counterB));
                     cumulativeWound += hostFirst * woundA + (1f - hostFirst) * woundB;
                     alive *= 1f - (hostFirst * deathA + (1f - hostFirst) * deathB);
                     if (regeneration && alive > 0f)
@@ -428,9 +438,9 @@ namespace Game.Ai.V2
             if (ctx.KnownDistance.HasValue)
             {
                 int d = ctx.KnownDistance.Value;
-                return Series(s.Range >= d, EnemyCan(d));
+                return Series(s.Range >= d, EnemyCan(d), d == 1);
             }
-            return AiConfigV2.equipDistanceShare1 * Series(s.Range >= 1, EnemyCan(1))
+            return AiConfigV2.equipDistanceShare1 * Series(s.Range >= 1, EnemyCan(1), true)
                 + AiConfigV2.equipDistanceShare2 * Series(s.Range >= 2, EnemyCan(2))
                 + AiConfigV2.equipDistanceShare3 * Series(s.Range >= 3, EnemyCan(3))
                 + AiConfigV2.equipDistanceShare4 * Series(s.Range >= 4, EnemyCan(4));

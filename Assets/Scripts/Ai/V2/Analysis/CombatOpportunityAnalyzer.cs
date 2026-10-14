@@ -616,7 +616,7 @@ namespace Game.Ai.V2
         {
             sb.Append('<').Append(c.Present ? 1 : 0).Append(',').Append(c.Initiative).Append(',')
                 .Append(c.Fate).Append('>');
-            AppendProfiles(sb, c.HealingHeroes);
+            AppendProfiles(sb, c.SupportHeroes);
         }
 
         // Order-preserving and full precision: the simulation (and its seed) depends on both.

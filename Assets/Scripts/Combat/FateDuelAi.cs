@@ -13,7 +13,8 @@ namespace Game.Combat
     // Both sides always want ONE outcome: attacker wants damage > 0, defender wants damage <= 0.
     // Ability combos never change WHAT is being pursued, only how many of the side's own CURRENT
     // missed dice it's willing to spend Fate rerolling toward it — `cap` = 2 when the attacker
-    // carries ShockAttack, or a type-matched Hyperkinetic-vs-Armored/Pyrokinetic-vs-Bio combo (see
+    // carries ShockAttack, or a type-matched Hyperkinetic-vs-Armored/Pyrokinetic-vs-Bio/
+    // Ionic-vs-Mechanical combo (see
     // AttackerCap/DefenderCap — both read the ATTACKER's own abilities, since it's the attacker's
     // combo that makes an eventual landed hit worth chasing harder for the attacker and blocking
     // harder for the defender), else 1 (base — don't blow the whole Fate pool on one attack).
@@ -222,7 +223,8 @@ namespace Game.Combat
                 || m.AttackerHas(UnitAbilities.Splash)   // a landed hit also spreads to neighbours
                 || m.AttackerHas(UnitAbilities.Scorcher)
                 || (m.AttackerHas(UnitAbilities.Hyperkinetic) && m.DefenderIs(UnitTypeTag.Armored))
-                || (m.AttackerHas(UnitAbilities.Pyrokinetic) && m.DefenderIs(UnitTypeTag.Bio));
+                || (m.AttackerHas(UnitAbilities.Pyrokinetic) && m.DefenderIs(UnitTypeTag.Bio))
+                || (m.AttackerHas(UnitAbilities.Ionic) && m.DefenderIs(UnitTypeTag.Mechanical));
             return boosted ? 2 : 1;
         }
 

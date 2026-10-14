@@ -189,12 +189,16 @@ namespace Game.Combat
         // Rough "how good a soak is this unit" score — Defense+HP is the base survivability, but
         // CeramicArmor's flat -1 to every hit and Berserk's own "getting hit makes it stronger"
         // trade both make a unit a better front-liner than raw stats alone suggest, so both get
-        // folded in as a flat bonus rather than left for raw stats to under-rate them.
+        // folded in as a flat bonus rather than left for raw stats to under-rate them. Bodyguard
+        // (covers its orthogonal neighbours) and Counterattack (answers melee attackers) also
+        // want to stand where the enemy arrives first.
         private static float TankScore(UnitData unit)
         {
             float score = unit.Defense + Mathf.Max(0, unit.HitPointsCurrent);
             if (unit.HasAbility(UnitAbilities.CeramicArmor)) score += 2f;
             if (unit.HasAbility(UnitAbilities.Berserk)) score += 2f;
+            if (unit.HasAbility(UnitAbilities.Bodyguard)) score += 2f;
+            if (unit.HasAbility(UnitAbilities.Counterattack)) score += 1f;
             return score;
         }
 
@@ -547,16 +551,18 @@ namespace Game.Combat
                 CollectLivingMembers(liveGrid, ownArmy, grid, hp, ownUnits);
                 CollectLivingMembers(liveGrid, enemyArmy, grid, hp, enemyUnits);
 
+                // A live Drill bonus belongs to the round in progress; every simulated round below
+                // re-deals Drill itself (ApplySimDrill), so start from the undrilled Attack.
                 var simulatedAttack = new Dictionary<UnitData, int>();
                 var simulatedDefense = new Dictionary<UnitData, int>();
                 foreach (UnitData unit in ownUnits)
                 {
-                    simulatedAttack[unit] = unit.Attack;
+                    simulatedAttack[unit] = unit.Attack - unit.DrillAttackBonus;
                     simulatedDefense[unit] = unit.IsHero ? Mathf.Max(0, unit.FateMax) : unit.Defense;
                 }
                 foreach (UnitData unit in enemyUnits)
                 {
-                    simulatedAttack[unit] = unit.Attack;
+                    simulatedAttack[unit] = unit.Attack - unit.DrillAttackBonus;
                     simulatedDefense[unit] = unit.IsHero ? Mathf.Max(0, unit.FateMax) : unit.Defense;
                 }
 
@@ -572,11 +578,14 @@ namespace Game.Combat
                 {
                     List<UnitData> order = BattleTurnOrder.BuildOrder(grid, ownArmy, enemyArmy,
                         unchecked(baseSeed * 31 + trial * 131 + round + 1));
+                    List<UnitData> drilled = ApplySimDrill(grid, hp, simulatedAttack, magnitudes,
+                        ownArmy, enemyArmy);
                     RunOneRound(grid, hp, order, magnitudes, null, smartAdvance: true,
                         battleDefender: battleDefender, battleDefenderDefenseBonus: battleDefenderDefenseBonus,
                         rng: rng, fateByArmy: fateByArmy, simulatedAttack: simulatedAttack,
                         simulatedDefense: simulatedDefense, ownArmy: ownArmy, enemyArmy: enemyArmy,
                         previousPositions: previousPositions);
+                    RevertSimDrill(drilled, simulatedAttack, magnitudes);
                     if (!IsSimulationCombatCapable(grid, hp, ownArmy)
                         || !IsSimulationCombatCapable(grid, hp, enemyArmy))
                         break;
@@ -647,6 +656,8 @@ namespace Game.Combat
             Dictionary<UnitData, Vector2Int> previousPositions = null, bool healHeroesAtStart = true)
         {
             var suppressed = new HashSet<UnitData>();
+            // One call is one round: Bodyguard/Counterattack are spent once per round.
+            var reactions = new BattleReactionState();
             if (healHeroesAtStart)
                 foreach (UnitData hero in grid.AllUnits().Where(u => u.IsHero).ToList())
                     ApplySimHeal(grid, hp, hero, rng, ownArmy, enemyArmy);
@@ -669,89 +680,29 @@ namespace Game.Combat
 
                 if (BattleTargetSelector.TryFindBestReachableTarget(grid, hp, actor, row, col, magnitudes, order, i,
                     out UnitData target, out float expectedDamage, battleDefender, battleDefenderDefenseBonus,
-                    simulatedAttack, simulatedDefense))
+                    simulatedAttack, simulatedDefense, reactions))
                 {
-                    float damage;
-                    bool suppressTarget = false;
-                    if (rng != null)
-                    {
-                        BattleSimExchangeOutcome exchange = ResolveSimulatedExchange(
-                            grid, actor, target, hp, magnitudes, battleDefender,
-                            battleDefenderDefenseBonus, rng, fateByArmy, simulatedAttack,
-                            simulatedDefense, ownArmy, enemyArmy);
-                        damage = exchange.Damage;
+                    UnitData victim = ApplySimAttack(grid, hp, actor, target, expectedDamage, false, magnitudes,
+                        battleDefender, battleDefenderDefenseBonus, rng, fateByArmy, simulatedAttack,
+                        simulatedDefense, ownArmy, enemyArmy, reactions, damageDealtByUnit,
+                        out float damage, out bool suppressVictim);
 
-                        float targetHp = hp[target];
-                        int transientAttack = simulatedAttack != null
-                            && simulatedAttack.TryGetValue(target, out int atk) ? atk : target.Attack;
-                        int transientDefense = simulatedDefense != null
-                            && simulatedDefense.TryGetValue(target, out int def)
-                            ? def : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
-                        BattleSimulationKernel.ApplyPrimaryOutcome(
-                            exchange, actor.Abilities, target.Abilities,
-                            ref targetHp, ref transientAttack, ref transientDefense,
-                            magnitudes, out suppressTarget);
-                        hp[target] = targetHp;
-                        if (simulatedAttack != null) simulatedAttack[target] = transientAttack;
-                        if (simulatedDefense != null) simulatedDefense[target] = transientDefense;
-                    }
-                    else
+                    if (suppressVictim && order.IndexOf(victim) > i)
+                        suppressed.Add(victim);
+
+                    // UnitAbilities.Counterattack — a surviving victim answers before the next
+                    // turn, through the same attack path (never intercepted, never answered).
+                    if (BattleProtectionRules.CanCounterattack(grid, victim, actor,
+                            hp.TryGetValue(victim, out float victimHp) ? victimHp : 0f,
+                            Mathf.RoundToInt(damage), reactions))
                     {
-                        damage = expectedDamage;
-                        hp[target] -= damage;
-                        // Deterministic lookahead: an expected hit that rounds to a landed point
-                        // applies the target's Berserk and the actor's ShockAttack, the same
-                        // rounding SimSideHit gives a Splash side-hit.
-                        int landed = Mathf.RoundToInt(damage);
-                        if (landed > 0 && simulatedAttack != null && simulatedDefense != null)
-                        {
-                            int attack = simulatedAttack.TryGetValue(target, out int atk) ? atk : target.Attack;
-                            int defense = simulatedDefense.TryGetValue(target, out int def)
-                                ? def : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
-                            BattleSimulationKernel.ApplyBerserkIfHit(
-                                true, target.Abilities, ref attack, ref defense, magnitudes);
-                            simulatedAttack[target] = attack;
-                            simulatedDefense[target] = defense;
-                        }
-                        suppressTarget = BattleSimulationKernel.SuppressesTurn(landed, actor.Abilities);
+                        reactions.CountersUsed.Add(victim);
+                        ApplySimAttack(grid, hp, victim, actor, null, true, magnitudes,
+                            battleDefender, battleDefenderDefenseBonus, rng, fateByArmy, simulatedAttack,
+                            simulatedDefense, ownArmy, enemyArmy, reactions, damageDealtByUnit,
+                            out _, out _);
                     }
 
-                    if (damageDealtByUnit != null)
-                        damageDealtByUnit[actor] = damageDealtByUnit.TryGetValue(actor, out float dealt)
-                            ? dealt + damage : damage;
-
-                    if (suppressTarget && order.IndexOf(target) > i)
-                        suppressed.Add(target);
-
-                    bool trackSplashCommanders = fateByArmy != null
-                        && (actor.HasAbility(UnitAbilities.Splash) || actor.HasAbility(UnitAbilities.Scorcher));
-                    UnitData ownCommander = trackSplashCommanders
-                        ? BattleTurnOrder.LivingCommanderOnGrid(grid, ownArmy) : null;
-                    UnitData enemyCommander = trackSplashCommanders
-                        ? BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy) : null;
-                    ApplySimSplash(grid, hp, actor, target, damage, magnitudes, rng,
-                        simulatedAttack, simulatedDefense);
-                    // A Commander killed by a side-hit (either side: Splash hits allies too) hands
-                    // command and its Fate pool over exactly like a primary kill below.
-                    if (trackSplashCommanders)
-                    {
-                        HandOverSplashKilledCommander(grid, ownArmy, ownCommander, fateByArmy);
-                        HandOverSplashKilledCommander(grid, enemyArmy, enemyCommander, fateByArmy);
-                    }
-                    if (hp[target] <= 0f && grid.TryFindPosition(target, out int tRow, out int tCol))
-                    {
-                        grid.Set(tRow, tCol, null);
-                        // A killed hero stops commanding immediately in the shadow battle. If the
-                        // army has another living hero, that hero becomes Commander for subsequent
-                        // rounds/exchanges and brings its own remaining Fate pool.
-                        if (target.IsHero && fateByArmy != null)
-                        {
-                            ArmyData targetArmy = FindSimulationArmy(target, ownArmy, enemyArmy);
-                            UnitData replacement = BattleTurnOrder.LivingCommanderOnGrid(grid, targetArmy);
-                            if (targetArmy != null)
-                                fateByArmy[targetArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
-                        }
-                    }
                     if (ownArmy != null && enemyArmy != null
                         && (!IsSimulationCombatCapable(grid, hp, ownArmy)
                             || !IsSimulationCombatCapable(grid, hp, enemyArmy)))
@@ -783,6 +734,166 @@ namespace Game.Combat
                     grid.Set(step.Value.row, step.Value.col, actor);
                 }
             }
+        }
+
+        // One attack of the shadow battle — a primary attack or a Counterattack answer — in the
+        // live BattleEngine order: resolve (real dice with `rng`, else the expected value), Bodyguard
+        // interception (primary only), the victim's Berserk and the actor's Shock, Splash around
+        // the victim, Commander hand-over and removal. Returns the unit the hit landed on.
+        // expectedDamage: the deterministic path's damage; null computes it here (a counterattack
+        // has no selector estimate). A primary's estimate already describes its Bodyguard.
+        private static UnitData ApplySimAttack(BattleGrid grid, Dictionary<UnitData, float> hp,
+            UnitData actor, UnitData target, float? expectedDamage, bool isCounterattack,
+            AbilityMagnitudes magnitudes, ArmyData battleDefender, int battleDefenderDefenseBonus,
+            System.Random rng, Dictionary<ArmyData, int> fateByArmy, Dictionary<UnitData, int> simulatedAttack,
+            Dictionary<UnitData, int> simulatedDefense, ArmyData ownArmy, ArmyData enemyArmy,
+            BattleReactionState reactions, Dictionary<UnitData, float> damageDealtByUnit,
+            out float damage, out bool suppressVictim)
+        {
+            UnitData victim = target;
+            suppressVictim = false;
+            if (rng != null)
+            {
+                BattleSimExchangeOutcome exchange = ResolveSimulatedExchange(
+                    grid, actor, target, hp, magnitudes, battleDefender,
+                    battleDefenderDefenseBonus, rng, fateByArmy, simulatedAttack,
+                    simulatedDefense, ownArmy, enemyArmy);
+                UnitData guard = !isCounterattack && exchange.Damage > 0
+                    ? FindSimBodyguard(grid, hp, target, actor, reactions) : null;
+                if (guard != null)
+                {
+                    reactions?.BodyguardsUsed.Add(guard);
+                    victim = guard;
+                    int intercepted = BattleSimulationKernel.InterceptedDamage(
+                        exchange.AttackerSuccesses - exchange.DefenderSuccesses,
+                        actor.Abilities, guard.TypeTags, guard.Abilities, magnitudes);
+                    exchange = new BattleSimExchangeOutcome(intercepted, intercepted > 0,
+                        exchange.AttackerSuccesses, exchange.DefenderSuccesses);
+                }
+                damage = exchange.Damage;
+
+                float victimHp = hp[victim];
+                int transientAttack = SimulatedAttackOf(victim, simulatedAttack);
+                int transientDefense = SimulatedDefenseOf(victim, simulatedDefense);
+                BattleSimulationKernel.ApplyPrimaryOutcome(
+                    exchange, actor.Abilities, victim.Abilities,
+                    ref victimHp, ref transientAttack, ref transientDefense,
+                    magnitudes, out suppressVictim);
+                hp[victim] = victimHp;
+                if (simulatedAttack != null) simulatedAttack[victim] = transientAttack;
+                if (simulatedDefense != null) simulatedDefense[victim] = transientDefense;
+            }
+            else
+            {
+                UnitData guard = !isCounterattack ? FindSimBodyguard(grid, hp, target, actor, reactions) : null;
+                if (guard != null)
+                {
+                    reactions?.BodyguardsUsed.Add(guard);
+                    victim = guard;
+                }
+                damage = expectedDamage ?? BattleCombatOdds.Evaluate(actor, target,
+                    BattleProtectionRules.GetTotalDefenseBonus(grid, target, battleDefender, battleDefenderDefenseBonus),
+                    magnitudes, hp.TryGetValue(target, out float targetHp) ? targetHp : 0f,
+                    simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simAtk) ? simAtk : (int?)null,
+                    simulatedDefense != null && simulatedDefense.TryGetValue(target, out int simDef) ? simDef : (int?)null)
+                    .ExpectedDamage;
+                hp[victim] -= damage;
+                // Deterministic lookahead: an expected hit that rounds to a landed point
+                // applies the victim's Berserk and the actor's ShockAttack, the same
+                // rounding SimSideHit gives a Splash side-hit.
+                int landed = Mathf.RoundToInt(damage);
+                if (landed > 0 && simulatedAttack != null && simulatedDefense != null)
+                {
+                    int attack = SimulatedAttackOf(victim, simulatedAttack);
+                    int defense = SimulatedDefenseOf(victim, simulatedDefense);
+                    BattleSimulationKernel.ApplyBerserkIfHit(
+                        true, victim.Abilities, ref attack, ref defense, magnitudes);
+                    simulatedAttack[victim] = attack;
+                    simulatedDefense[victim] = defense;
+                }
+                suppressVictim = BattleSimulationKernel.SuppressesTurn(landed, actor.Abilities);
+            }
+
+            if (damageDealtByUnit != null)
+                damageDealtByUnit[actor] = damageDealtByUnit.TryGetValue(actor, out float dealt)
+                    ? dealt + damage : damage;
+
+            bool trackSplashCommanders = fateByArmy != null
+                && (actor.HasAbility(UnitAbilities.Splash) || actor.HasAbility(UnitAbilities.Scorcher));
+            UnitData ownCommander = trackSplashCommanders
+                ? BattleTurnOrder.LivingCommanderOnGrid(grid, ownArmy) : null;
+            UnitData enemyCommander = trackSplashCommanders
+                ? BattleTurnOrder.LivingCommanderOnGrid(grid, enemyArmy) : null;
+            ApplySimSplash(grid, hp, actor, victim, damage, magnitudes, rng,
+                simulatedAttack, simulatedDefense);
+            // A Commander killed by a side-hit (either side: Splash hits allies too) hands
+            // command and its Fate pool over exactly like a primary kill below.
+            if (trackSplashCommanders)
+            {
+                HandOverSplashKilledCommander(grid, ownArmy, ownCommander, fateByArmy);
+                HandOverSplashKilledCommander(grid, enemyArmy, enemyCommander, fateByArmy);
+            }
+            if (hp[victim] <= 0f && grid.TryFindPosition(victim, out int vRow, out int vCol))
+            {
+                grid.Set(vRow, vCol, null);
+                // A killed hero stops commanding immediately in the shadow battle. If the
+                // army has another living hero, that hero becomes Commander for subsequent
+                // rounds/exchanges and brings its own remaining Fate pool.
+                if (victim.IsHero && fateByArmy != null)
+                {
+                    ArmyData victimArmy = FindSimulationArmy(victim, ownArmy, enemyArmy);
+                    UnitData replacement = BattleTurnOrder.LivingCommanderOnGrid(grid, victimArmy);
+                    if (victimArmy != null)
+                        fateByArmy[victimArmy] = Mathf.Max(0, replacement?.Fate ?? 0);
+                }
+            }
+            return victim;
+        }
+
+        private static UnitData FindSimBodyguard(BattleGrid grid, Dictionary<UnitData, float> hp,
+            UnitData target, UnitData attacker, BattleReactionState reactions) =>
+            BattleProtectionRules.FindBodyguard(grid, target, attacker,
+                u => hp.TryGetValue(u, out float guardHp) ? guardHp : 0f, reactions);
+
+        private static int SimulatedAttackOf(UnitData unit, Dictionary<UnitData, int> simulatedAttack) =>
+            simulatedAttack != null && simulatedAttack.TryGetValue(unit, out int attack) ? attack : unit.Attack;
+
+        private static int SimulatedDefenseOf(UnitData unit, Dictionary<UnitData, int> simulatedDefense) =>
+            simulatedDefense != null && simulatedDefense.TryGetValue(unit, out int defense)
+                ? defense : (unit.IsHero ? Mathf.Max(0, unit.FateMax) : unit.Defense);
+
+        // UnitAbilities.Drill for one simulated round — the live BattleEngine rule on shadow HP
+        // and simulated Attack. Returns the buffed units so the caller takes the bonus back off.
+        private static List<UnitData> ApplySimDrill(BattleGrid grid, Dictionary<UnitData, float> hp,
+            Dictionary<UnitData, int> simulatedAttack, AbilityMagnitudes magnitudes, ArmyData ownArmy,
+            ArmyData enemyArmy)
+        {
+            var drilled = new List<UnitData>();
+            if (simulatedAttack == null || magnitudes.DrillAttackBonus == 0)
+                return drilled;
+            foreach (ArmyData army in new[] { ownArmy, enemyArmy })
+            {
+                if (army == null)
+                    continue;
+                List<UnitData> present = army.Members.Where(u => hp.TryGetValue(u, out float uHp) && uHp > 0f
+                    && grid.TryFindPosition(u, out _, out _)).ToList();
+                int carriers = present.Count(u => u.HasAbility(UnitAbilities.Drill));
+                foreach (int index in BattleSimulationKernel.SelectDrillTargets(present.Count, carriers,
+                             k => present[k].IsGroundCombatant, k => SimulatedAttackOf(present[k], simulatedAttack)))
+                {
+                    UnitData unit = present[index];
+                    simulatedAttack[unit] = SimulatedAttackOf(unit, simulatedAttack) + magnitudes.DrillAttackBonus;
+                    drilled.Add(unit);
+                }
+            }
+            return drilled;
+        }
+
+        private static void RevertSimDrill(List<UnitData> drilled, Dictionary<UnitData, int> simulatedAttack,
+            AbilityMagnitudes magnitudes)
+        {
+            foreach (UnitData unit in drilled)
+                simulatedAttack[unit] -= magnitudes.DrillAttackBonus;
         }
 
         private static void HandOverSplashKilledCommander(BattleGrid grid, ArmyData army,
@@ -1006,15 +1117,17 @@ namespace Game.Combat
             ArmyData ownArmy, ArmyData enemyArmy, AbilityMagnitudes magnitudes,
             List<UnitData> turnOrder, int turnIndex, bool favorableFight = false,
             ArmyData battleDefender = null, int battleDefenderDefenseBonus = 0,
-            Dictionary<UnitData, Vector2Int> previousPositions = null)
+            Dictionary<UnitData, Vector2Int> previousPositions = null, BattleReactionState reactions = null)
         {
             var passAction = new AiAction { Kind = AiActionKind.Pass, Reason = AiThoughtCategory.CautiousWait };
             if (grid == null || actor == null || waitStreak == null
                 || !grid.TryFindPosition(actor, out int actorRow, out int actorCol))
                 return passAction;
 
+            // reactions: the live round's spent Bodyguard/Counterattack (BattleEngine.Reactions).
             if (BattleTargetSelector.TryChooseAttackTarget(grid, actor, actorRow, actorCol, magnitudes,
-                turnOrder, turnIndex, out AiAction attackAction, battleDefender, battleDefenderDefenseBonus))
+                turnOrder, turnIndex, out AiAction attackAction, battleDefender, battleDefenderDefenseBonus,
+                reactions))
             {
                 waitStreak[actor] = 0;
                 previousPositions?.Remove(actor);

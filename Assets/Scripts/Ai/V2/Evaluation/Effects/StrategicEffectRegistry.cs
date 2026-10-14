@@ -821,6 +821,43 @@ namespace Game.Ai.V2
                         StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
                         stacking: EffectStacking.Unique, stackingKey: "CeramicArmor", primaryExchange: true),
                 },
+                // Ionic: the Mechanical counterpart of Pyrokinetic, priced by the kernel's exchange
+                // (EquipmentEfficiency.Utility) and scaled here by known Mechanical enemies near the deploy.
+                [UnitAbilities.Ionic] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectIonicFit,
+                        StrategicEffectContext.TargetDensity, EffectField.RoleFit, coverage: false,
+                        eligiblePredicate: p => p.TypeTags != null && p.TypeTags.Contains(UnitTypeTag.Mechanical),
+                        scope: EffectScope.EnemiesNearDeploy,
+                        stacking: EffectStacking.Unique, stackingKey: "Ionic", primaryExchange: true,
+                        bodyOnly: true),
+                },
+                // Counterattack: the equipment utility's contact series prices the answer
+                // (primaryExchange); this row is the CombatBody fit for card scoring.
+                [UnitAbilities.Counterattack] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectCounterattackFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: "Counterattack", primaryExchange: true,
+                        bodyOnly: true),
+                },
+                // Bodyguard protects OTHER bodies, which the one-host equipment utility cannot see,
+                // so it is NOT primaryExchange: this flat fit is also its attachment value.
+                [UnitAbilities.Bodyguard] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectBodyguardFit,
+                        StrategicEffectContext.Flat, EffectField.RoleFit, coverage: false,
+                        stacking: EffectStacking.Unique, stackingKey: "Bodyguard", bodyOnly: true),
+                },
+                // Drill: an aura over the destination army's fighters (EligibleAllies), so it is
+                // worth something on a hero card and feeds IncomingAuraSynergy for new bodies.
+                [UnitAbilities.Drill] = new[]
+                {
+                    new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectDrillFit,
+                        StrategicEffectContext.EligibleAllies, EffectField.Synergy, coverage: false,
+                        eligiblePredicate: p => p.IsGroundCombatant && !p.IsHero, scope: EffectScope.DestArmy,
+                        timing: EffectTiming.DuringCombat, stacking: EffectStacking.Stack, stackingKey: "Drill"),
+                },
                 [UnitAbilities.Heal] = new[]
                 {
                     new StrategicEffect(IntendedRole.CombatBody, AiConfigV2.effectRegenerationFit,

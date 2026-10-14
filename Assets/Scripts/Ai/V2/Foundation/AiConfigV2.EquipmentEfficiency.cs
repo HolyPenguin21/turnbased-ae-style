@@ -21,12 +21,14 @@ namespace Game.Ai.V2
         public const float equipScorcherFactor = 0.5f;       // x A x Bio share
         public const float equipHyperkineticFactor = 0.5f;   // x A x Armored/vehicle share
         public const float equipPyrokineticFactor = 0.5f;    // x A x Bio share
+        public const float equipIonicFactor = 0.5f;          // x A x Mechanical share
         public const float equipShockFactor = 0.25f;         // x A x Initiative
         public const float equipCeramicFactor = 0.25f;       // x HP
         public const float equipAntiAirFactor = 1f;          // x A x air share of the known enemies
         // Share of the known enemy units an ability can hit while nothing is known yet.
         public const float equipDefaultArmoredShare = 0.5f;
         public const float equipDefaultBioShare = 0.5f;
+        public const float equipDefaultMechanicalShare = 0.5f;
         public const float equipDefaultAirShare = 0.2f;
 
         // ---- skills -----------------------------------------------------------------------------

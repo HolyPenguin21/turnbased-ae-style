@@ -28,32 +28,32 @@ namespace Game.Combat
     // coroutine cannot carry entries into the next turn.
     public static partial class WorthIt
     {
-        private const int EstimateKeyVersion = 2;
+        private const int EstimateKeyVersion = 3;
         private const int EstimateCacheMaxEntries = 50000;
 
         // The field sets the key covers. WorthItEstimateCacheTests compares them against the real
         // struct fields by reflection, so adding a field without deciding its key fate fails a test.
         internal static readonly string[] EstimateKeyBattleUnitFields =
             { "Attack", "Defense", "Abilities", "TypeTags", "Initiative", "Hp", "MaxHp",
-                "IsHero", "HeroFate", "IsSummoned" };
+                "IsHero", "HeroFate", "IsSummoned", "Range" };
         internal static readonly string[] EstimateKeySideCommanderFields =
-            { "Present", "Initiative", "Fate", "HealingHeroes" };
+            { "Present", "Initiative", "Fate", "SupportHeroes" };
         internal static readonly string[] EstimateKeyAbilityMagnitudesFields =
         {
             "CriticalDamageMultiplier", "HyperkineticBonusDamage", "CeramicArmorReduction",
             "PyrokineticBonusDamage", "BerserkAttackGain", "BerserkDefenseLoss",
+            "IonicBonusDamage", "DrillAttackBonus",
         };
         // DefenderProfile reaches the simulation only through ToBattleUnits (and TacticalTargetsOf's
         // filter, which decides WHICH units are converted), so its simulated fields are covered by
         // the BattleUnit key. The rest are read elsewhere, never by the simulation.
         internal static readonly string[] EstimateKeyDefenderProfileSimulatedFields =
             { "Attack", "Defense", "HitPoints", "MaxHitPoints", "Initiative", "Abilities", "TypeTags",
-                "IsHero", "FateMax", "IsSummoned" };
+                "IsHero", "FateMax", "IsSummoned", "Range" };
         internal static readonly string[] EstimateKeyDefenderProfileNonSimulatedFields =
         {
             "HasCeramicArmor",   // CanDamage only; the simulation reads CeramicArmor from Abilities
             "IsGroundCombatant", // TacticalTargetsOf filter, applied before conversion
-            "Range",             // read only by equipment valuation (can the enemy answer at distance d)
         };
         // Parameter list guarded by the same test. Scratch is NOT an input: Reset clears it before
         // every battle and binds it to the supplied armies; it only owns reusable working storage.
@@ -181,6 +181,8 @@ namespace Game.Combat
             buf.Add(m.PyrokineticBonusDamage);
             buf.Add(m.BerserkAttackGain);
             buf.Add(m.BerserkDefenseLoss);
+            buf.Add(m.IonicBonusDamage);
+            buf.Add(m.DrillAttackBonus);
         }
 
         private static void AppendKey(List<int> buf, SideCommander c)
@@ -188,9 +190,9 @@ namespace Game.Combat
             buf.Add(c.Present ? 1 : 0);
             buf.Add(c.Initiative);
             buf.Add(c.Fate);
-            buf.Add(c.HealingHeroes?.Count ?? 0);
-            if (c.HealingHeroes != null)
-                foreach (DefenderProfile hero in c.HealingHeroes) AppendKey(buf, ToBattleUnit(hero, 0f, 0));
+            buf.Add(c.SupportHeroes?.Count ?? 0);
+            if (c.SupportHeroes != null)
+                foreach (DefenderProfile hero in c.SupportHeroes) AppendKey(buf, ToBattleUnit(hero, 0f, 0));
         }
 
         // Order-preserving on purpose: the simulation walks units, abilities and tags in list order.
@@ -223,6 +225,7 @@ namespace Game.Combat
             buf.Add(u.IsHero ? 1 : 0);
             buf.Add(u.HeroFate);
             buf.Add(u.IsSummoned ? 1 : 0);
+            buf.Add(u.Range);
             int abilities = u.Abilities?.Count ?? -1;
             buf.Add(abilities);
             for (int i = 0; i < abilities; i++)

@@ -158,6 +158,47 @@ namespace Game.Combat
         public static bool SuppressesTurn(int damage, IEnumerable<string> attackerAbilities) =>
             damage > 0 && HasAbility(attackerAbilities, UnitAbilities.ShockAttack);
 
+        // UnitAbilities.Bodyguard — the intercepted hit keeps its rolled dice (raw = attacker
+        // successes - defender successes) and is re-run through the canonical modifier chain
+        // against the guard's own tags and abilities.
+        public static int InterceptedDamage(int rawDamage, IEnumerable<string> attackerAbilities,
+            IReadOnlyCollection<UnitTypeTag> guardTags, IEnumerable<string> guardAbilities,
+            AbilityMagnitudes magnitudes) =>
+            ChallengeResult.ApplyAbilityModifiers(Mathf.Max(0, rawDamage), attackerAbilities,
+                guardTags, guardAbilities, magnitudes);
+
+        // UnitAbilities.Counterattack — geometry-free half of the trigger (the "within 1 cell"
+        // test is the caller's, it owns the positions). A surviving non-hero carrier answers once
+        // per round unless a ShockAttack hit (positive damage) knocked it out of the round.
+        public static bool TriggersCounterattack(IEnumerable<string> victimAbilities, bool victimIsHero,
+            float victimHpAfter, bool attackerWithinOne, bool alreadyUsed, int primaryDamage,
+            IEnumerable<string> attackerAbilities) =>
+            victimHpAfter > 0f && !victimIsHero && attackerWithinOne && !alreadyUsed
+            && HasAbility(victimAbilities, UnitAbilities.Counterattack)
+            && !SuppressesTurn(primaryDamage, attackerAbilities);
+
+        // UnitAbilities.Drill — which of `candidateCount` side members this round's `carriers`
+        // buff: one each, highest Attack first, lowest index on a tie, never the same one twice.
+        // Deterministic, so live combat and both projections pick alike.
+        public static List<int> SelectDrillTargets(int candidateCount, int carriers,
+            Func<int, bool> eligible, Func<int, int> attackOf)
+        {
+            var result = new List<int>();
+            if (carriers <= 0 || candidateCount <= 0)
+                return result;
+            for (int i = 0; i < candidateCount; i++)
+                if (eligible(i))
+                    result.Add(i);
+            result.Sort((a, b) =>
+            {
+                int byAttack = attackOf(b).CompareTo(attackOf(a));
+                return byAttack != 0 ? byAttack : a.CompareTo(b);
+            });
+            if (result.Count > carriers)
+                result.RemoveRange(carriers, result.Count - carriers);
+            return result;
+        }
+
         public static List<BattleSimSecondaryTarget> SelectSecondaryTargets(
             int candidateCount, Func<int, bool> isBio, bool splash, bool scorcher,
             System.Random rng = null)

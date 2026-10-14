@@ -79,6 +79,11 @@ namespace Game.Units
         // started with once the buff is reverted.
         public int BerserkDefenseLost;
 
+        // Attack granted by an allied UnitAbilities.Drill carrier for the CURRENT combat round
+        // only — already folded into Attack above. BattleEngine takes it back off at the next
+        // round start and at battle end (RevertTemporaryBattleStats), same reasoning as Berserk.
+        public int DrillAttackBonus;
+
         // Restored at the start of every turn. A move never spends more than what's left — an
         // army stops short of any hex it can't fully afford (see ArmyController.MoveRoutine) —
         // so this never goes negative; only ever capped from above at Max.
