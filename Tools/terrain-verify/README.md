@@ -11,6 +11,12 @@ and the ground route cache. It also compiles the actual HexMapGenerator and hex 
 the rotation test generates sixty maps and checks terrain cells, per-part texture references,
 and mesh UVs together. It does not copy these implementations into the harness.
 
+It also runs `MatchResourcePlacementTests` against the actual resource planner and bonus
+registry: counts and spacing across map sizes/player counts/seeds, central Tech attachment,
+unreachable/existing-bonus exclusions, cramped-map handling and positional diversity. The
+resource-pass integration test needs the real Unity `CitadelSetupController` and runs only in
+the full EditMode suite, not this managed harness.
+
 The substitutes in `UnityStubs.cs` retain mesh arrays and provide deterministic random draws
 and empty content registries for these checks. They are only data/geometry APIs and collaborators. They do not
 prove URP rendering, Unity lifecycle/coroutine scheduling, fog, scene wiring, aviation endurance,
