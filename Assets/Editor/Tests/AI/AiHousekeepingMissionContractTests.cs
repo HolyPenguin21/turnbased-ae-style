@@ -98,7 +98,7 @@ namespace Game.EditorTests
             ReorgContainer host = Free(2, lead, extra, fighter);
             ReorgContainer garrison = Garrison(0, Body(8f));
             ReorganizationPlan plan = Plan(garrison, host);
-            Assert.That(plan.ExpectedMembership[2], Does.Not.Contain(extra.Key));
+            Assert.That(plan.ExpectedMembership[2], Has.No.Member(extra.Key));
             Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(fighter.Key));
             Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(lead.Key));
         }

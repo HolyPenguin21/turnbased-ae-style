@@ -200,7 +200,7 @@ namespace Game.EditorTests
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                 DepartureSnapshot(), opposition, host.Id, gate);
             Assert.That(plan.Feasible, Is.True, plan.Reason);
-            Assert.That(plan.ReturnHeroes, Does.Not.Contain(healer));
+            Assert.That(plan.ReturnHeroes, Has.No.Member(healer));
             Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan), Does.Contain(healer));
         }
 
@@ -237,7 +237,7 @@ namespace Game.EditorTests
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                 DepartureSnapshot(), WeakOpposition(), host.Id, 0.8f);
             Assert.That(plan.Feasible, Is.True, plan.Reason);
-            Assert.That(plan.ReturnHeroes, Does.Not.Contain(transport));
+            Assert.That(plan.ReturnHeroes, Has.No.Member(transport));
             Assert.That(ArmyData.ComputeMaxMovement(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan)),
                 Is.EqualTo(4));
         }
