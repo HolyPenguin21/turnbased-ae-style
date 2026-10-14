@@ -183,7 +183,7 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 4
+    moveMax: 3
     activationApCost: 1
     commandRating: 8
     fate: 2
@@ -339,7 +339,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0100000008000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Drill
     resourceYield:
       human: 0
       energy: 0
@@ -1043,7 +1044,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 010000000200000004000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Counterattack
     resourceYield:
       human: 0
       energy: 0

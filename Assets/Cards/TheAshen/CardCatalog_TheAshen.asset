@@ -198,7 +198,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0000000008000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Drill
     resourceYield:
       human: 0
       energy: 0
@@ -715,7 +716,9 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 0000000003000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Bodyguard
+    - Counterattack
     resourceYield:
       human: 0
       energy: 0
