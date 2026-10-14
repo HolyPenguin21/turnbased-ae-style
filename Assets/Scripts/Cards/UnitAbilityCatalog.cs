@@ -100,6 +100,12 @@ namespace Game.Cards
         [Header("Pyrokinetic +2 vs Bio — UnitAbilities.Pyrokinetic")]
         public int pyrokineticBonusDamage = 2;
 
+        [Header("Ionic +2 vs Mechanical — UnitAbilities.Ionic")]
+        public int ionicBonusDamage = 2;
+
+        [Header("Drill — UnitAbilities.Drill (Attack for one round)")]
+        public int drillAttackBonus = 1;
+
         [Header("Raise The Rots — UnitAbilities.RaiseTheRots")]
         // ANY faction's card catalog — the Neutral one, a faction's own, another faction's,
         // whatever — and the card within it, matched by CardDefinition.authoredKey (falling back
@@ -114,7 +120,8 @@ namespace Game.Cards
         // should consume this bundle rather than re-reading the individual fields independently.
         public AbilityMagnitudes Magnitudes => new AbilityMagnitudes(
             criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction,
-            pyrokineticBonusDamage, berserkAttackGain, berserkDefenseLoss);
+            pyrokineticBonusDamage, berserkAttackGain, berserkDefenseLoss,
+            ionicBonusDamage, drillAttackBonus);
 
         // Null if the catalog isn't wired or the key no longer resolves — BattleScreenUI just
         // logs and skips the summon in that case.

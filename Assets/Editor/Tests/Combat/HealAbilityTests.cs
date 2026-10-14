@@ -37,7 +37,7 @@ namespace Game.EditorTests
             Assert.That(target.HitPointsCurrent, Is.EqualTo(2)); Assert.That(events, Is.EqualTo(1));
             engine.State.Round++;
             engine.StartRound(); Assert.That(target.HitPointsCurrent, Is.EqualTo(3));
-            Assert.That(WorthIt.SideCommander.Of(own.Members).HealingHeroes.Count, Is.EqualTo(1));
+            Assert.That(WorthIt.SideCommander.Of(own.Members).SupportHeroes.Count, Is.EqualTo(1));
         }
         [Test]
         public void UnitHealsAtOwnTurnStart_NotAtRoundStartWhenAnotherUnitActsFirst()
@@ -118,7 +118,7 @@ namespace Game.EditorTests
             BattleEngine engine = Engine(own, enemy); engine.StartRound(); engine.StartRound();
             Assert.That(target.HitPointsCurrent, Is.EqualTo(3));
             Assert.That(woundedEnemy.HitPointsCurrent, Is.EqualTo(1));
-            Assert.That(WorthIt.SideCommander.Of(own.Members).HealingHeroes.Count, Is.EqualTo(2));
+            Assert.That(WorthIt.SideCommander.Of(own.Members).SupportHeroes.Count, Is.EqualTo(2));
         }
 
         [Test]

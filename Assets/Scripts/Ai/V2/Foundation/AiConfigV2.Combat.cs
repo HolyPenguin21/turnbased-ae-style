@@ -26,12 +26,15 @@ namespace Game.Ai.V2
         public const float powerBumpCeramicArmor = 0.20f;
         public const float powerBumpShockAttack = 0.15f;
         public const float powerBumpCriticalDamage = 0.15f;
-        public const float powerBumpSituationalCounter = 0.08f; // Hyperkinetic / Pyrokinetic
+        public const float powerBumpSituationalCounter = 0.08f; // Hyperkinetic / Pyrokinetic / Ionic
         public const float powerBumpSplash = 0.12f;             // Splash — half-damage to 2 extra neighbours
         public const float powerBumpScorcher = 0.06f;           // Scorcher — half-damage to 1 neighbour, Bio-gated
         public const float powerBumpRaiseTheRots = 0.30f;       // RaiseTheRots — conjures extra bodies each battle
         public const float powerBumpRegeneration = 0.10f;       // Regeneration — end-of-turn self heal
         public const float powerBumpBerserk = 0.08f;            // Berserk — +Attack / -Defense per hit taken
+        public const float powerBumpBodyguard = 0.10f;          // Bodyguard — takes one hit per round for an adjacent ally
+        public const float powerBumpCounterattack = 0.12f;      // Counterattack — one free answer per round to a melee attacker
+        public const float powerBumpDrill = 0.10f;              // Drill — +Attack to the side's best fighter each round
 
         // Composition quality maps [0..1] onto a multiplier of (compoFloor .. 1). A single unit or
         // an all-one-type stack still counts for compoFloor of its raw power; a balanced,

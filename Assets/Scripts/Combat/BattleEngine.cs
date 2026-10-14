@@ -89,6 +89,13 @@ namespace Game.Combat
         public int Damage;
         public bool DefenderDied;
         public bool Shocked;
+        // The unit the hit actually landed on — the original target, or the Bodyguard that
+        // intercepted it (then also InterceptedBy). DefenderDied/Shocked describe this unit.
+        public UnitData Victim;
+        public UnitData InterceptedBy;
+        // Set when the victim strikes back right now (UnitAbilities.Counterattack); the caller
+        // runs that attack as an ordinary Challenge with isCounterattack: true.
+        public UnitData Counterattacker;
         public readonly List<BattleSecondaryHit> SecondaryHits = new List<BattleSecondaryHit>();
         public readonly List<BattleUnitRemoval> Removals = new List<BattleUnitRemoval>();
     }
@@ -275,9 +282,13 @@ namespace Game.Combat
         private readonly System.Random _random;
         private int _startedRound;
         private readonly HashSet<UnitData> _startedTurns = new HashSet<UnitData>();
+        private readonly BattleReactionState _reactions = new BattleReactionState();
+        private readonly List<UnitData> _drilled = new List<UnitData>();
         public event Action<UnitData> UnitHealed;
 
         public BattleState State => _state;
+        // This round's spent Bodyguard/Counterattack reactions (cleared by StartRound).
+        public BattleReactionState Reactions => _reactions;
 
         public BattleEngine(BattleState state, AbilityMagnitudes magnitudes, System.Random random = null)
         {
@@ -301,6 +312,10 @@ namespace Game.Combat
             if (_startedRound == _state.Round) return;
             _startedRound = _state.Round;
             _startedTurns.Clear();
+            _reactions.Clear();
+            RevertRoundDrill();
+            ApplyRoundDrill(_state.Attacker);
+            ApplyRoundDrill(_state.Defender);
             HealRoundHeroes(_state.Attacker);
             HealRoundHeroes(_state.Defender);
             _state.TurnOrder = BattleTurnOrder.BuildOrder(_state.Grid, _state.Attacker, _state.Defender,
@@ -311,6 +326,41 @@ namespace Game.Combat
                     .ToList();
             _state.TurnIndex = 0;
             BeginCurrentUnitTurn();
+        }
+
+        // UnitAbilities.Drill — every living carrier on the grid buffs one ground combatant of its
+        // side for this round (BattleSimulationKernel.SelectDrillTargets). A retreating army only
+        // runs, so it is not drilled.
+        private void ApplyRoundDrill(ArmyData army)
+        {
+            if (army == null || army == _state.RetreatingArmy || _state.Grid == null
+                || _magnitudes.DrillAttackBonus == 0)
+                return;
+            List<UnitData> present = army.Members.Where(u => u != null && u.HitPointsCurrent > 0
+                && !u.IsPrisoner && _state.Grid.TryFindPosition(u, out _, out _)).ToList();
+            int carriers = present.Count(u => u.HasAbility(UnitAbilities.Drill));
+            foreach (int index in BattleSimulationKernel.SelectDrillTargets(present.Count, carriers,
+                         i => present[i].IsGroundCombatant, i => present[i].Attack))
+            {
+                UnitData target = present[index];
+                target.Attack += _magnitudes.DrillAttackBonus;
+                target.DrillAttackBonus += _magnitudes.DrillAttackBonus;
+                _drilled.Add(target);
+                BattleDebugLog.Write($"[Drill] {army.Name}: {target.Name} +{_magnitudes.DrillAttackBonus} Attack this round");
+            }
+        }
+
+        private void RevertRoundDrill()
+        {
+            foreach (UnitData unit in _drilled)
+                RevertDrill(unit);
+            _drilled.Clear();
+        }
+
+        private static void RevertDrill(UnitData unit)
+        {
+            unit.Attack -= unit.DrillAttackBonus;
+            unit.DrillAttackBonus = 0;
         }
 
         private void HealRoundHeroes(ArmyData army)
@@ -435,7 +485,7 @@ namespace Game.Combat
         {
             return BattleAi.ChooseAction(_state.Grid, actor, waitStreak, ownArmy, enemyArmy,
                 _magnitudes, turnOrder, turnIndex, favorableFight,
-                _state.Defender, GetDefenderHexDefenseBonus(map), previousPositions);
+                _state.Defender, GetDefenderHexDefenseBonus(map), previousPositions, _reactions);
         }
 
         public BattleDefenseBreakdown GetDefenseBreakdown(UnitData defender, HexMap map)
@@ -526,10 +576,13 @@ namespace Game.Combat
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
                 roll.AttackerDice, roll.DefenderDice, attacker, defender, magnitudes);
+            // No grid and no rounds here (air strikes / AA fire): Bodyguard, Counterattack and Drill
+            // are tactical-grid skills and never apply; Ionic is already in outcome.Damage.
             var application = new BattleAttackApplication
             {
                 Outcome = outcome,
                 Damage = outcome.Damage,
+                Victim = defender,
             };
             if (defender == null)
                 return application;
@@ -543,20 +596,52 @@ namespace Game.Combat
             return application;
         }
 
+        // isCounterattack: this attack IS a UnitAbilities.Counterattack answer — never intercepted
+        // by a Bodyguard and never answered by another counterattack.
         public BattleAttackApplication ResolveAndApplyGroundAttack(UnitData attacker, UnitData defender,
-            BattleChallengeRollResult roll, UnitData attackerHero = null, UnitData defenderHero = null)
+            BattleChallengeRollResult roll, UnitData attackerHero = null, UnitData defenderHero = null,
+            bool isCounterattack = false)
         {
             ApplyFateState(attackerHero, defenderHero, roll);
             BattleResolutionRules.GroundAttackOutcome outcome = BattleResolutionRules.ResolveGroundAttack(
                 roll.AttackerDice, roll.DefenderDice, attacker, defender, _magnitudes);
-            BattleAttackApplication application = ApplyGroundAttack(attacker, defender, outcome.Damage);
+
+            UnitData victim = defender;
+            int damage = outcome.Damage;
+            UnitData guard = !isCounterattack && damage > 0
+                ? FindInterceptingBodyguard(attacker, defender) : null;
+            if (guard != null)
+            {
+                _reactions.BodyguardsUsed.Add(guard);
+                victim = guard;
+                damage = BattleSimulationKernel.InterceptedDamage(outcome.RawDamage,
+                    attacker.Abilities, guard.TypeTags, guard.Abilities, _magnitudes);
+                BattleDebugLog.Write($"[Bodyguard] {guard.Name} intercepts {attacker?.Name} -> {defender?.Name}: {damage} damage");
+            }
+
+            BattleAttackApplication application = ApplyGroundAttack(attacker, victim, damage);
             application.Outcome = outcome;
+            application.InterceptedBy = guard;
+            if (!isCounterattack && !application.DefenderDied
+                && _state.OwningArmy(victim) != _state.RetreatingArmy
+                && BattleProtectionRules.CanCounterattack(_state.Grid, victim, attacker,
+                    victim.HitPointsCurrent, application.Damage, _reactions))
+            {
+                _reactions.CountersUsed.Add(victim);
+                application.Counterattacker = victim;
+            }
             return application;
         }
 
+        // The Bodyguard that would take a hit `attacker` lands on `defender` right now (null: none).
+        // The attack popup asks the same question before the roll so its projection matches.
+        public UnitData FindInterceptingBodyguard(UnitData attacker, UnitData defender) =>
+            BattleProtectionRules.FindBodyguard(_state.Grid, defender, attacker,
+                u => u.HitPointsCurrent, _reactions);
+
         public BattleAttackApplication ApplyGroundAttack(UnitData attacker, UnitData defender, int damage)
         {
-            var application = new BattleAttackApplication { Damage = Mathf.Max(0, damage) };
+            var application = new BattleAttackApplication { Damage = Mathf.Max(0, damage), Victim = defender };
             if (attacker == null || defender == null)
                 return application;
 
@@ -766,6 +851,8 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
             foreach (UnitData unit in army.Members)
             {
+                if (unit.DrillAttackBonus != 0)
+                    RevertDrill(unit);
                 if (unit.BerserkStacks <= 0)
                     continue;
                 unit.Attack -= unit.BerserkStacks * magnitudes.BerserkAttackGain;

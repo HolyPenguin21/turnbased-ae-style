@@ -15,7 +15,8 @@ namespace Game.Ai.V2
     //  Every bonus has ONE weight here, scaled by the host's own characteristics (an item that
     //  sets Attack to 5 is worth 3 to a scout and 1 to a heavy infantryman; Regeneration is worth
     //  more on a tall, armoured unit). Enemy knowledge only enters as the SHARE of known enemies an
-    //  ability can hit (Hyperkinetic <- armoured, Scorcher/Pyrokinetic <- bio, AA <- aircraft) and
+    //  ability can hit (Hyperkinetic <- armoured, Scorcher/Pyrokinetic <- bio, Ionic <- mechanical,
+    //  AA <- aircraft) and
     //  as mission context multipliers (the host's current assignment). The design table with
     //  worked examples is docs/ai-v2-equipment-efficiency-table.md.
     //
@@ -55,6 +56,7 @@ namespace Game.Ai.V2
         public float ArmyAttack = AiConfigV2.equipHeroArmyAttackDefault;   // hero: the army's mean Attack
         public float ArmoredShare = AiConfigV2.equipDefaultArmoredShare;
         public float BioShare = AiConfigV2.equipDefaultBioShare;
+        public float MechanicalShare = AiConfigV2.equipDefaultMechanicalShare;
         public float AirShare = AiConfigV2.equipDefaultAirShare;
         public float SplashTargets = 1f;      // enemy bodies Splash can reach beside the primary (0..2)
         public float SecondaryNeighbors = 1f; // enemy bodies beside the primary at all (shared by Splash and Scorcher)
@@ -232,6 +234,9 @@ namespace Game.Ai.V2
                 case UnitAbilities.Pyrokinetic:
                     value = hero ? 0f : AiConfigV2.equipPyrokineticFactor * a * ctx.BioShare;
                     return true;
+                case UnitAbilities.Ionic:
+                    value = hero ? 0f : AiConfigV2.equipIonicFactor * a * ctx.MechanicalShare;
+                    return true;
                 case UnitAbilities.ShockAttack:
                     value = hero ? 0f : AiConfigV2.equipShockFactor * a * s.Initiative;
                     return true;
@@ -271,6 +276,7 @@ namespace Game.Ai.V2
             UnitAbilities.Regeneration, UnitAbilities.CeramicArmor, UnitAbilities.CriticalDamage,
             UnitAbilities.Splash, UnitAbilities.Scorcher, UnitAbilities.Hyperkinetic, UnitAbilities.Pyrokinetic,
             UnitAbilities.ShockAttack, UnitAbilities.AntiAir, UnitAbilities.RapidReaction, UnitAbilities.Berserk,
+            UnitAbilities.Ionic, UnitAbilities.Counterattack,
         };
 
         internal static bool IsPriced(string ability)

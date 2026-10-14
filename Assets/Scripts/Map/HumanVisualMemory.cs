@@ -134,6 +134,7 @@ namespace Game.Map
                 Owner = source.Owner,
                 BerserkStacks = source.BerserkStacks,
                 BerserkDefenseLost = source.BerserkDefenseLost,
+                DrillAttackBonus = source.DrillAttackBonus,
                 MoveMax = source.MoveMax,
                 MoveCurrent = source.MoveCurrent,
                 ActivationApCost = source.ActivationApCost,

@@ -257,6 +257,10 @@
         public const float effectShockAttackFit = 0.25f;   // ShockAttack — CombatBody fit (a landed hit cancels the target's pending turn)
         public const float effectBerserkFit = 0.15f;       // Berserk — CombatBody fit (+Attack / -Defense per hit taken)
         public const float effectCeramicArmorFit = 0.25f;  // CeramicArmor — CombatBody fit (every hit taken is reduced)
+        public const float effectIonicFit = 0.30f;         // Ionic — CombatBody fit scaled by known Mechanical enemies near the deploy
+        public const float effectBodyguardFit = 0.20f;     // Bodyguard — CombatBody fit (takes one hit per round for an adjacent ally)
+        public const float effectCounterattackFit = 0.25f; // Counterattack — CombatBody fit (one free answer per round to a melee attacker)
+        public const float effectDrillFit = 0.30f;         // Drill — aura over the dest army's fighters (+Attack to one each round)
         public const float effectProduceResourceFit = 0.30f;// Produce{Human,Energy,Materials,Tech} — maximum strategic value scale for one +1/turn source
         public const float effectRecurringFloor = 0.40f;   // RecurringResource context: multiplier at a secure economy
         // Contextual-scaler norms for the currently-unused effect contexts (ready for AoE / regen /

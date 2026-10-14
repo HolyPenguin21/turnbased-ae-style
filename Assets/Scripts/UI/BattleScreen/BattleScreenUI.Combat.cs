@@ -38,7 +38,9 @@ namespace Game.UI
                 : 0;
         }
 
-        private void BeginAttack(UnitData attacker, UnitData defender)
+        // isCounterattack: a UnitAbilities.Counterattack answer started by OnAttackResolved — it
+        // commits no strategic movement, is never intercepted and is never answered itself.
+        private void BeginAttack(UnitData attacker, UnitData defender, bool isCounterattack = false)
         {
             if (attackPopup == null || attacker == null || defender == null)
                 return;
@@ -59,26 +61,35 @@ namespace Game.UI
                 : default;
 
             // Strategic movement commitment is a battle-state mutation, not UI work.
-            _battleEngine?.CommitGroundAttack(attacker);
+            if (!isCounterattack)
+                _battleEngine?.CommitGroundAttack(attacker);
+
+            // The Bodyguard that would take this hit — the same engine query the resolution
+            // makes, asked before the roll so the Result screen shows the real victim.
+            UnitData interceptor = !isCounterattack
+                ? _battleEngine?.FindInterceptingBodyguard(attacker, defender) : null;
 
             // Heroes on the tactical grid are ordinary attack targets. Their base defense pool
             // is FateMax (resolved by BattleAttackPopupUI/BattleCombatOdds); Capture/Kill remains
             // a separate post-combat/hero-only encounter mechanic.
             attackPopup.Begin(attacker, attackerHero, defender, defenderHero,
                 ResolveCatalog(attacker.Owner)?.logo, ResolveCatalog(defender.Owner)?.logo,
-                roll => OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll),
+                roll => OnAttackResolved(attacker, defender, attackerHero, defenderHero, roll, isCounterattack),
                 ShowAiThought, defenderIsRetreating,
                 defense.TerrainBonus, defense.ConstructionBonus,
-                defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve);
+                defenderFormationBonus: defense.FormationBonus, automateHumanSides: _fastResolve,
+                interceptor: interceptor, isCounterattack: isCounterattack);
         }
 
         private void OnAttackResolved(UnitData attacker, UnitData defender,
-            UnitData attackerHero, UnitData defenderHero, BattleChallengeRollResult roll)
+            UnitData attackerHero, UnitData defenderHero, BattleChallengeRollResult roll,
+            bool isCounterattack = false)
         {
             if (_battleEngine == null)
                 return;
             BattleAttackApplication application = _battleEngine.ResolveAndApplyGroundAttack(
-                attacker, defender, roll, attackerHero, defenderHero);
+                attacker, defender, roll, attackerHero, defenderHero, isCounterattack);
+            UnitData victim = application.Victim ?? defender;
 
             foreach (BattleUnitRemoval removal in application.Removals)
                 ShowUnitRemovalThought(removal);
@@ -86,11 +97,11 @@ namespace Game.UI
             // A surviving AI-controlled target reacts after the engine has applied the hit, so
             // severity reads the authoritative post-hit HP rather than the popup's projection.
             if (!application.DefenderDied && application.Damage > 0
-                && defender.Owner != null && !defender.Owner.IsHuman)
+                && victim.Owner != null && !victim.Owner.IsHuman)
             {
-                bool major = defender.HitPointsMax > 0
-                    && defender.HitPointsCurrent <= defender.HitPointsMax / 3f;
-                ShowArmyThought(OwningArmy(defender),
+                bool major = victim.HitPointsMax > 0
+                    && victim.HitPointsCurrent <= victim.HitPointsMax / 3f;
+                ShowArmyThought(OwningArmy(victim),
                     major ? AiThoughtCategory.DamageTakenMajor : AiThoughtCategory.DamageTakenMinor,
                     attacker?.Name);
             }
@@ -105,19 +116,32 @@ namespace Game.UI
 
             RefreshGrid();
 
+            // A surviving Counterattack carrier answers before the acting unit's turn ends; the
+            // answer resolves through this same method and then ends that same turn.
+            void Continue()
+            {
+                if (CheckBattleEnd())
+                    return;
+                if (application.Counterattacker != null)
+                {
+                    BattleDebugLog.Write($"[Counterattack] {application.Counterattacker.Name} -> {attacker?.Name}");
+                    BeginAttack(application.Counterattacker, attacker, isCounterattack: true);
+                    return;
+                }
+                EndTurn();
+            }
+
             if (secondary.Count > 0)
             {
                 ShowSecondaryResultsThen(attacker, secondary, () =>
                 {
                     RefreshGrid();
-                    if (!CheckBattleEnd())
-                        EndTurn();
+                    Continue();
                 });
                 return;
             }
 
-            if (!CheckBattleEnd())
-                EndTurn();
+            Continue();
         }
 
         private void ShowUnitRemovalThought(BattleUnitRemoval removal)

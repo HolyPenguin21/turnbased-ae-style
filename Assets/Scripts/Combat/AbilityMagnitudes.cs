@@ -15,10 +15,15 @@ namespace Game.Combat
         public readonly int PyrokineticBonusDamage;
         public readonly int BerserkAttackGain;
         public readonly int BerserkDefenseLoss;
+        public readonly int IonicBonusDamage;
+        public readonly int DrillAttackBonus;
 
+        // Ionic/Drill are trailing optionals with the manual defaults so every older call site
+        // (tests pinning the first six numbers) keeps compiling and meaning the same thing.
         public AbilityMagnitudes(float criticalDamageMultiplier, int hyperkineticBonusDamage,
             int ceramicArmorReduction, int pyrokineticBonusDamage,
-            int berserkAttackGain, int berserkDefenseLoss)
+            int berserkAttackGain, int berserkDefenseLoss,
+            int ionicBonusDamage = 2, int drillAttackBonus = 1)
         {
             CriticalDamageMultiplier = criticalDamageMultiplier;
             HyperkineticBonusDamage = hyperkineticBonusDamage;
@@ -26,9 +31,11 @@ namespace Game.Combat
             PyrokineticBonusDamage = pyrokineticBonusDamage;
             BerserkAttackGain = berserkAttackGain;
             BerserkDefenseLoss = berserkDefenseLoss;
+            IonicBonusDamage = ionicBonusDamage;
+            DrillAttackBonus = drillAttackBonus;
         }
 
         // Same manual-default fallback numbers every live call site uses when the catalog is absent.
-        public static readonly AbilityMagnitudes Default = new AbilityMagnitudes(2f, 2, 1, 2, 1, 1);
+        public static readonly AbilityMagnitudes Default = new AbilityMagnitudes(2f, 2, 1, 2, 1, 1, 2, 1);
     }
 }

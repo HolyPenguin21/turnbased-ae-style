@@ -97,6 +97,10 @@ namespace Game.Campaign
             if (bodies.Any(h => h.Card.unitTypeTags.Contains(UnitTypeTag.Bio) && h.Line.HitPoints > 1))
                 ground *= 1 + hosts.Count(h => h.Card.cardType == CardType.Hero
                     && h.Line.EffectiveAbilities.Contains(UnitAbilities.Heal)) * AiConfigV2.powerBumpRegeneration;
+            // A Drill hero lifts one fighter's Attack every round: same formation-option treatment.
+            if (bodies.Count > 0)
+                ground *= 1 + hosts.Count(h => h.Card.cardType == CardType.Hero
+                    && h.Line.EffectiveAbilities.Contains(UnitAbilities.Drill)) * AiConfigV2.powerBumpDrill;
             return ground * quality + air * AviationWeight;
         }
         private static double CommanderValue(List<Host> hosts) => hosts.Where(h => h.Card.cardType == CardType.Hero)

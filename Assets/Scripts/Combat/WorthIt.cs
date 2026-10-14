@@ -120,10 +120,10 @@ namespace Game.Combat
                     hash = (hash * 31 + 101 + attackerCommander.Initiative) * 31 + attackerCommander.Fate;
                 if (defenderCommander.Present)
                     hash = (hash * 31 + 211 + defenderCommander.Initiative) * 31 + defenderCommander.Fate;
-                if (attackerCommander.HealingHeroes != null)
-                    foreach (DefenderProfile hero in attackerCommander.HealingHeroes) hash = AccumulateProfileHash(hash, hero);
-                if (defenderCommander.HealingHeroes != null)
-                    foreach (DefenderProfile hero in defenderCommander.HealingHeroes) hash = AccumulateProfileHash(hash, hero);
+                if (attackerCommander.SupportHeroes != null)
+                    foreach (DefenderProfile hero in attackerCommander.SupportHeroes) hash = AccumulateProfileHash(hash, hero);
+                if (defenderCommander.SupportHeroes != null)
+                    foreach (DefenderProfile hero in defenderCommander.SupportHeroes) hash = AccumulateProfileHash(hash, hero);
                 foreach (DefenderProfile p in attackerUnits)
                     hash = AccumulateProfileHash(hash, p);
                 hash = hash * 31 + 12345; // separates the two rosters — an empty attacker side must
@@ -184,26 +184,27 @@ namespace Game.Combat
             public readonly bool Present;
             public readonly int Initiative;
             public readonly int Fate;
-            // Body-only army snapshots still need the actual passive healers, including
-            // secondary heroes. Their HP/tags/abilities are frozen knowledge, not live reads.
-            public readonly IReadOnlyList<DefenderProfile> HealingHeroes;
+            // Body-only army snapshots still need the heroes whose passive battle skills act —
+            // Heal (a wounded Bio ally) and Drill (an ally's Attack) — including secondary heroes.
+            // Their HP/tags/abilities are frozen knowledge, not live reads.
+            public readonly IReadOnlyList<DefenderProfile> SupportHeroes;
 
-            public SideCommander(int initiative, int fate, IReadOnlyList<DefenderProfile> healingHeroes = null)
+            public SideCommander(int initiative, int fate, IReadOnlyList<DefenderProfile> supportHeroes = null)
             {
                 Present = true;
                 Initiative = initiative;
                 Fate = Mathf.Max(0, fate);
-                HealingHeroes = healingHeroes;
+                SupportHeroes = supportHeroes;
             }
 
             public static SideCommander Of(UnitData hero) =>
                 hero == null ? default : new SideCommander(hero.Initiative, hero.Fate,
-                    hero.HitPointsCurrent > 0 && !hero.IsPrisoner && hero.HasAbility(UnitAbilities.Heal)
+                    hero.HitPointsCurrent > 0 && !hero.IsPrisoner && IsSupportHero(hero.Abilities)
                     ? new[] { FromLiveUnit(hero) } : null);
             // A hero that is still a card (an event guard, a hero about to be played).
             public static SideCommander Of(CardDefinition hero) =>
                 hero == null ? default : new SideCommander(hero.initiative, hero.fate,
-                    hero.grantedAbilities != null && hero.grantedAbilities.Contains(UnitAbilities.Heal)
+                    IsSupportHero(hero.grantedAbilities)
                     ? new[] { new DefenderProfile(hero.fate, false, hero.unitTypeTags, hero.attack,
                         hero.hitPoints, hero.initiative, hero.grantedAbilities, hero.hitPoints,
                         isGroundCombatant: false, isHero: true, fateMax: hero.fate, range: hero.range) } : null);
@@ -212,18 +213,18 @@ namespace Game.Combat
                 var roster = members?.ToList();
                 UnitData commander = ArmyData.CommanderOf(roster);
                 if (commander == null) return default;
-                var healers = roster.Where(u => u != null && u.IsHero && !u.IsPrisoner
-                    && u.HitPointsCurrent > 0 && u.HasAbility(UnitAbilities.Heal)).Select(FromLiveUnit).ToList();
-                return new SideCommander(commander.Initiative, commander.Fate, healers.Count > 0 ? healers : null);
+                var support = roster.Where(u => u != null && u.IsHero && !u.IsPrisoner
+                    && u.HitPointsCurrent > 0 && IsSupportHero(u.Abilities)).Select(FromLiveUnit).ToList();
+                return new SideCommander(commander.Initiative, commander.Fate, support.Count > 0 ? support : null);
             }
 
             public bool Equals(SideCommander other)
             {
                 if (Present != other.Present || Initiative != other.Initiative || Fate != other.Fate
-                    || (HealingHeroes?.Count ?? 0) != (other.HealingHeroes?.Count ?? 0)) return false;
-                for (int i = 0; i < (HealingHeroes?.Count ?? 0); i++)
+                    || (SupportHeroes?.Count ?? 0) != (other.SupportHeroes?.Count ?? 0)) return false;
+                for (int i = 0; i < (SupportHeroes?.Count ?? 0); i++)
                 {
-                    DefenderProfile a = HealingHeroes[i], b = other.HealingHeroes[i];
+                    DefenderProfile a = SupportHeroes[i], b = other.SupportHeroes[i];
                     if (a.HitPoints != b.HitPoints || a.MaxHitPoints != b.MaxHitPoints
                         || a.Defense != b.Defense || a.FateMax != b.FateMax || a.Initiative != b.Initiative
                         || !a.Abilities.SequenceEqual(b.Abilities) || !a.TypeTags.SequenceEqual(b.TypeTags)) return false;
@@ -233,6 +234,11 @@ namespace Game.Combat
             public override bool Equals(object obj) => obj is SideCommander other && Equals(other);
             public override int GetHashCode() => unchecked((Present ? 1 : 0) * 397 ^ Initiative * 31 ^ Fate);
         }
+
+        // A hero whose passive skill acts in battle although heroes never take a turn: Heal and
+        // Drill. Such heroes stay in the simulated roster (SideCommander.SupportHeroes).
+        private static bool IsSupportHero(IEnumerable<string> abilities) =>
+            abilities != null && abilities.Any(a => a == UnitAbilities.Heal || a == UnitAbilities.Drill);
 
         // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
         // (FateDuelOrder — defender first, sides alternate while anyone spends; each
@@ -276,6 +282,9 @@ namespace Game.Combat
             public bool IsHero;
             public int HeroFate;
             public bool IsSummoned;
+            // Attack range (-1: unknown). Positions do not exist here, so a Range-1 (or unknown)
+            // attacker is the one that stands within reach of a Counterattack answer.
+            public int Range;
 
             public bool HasAbility(string ability) => Abilities != null && Abilities.Contains(ability);
 
@@ -304,9 +313,9 @@ namespace Game.Combat
             {
                 list.Add(ToBattleUnit(p, extraDefense, initiativeBonus));
             }
-            int represented = list.Count(u => u.IsHero && u.HasAbility(UnitAbilities.Heal));
-            for (int i = represented; i < (commander.HealingHeroes?.Count ?? 0); i++)
-                list.Add(ToBattleUnit(commander.HealingHeroes[i], extraDefense, 0));
+            int represented = list.Count(u => u.IsHero && IsSupportHero(u.Abilities));
+            for (int i = represented; i < (commander.SupportHeroes?.Count ?? 0); i++)
+                list.Add(ToBattleUnit(commander.SupportHeroes[i], extraDefense, 0));
             return list;
         }
 
@@ -327,6 +336,7 @@ namespace Game.Combat
                 IsHero = p.IsHero,
                 HeroFate = p.FateMax,
                 IsSummoned = p.IsSummoned,
+                Range = p.Range,
             };
         }
 
@@ -353,6 +363,7 @@ namespace Game.Combat
                     IsHero = m.IsHero,
                     HeroFate = Mathf.Max(0, m.FateMax),
                     IsSummoned = m.IsSummoned,
+                    Range = m.Range,
                 });
             return list;
         }
@@ -492,6 +503,10 @@ namespace Game.Combat
             internal readonly List<(bool isAttacker, int index)> Order;
             internal readonly HashSet<(bool isAttacker, int index)> Acted = new HashSet<(bool, int)>();
             internal readonly HashSet<(bool isAttacker, int index)> Suppressed = new HashSet<(bool, int)>();
+            // Per round: Bodyguard / Counterattack reactions spent, Drill bonuses handed out.
+            internal readonly HashSet<(bool isAttacker, int index)> BodyguardsUsed = new HashSet<(bool, int)>();
+            internal readonly HashSet<(bool isAttacker, int index)> CountersUsed = new HashSet<(bool, int)>();
+            internal readonly List<(bool isAttacker, int index)> Drilled = new List<(bool, int)>();
             internal readonly List<int> LivingTargets;
             internal readonly List<int> SecondaryTargets;
             internal readonly System.Comparison<(bool isAttacker, int index)> ByInitiativeDescending;
@@ -514,6 +529,7 @@ namespace Game.Combat
             {
                 _attackers = attackers; _defenders = defenders;
                 Order.Clear(); Acted.Clear(); Suppressed.Clear();
+                BodyguardsUsed.Clear(); CountersUsed.Clear(); Drilled.Clear();
                 LivingTargets.Clear(); SecondaryTargets.Clear();
             }
         }
@@ -531,6 +547,116 @@ namespace Game.Combat
             side[index] = target;
         }
 
+        // UnitAbilities.Drill at round start — the live rule (BattleSimulationKernel.
+        // SelectDrillTargets) on this roster; RevertRosterDrill takes the bonus back off.
+        private static void ApplyRosterDrill(List<BattleUnit> side, bool isAttacker,
+            List<(bool isAttacker, int index)> drilled, AbilityMagnitudes magnitudes)
+        {
+            int carriers = 0;
+            for (int i = 0; i < side.Count; i++)
+                if (side[i].Hp > 0f && side[i].HasAbility(UnitAbilities.Drill))
+                    carriers++;
+            if (carriers == 0 || magnitudes.DrillAttackBonus == 0)
+                return;
+            foreach (int index in BattleSimulationKernel.SelectDrillTargets(side.Count, carriers,
+                         i => !side[i].IsHero && side[i].Hp > 0f, i => Mathf.RoundToInt(side[i].Attack)))
+            {
+                BattleUnit u = side[index];
+                u.Attack += magnitudes.DrillAttackBonus;
+                side[index] = u;
+                drilled.Add((isAttacker, index));
+            }
+        }
+
+        private static void RevertRosterDrill(List<BattleUnit> attackers, List<BattleUnit> defenders,
+            List<(bool isAttacker, int index)> drilled, AbilityMagnitudes magnitudes)
+        {
+            foreach ((bool isAttacker, int index) in drilled)
+            {
+                List<BattleUnit> side = isAttacker ? attackers : defenders;
+                BattleUnit u = side[index];
+                u.Attack -= magnitudes.DrillAttackBonus;
+                side[index] = u;
+            }
+            drilled.Clear();
+        }
+
+        // UnitAbilities.Bodyguard on a roster: positions do not exist, so — the same
+        // approximation Splash makes for its neighbours — any living unspent guard of the hit side
+        // counts as adjacent. The most HP wins, the lowest index on a tie (BattleProtectionRules).
+        private static int FindRosterBodyguard(List<BattleUnit> side, int targetIndex, bool sideIsAttacker,
+            HashSet<(bool isAttacker, int index)> used)
+        {
+            int best = -1;
+            float bestHp = 0f;
+            for (int i = 0; i < side.Count; i++)
+            {
+                BattleUnit u = side[i];
+                if (i == targetIndex || u.IsHero || u.Hp <= bestHp || !u.HasAbility(UnitAbilities.Bodyguard)
+                    || used.Contains((sideIsAttacker, i)))
+                    continue;
+                best = i;
+                bestHp = u.Hp;
+            }
+            return best;
+        }
+
+        // One resolved exchange landing on list[index] (the hit side is attackers when
+        // hitSideIsAttacker): HP, the victim's Berserk, Commander hand-over, then Splash/Scorcher
+        // around it — this roster model has no positions, so "neighbours" are random OTHER living
+        // units (a no-op for an actor with neither skill). Returns whether the hit suppresses the
+        // victim's pending turn (ShockAttack).
+        private static bool ApplyRosterHit(List<BattleUnit> list, int index, BattleUnit actor,
+            BattleSimExchangeOutcome exchange, bool hitSideIsAttacker, System.Random rng,
+            AbilityMagnitudes magnitudes, SimulationScratch scratch, ref int attackerFate, ref int defenderFate,
+            List<BattleUnit> attackers, List<BattleUnit> defenders)
+        {
+            BattleUnit target = list[index];
+            float targetHp = target.Hp;
+            int transientAttack = Mathf.RoundToInt(target.Attack);
+            int transientDefense = Mathf.RoundToInt(target.Defense);
+            BattleSimulationKernel.ApplyPrimaryOutcome(
+                exchange, actor.Abilities, target.Abilities,
+                ref targetHp, ref transientAttack, ref transientDefense,
+                magnitudes, out bool suppressesTurn);
+            target.Hp = targetHp;
+            target.Attack = transientAttack;
+            target.Defense = transientDefense;
+            list[index] = target;
+
+            if (target.IsHero && target.Hp <= 0f)
+            {
+                if (hitSideIsAttacker)
+                    TransferCommanderAfterHeroDeath(attackers, index, ref attackerFate);
+                else
+                    TransferCommanderAfterHeroDeath(defenders, index, ref defenderFate);
+            }
+
+            if (exchange.Damage > 0)
+            {
+                int commanderBefore = FirstLivingHeroIndex(list);
+                ApplyRosterSplash(list, index, actor, exchange.Damage, rng, magnitudes,
+                    scratch.SecondaryTargets);
+                // A Commander killed by a side-hit hands over command like a primary kill.
+                if (commanderBefore >= 0 && list[commanderBefore].Hp <= 0f)
+                {
+                    if (hitSideIsAttacker)
+                        TransferCommanderAfterHeroDeath(attackers, commanderBefore, ref attackerFate);
+                    else
+                        TransferCommanderAfterHeroDeath(defenders, commanderBefore, ref defenderFate);
+                }
+            }
+            return suppressesTurn;
+        }
+
+        private static bool AnyCarries(List<BattleUnit> side, string ability)
+        {
+            for (int i = 0; i < side.Count; i++)
+                if (side[i].HasAbility(ability))
+                    return true;
+            return false;
+        }
+
         private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
             System.Random rng, int attackerFate = 0, int defenderFate = 0,
             AbilityMagnitudes? magnitudesOverride = null, SimulationScratch scratch = null)
@@ -542,12 +668,24 @@ namespace Game.Combat
             var acted = scratch.Acted;
             var suppressed = scratch.Suppressed;
             var livingTargets = scratch.LivingTargets;
+            // Battle-constant skill presence: rosters never gain abilities mid-battle, so sides
+            // without Bodyguard/Counterattack/Drill skip those checks on the hot path entirely.
+            bool attackersGuard = AnyCarries(attackers, UnitAbilities.Bodyguard);
+            bool defendersGuard = AnyCarries(defenders, UnitAbilities.Bodyguard);
+            bool anyCounter = AnyCarries(attackers, UnitAbilities.Counterattack)
+                || AnyCarries(defenders, UnitAbilities.Counterattack);
+            bool attackersDrill = AnyCarries(attackers, UnitAbilities.Drill);
+            bool defendersDrill = AnyCarries(defenders, UnitAbilities.Drill);
             for (int round = 0; round < MaxSimulatedRounds && AnyCombatantAlive(attackers) && AnyCombatantAlive(defenders); round++)
             {
                 for (int i = 0; i < attackers.Count; i++)
                     if (attackers[i].IsHero) ApplyHealing(attackers, i, rng);
                 for (int i = 0; i < defenders.Count; i++)
                     if (defenders[i].IsHero) ApplyHealing(defenders, i, rng);
+                scratch.BodyguardsUsed.Clear();
+                scratch.CountersUsed.Clear();
+                if (attackersDrill) ApplyRosterDrill(attackers, true, scratch.Drilled, magnitudes);
+                if (defendersDrill) ApplyRosterDrill(defenders, false, scratch.Drilled, magnitudes);
                 order.Clear();
                 for (int i = 0; i < attackers.Count; i++) if (!attackers[i].IsHero) order.Add((true, i));
                 for (int i = 0; i < defenders.Count; i++) if (!defenders[i].IsHero) order.Add((false, i));
@@ -606,17 +744,27 @@ namespace Game.Combat
                         ? ResolveExchange(actor, target, ref attackerFate, ref defenderFate, rng, magnitudes)
                         : ResolveExchange(actor, target, ref defenderFate, ref attackerFate, rng, magnitudes);
 
-                    float targetHp = target.Hp;
-                    int transientAttack = Mathf.RoundToInt(target.Attack);
-                    int transientDefense = Mathf.RoundToInt(target.Defense);
-                    BattleSimulationKernel.ApplyPrimaryOutcome(
-                        exchange, actor.Abilities, target.Abilities,
-                        ref targetHp, ref transientAttack, ref transientDefense,
-                        magnitudes, out bool suppressesTurn);
-                    target.Hp = targetHp;
-                    target.Attack = transientAttack;
-                    target.Defense = transientDefense;
+                    // UnitAbilities.Bodyguard — a landed hit goes to the hit side's guard, re-run
+                    // against its own tags/armor; the guard is the victim from here on.
+                    if (exchange.Damage > 0 && (turn.isAttacker ? defendersGuard : attackersGuard))
+                    {
+                        int guard = FindRosterBodyguard(enemyList, targetIndex, !turn.isAttacker,
+                            scratch.BodyguardsUsed);
+                        if (guard >= 0)
+                        {
+                            scratch.BodyguardsUsed.Add((!turn.isAttacker, guard));
+                            int intercepted = BattleSimulationKernel.InterceptedDamage(
+                                exchange.AttackerSuccesses - exchange.DefenderSuccesses, actor.Abilities,
+                                enemyList[guard].TypeTags, enemyList[guard].Abilities, magnitudes);
+                            exchange = new BattleSimExchangeOutcome(intercepted, intercepted > 0,
+                                exchange.AttackerSuccesses, exchange.DefenderSuccesses);
+                            targetIndex = guard;
+                        }
+                    }
 
+                    bool suppressesTurn = ApplyRosterHit(enemyList, targetIndex, actor, exchange,
+                        !turn.isAttacker, rng, magnitudes, scratch, ref attackerFate, ref defenderFate,
+                        attackers, defenders);
                     if (suppressesTurn)
                     {
                         var targetTurn = (!turn.isAttacker, targetIndex);
@@ -624,35 +772,29 @@ namespace Game.Combat
                             suppressed.Add(targetTurn);
                     }
 
-                    enemyList[targetIndex] = target;
-                    if (target.IsHero && target.Hp <= 0f)
+                    // UnitAbilities.Counterattack — a surviving victim answers a Range-1 (or
+                    // unknown-range) attacker at once: never intercepted, never answered itself.
+                    if (anyCounter)
                     {
-                        if (turn.isAttacker)
-                            TransferCommanderAfterHeroDeath(defenders, targetIndex, ref defenderFate);
-                        else
-                            TransferCommanderAfterHeroDeath(attackers, targetIndex, ref attackerFate);
-                    }
-
-                    // UnitAbilities.Splash / Scorcher — this roster model has no positions, so
-                    // "neighbours" is approximated as random OTHER living enemies. No-op for an
-                    // actor with neither ability, so every existing trial is unchanged.
-                    if (exchange.Damage > 0)
-                    {
-                        int commanderBefore = FirstLivingHeroIndex(enemyList);
-                        ApplyRosterSplash(enemyList, targetIndex, actor, exchange.Damage, rng, magnitudes,
-                            scratch.SecondaryTargets);
-                        // A Commander killed by a side-hit hands over command like a primary kill.
-                        if (commanderBefore >= 0 && enemyList[commanderBefore].Hp <= 0f)
+                        BattleUnit victim = enemyList[targetIndex];
+                        var victimTurn = (!turn.isAttacker, targetIndex);
+                        if (BattleSimulationKernel.TriggersCounterattack(victim.Abilities, victim.IsHero,
+                                victim.Hp, actor.Range <= 1, scratch.CountersUsed.Contains(victimTurn),
+                                exchange.Damage, actor.Abilities))
                         {
-                            if (turn.isAttacker)
-                                TransferCommanderAfterHeroDeath(defenders, commanderBefore, ref defenderFate);
-                            else
-                                TransferCommanderAfterHeroDeath(attackers, commanderBefore, ref attackerFate);
+                            scratch.CountersUsed.Add(victimTurn);
+                            BattleUnit answered = ownList[turn.index];
+                            BattleSimExchangeOutcome answer = turn.isAttacker
+                                ? ResolveExchange(victim, answered, ref defenderFate, ref attackerFate, rng, magnitudes)
+                                : ResolveExchange(victim, answered, ref attackerFate, ref defenderFate, rng, magnitudes);
+                            ApplyRosterHit(ownList, turn.index, victim, answer, turn.isAttacker, rng, magnitudes,
+                                scratch, ref attackerFate, ref defenderFate, attackers, defenders);
                         }
                     }
 
                     acted.Add(turn);
                 }
+                RevertRosterDrill(attackers, defenders, scratch.Drilled, magnitudes);
             }
 
             bool attackersAlive = AnyCombatantAlive(attackers);

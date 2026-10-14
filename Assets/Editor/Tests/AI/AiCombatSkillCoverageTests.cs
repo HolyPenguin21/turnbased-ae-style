@@ -16,6 +16,7 @@ namespace Game.EditorTests
             UnitAbilities.CriticalDamage, UnitAbilities.CeramicArmor, UnitAbilities.Berserk,
             UnitAbilities.ShockAttack, UnitAbilities.Hyperkinetic, UnitAbilities.Pyrokinetic,
             UnitAbilities.Splash, UnitAbilities.Scorcher, UnitAbilities.RaiseTheRots, UnitAbilities.Heal,
+            UnitAbilities.Ionic, UnitAbilities.Bodyguard, UnitAbilities.Counterattack, UnitAbilities.Drill,
         };
 
         private static float ProfilePower(params string[] abilities) =>
@@ -55,6 +56,7 @@ namespace Game.EditorTests
                      {
                          UnitAbilities.Pyrokinetic, UnitAbilities.ShockAttack,
                          UnitAbilities.Berserk, UnitAbilities.CeramicArmor,
+                         UnitAbilities.Ionic, UnitAbilities.Counterattack,
                      })
             {
                 StrategicEffect effect = StrategicEffectRegistry.Resolve(new[] { skill }, 0).Single();
@@ -124,6 +126,7 @@ namespace Game.EditorTests
             foreach (string skill in new[]
                      {
                          UnitAbilities.ShockAttack, UnitAbilities.Berserk, UnitAbilities.CriticalDamage,
+                         UnitAbilities.Counterattack, UnitAbilities.Bodyguard,
                      })
             {
                 Assert.That(Fit(CardType.Hero, skill), Is.EqualTo(heroPlain).Within(1e-5f), skill);
@@ -141,9 +144,24 @@ namespace Game.EditorTests
             foreach (string skill in new[]
                      {
                          UnitAbilities.ShockAttack, UnitAbilities.Berserk, UnitAbilities.CeramicArmor,
+                         UnitAbilities.Counterattack, UnitAbilities.Bodyguard,
                      })
                 Assert.That(StrategicEffectRegistry.Contributions(
                     IntendedRole.CombatBody, new[] { skill }, 0, ctx).RoleFit, Is.GreaterThan(plain), skill);
+        }
+
+        // Drill is an aura over the destination army's fighters, usable on a hero card (not
+        // BodyOnly); only ground combatants count as the bodies it buffs.
+        [Test]
+        public void Drill_IsAnAllyAuraRow()
+        {
+            StrategicEffect effect = StrategicEffectRegistry.Resolve(new[] { UnitAbilities.Drill }, 0).Single();
+            Assert.That(effect.Context, Is.EqualTo(StrategicEffectContext.EligibleAllies));
+            Assert.That(effect.Scope, Is.EqualTo(EffectScope.DestArmy));
+            Assert.That(effect.BodyOnly, Is.False);
+            Assert.That(effect.EligiblePredicate(new WorthIt.DefenderProfile(1f, false)), Is.True);
+            Assert.That(effect.EligiblePredicate(new WorthIt.DefenderProfile(1f, false,
+                isGroundCombatant: false, isHero: true)), Is.False);
         }
     }
 }

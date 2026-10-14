@@ -1392,6 +1392,7 @@ namespace Game.Ai.V2
                 var shares = EquipmentTargetMemo.Shares(targets);
                 ctx.ArmoredShare = shares.Armored;
                 ctx.BioShare = shares.Bio;
+                ctx.MechanicalShare = shares.Mechanical;
                 ctx.AirShare = shares.Air;
             }
             if (opposition.Count > 0)
@@ -1706,12 +1707,12 @@ namespace Game.Ai.V2
                 if (s_current != null) s_current._sets[(snap, purpose)] = targets;
             }
 
-            // Armoured / bio / air shares of one target list: the list is shared by every pair priced
+            // Armoured / bio / air / mechanical shares of one target list: the list is shared by every pair priced
             // against the same snapshot + purpose, so it is scanned once (reference-keyed).
-            private readonly Dictionary<List<WorthIt.DefenderProfile>, (float Armored, float Bio, float Air)> _shares
+            private readonly Dictionary<List<WorthIt.DefenderProfile>, (float Armored, float Bio, float Air, float Mechanical)> _shares
                 = new();
 
-            internal static (float Armored, float Bio, float Air) Shares(List<WorthIt.DefenderProfile> targets)
+            internal static (float Armored, float Bio, float Air, float Mechanical) Shares(List<WorthIt.DefenderProfile> targets)
             {
                 if (s_current != null && s_current._shares.TryGetValue(targets, out var hit))
                     return hit;
@@ -1721,7 +1722,8 @@ namespace Game.Ai.V2
                         || t.TypeTags.Contains(UnitTypeTag.Vehicle) || t.TypeTags.Contains(UnitTypeTag.Mecha))) / n,
                     targets.Count(t => t.TypeTags != null && (t.TypeTags.Contains(UnitTypeTag.Bio)
                         || t.TypeTags.Contains(UnitTypeTag.Infantry))) / n,
-                    targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Aircraft)) / n);
+                    targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Aircraft)) / n,
+                    targets.Count(t => t.TypeTags != null && t.TypeTags.Contains(UnitTypeTag.Mechanical)) / n);
                 if (s_current != null) s_current._shares[targets] = shares;
                 return shares;
             }

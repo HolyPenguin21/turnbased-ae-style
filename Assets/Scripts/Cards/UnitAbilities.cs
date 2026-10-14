@@ -88,6 +88,32 @@ namespace Game.Cards
         // Persistent support for one slower Infantry in the same army, up to the carrier's MoveMax.
         public const string Transport = "Transport";
 
+        // "+2 damage against Mechanical-tagged targets, if the attack already dealt at least 1
+        // damage" — the Mechanical counterpart of Hyperkinetic (Armored) and Pyrokinetic (Bio).
+        // See UnitAbilityCatalog.ionicBonusDamage, ChallengeResult.ApplyAbilityModifiers.
+        public const string Ionic = "Ionic";
+
+        // Once per round, a primary Ground Combat hit on an orthogonally-adjacent ally of the
+        // carrier (same owner) lands on the carrier instead: the rolled dice stand, the damage is
+        // re-run through ApplyAbilityModifiers against the carrier (its own tags/CeramicArmor),
+        // and the carrier becomes the victim for Berserk/Shock/Splash/Counterattack. Several
+        // eligible carriers: the one with the most current HP. A hero never guards, and a
+        // counterattack is never intercepted. See BattleProtectionRules.FindBodyguard.
+        public const string Bodyguard = "Bodyguard";
+
+        // Once per round, a carrier that survives a primary Ground Combat attack made from within
+        // 1 cell (square range, diagonals included) immediately attacks the attacker back — an
+        // ordinary Challenge with dice, Fate and every attacker-side skill, except that it is
+        // never countered or intercepted itself. A ShockAttack hit, a hero carrier or a retreating
+        // army cancels it. See BattleProtectionRules.CanCounterattack.
+        public const string Counterattack = "Counterattack";
+
+        // At the start of every combat round each carrier on the grid (usually a hero) gives
+        // UnitAbilityCatalog.drillAttackBonus Attack, until that round ends, to the ground
+        // combatant of its own side with the highest Attack — a different one per carrier. See
+        // BattleSimulationKernel.SelectDrillTargets and UnitData.DrillAttackBonus.
+        public const string Drill = "Drill";
+
         // Parameterized reconnaissance tags (replaced the old bool "Recce" + shared
         // UnitAbilityCatalog.recceRadius/recceStrength — project owner's own call, see the
         // stealth design). Grammar is r<radius>s<spot>: army vision +<radius> hexes (see
@@ -217,7 +243,7 @@ namespace Game.Cards
         public static readonly string[] All =
         {
             CriticalDamage, CeramicArmor, Berserk, RapidReaction, ShockAttack, Hyperkinetic, Pyrokinetic,
-            Splash, Scorcher, RaiseTheRots, Heal, Transport,
+            Splash, Scorcher, RaiseTheRots, Heal, Transport, Ionic, Bodyguard, Counterattack, Drill,
             R1S0, R1S4, R1S5, R1S6, Stealth4, AntiAir, ApBonus,
             Barracks, Research, Researcher, Production, Assembler,
             CollectHuman, CollectEnergy, CollectMaterials, CollectTech,

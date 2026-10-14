@@ -24,9 +24,12 @@ namespace Game.Combat
             }
         }
 
+        // interceptor: the UnitAbilities.Bodyguard that takes any landed hit on `defender` — the
+        // dice stay attacker vs defender, a hit's damage is re-run against the interceptor, and
+        // `defenderHp` must then be the interceptor's HP (it is the one that can die).
         public static ExchangeOdds Evaluate(UnitData attacker, UnitData defender, int defenderBonusDice,
             AbilityMagnitudes magnitudes, float defenderHp, int? attackDiceOverride = null,
-            int? defenderDefenseOverride = null)
+            int? defenderDefenseOverride = null, UnitData interceptor = null)
         {
             if (attacker == null || defender == null)
                 return default;
@@ -52,6 +55,9 @@ namespace Game.Combat
 
                     int raw = Mathf.Max(0, a - d);
                     int damage = ChallengeResult.ApplyAbilityModifiers(raw, attacker, defender, magnitudes);
+                    if (interceptor != null && damage > 0)
+                        damage = BattleSimulationKernel.InterceptedDamage(raw, attacker.Abilities,
+                            interceptor.TypeTags, interceptor.Abilities, magnitudes);
                     expected += probability * damage;
                     if (damage > 0)
                         hitProbability += probability;

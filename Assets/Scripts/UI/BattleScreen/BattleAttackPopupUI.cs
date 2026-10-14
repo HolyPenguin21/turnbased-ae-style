@@ -132,6 +132,9 @@ namespace Game.UI
 
         private UnitData _attacker;
         private UnitData _defender;
+        // Ground Combat only: the UnitAbilities.Bodyguard that takes a landed hit instead of
+        // _defender (BattleEngine.FindInterceptingBodyguard, asked by the caller before the roll).
+        private UnitData _interceptor;
         private UnitData _attackerHero;
         private UnitData _defenderHero;
         // Whether the DEFENDER's own army is the one currently retreating (see BattleScreenUI.
@@ -264,7 +267,7 @@ namespace Game.UI
             Sprite attackerLogo, Sprite defenderLogo, Action<BattleChallengeRollResult> onResolved, Action<UnitData, AiThoughtCategory, string> onAiThought = null,
             bool defenderIsRetreating = false, int defenderTerrainBonus = 0, int defenderConstructionBonus = 0,
             int? attackerPoolSize = null, int? defenderPoolSize = null, int defenderFormationBonus = 0,
-            bool automateHumanSides = false)
+            bool automateHumanSides = false, UnitData interceptor = null, bool isCounterattack = false)
         {
             int defenderBonusDice = defenderTerrainBonus + defenderConstructionBonus + defenderFormationBonus;
             // Stops a still-running RunRollAndDuel/RunDuel coroutine from a PREVIOUS Begin() on
@@ -279,6 +282,7 @@ namespace Game.UI
             _kind = ChallengeKind.GroundCombat;
             _attacker = attacker;
             _defender = defender;
+            _interceptor = interceptor;
             _attackerHero = attackerHero;
             _defenderHero = defenderHero;
             _attackerFateRemaining = Mathf.Max(0, attackerHero?.Fate ?? 0);
@@ -310,7 +314,7 @@ namespace Game.UI
             // user's own request: the title should read "Capture/Kill Challenge" specifically
             // for that flow, not the generic one this popup defaults to).
             if (titleText != null)
-                titleText.text = "GROUND COMBAT";
+                titleText.text = isCounterattack ? "COUNTERATTACK" : "GROUND COMBAT";
 
             _attackerDicePoolSize = attackerPoolSize ?? (attacker?.Attack ?? 0);
             int defenderBaseDefense = defender == null ? 0
@@ -470,6 +474,7 @@ namespace Game.UI
             // correctly; _defender stays null (there is no defender unit).
             _attacker = hero;
             _defender = null;
+            _interceptor = null;
             _attackerHero = hero;
             _defenderHero = null;
             _attackerDice = null;
@@ -1175,19 +1180,31 @@ namespace Game.UI
             int damage = outcome.Damage;
             var appliedAbilities = new List<string>(outcome.AppliedAbilities);
 
+            // UnitAbilities.Bodyguard: a landed hit goes to the guard instead, re-run against its
+            // own tags/armor — the same rule BattleEngine.ResolveAndApplyGroundAttack applies.
+            UnitData victim = _defender;
+            if (_interceptor != null && damage > 0 && _attacker != null)
+            {
+                victim = _interceptor;
+                damage = ChallengeResult.ApplyAbilityModifiers(outcome.RawDamage, _attacker, _interceptor,
+                    Magnitudes, out List<string> guardAbilities);
+                appliedAbilities = guardAbilities;
+                appliedAbilities.Add(UnitAbilities.Bodyguard);
+            }
+
             // Presentation only: BattleEngine applies HP/Berserk/removal after the player
             // acknowledges this result. Keep a projected HP here so the Result panel can display
             // the post-hit value without mutating battle state inside the UI.
-            int projectedHp = _defender != null
-                ? Mathf.Max(0, _defender.HitPointsCurrent - damage)
+            int projectedHp = victim != null
+                ? Mathf.Max(0, victim.HitPointsCurrent - damage)
                 : 0;
-            bool died = _defender != null && projectedHp <= 0;
+            bool died = victim != null && projectedHp <= 0;
 
             BattleDebugLog.Write($"[ResolveDiag] {_attacker?.Name} -> {_defender?.Name}: " +
                 $"rawSuccesses(attacker={outcome.AttackerSuccesses},defender={outcome.DefenderSuccesses}) wasHit={wasHit} " +
                 $"finalDamage={damage} appliedAbilities=[{(appliedAbilities != null ? string.Join(",", appliedAbilities) : string.Empty)}] " +
-                $"projectedDefenderHp={projectedHp}/{_defender?.HitPointsMax ?? 0} died={died}");
-            ShowResult(damage, died, wasHit, appliedAbilities, projectedHp);
+                $"victim={victim?.Name} projectedVictimHp={projectedHp}/{victim?.HitPointsMax ?? 0} died={died}");
+            ShowResult(damage, died, wasHit, appliedAbilities, projectedHp, victim);
         }
 
         // Public so BattleScreenUI.ConsiderAiRetreat can feed the same tunable magnitudes into
@@ -1280,7 +1297,9 @@ namespace Game.UI
                 StartCoroutine(AutoCloseResultIfNoHuman());
         }
 
-        private void ShowResult(int damage, bool died, bool wasHit, List<string> appliedAbilities, int projectedHp)
+        // `victim`: the unit the hit landed on — _defender, or the Bodyguard that intercepted it.
+        private void ShowResult(int damage, bool died, bool wasHit, List<string> appliedAbilities, int projectedHp,
+            UnitData victim)
         {
             string hitLine = wasHit ? "Hit!" : "Miss";
             string outcomeLine = died ? "\nThe target was destroyed." : string.Empty;
@@ -1290,10 +1309,13 @@ namespace Game.UI
             string skillsLine = appliedAbilities != null && appliedAbilities.Count > 0
                 ? $"\nAffected by Skill{(appliedAbilities.Count > 1 ? "s" : string.Empty)}: {string.Join(", ", appliedAbilities)}"
                 : string.Empty;
-            string summary = $"Attacker ID: {_attacker.Name}\nTarget ID: {_defender.Name}\n" +
+            string interceptLine = victim != null && victim != _defender
+                ? $"\nIntercepted by: {victim.Name}"
+                : string.Empty;
+            string summary = $"Attacker ID: {_attacker.Name}\nTarget ID: {_defender.Name}{interceptLine}\n" +
                 $"Hit Assessment: {hitLine}\nDamage Assessment: {damage} Damage{outcomeLine}{skillsLine}";
 
-            RenderResultScreen(_attacker, _defender, summary, died, projectedHp);
+            RenderResultScreen(_attacker, victim ?? _defender, summary, died, projectedHp);
 
             if (RunsAutomatically || IsAutoCloseResultEnabled)
                 StartCoroutine(AutoCloseResultIfNoHuman());
