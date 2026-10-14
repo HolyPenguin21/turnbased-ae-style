@@ -74,6 +74,7 @@ namespace UnityEngine
         public static int CeilToInt(float x)=>(int)Math.Ceiling(x);
         public static float PerlinNoise(float x,float y)=>0.5f;
         public static float Max(float a,float b)=>Math.Max(a,b);
+        public static float Min(float a,float b)=>Math.Min(a,b);
         public const float Deg2Rad=(float)(Math.PI/180); public static float Sqrt(float x)=>(float)Math.Sqrt(x);
         public static float Sin(float x)=>(float)Math.Sin(x);public static float Cos(float x)=>(float)Math.Cos(x);
         public static float Round(float x)=>(float)Math.Round(x);public static int RoundToInt(float x)=>(int)Math.Round(x);
@@ -98,7 +99,6 @@ namespace Game.Map
     public static class BuildingRegistry { public static object FindAt(Game.HexGrid.HexCoord h)=>null; }
     public static class ArmyRegistry { public static IEnumerable<ArmyData> AllAt(Game.HexGrid.HexCoord h)=>Array.Empty<ArmyData>(); }
     public static class HexEventRegistry { public static object FindAt(Game.HexGrid.HexCoord h)=>null; }
-    public static class HexResourceBonusRegistry { public static object GetBonus(Game.HexGrid.HexCoord h)=>null; }
     public class MapResourceDisplay:UnityEngine.Component { public void RefreshAll(){} }
     public class FogOfWarController:UnityEngine.Component { public void RefreshAll(){} }
     public class MapObjectVisual : UnityEngine.Component { public bool IsVisible = true; }

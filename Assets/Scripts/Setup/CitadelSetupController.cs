@@ -388,8 +388,8 @@ namespace Game.Setup
         }
 
         // Buckets `coords` into `sectorCount` angular slices around the field's (0,0) centre —
-        // shared by starting-hex assignment above and GenerateResources' outside-resource
-        // spread (CitadelSetupController.MapContent.cs's BuildEvenSectors calls this too). The
+        // used by starting-hex assignment above. Resource placement separately evaluates
+        // random whole-map layouts against the actual chosen citadels. The
         // slice boundaries themselves are rotated by a random offset each call so which exact
         // hexes fall together isn't identical from one game to the next, on top of the random
         // pick each caller then makes within a bucket.
