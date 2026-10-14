@@ -11119,6 +11119,7 @@ RectTransform:
   - {fileID: 1139703871}
   - {fileID: 6660000000000050002}
   - {fileID: 7770000000000010002}
+  - {fileID: 1975000001}
   - {fileID: 2049913527}
   - {fileID: 6660000000000060002}
   - {fileID: 6660000000000090002}
@@ -11132,7 +11133,6 @@ RectTransform:
   - {fileID: 1667965897}
   - {fileID: 6660000000000040002}
   - {fileID: 1960000001}
-  - {fileID: 1975000001}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}

@@ -77,9 +77,6 @@ namespace Game.UI
         private List<ArmyData> _lastParticipants;
         private PlayerSetupData _lastObserver;
 
-        // Above the army radio overlay canvas (sorting order 5), below ScreenWearOverlay.
-        private const int PanelSortingOrder = 10;
-
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
         // Owner is never null for a real army (see PlayerSetupData/CitadelSetupController's own
@@ -106,7 +103,6 @@ namespace Game.UI
         private void Awake()
         {
             ResolveFixedSlotBindings();
-            EnsurePanelCanvas();
             if (armyViewerModal != null)
                 armyViewerModal.Closed += OnArmyModalClosed;
         }
@@ -135,21 +131,6 @@ namespace Game.UI
                 defenderCommanderName = FindPanelComponent<TMP_Text>("Defender_CommanderName");
             if (defenderArmyInfo == null)
                 defenderArmyInfo = FindPanelComponent<TMP_Text>("Defender_ArmyInfo");
-        }
-
-        // The radio overlay is a separate sorted canvas, so a plain child of Canvas_UI would
-        // always render under it; the panel needs its own sorted canvas to stay on top.
-        private void EnsurePanelCanvas()
-        {
-            if (panelRoot == null)
-                return;
-            Canvas canvas = panelRoot.GetComponent<Canvas>();
-            if (canvas == null)
-                canvas = panelRoot.AddComponent<Canvas>();
-            canvas.overrideSorting = true;
-            canvas.sortingOrder = PanelSortingOrder;
-            if (panelRoot.GetComponent<GraphicRaycaster>() == null)
-                panelRoot.AddComponent<GraphicRaycaster>();
         }
 
         private T FindPanelComponent<T>(string childName) where T : Component
