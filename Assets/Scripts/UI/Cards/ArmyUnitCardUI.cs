@@ -301,8 +301,10 @@ namespace Game.UI
                 string tags = card.unitTypeTags != null && card.unitTypeTags.Count > 0
                     ? string.Join(", ", card.unitTypeTags)
                     : string.Empty;
+                // Abbreviations only, same as every compact card face (see GameConfig.
+                // FormatAbilities); full names + descriptions stay in the detail panel.
                 string abilities = config != null
-                    ? config.FormatAbilitiesDetailed(card.grantedAbilities)
+                    ? config.FormatAbilities(card.grantedAbilities)
                     : string.Empty;
                 text = !string.IsNullOrEmpty(tags) && !string.IsNullOrEmpty(abilities)
                     ? tags + "\n" + abilities
