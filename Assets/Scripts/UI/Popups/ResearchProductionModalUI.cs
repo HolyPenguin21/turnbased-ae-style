@@ -263,7 +263,7 @@ namespace Game.UI
                 ArmyUnitCardUI view = Instantiate(gameConfig.armyUnitCardPrefab, gridContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(view);
                 view.SetupPreview(card, gameConfig, OnCardClicked);
-                view.SetSlot(SlotPosition(i - start), animated: false);
+                view.SetSlot(SlotPosition(i - start) + FitToCell(view), animated: false);
                 _cardViews.Add(view);
             }
 
@@ -300,6 +300,23 @@ namespace Game.UI
             float x = left + col * (cellSize.x + spacing.x);
             float y = -(top + row * (cellSize.y + spacing.y));
             return new Vector2(x, y);
+        }
+
+        // Uniformly scales a cell (prefab size kept, aspect preserved) so it fits grid.cellSize,
+        // and returns the offset that centres it inside the cell. The prefab is top-left
+        // pivoted, same assumption SlotPosition makes.
+        private Vector2 FitToCell(ArmyUnitCardUI view)
+        {
+            if (grid == null)
+                return Vector2.zero;
+            var rt = (RectTransform)view.transform;
+            Vector2 size = rt.sizeDelta;
+            Vector2 cell = grid.cellSize;
+            if (size.x <= 0f || size.y <= 0f || cell.x <= 0f || cell.y <= 0f)
+                return Vector2.zero;
+            float scale = Mathf.Min(cell.x / size.x, cell.y / size.y);
+            rt.localScale = new Vector3(scale, scale, 1f);
+            return new Vector2((cell.x - size.x * scale) * 0.5f, -(cell.y - size.y * scale) * 0.5f);
         }
 
         private void OnCardClicked(CardDefinition card)
