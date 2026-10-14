@@ -58,7 +58,6 @@ public static class CampaignScreenBuilder
 
         var header = Panel(console, "CampaignHeader"); Place(header, 24, 16, 1376, 70);
         CollectionUIElements.ApplyCampaignSurface(header, "Plaque"); header.GetComponent<Image>().raycastTarget = false;
-        var heading = Text(header, "Heading", "PLANETARY CAMPAIGN", 28, 8, 1320, 52, 31, Ink, true, TextAlignmentOptions.Center);
         var menu = MakeButton(console, "MenuButton", "MENU", 1646, 23, 176, 48, 22, "Plaque");
         menu.GetComponentInChildren<TMP_Text>().color = Ink;
 
@@ -114,8 +113,6 @@ public static class CampaignScreenBuilder
         var ownerName = Text(regionPanel, "OwnerName", "Faction", 170, 482, 230, 34, 23, Cream);
         Plaque(regionPanel, "NeighborsPlaque", "NEIGHBORING REGIONS", 28, 530, 374, 34, 20);
         var neighbors = Scroll(regionPanel, "Neighbors", 28, 574, 374, 106, new Color(0, 0, 0, .32f));
-        var attack = MakeButton(regionPanel, "AttackButton", "ATTACK REGION", 28, 704, 374, 48, 22, "Action");
-        var unavailable = Text(regionPanel, "AttackUnavailable", "Attack unavailable this turn.", 30, 704, 370, 48, 19, Cream);
 
         // Footer
         var footer = Panel(console, "CampaignHistory"); Place(footer, 24, 889, 1820, 130);
@@ -124,12 +121,6 @@ public static class CampaignScreenBuilder
         Divider(footer, 28, 54, 1570);
         Plaque(footer, "RecentBattlesPlaque", "RECENT BATTLES", 28, 64, 205, 46, 18);
         var noBattles = Text(footer, "NoBattles", "No battles recorded yet.", 248, 68, 650, 30, 19, Cream);
-        var history = new List<TMP_Text>();
-        for (int i = 0; i < 4; i++)
-        {
-            var entry = Text(footer, "HistoryEntry" + i, "", 248 + (i % 2) * 665, 64 + (i / 2) * 25, 650, 24, 17, Cream); NoWrap(entry);
-            history.Add(entry);
-        }
         var summary = Text(footer, "Summary", "", 950, 17, 820, 34, 18, Cream);
         var endTurn = MakeButton(footer, "EndTurn", endTurnSprite == null ? "END TURN" : "", 1684, 9, 112, 112, 22, "Action");
         // This sprite already contains the action text.
@@ -165,7 +156,7 @@ public static class CampaignScreenBuilder
         // Bind everything to CampaignUI.
         void Set(string field, Object value) => so.FindProperty(field).objectReferenceValue = value;
         Set("surfaceImage", surfaceImage); Set("cloudImage", cloudImage); Set("map", map);
-        Set("heading", heading); Set("hoverLabel", hoverLabel); Set("menuButton", menu);
+        Set("hoverLabel", hoverLabel); Set("menuButton", menu);
         var rows = so.FindProperty("standings"); rows.arraySize = standings.Count;
         for (int i = 0; i < standings.Count; i++)
         {
@@ -177,11 +168,9 @@ public static class CampaignScreenBuilder
         }
         Set("sidebarTitle", sidebarTitle); Set("noSelectionPanel", noSelection.gameObject); Set("regionPanel", regionPanel.gameObject);
         Set("humanLogo", humanLogo); Set("humanFactionName", humanName); Set("terrainPreview", terrain);
-        Set("ownerLogo", ownerLogo); Set("ownerName", ownerName); Set("attackUnavailableLabel", unavailable);
-        Set("neighborsContent", neighbors); Set("neighborRowPrefab", neighborRow); Set("attackButton", attack);
+        Set("ownerLogo", ownerLogo); Set("ownerName", ownerName);
+        Set("neighborsContent", neighbors); Set("neighborRowPrefab", neighborRow);
         Set("statusLabel", status); Set("noBattlesLabel", noBattles); Set("summaryLabel", summary);
-        var entries = so.FindProperty("historyEntries"); entries.arraySize = history.Count;
-        for (int i = 0; i < history.Count; i++) entries.GetArrayElementAtIndex(i).objectReferenceValue = history[i];
         Set("endTurnButton", endTurn); Set("resumeButton", resume);
         Set("modalBackdrop", backdrop.gameObject);
         Set("confirmWindow", confirm.gameObject); Set("deckWindow", deck.gameObject); Set("resultWindow", result.gameObject); Set("errorWindow", error.gameObject);
@@ -227,11 +216,11 @@ public static class CampaignScreenBuilder
         }
         void Hide(Component c) { if (c == null) return; Undo.RecordObject(c.gameObject, "Add Campaign Reference Slots"); c.gameObject.SetActive(false); }
 
-        // Header: planet / round / turn faction plaques replace the single heading line.
-        var heading = Get<TMP_Text>("heading");
-        if (heading != null && Missing("planetNameLabel"))
+        // Header: planet / round / turn faction plaques.
+        var headerTransform = ((Component)so.targetObject).transform.root.Find("CampaignConsole/CampaignHeader");
+        if (headerTransform != null && Missing("planetNameLabel"))
         {
-            var header = (RectTransform)heading.transform.parent;
+            var header = (RectTransform)headerTransform;
             var plaques = Created(Rect(header, "HeaderPlaques")); Stretch(plaques);
             var planet = Panel(plaques, "PlanetPlaque"); Place(planet, 0, 0, 560, 70); CollectionUIElements.ApplyCampaignSurface(planet, "Plaque");
             Place(Panel(planet, "Icon"), 16, 9, 52, 52);
@@ -247,7 +236,6 @@ public static class CampaignScreenBuilder
             foreach (var image in plaques.GetComponentsInChildren<Image>(true)) image.raycastTarget = false;
             var headerImage = header.GetComponent<Image>();
             if (headerImage != null) { Undo.RecordObject(headerImage, "Add Campaign Reference Slots"); headerImage.enabled = false; }
-            Hide(heading);
         }
 
         // Territory bars under each faction name; the bar is stretched across its track by anchors.

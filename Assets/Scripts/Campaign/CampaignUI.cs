@@ -31,7 +31,7 @@ namespace Game.Campaign
         [SerializeField] private Image surfaceImage;
         [SerializeField] private RawImage cloudImage;
         [SerializeField] private CampaignMapView map;
-        [SerializeField] private TMP_Text heading, hoverLabel;
+        [SerializeField] private TMP_Text hoverLabel;
         [SerializeField] private Button menuButton;
 
         [Header("Header plaques (optional)")]
@@ -47,10 +47,9 @@ namespace Game.Campaign
         [SerializeField] private TMP_Text humanFactionName;
         [SerializeField] private RawImage terrainPreview;
         [SerializeField] private Image ownerLogo;
-        [SerializeField] private TMP_Text ownerName, attackUnavailableLabel;
+        [SerializeField] private TMP_Text ownerName;
         [SerializeField] private RectTransform neighborsContent;
         [SerializeField] private CampaignNeighborRowView neighborRowPrefab;
-        [SerializeField] private Button attackButton;
         [Header("Region information (optional)")]
         [SerializeField] private RectTransform neighborEmblemsContent;
         [SerializeField] private Image neighborEmblemPrefab;
@@ -61,11 +60,9 @@ namespace Game.Campaign
 
         [Header("History footer")]
         [SerializeField] private TMP_Text statusLabel, noBattlesLabel, summaryLabel;
-        [SerializeField] private TMP_Text[] historyEntries;
         [SerializeField] private Button endTurnButton, resumeButton;
         [Header("History footer (optional)")]
         [SerializeField] private TMP_Text statusTitle;
-        // When assigned, replaces historyEntries with column rows.
         [SerializeField] private HistoryRowRefs[] historyRows;
         [SerializeField] private Image playerEmblem;
         [SerializeField] private TMP_Text playerFactionName;
@@ -107,7 +104,6 @@ namespace Game.Campaign
         {
             hoverLabel.text = "";
             menuButton.onClick.AddListener(() => SceneManager.LoadScene(SceneNames.MainMenu));
-            attackButton.onClick.AddListener(AttackSelected);
             endTurnButton.onClick.AddListener(() => Attempt(() => { Controller.EndTurn(); selected = null; Recover(); }));
             resumeButton.onClick.AddListener(() => { defenceDeferred = false; OpenDeckSelection(); });
             confirmChooseDeck.onClick.AddListener(() => Attempt(() => { if (acting) return; Controller.BeginAttack(confirmFrom, confirmTarget, true); PresentConfirmedAttack(); }));
@@ -227,18 +223,10 @@ namespace Game.Campaign
             if (selected.HasValue && CampaignRules.CanAttack(state, state.HumanFaction, selected.Value, id)) { ConfirmAttack(selected.Value, id); return; }
             selected = id; Render();
         }
-        private void AttackSelected()
-        {
-            var s = Controller.View;
-            if (!selected.HasValue) return;
-            var from = s.Regions.FirstOrDefault(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, selected.Value));
-            if (from != null) ConfirmAttack(from.RegionId, selected.Value);
-        }
         private void Render()
         {
             if (Controller == null) return;
             var s = Controller.View;
-            if (heading != null) heading.text = s.PlanetName + "  ·  Round " + s.RoundNumber + "  ·  " + FactionName(s.CurrentFaction);
             RenderHeader(s);
             for (int i = 0; i < standings.Length; i++)
             {
@@ -279,25 +267,25 @@ namespace Game.Campaign
             if (playerEmblem != null) SetLogo(playerEmblem, s.HumanFaction);
             if (playerFactionName != null) playerFactionName.text = FactionName(s.HumanFaction).ToUpperInvariant();
         }
-        private void ShowTerrain(RawImage preview, RegionState region)
+        private void ShowTerrain(RawImage preview, RegionState region, float width = .32f)
         {
             preview.texture = map.SurfaceTexture;
             var center = map.SurfaceUVAt(CampaignRegionGraphic.VisibleCenter(region));
             var size = preview.rectTransform.rect.size;
             if (size.x <= 0 || size.y <= 0) return;
-            float previewHeight = .32f * (size.y / size.x) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
-            preview.uvRect = new Rect(Mathf.Clamp(center.x - .16f, 0, .68f), Mathf.Clamp(center.y - previewHeight / 2, 0, 1 - previewHeight), .32f, previewHeight);
+            float previewHeight = width * (size.y / size.x) * ((float)map.SurfaceTexture.width / map.SurfaceTexture.height);
+            preview.uvRect = new Rect(Mathf.Clamp(center.x - width / 2, 0, 1 - width), Mathf.Clamp(center.y - previewHeight / 2, 0, 1 - previewHeight), width, previewHeight);
         }
         private void RenderRegion(CampaignState s, RegionState region)
         {
-            ShowTerrain(terrainPreview, region);
+            ShowTerrain(terrainPreview, region, .12f); // ~ the zoom of the former 370 px wide preview at .32
             var size = terrainPreview.rectTransform.rect.size;
             if (consoleMaterial != null)
             {
                 if (regionPreviewMaterial == null)
                 {
                     regionPreviewMaterial = new Material(consoleMaterial) { name = "CampaignRegionPreview (runtime)" };
-                    regionPreviewMaterial.SetFloat("_CornerRadius", 32);
+                    regionPreviewMaterial.SetFloat("_CornerRadius", 16);
                     regionPreviewMaterial.SetVector("_SurfaceSize", new Vector4(size.x, size.y, 0, 0));
                     terrainPreview.material = regionPreviewMaterial;
                 }
@@ -324,16 +312,8 @@ namespace Game.Campaign
                 foreach (int id in region.NeighborIds)
                     SetLogo(Instantiate(neighborEmblemPrefab, neighborEmblemsContent, false), s.Regions.Find(r => r.RegionId == id).OwnerFaction);
             }
-            bool can = s.Regions.Where(r => r.OwnerFaction == s.HumanFaction).Any(r => CampaignRules.CanAttack(s, s.HumanFaction, r.RegionId, region.RegionId));
-            string unavailable = region.OwnerFaction == s.HumanFaction ? "Select a highlighted enemy neighbor." : "Attack unavailable this turn.";
             if (attacksContent != null && attackRowPrefab != null)
-            {
-                attackButton.gameObject.SetActive(false); attackUnavailableLabel.gameObject.SetActive(false);
-                RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : unavailable);
-                return;
-            }
-            attackButton.gameObject.SetActive(can); attackUnavailableLabel.gameObject.SetActive(!can);
-            attackUnavailableLabel.text = unavailable;
+                RenderAttacks(s, region, region.OwnerFaction == s.HumanFaction ? "No attacks available from this region." : "Attack unavailable this turn.");
         }
         // From an own region: every legal target next to it. From an enemy region: that region, if any own region can reach it.
         private void RenderAttacks(CampaignState s, RegionState region, string emptyText)
@@ -362,12 +342,12 @@ namespace Game.Campaign
                 : s.PendingOperation != null ? ("Pending battle", " — ", s.Phase.ToString()) : s.CurrentFaction == s.HumanFaction ? ("Your turn:", " ", "attack an adjacent enemy region or end turn.") : ("", "", "AI faction is choosing an attack.");
             if (statusTitle != null) { statusTitle.text = title.ToUpperInvariant(); statusLabel.text = body.ToUpperInvariant(); }
             else statusLabel.text = title + separator + body;
-            bool columns = historyRows != null && historyRows.Length > 0;
-            var history = s.BattleHistory.AsEnumerable().Reverse().Take(columns ? historyRows.Length : historyEntries.Length).ToList();
+            var rows = historyRows ?? Array.Empty<HistoryRowRefs>();
+            var history = s.BattleHistory.AsEnumerable().Reverse().Take(rows.Length).ToList();
             noBattlesLabel.gameObject.SetActive(history.Count == 0);
-            for (int i = 0; columns && i < historyRows.Length; i++)
+            for (int i = 0; i < rows.Length; i++)
             {
-                var row = historyRows[i]; row.root.SetActive(i < history.Count);
+                var row = rows[i]; row.root.SetActive(i < history.Count);
                 if (i >= history.Count) continue;
                 var h = history[i];
                 if (row.round != null) row.round.text = "Round " + h.Round;
@@ -375,15 +355,6 @@ namespace Game.Campaign
                 if (row.attacker != null) row.attacker.text = FactionName(h.Attacker);
                 if (row.region != null) row.region.text = h.RegionName;
                 if (row.outcome != null) row.outcome.text = h.Outcome == CampaignOutcome.Draw ? "Draw" : h.Captured ? "Conquered" : "Defended";
-            }
-            for (int i = 0; i < historyEntries.Length; i++)
-            {
-                if (columns) { historyEntries[i].gameObject.SetActive(false); continue; }
-                historyEntries[i].gameObject.SetActive(i < history.Count);
-                if (i >= history.Count) continue;
-                var h = history[i];
-                historyEntries[i].text = "Round " + h.Round + ": " + FactionName(h.Attacker) + " → " + h.RegionName + " · "
-                    + (h.Outcome == CampaignOutcome.Draw ? "draw" : h.Captured ? "captured" : "defended");
             }
             bool humanTurn = s.Phase == CampaignPhase.AwaitingFactionAction && s.CurrentFaction == s.HumanFaction;
             endTurnButton.gameObject.SetActive(humanTurn);
