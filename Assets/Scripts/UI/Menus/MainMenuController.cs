@@ -104,27 +104,17 @@ namespace Game.UI
             {
                 var chosen = faction;
                 var button = CampaignSetupButton(window, Game.Campaign.CampaignUI.FactionName(chosen),
-                    35, 202 + index * 114, 880, 96, () => ChooseCampaignFaction(chosen), 28);
+                    35, 202 + index * 114, 880, 96, () => ConfirmCampaign(chosen), 28);
                 var label = button.GetComponentInChildren<TMP_Text>();
                 CollectionUIElements.Place((RectTransform)label.transform, 126, 18, 570, 60);
                 label.alignment = TextAlignmentOptions.Left;
                 CampaignFactionLogo(button.transform, chosen, 22, 10, 76);
-                CampaignSetupLabel(button.transform, "SELECT", 720, 29, 134, 38, 19);
+                CampaignSetupLabel(button.transform, "START", 720, 29, 134, 38, 19);
                 if (first == null) first = button;
                 index++;
             }
             CampaignSetupButton(window, "CANCEL", 35, 604, 880, 58, CloseCampaignSetup);
             if (first != null) first.Select();
-        }
-        private void ChooseCampaignFaction(Game.Players.Faction human)
-        {
-            var window = CampaignSetupWindow("ChosenFaction", "YOUR FACTION");
-            CampaignFactionLogo(window, human, 393, 132, 164);
-            CampaignSetupLabel(window, Game.Campaign.CampaignUI.FactionName(human), 35, 322, 880, 52, 32);
-            CampaignSetupLabel(window, "Lead your faction and conquer the planet.\nChoose a saved deck before each battle.", 35, 394, 880, 82, 24);
-            var start = CampaignSetupButton(window, "START CAMPAIGN", 35, 548, 880, 58, () => ConfirmCampaign(human), 26);
-            CampaignSetupButton(window, "BACK", 35, 628, 880, 40, ShowCampaignFactions);
-            start.Select();
         }
         private void ConfirmCampaign(Game.Players.Faction human)
         {
