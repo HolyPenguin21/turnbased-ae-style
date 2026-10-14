@@ -148,7 +148,7 @@ unchanged by this follow-up.
 
 ### Reference palette, contours and density
 
-New campaigns now default to 48 regions, balanced at 16 per faction. The three
+New campaigns now default to 33 regions, balanced at 11 per faction (previously 48 / 16). The three
 ownership tints are muted blue-gray, terracotta and olive. Terrain retains 55%
 of its original color rather than being dominated by a 70% faction wash. Normal
 borders are darker and more visible (1.4 canvas units wide). Selection uses a
