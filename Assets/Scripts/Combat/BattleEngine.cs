@@ -285,6 +285,8 @@ namespace Game.Combat
         private readonly BattleReactionState _reactions = new BattleReactionState();
         private readonly List<UnitData> _drilled = new List<UnitData>();
         public event Action<UnitData> UnitHealed;
+        // A ground combatant just received this round's UnitAbilities.Drill bonus.
+        public event Action<UnitData> UnitDrilled;
 
         public BattleState State => _state;
         // This round's spent Bodyguard/Counterattack reactions (cleared by StartRound).
@@ -346,6 +348,7 @@ namespace Game.Combat
                 target.Attack += _magnitudes.DrillAttackBonus;
                 target.DrillAttackBonus += _magnitudes.DrillAttackBonus;
                 _drilled.Add(target);
+                UnitDrilled?.Invoke(target);
                 BattleDebugLog.Write($"[Drill] {army.Name}: {target.Name} +{_magnitudes.DrillAttackBonus} Attack this round");
             }
         }
