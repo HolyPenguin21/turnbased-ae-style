@@ -98,13 +98,13 @@ namespace Game.EditorTests
             Assert.That(target.HitPointsCurrent, Is.EqualTo(1));
         }
         [Test]
-        public void CrossFadesForExactlyThreeSeconds()
+        public void SkillOverlayFadesForExactlyTwoSeconds()
         {
             Assert.That(Game.UI.BattleHealEffect.AlphaAt(0f), Is.Zero);
             Assert.That(Game.UI.BattleHealEffect.AlphaAt(0.5f), Is.EqualTo(0.8f));
-            Assert.That(Game.UI.BattleHealEffect.AlphaAt(2.5f), Is.EqualTo(0.8f));
-            Assert.That(Game.UI.BattleHealEffect.AlphaAt(2.75f), Is.EqualTo(0.4f).Within(0.001f));
-            Assert.That(Game.UI.BattleHealEffect.AlphaAt(3f), Is.Zero);
+            Assert.That(Game.UI.BattleHealEffect.AlphaAt(1.5f), Is.EqualTo(0.8f));
+            Assert.That(Game.UI.BattleHealEffect.AlphaAt(1.75f), Is.EqualTo(0.4f).Within(0.001f));
+            Assert.That(Game.UI.BattleHealEffect.AlphaAt(2f), Is.Zero);
         }
 
         [Test]
