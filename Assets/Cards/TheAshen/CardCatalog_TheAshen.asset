@@ -496,7 +496,7 @@ MonoBehaviour:
       statChanges: []
   - id: 10
     authoredKey: ashen.card.hooded
-    deckPointCost: 2
+    deckPointCost: 1
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Hooded
@@ -592,7 +592,7 @@ MonoBehaviour:
       statChanges: []
   - id: 12
     authoredKey: ashen.card.tech-scrapper
-    deckPointCost: 1
+    deckPointCost: 2
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Tech Scrapper
@@ -639,7 +639,7 @@ MonoBehaviour:
       statChanges: []
   - id: 13
     authoredKey: ashen.card.rad-hunter
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rad Hunter
@@ -825,8 +825,55 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 17
+    authoredKey: ashen.card.scrap-shaman
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Scrap Shaman
+    art: {fileID: 21300000, guid: 29cbb0a34a222e34cac948711d02b3fb, type: 3}
+    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 1
+      energy: 1
+      materials: 0
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 2
+    hitPoints: 4
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Ionic
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 18
     authoredKey: ashen.card.scav-carrier
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Scav Carrier
@@ -872,9 +919,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
+  - id: 19
     authoredKey: ashen.card.rad-brute
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rad Brute
@@ -897,7 +944,7 @@ MonoBehaviour:
     defenseRating: 3
     range: 1
     hitPoints: 6
-    initiative: 1
+    initiative: 2
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
@@ -920,9 +967,58 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 19
+  - id: 20
+    authoredKey: ashen.card.furnace-bearer
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Furnace Bearer
+    art: {fileID: 21300000, guid: 85877c9a0abd668469ce291cacff3802, type: 3}
+    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 1
+      energy: 2
+      materials: 1
+      tech: 1
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 1
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0000000003000000
+    grantedAbilities:
+    - Regeneration
+    - Pyrokinetic
+    - Scorcher
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 21
     authoredKey: ashen.card.ash-walker
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Ash Walker
@@ -967,9 +1063,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 22
     authoredKey: ashen.card.grave-engine
-    deckPointCost: 2
+    deckPointCost: 4
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Grave Engine
@@ -999,7 +1095,8 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 010000000200000005000000
-    grantedAbilities: []
+    grantedAbilities:
+    - Bodyguard
     resourceYield:
       human: 0
       energy: 0
@@ -1013,9 +1110,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 23
     authoredKey: ashen.card.rust-tank
-    deckPointCost: 2
+    deckPointCost: 3
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Rust Tank
@@ -1059,9 +1156,104 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 24
+    authoredKey: ashen.card.roadbreaker
+    deckPointCost: 3
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Roadbreaker
+    art: {fileID: 21300000, guid: cf590c4bf9f83094a960759f44ef4b81, type: 3}
+    detailArt: {fileID: 21300000, guid: ababc792589d572429af4876ee8e1375, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 3
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 3
+    range: 2
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities:
+    - Transport
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 25
+    authoredKey: ashen.card.furnace-tortoise
+    deckPointCost: 4
+    deckCopyLimit: 4
+    deckBuilderExcluded: 0
+    displayName: Furnace Tortoise
+    art: {fileID: 21300000, guid: 29cbb0a34a222e34cac948711d02b3fb, type: 3}
+    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
+    faction: 4
+    cardType: 1
+    apCost: 4
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 2
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 4
+    defenseRating: 2
+    range: 1
+    hitPoints: 5
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 010000000200000004000000
+    grantedAbilities:
+    - Pyrokinetic
+    - Scorcher
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    attachmentSlot: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 26
     authoredKey: ashen.card.boomstick
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Boomstick
@@ -1105,9 +1297,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 27
     authoredKey: ashen.card.leviathan
-    deckPointCost: 2
+    deckPointCost: 6
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Leviathan
@@ -1151,7 +1343,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 28
     authoredKey: ashen.card.scrap-mortar
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1197,9 +1389,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 29
     authoredKey: ashen.card.colossus
-    deckPointCost: 2
+    deckPointCost: 5
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Colossus
@@ -1244,9 +1436,9 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 30
     authoredKey: ashen.card.ash-howitzer
-    deckPointCost: 2
+    deckPointCost: 6
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Ash Howitzer
@@ -1292,7 +1484,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 31
     authoredKey: ashen.card.striker
     deckPointCost: 3
     deckCopyLimit: 4
@@ -1339,7 +1531,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 28
+  - id: 32
     authoredKey: ashen.card.scrapwing
     deckPointCost: 2
     deckCopyLimit: 4
@@ -1373,54 +1565,6 @@ MonoBehaviour:
     unitTypeTags: 0100000006000000
     grantedAbilities:
     - r1s4
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    attachmentSlot: 0
-    equipment:
-      hostTypeTags: 
-      hostKinds: 00000000
-      clearAbilityFamilies: 
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 29
-    authoredKey: ashen.card.furnace-tortoise
-    deckPointCost: 4
-    deckCopyLimit: 4
-    deckBuilderExcluded: 0
-    displayName: Furnace Tortoise
-    art: {fileID: 21300000, guid: 29cbb0a34a222e34cac948711d02b3fb, type: 3}
-    detailArt: {fileID: 21300000, guid: 572fb2e8858e51447b03447d4df763db, type: 3}
-    faction: 4
-    cardType: 1
-    apCost: 4
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 2
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 3
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 4
-    defenseRating: 2
-    range: 1
-    hitPoints: 5
-    initiative: 2
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 010000000200000004000000
-    grantedAbilities:
-    - Pyrokinetic
-    - Scorcher
     resourceYield:
       human: 0
       energy: 0
