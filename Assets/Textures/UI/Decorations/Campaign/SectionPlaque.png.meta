@@ -72,7 +72,7 @@ TextureImporter:
   platformSettings:
   - serializedVersion: 4
     buildTarget: DefaultTexturePlatform
-    maxTextureSize: 4096
+    maxTextureSize: 1024
     resizeAlgorithm: 0
     textureFormat: -1
     textureCompression: 1
@@ -110,6 +110,7 @@ TextureImporter:
       alignment: 0
       pivot: {x: 0.5, y: 0.5}
       border: {x: 180, y: 64, z: 180, w: 64}
+      customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
@@ -117,7 +118,7 @@ TextureImporter:
       spriteID: 820bd6ec2c9d42f4b9de4fc4c1036de6
       internalID: 21300000
       vertices: []
-      indices:
+      indices: 
       edges: []
       weights: []
     outline: []
@@ -140,4 +141,3 @@ TextureImporter:
   userData: 
   assetBundleName: 
   assetBundleVariant: 
-
