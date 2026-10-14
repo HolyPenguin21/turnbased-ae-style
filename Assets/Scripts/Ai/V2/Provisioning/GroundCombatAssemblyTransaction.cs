@@ -25,7 +25,9 @@ namespace Game.Ai.V2
         // back — the caller must then report the mutation honestly instead of claiming a clean
         // rejection.
         internal static bool Rollback(PlayerSetupData player, ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx, string lane)
+            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx, string lane,
+            ArmyData heroHome = null, IReadOnlyList<UnitData> returnedHeroes = null,
+            UnitData originalCommander = null)
         {
             bool ok = true;
             if (host == null || applied == null)
@@ -45,6 +47,20 @@ namespace Game.Ai.V2
                         + $"host #{host.Id}->donor #{t?.DonorArmyId}: {why}");
                 }
             }
+            if (returnedHeroes != null && returnedHeroes.Count > 0)
+            {
+                string why = heroHome == null ? "return garrison missing" : null;
+                UnitData promote = returnedHeroes.Contains(originalCommander) ? originalCommander : null;
+                if (heroHome == null || !ArmyActions.TransferMembersAtomic(returnedHeroes, heroHome,
+                    host, ctx.HexSelection, out why, promoteToCommander: promote))
+                {
+                    ok = false;
+                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback — FAILED hero return: {why}");
+                }
+            }
+            if (originalCommander != null && host.Members.Contains(originalCommander)
+                && host.Commander != originalCommander && !host.TryReorderCommander(originalCommander, out _))
+                ok = false;
             return ok;
         }
 
@@ -52,7 +68,8 @@ namespace Game.Ai.V2
         // — i.e. how much of the world this transaction really changed. Zero means a Complete
         // rollback (no mutation to report); anything else is an Incomplete one.
         internal static int RemainingApplied(ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied)
+            List<GroundCombatAssemblyTransfer> applied, IReadOnlyList<UnitData> returnedHeroes = null,
+            UnitData originalCommander = null)
         {
             if (host == null || applied == null)
                 return 0;
@@ -60,7 +77,11 @@ namespace Game.Ai.V2
             foreach (GroundCombatAssemblyTransfer t in applied)
                 if (t?.Unit != null && host.Members.Contains(t.Unit))
                     count++;
+            if (returnedHeroes != null)
+                count += returnedHeroes.Count(h => h != null && !host.Members.Contains(h));
+            if (originalCommander != null && host.Commander != originalCommander) count++;
             return count;
         }
     }
 }
+

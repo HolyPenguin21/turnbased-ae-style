@@ -107,6 +107,9 @@ namespace Game.Ai.V2
         public bool StaleNoOp;
         // A real hero-led mover was created from a garrison candidate.
         public bool ActorMaterialized;
+        // Economy extraction changes the actor identity once: source garrison -> real builder.
+        // Continuity consumes this factual receipt; other mover mismatches remain pinned.
+        public int? EconomyMaterializationSourceArmyId;
         // A direct Economy actor's roster and/or donor intent was prepared.
         public bool EconomyPrepared;
         public bool NeedsReplan;
@@ -640,6 +643,7 @@ namespace Game.Ai.V2
                 pm.ClaimedAp = prep.RealAp;
                 result.ActualActorArmyId = materialized.Id;
                 result.ActorMaterialized = true;
+                result.EconomyMaterializationSourceArmyId = garrison.Id;
                 AiDebugLog.Write($"[AI][V2][Economy] materialized builder #{materialized.Id} "
                     + $"for {pm.Key}; preparation deferred to next admission");
                 return true;
@@ -1007,5 +1011,6 @@ namespace Game.Ai.V2
         }
     }
 }
+
 
 

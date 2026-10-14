@@ -43,6 +43,35 @@ namespace Game.EditorTests
             Assert.That(session.Leases.For(key).ActorClaims, Is.EqualTo(new[] { 0 }));
         }
 
+        [Test]
+        public void SuccessfulEconomyExtraction_MovesOnlyItsActorClaimAndKeepsTheResourceOwner()
+        {
+            var p = new PlayerSetupData(); using var session = AiTurnSession.Begin(p, null, null, null, 4);
+            var site = new HexCoord(2, 3);
+            var key = new MissionIntentKey(MissionKind.Economy, 0, 17, 2, 3);
+            var otherKey = new MissionIntentKey(MissionKind.Development, 0, 18, 2, 3);
+            var intent = new MissionIntent { Kind = MissionKind.Economy, IntentKey = key,
+                Status = IntentStatus.Active, CreatedTurn = 3, LastProgressTurn = 3, PreferredMoverArmyId = 0,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.FoundBase, TargetHex = site, BuilderArmyId = 0 } };
+            session.PersistentState.Put(intent);
+            var lease = session.Leases.For(key); lease.Claim(0);
+            lease.Reserve(StrategicReservationReason.EconomyDeferredBuild, StrategicReservedResource.Materials, 3);
+            session.Leases.For(otherKey).Claim(99);
+            var snapshot = new WorldSnapshot { Observer = p, TurnNumber = 4,
+                Self = new SelfSnapshot { Armies = new[]
+                { new ArmySnapshot { ArmyId = 0, HasHero = true, IsGarrison = true },
+                  new ArmySnapshot { ArmyId = 22, HasHero = true } } } };
+            session.Settle(new MissionStepResult { IntentKey = key, MissionKind = MissionKind.Economy,
+                Disposition = MissionStepDisposition.Progress, MadeProgress = true, MoverArmyId = 22 }
+                .WithPayload(new EconomyStepPayload { HasEconomyPayload = true, MaterializationSourceArmyId = 0,
+                    EconomyTarget = new EconomyMissionTarget { Kind = EconomyTaskKind.FoundBase, TargetHex = site } }), snapshot);
+            Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(22));
+            Assert.That(intent.Economy.BuilderArmyId, Is.EqualTo(22));
+            Assert.That(lease.ActorClaims, Is.EqualTo(new[] { 22 }));
+            Assert.That(lease.ResourceClaims.Single().Amount, Is.EqualTo(3));
+            Assert.That(session.Leases.For(otherKey).ActorClaims, Is.EqualTo(new[] { 99 }));
+        }
+
         [TestCase(RaidMissionPhase.Reinforcement, false)]
         [TestCase(RaidMissionPhase.Reinforcement, true)]
         [TestCase(RaidMissionPhase.SupportReturn, false)]
@@ -244,3 +273,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

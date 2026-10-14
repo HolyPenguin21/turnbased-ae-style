@@ -11,5 +11,7 @@ namespace Game.Ai.V2
         public MissionIntentKey? EconomyLoanSource;
         public bool DeliveryReady;
         public bool Holding;
+        public int? MaterializationSourceArmyId;
     }
 }
+

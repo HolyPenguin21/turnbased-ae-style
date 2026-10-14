@@ -8,7 +8,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PURE, DETERMINISTIC. Snapshot first, plan second, mutate later in HousekeepingExecutor.
     //  Every accepted candidate strictly improves this lexicographic tuple:
-    //    garrison safety -> legality -> operator exposure -> preparation-host slot waste
+    //    garrison safety -> legality -> operator exposure -> redundant hero/preparation slot waste
     //    -> singleton count -> non-viable count
     //    -> command/leadership defects -> strongest-first EffectiveArmyPower profile
     //    -> canonical AiPower composition -> operation count.
@@ -24,8 +24,8 @@ namespace Game.Ai.V2
             public readonly int Legality;
             // Required Research/Production operators exposed outside the local garrison.
             public readonly int OperatorExposure;
-            // ATK-F03 — heroes in an Attack preparation host that only occupy a fighter slot
-            // (PreparationSlotWaste). Above the singleton/viability terms: a lone hero leaving the host for
+            // Heroes that only occupy a fighter slot: preparation's contract and free field
+            // armies. Above the singleton/viability terms: a lone hero leaving the host for
             // a free local container is the fix, never a reason to keep the fist short of slots.
             public readonly int PreparationSlotWaste;
             public readonly int Singletons;
@@ -187,3 +187,4 @@ namespace Game.Ai.V2
         private static bool IsFieldContainer(ReorgContainer c) => c != null && c.IsMutableGround;
     }
 }
+

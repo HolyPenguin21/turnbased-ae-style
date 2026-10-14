@@ -176,10 +176,12 @@ namespace Game.Ai.V2
             foreach (int srcId in armyIds)
             {
                 ReorgContainer src = state.Meta[srcId];
-                if (!src.MayReleaseExcessHeroes)
+                bool preparation = src.MayReleaseExcessHeroes;
+                if (!preparation && !(IsFieldContainer(src) && src.CanDonate))
                     continue;
                 foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext,
-                             includeOperators: true))
+                             includeOperators: preparation).Where(h => preparation
+                                 || !StrategicEffectRegistry.HasArmySupportEffect(h.CombatProfile.Abilities, h.MoveMax)))
                     foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                     {
                         if (state.Meta[dstId].IsMissionReceiver)
@@ -189,7 +191,7 @@ namespace Game.Ai.V2
                         VState released = TryMoveOne(state, srcId, dstId, hero,
                             hero.IsDevelopmentOperator
                                 ? "keep a Research/Production operator at its facility's garrison"
-                                : "release a hero that only takes a fighter slot of the preparation host",
+                                : "release a secondary hero that only takes a fighter slot",
                             allowDevelopmentOperator: hero.IsDevelopmentOperator);
                         if (released != null)
                             yield return released;
@@ -585,3 +587,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

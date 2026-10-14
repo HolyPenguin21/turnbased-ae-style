@@ -72,6 +72,37 @@ namespace Game.EditorTests
             MoveCurrent = 3, MoveMax = 3,
         };
 
+        [Test]
+        public void ThreeRealHeroBenches_AreNotFoldedToReduceNonViableContainers()
+        {
+            ReorgUnit RealHero(int command)
+            {
+                ReorgUnit hero = Hero(0f, command);
+                hero.IsGroundCombatant = false;
+                hero.ActivationApCost = 1;
+                return hero;
+            }
+            ReorganizationPlan plan = Plan(Free(17, RealHero(7)),
+                Free(22, RealHero(8)), Free(23, RealHero(8)));
+            Assert.That(plan.Transfers, Is.Empty,
+                "three waiting commanders have no combat power to concentrate");
+            Assert.That(plan.ExpectedMembership.Values.Count(r => r.Count == 1), Is.EqualTo(3));
+        }
+
+        [Test]
+        public void FreeFieldArmy_ReleasesOrdinarySecondaryHeroWithoutLosingItsFighter()
+        {
+            ReorgUnit lead = Hero(0f, 7), extra = Hero(0f, 4);
+            lead.IsGroundCombatant = extra.IsGroundCombatant = false;
+            ReorgUnit fighter = Body(8f);
+            ReorgContainer host = Free(2, lead, extra, fighter);
+            ReorgContainer garrison = Garrison(0, Body(8f));
+            ReorganizationPlan plan = Plan(garrison, host);
+            Assert.That(plan.ExpectedMembership[2], Does.Not.Contain(extra.Key));
+            Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(fighter.Key));
+            Assert.That(plan.ExpectedMembership.Values.SelectMany(r => r), Does.Contain(lead.Key));
+        }
+
         private static ReorgContainer Garrison(int id, params ReorgUnit[] units) => new ReorgContainer
         {
             ArmyId = id, Role = ReorgPhysicalRole.Garrison, IsGarrison = true,
@@ -367,3 +398,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+
