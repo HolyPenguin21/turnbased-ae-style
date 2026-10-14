@@ -14,4 +14,3 @@ namespace Game.Ai.V2
         public int? MaterializationSourceArmyId;
     }
 }
-

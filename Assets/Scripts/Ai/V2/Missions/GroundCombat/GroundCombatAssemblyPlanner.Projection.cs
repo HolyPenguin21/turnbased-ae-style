@@ -262,4 +262,3 @@ namespace Game.Ai.V2
         private static float ProfileCombatValue(WorthIt.DefenderProfile p) => AiPower.SkilledCombatValue(p);
     }
 }
-

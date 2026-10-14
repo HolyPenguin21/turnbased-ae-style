@@ -187,4 +187,3 @@ namespace Game.Ai.V2
         private static bool IsFieldContainer(ReorgContainer c) => c != null && c.IsMutableGround;
     }
 }
-

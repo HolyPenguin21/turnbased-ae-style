@@ -92,7 +92,7 @@ namespace Game.Ai.V2
             MissionIntent intent, MissionStepResult result, int turn)
         {
             if ((intent.Kind != MissionKind.Economy && intent.Kind != MissionKind.Development)
-                || !intent.PreferredMoverArmyId.HasValue || !result.MoverArmyId.HasValue
+                || !intent.PreferredMoverArmyId.HasValue
                 || intent.PreferredMoverArmyId == result.MoverArmyId)
                 return false;
             // The pinned garrison was a materialization source, not the departing builder.
@@ -181,4 +181,3 @@ namespace Game.Ai.V2
         }
     }
 }
-
