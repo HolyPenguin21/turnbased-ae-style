@@ -276,7 +276,7 @@ namespace Game.EditorTests
                   new ArmySnapshot { ArmyId = 22, HasHero = true } } } };
             var claims = ActorCommitments.FromIntents(MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
             Assert.That(claims.ClaimedArmyIdSet, Does.Contain(22));
-            Assert.That(claims.ClaimedArmyIdSet, Has.No.Member(Actor));
+            Assert.That(claims.ClaimedArmyIdSet, NUnit.Framework.Has.No.Member(Actor));
 
             // Later admission does not adopt a different builder just because it reported progress.
             Settle(player, m, 4, execution: new ExecutionResult
