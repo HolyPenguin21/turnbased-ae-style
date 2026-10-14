@@ -1285,7 +1285,7 @@ namespace Game.UI
             if (resultTargetNameText != null)
                 resultTargetNameText.text = _defender?.Name;
             if (resultTargetHpText != null)
-                resultTargetHpText.text = outcome == CaptureKillOutcome.Escaped && _defender != null
+                resultTargetHpText.text = _defender != null
                     ? $"HP: {_defender.HitPointsCurrent}/{_defender.HitPointsMax}"
                     : string.Empty;
             // Captured is not a death — only Killed earns the Destroyed stamp (see the user's

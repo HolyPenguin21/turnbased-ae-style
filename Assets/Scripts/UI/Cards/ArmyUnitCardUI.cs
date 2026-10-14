@@ -87,6 +87,12 @@ namespace Game.UI
         // the normal Army Viewer flow so that view is unchanged. Optional prefab ref.
         [SerializeField] private TMP_Text skillsText;
 
+        // The label preview mode writes its description into. Card_Army leaves skillsText unset
+        // and has a single text line (moveText), so the description goes there instead of being
+        // dropped — otherwise an Equipment/Mutator card would show nothing (its grantedAbilities
+        // is empty; what it grants lives in EquipmentGrant).
+        private TMP_Text PreviewSkillsLabel => skillsText != null ? skillsText : moveText;
+
         public Image ActionPointBadge => costBadgeIcons != null && costBadgeIcons.Length > 0 ? costBadgeIcons[0] : null;
 
         public UnitData Unit { get; private set; }
@@ -191,9 +197,9 @@ namespace Game.UI
             if (mutatorArtToggle != null) mutatorArtToggle.Configure(unit?.Mutator, _modal != null ? _modal.GameConfig : null,
                 unit != null ? (CardType?)(unit.IsHero ? CardType.Hero : CardType.Unit) : null);
 
-            // Preview-only element — never part of the Army Viewer's own card face. On the
-            // Card_Army prefab skillsText and moveText are wired to the SAME label (it plays
-            // "abilities" here, "attach targets" in SetupPreview), so only hide it when it's a
+            // Preview-only element — never part of the Army Viewer's own card face. Card_Army
+            // leaves skillsText unset and moveText plays both roles (abilities here, the card
+            // description in SetupPreview — see PreviewSkillsLabel), so only hide it when it's a
             // genuinely separate object — otherwise this would blank the abilities line above.
             if (skillsText != null && skillsText != moveText)
                 skillsText.gameObject.SetActive(false);
@@ -226,9 +232,9 @@ namespace Game.UI
             if (nameText != null)
                 nameText.text = card != null ? card.displayName : string.Empty;
             titleRoot?.SetActive(card != null);
-            // Skip when moveText is the SAME label as skillsText (Card_Army prefab wiring) —
-            // RefreshSkillsText owns that line in preview mode and would only overwrite this.
-            if (moveText != null && moveText != skillsText)
+            // Skip when moveText is the preview description label itself (see PreviewSkillsLabel)
+            // — RefreshSkillsText owns that line in preview mode and would only overwrite this.
+            if (moveText != null && moveText != PreviewSkillsLabel)
             {
                 string formatted = card != null && config != null
                     ? config.FormatAbilities(card.grantedAbilities)
@@ -269,13 +275,14 @@ namespace Game.UI
             SetBadge(4, cost != null ? cost.tech : 0);
         }
 
-        // Preview mode: for an Equipment card, only the unit types it can be attached to (see
-        // EquipmentCardText.AttachTargets) — the added abilities / stat changes stay in the
-        // modal's right-hand detail panel. Any other card lists its own tags + abilities.
-        // Hidden when there's nothing to say.
+        // Preview mode: for an Equipment/Mutator card, who it fits + the skills it grants (see
+        // EquipmentCardText.CardFace — the same face as the card in hand; numeric changes are on
+        // the stat badges). Any other card lists its own tags + abilities. Hidden when there's
+        // nothing to say.
         private void RefreshSkillsText(CardDefinition card, GameConfig config)
         {
-            if (skillsText == null)
+            TMP_Text label = PreviewSkillsLabel;
+            if (label == null)
                 return;
             string text;
             if (card == null)
@@ -301,8 +308,8 @@ namespace Game.UI
                     ? tags + "\n" + abilities
                     : tags + abilities;
             }
-            skillsText.text = text;
-            skillsText.gameObject.SetActive(!string.IsNullOrEmpty(text));
+            label.text = text;
+            label.gameObject.SetActive(!string.IsNullOrEmpty(text));
         }
 
         // Preview-mode counterpart to RefreshStatsRow — same 5-slot mapping, read from a
