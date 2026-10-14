@@ -26,8 +26,10 @@ namespace Game.Ai.V2
         // GroundCombatAdmissionRegistry's Hard-Raid continuation branch) resolves its
         // actor directly by ArmyId and never calls this method, so an already-owned multi-turn
         // mission still waits for MP next turn instead of losing its actor here.
-        internal static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds) =>
-            EligibleArmies(snap, excludeArmyIds, requireMovementNow: true);
+        internal static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
+            bool allowHeroAssemblyHost = false) =>
+            EligibleArmies(snap, excludeArmyIds, requireMovementNow: true,
+                allowHeroAssemblyHost: allowHeroAssemblyHost);
 
         // `requireMovementNow: false` is the capability view (Demand): an army whose MP is spent
         // this turn is still physical capability — it moves again next turn — so it must count as
@@ -36,9 +38,9 @@ namespace Game.Ai.V2
         // threatened own stronghold (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender);
         // the capability view still counts that power — it is real, it holds the stronghold.
         internal static List<ArmySnapshot> EligibleArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
-            bool requireMovementNow) =>
+            bool requireMovementNow, bool allowHeroAssemblyHost = false) =>
             snap.Self.Armies
-                .Where(a => IsStructuralActor(a)
+                .Where(a => (IsStructuralActor(a) || allowHeroAssemblyHost && IsHeroAssemblyHost(a))
                             && (!requireMovementNow || a.CurrentMovement > 0)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId))
                             && (!requireMovementNow
@@ -47,6 +49,12 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)
                 .ToList();
+
+        // A lone hero is never a ready fighter. Only the same-hex assembly loop may nominate it,
+        // and only a complete projected roster with a legal escort can pass that loop's gate.
+        private static bool IsHeroAssemblyHost(ArmySnapshot a) =>
+            a != null && a.HasHero && a.MemberCount == 1 && !a.IsGarrison && !a.IsPrison
+                && !a.IsAir && !a.IsAirfield && !a.IsSoloRecce;
 
         // T10 — diagnostics only: why each own structural field army is NOT in EligibleArmies,
         // by the same predicates in the same order (claimed by another operation, no MP left this
@@ -72,4 +80,5 @@ namespace Game.Ai.V2
         }
     }
 }
+
 

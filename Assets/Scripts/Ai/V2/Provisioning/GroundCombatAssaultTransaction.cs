@@ -713,17 +713,6 @@ namespace Game.Ai.V2
             return plan;
         }
 
-        // The own garrison a field host may return a support hero to: the host stands on an own Base
-        // whose garrison is there, mine and has not been activated (it never moves, so the
-        // transfer is free).
-        private static ArmyData SupportHeroShedTarget(PlayerSetupData player, ArmyData host)
-        {
-            if (host == null || host.IsGarrison)
-                return null;
-            return ArmyRegistry.AllAt(host.Hex).FirstOrDefault(a => a != null && a.IsGarrison
-                && a.Owner == player && !a.HasActivatedThisTurn);
-        }
-
         internal static GroundCombatAssaultOutcome Run(GroundCombatAssaultRequest r)
         {
             PlayerSetupData player = r.Player;
@@ -750,7 +739,8 @@ namespace Game.Ai.V2
             ArmyData host = AiV2Util.ResolveArmy(player, plan.BaseArmyId);
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0
                 || host.IsPrison || host.IsAirfield || AviationRules.IsAirArmy(host)
-                || AiArmyRoles.IsSoloRecce(host) || AiArmyRoles.IsSoloHeroAwaitingEscort(host))
+                || AiArmyRoles.IsSoloRecce(host)
+                || AiArmyRoles.IsSoloHeroAwaitingEscort(host) && !plan.NeedsAssembly)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.MoverContended(
                         $"{lane} host #{plan.BaseArmyId} is no longer a usable ground combat army")));
@@ -761,45 +751,18 @@ namespace Game.Ai.V2
 
             var transfers = new List<GroundCombatAssemblyTransfer>();
             var claimedDonors = new HashSet<int>();
-            var projectedUnits = new List<UnitData>(host.Members);
-            // Project owner, 2026-10-02: a Raid / Active Defence army does not march with a second
-            // (Support-tagged) hero. Playtest: Mordak's raid left with Hank Mercer AND Nova Sterling,
-            // an Economy hero that had been deployed into the same base army — one extra body slot
-            // and one extra activation AP every turn, for a hero that belongs in the citadel. On an
-            // own base the non-commander garrison heroes return to the local garrison first (free:
-            // the garrison never activates); the roster, the path check, the AP projection and the
-            // win re-check below are all priced WITHOUT them. Attack preparation has its own rule.
-            ArmyData shedGarrison = null;
-            var shed = new List<UnitData>();
-            UnitData shedKeeper = null; // the non-support hero that must lead once the commander is shed
-            if (lane != "attack")
-            {
-                shedGarrison = SupportHeroShedTarget(player, host);
-                if (shedGarrison != null)
-                {
-                    // Support is the FALLBACK: with an ordinary hero aboard every Support hero goes
-                    // (the ordinary one takes command first); with none, the commander stays and only
-                    // the extra Support heroes go.
-                    shedKeeper = host.Members.FirstOrDefault(u => u != null && u.IsHero
-                        && !AiArmyRoles.IsGarrisonHero(u));
-                    foreach (UnitData hero in host.Members.Where(u => u != null && u.IsHero
-                        && AiArmyRoles.IsGarrisonHero(u)
-                        && (shedKeeper != null || u != host.Commander)).ToList())
-                    {
-                        var withHero = new List<UnitData>(shedGarrison.Members);
-                        withHero.AddRange(shed);
-                        withHero.Add(hero);
-                        if (!ArmyData.RosterFits(withHero, true))
-                            break;
-                        shed.Add(hero);
-                    }
-                    if (shedKeeper != null && shed.Contains(host.Commander)
-                        && ArmyData.ComputeCapacity(host.Members.Where(u => !shed.Contains(u))
-                            .OrderBy(u => u == shedKeeper ? 0 : 1), false) < host.Members.Count - shed.Count)
-                        shed.Remove(host.Commander);
-                }
-                projectedUnits.RemoveAll(shed.Contains);
-            }
+            // Consume the planner's departure roster. Provisioning may revalidate it, never
+            // invent a different hero-shedding policy after its budget was already allocated.
+            var shed = new List<UnitData>(plan.ReturnHeroes);
+            ArmyData shedGarrison = plan.HeroReturnArmyId.HasValue
+                ? AiV2Util.ResolveArmy(player, plan.HeroReturnArmyId.Value) : null;
+            if (shed.Count > 0 && !GroundCombatAssemblyPlanner.CanApplyHeroReturn(
+                host, shedGarrison, plan.Commander, shed))
+                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.MoverContended($"{lane} host #{host.Id} hero-return plan became stale")));
+            var projectedUnits = host.Members.Where(u => !shed.Contains(u)).ToList();
+            if (plan.Commander != null && projectedUnits.Remove(plan.Commander))
+                projectedUnits.Insert(0, plan.Commander);
             if (plan.NeedsAssembly)
             {
                 int heroTransfers = 0;
@@ -847,36 +810,27 @@ namespace Game.Ai.V2
                     transfers.Add(t);
                     claimedDonors.Add(donor.Id);
                 }
-
-                List<WorthIt.DefenderProfile> projectedProfiles =
-                    projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
                 foreach (IGrouping<int, GroundCombatAssemblyTransfer> group in transfers.GroupBy(t => t.DonorArmyId))
                 {
                     ArmyData donor = AiV2Util.ResolveArmy(player, group.Key);
                     List<UnitData> units = group.Select(t => t.Unit).ToList();
                     if (donor == null || donor.Members.Count - units.Count < 1
-                        || donor.IsGarrison
-                            && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                        || donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
                         return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                             ProvisionFailure.AssemblyInfeasible(
                                 $"{lane} donor #{group.Key} cannot spare the complete planned batch")));
                 }
-                // §29 — the site's own defence is part of THIS fight, so the pre-mutation re-check
-                // must ask the estimator the same question the plan was admitted on: the same
-                // defence bonus and the same gate.
-                if (!GroundCombatFeasibility.Clears(projectedProfiles,
-                        WorthIt.SideCommander.Of(projectedUnits), opposition,
-                        plan.WinChanceGate, r.DefenderHexDefenseBonus,
-                        out float projectedWin, out _, plan.RequireCoverage))
-                    return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
-                        ProvisionFailure.AssemblyInfeasible(
-                            "planned same-hex roster no longer clears the shared WorthIt estimator")));
-                plan.ProjectedWinChance = projectedWin;
             }
-
-            // This is the last pre-mutation force check. A reward or casualty between the
-            // proposal and execution changes fresh admission, while a started campaign keeps
-            // its original commitment and is rechecked for defender coverage above.
+            List<WorthIt.DefenderProfile> projectedProfiles =
+                projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
+            if (!GroundCombatFeasibility.Clears(projectedProfiles,
+                WorthIt.SideCommander.Of(projectedUnits), opposition, plan.WinChanceGate,
+                r.DefenderHexDefenseBonus, out float departureWin, out bool departureCover,
+                plan.RequireCoverage))
+                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                    ProvisionFailure.AssemblyInfeasible($"{lane} departure roster no longer clears the combat gate")));
+            plan.ProjectedWinChance = departureWin;
+            plan.CoversAllDefenders = departureCover;
             if (m.Target is AttackMissionTarget attackTarget && !attackTarget.ForceCommitted
                 && !AttackForceReadiness.ForceReady(AiPower.EffectiveArmyPower(projectedUnits),
                     session.Snapshot.Self.AttackPeak))
@@ -920,29 +874,25 @@ namespace Game.Ai.V2
                     ProvisionFailure.MoverContended(
                         $"turn AP exhausted: {lane} needs {N(activationAp)}, {N(turnApLeft)} left")));
 
+            UnitData originalCommander = host.Commander;
+            bool reordered = plan.Commander != null && plan.Commander != host.Commander
+                && GroundCombatAssemblyPlanner.CanPromoteBeforeHeroReturn(host, plan.Commander)
+                && host.TryReorderCommander(plan.Commander, out _);
             var shedDone = new List<UnitData>();
-            // A shed commander hands command to the ordinary hero first (zero AP, no roster change).
-            if (shedKeeper != null && shed.Contains(host.Commander) && host.Commander != shedKeeper)
-                host.TryReorderCommander(shedKeeper, out _);
-            foreach (UnitData hero in shed)
+            if (shed.Count > 0)
             {
-                if (ArmyActions.TransferMember(hero, host, shedGarrison, ctx.HexSelection, out string shedWhy))
+                if (!ArmyActions.TransferMembersAtomic(shed, host, shedGarrison,
+                    ctx.HexSelection, out string shedWhy))
                 {
-                    shedDone.Add(hero);
-                    continue;
+                    if (originalCommander != null && host.Commander != originalCommander)
+                        host.TryReorderCommander(originalCommander, out _);
+                    return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
+                        ProvisionFailure.MoverContended($"{lane} host #{host.Id} hero return rejected: {shedWhy}")));
                 }
-                foreach (UnitData back in shedDone)
-                    ArmyActions.TransferMember(back, shedGarrison, host, ctx.HexSelection, out _);
-                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — could not return "
-                    + $"{hero.Name} to the garrison: {shedWhy}");
-                return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
-                    ProvisionFailure.AssemblyInfeasible(
-                        $"{lane} host #{host.Id} could not shed support hero {hero.Name}: {shedWhy}")));
+                shedDone.AddRange(shed);
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — secondary hero(es) "
+                    + $"[{string.Join(",", shed.Select(u => u.Name))}] returned to garrison #{shedGarrison.Id}");
             }
-            if (shedDone.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — support hero(es) "
-                    + $"[{string.Join(",", shedDone.Select(u => u.Name))}] returned to the garrison at "
-                    + $"({host.Hex.Q},{host.Hex.R}) instead of marching");
 
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in transfers)
@@ -951,8 +901,9 @@ namespace Game.Ai.V2
                 string why = donor == null ? "donor missing" : null;
                 if (donor == null || !ArmyActions.TransferMember(t.Unit, donor, host, ctx.HexSelection, out why))
                 {
-                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane);
-                    int transfersStillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane,
+                        shedGarrison, shedDone, originalCommander);
+                    int transfersStillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, shedDone, originalCommander);
                     bool rollbackChangedWorld = transfersStillApplied > 0;
                     AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembly transaction failed on "
                         + $"{t.Unit.Name} from #{t.DonorArmyId}: {why}; rollback={(rollbackOk ? "OK" : "FAILED")}; "
@@ -966,14 +917,25 @@ namespace Game.Ai.V2
                 applied.Add(t);
             }
 
+            // Apply exactly the commander priced in the departure plan. Attack's unchanged
+            // preparation path may still leave command selection to its existing evaluator.
+            UnitData lead = plan.Commander ?? HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                opposition, r.DefenderHexDefenseBonus, preferRapid: lane != "attack");
+            if (lead != null && lead != host.Commander)
+                reordered |= host.TryReorderCommander(lead, out _);
+
             // AI-01 — the assembled force must cost exactly what was projected and funded. Any
             // divergence is a failure, never a partial success: roll the transaction back and let
             // the existing repack/reprice loop re-decide with honest numbers.
             int actualAp = host.ProjectedActivationApCost(host.Members);
-            if (actualAp != activationAp || actualAp > envelope + eps)
+            bool sameRoster = host.Members.Count == projectedUnits.Count
+                && projectedUnits.All(host.Members.Contains)
+                && (plan.Commander == null || host.Commander == plan.Commander);
+            if (!sameRoster || actualAp != activationAp || actualAp > envelope + eps)
             {
-                bool reconcileRollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane);
-                int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                bool reconcileRollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, lane,
+                        shedGarrison, shedDone, originalCommander);
+                int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, shedDone, originalCommander);
                 AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — assembled host #{host.Id} "
                     + $"costs {N(actualAp)} AP but {N(activationAp)} was projected/funded "
                     + $"(envelope {N(envelope)}); rollback={(reconcileRollbackOk ? "OK" : "FAILED")}; "
@@ -991,10 +953,6 @@ namespace Game.Ai.V2
             // Strike force step 5 — the host marches under its best legal commander for THIS fight
             // (HeroRoleEvaluator, the same choice the gather projection made). Zero AP, no roster
             // change, so the funded activation above is untouched.
-            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, r.DefenderHexDefenseBonus, preferRapid: lane != "attack");
-            bool reordered = lead != null && lead != host.Commander
-                && host.TryReorderCommander(lead, out _);
             if (reordered)
                 AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
                     + $"commander -> {lead.Name} for this fight");
@@ -1010,7 +968,7 @@ namespace Game.Ai.V2
                 Host = host,
                 Plan = plan,
                 ActualAp = actualAp,
-                AppliedTransfers = applied.Count,
+                AppliedTransfers = applied.Count + shedDone.Count,
                 CommanderReordered = reordered,
             };
         }
@@ -1018,5 +976,6 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+
 
 

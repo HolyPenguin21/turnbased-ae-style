@@ -89,10 +89,25 @@ namespace Game.Ai.V2
 
         // Existing durable pinning rule, composed here; generic lease storage knows no mission kind.
         private static bool TryPreservePinnedDomainMover(MissionIntentState state, AiAllocatorState allocator,
-            MissionIntent intent, MissionStepResult result, int turn) =>
-            (intent.Kind == MissionKind.Economy || intent.Kind == MissionKind.Development)
-                && intent.PreferredMoverArmyId.HasValue
-                && intent.PreferredMoverArmyId.Value != result.MoverArmyId.Value;
+            MissionIntent intent, MissionStepResult result, int turn)
+        {
+            if ((intent.Kind != MissionKind.Economy && intent.Kind != MissionKind.Development)
+                || !intent.PreferredMoverArmyId.HasValue || !result.MoverArmyId.HasValue
+                || intent.PreferredMoverArmyId == result.MoverArmyId)
+                return false;
+            // The pinned garrison was a materialization source, not the departing builder.
+            // Only this operation's successful extraction may replace it. A failed/stale step,
+            // an ordinary composition change or a different source cannot steal a pinned actor.
+            EconomyStepPayload facts = result.GetPayload<EconomyStepPayload>();
+            bool extractedBuilder = intent.Kind == MissionKind.Economy && result.MadeProgress
+                && facts?.HasEconomyPayload == true
+                && facts.MaterializationSourceArmyId == intent.PreferredMoverArmyId
+                && result.IntentKey.Equals(intent.IntentKey)
+                && intent.Economy != null
+                && facts.EconomyTarget.Kind == intent.Economy.Kind
+                && facts.EconomyTarget.TargetHex.Equals(intent.Economy.TargetHex);
+            return !extractedBuilder;
+        }
 
         // Same capability-failure exceptions as the former two expressions; Raid ages only for reap.
         private static bool DomainAgesCapabilityFailure(MissionIntent intent, bool forReaping) =>
@@ -166,3 +181,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
