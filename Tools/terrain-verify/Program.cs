@@ -8,12 +8,13 @@ public static class Program
     public static int Main()
     {
         int passed=0,failed=0;
-        foreach (var method in typeof(TerrainComplexTests).GetMethods().Where(m=>m.GetCustomAttribute<TestAttribute>()!=null))
+        foreach (var type in new[] { typeof(TerrainComplexTests), typeof(MatchResourcePlacementTests) })
+        foreach (var method in type.GetMethods().Where(m=>m.GetCustomAttribute<TestAttribute>()!=null))
         {
-            var fixture=new TerrainComplexTests();
-            try { fixture.SetUp();method.Invoke(fixture,null);passed++;Console.WriteLine("PASS "+method.Name); }
+            var fixture=Activator.CreateInstance(type);
+            try { type.GetMethod("SetUp").Invoke(fixture,null);method.Invoke(fixture,null);passed++;Console.WriteLine("PASS "+method.Name); }
             catch(Exception e) {failed++;Console.WriteLine("FAIL "+method.Name+": "+(e.InnerException??e).Message);}
-            finally { fixture.TearDown(); }
+            finally { type.GetMethod("TearDown").Invoke(fixture,null); }
         }
         Console.WriteLine($"Terrain algorithm checks: {passed} passed, {failed} failed (managed stubs; Unity engine checks still required).");
         return failed==0?0:1;
