@@ -324,7 +324,8 @@ namespace Game.EditorTests
                 TargetHex = Base, Capability = CapabilityKind.FieldCombatPower };
             int lastId = new UnitData().RuntimeId;
             var plans = AttackBaseRefitPolicy.Enumerate(snap, player, hand,
-                new AiTurnContext { TurnNumber = 6 }, demand, new ActorCommitments(), null, null);
+                new AiTurnContext { TurnNumber = 6 }, demand, new ActorCommitments(), null, null,
+                MissionIntentRegistry.GetOrCreate(player).All);
             Assert.That(plans.Count, Is.EqualTo(1));
             var plan = plans.Single();
             Assert.That(plan.Deploy.Kind, Is.EqualTo(full ? DeploymentKind.NewArmy : DeploymentKind.ExistingArmy));
@@ -336,11 +337,13 @@ namespace Game.EditorTests
             Assert.That(primary.Members.Count, Is.EqualTo(full ? 2 : 1));
             Assert.That(new UnitData().RuntimeId, Is.EqualTo(lastId + 1));
             primary.Members[0].HitPointsCurrent--;
-            Assert.That(AttackBaseRefitPolicy.Validate(plan, snap, player, out _, out _), Is.False,
+            Assert.That(AttackBaseRefitPolicy.Validate(plan, snap, player,
+                MissionIntentRegistry.GetOrCreate(player).All, out _, out _), Is.False,
                 "a stale plan must fail before any spending or hand mutation");
             snap.TurnNumber = 8;
             Assert.That(AttackBaseRefitPolicy.Enumerate(snap, player, hand,
-                new AiTurnContext { TurnNumber = 8 }, demand, new ActorCommitments(), null, null), Is.Empty);
+                new AiTurnContext { TurnNumber = 8 }, demand, new ActorCommitments(), null, null,
+                MissionIntentRegistry.GetOrCreate(player).All), Is.Empty);
             Assert.That(attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
         }
 

@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         private static void TryAppendAttackPreparation(WorldSnapshot snap,
             List<AttackObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
-            bool attackProposed)
+            bool attackProposed, MissionIntentState intentState)
         {
             SelfSnapshot self = snap.Self;
             bool open = AttackForceReadiness.MobilizationOpen(self);
@@ -102,7 +102,7 @@ namespace Game.Ai.V2
             if (fieldHost != null)
             {
                 Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
-                    player == null ? null : MissionIntentRegistry.GetOrCreate(player).All);
+                    player == null ? null : intentState?.All);
                 GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
                     fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
@@ -385,12 +385,12 @@ namespace Game.Ai.V2
         // Until it is funded and executed the donors stay with their operations.
         private static void AppendPreparationRecruit(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ArmySnapshot host, float hexBonus, ISet<int> committed,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals, MissionIntentState intentState)
         {
             if (host.MemberCount == 0 || snap.Observer == null)
                 return;
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
-                MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+                intentState?.All);
             if (donorValues.Count == 0)
                 return;
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);

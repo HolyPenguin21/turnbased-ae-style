@@ -105,7 +105,8 @@ namespace Game.Ai.V2
             {
                 var primary = OwnWorld.Of(player).Army(id);
                 var attack = primary == null ? null
-                    : AttackBaseRefitPolicy.Resolve(player, id, primary.Hex, ctx.TurnNumber);
+                    : AttackBaseRefitPolicy.Resolve(
+                        MissionIntentRegistry.GetOrCreate(player).All, player, id, primary.Hex, ctx.TurnNumber);
                 apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
                     : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
             }
@@ -910,7 +911,8 @@ namespace Game.Ai.V2
                     if (chosenDemand.AttackLocalRefit)
                     {
                         var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
-                        var attack = AttackBaseRefitPolicy.Resolve(player, primary.Id, primary.Hex, ctx.TurnNumber);
+                        var attack = AttackBaseRefitPolicy.Resolve(
+                            MissionIntentRegistry.GetOrCreate(player).All, player, primary.Id, primary.Hex, ctx.TurnNumber);
                         apBudget.ReserveActorFollowup(primary.Id,
                             AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
                     }

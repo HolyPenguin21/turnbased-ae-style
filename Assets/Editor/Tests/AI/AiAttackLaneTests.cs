@@ -536,7 +536,7 @@ namespace Game.EditorTests
             var proposals = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
                 new HashSet<int>(), proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
             Assert.That(proposals.Any(p => p.Target is AttackMissionTarget t
                 && t.Phase == AttackMissionPhase.Assault), Is.EqualTo(expected));
         }
@@ -550,7 +550,7 @@ namespace Game.EditorTests
 
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
                 new HashSet<int>(), proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             Assert.That(proposals.Count, Is.EqualTo(1));
             MissionProposal p = proposals[0];
@@ -575,7 +575,7 @@ namespace Game.EditorTests
 
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
                 new HashSet<int> { 7 }, proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             Assert.That(proposals, Is.Empty,
                 "actor contention is the allocator's problem, never a second Attack path");
@@ -592,7 +592,7 @@ namespace Game.EditorTests
             var fresh = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
                 new HashSet<int>(), fresh, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
             Assert.That(((AttackMissionTarget)fresh[0].Target).OpportunisticStrikeTurn,
                 Is.EqualTo(0),
                 "a fresh objective has taken no strike, and 0 can never equal a real turn");
@@ -602,7 +602,7 @@ namespace Game.EditorTests
             var carried = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, new[] { incumbent },
                 new HashSet<int>(), carried, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             Assert.That(((AttackMissionTarget)carried[0].Target).OpportunisticStrikeTurn,
                 Is.EqualTo(snap.TurnNumber),
@@ -700,7 +700,7 @@ namespace Game.EditorTests
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
                 new HashSet<int> { 7 }, proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             MissionProposal leg = proposals.Find(p => p.Target is AttackMissionTarget t
                 && t.Phase == AttackMissionPhase.Reinforcement);
@@ -724,7 +724,7 @@ namespace Game.EditorTests
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
                 new HashSet<int> { 7 }, proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             Assert.That(proposals.Exists(p => p.Target is AttackMissionTarget t
                     && t.Phase == AttackMissionPhase.Reinforcement), Is.False,
@@ -746,7 +746,7 @@ namespace Game.EditorTests
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
                 new HashSet<int> { 7, 8 }, proposals, null,
-                new Dictionary<MissionIntentKey, string>());
+                new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
 
             List<MissionProposal> legProposals = proposals
                 .Where(p => p.Target is AttackMissionTarget t && t.Phase == AttackMissionPhase.Reinforcement)

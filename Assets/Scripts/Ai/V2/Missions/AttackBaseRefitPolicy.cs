@@ -29,9 +29,11 @@ namespace Game.Ai.V2
                     && a.IsStructuralRaidActor && a.Hex.Equals(attack.RefitBaseHex.Value)) == true;
         }
 
-        internal static AttackIntent Resolve(PlayerSetupData player, int id, HexCoord hex, int turn)
+        // `intents` — the owner's durable intents (MissionIntentState.All).
+        internal static AttackIntent Resolve(IEnumerable<MissionIntent> intents, PlayerSetupData player,
+            int id, HexCoord hex, int turn)
         {
-            var a = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+            var a = intents?.FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == id)?.Attack;
             var building = OwnWorld.Of(player).BuildingAt(hex);
             return a != null && a.AssaultStarted && a.RefitBaseHex.HasValue && a.RefitBaseHex.Value.Equals(hex)
@@ -42,12 +44,13 @@ namespace Game.Ai.V2
 
         internal static List<MaterializationPlan> Enumerate(WorldSnapshot snap, PlayerSetupData player,
             AiHandData hand, AiTurnContext ctx, AxisDemand demand, ActorCommitments commitments,
-            MaterializationReservation reservation, ISet<CardData> excluded, PlayerRoot root = null)
+            MaterializationReservation reservation, ISet<CardData> excluded, IEnumerable<MissionIntent> intents,
+            PlayerRoot root = null)
         {
             var plans = new List<MaterializationPlan>();
             if (player == null || hand == null || demand == null
                 || !demand.AttackFistArmyId.HasValue || !demand.TargetHex.HasValue) return plans;
-            var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+            var intent = intents?.FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == demand.AttackFistArmyId)?.Attack;
             if (!WindowOpen(snap, intent)) return plans;
             var primary = OwnWorld.Of(player).Army(demand.AttackFistArmyId.Value);
@@ -70,7 +73,7 @@ namespace Game.Ai.V2
                 plan.AttackRefitPrimaryId = primary.Id;
                 plan.AttackRefitCaptureTurn = intent.RefitCaptureTurn;
                 plan.AttackRefitRoster = RosterKey(primary);
-                if (!Validate(plan, snap, player, out HandoffPlan handoff, out ArmyData support)) return;
+                if (!Validate(plan, snap, player, intents, out HandoffPlan handoff, out ArmyData support)) return;
                 if (handoff.Displaced.Count == 0 && (handoff.Promote == null || primary.Commander == null)
                     && primary.CanFitAdditionalCard(def))
                 {
@@ -128,13 +131,13 @@ namespace Game.Ai.V2
         }
 
         internal static bool Validate(MaterializationPlan plan, WorldSnapshot snap, PlayerSetupData player,
-            out HandoffPlan handoff, out ArmyData support)
+            IEnumerable<MissionIntent> intents, out HandoffPlan handoff, out ArmyData support)
         {
             handoff = null; support = null;
             if (plan?.AttackRefitPrimaryId == null || plan.BaseCardInHand?.Definition == null || snap == null)
                 return false;
             var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
-            var attack = Resolve(player, plan.AttackRefitPrimaryId.Value, plan.Deploy.Hex, snap.TurnNumber);
+            var attack = Resolve(intents, player, plan.AttackRefitPrimaryId.Value, plan.Deploy.Hex, snap.TurnNumber);
             if (primary == null || !primary.Hex.Equals(plan.Deploy.Hex) || attack == null
                 || attack.RefitCaptureTurn != plan.AttackRefitCaptureTurn
                 || RosterKey(primary) != plan.AttackRefitRoster) return false;
@@ -186,10 +189,10 @@ namespace Game.Ai.V2
         }
 
         internal static bool FollowupStillCurrent(MaterializationPlan plan, PlayerSetupData player,
-            AiTurnContext ctx, HandoffPlan handoff, PlayerRoot root = null)
+            IEnumerable<MissionIntent> intents, AiTurnContext ctx, HandoffPlan handoff, PlayerRoot root = null)
         {
             var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
-            var attack = Resolve(player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
+            var attack = Resolve(intents, player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
             return primary != null && attack != null
                 && plan.AttackRefitFollowupAp == FollowupAp(player, primary, attack,
                     FinalRoster(primary, handoff), ctx, root);
@@ -217,8 +220,8 @@ namespace Game.Ai.V2
                 + $"{string.Join(",", u.Abilities.OrderBy(x => x, StringComparer.Ordinal))}:"
                 + $"{string.Join(",", u.TypeTags.OrderBy(x => x))}"));
 
-        internal static string Fingerprint(PlayerSetupData player, int turn) => string.Join("|",
-            MissionIntentRegistry.GetOrCreate(player).All.Where(i => i.Status == IntentStatus.Active
+        internal static string Fingerprint(PlayerSetupData player, IEnumerable<MissionIntent> intents, int turn) => string.Join("|",
+            (intents ?? Enumerable.Empty<MissionIntent>()).Where(i => i.Status == IntentStatus.Active
                 && i.Attack?.RefitBaseHex.HasValue == true
                 && turn >= i.Attack.RefitCaptureTurn && turn <= i.Attack.RefitCaptureTurn + 1)
                 .OrderBy(i => i.IntentKey).Select(i =>

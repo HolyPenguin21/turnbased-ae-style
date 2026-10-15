@@ -11,9 +11,9 @@ namespace Game.Ai.V2
     {
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<RaidObjective> frozenObjectives, AiTurnContext ctx = null,
-            IDictionary<MissionIntentKey, string> deferredThisPass = null,
-            MissionIntentState intentState = null, ICollection<RetreatWitnessRevision> witnessRevisions = null)
+            IReadOnlyList<RaidObjective> frozenObjectives, MissionIntentState intentState,
+            AiTurnContext ctx = null, IDictionary<MissionIntentKey, string> deferredThisPass = null,
+            ICollection<RetreatWitnessRevision> witnessRevisions = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || breakdown == null)
@@ -34,7 +34,8 @@ namespace Game.Ai.V2
             ISet<int> committed = ActorCommitments.FromIntents(
                 activeIntents?.Where(i => i != null && i.Status == IntentStatus.Active),
                 snap, null).ClaimedArmyIdSet;
-            AppendRaid(snap, breakdown, activeIntents, objectives, committed, proposals, deferredThisPass);
+            AppendRaid(snap, breakdown, activeIntents, objectives, committed, proposals, deferredThisPass,
+                intentState);
             AppendActiveDefence(snap, activeIntents, committed, proposals, deferredThisPass);
             // ATK §40 — Attack is a peer lane of the same Aggression planner, appended through the
             // same one entry point; it is never orchestrated separately (§81).

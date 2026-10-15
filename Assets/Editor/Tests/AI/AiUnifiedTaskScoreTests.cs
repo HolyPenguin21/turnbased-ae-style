@@ -756,7 +756,7 @@ namespace Game.EditorTests
             intent.IntentKey = MissionIntentKey.For(intent);
 
             var proposals = AggressionMissionLayer.Propose(snap, breakdown,
-                new[] { intent }, new[] { objective });
+                new[] { intent }, new[] { objective }, MissionIntentRegistry.GetOrCreate(snap.Observer));
             Assert.That(proposals, Has.Count.EqualTo(1));
             MissionProposal result = proposals[0];
             Assert.That(result.PreferredMoverArmyId, Is.EqualTo(0));
@@ -787,7 +787,7 @@ namespace Game.EditorTests
                 NeutralOpportunities = Array.Empty<CombatOpportunity>(),
             };
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
-                new[] { intent }, Array.Empty<RaidObjective>()).Single();
+                new[] { intent }, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer)).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
                 + objective.TaskScore.RaidReward
                 - TaskScoreEvaluator.Price(pinned.ActivationApCost)

@@ -131,8 +131,10 @@ namespace Game.Ai.V2
 
             if (plan.AttackRefitPrimaryId.HasValue
                 && (snap == null || snap.TurnNumber != ctx.TurnNumber
-                    || !AttackBaseRefitPolicy.Validate(plan, snap, player, out var refitHandoff, out _)
-                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, ctx, refitHandoff, root)
+                    || !AttackBaseRefitPolicy.Validate(plan, snap, player, MissionIntentRegistry.GetOrCreate(player).All,
+                        out var refitHandoff, out _)
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, MissionIntentRegistry.GetOrCreate(player).All,
+                        ctx, refitHandoff, root)
                     || !AttackBaseRefitPolicy.OnwardFunded(plan, player, root, ctx, plan.ApCost,
                         AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
                             plan.AttackRefitPrimaryId.Value), refitHandoff))

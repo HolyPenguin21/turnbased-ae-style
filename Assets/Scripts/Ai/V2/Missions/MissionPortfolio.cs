@@ -42,7 +42,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace, AiTurnContext ctx,
-            MissionIntentState intentState = null)
+            MissionIntentState intentState)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Pipeline.BuildMissionSet");
             // Refresh only the Recon lane pressures from the current snapshot right before Missions
@@ -53,7 +53,7 @@ namespace Game.Ai.V2
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives, deferredThisPass, ctx);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                activeIntents, aggressionObjectives, ctx, deferredThisPass, intentState, witnessRevisions));
+                activeIntents, aggressionObjectives, intentState, ctx, deferredThisPass, witnessRevisions));
             missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, demands, deferredThisPass));
             missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));

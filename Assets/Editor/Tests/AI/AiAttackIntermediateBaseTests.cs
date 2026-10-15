@@ -165,7 +165,7 @@ namespace Game.EditorTests
             snap.TrueWorld = new TrueWorldSnapshot { Opponents = new[] { new OpponentSnapshot { Player = Red } } };
             var proposals = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, new[] { Intent() }, new HashSet<int> { 7 },
-                proposals, null, new Dictionary<MissionIntentKey, string>());
+                proposals, null, new Dictionary<MissionIntentKey, string>(), MissionIntentRegistry.GetOrCreate(snap.Observer), null);
             var proposal = proposals.Single(p => p.Target is AttackMissionTarget t && t.Phase == AttackMissionPhase.Assault);
             var target = (AttackMissionTarget)proposal.Target;
             Assert.That(target.Target, Is.EqualTo(Main)); Assert.That(target.AssaultTarget, Is.EqualTo(Local));

@@ -20,7 +20,8 @@ namespace Game.Ai.V2
             AiTurnContext ctx, AiHandData hand, ArmyData support, SpendAuthority authority)
         {
             var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
-            var attack = AttackBaseRefitPolicy.Resolve(player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
+            var attack = AttackBaseRefitPolicy.Resolve(MissionIntentRegistry.GetOrCreate(player).All, player,
+                primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
             if (primary == null || support == null || attack == null
                 || attack.RefitCaptureTurn != plan.AttackRefitCaptureTurn
                 || (support != primary && AttackBaseRefitPolicy.RosterKey(primary) != plan.AttackRefitRoster)) return false;

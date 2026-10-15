@@ -146,7 +146,7 @@ namespace Game.Ai.V2
             MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
             var witnessRevisions = new List<RetreatWitnessRevision>();
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                activeIntents, aggressionObjectives, ctx, intentState: intentState,
+                activeIntents, aggressionObjectives, intentState, ctx,
                 witnessRevisions: witnessRevisions));
             AttackRetreatWitness.Apply(intentState, witnessRevisions);
             // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path

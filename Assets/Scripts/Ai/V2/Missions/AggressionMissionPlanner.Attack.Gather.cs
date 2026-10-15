@@ -19,10 +19,10 @@ namespace Game.Ai.V2
         // support with the longest walk that can act this turn.
         private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals, MissionIntentState intentState)
         {
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
-                snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+                snap.Observer == null ? null : intentState?.All);
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: donorValues,
@@ -79,7 +79,8 @@ namespace Game.Ai.V2
         // walks to it (or hands over once there) in parallel. Lifecycle work of a Hard operation,
         // so, like the Reinforcement convoy, the intrinsic score stays neutral.
         private static void AppendAttackGather(WorldSnapshot snap, MissionIntent intent,
-            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx)
+            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
+            MissionIntentState intentState)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;
@@ -118,7 +119,7 @@ namespace Game.Ai.V2
             {
                 AppendPreparationAssembly(snap, intent, a, host, hexBonus, committed, proposals);
                 if (a.GatherSupportArmyIds.Count == 0)
-                    AppendPreparationRecruit(snap, intent, a, host, hexBonus, committed, proposals);
+                    AppendPreparationRecruit(snap, intent, a, host, hexBonus, committed, proposals, intentState);
                 if (!a.CommanderArmyId.HasValue)
                     AppendPreparationCommanderFetch(snap, intent, a, host, hexBonus, proposals);
             }

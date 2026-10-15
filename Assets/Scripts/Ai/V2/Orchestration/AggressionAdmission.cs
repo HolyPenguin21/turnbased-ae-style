@@ -112,7 +112,7 @@ namespace Game.Ai.V2
                 + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}"
-                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.TurnNumber)}"
+                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, MissionIntentRegistry.GetOrCreate(player).All, snapshot.TurnNumber)}"
                 // A withdrawn Attack target stays closed until the fight itself changes
                 // (AttackRetreatWitness): the witness is an input of admission, not a timer.
                 + $"|retreat={MissionIntentRegistry.GetOrCreate(player).RetreatWitnessDigest()}";

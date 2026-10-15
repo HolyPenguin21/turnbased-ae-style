@@ -24,8 +24,8 @@ namespace Game.Ai.V2
         internal static void AppendAttack(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx,
-            IDictionary<MissionIntentKey, string> deferredThisPass, MissionIntentState intentState = null,
-            ICollection<RetreatWitnessRevision> witnessRevisions = null)
+            IDictionary<MissionIntentKey, string> deferredThisPass, MissionIntentState intentState,
+            ICollection<RetreatWitnessRevision> witnessRevisions)
         {
             if (snap?.Self == null || snap.Self.AttackPeak <= 0f)
                 return;
@@ -46,7 +46,7 @@ namespace Game.Ai.V2
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx,
                             deferredThisPass);
                     else if (a.Phase == AttackMissionPhase.Gather)
-                        AppendAttackGather(snap, intent, a, committed, proposals, ctx);
+                        AppendAttackGather(snap, intent, a, committed, proposals, ctx, intentState);
                     // Strike force step 5 — donors that already handed over walk home beside
                     // whatever the operation itself does.
                     foreach (AttackGatherReturn r in a.GatherReturns)
@@ -167,7 +167,7 @@ namespace Game.Ai.V2
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be formed by free armies spread over several hexes: gather them.
                     if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
-                            hexBonus, excluded, freshCandidates))
+                            hexBonus, excluded, freshCandidates, intentState))
                     {
                         attackProposed = true;
                         continue;
@@ -350,7 +350,7 @@ namespace Game.Ai.V2
                 proposals.Add(bestFresh);
 
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
-                attackProposed);
+                attackProposed, intentState);
 
             RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
         }

@@ -143,7 +143,7 @@ namespace Game.EditorTests
             snap.Self.BaseHexes = System.Array.Empty<HexCoord>();
             var raid = Raid(primary.ArmyId, new HexCoord(4, 0));
 
-            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid, MissionIntentRegistry.GetOrCreate(snap.Observer).All,
                 new HashSet<int>(), safeRouteCost: (from, to, maxMovement) => int.MaxValue);
 
             Assert.That(plan.Viable, Is.False,
@@ -207,7 +207,7 @@ namespace Game.EditorTests
                 return HexGridMath.Distance(from, to);
             }
 
-            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid, MissionIntentRegistry.GetOrCreate(snap.Observer).All,
                 new HashSet<int>(), safeRouteCost: Route);
 
             Assert.That(plan.Viable, Is.True);

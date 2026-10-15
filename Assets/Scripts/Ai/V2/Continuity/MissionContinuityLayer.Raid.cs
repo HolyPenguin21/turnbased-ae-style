@@ -242,7 +242,8 @@ namespace Game.Ai.V2
                 && !RecoveryBaseStillValid(snap, player, ri.PrimaryArmyId, ri.RecoveryBaseHex))
             {
                 RaidRecoveryProjection replacement = RaidRecoveryPlanner.Choose(
-                    snap, ri, recoveryUnavailable, safeRouteCost: safeRouteCost);
+                    snap, ri, MissionIntentRegistry.GetOrCreate(player).All, recoveryUnavailable,
+                    safeRouteCost: safeRouteCost);
                 if (!replacement.Viable)
                 {
                     AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=ABANDON intent={intent.IntentKey} "
@@ -388,7 +389,7 @@ namespace Game.Ai.V2
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
-                unavailableArmyIds, safeRouteCost: safeRouteCost);
+                MissionIntentRegistry.GetOrCreate(player).All, unavailableArmyIds, safeRouteCost: safeRouteCost);
             if (!plan.Viable)
             {
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=ABANDON intent={intent.IntentKey} "

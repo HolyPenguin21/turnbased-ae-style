@@ -1319,7 +1319,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
                 DefenceActor(owner, 7, new HexCoord(0, 0)));
             List<MissionProposal> proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Has.Count.EqualTo(1));
             var target = (ActiveDefenceMissionTarget)proposals[0].Target;
@@ -1332,7 +1332,7 @@ namespace Game.EditorTests
             // Already activated this turn: no second activation is charged.
             snap.Self.Armies[0].HasActivatedThisTurn = true;
             proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Has.Count.EqualTo(1));
             Assert.That(proposals[0].Requirements.ApMinimum, Is.Zero);
@@ -1346,7 +1346,7 @@ namespace Game.EditorTests
                 DefenceActor(owner, 7, new HexCoord(0, 0)), DefenceActor(owner, 8, new HexCoord(0, 1)));
             MissionIntent strategic = DefenceIntent(ActiveDefencePhase.Intercept, 77, 8, null);
             var proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                new[] { strategic }, Array.Empty<RaidObjective>())
+                new[] { strategic }, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Is.Empty, "the strategic intent owns the enemy; no second Intercept");
         }
