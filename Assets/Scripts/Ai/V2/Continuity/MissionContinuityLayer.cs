@@ -369,20 +369,6 @@ namespace Game.Ai.V2
             state.Remove(intent?.IntentKey ?? outcome.IntentKey, turn);
         }
 
-        // Is an already-collecting actor still worth its site? Analysis' admission test for a
-        // NEW collector (UsefulMarginalIncomeGain), judged against own income without this
-        // collector's own contribution.
-        internal static bool CollectorStillUseful(WorldSnapshot snap, ResourceType type,
-            float contribution)
-        {
-            foreach (EconomyResourceStanding standing in snap?.Economy?.PerType
-                         ?? System.Array.Empty<EconomyResourceStanding>())
-                if (standing.Type == type)
-                    return standing.UsefulRetainedIncomeGain(contribution)
-                        > AiConfigV2.allocatorSliceEpsilon;
-            return false;
-        }
-
         // The limits ShouldReap applies to this intent, for the reap log line. A Raid is judged by
         // the raid* caps and Scout/Attack have no absolute age cap, so printing the shared
         // commitment* limits for every kind (e.g. "age 10/6" for a Raid) misreported the cause.
