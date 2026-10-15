@@ -118,6 +118,9 @@ namespace Game.Setup
 
             // Every per-match static holder starts empty (MatchStateInventory owns the list).
             MatchStateInventory.ResetForNewMatch();
+            // HexMapGenerator.OnEnable draws before this Start and may have seen the previous
+            // match's static bonuses. Redraw after the silent world reset to remove stale icons.
+            map.GetComponent<MapResourceDisplay>()?.RefreshAll();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii

@@ -91,8 +91,10 @@ namespace Game.Campaign
                 GameSession.SetCampaignContext(new CampaignMatchContext { CampaignId = s.CampaignId, OperationId = op.OperationId,
                     MatchId = op.MatchId, AttackerFaction = op.AttackerFaction, DefenderFaction = op.DefenderFaction, HumanFaction = s.HumanFaction,
                     SourceRegionId = op.SourceRegionId, TargetRegionId = op.TargetRegionId, SelectedHumanDeckId = deckId });
-                // Same existing generator settings as ordinary matches, no regional modifiers.
-                GameSession.SelectedMapSize = null; GameSession.SelectedBiome = null;
+                var target = s.Regions.Find(r => r.RegionId == op.TargetRegionId);
+                GameSession.SelectedMapSize = null;
+                GameSession.SelectedBiome = target.Biome;
+                GameSession.SelectedResourceConditions = target.ResourceConditions;
                 return true;
             }
             catch (Exception ex) { error = ex.Message; return false; }

@@ -104,13 +104,13 @@ public static class CampaignScreenBuilder
         var humanName = Text(noSelection, "HumanFactionName", "Faction", 30, 694, 370, 34, 24, Cream, false, TextAlignmentOptions.Center);
 
         var regionPanel = Rect(sidebar, "RegionPanel"); Stretch(regionPanel);
-        var preview = Rect(regionPanel, "RegionTerrainPreview"); Place(preview, 30, 344, 370, 122);
+        var preview = Rect(regionPanel, "RegionTerrainPreview"); Place(preview, 20, 353, 135, 135);
         var terrain = preview.gameObject.AddComponent<RawImage>(); terrain.raycastTarget = false;
         preview.gameObject.AddComponent<Mask>();
         Frame(preview, frame);
-        Text(regionPanel, "OwnerCaption", "OWNER", 30, 482, 88, 34, 20, Cream);
-        var ownerLogo = LogoImage(regionPanel, "OwnerLogo", 122, 478, 36);
-        var ownerName = Text(regionPanel, "OwnerName", "Faction", 170, 482, 230, 34, 23, Cream);
+
+        var ownerLogo = LogoImage(regionPanel, "OwnerLogo", 160, 353, 36);
+        var ownerName = Text(regionPanel, "OwnerName", "Faction", 200, 353, 200, 36, 23, Cream);
         Plaque(regionPanel, "NeighborsPlaque", "NEIGHBORING REGIONS", 28, 530, 374, 34, 20);
         var neighbors = Scroll(regionPanel, "Neighbors", 28, 574, 374, 106, new Color(0, 0, 0, .32f));
 
@@ -131,13 +131,13 @@ public static class CampaignScreenBuilder
         var backdrop = Panel(canvas, "ModalBackdrop"); Stretch(backdrop);
         backdrop.GetComponent<Image>().color = new Color(0, 0, 0, .8f);
         var confirm = Window(backdrop, "ConfirmAttackWindow", "CONFIRM ATTACK");
-        var confirmText = Text(confirm, "Text", "", 35, 110, 880, 90, 26, Cream);
+        var confirmText = Text(confirm, "Text", "", 35, 110, 880, 300, 24, Cream);
         var confirmChoose = MakeButton(confirm, "ChooseDeck", "Choose Deck", 35, 570, 400, 56, 22, "Action");
         var confirmCancel = MakeButton(confirm, "Cancel", "Cancel", 490, 570, 400, 56, 22, "Action");
         var deck = Window(backdrop, "DeckSelectionWindow", "CAMPAIGN BATTLE");
-        var deckInfo = Text(deck, "Info", "", 35, 92, 880, 125, 20, Cream);
-        var deckList = Scroll(deck, "SavedDecks", 35, 232, 880, 310, new Color(0, 0, 0, .07f));
-        var deckEmpty = Text(deck, "NoDecks", "No saved decks for this faction. Create one in Collection / Decks.", 35, 240, 880, 70, 20, Cream);
+        var deckInfo = Text(deck, "Info", "", 35, 92, 880, 212, 20, Cream);
+        var deckList = Scroll(deck, "SavedDecks", 35, 320, 880, 222, new Color(0, 0, 0, .07f));
+        var deckEmpty = Text(deck, "NoDecks", "No saved decks for this faction. Create one in Collection / Decks.", 35, 330, 880, 70, 20, Cream);
         var deckStart = MakeButton(deck, "Start", "Start Battle", 35, 584, 415, 52, 22, "Action");
         var deckCancel = MakeButton(deck, "Cancel", "Cancel", 490, 584, 415, 52, 22, "Action");
         var deckAuto = MakeButton(deck, "TestAutoResolve", "Test Auto Resolve (no collection rewards)", 35, 648, 870, 36, 16, "Action");
@@ -253,6 +253,37 @@ public static class CampaignScreenBuilder
         }
 
         var regionPanel = Get<GameObject>("regionPanel");
+        if (regionPanel != null && Missing("regionConditionsText"))
+        {
+            var existing = regionPanel.transform.Find("RegionConditions");
+            var text = existing != null ? existing.GetComponent<TMP_Text>()
+                : Created(Text(regionPanel.transform, "RegionConditions", "Biome\nSpecialization\nRichness", 160, 397, 240, 84, 18, Cream));
+            Set("regionConditionsText", text);
+            // Older builder layouts had a full-width preview occupying the new text area.
+            var preview = Get<RawImage>("terrainPreview");
+            if (preview != null && preview.rectTransform.rect.width > 135)
+            {
+                Undo.RecordObject(preview.rectTransform, "Add region conditions"); Place(preview.rectTransform, 20, 353, 135, 135);
+                var ownerLogo = Get<Image>("ownerLogo");
+                if (ownerLogo != null) { Undo.RecordObject(ownerLogo.rectTransform, "Add region conditions"); Place(ownerLogo.rectTransform, 160, 353, 36, 36); }
+                var ownerName = Get<TMP_Text>("ownerName");
+                if (ownerName != null) { Undo.RecordObject(ownerName.rectTransform, "Add region conditions"); Place(ownerName.rectTransform, 200, 353, 200, 36); }
+                Hide(regionPanel.transform.Find("OwnerCaption"));
+            }
+            var confirm = Get<TMP_Text>("confirmText");
+            if (confirm != null) { Undo.RecordObject(confirm.rectTransform, "Add region conditions"); confirm.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 300); }
+            // Enlarge only the existing battle summary; preserve the list's bottom edge/buttons.
+            var info = Get<TMP_Text>("deckInfo");
+            if (info != null) { Undo.RecordObject(info.rectTransform, "Add region conditions"); info.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 212); }
+            var list = Get<RectTransform>("deckListContent");
+            if (list != null && list.parent != null)
+            {
+                var scroll = list.parent.parent as RectTransform;
+                if (scroll != null) { Undo.RecordObject(scroll, "Add region conditions"); scroll.anchoredPosition = new Vector2(scroll.anchoredPosition.x, -320); scroll.sizeDelta = new Vector2(scroll.sizeDelta.x, 222); }
+            }
+            var empty = Get<TMP_Text>("deckEmptyLabel");
+            if (empty != null) { Undo.RecordObject(empty.rectTransform, "Add region conditions"); empty.rectTransform.anchoredPosition = new Vector2(empty.rectTransform.anchoredPosition.x, -330); }
+        }
         if (regionPanel != null && Missing("neighborEmblemsContent"))
         {
             var row = Created(Rect(regionPanel.transform, "NeighborEmblemsRow")); Place(row, 28, 528, 374, 40);
