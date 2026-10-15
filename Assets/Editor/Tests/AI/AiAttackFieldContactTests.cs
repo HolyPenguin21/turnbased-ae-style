@@ -5,6 +5,7 @@ using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Combat;
+using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -44,6 +45,41 @@ namespace Game.EditorTests
             ArmyRegistry.Clear();
             MissionIntentRegistry.Clear();
             AiAllocatorStateRegistry.Clear();
+        }
+
+        [TestCase(Game.Cards.UnitAbilities.Heal)]
+        [TestCase(Game.Cards.UnitAbilities.Drill)]
+        public void RetreatFingerprints_IncludeSecondaryHeroesOnBothSides(string ability)
+        {
+            var body = Body(4, 2, 6);
+            var carrier = new WorthIt.DefenderProfile(0f, false, new[] { UnitTypeTag.Bio },
+                0f, 5f, 1, new[] { ability }, 6f, isGroundCombatant: false, isHero: true);
+            var plain = new WorthIt.SideCommander(2, 3);
+            var supported = new WorthIt.SideCommander(2, 3, new[] { carrier });
+            var before = Army(7, Origin, new[] { body }); before.Commander = plain;
+            var after = Army(7, Origin, new[] { body }); after.Commander = supported;
+            Assert.That(AttackRetreatWitness.OwnFingerprintOf(after),
+                Is.Not.EqualTo(AttackRetreatWitness.OwnFingerprintOf(before)));
+            Assert.That(AttackTacticalOpportunity.ContactFingerprint(new[] { new WorthIt.DefendingArmy(new[] { body }, supported) }),
+                Is.Not.EqualTo(AttackTacticalOpportunity.ContactFingerprint(new[] { new WorthIt.DefendingArmy(new[] { body }, plain) })));
+            Assert.That(AggressionAdmission.Fingerprint(new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] { after } } }, Us),
+                Is.Not.EqualTo(AggressionAdmission.Fingerprint(new WorldSnapshot { Self = new SelfSnapshot { Armies = new[] { before } } }, Us)));
+        }
+
+        [Test]
+        public void SupportFingerprint_ChangesWithWoundsAndTagsButNotRosterOrder()
+        {
+            WorthIt.DefenderProfile Hero(float hp, UnitTypeTag tag) => new WorthIt.DefenderProfile(0f,
+                false, new[] { tag }, 0f, hp, 1, new[] { Game.Cards.UnitAbilities.Heal }, 6f,
+                isGroundCombatant: false, isHero: true);
+            int Hash(params WorthIt.DefenderProfile[] heroes) =>
+                AttackRetreatWitness.OwnFingerprintOf(new ArmySnapshot {
+                    Members = System.Array.Empty<WorthIt.DefenderProfile>(),
+                    Commander = new WorthIt.SideCommander(2, 3, heroes) });
+            var a = Hero(5, UnitTypeTag.Bio); var b = Hero(4, UnitTypeTag.Bio);
+            Assert.That(Hash(a), Is.Not.EqualTo(Hash(b)));
+            Assert.That(Hash(a), Is.Not.EqualTo(Hash(Hero(5, UnitTypeTag.Infantry))));
+            Assert.That(Hash(a, b), Is.EqualTo(Hash(b, a)));
         }
 
         // ---- the one-day voluntary fight -------------------------------------------------------
@@ -689,3 +725,4 @@ namespace Game.EditorTests
     }
 }
 #endif
+

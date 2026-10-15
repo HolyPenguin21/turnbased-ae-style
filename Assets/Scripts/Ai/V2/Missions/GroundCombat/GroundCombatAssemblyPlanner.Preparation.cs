@@ -34,7 +34,8 @@ namespace Game.Ai.V2
         private static GroundCombatAssemblyPlan AssembleSameHex(WorldSnapshot snap,
             PlayerSetupData owner, ArmyData host, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> excludeArmyIds, float minWinChance, float defenderHexDefenseBonus,
-            float minimumArmyPower, bool preparation, bool? requireCoverage = null)
+            float minimumArmyPower, bool preparation, bool? requireCoverage = null,
+            bool preserveDepartureRoster = false)
         {
             float hostPower = AiPower.EffectiveArmyPower(host.Members);
             var projectedUnits = new List<UnitData>(host.Members);
@@ -72,7 +73,7 @@ namespace Game.Ai.V2
                         {
                             GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                                 projectedUnits, selected, opposition, minWinChance,
-                                defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                                defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
                             if (ready.Feasible) return ready;
                         }
                     }
@@ -117,7 +118,7 @@ namespace Game.Ai.V2
                     }
                     var withPick = new List<UnitData>(projectedUnits) { pick };
                     if (!ArmyData.RosterFits(withPick, host.IsGarrison)
-                        && (preparation || minWinChance <= 0f || !HasDepartureRoom(snap, host, withPick)))
+                        && (preparation || preserveDepartureRoster || !HasDepartureRoom(snap, host, withPick)))
                     {
                         selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
                         break;
@@ -136,7 +137,7 @@ namespace Game.Ai.V2
                     {
                         GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                             projectedUnits, selected, opposition, minWinChance,
-                            defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                            defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
                         if (ready.Feasible) return ready;
                     }
                 }
@@ -163,7 +164,7 @@ namespace Game.Ai.V2
             {
                 GroundCombatAssemblyPlan ready = CompleteAssaultAssembly(snap, host,
                     projectedUnits, selected, opposition, minWinChance,
-                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage);
+                    defenderHexDefenseBonus, minimumArmyPower, requireCoverage, preserveDepartureRoster);
                 if (ready.Feasible) return ready;
             }
 
@@ -174,9 +175,9 @@ namespace Game.Ai.V2
             ArmyData host, IReadOnlyList<UnitData> members,
             IReadOnlyList<GroundCombatAssemblyTransfer> transfers,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float gate, float hexBonus,
-            float minimumPower, bool? requireCoverage)
+            float minimumPower, bool? requireCoverage, bool preserveDepartureRoster)
         {
-            if (gate > 0f)
+            if (!preserveDepartureRoster)
                 return PlanDepartureRoster(snap, host, members, transfers, opposition,
                     gate, hexBonus, minimumPower, requireCoverage);
             if ((minimumPower <= 0f || AiPower.EffectiveArmyPower(members) > minimumPower)
@@ -215,3 +216,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -29,7 +29,7 @@ namespace Game.Ai.V2
             return roster;
         }
 
-        // One complete departure roster for Raid/ActiveDefence: command, optional hero returns,
+        // One complete departure roster: command, optional hero returns,
         // recruits, gate and cost all describe the SAME package before it reaches Allocation.
         // Attack preparation retains its frozen-roster policy (it never calls this method).
         private static GroundCombatAssemblyPlan PlanDepartureRoster(WorldSnapshot snap, ArmyData host,
@@ -83,26 +83,42 @@ namespace Game.Ai.V2
             {
                 // A chosen incoming hero is already the unique commander selected by donor policy.
                 // Only host members can be sent home; no incoming unit is transferred twice.
-                var returning = home == null ? new List<UnitData>() : heroes.Where(h => h != lead
+                var required = home == null ? new List<UnitData>() : heroes.Where(h => h != lead
                     && host.Members.Contains(h)
-                    && (AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, h)
-                        || AiArmyRoles.IsGarrisonHero(h)
-                            && !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax))).ToList();
-                GroundCombatAssemblyPlan candidate = Candidate(lead, returning);
-                // Excess heroes can themselves prevent a lower-capacity commander from fitting.
-                // Try that legal final package too; its returns occur before the recruits arrive.
-                if (candidate == null && home != null)
+                    && AiArmyRoles.IsFacilityOperator(host.Owner, host.Hex, h)).ToList();
+                var optional = home == null ? new List<UnitData>() : heroes.Where(h => h != lead
+                    && host.Members.Contains(h) && !required.Contains(h)
+                    && !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax))
+                    .OrderByDescending(AiArmyRoles.IsGarrisonHero)
+                    .ThenByDescending(h => h.ActivationApCost).ThenBy(h => h.RuntimeId).ToList();
+                // A partly full home may take only SOME heroes. Never discard an ordinary
+                // commander just because the entire desirable return batch does not fit.
+                int maxReturns = 0;
+                if (home != null)
                 {
-                    var reduced = heroes.Where(h => h != lead && host.Members.Contains(h)
-                        && !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax)).ToList();
-                    reduced.AddRange(returning.Where(h => !reduced.Contains(h)));
-                    candidate = Candidate(lead, reduced);
-                    if (candidate != null) returning = reduced;
+                    var homeRoster = new List<UnitData>(home.Members);
+                    foreach (var hero in required.Concat(optional))
+                        homeRoster = ArmyData.ProjectAdd(homeRoster, hero, true);
+                    maxReturns = System.Math.Max(0, ArmyData.ComputeCapacity(homeRoster, true) - home.Members.Count);
                 }
+                GroundCombatAssemblyPlan FindInitial(int index, List<UnitData> selected)
+                {
+                    if (selected.Count > maxReturns) return null;
+                    if (index == optional.Count) return Candidate(lead, selected);
+                    selected.Add(optional[index]);
+                    var found = FindInitial(index + 1, selected);
+                    selected.RemoveAt(selected.Count - 1);
+                    return found ?? FindInitial(index + 1, selected);
+                }
+                GroundCombatAssemblyPlan candidate = FindInitial(0, new List<UnitData>(required));
                 if (candidate == null) continue;
+                var returning = new List<UnitData>(candidate.ReturnHeroes);
                 if (home != null)
                     foreach (UnitData secondary in heroes.Where(h => h != lead
-                        && host.Members.Contains(h) && !returning.Contains(h))
+                        && host.Members.Contains(h) && !returning.Contains(h)
+                        // Attack has no probability floor: it must not silently shed a passive
+                        // carrier merely because an unconstrained fight still passes zero.
+                        && (gate > 0f || !StrategicEffectRegistry.HasArmySupportEffect(h.Abilities, h.MoveMax)))
                         .OrderByDescending(h => h.ActivationApCost).ThenBy(h => h.RuntimeId))
                     {
                         var trial = new List<UnitData>(returning) { secondary };
@@ -173,19 +189,9 @@ namespace Game.Ai.V2
         private static bool HasDepartureRoom(WorldSnapshot snap, ArmyData host,
             IReadOnlyList<UnitData> members)
         {
-            if (snap?.Self?.BaseHexes == null || !snap.Self.BaseHexes.Contains(host.Hex)) return false;
-            ArmyData home = ArmyRegistry.AllAt(host.Hex).FirstOrDefault(a => a != null && a.IsGarrison
-                && a.Owner == host.Owner && !a.HasActivatedThisTurn);
-            if (home == null) return false;
-            foreach (UnitData lead in members.Where(u => u != null && u.IsHero))
-            {
-                var returning = host.Members.Where(u => u != null && u.IsHero && u != lead).ToList();
-                var roster = members.Where(u => !returning.Contains(u)).ToList();
-                if (roster.Remove(lead)) roster.Insert(0, lead);
-                if (ArmyData.RosterFits(roster, false)
-                    && CanApplyHeroReturn(host, home, lead, returning)) return true;
-            }
-            return false;
+            return PlanDepartureRoster(snap, host, members,
+                System.Array.Empty<GroundCombatAssemblyTransfer>(),
+                System.Array.Empty<WorthIt.DefendingArmy>(), 0f, 0f, 0f, false).Feasible;
         }
 
         // The FULL activation AP of the roster this plan would produce, priced by the canonical
@@ -262,3 +268,4 @@ namespace Game.Ai.V2
         private static float ProfileCombatValue(WorthIt.DefenderProfile p) => AiPower.SkilledCombatValue(p);
     }
 }
+

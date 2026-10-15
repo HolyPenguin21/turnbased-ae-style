@@ -180,7 +180,7 @@ namespace Game.Ai.V2
                 if (!preparation && !(IsFieldContainer(src) && src.CanDonate))
                     continue;
                 foreach (ReorgUnit hero in ExcessHeroes(state.Roster[srcId], src, commandContext,
-                             includeOperators: preparation).Where(h => preparation
+                             includeOperators: preparation).Where(h => preparation && h.IsDevelopmentOperator
                                  || !StrategicEffectRegistry.HasArmySupportEffect(h.CombatProfile.Abilities, h.MoveMax)))
                     foreach (int dstId in OrderedDestinations(state, armyIds, srcId))
                     {
@@ -499,8 +499,9 @@ namespace Game.Ai.V2
         // in a preparation host every releasable hero beyond one leader only takes a fighter slot.
         // Research/Production operators and committed units are never counted or moved.
         private static int PreparationSlotWaste(List<ReorgUnit> units) =>
-            System.Math.Max(0, (units ?? new List<ReorgUnit>()).Count(u => u != null && u.IsHero
-                && !u.IsDevelopmentOperator && !u.IsCommitted) - 1);
+            (units ?? new List<ReorgUnit>()).Where(u => u != null && u.IsHero).Skip(1)
+                .Count(u => !u.IsDevelopmentOperator && !u.IsCommitted
+                    && !StrategicEffectRegistry.HasArmySupportEffect(u.CombatProfile.Abilities, u.MoveMax));
 
         // The heroes that may leave: neither the current commander nor the one commander
         // evaluation's best legal leader (HeroRoleEvaluator, the BestCommander the reorder
@@ -587,3 +588,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
