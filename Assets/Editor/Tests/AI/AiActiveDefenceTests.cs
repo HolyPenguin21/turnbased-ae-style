@@ -725,6 +725,7 @@ namespace Game.EditorTests
         {
             WorldSnapshot snap = AssetWorld();
             var state = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            snap.Intents = state;
             var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Secondary);
             state.Put(intent);
             try
@@ -1426,6 +1427,7 @@ namespace Game.EditorTests
             var two = new PlayerSetupData { Nickname = "imm-two" };
             WorldSnapshot snap = ImmediateWorld(one, new HexCoord(-2, 0), true, true,
                 DefenceActor(one, 7, new HexCoord(0, 0)));
+                snap.Intents = MissionIntentRegistry.GetOrCreate(one);
             MissionIntent intent = ImmediateIntent(77, 7, 8);
             intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.StrategicDefence;
             MissionIntentRegistry.GetOrCreate(one).Put(intent);
@@ -1441,6 +1443,7 @@ namespace Game.EditorTests
                 // The other player has no such intent and no claim: nothing carries over.
                 WorldSnapshot other = ImmediateWorld(two, new HexCoord(-2, 0), true, true,
                     DefenceActor(two, 7, new HexCoord(0, 0)));
+                    other.Intents = MissionIntentRegistry.GetOrCreate(two);
                 Assert.That(MissionIntentRegistry.GetOrCreate(two).All, Is.Empty);
                 Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(other, ImmediateObjective(other),
                     null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));

@@ -89,7 +89,7 @@ namespace Game.Ai.V2
                 && DemandLayer.EconomyDonorStructurallyEligible(i));
             if (!MaterializeEconomyRoster(player, hero, builderChoice,
                     out ArmyData garrison, out List<UnitData> lighteningPlan,
-                    out List<UnitData> reinforcementPlan, ctx,
+                    out List<UnitData> reinforcementPlan, snapshot?.Intents, ctx,
                     ActorCommitments.FromIntents(standingIntents, snapshot, null)))
                 return EconomyCompletionPlan.No(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{identityArmyId} preparation witness is stale"));
@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             // are not part of the walking roster.
             IReadOnlyList<UnitData> staying = hero.Hex.Equals(target.TargetHex)
                 ? System.Array.Empty<UnitData>()
-                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player));
+                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx, snapshot?.Intents);
             List<UnitData> projectedMembers = hero.Members.Where(u => !lighteningPlan.Contains(u) && !staying.Contains(u))
                 .Concat(reinforcementPlan).ToList();
             int projectedMovement = ArmyData.ComputeCurrentMovement(projectedMembers);
@@ -157,7 +157,7 @@ namespace Game.Ai.V2
         // invalidates the witness; it never triggers a second roster optimizer here.
         internal static bool MaterializeEconomyRoster(PlayerSetupData player, ArmyData builder,
             DemandLayer.EconomyBuilderChoice choice, out ArmyData garrison,
-            out List<UnitData> unload, out List<UnitData> reinforcement,
+            out List<UnitData> unload, out List<UnitData> reinforcement, IMissionIntentView intents,
             AiTurnContext ctx = null, ActorCommitments commitments = null)
         {
             garrison = null;
@@ -188,10 +188,10 @@ namespace Game.Ai.V2
             ArmyData departing = builder;
             ArmyData receiving = garrison;
             if (!choice.Route.IsOnTarget && LocalOperatorRelease.OperatorsNeededHome(player, builder,
-                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player))).Count > 0)
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents)).Count > 0)
             {
                 if (!LocalOperatorRelease.CanKeepOperatorsHome(player, builder, commitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player)),
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, intents),
                         out _, out departing)) return false;
                 receiving = ArmyData.CreateVisualSnapshot();
                 receiving.Owner = garrison.Owner; receiving.Hex = garrison.Hex; receiving.IsGarrison = true;
@@ -222,13 +222,13 @@ namespace Game.Ai.V2
             BuildingData home = BuildingRegistry.FindAt(builder.Hex);
             if (home?.Owner != player || !(home.IsBase || home.IsStartingCitadel)) return 0;
             var frozen = WorldAnalysis.ToArmySnapshot(builder, player, true, 0,
-                MissionIntentRegistry.GetOrCreate(player));
+                snapshot?.Intents);
             ArmyData liveGarrison = ArmyRegistry.FindGarrisonAt(builder.Hex, player);
             var self = new SelfSnapshot { BaseHexes = new[] { builder.Hex },
                 Armies = liveGarrison == null ? new[] { frozen }
                     : new[] { frozen, WorldAnalysis.ToArmySnapshot(liveGarrison, player, true, 0,
-                        MissionIntentRegistry.GetOrCreate(player)) } };
-            var facts = new WorldSnapshot { Self = self, Known = snapshot?.Known, Intents = MissionIntentRegistry.GetOrCreate(player) };
+                        snapshot?.Intents) } };
+            var facts = new WorldSnapshot { Self = self, Known = snapshot?.Known, Intents = snapshot?.Intents };
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes = WorldAnalysis.EconomyBuilderRoutes(
                 facts, player, ctx, target);
             if (routes.Count == 0) return 0;
@@ -236,7 +236,7 @@ namespace Game.Ai.V2
                 frozen, 0f, false);
             if (choice.Suitability == DemandLayer.EconomyArmySuitability.Ineligible
                 || !MaterializeEconomyRoster(player, builder, choice, out ArmyData garrison,
-                    out List<UnitData> unload, out List<UnitData> reinforcement)) return 0;
+                    out List<UnitData> unload, out List<UnitData> reinforcement, snapshot?.Intents)) return 0;
             return ApplyEconomyArmyLightening(builder, garrison, unload, reinforcement, ctx);
         }
 #endif

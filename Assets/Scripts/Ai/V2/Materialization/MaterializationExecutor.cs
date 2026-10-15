@@ -131,9 +131,9 @@ namespace Game.Ai.V2
 
             if (plan.AttackRefitPrimaryId.HasValue
                 && (snap == null || snap.TurnNumber != ctx.TurnNumber
-                    || !AttackBaseRefitPolicy.Validate(plan, snap, player, MissionIntentRegistry.GetOrCreate(player).All,
+                    || !AttackBaseRefitPolicy.Validate(plan, snap, player, WorldSnapshot.IntentsOf(snap),
                         out var refitHandoff, out _)
-                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, MissionIntentRegistry.GetOrCreate(player).All,
+                    || !AttackBaseRefitPolicy.FollowupStillCurrent(plan, player, WorldSnapshot.IntentsOf(snap),
                         ctx, refitHandoff, root)
                     || !AttackBaseRefitPolicy.OnwardFunded(plan, player, root, ctx, plan.ApCost,
                         AttackBaseRefitPolicy.FinalRoster(AiV2Util.ResolveArmy(player,
@@ -245,7 +245,8 @@ namespace Game.Ai.V2
             StampResources(childAlreadyStamped: play.StateChanged);
             if (play.Deployed && plan.AttackRefitPrimaryId.HasValue)
             {
-                bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority);
+                bool handed = GroundCombatReinforcementTransaction.ApplyLocalRefit(plan, player, root, ctx, hand, play.ArmyShell, authority,
+                    snap?.Intents);
                 res.ApSpent = apStart - root.ActionPoints;
                 res.Deployed = handed;
                 res.PlacementStale = !handed;

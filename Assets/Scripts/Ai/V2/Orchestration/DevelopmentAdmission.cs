@@ -235,7 +235,7 @@ namespace Game.Ai.V2
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
                     .Select(g => "g" + DefenderFingerprint(g.Defenders) + CommanderFingerprint(g.Commander)));
             string threats = string.Join(";", threatRows.OrderBy(x => x, System.StringComparer.Ordinal));
-            string purposes = string.Join(";", (MissionIntentRegistry.Peek(snapshot?.Observer)?.All
+            string purposes = string.Join(";", (snapshot?.AllIntents
                     ?? System.Array.Empty<MissionIntent>()).Where(i => i != null)
                 .OrderBy(i => i.IntentKey).Select(i =>
                     $"{i.IntentKey}:{i.Status}:actor={i.PreferredMoverArmyId}:life={i.IsLifecycleLeg}:"
@@ -278,7 +278,7 @@ namespace Game.Ai.V2
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}"
                 + $"|threats={threats}|purposes={purposes}|benchmarks={benchmarks}|knownTargets={knownTargets}"
                 + $"|routeMap={routeMap}|trimmedScouts={trimmedScouts}"
-                + $"|operatorClaims={MissionIntentRegistry.Peek(snapshot?.Observer)?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
+                + $"|operatorClaims={snapshot?.Intents?.Development.GeneratedOperatorFacts(snapshot?.TurnNumber ?? 0)}"
                 + $"|prepSite={rd?.ResearchPreparationSite}:{rd?.ProductionPreparationSite}"
                 + $"|mobilization={AttackForceReadiness.MobilizationOpen(snapshot?.Self)}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"

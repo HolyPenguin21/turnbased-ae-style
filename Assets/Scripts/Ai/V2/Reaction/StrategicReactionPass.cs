@@ -172,7 +172,7 @@ namespace Game.Ai.V2
             // The canonical normalized commitment source, not a hand-rolled PreferredMoverArmyId
             // scrape.
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
+                snap.AllIntents, snap, ReconObjectiveEvaluator.Enumerate(snap));
 
             // P0.1 — StrategicInterruptRegistry stores reasons as FLAGS, so a Discovery and a
             // HandOpportunity can both be pending at once. Probe every ENABLED source and let the
@@ -190,7 +190,7 @@ namespace Game.Ai.V2
                 // ONE canonical aggression evaluation, shared by both discovery probes (and the same
                 // primitive DemandLayer.AggressionDemands uses). Stateless: CombatOpportunityAnalyzer
                 // .Analyze does not mutate the radar; AggressionDemandEvaluator.Build only reads.
-                var activeIntents = MissionIntentRegistry.GetOrCreate(player).All
+                var activeIntents = snap.AllIntents
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
                 AggressionDemandEvaluation aggEval = AggressionDemandEvaluator.Build(snap,
                     RaidObjectiveEvaluator.Enumerate(snap, CombatOpportunityAnalyzer.Analyze(snap)),

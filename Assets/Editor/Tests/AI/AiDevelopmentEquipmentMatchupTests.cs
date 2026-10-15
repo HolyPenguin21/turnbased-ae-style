@@ -608,6 +608,7 @@ namespace Game.EditorTests
         public void DeckBenchmarkAndScoutRequirementAreExactAdmissionInputs()
         {
             var player = new PlayerSetupData(); var snap = PolicyWorld(); snap.Observer = player;
+            snap.Intents = MissionIntentRegistry.GetOrCreate(player);
             var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
                 PreferredMoverArmyId = 1, Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore } };
             try
@@ -635,6 +636,7 @@ namespace Game.EditorTests
                 VisibleArrivalBlockedHexes = new HashSet<HexCoord>() };
             var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Armies = new[] { actor } },
                 MapKnowledge = map };
+                snap.Intents = MissionIntentRegistry.GetOrCreate(player);
             var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
                 PreferredMoverArmyId = actor.ArmyId,
                 Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus } };

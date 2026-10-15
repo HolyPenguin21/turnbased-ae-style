@@ -216,10 +216,14 @@ store writers: a planning decision cannot change the store and reports the chang
 `MissionPortfolioResult.WitnessRevisions` and applied right after the build). Layer entries take it as
 a parameter (`MissionPortfolio.Build`, `AggressionMissionLayer.Propose`, `StrategicTurnLifecycle`).
 Deep evaluators read `WorldSnapshot.Intents`, which `WorldAnalysis.Scan` binds from the store it is
-handed and every refresh carries; like `Own`, it is a live view, not a copy. Live tiers (Continuity,
-Provisioning, Execution, Reaction, Housekeeping) still look the store up in the registry and pass it
-to the shared helpers they call (`LivePreparationSite`, `AttackBaseRefitPolicy`, `RaidRecoveryPlanner`).
-`PlayerForceAnalysis` runs outside the AI turn and is the one allowed registry read in Analysis.
+handed and every refresh carries; like `Own`, it is a live view, not a copy. The live tiers that hold
+a frame snapshot read the same view: Execution steps (`snapshot`), Provisioning (`session.Snapshot`),
+Housekeeping, Recon assignment, the admission fingerprints. `MissionIntentRegistry` itself is read
+only by: the store's owner Continuity (its writes); the turn session that binds it; the resource bank
+`StrategicSpendability` (called with `(player, root, ctx)` everywhere); entries without a frame
+(Initiative before the turn, the Reaction round's Phase A/witness writes); `PlayerForceAnalysis`
+outside the AI turn; and Materialization paths whose snapshot is optional by contract
+(`MaterializationDeliveryPolicy`, `MaterializationFeasibility`).
 `AiPlanningLiveReadBoundaryTests.PlanningLayersAndAnalysis_ReceiveTheIntentStoreExplicitly` guards it.
 
 ## Mid-turn loop boundary (rollout contract)

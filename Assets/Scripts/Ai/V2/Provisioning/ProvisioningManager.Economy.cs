@@ -72,7 +72,7 @@ namespace Game.Ai.V2
                 && (target.BuildCard == null || hand?.Hand == null || !hand.Hand.Contains(target.BuildCard)))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("founding card no longer in hand"));
 
-            List<MissionIntent> standingIntents = MissionIntentRegistry.GetOrCreate(player).All
+            List<MissionIntent> standingIntents = WorldSnapshot.IntentsOf(session.Snapshot)
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
                     // never trusting a hero identity carried across from an earlier phase.
                     ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
-                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, MissionIntentRegistry.Peek(player));
+                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents);
                     UnitData sparable = AiArmyRoles.EconomyHeroCandidates(player, g, site)
                         .FirstOrDefault(u => !x.Route.BuilderHeroRuntimeId.HasValue
                             || u.RuntimeId == x.Route.BuilderHeroRuntimeId.Value);
@@ -130,19 +130,20 @@ namespace Game.Ai.V2
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player, actorCommitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, MissionIntentRegistry.Peek(player)),
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
                         !a.Hex.Equals(target.TargetHex))) return "not_mobile_economy_hero";
                 // Live re-check of the duty Demand saw in the snapshot (roster outside `a`, selected
                 // preparation site, free garrison, no AP): before any binding or composition mutation.
                 if (!a.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments, MissionIntentRegistry.Peek(player)))
+                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments, session.Snapshot?.Intents))
                     return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
-                        out List<UnitData> unload, out List<UnitData> reinforcement, ctx, actorCommitments))
+                        out List<UnitData> unload, out List<UnitData> reinforcement, session.Snapshot?.Intents,
+                        ctx, actorCommitments))
                     return "stale_preparation_witness";
                 IReadOnlyList<UnitData> staying = DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, a, hand, ctx, MissionIntentRegistry.Peek(player));
+                    .OperatorsStayingHome(player, a, hand, ctx, session.Snapshot?.Intents);
                 List<UnitData> projected = a.Members.Where(u => !unload.Contains(u) && !staying.Contains(u))
                     .Concat(reinforcement).ToList();
                 if (!a.Hex.Equals(target.TargetHex)
@@ -165,7 +166,7 @@ namespace Game.Ai.V2
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
                     player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
-                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, MissionIntentRegistry.Peek(player)),
+                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
                     exactEconomyHeroId: candidate.Route.BuilderHeroRuntimeId);
                 if (plan.Tier == GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
@@ -461,7 +462,7 @@ namespace Game.Ai.V2
             bool preparationPending = directPrep.Donor != null
                 || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0
                 || (!hero.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, hero, hand, ctx, MissionIntentRegistry.Peek(player)).Count > 0);
+                    .OperatorsStayingHome(player, hero, hand, ctx, session.Snapshot?.Intents).Count > 0);
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {

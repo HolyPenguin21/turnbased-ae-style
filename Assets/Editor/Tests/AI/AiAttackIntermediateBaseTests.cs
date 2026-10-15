@@ -203,6 +203,7 @@ namespace Game.EditorTests
         public void AdmissionCache_TracksExactMovementAndLocalStrikeLifecycle()
         {
             var snap = Snapshot(); var intent = Intent(); MissionIntentRegistry.GetOrCreate(Us).Put(intent);
+            snap.Intents = MissionIntentRegistry.GetOrCreate(Us);
             string first = AggressionAdmission.Fingerprint(snap, Us);
             snap.Self.Armies[0].CurrentMovement = 1;
             string lessMovement = AggressionAdmission.Fingerprint(snap, Us);

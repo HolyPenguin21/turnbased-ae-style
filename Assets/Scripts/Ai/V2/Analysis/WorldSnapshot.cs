@@ -46,6 +46,11 @@ namespace Game.Ai.V2
         // store the caller hands to WorldAnalysis.Scan (the turn session's) and carried by every
         // refresh; a live view of that store, like Own. Null in a snapshot built without one.
         internal IMissionIntentView Intents;
+        // Every durable intent of the bound store (empty when none is bound).
+        internal IReadOnlyCollection<MissionIntent> AllIntents =>
+            Intents?.All ?? (IReadOnlyCollection<MissionIntent>)System.Array.Empty<MissionIntent>();
+        internal static IReadOnlyCollection<MissionIntent> IntentsOf(WorldSnapshot snap) =>
+            snap?.AllIntents ?? (IReadOnlyCollection<MissionIntent>)System.Array.Empty<MissionIntent>();
         public int TurnNumber;
         // Revision of the authoritative per-player knowledge memory captured by this immutable
         // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,

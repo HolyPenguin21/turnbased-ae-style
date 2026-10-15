@@ -177,7 +177,7 @@ namespace Game.Ai.V2
                     "protected_base_lost"));
             if (target.ReturnPurpose == ActiveDefenceReturnPurpose.RegroupForAsset)
             {
-                IReadOnlyList<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+                IReadOnlyList<MissionIntent> intents = WorldSnapshot.IntentsOf(session.Snapshot).ToList();
                 ActiveDefenceObjective objective = ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap,
                     target.EnemyArmyId);
                 ActiveDefenceResponse response = objective == null
@@ -195,7 +195,7 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot current = snap.Self.Armies.FirstOrDefault(a => a.ArmyId == actor.Id);
                 var committed = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All, snap, null).ClaimedArmyIdSet;
+                    WorldSnapshot.IntentsOf(session.Snapshot), snap, null).ClaimedArmyIdSet;
                 committed.UnionWith(session.ExcludedForGroundCombat(funded.Mission));
                 committed.Remove(actor.Id);
                 if (!ActiveDefenceObjectiveEvaluator.NeedsSafeWithdrawal(snap, current)

@@ -503,7 +503,8 @@ namespace Game.EditorTests
             g.NonHeroActivationApCosts = Array.Empty<int>(); g.MemberCount = g.OccupiedBattleSlots = 0;
             var choice = Assess(Snapshot(a, g), a);
             Assert.That(ProvisioningManager.MaterializeEconomyRoster(p, builder, choice,
-                out ArmyData recipient, out List<UnitData> unload, out List<UnitData> add), Is.True);
+                out ArmyData recipient, out List<UnitData> unload, out List<UnitData> add,
+                MissionIntentRegistry.Peek(p)), Is.True);
             Assert.That(unload, Is.EqualTo(new[] { dear })); Assert.That(add, Is.Empty);
             Assert.That(ProvisioningManager.ApplyEconomyArmyLightening(builder, recipient, unload, add,
                 new AiTurnContext()), Is.EqualTo(1));
@@ -518,7 +519,7 @@ namespace Game.EditorTests
             builder.Members.AddRange(new[] { Unit(true, 1), Unit(false, 1) });
             var a = Builder(1); a.ArmyId = builder.Id; a.NonHeroRuntimeIds = new[] { -999 };
             Assert.That(ProvisioningManager.MaterializeEconomyRoster(p, builder, Assess(Snapshot(a), a),
-                out _, out _, out _), Is.False);
+                out _, out _, out _, MissionIntentRegistry.Peek(p)), Is.False);
         }
     }
 }

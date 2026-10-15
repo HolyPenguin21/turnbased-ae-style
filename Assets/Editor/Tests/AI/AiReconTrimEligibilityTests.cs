@@ -114,6 +114,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = Snapshot(player, turn: 11, focus);
             MissionIntent incumbent = Incumbent(focus, preferredMover: 10);
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            snap.Intents = state;
             state.Put(incumbent);
             state.ReconTurn(11).MarkReconActorTrimmed(11, 20);
             MissionProposal mission = ReconMissionPlanner.Propose(snap,

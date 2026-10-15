@@ -372,6 +372,7 @@ namespace Game.EditorTests
         {
             var player = new PlayerSetupData { Nickname = "Recon audit" };
             WorldSnapshot snap = Snapshot(player, 11, new HexCoord(4, 3));
+            snap.Intents = MissionIntentRegistry.GetOrCreate(player);
             MissionIntentRegistry.GetOrCreate(player).Put(Incumbent(new HexCoord(4, 3), preferredMover: 20));
 
             MissionProposal incumbent = Scout(ScoutTargetKind.Explore, new HexCoord(4, 3));

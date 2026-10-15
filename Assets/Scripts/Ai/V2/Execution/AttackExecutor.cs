@@ -38,7 +38,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+            var intent = WorldSnapshot.IntentsOf(snapshot).FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == army.Id);
             if (intent?.Attack?.RefitBattleStopTurn == ctx.TurnNumber)
             {
@@ -352,7 +352,7 @@ namespace Game.Ai.V2
                     AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
                         target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
                         ActiveDefenceObjectiveEvaluator.Enumerate(snapshot),
-                        MissionIntentRegistry.GetOrCreate(player));
+                        snapshot?.Intents);
                     strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
                     if (rejection != null)
                     {

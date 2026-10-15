@@ -345,9 +345,9 @@ namespace Game.Ai.V2
             {
                 if (LocalOperatorRelease.ReleaseBeforeDeparture(player, ctx, army,
                         snapshot == null ? null : ActorCommitments.FromIntents(
-                            MissionIntentRegistry.GetOrCreate(player).All, snapshot, null),
+                            WorldSnapshot.IntentsOf(snapshot), snapshot, null),
                         DevelopmentOpportunityEvaluator.LivePreparationSite(
-                            player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player))) > 0)
+                            player, AiHandRegistry.Peek(player), ctx, snapshot?.Intents)) > 0)
                     result.StateVersionAfter = WorldDeltaLifecycle.Current;
             }
 
@@ -601,9 +601,9 @@ namespace Game.Ai.V2
                 return false;   // defensive only — Provisioning only ever defers a feasible plan
 
             var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
-                player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player));
+                player, AiHandRegistry.Peek(player), ctx, snapshot?.Intents);
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
+                WorldSnapshot.IntentsOf(snapshot), snapshot, null);
 
             ArmyData materialized;
             bool extractionNeeded = pm.EconomyExtractionGarrisonArmyId >= 0;
@@ -837,11 +837,11 @@ namespace Game.Ai.V2
             {
                 AiHandData hand = AiHandRegistry.Peek(player);
                 System.Func<ResearchProductionMode, HexCoord?> site =
-                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, MissionIntentRegistry.Peek(player));
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, snapshot?.Intents);
                 if (AiArmyRoles.DepartureStripsOperator(player, army, site))
                 {
                     ActorCommitments commitments = snapshot == null ? null : ActorCommitments.FromIntents(
-                        MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
+                        WorldSnapshot.IntentsOf(snapshot), snapshot, null);
                     if (!LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out string why))
                     {
                         AiDebugLog.WriteDeduped($"economy-operator-duty:{army.Id}",

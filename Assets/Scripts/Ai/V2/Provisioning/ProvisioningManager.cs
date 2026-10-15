@@ -294,7 +294,7 @@ namespace Game.Ai.V2
                 // double-subtracting it. ActorCommitments here mirrors the exact construction
                 // ReconAssignmentPlanner.AssignFunded used to admit this pair.
                 ActorCommitments commitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All
+                    WorldSnapshot.IntentsOf(session.Snapshot)
                         .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                     session.Snapshot, null);
                 if (garrisonArmy == null || plannedExtractUnit == null
