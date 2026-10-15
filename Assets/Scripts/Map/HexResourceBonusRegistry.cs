@@ -22,6 +22,10 @@ namespace Game.Map
         public static void Set(HexCoord hex, ResourceYields bonus)
         {
             ByHex[hex] = bonus;
+            // Citadels already reveal their surroundings before post-placement resources are
+            // stamped. Unchanged visibility does not fire VisibilityChanged: publish the physical
+            // content write through the existing fog-filtered observation boundary instead.
+            VisionSystem.NotifyContentChanged(hex);
         }
 
         public static ResourceYields GetBonus(HexCoord hex)

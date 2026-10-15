@@ -6,6 +6,7 @@ using System.Linq;
 using Game.Campaign;
 using Game.Cards;
 using Game.Players;
+using Game.Terrain;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -25,6 +26,133 @@ public sealed class CampaignSystemTests
     }
     private static CampaignState HumanTurn(CampaignState s)
     { int index = s.TurnOrder.IndexOf(s.HumanFaction); s.CurrentTurnIndex = index; return s; }
+    private static string Properties(CampaignState s) => string.Join("|", s.Regions.OrderBy(r => r.RegionId)
+        .Select(r => $"{r.RegionId}:{r.Biome}:{r.Specialization}:{r.Richness}"));
+
+    [Test] public void RegionPropertiesAreSeededDiverseAndIndependentOfOwnership()
+    {
+        var s = new CampaignMapGenerator().Generate(37, Faction.Ashen);
+        Assert.AreEqual(Properties(s), Properties(new CampaignMapGenerator().Generate(37, Faction.Ashen)));
+        Assert.AreNotEqual(Properties(s), Properties(new CampaignMapGenerator().Generate(38, Faction.Ashen)));
+        Assert.AreEqual(2, s.Regions.Select(r => r.Biome).Distinct().Count());
+        Assert.AreEqual(4, s.Regions.Select(r => r.Specialization).Distinct().Count());
+        Assert.AreEqual(3, s.Regions.Select(r => r.Richness).Distinct().Count());
+        var store = new CampaignStore(directory); store.Save(s);
+        Assert.AreEqual(Properties(s), Properties(store.Load(out _)));
+        var copy = s.Copy(); copy.Regions[0].OwnerFaction = Faction.IronConcord;
+        Assert.AreEqual(Properties(s), Properties(copy));
+        var small = Planet(37, 3);
+        Assert.AreEqual(3, small.Regions.Select(r => r.Specialization).Distinct().Count());
+    }
+
+    private static (double same, double largest) ClusterMetrics(CampaignState state, int[] values)
+    {
+        var index = state.Regions.Select((r, i) => (r.RegionId, i)).ToDictionary(p => p.RegionId, p => p.i);
+        double edges = 0, same = 0; int largest = 0;
+        for (int i = 0; i < values.Length; i++)
+            foreach (int n in state.Regions[i].NeighborIds) { edges++; if (values[i] == values[index[n]]) same++; }
+        var seen = new HashSet<int>();
+        for (int i = 0; i < values.Length; i++)
+        {
+            if (!seen.Add(i)) continue;
+            var queue = new Queue<int>(); queue.Enqueue(i); int count = 0;
+            while (queue.Count > 0)
+            {
+                int next = queue.Dequeue(); count++;
+                foreach (int n in state.Regions[next].NeighborIds.Select(id => index[id]))
+                    if (values[n] == values[next] && seen.Add(n)) queue.Enqueue(n);
+            }
+            largest = Math.Max(largest, count);
+        }
+        return (same / edges, largest);
+    }
+
+    [Test] public void GeographicZonesClusterMoreThanIndependentShufflesOfTheSameCounts()
+    {
+        double[] same = new double[3], randomSame = new double[3], largest = new double[3], randomLargest = new double[3];
+        for (int seed = 0; seed < 24; seed++)
+        {
+            var state = new CampaignMapGenerator().Generate(seed, Faction.Ashen);
+            int[][] fields = { state.Regions.Select(r => (int)r.Biome).ToArray(), state.Regions.Select(r => (int)r.Specialization).ToArray(), state.Regions.Select(r => (int)r.Richness).ToArray() };
+            for (int f = 0; f < fields.Length; f++)
+            {
+                var m = ClusterMetrics(state, fields[f]); same[f] += m.same; largest[f] += m.largest;
+                var rng = new System.Random(seed * 3 + f);
+                for (int sample = 0; sample < 12; sample++)
+                {
+                    var shuffled = fields[f].OrderBy(_ => rng.Next()).ToArray(); var r = ClusterMetrics(state, shuffled);
+                    randomSame[f] += r.same / 12; randomLargest[f] += r.largest / 12;
+                }
+            }
+        }
+        for (int f = 0; f < 3; f++)
+        {
+            System.Console.WriteLine($"Property {f}: same neighbors {same[f] / 24:F3} vs shuffle {randomSame[f] / 24:F3}; largest {largest[f] / 24:F2} vs {randomLargest[f] / 24:F2}");
+            Assert.Greater(same[f], randomSame[f] + 24 * .08);
+            Assert.Greater(largest[f], randomLargest[f]);
+        }
+    }
+
+    [Test] public void ObsoleteCampaignPairResetsWithoutTouchingCollectionOrDecks()
+    {
+        var state = Planet(); state.SchemaVersion = 1;
+        string file = Path.Combine(directory, "campaign-v1.json");
+        File.WriteAllText(file, JsonUtility.ToJson(state)); File.WriteAllText(file + ".bak", JsonUtility.ToJson(state));
+        string collection = Path.Combine(directory, "collection.json"); File.WriteAllText(collection, "keep deck data");
+        var store = new CampaignStore(directory);
+        Assert.IsNull(store.Load(out var notice)); Assert.IsNotEmpty(notice); Assert.IsFalse(store.Exists);
+        Assert.AreEqual("keep deck data", File.ReadAllText(collection));
+        var fresh = Planet(); store.Save(fresh); store.Save(fresh);
+        File.WriteAllText(file + ".bak", JsonUtility.ToJson(state)); File.WriteAllText(file, "broken");
+        Assert.IsNull(store.Load(out _)); Assert.IsFalse(store.Exists);
+    }
+
+    [Test] public void FutureSchemaIsPreservedBeforeReadingCurrentIdentityAndRegionShape()
+    {
+        string file = Path.Combine(directory, "campaign-v1.json");
+        var store = new CampaignStore(directory); store.Save(Planet()); store.Save(Planet());
+        const string future = "{\"SchemaVersion\":99,\"Regions\":{\"newShape\":true}}";
+        File.WriteAllText(file, future);
+        Assert.Throws<NotSupportedException>(() => store.Load(out _));
+        Assert.AreEqual(future, File.ReadAllText(file));
+        File.WriteAllText(file, "{\"SchemaVersion\":1}"); File.WriteAllText(file + ".bak", future);
+        Assert.Throws<NotSupportedException>(() => store.Load(out _));
+        Assert.AreEqual(future, File.ReadAllText(file + ".bak"));
+        Assert.IsTrue(File.Exists(file), "obsolete cleanup must preserve a pair containing a future schema");
+    }
+
+    [Test] public void ObsoleteSchemaDoesNotRequireCurrentIdentityOrRegionShape()
+    {
+        string file = Path.Combine(directory, "campaign-v1.json");
+        File.WriteAllText(file, "{\"SchemaVersion\":1,\"Regions\":{\"oldShape\":true}}");
+        File.WriteAllText(file + ".bak", "{\"SchemaVersion\":1}");
+        var store = new CampaignStore(directory);
+        Assert.IsNull(store.Load(out var notice)); Assert.IsNotEmpty(notice);
+        Assert.IsFalse(store.Exists);
+    }
+
+    [Test] public void ObsoletePrimaryCannotDeleteAValidCurrentBackup()
+    {
+        var state = Planet(); var store = new CampaignStore(directory); store.Save(state); store.Save(state);
+        string file = Path.Combine(directory, "campaign-v1.json");
+        string backup = File.ReadAllText(file + ".bak");
+        var obsolete = state.Copy(); obsolete.SchemaVersion = 1;
+        File.WriteAllText(file, JsonUtility.ToJson(obsolete));
+        Assert.AreEqual(state.CampaignId, store.Load(out var notice).CampaignId);
+        Assert.IsNotEmpty(notice); Assert.AreEqual(backup, File.ReadAllText(file + ".bak"));
+        store.Save(state); Assert.AreEqual(state.CampaignId, store.Load(out _).CampaignId);
+    }
+
+    [Test] public void MissingOrInvalidRegionalValuesCannotLoadAsAridDefaults()
+    {
+        var state = Planet(); state.Regions[0].BiomeId = 0;
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(state));
+        state = Planet(); state.Regions[0].Specialization = 0;
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(state));
+        state = Planet(); state.Regions[0].Richness = (ResourceRichness)99;
+        Assert.Throws<InvalidDataException>(() => CampaignStore.Validate(state));
+    }
+
     [Test] public void G00_DefaultCampaignUsesThirtyThreeRegions()
     {
         var s = new CampaignMapGenerator().Generate(37, Faction.Ashen);

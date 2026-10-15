@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Economy;
+using Game.Terrain;
 using Game.Map;
 using UnityEngine;
 
@@ -14,41 +16,65 @@ namespace Game.Setup
         private const int LayoutAttempts = 128;
         private const float AcceptableScoreWindow = 0.35f;
 
+        public readonly struct Point
+        {
+            public readonly HexCoord Hex;
+            public readonly ResourceType Type;
+            public readonly bool Tech;
+            public Point(HexCoord hex, ResourceType type, bool tech = false)
+            { Hex = hex; Type = type; Tech = tech; }
+            public ResourceYields Yields => new ResourceYields {
+                human = Type == ResourceType.Human ? 1 : 0,
+                energy = Type == ResourceType.Energy ? 1 : 0,
+                materials = Type == ResourceType.Materials ? 1 : 0, tech = Tech ? 1 : 0 };
+        }
+
         public sealed class FarLayout
         {
-            public readonly List<HexCoord> Hexes;
-            public readonly List<HexCoord> TechHexes;
-            public FarLayout(List<HexCoord> hexes, List<HexCoord> techHexes)
-            { Hexes = hexes; TechHexes = techHexes; }
+            public readonly List<Point> Points;
+            public FarLayout(List<Point> points) { Points = points; }
+            public List<HexCoord> Hexes => Points.Select(p => p.Hex).ToList();
+            public List<HexCoord> TechHexes => Points.Where(p => p.Tech).Select(p => p.Hex).ToList();
         }
 
         public sealed class Layout
         {
-            public readonly List<List<HexCoord>> NearHexes;
+            public readonly List<List<Point>> Near;
             public readonly FarLayout Far;
-            public Layout(List<List<HexCoord>> nearHexes, FarLayout far)
-            { NearHexes = nearHexes; Far = far; }
+            public Layout(List<List<Point>> near, FarLayout far) { Near = near; Far = far; }
+            public List<List<HexCoord>> NearHexes => Near.Select(n => n.Select(p => p.Hex).ToList()).ToList();
         }
 
-        public static Layout Plan(HexMap map, IReadOnlyList<HexCoord> citadels, int farTarget, int techTarget)
+        public static Layout Plan(HexMap map, IReadOnlyList<HexCoord> citadels, MatchResourceBudget budget)
         {
             var fields = citadels.Select(c => HexPathfinder.FindCosts(map, new[] { c })).ToList();
-            Layout best = null;
-            int bestNear = -1;
-            // A near point on ring 3 can exclude a far candidate on ring 4. Re-plan BOTH groups
-            // before stamping anything, with a bounded retry and no relaxed spacing fallback.
-            for (int attempt = 0; attempt < 32; attempt++)
+            var candidates = Candidates(map, citadels, fields);
+            var proposals = new List<(Layout Plan, float Score)>();
+            int bestNear = -1, bestFar = -1;
+            for (int attempt = 0; attempt < LayoutAttempts; attempt++)
             {
-                var near = PlanNear(map, citadels);
+                // Sample the COMPLETE layout before quality selection. Selecting the best far
+                // shape first can systematically suppress shapes that allow all near guarantees.
+                bool farFirst = Random.value < .5f;
+                var far = farFirst ? SampleFar(candidates, budget.FarTarget) : null;
+                var near = PlanNear(map, citadels, fields, far?.Select(c => c.Hex).ToList() ?? new List<HexCoord>(), bestNear);
+                if (far == null)
+                {
+                    var nearHexes = near.SelectMany(n => n).ToList();
+                    far = SampleFar(candidates.Where(c => nearHexes.All(h => HexGridMath.Distance(c.Hex, h) >= 2)).ToList(), budget.FarTarget);
+                }
                 int nearCount = near.Sum(n => n.Count);
-                if (nearCount < bestNear) continue;
-                FarLayout far = PlanFar(map, citadels, near.SelectMany(n => n).ToList(),
-                    farTarget, techTarget, fields);
-                if (nearCount > bestNear || best == null || far.Hexes.Count > best.Far.Hexes.Count)
-                { best = new Layout(near, far); bestNear = nearCount; }
-                if (bestNear == citadels.Count * 3 && best.Far.Hexes.Count == farTarget) break;
+                if (nearCount < bestNear || (nearCount == bestNear && far.Count < bestFar)) continue;
+                if (nearCount > bestNear || far.Count > bestFar)
+                { bestNear = nearCount; bestFar = far.Count; proposals.Clear(); }
+                var typedNear = near.Select(n => {
+                    var types = BuildTypes(new MatchResourceBudget(3, 0, ResourceSpecialization.Balanced), n.Count);
+                    return n.Select((h, i) => new Point(h, types[i])).ToList();
+                }).ToList();
+                foreach (var proposal in TypedFarProposals(far, budget, citadels.Count, map.FieldRadius))
+                    proposals.Add((new Layout(typedNear, proposal.Plan), proposal.Score));
             }
-            return best;
+            return Choose(proposals);
         }
 
         private sealed class Candidate
@@ -63,61 +89,85 @@ namespace Game.Setup
         // type after an unlucky early pick. Randomise player order so overlapping bands do not
         // always favour the first player. If no full plan is found, return the largest sampled
         // legal result; callers report the shortfall without weakening the spacing rules.
-        public static List<List<HexCoord>> PlanNear(HexMap map, IReadOnlyList<HexCoord> citadels)
+        private static List<List<HexCoord>> PlanNear(HexMap map, IReadOnlyList<HexCoord> citadels,
+            IReadOnlyList<Dictionary<HexCoord, int>> fields, IReadOnlyList<HexCoord> farHexes, int minimumNear)
         {
-            var bands = citadels.Select(c => map.AllCoords.Where(h => map.CanEnter(h)
-                && HexResourceBonusRegistry.GetBonus(h) == null
+            var bands = citadels.Select((c, player) => map.AllCoords.Where(h => map.CanEnter(h) && fields[player].ContainsKey(h)
+                && HexResourceBonusRegistry.GetBonus(h) == null && farHexes.All(f => HexGridMath.Distance(f, h) >= 2)
                 && HexGridMath.Distance(c, h) >= 2 && HexGridMath.Distance(c, h) <= 3
                 && citadels.All(other => HexGridMath.Distance(other, h) >= 2)).ToList()).ToList();
-            List<List<HexCoord>> best = null;
-            int bestCount = -1;
-            for (int attempt = 0; attempt < LayoutAttempts; attempt++)
+            foreach (var band in bands) Shuffle(band);
+            var plan = citadels.Select(_ => new List<HexCoord>()).ToList();
+            var best = citadels.Select(_ => new List<HexCoord>()).ToList();
+            var occupied = new List<HexCoord>();
+            var last = Enumerable.Repeat(-1, citadels.Count).ToArray();
+            var closed = new bool[citadels.Count];
+            var order = Enumerable.Range(0, citadels.Count).ToList(); Shuffle(order);
+            int bestCount = 0, nodes = 0;
+            bool Search()
             {
-                var plan = citadels.Select(c => new List<HexCoord>()).ToList();
-                var occupied = new List<HexCoord>();
-                var order = Enumerable.Range(0, citadels.Count).ToList();
-                Shuffle(order);
-                foreach (int player in order)
+                if (++nodes > 4096) return false;
+                if (occupied.Count > bestCount)
+                { bestCount = occupied.Count; best = plan.Select(n => new List<HexCoord>(n)).ToList(); }
+                if (bestCount == citadels.Count * 3) return true;
+                // Most-constrained player first; random band/order ties preserve variety.
+                int upper = occupied.Count;
+                int player = -1; List<int> options = null; float tightest = float.PositiveInfinity;
+                foreach (int p in order)
                 {
-                    var options = new List<HexCoord>(bands[player]);
-                    Shuffle(options);
-                    foreach (HexCoord h in options)
-                    {
-                        if (occupied.Any(p => HexGridMath.Distance(p, h) < 2)) continue;
-                        plan[player].Add(h);
-                        occupied.Add(h);
-                        if (plan[player].Count == 3) break;
-                    }
+                    if (closed[p] || plan[p].Count == 3) continue;
+                    var available = Enumerable.Range(last[p] + 1, bands[p].Count - last[p] - 1)
+                        .Where(i => occupied.All(h => HexGridMath.Distance(h, bands[p][i]) >= 2)).ToList();
+                    upper += Mathf.Min(3 - plan[p].Count, available.Count);
+                    float freedom = available.Count / (float)(3 - plan[p].Count);
+                    if (freedom < tightest) { tightest = freedom; player = p; options = available; }
                 }
-                if (occupied.Count > bestCount) { best = plan; bestCount = occupied.Count; }
-                if (bestCount == citadels.Count * 3) break;
+                if (player < 0 || upper < minimumNear || upper <= bestCount) return false;
+                int previous = last[player];
+                foreach (int i in options)
+                {
+                    var h = bands[player][i]; plan[player].Add(h); occupied.Add(h); last[player] = i;
+                    if (Search()) return true;
+                    occupied.RemoveAt(occupied.Count - 1); plan[player].RemoveAt(plan[player].Count - 1);
+                    if (nodes > 4096) break;
+                }
+                last[player] = previous;
+                // Also sample legal partial plans when one player's band cannot be filled.
+                closed[player] = true; Search(); closed[player] = false;
+                return false;
             }
+            Search();
             return best;
         }
 
         public static FarLayout PlanFar(HexMap map, IReadOnlyList<HexCoord> citadels,
-            IReadOnlyList<HexCoord> nearHexes, int target, int techTarget)
+            IReadOnlyList<HexCoord> nearHexes, MatchResourceBudget budget)
         {
             var fields = citadels.Select(c => HexPathfinder.FindCosts(map, new[] { c })).ToList();
-            return PlanFar(map, citadels, nearHexes, target, techTarget, fields);
+            var candidates = Candidates(map, citadels, fields)
+                .Where(c => nearHexes.All(h => HexGridMath.Distance(c.Hex, h) >= 2)).ToList();
+            var proposals = new List<(FarLayout Plan, float Score)>(); int bestCount = -1;
+            for (int attempt = 0; attempt < LayoutAttempts; attempt++)
+            {
+                var far = SampleFar(candidates, budget.FarTarget);
+                if (far.Count < bestCount) continue;
+                if (far.Count > bestCount) { bestCount = far.Count; proposals.Clear(); }
+                proposals.AddRange(TypedFarProposals(far, budget, citadels.Count, map.FieldRadius));
+            }
+            return Choose(proposals);
         }
 
-        private static FarLayout PlanFar(HexMap map, IReadOnlyList<HexCoord> citadels,
-            IReadOnlyList<HexCoord> nearHexes, int target, int techTarget,
+        private static List<Candidate> Candidates(HexMap map, IReadOnlyList<HexCoord> citadels,
             IReadOnlyList<Dictionary<HexCoord, int>> fields)
         {
-            if (target <= 0 || citadels.Count == 0)
-                return new FarLayout(new List<HexCoord>(), new List<HexCoord>());
-
             // One forward terrain-cost field per actual citadel, reused across all proposals.
             // No second movement-cost rule and no assumed hero speed or AI knowledge here.
             var candidates = new List<Candidate>();
             var center = new HexCoord(0, 0);
             foreach (HexCoord h in map.AllCoords)
             {
-                if (!map.CanEnter(h) || HexResourceBonusRegistry.GetBonus(h) != null
+                if (citadels.Count == 0 || !map.CanEnter(h) || HexResourceBonusRegistry.GetBonus(h) != null
                     || citadels.Any(c => HexGridMath.Distance(c, h) < 4)
-                    || nearHexes.Any(n => HexGridMath.Distance(n, h) < 2)
                     || fields.Any(f => !f.ContainsKey(h))) continue;
                 int[] costs = fields.Select(f => f[h]).ToArray();
                 int[] sorted = costs.OrderBy(c => c).ToArray();
@@ -129,37 +179,51 @@ namespace Game.Setup
                 });
             }
 
-            var proposals = new List<List<Candidate>>();
-            var scores = new List<float>();
-            int bestCount = -1;
-            float bestScore = float.PositiveInfinity;
-            for (int attempt = 0; attempt < LayoutAttempts; attempt++)
-            {
-                var options = new List<Candidate>(candidates);
-                Shuffle(options);
-                var plan = new List<Candidate>();
-                foreach (Candidate candidate in options)
-                {
-                    if (plan.Any(p => HexGridMath.Distance(p.Hex, candidate.Hex) < 2)) continue;
-                    plan.Add(candidate);
-                    if (plan.Count == target) break;
-                }
-                if (plan.Count < bestCount) continue;
-                if (plan.Count > bestCount)
-                { proposals.Clear(); scores.Clear(); bestCount = plan.Count; bestScore = float.PositiveInfinity; }
-                float score = Score(plan, citadels.Count, map.FieldRadius, techTarget);
-                proposals.Add(plan);
-                scores.Add(score);
-                bestScore = Mathf.Min(bestScore, score);
-            }
+            return candidates;
+        }
 
-            // Count has priority over quality. Within a bounded quality window choose randomly,
-            // rather than always returning the mathematical optimum (often a repetitive shape).
-            var acceptable = Enumerable.Range(0, proposals.Count)
-                .Where(i => scores[i] <= bestScore + AcceptableScoreWindow).ToList();
-            List<Candidate> chosen = proposals[acceptable[Random.Range(0, acceptable.Count)]];
-            return new FarLayout(chosen.Select(c => c.Hex).ToList(),
-                SelectTech(chosen, techTarget).Select(c => c.Hex).ToList());
+        private static List<Candidate> SampleFar(List<Candidate> candidates, int target)
+        {
+            var options = new List<Candidate>(candidates); Shuffle(options);
+            var plan = new List<Candidate>();
+            foreach (var candidate in options)
+            {
+                if (plan.Count >= target) break;
+                if (plan.Any(p => HexGridMath.Distance(p.Hex, candidate.Hex) < 2)) continue;
+                plan.Add(candidate);
+            }
+            return plan;
+        }
+
+        private static List<(FarLayout Plan, float Score)> TypedFarProposals(List<Candidate> far,
+            MatchResourceBudget budget, int players, int radius)
+        {
+            var proposals = new List<(FarLayout Plan, float Score)>();
+            var tech = new HashSet<HexCoord>(SelectTech(far, budget.TechTarget).Select(c => c.Hex));
+            for (int assignment = 0; assignment < 12; assignment++)
+            {
+                var types = BuildTypes(budget, far.Count);
+                var typed = new FarLayout(far.Select((c, i) => new Point(c.Hex, types[i], tech.Contains(c.Hex))).ToList());
+                proposals.Add((typed, Score(far, typed.Points, players, radius)));
+            }
+            return proposals;
+        }
+
+        private static T Choose<T>(List<(T Plan, float Score)> proposals)
+        {
+            float best = proposals.Min(p => p.Score);
+            var acceptable = proposals.Where(p => p.Score <= best + AcceptableScoreWindow).ToList();
+            return acceptable[Random.Range(0, acceptable.Count)].Plan;
+        }
+
+        private static List<ResourceType> BuildTypes(MatchResourceBudget budget, int count)
+        {
+            ResourceYields quota = budget.OrdinaryCounts(count, Random.Range(0, 3));
+            var types = new List<ResourceType>();
+            types.AddRange(Enumerable.Repeat(ResourceType.Human, quota.human));
+            types.AddRange(Enumerable.Repeat(ResourceType.Energy, quota.energy));
+            types.AddRange(Enumerable.Repeat(ResourceType.Materials, quota.materials));
+            Shuffle(types); return types;
         }
 
         private static List<Candidate> SelectTech(List<Candidate> plan, int target)
@@ -181,7 +245,7 @@ namespace Game.Setup
             return selected;
         }
 
-        private static float Score(List<Candidate> plan, int players, int radius, int techTarget)
+        private static float Score(List<Candidate> plan, IReadOnlyList<Point> points, int players, int radius)
         {
             if (plan.Count == 0) return 0f;
             float scale = Mathf.Max(1, radius);
@@ -196,14 +260,27 @@ namespace Game.Setup
                 score += 0.8f * plan.Average((Candidate c) => 1f / plan.Where(o => o != c)
                     .Min((Candidate o) => HexGridMath.Distance(c.Hex, o.Hex)));
 
-            List<Candidate> tech = SelectTech(plan, techTarget);
-            if (tech.Count > 0)
+            // Far types are evaluated separately: near guarantees must never hide a distant
+            // singleton monopoly. Each group considers nearest access AND shared opportunities.
+            foreach (var group in points.GroupBy(p => p.Type))
             {
-                int[] techCosts = Enumerable.Range(0, players).Select(p => tech.Min(c => c.Costs[p])).ToArray();
-                score += 0.75f * (techCosts.Max() + techCosts.Max() - techCosts.Min()) / scale;
-                score += tech.Average(c => c.CompetitionGap);
+                var hexes = new HashSet<HexCoord>(group.Select(p => p.Hex));
+                score += AccessScore(plan.Where(c => hexes.Contains(c.Hex)).ToList(), players, scale);
             }
+            var techHexes = new HashSet<HexCoord>(points.Where(p => p.Tech).Select(p => p.Hex));
+            if (techHexes.Count > 0)
+                score += AccessScore(plan.Where(c => techHexes.Contains(c.Hex)).ToList(), players, scale);
             return score;
+        }
+
+        private static float AccessScore(List<Candidate> group, int players, float scale)
+        {
+            int[] nearest = Enumerable.Range(0, players).Select(p => group.Min(c => c.Costs[p])).ToArray();
+            float[] opportunity = Enumerable.Range(0, players)
+                .Select(p => group.Sum(c => 1f / Mathf.Max(1, c.Costs[p]))).ToArray();
+            float balance = (opportunity.Max() - opportunity.Min()) / Mathf.Max(.001f, opportunity.Max());
+            return (nearest.Max() + 2f * (nearest.Max() - nearest.Min())) / scale
+                + balance + group.Average(c => c.CompetitionGap);
         }
 
         private static void Shuffle<T>(List<T> items)

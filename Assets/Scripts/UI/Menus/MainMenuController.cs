@@ -22,6 +22,7 @@ namespace Game.UI
         private void Awake()
         {
             Game.Core.GameSession.EndRewardEligibility();
+            GameSession.ClearMapConditions();
             foreach (var button in GetComponentsInChildren<Button>(true))
                 if (button.gameObject.name == "Continue Campaign") continueCampaignButton = button;
             if (continueCampaignButton == null && mainMenuPanel != null)

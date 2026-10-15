@@ -24,6 +24,7 @@ namespace Game.Core
         {
             error = null;
             CampaignContext = null; FinalResult = null;
+            ClearMapConditions();
             if (players.FindAll(p => p.IsHuman).Count > 1)
             { error = "Only one local human profile is supported."; return false; }
             AssignAiDecks(players, config?.collectionDeckCatalog);
@@ -74,7 +75,7 @@ namespace Game.Core
         }
         public static void EndRewardEligibility() => RewardsEligible = false;
         [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetCollectionSession() { MatchId = null; RewardsEligible = false; SetupError = null; CampaignContext = null; FinalResult = null; }
+        private static void ResetCollectionSession() { ClearMapConditions(); MatchId = null; RewardsEligible = false; SetupError = null; CampaignContext = null; FinalResult = null; }
 
         public static List<PlayerSetupData> Players { get; set; } = new List<PlayerSetupData>();
 
@@ -85,6 +86,9 @@ namespace Game.Core
         // own design-time radius/Arid default instead.
         public static MapSize? SelectedMapSize { get; set; }
         public static Biome? SelectedBiome { get; set; }
+        public static RegionResourceConditions? SelectedResourceConditions { get; set; }
+        public static void ClearMapConditions()
+        { SelectedMapSize = null; SelectedBiome = null; SelectedResourceConditions = null; }
 
         // fallbackRadius is MapGenerationSettings.radius — its own design-time default.
         public static int ResolveMapRadius(int fallbackRadius) =>
