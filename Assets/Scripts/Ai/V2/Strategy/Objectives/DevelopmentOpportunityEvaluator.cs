@@ -80,7 +80,7 @@ namespace Game.Ai.V2
         // value of the output, already discounted by the operator-generation chance.
         public float ExpectedGain;
         // Equipment only: the tactical share of ExpectedGain (Move/Range/AP/Command/roles, AiPower
-        // units) — the part StrategicCardEvaluator.EquipmentUpgradeValue never matchup-gates.
+        // units) — the part EquipmentUpgradeValuation.EquipmentUpgradeValue never matchup-gates.
         public float TacticalGain;
         // Legacy preview helper result; not used to admit or rank prerequisite steps.
         public float Ev;
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
             // One settled evaluation has one immutable set of available operator sources.
             List<GenerationStep> generatedOperatorSources = null;
             using var recipientMemo = new RecipientEvaluationMemo();
-            using var targetMemo = new StrategicCardEvaluator.EquipmentTargetMemo();
+            using var targetMemo = new EquipmentUpgradeValuation.EquipmentTargetMemo();
             IEnumerable<HexCoord> sites = snap.Self.BaseHexes
                 .Concat(snap.Development.Facilities.Select(f => f.Hex))
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
@@ -138,7 +138,7 @@ namespace Game.Ai.V2
             foreach (ResearchProductionMode mode in Modes)
             foreach (HexCoord hex in sites)
             {
-                BuildingData building = BuildingRegistry.FindAt(hex);
+                BuildingData building = OwnWorld.Of(player).BuildingAt(hex);
                 if (building == null || building.Owner != player)
                     continue;
                 bool facilityReady = building.HasFacilityWithAbility(
@@ -214,10 +214,10 @@ namespace Game.Ai.V2
             // own (CapacityUnlock), priced and paid for itself; the Facility placement it makes possible is a
             // later action evaluated on the refreshed world. StrategicMaintenancePolicy owns which tier
             // opens a slot. No unlockable tier left -> the site cannot host it.
-            if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            if (!facilityReady && OwnWorld.Of(player).BuildingAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
             {
                 capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
-                    BuildingRegistry.FindAt(hex), ctx);
+                    OwnWorld.Of(player).BuildingAt(hex), ctx);
                 if (capacityTier == null)
                     return "reason=no_facility_slot";
             }
@@ -238,14 +238,15 @@ namespace Game.Ai.V2
 
         // The same rule read from the LIVE world (hand, deck, registries, standing intents): the one
         // answer for Provisioning and Execution re-checks, never a stale snapshot.
+        // `intents` - the player's durable intents, supplied by the live caller.
         internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx)
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents)
         {
             if (player == null) return null;
             return SelectedPreparationSite(mode, player, hand, ctx,
-                MissionIntentRegistry.Peek(player)?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                intents?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 hand?.RemainingDeck,
-                BuildingRegistry.AllBuildings().Where(b => b != null && b.Owner == player && b.IsBase)
+                OwnWorld.Of(player).Buildings.Where(b => b.IsBase)
                     .Select(b => b.Hex).ToList());
         }
 
@@ -253,8 +254,8 @@ namespace Game.Ai.V2
         // takes the last qualified operator of a served facility / the selected preparation site away
         // and the operator cannot legally stay home (LocalOperatorRelease.CanKeepOperatorsHome).
         internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
-            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments) =>
-            OperatorDutyBlocksDeparture(player, army, commitments, LivePreparationSite(player, hand, ctx));
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, IMissionIntentView intents) =>
+            OperatorDutyBlocksDeparture(player, army, commitments, LivePreparationSite(player, hand, ctx, intents));
 
         internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
             ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> site) =>
@@ -262,14 +263,14 @@ namespace Game.Ai.V2
             && !LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out _);
 
         internal static System.Func<ResearchProductionMode, HexCoord?> LivePreparationSite(
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx) =>
-            mode => SelectedPreparationSite(mode, player, hand, ctx);
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents) =>
+            mode => SelectedPreparationSite(mode, player, hand, ctx, intents);
 
         // The operators the departing `army` leaves in the local garrison (empty when none is needed).
         internal static IReadOnlyList<UnitData> OperatorsStayingHome(PlayerSetupData player,
-            ArmyData army, AiHandData hand, AiTurnContext ctx) =>
+            ArmyData army, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents) =>
             player == null || army == null || army.IsGarrison ? System.Array.Empty<UnitData>()
-                : LocalOperatorRelease.OperatorsNeededHome(player, army, LivePreparationSite(player, hand, ctx));
+                : LocalOperatorRelease.OperatorsNeededHome(player, army, LivePreparationSite(player, hand, ctx, intents));
 
         private static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
@@ -279,11 +280,10 @@ namespace Game.Ai.V2
             if (baseHexes == null || player == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return null;
-            bool facilityOfModeExists = BuildingRegistry.AllBuildings().Any(b => b != null
-                && b.Owner == player && b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
+            bool facilityOfModeExists = OwnWorld.Of(player).Buildings.Any(b => b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
             bool Viable(HexCoord hex)
             {
-                BuildingData b = BuildingRegistry.FindAt(hex);
+                BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
                 return b != null && b.Owner == player
                     && !b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
                     && StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
@@ -299,7 +299,7 @@ namespace Game.Ai.V2
                     UnitData hero = i.Development.Hero;
                     if (hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
                         && hero.HasAbility(role)
-                        && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                        && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                             && a.Members.Contains(hero))
                         && Viable(i.Development.FacilityHex))
                         return i.Development.FacilityHex;
@@ -351,7 +351,7 @@ namespace Game.Ai.V2
                 }
                 // Repeat damping is already inside the gain (EquipmentOpportunities, source set); there is no supply term.
                 best.WorldTaskScore = BuildDevelopmentScore(
-                    best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
+                    best.SuccessChance * EquipmentUpgradeValuation.EquipmentUpgradeValue(best));
                 MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(
                     best, source, DesireAxis.Development);
                 float ev = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(best, plan,
@@ -448,16 +448,15 @@ namespace Game.Ai.V2
                     facility.EffectivePlayApCost,
                     facility.EffectivePlayResourceCost,
                     snap, inv, hand, spendable, player);
-            ArmyData garrison = ArmyRegistry.AllAt(hex)
-                .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
+            ArmyData garrison = OwnWorld.Of(player).GarrisonAt(hex);
             bool operatorInTransit = activeIntents?.Any(i => i?.Status == IntentStatus.Active
                 && i.Development != null && i.Development.Mode == mode
                 && i.Development.FacilityHex.Equals(hex) && i.Development.Hero?.Owner == player
                 && !i.Development.Hero.IsPrisoner
                 && i.Development.Hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
-                && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                     && a.Members.Contains(i.Development.Hero))) == true;
-            DevelopmentLifecycleState lifecycle = MissionIntentRegistry.Peek(player)?.Development;
+            IDevelopmentLifecycleView lifecycle = snap.Intents?.Development;
             CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
             CardData operatorCard = null;
             float operatorScore = 0f;
@@ -494,7 +493,7 @@ namespace Game.Ai.V2
             float remoteCost = float.PositiveInfinity;
             if (actor == null && !operatorInTransit && ctx.Map != null)
             {
-                foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+                foreach (ArmyData army in OwnWorld.Of(player).Armies)
                 {
                     if (army == null || army.IsPrison || army.Hex.Equals(hex)
                         || occupied.IsArmyClaimed(army.Id))
@@ -512,7 +511,7 @@ namespace Game.Ai.V2
                     if (candidate == null || candidate.Owner != player)
                         continue;
                     // Never strip a different active facility of its exact operator.
-                    BuildingData sourceBuilding = BuildingRegistry.FindAt(army.Hex);
+                    BuildingData sourceBuilding = OwnWorld.Of(player).BuildingAt(army.Hex);
                     if (sourceBuilding != null && sourceBuilding.Owner == player
                         && Modes.Any(m => sourceBuilding.HasFacilityWithAbility(
                                 ResearchProductionSystem.FacilityAbility(m))
@@ -575,8 +574,7 @@ namespace Game.Ai.V2
                     .Where(g => IsGeneratedOperatorCandidate(g, mode)
                         && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
                         && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
-                        && ArmyRegistry.AllAt(g.FacilityHex).Any(source => source != null
-                            && source.Owner == player && !source.IsPrison
+                        && OwnWorld.Of(player).ArmiesAt(g.FacilityHex).Any(source => !source.IsPrison
                             && source.Members.Contains(g.Hero)
                             && !occupied.IsArmyClaimed(source.Id)))
                     .Select(g => (step: g, score: describeOnly ? 0f
@@ -648,7 +646,7 @@ namespace Game.Ai.V2
                     StageResourceCost = cost, WorldTaskScore = score,
                     PreparationCapacityTier = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier : null,
                     PreparationExpectedLevel = kind == DevelopmentPreparationKind.CapacityUnlock
-                        ? BuildingRegistry.FindAt(hex)?.Level ?? 0 : 0,
+                        ? OwnWorld.Of(player).BuildingAt(hex)?.Level ?? 0 : 0,
                     PreparationFacilityCard = kind == DevelopmentPreparationKind.Operator ? null : card,
                     PreparationOperatorCard = kind == DevelopmentPreparationKind.Operator ? card : null,
                     PreparationOperatorGeneration = generated, PreparationExistingHero = hero,
@@ -747,7 +745,7 @@ namespace Game.Ai.V2
                 return false;
             HexCoord hex = plan.FacilityHex;
             ResearchProductionMode mode = plan.Mode;
-            BuildingData b = BuildingRegistry.FindAt(hex);
+            BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
             if (b == null || b.Owner != player || !b.IsBase || !b.HasTieredUnlock
                 || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null
                 || b.FindFirstAvailableFacilitySlot() >= 0          // a slot is already open: nothing to buy
@@ -790,7 +788,7 @@ namespace Game.Ai.V2
             foreach (ResearchProductionMode mode in Modes)
             foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
             {
-                BuildingData b = BuildingRegistry.FindAt(hex);
+                BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
                 if (b == null || b.Owner != player) continue;
                 bool ready = b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
@@ -813,7 +811,7 @@ namespace Game.Ai.V2
         // permission to generate: ResearchProductionSystem keeps the staffed-source contract.
         internal static bool IsPreparationSite(Game.Players.PlayerSetupData player, HexCoord hex)
         {
-            BuildingData b = BuildingRegistry.FindAt(hex);
+            BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
             return b != null && b.Owner == player && b.IsBase;
         }
 
@@ -821,7 +819,7 @@ namespace Game.Ai.V2
             ResearchProductionMode mode) => IsPreparationSite(player, hex)
                 && hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
                 && hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
-                && ArmyRegistry.AllAt(hex).Any(a => a.Owner == player && !a.IsPrison
+                && OwnWorld.Of(player).ArmiesAt(hex).Any(a => !a.IsPrison
                     && a.Members.Contains(hero));
 
         // Development's ONE world-task score assembly point. Every argument is a raw fact;
@@ -957,7 +955,7 @@ namespace Game.Ai.V2
         }
 
         // The best legal recipient (hand card or deployed unit) for this Equipment output, by
-        // StrategicCardEvaluator.EquipmentUpgradeValue. null when no recipient gains anything.
+        // EquipmentUpgradeValuation.EquipmentUpgradeValue. null when no recipient gains anything.
         private static DevelopmentOpportunity BestEquipmentOpportunity(ResearchProductionMode mode,
             HexCoord facilityHex, CardDefinition equipment, float successChance,
             GenerationStep generation, WorldSnapshot snap, CapabilityInventory inv,
@@ -966,7 +964,7 @@ namespace Game.Ai.V2
             List<DevelopmentOpportunity> recipients = EquipmentOpportunities(mode, facilityHex,
                 equipment, successChance, generation, snap, inv, player, root, hand, out diag, futureAttachment: true);
             DevelopmentOpportunity best = recipients
-                .OrderByDescending(o => StrategicCardEvaluator.EquipmentUpgradeValue(o))
+                .OrderByDescending(o => EquipmentUpgradeValuation.EquipmentUpgradeValue(o))
                 .ThenBy(o => RecipientKey(o), System.StringComparer.Ordinal).FirstOrDefault();
             // The repeated-cost witness counts distinct legal, useful recipient slots, rather
             // than the coarse radar target count or every card in the catalog.
@@ -983,11 +981,11 @@ namespace Game.Ai.V2
         {
             public readonly bool Legal;
             public readonly string Why;
-            public readonly StrategicCardEvaluator.EquipmentDelta Gain;
+            public readonly EquipmentUpgradeValuation.EquipmentDelta Gain;
             public readonly string Purpose;
             public readonly bool NoNeed;
             public readonly bool PendingCovers;
-            public RecipientVerdict(bool legal, string why, StrategicCardEvaluator.EquipmentDelta gain,
+            public RecipientVerdict(bool legal, string why, EquipmentUpgradeValuation.EquipmentDelta gain,
                 string purpose, bool noNeed, bool pendingCovers)
             { Legal = legal; Why = why; Gain = gain; Purpose = purpose; NoNeed = noNeed; PendingCovers = pendingCovers; }
         }
@@ -1082,16 +1080,16 @@ namespace Game.Ai.V2
                     verdict = new RecipientVerdict(false, why, default, null, false, false);
                 else
                 {
-                    StrategicCardEvaluator.EquipmentDelta gain = unit != null
-                        ? StrategicCardEvaluator.EquipmentDeltaParts(equipment, unit, snap, inv)
-                        : StrategicCardEvaluator.EquipmentDeltaParts(equipment, card, snap, inv);
+                    EquipmentUpgradeValuation.EquipmentDelta gain = unit != null
+                        ? EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, unit, snap, inv)
+                        : EquipmentUpgradeValuation.EquipmentDeltaParts(equipment, card, snap, inv);
                     string purpose;
                     using (new Game.Core.ProfileScope("AI/Dev.PurposeLabel"))
-                        purpose = StrategicCardEvaluator.EquipmentPurposeLabel(snap, card, unit);
+                        purpose = EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, card, unit);
                     DevelopmentOpportunity probe = MakeProbe(equipment, card, unit, gain, powerUnit);
                     // Delta already includes mission-scoped penetration and effect usefulness.
                     // Utility is required even for in-advance investment; surplus alone cannot admit it.
-                    bool noNeed = StrategicCardEvaluator.EquipmentUpgradeValue(probe) <= 0f;
+                    bool noNeed = EquipmentUpgradeValuation.EquipmentUpgradeValue(probe) <= 0f;
                     // A real card in hand is the pending stage. Reuse it before manufacturing more
                     // for its useful recipient slot; ordinary hand attachment enumeration stays live.
                     bool covers = false;
@@ -1145,7 +1143,7 @@ namespace Game.Ai.V2
                     Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
                 }
 
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
                 if (army == null || army.IsPrison) continue;
                 foreach (UnitData u in army.Members)
@@ -1172,7 +1170,7 @@ namespace Game.Ai.V2
 
         // The slice of a candidate that PendingEquipmentCovers and the need check read.
         private static DevelopmentOpportunity MakeProbe(CardDefinition equipment, CardData card,
-            UnitData unit, StrategicCardEvaluator.EquipmentDelta gain, float powerUnit) =>
+            UnitData unit, EquipmentUpgradeValuation.EquipmentDelta gain, float powerUnit) =>
             new DevelopmentOpportunity
             {
                 Card = equipment, RecipientCard = card, RecipientUnit = unit,
@@ -1192,15 +1190,15 @@ namespace Game.Ai.V2
                     : EquipmentSystem.CanAttachPreview(def, op.RecipientUnit, out _);
                 if (!legal) continue;
                 var delta = op.RecipientCard != null
-                    ? StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientCard, snap, inv)
-                    : StrategicCardEvaluator.EquipmentDeltaParts(def, op.RecipientUnit, snap, inv);
+                    ? EquipmentUpgradeValuation.EquipmentDeltaParts(def, op.RecipientCard, snap, inv)
+                    : EquipmentUpgradeValuation.EquipmentDeltaParts(def, op.RecipientUnit, snap, inv);
                 var pendingUse = new DevelopmentOpportunity
                 {
                     Card = def, RecipientCard = op.RecipientCard, RecipientUnit = op.RecipientUnit,
                     ExpectedGain = delta.Total * AiConfigV2.combatPowerPerBodyEstimate,
                     TacticalGain = delta.Tactical * AiConfigV2.combatPowerPerBodyEstimate,
                 };
-                if (StrategicCardEvaluator.EquipmentUpgradeValue(pendingUse) > 0f) return true;
+                if (EquipmentUpgradeValuation.EquipmentUpgradeValue(pendingUse) > 0f) return true;
             }
             return false;
         }

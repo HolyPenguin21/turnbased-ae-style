@@ -44,7 +44,7 @@ namespace Game.Ai.V2
             bool preparation = false)
         {
             var candidates = new List<(ArmyData donor, UnitData hero)>();
-            foreach (ArmyData donor in ArmyRegistry.AllForOwner(owner))
+            foreach (ArmyData donor in OwnWorld.Of(owner).Armies)
             {
                 if (donor == null || donor.Id == host.Id || !donor.Hex.Equals(host.Hex)
                     || !LeavesDonorLegal(donor, preparation)

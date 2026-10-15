@@ -79,7 +79,7 @@ namespace Game.Ai.V2
             // A second hero of a led field army is detached like a garrison hero (container price).
             bool detached = actor != null && !actor.IsGarrison && target.Hero != null
                 && AiArmyRoles.IsDetachedFieldDelivery(
-                    ArmyRegistry.AllForOwner(target.Hero.Owner).FirstOrDefault(a => a != null
+                    OwnWorld.Of(target.Hero.Owner).Armies.FirstOrDefault(a => a != null
                         && a.Id == actor.ArmyId), target.Hero);
             float upperBound = actor?.IsGarrison == true || detached
                 ? ArmyActions.CreateArmyApCost : activation;

@@ -8,17 +8,19 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
     //  ATK §24/§25/§47/§61/§70/§71 — ATTACK CONTINUITY.
     //
-    //  A mechanical partial of MissionContinuityLayer, not a second continuity owner: intents still
-    //  live in the one MissionIntentState, are keyed by the one MissionIntentKey, and are reaped by
-    //  the same rules. This file holds only the Attack lane's own lifecycle answers.
+    //  The Attack line's own owner, composed by MissionContinuityLayer by mission kind; not a
+    //  second intent store: intents still live in the one MissionIntentState, are keyed by the one
+    //  MissionIntentKey, and are reaped by the same rules. It holds only the Attack lane's own
+    //  lifecycle answers.
     // ===========================================================================================
-    internal static partial class MissionContinuityLayer
+    internal static class AttackContinuity
     {
         internal static bool IsAttackStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
         {
@@ -33,7 +35,7 @@ namespace Game.Ai.V2
             }
             // Reinforcement is a rendezvous with the primary, never the site's capture.
             return attack.Phase == AttackMissionPhase.Assault
-                && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
+                && ObjectiveLiveStatus.AttackTarget(player, attack.Target)
                     == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
         }
 
@@ -117,7 +119,7 @@ namespace Game.Ai.V2
             else if (a.Phase != AttackMissionPhase.SupportReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
+                    || !GroundCombatContinuity.GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
                 {
                     // A started operation whose primary survives only as a non-combat remnant
                     // (lone hero, lone recce) withdraws like any other non-viable operation (§47);
@@ -320,8 +322,9 @@ namespace Game.Ai.V2
             if (primary == null || !primary.IsStructuralRaidActor)
                 return RetreatOutcome.NotTriggered;
             // lastLocalTurn = this turn: the mandatory path-contact rule only, no voluntary search
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             AttackLocalAction local = AttackTacticalOpportunity.Decide(snap, primary, a.Target,
-                snap.TurnNumber, intermediateBaseAvailable: false, adObjectives: null);
+                snap.TurnNumber, intermediateBaseAvailable: false, adObjectives: null, state);
             if (local.Kind != AttackLocalActionKind.Retreat)
                 return RetreatOutcome.NotTriggered;
 
@@ -345,7 +348,7 @@ namespace Game.Ai.V2
             a.SupportReturnHex = null;
             a.GatherSupportArmyIds.Clear();
             intent.StallTurns = 0;
-            MissionIntentRegistry.GetOrCreate(player).PutRetreatWitness(new AttackRetreatWitness
+            state.PutRetreatWitness(new AttackRetreatWitness
             {
                 Target = a.Target,
                 OwnArmyId = primary.ArmyId,
@@ -892,16 +895,19 @@ namespace Game.Ai.V2
         // position left the whole pool (a unit died, a card was spent elsewhere) — a small
         // reshuffle of the greedy pick never churns it. Housekeeping may take armies apart
         // meanwhile: the roster is by card key, not by army, so the host re-gathers it.
-        private static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
+        internal static void RefreshTargetRoster(WorldSnapshot snap, MissionIntent intent, AttackIntent a,
             ArmyData liveHost)
         {
             UnitData commander = liveHost?.Commander;
             string commanderKey = commander == null ? null : StrikeRoster.UnitKey(commander);
+            int capacity = StrikeRoster.HostRosterCapacity(liveHost);
             string why = null;
             if (a.TargetRoster == null || a.TargetRoster.Count == 0)
                 why = "frozen";
             else if (commanderKey != a.TargetRosterCommanderKey)
                 why = $"commander {a.TargetRosterCommanderKey ?? "none"}->{commanderKey ?? "none"}";
+            else if (capacity != a.TargetRosterCapacity)
+                why = $"capacity {a.TargetRosterCapacity}->{capacity}";
             else if (snap.Self.AttackPeak > a.TargetRosterPeak
                      * (1f + AiConfigV2.attackTargetRosterRefreezeGrowth))
                 why = $"peak {a.TargetRosterPeak:0.#}->{snap.Self.AttackPeak:0.#}";
@@ -920,14 +926,13 @@ namespace Game.Ai.V2
             }
             if (why == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return;
-            int capacity = liveHost != null ? liveHost.Capacity
-                : ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), false);
             List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(snap.Self.StrikePool,
                 commander == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(commander),
                 capacity, out float power);
             a.TargetRoster = roster;
             a.TargetRosterPeak = snap.Self.AttackPeak;
             a.TargetRosterCommanderKey = commanderKey;
+            a.TargetRosterCapacity = capacity;
             a.TargetRosterPower = power;
             AiDebugLog.Write($"[AI][V2][Attack][Mobilization] {intent.IntentKey} target roster {why}: "
                 + $"[{string.Join(",", a.TargetRoster.Select(x => x.IsHero ? x.Key + "*" : x.Key))}] "
@@ -1030,10 +1035,10 @@ namespace Game.Ai.V2
                     id != payload.PrimaryArmyId
                     && !(o.GroundFacts().ReinforcementHandoffAttempted && id == o.MoverArmyId)));
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
-            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
+            GroundCombatContinuity.RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
             foreach (int supportId in payload.GatherSupportArmyIds)
-                RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
+                GroundCombatContinuity.RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "
@@ -1057,7 +1062,7 @@ namespace Game.Ai.V2
             MissionStepResultPolicy.ClassifyDefaultExecution(e, o);
         }
 
-        private static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryHandleAttackSideLeg(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -1112,7 +1117,7 @@ namespace Game.Ai.V2
 
             return false;
         }
-        private static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCompleteAttackLeg(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -1145,7 +1150,7 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCreateAttackStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (!(o.AttackFacts().HasAttackPayload && o.GroundFacts().OperationStarted)) return false;
@@ -1153,12 +1158,12 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
+        internal static bool TryPreserveAttackSupportMover(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn) =>
             intent.Attack != null && o.AttackFacts().HasAttackPayload
                 && GroundCombatLegs.IsAttackSupportLeg(o.AttackFacts().AttackTarget.Phase);
 
-        private static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
+        internal static void ApplyAttackStepFacts(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (o.AttackFacts().HasAttackPayload && intent.Attack != null)
@@ -1253,7 +1258,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        internal static void RetireGatherDonors(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
         {
             var state = pass.State;
             var dead = pass.Dead;
@@ -1280,7 +1285,7 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        internal static void ResolveAttackOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -1288,8 +1293,7 @@ namespace Game.Ai.V2
             var rekeys = pass.Rekeys;
             var raidClaims = pass.ActorClaims;
 
-            // ATK §24/§25 — the Attack lane's own lifecycle answers live in
-            // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
+            // ATK §24/§25 — the Attack lane's own lifecycle answers live in ResolveAttackIntent.
             // Audit F7 — a Gather re-plan may not recruit another intent's actor. T07 — an
             // army walking home on a completed Raid's Return fallback is NOT another
             // intent's actor (the fallback has no commitment protection and no claim); if
@@ -1315,7 +1319,7 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        internal static void RetireRecruitedReturnFallbacks(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -1341,13 +1345,13 @@ namespace Game.Ai.V2
             }
         }
 
-        private static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionStepResult o)
+        internal static void CaptureAttackProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
             o.AttackFactsForWrite().HasAttackPayload = true;
             o.AttackFactsForWrite().AttackTarget = pm.AttackTarget;
         }
 
-        private static void CaptureAttackExecutionFacts(ExecutionResult e, MissionStepResult o)
+        internal static void CaptureAttackExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             o.GroundFactsForWrite().OperationStarted = e.OperationStarted || e.StepsMoved > 0
                 || e.StopReason == ExecutionStopReason.BattleStarted;

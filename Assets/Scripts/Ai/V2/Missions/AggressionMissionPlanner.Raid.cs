@@ -67,7 +67,7 @@ namespace Game.Ai.V2
         private static void AppendRaid(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<RaidObjective> objectives,
             ISet<int> committed, List<MissionProposal> proposals,
-            IDictionary<MissionIntentKey, string> deferredThisPass)
+            IDictionary<MissionIntentKey, string> deferredThisPass, IMissionIntentView intentState)
         {
             // 2026-10-01 (user decision, playtest #7): while mobilization is open and the
             // preparation has not started yet, its host has no intent to claim it — a fresh Raid
@@ -135,7 +135,7 @@ namespace Game.Ai.V2
                     if (intent.Raid.Phase == RaidMissionPhase.AirSupport
                         || intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
-                        RaidCandidate? air = AirSupportCandidate(snap, intent, committed);
+                        RaidCandidate? air = AirSupportCandidate(snap, intent, committed, intentState);
                         if (air.HasValue)
                         {
                             incumbents.Add(air.Value);
@@ -145,7 +145,7 @@ namespace Game.Ai.V2
                     if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
                         RaidCandidate? sup = ReinforcementCandidate(snap, intent, committed,
-                            out string reinforcementDeferral);
+                            intentState, out string reinforcementDeferral);
                         if (sup.HasValue) incumbents.Add(sup.Value);
                         else
                         {
@@ -312,7 +312,7 @@ namespace Game.Ai.V2
         // `committed` — armies claimed by other operations; the same exclusion Demand and
         // Provisioning apply, so an unpinned leg is proposed only while a bindable support exists.
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent,
-            ISet<int> committed, out string deferredReason)
+            ISet<int> committed, IMissionIntentView intentState, out string deferredReason)
         {
             deferredReason = null;
             RaidIntent ri = intent.Raid;
@@ -350,7 +350,7 @@ namespace Game.Ai.V2
                     CanCoverAllDefenders = true,
                 };
                 RaidRecoveryProjection unpinnedProjection =
-                    RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri);
+                    RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, intentState?.All);
                 float unpinnedValue = unpinnedProjection.Viable
                     ? unpinnedProjection.Score.Value : default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
@@ -375,7 +375,7 @@ namespace Game.Ai.V2
                 CanCoverAllDefenders = true,
             };
             RaidRecoveryProjection projection =
-                RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, ri.SupportArmyId.Value);
+                RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, intentState?.All, ri.SupportArmyId.Value);
             TaskScore projectionScore = projection.Viable ? projection.Score : default;
             float value = projection.Viable
                 ? projection.Score.Value : default(TaskScore).Value;
@@ -387,7 +387,7 @@ namespace Game.Ai.V2
         }
 
         private static RaidCandidate? AirSupportCandidate(WorldSnapshot snap, MissionIntent intent,
-            ISet<int> committed)
+            ISet<int> committed, IMissionIntentView intentState)
         {
             RaidIntent ri = intent?.Raid;
             if (ri == null || ri.Target.Kind != RaidTargetKind.NeutralArmy
@@ -406,7 +406,7 @@ namespace Game.Ai.V2
                         snap.TurnNumber))
                     return null;
                 airId = ri.AirSupportArmyId.Value;
-                scored = RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, airId);
+                scored = RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, intentState?.All, airId);
                 landing = ri.AirSupportLandingHex
                     ?? (snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
                         .OrderBy(h => HexGridMath.Distance(h, ri.LastKnownHex))
@@ -417,7 +417,7 @@ namespace Game.Ai.V2
                 // A not-yet-started weak Raid can still request aviation, but wing choice and
                 // importance now come only from the same canonical comparison as field/base
                 // recovery. Missions never applies a second nearest-wing heuristic.
-                scored = RaidRecoveryPlanner.Choose(snap, ri, committed);
+                scored = RaidRecoveryPlanner.Choose(snap, ri, intentState?.All, committed);
                 if (!scored.Viable || scored.Phase != RaidMissionPhase.AirSupport
                     || !scored.AirSupportArmyId.HasValue
                     || !scored.AirSupportLandingHex.HasValue)

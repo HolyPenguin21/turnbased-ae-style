@@ -950,6 +950,11 @@ namespace Game.Ai.V2
             Resolve(abilities, moveMax).Any(e => e.Scope == EffectScope.DestArmy
                 || e.Context == StrategicEffectContext.FreeBattleSlots);
 
+        // A live army support carrier (Heal, Drill, Transport, an aura, a summon): never slot
+        // waste, kept by every departure, handover and preparation rule.
+        internal static bool IsArmySupportCarrier(Game.Units.UnitData unit) =>
+            unit != null && HasArmySupportEffect(unit.Abilities, unit.MoveMax);
+
         public static List<StrategicEffect> Resolve(IEnumerable<string> effectiveAbilities, int effectiveMoveMax)
         {
             var list = new List<StrategicEffect>();

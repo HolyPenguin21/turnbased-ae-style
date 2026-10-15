@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         // asked only when Economy's sole reason is Actor movement (so the answer is as lazy as before).
         internal static TypedTriggerSplit Split(StrategicInvalidationReason pending,
             IReadOnlyList<MissionIntent> intents, WorldSnapshot snapshot) =>
-            Split(pending, () => MissionContinuityLayer.EconomyBuilderReadyForCompletion(intents, snapshot));
+            Split(pending, () => EconomyContinuity.EconomyBuilderReadyForCompletion(intents, snapshot));
 
         internal static TypedTriggerSplit Split(StrategicInvalidationReason pending,
             Func<bool> economyBuilderReady)

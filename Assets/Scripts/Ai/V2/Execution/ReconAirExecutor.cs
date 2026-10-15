@@ -204,7 +204,7 @@ namespace Game.Ai.V2
                     && ap <= StrategicSpendability.SpendableAp(player, root, ctx)
                     && energy <= StrategicSpendability.SpendableAmount(player, root, ctx, Game.Economy.ResourceType.Energy);
                 ActorCommitments commitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+                    WorldSnapshot.IntentsOf(snapshot), snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
                 foreach (int actor in plan.ReservedActorIds)
                     commitments.Claim(actor);
                 if (!valid || !affordable || !pick.HasValue
@@ -352,7 +352,7 @@ namespace Game.Ai.V2
         // An AirSweep is never "met" by seeing its anchor: the sortie ends by its own refuel
         // endurance (AirReconStepDirector outbound cap -> Return), not by an observation check.
         private static bool ObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
-            pm != null && ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
+            pm != null && ObjectiveLiveStatus.ScoutSatisfied(player, pm.ScoutKind, pm.FocusHex);
 
         private static void MarkSatisfiedNoOp(ProvisionedMission pm, ExecutionResult er)
         {

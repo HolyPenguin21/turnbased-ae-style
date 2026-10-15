@@ -294,7 +294,7 @@ namespace Game.Ai.V2
                 // double-subtracting it. ActorCommitments here mirrors the exact construction
                 // ReconAssignmentPlanner.AssignFunded used to admit this pair.
                 ActorCommitments commitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All
+                    WorldSnapshot.IntentsOf(session.Snapshot)
                         .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                     session.Snapshot, null);
                 if (garrisonArmy == null || plannedExtractUnit == null
@@ -338,7 +338,7 @@ namespace Game.Ai.V2
             {
                 // A Refresh target was selected because frozen IntelAge was stale. Previously
                 // Visited ground remains valid; only a NEW current observation completes it.
-                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
+                if (ObjectiveLiveStatus.RefreshSatisfied(player, focus))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
                 if (!executionHex.Equals(focus))

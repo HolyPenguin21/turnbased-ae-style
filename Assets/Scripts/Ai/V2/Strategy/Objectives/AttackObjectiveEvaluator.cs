@@ -385,7 +385,7 @@ namespace Game.Ai.V2
         //   Base/Citadel target — gone means it is no longer the thing we set out to capture.
         //   never observed, sanctioned starting-Citadel coordinates of the expected owner
         //                        -> CONTINUE (location-only; the first real observation decides)
-        private static AttackTargetStatus StatusFromMemory(AttackTargetRef target,
+        internal static AttackTargetStatus StatusFromMemory(AttackTargetRef target,
             AiMapMemory.KnownBuilding? remembered, bool everObserved)
         {
             if (!remembered.HasValue)
@@ -397,25 +397,6 @@ namespace Game.Ai.V2
             if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
                 return AttackTargetStatus.Invalidated;
             return AttackTargetStatus.Continue;
-        }
-
-        // The SAME §25 question against LIVE state instead of a snapshot, for the one caller that
-        // has no snapshot: MissionRevalidator's per-mission gate, which runs between provisioned
-        // missions. The rules are identical and deliberately kept in this one owner rather than
-        // reimplemented there — only the two data sources differ: our own current Base topology
-        // (live truth about ourselves, exactly what Self.BaseHexes projects) and this observer's
-        // own remembered buildings (never a live read of a FOREIGN owner, §19/§65).
-        public static AttackTargetStatus EvaluateTargetLive(PlayerSetupData player,
-            AttackTargetRef target)
-        {
-            if (!target.HasValue || player == null)
-                return AttackTargetStatus.Invalidated;
-            BuildingData live = BuildingRegistry.FindAt(target.Hex);
-            if (live != null && live.Owner == player && (live.IsBase || live.IsStartingCitadel))
-                return AttackTargetStatus.Captured;
-
-            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex),
-                VisionSystem.HasEverSeen(player, target.Hex));
         }
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------
@@ -557,7 +538,7 @@ namespace Game.Ai.V2
                 && !buildings.Any(b => IsHostileStrategicStructure(b, player))
                 && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
                 yield return citadel;
-            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            foreach (MissionIntent i in snap.AllIntents)
             {
                 AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
                     ? i.Attack : null;

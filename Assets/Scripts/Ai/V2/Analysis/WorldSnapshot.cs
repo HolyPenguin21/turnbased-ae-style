@@ -39,6 +39,18 @@ namespace Game.Ai.V2
         // from army contents or citadel coordinates: an empty/army-less snapshot is still owned
         // by exactly one player.
         public PlayerSetupData Observer;
+        // The observer's own live objects — the one door planning layers use (OwnWorld).
+        public OwnWorld Own => _own != null && _own.Player == Observer ? _own : (_own = OwnWorld.Of(Observer));
+        private OwnWorld _own;
+        // The observer's durable intents, read-only (IMissionIntentView). Bound by Analysis from the
+        // store the caller hands to WorldAnalysis.Scan (the turn session's) and carried by every
+        // refresh; a live view of that store, like Own. Null in a snapshot built without one.
+        internal IMissionIntentView Intents;
+        // Every durable intent of the bound store (empty when none is bound).
+        internal IReadOnlyCollection<MissionIntent> AllIntents =>
+            Intents?.All ?? (IReadOnlyCollection<MissionIntent>)System.Array.Empty<MissionIntent>();
+        internal static IReadOnlyCollection<MissionIntent> IntentsOf(WorldSnapshot snap) =>
+            snap?.AllIntents ?? (IReadOnlyCollection<MissionIntent>)System.Array.Empty<MissionIntent>();
         public int TurnNumber;
         // Revision of the authoritative per-player knowledge memory captured by this immutable
         // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,
@@ -288,6 +300,15 @@ namespace Game.Ai.V2
         public int Capacity;                // ArmyData.Capacity — nominal battle-member cap
         public int OccupiedBattleSlots;     // members currently occupying slots (heroes included)
         public int FreeBattleSlots => System.Math.Max(0, Capacity - OccupiedBattleSlots);
+        // Own armies only. The capacity a preparation host's roster is composed under
+        // (StrikeRoster.HostRosterCapacity: Capacity less the support carriers it keeps under its
+        // current commander), the slots its support carriers keep under any commander
+        // (StrikeRoster.RetainedSupportSlots with no commander), and its current commander as a
+        // strike-roster candidate with that commander's CommandRating (null / 0 without one).
+        public int RosterCapacity;
+        public int SupportCarrierSlots;
+        public StrikeRosterCandidate? CommanderRosterCandidate;
+        public int CommanderCommandRating;
 
         // ---- OPERATIONAL state --------------------------------------------------------------
         // Frozen here so the Recon mission planner / ScoutCostModel can size a mover's cost for
@@ -477,7 +498,7 @@ namespace Game.Ai.V2
     //   Units     — unit cards added under the map's own command capacity;
     //   Hero      — hero cards added on top (their bodies and the capacity they lift);
     //   Equipment — Σ, per equipment card, its best combat gain on a free legal host
-    //               (StrategicCardEvaluator.EquipmentDeltaParts, one host per item);
+    //               (EquipmentUpgradeValuation.EquipmentDeltaParts, one host per item);
     //   Aviation  — Σ power of aviation cards: support that may or may not help a ground fight.
     public readonly struct ForceReserve
     {

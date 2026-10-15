@@ -86,8 +86,9 @@ namespace Game.Ai.V2
             }
         }
 
+        // `intents` — the owner's durable intents: what moving a support or wing off its task costs.
         internal static RaidRecoveryProjection Choose(WorldSnapshot snap, RaidIntent raid,
-            ISet<int> unavailableArmyIds, HexCoord? fixedBase = null,
+            IEnumerable<MissionIntent> intents, ISet<int> unavailableArmyIds, HexCoord? fixedBase = null,
             Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
             if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
@@ -105,12 +106,12 @@ namespace Game.Ai.V2
             RaidRecoveryProjection field = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin,
                     "field comparison suppressed by fixed recovery base")
-                : ProjectField(snap, primary, opposition, hexBonus, unavailableArmyIds, currentWin,
+                : ProjectField(snap, primary, intents, opposition, hexBonus, unavailableArmyIds, currentWin,
                     safeRouteCost);
             RaidRecoveryProjection air = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin,
                     "air comparison suppressed by fixed recovery base")
-                : ProjectAirSupport(snap, raid, primary, opposition, hexBonus,
+                : ProjectAirSupport(snap, raid, primary, intents, opposition, hexBonus,
                     unavailableArmyIds, currentWin);
             RaidRecoveryProjection atBase = fixedBase.HasValue
                 ? ProjectBase(snap, raid, primary, opposition, hexBonus, unavailableArmyIds, currentWin,
@@ -126,7 +127,7 @@ namespace Game.Ai.V2
         }
 
         internal static RaidRecoveryProjection ProjectAirSupportForWing(
-            WorldSnapshot snap, RaidIntent raid, int wingArmyId)
+            WorldSnapshot snap, RaidIntent raid, IEnumerable<MissionIntent> intents, int wingArmyId)
         {
             if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
                 return RaidRecoveryProjection.None(0f, "missing primary snapshot");
@@ -139,12 +140,12 @@ namespace Game.Ai.V2
             // The companion of the opposition: the hex the target defends on (terrain included).
             float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
-            return ProjectAirSupport(snap, raid, primary, opposition, hexBonus,
+            return ProjectAirSupport(snap, raid, primary, intents, opposition, hexBonus,
                 null, currentWin, wingArmyId);
         }
 
         private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
-            RaidIntent raid, ArmySnapshot primary,
+            RaidIntent raid, ArmySnapshot primary, IEnumerable<MissionIntent> intents,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus,
             ISet<int> unavailableArmyIds, float currentWin,
             int? fixedWingArmyId = null)
@@ -172,7 +173,7 @@ namespace Game.Ai.V2
                 currentWin, unavailableArmyIds, fixedWingArmyId))
             {
                 TaskScore score = PlanScore(o.WinAfter, 0f, o.Ap, o.Resources, o.EtaTurns,
-                    o.RecurringAp, DisplacedValue(snap, new[] { o.WingArmyId }), snap);
+                    o.RecurringAp, DisplacedValue(intents, new[] { o.WingArmyId }), snap);
                 var option = new RaidRecoveryProjection(true,
                     RaidMissionPhase.AirSupport, null, null, o.WingArmyId, o.LandingHex,
                     o.EtaTurns, o.Ap, o.Resources, 2, currentWin, o.WinAfter, score, default,
@@ -309,7 +310,8 @@ namespace Game.Ai.V2
         }
 
         internal static RaidRecoveryProjection ProjectFieldForSupport(
-            WorldSnapshot snap, RaidIntent raid, int? supportArmyId = null)
+            WorldSnapshot snap, RaidIntent raid, IEnumerable<MissionIntent> intents,
+            int? supportArmyId = null)
         {
             if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
                 return RaidRecoveryProjection.None(0f, "missing primary snapshot");
@@ -322,12 +324,12 @@ namespace Game.Ai.V2
             // The companion of the opposition: the hex the target defends on (terrain included).
             float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, hexBonus, out _);
-            return ProjectField(snap, primary, opposition, hexBonus, null, currentWin,
+            return ProjectField(snap, primary, intents, opposition, hexBonus, null, currentWin,
                 null, supportArmyId);
         }
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> unavailableArmyIds,
+            IEnumerable<MissionIntent> intents, IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> unavailableArmyIds,
             float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost,
             int? fixedSupportArmyId = null)
         {
@@ -363,7 +365,7 @@ namespace Game.Ai.V2
                 int eta = travelTurns + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
                 TaskScore score = PlanScore(after, 0f, ap, ResourceVector.Zero, travelTurns,
-                    support.ActivationApCost, DisplacedValue(snap, new[] { support.ArmyId }), snap);
+                    support.ActivationApCost, DisplacedValue(intents, new[] { support.ArmyId }), snap);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
                     currentWin, after, score, default,
@@ -558,10 +560,8 @@ namespace Game.Ai.V2
         // The value lost by the tasks of the armies this plan moves off what they do (a field
         // support walking to the primary, an air wing flying the strike), summed on the
         // TaskScore scale. The primary is this operation's own actor and is never charged.
-        private static float DisplacedValue(WorldSnapshot snap, IEnumerable<int> armyIds)
+        private static float DisplacedValue(IEnumerable<MissionIntent> intents, IEnumerable<int> armyIds)
         {
-            IEnumerable<MissionIntent> intents = snap?.Observer == null ? null
-                : MissionIntentRegistry.GetOrCreate(snap.Observer).All;
             return armyIds.Distinct().Sum(id => MissionIntent.DisplacementValueOf(intents, id));
         }
 

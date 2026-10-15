@@ -110,7 +110,8 @@ namespace Game.Ai.V2
             }
             if (demand.AttackLocalRefit)
                 return p.AttackRefitPrimaryId == demand.AttackFistArmyId
-                    && AttackBaseRefitPolicy.Validate(p, snapshot, player, out _, out _)
+                    && AttackBaseRefitPolicy.Validate(p, snapshot, player,
+                        MissionIntentRegistry.GetOrCreate(player).All, out _, out _)
                     ? DeliveryAssessment.Ok : DeliveryAssessment.No(DeliveryFailureReason.AttackFistNotStrengthened);
             switch (demand.Capability)
             {
@@ -212,12 +213,12 @@ namespace Game.Ai.V2
                             return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
                                 $"from=({projected.Hex.Q},{projected.Hex.R}) target=({demand.TargetHex.Value.Q},{demand.TargetHex.Value.R})");
 
-                        var choice = DemandLayer.AssessEconomyArmy(snapshot,
+                        var choice = EconomyBuilderSelection.AssessEconomyArmy(snapshot,
                             demand.TargetHex.Value, routes[0], projected,
                             demand.EconomyBuildApCost,
                             includeReturn: demand.EconomyBuildCard?.Definition?.cardType
                                 != CardType.Base);
-                        if (choice.Suitability == DemandLayer.EconomyArmySuitability.Ineligible)
+                        if (choice.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ineligible)
                             return DeliveryAssessment.No(
                                 DeliveryFailureReason.InsufficientSafeEscort,
                                 choice.IneligibleReason);
@@ -457,7 +458,7 @@ namespace Game.Ai.V2
         //    price plus that delivery must be lower than the ready hero's cost — a tie keeps the
         //    ready hero, which spends no card.
         internal static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
-            AxisDemand demand, DemandLayer.EconomyBuilderChoice choice, int turnNumber)
+            AxisDemand demand, EconomyBuilderSelection.EconomyBuilderChoice choice, int turnNumber)
         {
             float newDelivery = TaskScoreEvaluator.Price(
                 Mathf.Max(0f, choice.TotalAssignmentApCost - demand.EconomyBuildApCost));
@@ -465,10 +466,10 @@ namespace Game.Ai.V2
                 ?? p.GeneratedBaseDef?.displayName ?? "?";
             float tolerance = IdleBuilderDeliveryTolerance(demand, turnNumber);
             float siteAllowance = demand.EconomySiteValue * (1f + tolerance);
-            if (!DemandLayer.EconomyExtractionDeliveryAllowed(choice))
+            if (!EconomyBuilderSelection.EconomyExtractionDeliveryAllowed(choice))
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
                     "extraction_delivery_horizon");
-            if (!DemandLayer.EconomySupportBuilderAllowed(choice))
+            if (!EconomyBuilderSelection.EconomySupportBuilderAllowed(choice))
                 return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
                     "support_builder_local_horizon");
             if (EconomyHeroHasHomeVocation(p) && demand.EconomyReadyDeliveryCost.HasValue

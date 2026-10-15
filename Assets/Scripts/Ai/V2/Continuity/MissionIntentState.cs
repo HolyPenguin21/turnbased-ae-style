@@ -13,7 +13,7 @@ namespace Game.Ai.V2
     // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
     // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
     // not a partial class.
-    public sealed class MissionIntentState
+    public sealed class MissionIntentState : IMissionIntentView
     {
         private readonly Dictionary<MissionIntentKey, MissionIntent> _intents =
             new Dictionary<MissionIntentKey, MissionIntent>();
@@ -66,6 +66,11 @@ namespace Game.Ai.V2
 
         internal EconomyLifecycleState Economy { get; } = new EconomyLifecycleState();
         internal DevelopmentLifecycleState Development { get; } = new DevelopmentLifecycleState();
+        IEconomyLifecycleView IMissionIntentView.Economy => Economy;
+        bool IMissionIntentView.TryGetRetreatWitness(AttackTargetRef target, out AttackRetreatWitness witness) =>
+            TryGetRetreatWitness(target, out witness);
+        string IMissionIntentView.RetreatWitnessDigest() => RetreatWitnessDigest();
+        IDevelopmentLifecycleView IMissionIntentView.Development => Development;
         // Same per-player/turn scope the session exposes; detached states use their own identity.
         internal ReconTurnState ReconTurn(int turn) => ReconTurnStateStore.For((object)Owner ?? this, turn);
     }

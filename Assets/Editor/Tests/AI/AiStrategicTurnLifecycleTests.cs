@@ -32,12 +32,12 @@ namespace Game.EditorTests
                 OperationContinuationWindow.EndTurn(player, 8);
                 Assert.That(OperationContinuationWindow.IsSettled(player, 8), Is.False);
 
-                StrategicManager.AfterMissionSettlement(player, null, null, ctx);
-                StrategicManager.BeforeTempoSpend(player, null, null, ctx);
+                StrategicManager.AfterMissionSettlement(player, MissionIntentRegistry.GetOrCreate(player), null, null, ctx);
+                StrategicManager.BeforeTempoSpend(player, MissionIntentRegistry.GetOrCreate(player), null, null, ctx);
                 Assert.That(OperationContinuationWindow.IsSettled(player, 8), Is.False,
                     "a settled mission step or a later round must not end the Phase-A protection");
 
-                StrategicManager.BeforeFirstTempo(player, null, null, ctx);
+                StrategicManager.BeforeFirstTempo(player, MissionIntentRegistry.GetOrCreate(player), null, null, ctx);
                 Assert.That(OperationContinuationWindow.IsSettled(player, 8), Is.True);
                 Assert.That(OperationContinuationWindow.IsSettled(player, 9), Is.False,
                     "the window belongs to its turn");

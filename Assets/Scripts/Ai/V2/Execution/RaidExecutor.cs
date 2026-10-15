@@ -97,7 +97,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+            if (ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget))
             {
                 result.ReachedGoal = true;
                 result.StopReason = ExecutionStopReason.ReachedGoal;
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
                     // Standing on the hex IS the re-observation: an event another player finished
                     // while we walked is confirmed here (memory) and the goal is simply reached.
                     AiMapMemory.ObserveEventAt(player, targetHex);
-                    if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+                    if (ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget))
                     {
                         result.ReachedGoal = true;
                         result.StopReason = ExecutionStopReason.ReachedGoal;
@@ -276,13 +276,13 @@ namespace Game.Ai.V2
             {
                 if (isSupportLeg)
                 {
-                    MissionContinuityLayer.CompleteRaidSupportReturn(player, snapshot,
+                    RaidContinuity.CompleteRaidSupportReturn(player, snapshot,
                         pm.RaidPrimaryArmyId ?? pm.MoverArmyId, $"support #{pm.MoverArmyId} arrived home");
                     result.DurableRoleContinues = true;
                 }
                 else if (isRecoveryLeg)
                 {
-                    MissionContinuityLayer.CompleteRaidRecoveryReturn(player, snapshot,
+                    RaidContinuity.CompleteRaidRecoveryReturn(player, snapshot,
                         pm.RaidPrimaryArmyId ?? pm.MoverArmyId,
                         $"primary #{pm.MoverArmyId} arrived at recovery base");
                     result.DurableRoleContinues = true;
@@ -439,7 +439,7 @@ namespace Game.Ai.V2
             // this turn — SupportReturn's own arrival re-evaluates the primary later.
             if (wasSwap)
             {
-                MissionContinuityLayer.BeginRaidSupportReturn(player, snapshot, primary.Id, support.Id,
+                RaidContinuity.BeginRaidSupportReturn(player, snapshot, primary.Id, support.Id,
                     $"displaced={displacedUnitName}");
                 result.ReachedGoal = true;
                 result.DurableRoleContinues = true;
@@ -453,7 +453,7 @@ namespace Game.Ai.V2
                 primary.Members.Select(WorthIt.FromLiveUnit).ToList(),
                 WorthIt.SideCommander.Of(primary.Commander), AiV2Util.KnownPrimaryOppositionLive(player, pm.RaidTarget),
                 AiConfigV2.raidMinViableWinChance, 0f, out float win, out bool cover);
-            MissionContinuityLayer.CompleteRaidReinforcement(player, primary.Id, verified,
+            RaidContinuity.CompleteRaidReinforcement(player, primary.Id, verified,
                 $"win={win.ToString("0.00", CultureInfo.InvariantCulture)} cover={(cover ? 1 : 0)} "
                 + $"transferred={transferred}");
 

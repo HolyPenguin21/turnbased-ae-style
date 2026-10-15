@@ -711,41 +711,6 @@ namespace Game.Ai.V2
             return Mathf.Clamp01(1f - attackerWins);
         }
 
-        // ---- LIVE (revalidation / post-execution ledger pass) --------------------------------
-
-        // The ONE honest completion check for an Intercept objective, and the live counterpart of
-        // Enumerate above. MissionRevalidator, MissionOutcomeLedger, Enumerate and
-        // ActiveDefenceProvisioner must all apply the same knowledge rule: strategic knowledge of
-        // an enemy army is AiMapMemory's (ARCH-02 canonical seams), and "absent from the world" is
-        // never objective completion — a global ArmyRegistry sweep would let an intercept retire
-        // because the army moved/died somewhere we cannot see, while the other stages still
-        // consider it a live target, recreating and instantly "completing" the mission every pass.
-        // Mirrors RaidObjectiveEvaluator.IsObjectiveSatisfiedLive:
-        //  1) the tracked id is fielded by US now — positive confirmation of the outcome of an
-        //     action we ourselves completed (the one ArmyRegistry read the seam allows);
-        //  2) honest memory still tracks it as a hostile, non-neutral army — NOT satisfied. It is
-        //     exactly as real as our last observation says, fog included;
-        //  3) honest memory now tracks it as a NEUTRAL army — this hostile-threat objective is
-        //     over (Raid, not ActiveDefence, owns neutrals);
-        //  4) honest memory no longer tracks it at all — either the hex was genuinely re-observed
-        //     empty (AiMapMemory's own "corrected (gone on re-observation)" write) or a
-        //     player-owned sighting aged out under the existing enemySightingMemoryTurns
-        //     uncertainty policy. Both are "gone as far as we may honestly know"; neither invents
-        //     a new lost-contact state, and Enumerate cannot re-admit an objective for an id that
-        //     is no longer in Known.EnemySightings, so this can never oscillate.
-        public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, int enemyArmyId)
-        {
-            if (player == null)
-                return false;
-            if (ArmyRegistry.AllForOwner(player)
-                .Any(a => a != null && a.Id == enemyArmyId && a.Members.Count > 0))
-                return true;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (s.ArmyId == enemyArmyId)
-                    return false;
-            return true;
-        }
-
         // `projectedActivationAp` — the activation AP of the roster the assembly plan will really
         // field, when the caller has that projection (GroundCombatAssemblyPlanner is its one
         // owner). Null keeps the actor's own snapshot figure. The score must be folded from the

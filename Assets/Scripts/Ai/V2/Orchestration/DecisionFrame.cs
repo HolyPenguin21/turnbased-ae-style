@@ -80,6 +80,9 @@ namespace Game.Ai.V2
         private List<AxisDemand> _demands;
 
         internal WorldSnapshot Snapshot { get; private set; }
+        // The owner's durable intent store (AiTurnSession.PersistentState), handed to the decisions
+        // that read or report on it instead of a registry lookup. Null in world-less test frames.
+        internal MissionIntentState IntentState { get; }
         internal IReadOnlyList<ReconObjective> Recon { get => _recon; private set => _recon = (List<ReconObjective>)value; }
         internal IReadOnlyList<RaidObjective> Aggression { get => _aggression; private set => _aggression = (List<RaidObjective>)value; }
         internal IReadOnlyList<MissionIntent> Intents { get => _intents; private set => _intents = (List<MissionIntent>)value; }
@@ -88,16 +91,19 @@ namespace Game.Ai.V2
         // The ownership view Phase B and Housekeeping consume (persistent state of every intent).
         internal ActorCommitments PostCommitments { get; private set; }
 
-        internal DecisionFrame(WorldSnapshot snapshot, FrameServices services)
+        internal DecisionFrame(WorldSnapshot snapshot, FrameServices services,
+            MissionIntentState intentState = null)
         {
             Snapshot = snapshot;
             _services = services;
+            IntentState = intentState;
         }
 
         internal static DecisionFrame Begin(WorldSnapshot snapshot, AiTurnSession session,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
             DesireBreakdown breakdown) =>
-            new DecisionFrame(snapshot, FrameServices.Production(session, player, root, hand, ctx, breakdown));
+            new DecisionFrame(snapshot, FrameServices.Production(session, player, root, hand, ctx, breakdown),
+                session.PersistentState);
 
         // ---- the start of the turn: separate named inputs (logs of the turn sit between them) ----
 

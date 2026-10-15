@@ -110,6 +110,7 @@ namespace Game.EditorTests
             {
                 TurnNumber = turn,
                 Observer = player,
+                Intents = MissionIntentRegistry.GetOrCreate(player),
                 Self = new SelfSnapshot
                 {
                     Citadel = new HexCoord(0, 0),

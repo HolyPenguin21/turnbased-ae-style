@@ -38,7 +38,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
+            var intent = WorldSnapshot.IntentsOf(snapshot).FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == army.Id);
             if (intent?.Attack?.RefitBattleStopTurn == ctx.TurnNumber)
             {
@@ -244,6 +244,8 @@ namespace Game.Ai.V2
             }
 
             float before = AiPower.EffectiveArmyPower(host.Members);
+            GroundCombatAssemblyBaseline baseline = GroundCombatAssemblyTransaction.Capture(player, host,
+                assembly.Transfers);
             var applied = new List<GroundCombatAssemblyTransfer>();
             foreach (GroundCombatAssemblyTransfer t in assembly.Transfers)
             {
@@ -254,8 +256,9 @@ namespace Game.Ai.V2
                     && donor.CanLeaveWithoutOvercrowding(t.Unit);
                 if (!legal || !ArmyActions.TransferMember(t.Unit, donor, host, ctx?.HexSelection, out why))
                 {
-                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "attack preparation");
-                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx,
+                        "attack preparation", baseline);
+                    int remaining = GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline);
                     result.StopReason = ExecutionStopReason.MoveRejected;
                     result.NeedsReplan = true;
                     // An incomplete rollback left bodies in the host: that IS a world change.
@@ -348,7 +351,8 @@ namespace Game.Ai.V2
                 {
                     AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
                         target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot));
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot),
+                        snapshot?.Intents);
                     strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
                     if (rejection != null)
                     {
@@ -427,7 +431,7 @@ namespace Game.Ai.V2
                 result.ActualActorArmyId = pm.MoverArmyId;
 
             bool intermediateCaptured = target.IsIntermediateAssault
-                && AttackObjectiveEvaluator.EvaluateTargetLive(player, target.IntermediateTarget)
+                && ObjectiveLiveStatus.AttackTarget(player, target.IntermediateTarget)
                     == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
             if (intermediateCaptured)
             {

@@ -9,46 +9,13 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT OBJECTIVE EVALUATOR  (Strategy V2 build-order step 7 — the single completion/validity home)
     // ===========================================================================================
-    //  One home for Explore / generic Refresh lifecycle rules.
-    //
-    //    · LIVE overloads  — read the mutated world directly (VisionSystem / AiMapMemory). Called
-    //                        at execution / provisioning time, where post-mutation live state IS
-    //                        the truth and there is no fog on our own observations this turn.
-    //    · SNAPSHOT overload (IsIntentStillValid) — reads ONLY the turn's WorldSnapshot plus the
-    //                        frozen Recon IntelAge sidecar captured with that snapshot.
+    //  One home for Explore / generic Refresh lifecycle rules, judged on the turn's WorldSnapshot
+    //  plus the frozen Recon IntelAge sidecar captured with that snapshot (IsIntentStillValid).
+    //  The live counterparts read at execution / provisioning time are
+    //  Continuity/ObjectiveLiveStatus (ScoutSatisfied, ExploreSatisfied, RefreshSatisfied).
     // ===========================================================================================
     public static class ScoutObjectiveEvaluator
     {
-        // ---- LIVE (execution / provisioning / post-execution) --------------------------------
-
-        // Explore is done only by physical ground visitation.
-        public static bool IsExploreSatisfiedLive(PlayerSetupData player, HexCoord focus) =>
-            VisionSystem.IsVisited(player, focus);
-
-        // Generic Refresh is an OBSERVATION objective. The focus was selected from stale frozen
-        // IntelAge, so observing it again now is sufficient regardless of whether a ground unit
-        // physically visits it. This preserves Observed != Visited and is future-compatible with
-        // AirRecon refreshing information without claiming ground visitation.
-        public static bool IsRefreshSatisfiedLive(PlayerSetupData player, HexCoord focus) =>
-            VisionSystem.IsVisible(player, focus);
-
-        // THE live "is this Scout job's objective met" dispatch, read by the post-execution ledger,
-        // the ground and air executors and MissionRevalidator. AirSweep is never met by observation
-        // (each sortie ends by its own refuel endurance).
-        public static bool IsSatisfiedLive(PlayerSetupData player, ScoutTargetKind kind, HexCoord focus)
-        {
-            switch (kind)
-            {
-                case ScoutTargetKind.CaptureStructure:
-                    if (!VisionSystem.IsVisible(player, focus)) return false;
-                    BuildingData building = BuildingRegistry.FindAt(focus);
-                    return building == null || building.Owner == player;
-                case ScoutTargetKind.Explore: return IsExploreSatisfiedLive(player, focus);
-                case ScoutTargetKind.Refresh: return IsRefreshSatisfiedLive(player, focus);
-                default: return false;
-            }
-        }
-
         // THE "a met objective is only a waypoint" rule (D5): a ground Explore / Refresh role whose
         // focus is met keeps its durable role (ProductiveStop -> re-focused next pass) when its
         // actor can still scout AND the role is already durable or the actor really acted this

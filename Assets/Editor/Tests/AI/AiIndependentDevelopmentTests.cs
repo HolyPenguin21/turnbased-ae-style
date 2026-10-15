@@ -573,16 +573,17 @@ namespace Game.EditorTests
             Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player), Is.True,
                 "Provisioning admits the legal departing roster, not the original two-hero shape");
             Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player, departureNeeded: false), Is.False);
-            var facts = WorldAnalysis.ToArmySnapshot(field, _player, true, 0);
-            facts.EconomyDeparture = WorldAnalysis.ToArmySnapshot(departure, _player, true, 0);
+            var facts = WorldAnalysis.ToArmySnapshot(field, _player, true, 0, MissionIntentRegistry.GetOrCreate(_player));
+            facts.EconomyDeparture = WorldAnalysis.ToArmySnapshot(departure, _player, true, 0,
+                MissionIntentRegistry.GetOrCreate(_player));
             facts.EconomyDeparture.ArmyId = field.Id;
             _snapshot.Self.Armies = new[] { facts };
             var route = new EconomyBuilderRouteSnapshot { ArmyId = field.Id, TravelCost = 1,
                 MaxMovement = 1, CurrentMovement = 1, RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>() };
-            Assert.That(DemandLayer.EconomyBuilderCandidateRejection(_snapshot, new HexCoord(92, -17),
+            Assert.That(EconomyBuilderSelection.EconomyBuilderCandidateRejection(_snapshot, new HexCoord(92, -17),
                 new[] { route }, field.Id, Array.Empty<MissionIntent>(), null),
                 Is.EqualTo("ranking_rejected (suitability or loan gate)"), "the structural Demand gate passes");
-            var choice = DemandLayer.AssessEconomyArmy(_snapshot, new HexCoord(92, -17), route,
+            var choice = EconomyBuilderSelection.AssessEconomyArmy(_snapshot, new HexCoord(92, -17), route,
                 facts, 0f, false, requiresFoundingGarrison: false);
             Assert.That(choice.Army, Is.SameAs(facts.EconomyDeparture),
                 "AP, commander and escort assessment use the departing roster");
@@ -665,7 +666,7 @@ namespace Game.EditorTests
                 {
                     AiHandRegistry.GetOrCreate(_player, null, 0).AddCard(_facility);
                     Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(
-                        ResearchProductionMode.Production, _player, AiHandRegistry.Peek(_player), _ctx), Is.EqualTo(Site));
+                        ResearchProductionMode.Production, _player, AiHandRegistry.Peek(_player), _ctx, MissionIntentRegistry.Peek(_player)), Is.EqualTo(Site));
                 }
                 var pm = new ProvisionedMission { Kind = MissionKind.Economy,
                     EconomyExtractionGarrisonArmyId = _garrison.Id, EconomyExtractionPlan = plan,

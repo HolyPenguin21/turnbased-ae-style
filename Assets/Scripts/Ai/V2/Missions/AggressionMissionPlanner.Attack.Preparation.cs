@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         private static void TryAppendAttackPreparation(WorldSnapshot snap,
             List<AttackObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
-            bool attackProposed)
+            bool attackProposed, IMissionIntentView intentState)
         {
             SelfSnapshot self = snap.Self;
             bool open = AttackForceReadiness.MobilizationOpen(self);
@@ -102,7 +102,7 @@ namespace Game.Ai.V2
             if (fieldHost != null)
             {
                 Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
-                    player == null ? null : MissionIntentRegistry.GetOrCreate(player).All);
+                    player == null ? null : intentState?.All);
                 GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
                     fieldHost.ArmyId, donorValues, minimumArmyPower: required, allowPartial: true);
@@ -135,7 +135,7 @@ namespace Game.Ai.V2
                         + $"reachesThreshold={gather.ReachesThreshold} ap={gather.TotalAp} score={F(score.Value)}");
                     return;
                 }
-                ArmyData liveField = player == null ? null : AiV2Util.ResolveArmy(player, fieldHost.ArmyId);
+                ArmyData liveField = player == null ? null : OwnWorld.Of(player).Army(fieldHost.ArmyId);
                 GroundCombatAssemblyPlan fieldStep = GroundCombatAssemblyPlanner.PlanPreparationAssembly(
                     snap, liveField, excluded, opposition, hexBonus);
                 if (fieldStep.Feasible)
@@ -224,7 +224,7 @@ namespace Game.Ai.V2
         // 2026-09-30 — a free field army holding one hero and nothing else on the staging Base:
         // the widest command first. A garrison hero or a facility operator is never a host.
         private static ArmyData LoneHeroHostAt(PlayerSetupData player, HexCoord hex, ISet<int> excluded) =>
-            ArmyRegistry.AllForOwner(player)
+            OwnWorld.Of(player).Armies
                 .Where(a => a != null && a.Hex.Equals(hex) && !a.IsGarrison && !a.IsPrison
                     && !a.IsAirfield && !a.IsAirArmy && a.Members.Count == 1
                     && a.Members[0] != null && a.Members[0].IsHero
@@ -321,7 +321,7 @@ namespace Game.Ai.V2
             List<MissionProposal> proposals)
         {
             PlayerSetupData player = snap.Observer;
-            ArmyData live = player == null ? null : AiV2Util.ResolveArmy(player, host.ArmyId);
+            ArmyData live = player == null ? null : OwnWorld.Of(player).Army(host.ArmyId);
             if (live == null)
                 return;
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
@@ -385,12 +385,12 @@ namespace Game.Ai.V2
         // Until it is funded and executed the donors stay with their operations.
         private static void AppendPreparationRecruit(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ArmySnapshot host, float hexBonus, ISet<int> committed,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals, IMissionIntentView intentState)
         {
             if (host.MemberCount == 0 || snap.Observer == null)
                 return;
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
-                MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+                intentState?.All);
             if (donorValues.Count == 0)
                 return;
             var unavailable = committed == null ? new HashSet<int>() : new HashSet<int>(committed);

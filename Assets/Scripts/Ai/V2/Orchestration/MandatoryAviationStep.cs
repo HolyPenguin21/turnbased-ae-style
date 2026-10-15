@@ -21,7 +21,7 @@ namespace Game.Ai.V2
             if (kind == MandatoryAviationKind.Rebase)
             {
                 // Route safety and destination validity are live-rechecked inside the executor.
-                yield return AviationRebasePlanner.ExecuteContinuation(
+                yield return AviationRebaseExecutor.ExecuteContinuation(
                     player, root, ctx, actor, actionChanged);
             }
             else if (kind == MandatoryAviationKind.Recovery)

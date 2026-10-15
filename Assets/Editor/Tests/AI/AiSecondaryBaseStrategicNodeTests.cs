@@ -561,7 +561,7 @@ namespace Game.EditorTests
                 Assert.That(AviationRebasePlanner.BuildPlan(
                     new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
                     "Phase B must leave the bank's Energy for its owner");
-                Assert.That(AviationRebasePlanner.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
+                Assert.That(AviationRebaseExecutor.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
                     Is.False, "a previously selected plan must recheck the bank before launch");
                 Assert.That(root.GetResource(ResourceType.Energy), Is.EqualTo(2));
                 Assert.That(storage.Members, Does.Contain(aircraft));
@@ -577,7 +577,7 @@ namespace Game.EditorTests
                 Assert.That(AviationRebasePlanner.BuildPlan(
                     new WorldSnapshot(), owner, root, ctx, new[] { objective }), Is.Null,
                     "the same guard applies to reserved AP");
-                Assert.That(AviationRebasePlanner.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
+                Assert.That(AviationRebaseExecutor.Execute(owner, root, ctx, plan, _ => { }).MoveNext(),
                     Is.False);
                 Assert.That(root.ActionPoints, Is.EqualTo(2));
                 StrategicResourceReservationLedger.ReleaseByReason(owner, ctx.TurnNumber,

@@ -53,7 +53,7 @@ namespace Game.Ai.V2
                     // A hero's hex decides the preparation host's capacity hero and a lone-hero
                     // host (2026-09-30), so a hero-carrying army is positioned too.
                     + (a.IsStructuralRaidActor || a.IsGarrison || a.HasHero ? $":{a.Hex.Q},{a.Hex.R}" : "")));
-            string intents = string.Join(";", MissionIntentRegistry.GetOrCreate(player).All
+            string intents = string.Join(";", snapshot.AllIntents
                 .Where(i => i != null)
                 .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"
                     + $":{i.Raid?.Target.DiagnosticLabel}"
@@ -112,10 +112,10 @@ namespace Game.Ai.V2
                 + $"|prepNoChain={PreparationDeliveryMemory.Digest(player, snapshot.TurnNumber)}"
                 + $"|cd={AiAllocatorStateRegistry.Peek(player)?.CooldownDigest(snapshot.TurnNumber) ?? "-"}"
                 + $"|armies={armies}|intents={intents}|threats={threats}|assets={assetThreats}"
-                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.TurnNumber)}"
+                + $"|refit={AttackBaseRefitPolicy.Fingerprint(player, snapshot.AllIntents, snapshot.TurnNumber)}"
                 // A withdrawn Attack target stays closed until the fight itself changes
                 // (AttackRetreatWitness): the witness is an input of admission, not a timer.
-                + $"|retreat={MissionIntentRegistry.GetOrCreate(player).RetreatWitnessDigest()}";
+                + $"|retreat={snapshot.Intents?.RetreatWitnessDigest() ?? "-"}";
         }
     }
 }

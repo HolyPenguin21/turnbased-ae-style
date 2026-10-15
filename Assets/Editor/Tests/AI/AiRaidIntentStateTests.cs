@@ -162,7 +162,7 @@ namespace Game.EditorTests
             try
             {
                 HexEventRegistry.MarkConsumed(targetHex, player);
-                Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target), Is.True);
+                Assert.That(ObjectiveLiveStatus.RaidSatisfied(player, target), Is.True);
 
                 WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
                 MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
@@ -205,7 +205,7 @@ namespace Game.EditorTests
             try
             {
                 RaidTargetRef target = RaidTargetRef.ForEventGuard(targetHex);
-                Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target), Is.False);
+                Assert.That(ObjectiveLiveStatus.RaidSatisfied(player, target), Is.False);
                 WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
                 MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
                     RaidMissionPhase.Assault, returnHex: null, target: target);

@@ -20,7 +20,7 @@ namespace Game.EditorTests
             var genome = AttachmentSlotTests.Attachment(AttachmentSlot.Mutator);
             genome.equipment.statChanges.Clear();
             genome.equipment.addAbilities.Add("Stealth4");
-            var delta = StrategicCardEvaluator.EquipmentDeltaParts(genome, host);
+            var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(genome, host);
             Assert.That(delta.Combat, Is.Zero);
             // The host carries r1s4, so it is a scout: Stealth is the option to move unseen, priced once
             // through the entry AP (use 1 x (0.9 x 0.35 - the price of one AP)), in delta units.
@@ -30,10 +30,10 @@ namespace Game.EditorTests
             Assert.That(delta.Tactical, Is.EqualTo(option).Within(0.0001f));
             Assert.That(host.Mutator, Is.Null);
             var deploy = new MaterializationPlan { BaseCardInHand = host, GeneratedEquipmentDef = genome };
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(deploy), Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(deploy), Is.Zero,
                 "A deploy chain prices final Stealth in SynergyValue, so its attachment delta must not price it again");
             host.Definition.grantedAbilities.Add("Stealth4");
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(genome, host).Total, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(genome, host).Total, Is.Zero,
                 "Receiving an already-present trait is not a marginal upgrade");
         }
 
@@ -47,7 +47,7 @@ namespace Game.EditorTests
             {
                 var definition = AttachmentSlotTests.Host(hero: hero);
                 definition.grantedAbilities.Add("Stealth4");
-                var delta = StrategicCardEvaluator.EquipmentDeltaParts(strip, new CardData(definition));
+                var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(strip, new CardData(definition));
                 Assert.That(delta.Combat, Is.Zero,
                     "Stealth loss must not also be counted as a lost combat ability");
                 Assert.That(delta.Tactical, Is.LessThan(0f));
@@ -91,7 +91,7 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snapshot).Combat, Is.Zero,
                 "Hand Heroes cannot be treated as new WorthIt combat bodies");
 
             var hero = new UnitData
@@ -104,7 +104,7 @@ namespace Game.EditorTests
             opportunity.RecipientKind = DevRecipientKind.FieldUnit;
             opportunity.RecipientCard = null;
             opportunity.RecipientUnit = hero;
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snapshot).Combat, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snapshot).Combat, Is.Zero,
                 "A deployed Hero is excluded from the same canonical combat roster");
             Assert.That(hero.Attack, Is.EqualTo(1), "Valuation must not modify a live Hero");
             Assert.That(hero.Equipment, Is.Null);

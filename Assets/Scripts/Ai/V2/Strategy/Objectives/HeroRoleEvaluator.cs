@@ -178,9 +178,12 @@ namespace Game.Ai.V2
                 .ToList();
             if (legal.Count == 0)
                 return current;
+            // Each candidate leads the whole roster: the other heroes stay and their Heal/Drill act
+            // under any commander, so they are part of every candidate's fight, not only their own.
             return legal
                 .Select(h => (hero: h, candidate: Candidate(h, ProjectCommand(h.CommandRating,
-                    heroes.Count - 1, WorthIt.SideCommander.Of(h), bodies, opposition,
+                    heroes.Count - 1, WorthIt.SideCommander.Of(new[] { h }.Concat(members.Where(u => u != h))),
+                    bodies, opposition,
                     defenderHexDefenseBonus), h == current ? 0 : 1 + legal.IndexOf(h), preferRapid)))
                 .OrderBy(x => x.candidate, Comparer<CommandCandidate>.Create(CompareCandidates))
                 .First().hero;

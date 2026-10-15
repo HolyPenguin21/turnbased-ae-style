@@ -16,7 +16,8 @@ namespace Game.Ai.V2
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
     //  complete cost -> check the live Phase A AP budget -> check live
-    //  gameplay affordability -> ONLY THEN run the authoritative BuildingPlayExecutor transaction
+    //  gameplay affordability -> ONLY THEN hand the admitted InfraBuildAction to
+    //  Execution/InfrastructureBuildExecutor (the authoritative BuildingPlayExecutor transaction)
     //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
     //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
     //  permission.
@@ -78,11 +79,11 @@ namespace Game.Ai.V2
         // This existing staffing owner validates persisted claims before Phase A/B and after
         // infrastructure mutations. Never duplicate generation, movement or card execution.
         // Current AP/resources are deliberately NOT eligibility criteria for a future turn.
-        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player,
+        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player, MissionIntentState intentState,
             AiHandData hand, int turn, MaterializationReservation reservation)
         {
-            if (player == null || reservation == null) return;
-            IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
+            if (player == null || intentState == null || reservation == null) return;
+            IReadOnlyList<CardData> cards = intentState
                 .Development.ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
                 {
                     if (card?.Definition?.cardType != CardType.Hero
@@ -95,8 +96,7 @@ namespace Game.Ai.V2
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
-                    return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
-                        && g.IsGarrison && !g.IsPrison
+                    return OwnWorld.Of(player).ArmiesAt(site).Any(g => g.IsGarrison && !g.IsPrison
                         && PlacementRules.CanDepositIntoGarrison(g)
                         && CardPlayExecutor.CanFitAfterDeploy(g, card.Definition));
                 });
@@ -114,7 +114,8 @@ namespace Game.Ai.V2
             public int? BuilderArmyId;
             public string Explain;
             public GenerationStep Generation;
-            public System.Func<BuildingPlayResult> Execute;
+            // The admitted action; InfrastructureBuildExecutor runs it.
+            public InfraBuildAction Action;
             // CapacityUnlock: buy exactly this Base level (re-confirmed by the gameplay primitive).
             public BuildingData CapacityBuilding;
             public BaseUpgradeTier CapacityTier;
@@ -263,8 +264,8 @@ namespace Game.Ai.V2
             if (cand.CapacityTier != null)
                 return ExecuteCapacityUnlock(player, root, ctx, cand);
 
-            // --- authoritative transaction ---
-            BuildingPlayResult r = cand.Execute();
+            // --- authoritative transaction (Execution) ---
+            BuildingPlayResult r = InfrastructureBuildExecutor.Run(cand.Action, player, root, hand, ctx);
             if (r.Built && economyOwner != null)
                 MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     economyOwner);
@@ -396,12 +397,12 @@ namespace Game.Ai.V2
                     })) continue;
                 // Composition readiness alone does not grant ownership of an Attack/Defence
                 // mover standing here. Reuse the same candidate/claim gate as outbound planning.
-                var choice = DemandLayer.SelectEconomyBuilder(snap, hex, new[] { route },
+                var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, hex, new[] { route },
                     activeIntents, commitments, demand.EconomySiteValue > 0f
                         ? demand.EconomySiteValue : demand.Value,
                     card.EffectivePlayApCost, includeReturn: false, pinnedBuilderArmyId: route.ArmyId,
                     requiresFoundingGarrison: continuation == null);
-                if (choice == null || choice.Suitability != DemandLayer.EconomyArmySuitability.Ready)
+                if (choice == null || choice.Suitability != EconomyBuilderSelection.EconomyArmySuitability.Ready)
                     continue;
                 builderId = route.ArmyId;
                 defender = continuation;
@@ -415,7 +416,7 @@ namespace Game.Ai.V2
                 ResCost = BuildingPlayExecutor.BaseAndGarrisonCost(card, defender),
                 TargetHex = hex,
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
-                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex, builderId, defender),
+                Action = InfraBuildAction.BaseCard(card, hex, builderId, defender),
             };
         }
 
@@ -423,13 +424,13 @@ namespace Game.Ai.V2
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
-            var choice = DemandLayer.SelectEconomyBuilder(snap, target,
+            var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, target,
                 (routes ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
                     .Where(r => r.IsOnTarget && !r.RequiresGarrisonExtraction).ToList(),
                 activeIntents, commitments, demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                 demand.EconomyBuildApCost, includeReturn: true,
                 pinnedBuilderArmyId: demand.EconomyPreferredBuilderArmyId);
-            return choice?.Suitability == DemandLayer.EconomyArmySuitability.Ready ? choice.Army.ArmyId : (int?)null;
+            return choice?.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ready ? choice.Army.ArmyId : (int?)null;
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt
@@ -460,7 +461,7 @@ namespace Game.Ai.V2
                 BuilderArmyId = builderId,
                 ResCost = facilityDef.resourceCost,
                 Explain = $"extraction {facilityDef.displayName} @({built.Q},{built.R}) for {type.Value}",
-                Execute = () => BuildingPlayExecutor.BuildExtractionFacility(player, root, ctx, facilityDef, built),
+                Action = InfraBuildAction.ExtractionFacility(facilityDef, built),
             };
         }
 
@@ -485,23 +486,14 @@ namespace Game.Ai.V2
             AiTurnContext ctx, InfraCandidate cand)
         {
             int apBefore = root.ActionPoints;
-            // No spend authority: the payment may not reach into anyone else's hold.
-            ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(
-                player, root, ctx, "phaseA CapacityUnlock");
-            BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
-                cand.CapacityBuilding, ctx.GameConfig?.baseUpgradeTiers, cand.CapacityExpectedLevel);
-            ReservationInvariants.EndSpend(player, root, ctx, probe);
+            BaseUpgradeOutcome outcome = InfrastructureBuildExecutor.UnlockCapacity(player, root, ctx,
+                cand.CapacityBuilding, cand.CapacityExpectedLevel, cand.TargetHex, out int version);
             if (!outcome.Ok)
             {
                 // Nothing was paid or changed: the plan is stale. The next pass re-judges the world.
                 AiDebugLog.Write($"[AI][V2]   infra — CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
                 return InfraFulfillResult.No(outcome.FailReason);
             }
-            // ONE top-level mutation, one receipt; the placement later is its own mutation.
-            int version = WorldDeltaLifecycle.CommitMutation();
-            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
-                StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
-                hexes: new[] { cand.TargetHex });
             return new InfraFulfillResult
             {
                 Built = false, CapacityUnlocked = true, CardPlayed = false,
@@ -564,8 +556,8 @@ namespace Game.Ai.V2
                     && x.Card.Definition.grantedAbilities.Contains(
                         ResearchProductionSystem.FacilityAbility(demand.DevelopmentOperatorMode.Value)))
                 .ToList();
-            List<HexCoord> bases = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase)
+            List<HexCoord> bases = OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase)
                 .Select(b => b.Hex)
                 .OrderBy(h => h.Q).ThenBy(h => h.R)
                 .ToList();
@@ -611,8 +603,7 @@ namespace Game.Ai.V2
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
                         Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
-                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
-                            player, root, hand, ctx, selectedCard, selectedHex),
+                        Action = InfraBuildAction.FacilityCard(selectedCard, selectedHex),
                     });
                 }
             }
@@ -635,8 +626,8 @@ namespace Game.Ai.V2
                 return null;
             HexCoord citadel = snap?.Self != null ? snap.Self.Citadel : default;
             string lastReject = "no owned Base";
-            HexCoord? at = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase)
+            HexCoord? at = OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase)
                 .Select(b => b.Hex)
                 .Where(h =>
                 {
@@ -691,34 +682,8 @@ namespace Game.Ai.V2
                     + $"@({hex.Q},{hex.R})"
                     + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : "")
                     + $" net={net:0.00}",
-                Execute = () => PlaceFacilityAfterOptionalUpgrade(
-                    player, root, hand, ctx, card, hex, buildingToUpgrade, tierToBuy),
+                Action = InfraBuildAction.FacilityAfterUpgrade(card, hex, buildingToUpgrade, tierToBuy),
             };
-        }
-
-        // One action: buy `tier` on `building` (when a slot must be unlocked first), then place the
-        // Facility. Shared by every infrastructure path whose facility carries its own capacity
-        // prerequisite (global resource source, Development facility stage).
-        private static BuildingPlayResult PlaceFacilityAfterOptionalUpgrade(PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex,
-            BuildingData building, BaseUpgradeTier tier)
-        {
-            if (tier == null)
-                return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
-            int apBefore = root.ActionPoints;
-            if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
-                return BuildingPlayResult.Fail("capacity upgrade refused");
-            int upgradeVersion = WorldDeltaLifecycle.CommitMutation();
-            BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
-                player, root, hand, ctx, card, hex);
-            // The upgrade is a real mutation even if the placement then fails.
-            placed.StateChanged = true;
-            placed.ApSpent = apBefore - root.ActionPoints;
-            placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
-                placed.ResourcesSpent, tier.cost);
-            if (placed.StateVersionAfter < upgradeVersion)
-                placed.StateVersionAfter = upgradeVersion;
-            return placed;
         }
 
         // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),
@@ -752,8 +717,7 @@ namespace Game.Ai.V2
                 if (fac.HasHero || fac.Contested) continue;
 
                 string role = ResearchProductionSystem.RoleAbility(fac.Mode);
-                ArmyData garrison = ArmyRegistry.AllAt(fac.Hex)
-                    .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+                ArmyData garrison = OwnWorld.Of(player).GarrisonAt(fac.Hex);
                 if (garrison == null || !PlacementRules.CanDepositIntoGarrison(garrison))
                     continue;
 
@@ -795,23 +759,7 @@ namespace Game.Ai.V2
                         HandOrdinal = ordinal,
                         TargetHex = at,
                         Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
-                        Execute = () =>
-                        {
-                            ArmyData g = ArmyRegistry.AllAt(at)
-                                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
-                            CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
-                                CardPlayPlan.Into(selectedCard, at, DeploymentKind.Garrison, g));
-                            return new BuildingPlayResult
-                            {
-                                Built = r.Deployed,
-                                ApSpent = r.ApSpent,
-                                ResourcesSpent = r.ResourcesSpent,
-                                StateChanged = r.StateChanged,
-                                CardConsumed = r.Deployed,
-                                StateVersionAfter = r.StateVersionAfter,
-                                FailReason = r.FailReason,
-                            };
-                        },
+                        Action = InfraBuildAction.OperatorIntoGarrison(selectedCard, at),
                     });
                 }
             }
@@ -830,9 +778,8 @@ namespace Game.Ai.V2
                 || !MaterializationChainMatching.EffectiveAbilities(proposed.CardDef, null)
                     .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
                 return null;
-            BuildingData destination = BuildingRegistry.FindAt(demand.TargetHex.Value);
-            ArmyData destinationGarrison = ArmyRegistry.AllAt(demand.TargetHex.Value)
-                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+            BuildingData destination = OwnWorld.Of(player).BuildingAt(demand.TargetHex.Value);
+            ArmyData destinationGarrison = OwnWorld.Of(player).GarrisonAt(demand.TargetHex.Value);
             if (destination == null || destination.Owner != player
                 || !destination.IsBase
                 || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)

@@ -135,7 +135,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.WorldDeltaLifecycle", MatchStateKind.TurnScoped,
                 resetNote: "monotonic revision counters; the mutation transaction closes with its step"),
             new MatchStateEntry("Game.Ai.V2.GroundCombatAdmissionRegistry", MatchStateKind.Scoped),
-            new MatchStateEntry("Game.Ai.V2.StrategicCardEvaluator.EquipmentTargetMemo", MatchStateKind.Scoped),
+            new MatchStateEntry("Game.Ai.V2.EquipmentUpgradeValuation.EquipmentTargetMemo", MatchStateKind.Scoped),
             new MatchStateEntry("Game.Ai.V2.DevelopmentOpportunityEvaluator.RecipientEvaluationMemo", MatchStateKind.Scoped),
 
             // --- identities ------------------------------------------------------------------------
@@ -158,7 +158,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.WorldAnalysis", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.CombatOpportunityAnalyzer", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
-            new MatchStateEntry("Game.Ai.V2.DemandLayer", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache),

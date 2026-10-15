@@ -72,17 +72,17 @@ namespace Game.Ai.V2
                 && (target.BuildCard == null || hand?.Hand == null || !hand.Hand.Contains(target.BuildCard)))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated("founding card no longer in hand"));
 
-            List<MissionIntent> standingIntents = MissionIntentRegistry.GetOrCreate(player).All
+            List<MissionIntent> standingIntents = WorldSnapshot.IntentsOf(session.Snapshot)
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(
                 standingIntents, session.Snapshot, null);
-            IReadOnlyList<DemandLayer.EconomyBuilderChoice> rankedBuilders =
-                DemandLayer.RankEconomyBuilders(session.Snapshot, target.TargetHex,
+            IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders =
+                EconomyBuilderSelection.RankEconomyBuilders(session.Snapshot, target.TargetHex,
                     target.BuilderRoutes, standingIntents, actorCommitments,
                     target.BuildValue, target.BuildApCost,
                     includeReturn: target.Kind == EconomyTaskKind.BuildExtraction);
-            IEnumerable<DemandLayer.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
+            IEnumerable<EconomyBuilderSelection.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
             eligibleBuilders = eligibleBuilders.Where(x => IsEligibleEconomyBuildActor(m, x.Route.ArmyId));
 
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
@@ -92,14 +92,14 @@ namespace Game.Ai.V2
             // Why one ranked candidate cannot be this mission's builder right now, or null when it
             // can. The ONE eligibility gate of the selection loop below; the FoundBase diagnostic
             // traces print this same answer instead of re-deriving the clauses.
-            string CandidateRejection(DemandLayer.EconomyBuilderChoice x)
+            string CandidateRejection(EconomyBuilderSelection.EconomyBuilderChoice x)
             {
                 // Another mission holding this actor — a field army, or a garrison whose hero an
                 // Economy / Development intent has pinned through the garrison's id.
                 MissionIntent conflicting = standingIntents.FirstOrDefault(i =>
                     i.PreferredMoverArmyId == x.Route.ArmyId
                     && !i.IntentKey.Equals(currentIntentKey)
-                    && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                    && !EconomyBuilderSelection.EconomyDonorStructurallyEligible(i));
                 if (conflicting != null)
                     return $"conflicts_with={conflicting.IntentKey}({conflicting.Kind},{conflicting.Status})";
                 if (x.Route.RequiresGarrisonExtraction)
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
                     // never trusting a hero identity carried across from an earlier phase.
                     ArmyData g = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                     if (g == null) return "garrison_not_resolved";
-                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx);
+                    var site = DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents);
                     UnitData sparable = AiArmyRoles.EconomyHeroCandidates(player, g, site)
                         .FirstOrDefault(u => !x.Route.BuilderHeroRuntimeId.HasValue
                             || u.RuntimeId == x.Route.BuilderHeroRuntimeId.Value);
@@ -130,19 +130,20 @@ namespace Game.Ai.V2
                 ArmyData a = AiV2Util.ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player, actorCommitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx),
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
                         !a.Hex.Equals(target.TargetHex))) return "not_mobile_economy_hero";
                 // Live re-check of the duty Demand saw in the snapshot (roster outside `a`, selected
                 // preparation site, free garrison, no AP): before any binding or composition mutation.
                 if (!a.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments))
+                        .OperatorDutyBlocksDeparture(player, a, hand, ctx, actorCommitments, session.Snapshot?.Intents))
                     return "operator_leaves_served_facility";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!MaterializeEconomyRoster(player, a, x, out _,
-                        out List<UnitData> unload, out List<UnitData> reinforcement, ctx, actorCommitments))
+                        out List<UnitData> unload, out List<UnitData> reinforcement, session.Snapshot?.Intents,
+                        ctx, actorCommitments))
                     return "stale_preparation_witness";
                 IReadOnlyList<UnitData> staying = DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, a, hand, ctx);
+                    .OperatorsStayingHome(player, a, hand, ctx, session.Snapshot?.Intents);
                 List<UnitData> projected = a.Members.Where(u => !unload.Contains(u) && !staying.Contains(u))
                     .Concat(reinforcement).ToList();
                 if (!a.Hex.Equals(target.TargetHex)
@@ -158,14 +159,14 @@ namespace Game.Ai.V2
             // Shared by the selection loop and the FoundBase diagnostic trace.
             (ArmyData Garrison, GarrisonExtractionCandidate Plan, EconomyCompletionPlan Prep,
                 float? ShortfallAp, string Detail) EvaluateGarrisonCandidate(
-                    DemandLayer.EconomyBuilderChoice candidate)
+                    EconomyBuilderSelection.EconomyBuilderChoice candidate)
             {
                 ArmyData g = AiV2Util.ResolveArmy(player, candidate.Route.ArmyId);
                 if (g == null)
                     return (null, default, default, null, "garrison_not_resolved");
                 GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
                     player, g, actorCommitments, session, root, ecoApEnvelopeRemaining,
-                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx),
+                    preparationSite: DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, session.Snapshot?.Intents),
                     exactEconomyHeroId: candidate.Route.BuilderHeroRuntimeId);
                 if (plan.Tier == GarrisonExtractionTier.None)
                     // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
@@ -218,10 +219,10 @@ namespace Game.Ai.V2
                     + $"eligibleAfterMoverFilter={eligibleList.Count}");
                 if (!inRankedAtAll)
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
-                        + DemandLayer.EconomyBuilderCandidateRejection(session.Snapshot,
+                        + EconomyBuilderSelection.EconomyBuilderCandidateRejection(session.Snapshot,
                             target.TargetHex, target.BuilderRoutes, preferredId,
                             standingIntents, actorCommitments));
-                foreach (DemandLayer.EconomyBuilderChoice x in eligibleList)
+                foreach (EconomyBuilderSelection.EconomyBuilderChoice x in eligibleList)
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} "
                         + $"rejection={CandidateRejection(x) ?? "none"}");
             }
@@ -236,7 +237,7 @@ namespace Game.Ai.V2
             // (ArmyActions.CreateArmy/TransferMember) happens later, in
             // TaskExecutor.ApplyEconomyPreparation, inside that step's own
             // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
-            DemandLayer.EconomyBuilderChoice builderChoice = null;
+            EconomyBuilderSelection.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
             GarrisonExtractionCandidate deferredPlan = default;
@@ -247,7 +248,7 @@ namespace Game.Ai.V2
             // legal way to get a builder" — the caller below reports EnvelopeTooSmall(requiredAp)
             // instead of a generic NoMoverExists.
             float? economyBuilderShortfallAp = null;
-            foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
+            foreach (EconomyBuilderSelection.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .Where(x => CandidateRejection(x) == null))
             {
@@ -280,7 +281,7 @@ namespace Game.Ai.V2
                 // Preflight the canonical Continuity site lease before spending a builder
                 // extraction AP or reserving completion resources for an incompatible project.
                 int candidateBuilder = deferredPlan.Container?.Id ?? -1;
-                if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+                if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
                         currentIntentKey, candidateBuilder, target.BuildCard))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         "economy build site already leased by another active project"));
@@ -355,7 +356,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
                         + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
                         + $"turn={session.Snapshot?.TurnNumber} — rankedBuildersTotal={rankedBuilders.Count}");
-                    foreach (DemandLayer.EconomyBuilderChoice x in rankedBuilders)
+                    foreach (EconomyBuilderSelection.EconomyBuilderChoice x in rankedBuilders)
                     {
                         string rejection = CandidateRejection(x);
                         string plan = "n/a";
@@ -408,7 +409,7 @@ namespace Game.Ai.V2
             if (!directPrep.Feasible)
                 return ProvisioningResult.Fail(directPrep.Failure);
 
-            if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+            if (!EconomyContinuity.CanGrantEconomyBuildSite(player, target.TargetHex,
                     currentIntentKey, hero.Id, target.BuildCard))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "economy build site already leased by another active project"));
@@ -429,7 +430,7 @@ namespace Game.Ai.V2
                 // EconomyReservationLifecycle.ShouldReserveDeferredEconomyResources' one-turn horizon
                 // protecting unconditionally on every turn of the walk and freezing resources too
                 // early.
-                MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+                MissionIntent delivery = EconomyContinuity.BeginEconomyDelivery(player, new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
                     Capability = target.Kind == EconomyTaskKind.FoundBase
@@ -461,7 +462,7 @@ namespace Game.Ai.V2
             bool preparationPending = directPrep.Donor != null
                 || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0
                 || (!hero.Hex.Equals(target.TargetHex) && DevelopmentOpportunityEvaluator
-                    .OperatorsStayingHome(player, hero, hand, ctx).Count > 0);
+                    .OperatorsStayingHome(player, hero, hand, ctx, session.Snapshot?.Intents).Count > 0);
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {

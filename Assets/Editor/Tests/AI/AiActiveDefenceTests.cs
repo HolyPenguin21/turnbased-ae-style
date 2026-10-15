@@ -725,6 +725,7 @@ namespace Game.EditorTests
         {
             WorldSnapshot snap = AssetWorld();
             var state = MissionIntentRegistry.GetOrCreate(snap.Observer);
+            snap.Intents = state;
             var intent = DefenceIntent(ActiveDefencePhase.Return, 99, 7, Secondary);
             state.Put(intent);
             try
@@ -1319,7 +1320,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = ImmediateWorld(owner, new HexCoord(-2, 0), true, true,
                 DefenceActor(owner, 7, new HexCoord(0, 0)));
             List<MissionProposal> proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Has.Count.EqualTo(1));
             var target = (ActiveDefenceMissionTarget)proposals[0].Target;
@@ -1332,7 +1333,7 @@ namespace Game.EditorTests
             // Already activated this turn: no second activation is charged.
             snap.Self.Armies[0].HasActivatedThisTurn = true;
             proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>())
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Has.Count.EqualTo(1));
             Assert.That(proposals[0].Requirements.ApMinimum, Is.Zero);
@@ -1346,7 +1347,7 @@ namespace Game.EditorTests
                 DefenceActor(owner, 7, new HexCoord(0, 0)), DefenceActor(owner, 8, new HexCoord(0, 1)));
             MissionIntent strategic = DefenceIntent(ActiveDefencePhase.Intercept, 77, 8, null);
             var proposals = AggressionMissionLayer.Propose(snap, new DesireBreakdown(),
-                new[] { strategic }, Array.Empty<RaidObjective>())
+                new[] { strategic }, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer))
                 .Where(p => p.Kind == MissionKind.ActiveDefence).ToList();
             Assert.That(proposals, Is.Empty, "the strategic intent owns the enemy; no second Intercept");
         }
@@ -1377,7 +1378,7 @@ namespace Game.EditorTests
                 var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
 
                 // The lane's own lifecycle answer (the part of ResolveActive that is not engine-bound).
-                bool alive = (bool)typeof(MissionContinuityLayer).GetMethod("ResolveActiveDefenceIntent",
+                bool alive = (bool)typeof(ActiveDefenceContinuity).GetMethod("ResolveActiveDefenceIntent",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)
                     .Invoke(null, new object[] { player, snap, intent, rekeys });
 
@@ -1426,6 +1427,7 @@ namespace Game.EditorTests
             var two = new PlayerSetupData { Nickname = "imm-two" };
             WorldSnapshot snap = ImmediateWorld(one, new HexCoord(-2, 0), true, true,
                 DefenceActor(one, 7, new HexCoord(0, 0)));
+                snap.Intents = MissionIntentRegistry.GetOrCreate(one);
             MissionIntent intent = ImmediateIntent(77, 7, 8);
             intent.ActiveDefence.InterceptPurpose = ActiveDefenceInterceptPurpose.StrategicDefence;
             MissionIntentRegistry.GetOrCreate(one).Put(intent);
@@ -1441,6 +1443,7 @@ namespace Game.EditorTests
                 // The other player has no such intent and no claim: nothing carries over.
                 WorldSnapshot other = ImmediateWorld(two, new HexCoord(-2, 0), true, true,
                     DefenceActor(two, 7, new HexCoord(0, 0)));
+                    other.Intents = MissionIntentRegistry.GetOrCreate(two);
                 Assert.That(MissionIntentRegistry.GetOrCreate(two).All, Is.Empty);
                 Assert.That(ActiveDefenceObjectiveEvaluator.AssessResponse(other, ImmediateObjective(other),
                     null, null, null).Kind, Is.EqualTo(ActiveDefenceResponseKind.Intercept));

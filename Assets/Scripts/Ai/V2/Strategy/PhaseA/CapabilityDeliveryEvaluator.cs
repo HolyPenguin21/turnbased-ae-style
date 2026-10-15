@@ -53,7 +53,7 @@ namespace Game.Ai.V2
         // After an Economy Hero materializes, bind the new actor back through DemandLayer's one
         // canonical whole-army ranking. The refreshed Economy snapshot owns route feasibility;
         // this evaluator only identifies the just-delivered actor and returns that ranked result.
-        internal static DemandLayer.EconomyBuilderChoice EconomyDeliveryChoice(
+        internal static EconomyBuilderSelection.EconomyBuilderChoice EconomyDeliveryChoice(
             WorldSnapshot after, AxisDemand demand, int builderArmyId,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             out IReadOnlyList<EconomyBuilderRouteSnapshot> builderRoutes, WorldSnapshot preparationBefore = null)
@@ -94,29 +94,29 @@ namespace Game.Ai.V2
                         <= source.Members.Count(AiArmyRoles.IsGroundBattleBody))
                     return null;
             }
-            var choice = DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
+            var choice = EconomyBuilderSelection.SelectEconomyBuilder(after, demand.TargetHex.Value,
                 builderRoutes, activeIntents, commitments,
                 demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                 demand.EconomyBuildApCost, includeReturn: !foundBase);
-            if (DemandLayer.EconomyBuilderIsSupport(choice))
+            if (EconomyBuilderSelection.EconomyBuilderIsSupport(choice))
             {
-                var ordinary = DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
+                var ordinary = EconomyBuilderSelection.SelectEconomyBuilder(after, demand.TargetHex.Value,
                     witnessed, activeIntents, commitments,
                     demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                     demand.EconomyBuildApCost, includeReturn: !foundBase);
-                if (ordinary != null && !DemandLayer.EconomyBuilderIsSupport(ordinary))
+                if (ordinary != null && !EconomyBuilderSelection.EconomyBuilderIsSupport(ordinary))
                     return null;
             }
             if (choice != null || prepared == null)
                 return choice;
             // This actor was legitimately prepared FOR Economy, not taken from an existing fist.
             // Exempt only its new fist classification; all other gates and the real grant remain.
-            if (DemandLayer.EconomyBuilderCandidateRejection(after, demand.TargetHex.Value,
+            if (EconomyBuilderSelection.EconomyBuilderCandidateRejection(after, demand.TargetHex.Value,
                     builderRoutes, builderArmyId, activeIntents, commitments) != "combat_fist_not_a_builder")
                 return null;
-            choice = DemandLayer.AssessEconomyArmy(after, demand.TargetHex.Value, builderRoutes[0],
+            choice = EconomyBuilderSelection.AssessEconomyArmy(after, demand.TargetHex.Value, builderRoutes[0],
                 prepared, demand.EconomyBuildApCost, includeReturn: !foundBase);
-            return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible ? choice : null;
+            return choice.Suitability != EconomyBuilderSelection.EconomyArmySuitability.Ineligible ? choice : null;
         }
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
@@ -188,7 +188,7 @@ namespace Game.Ai.V2
                 // Both phases must establish the same durable owner before reducing a residual.
                 // Revalidate after the real deployment: a successful card play can still fail to
                 // deliver a builder if the route or escort changed during that operation.
-                var intents = MissionIntentRegistry.GetOrCreate(player).All
+                var intents = afterSnap.AllIntents
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
                 var commitments = ActorCommitments.FromIntents(intents, afterSnap, null);
                 // Audit F5: both "not delivered" exits below used to be silent, so a hero card that
@@ -199,7 +199,7 @@ namespace Game.Ai.V2
                         + "reason=no_deployed_army_is_a_mobile_economy_builder");
                 foreach (int builderId in leased)
                 {
-                    DemandLayer.EconomyBuilderChoice choice = EconomyDeliveryChoice(
+                    EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyDeliveryChoice(
                         afterSnap, demand, builderId, intents, commitments,
                         out IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
                         preparationBefore: escortPreparation ? beforeSnap : null);
@@ -209,7 +209,7 @@ namespace Game.Ai.V2
                             + "decision=NOT_DELIVERED reason=" + (routes.Count == 0
                                 ? "no_witnessed_builder_route_in_refreshed_snapshot"
                                 : "builder_ranking_rejected_actor:"
-                                    + DemandLayer.EconomyBuilderCandidateRejection(afterSnap,
+                                    + EconomyBuilderSelection.EconomyBuilderCandidateRejection(afterSnap,
                                         demand.TargetHex.Value, routes, builderId, intents,
                                         commitments)));
                         continue;
@@ -218,10 +218,10 @@ namespace Game.Ai.V2
                     ready.EconomyPreferredBuilderArmyId = builderId;
                     ready.EconomyBuilderRoutes = routes;
                     ready.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
-                    ready.EconomyReadyBuilderIsSupport = DemandLayer.EconomyBuilderIsSupport(choice);
+                    ready.EconomyReadyBuilderIsSupport = EconomyBuilderSelection.EconomyBuilderIsSupport(choice);
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.
-                    MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
+                    MissionIntent delivery = EconomyContinuity.BeginEconomyDelivery(
                         player, ready, builderId, ctx.TurnNumber);
                     if (delivery == null)
                     {
@@ -234,7 +234,7 @@ namespace Game.Ai.V2
                     EconomyReservationLifecycle.ReserveDeferredEconomyResourcesForActiveIntent(
                         player, ctx.TurnNumber, delivery);
                     demand.EconomyPreferredBuilderArmyId = builderId;
-                    demand.EconomyReadyBuilderIsSupport = DemandLayer.EconomyBuilderIsSupport(choice);
+                    demand.EconomyReadyBuilderIsSupport = EconomyBuilderSelection.EconomyBuilderIsSupport(choice);
                     delivered = 1f;
                     break;
                 }
@@ -353,8 +353,8 @@ namespace Game.Ai.V2
                 || !demand.ConsumerIntentKey.HasValue)
                 return false;
 
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            if (!state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
+            IMissionIntentView state = afterSnap?.Intents;
+            if (state == null || !state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
                 || intent == null)
                 return false;
 

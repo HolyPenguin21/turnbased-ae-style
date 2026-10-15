@@ -158,29 +158,23 @@ namespace Game.Ai.V2
             // rule) — otherwise that support's bodies stay in the ordinary pool below.
             UnitData lead = host.Commander;
             GatherSupport heroDonor = null;
-            float hostPowerBefore = AiPower.EffectiveArmyPower(host.Members);
             foreach (GatherSupport s in (minimumArmyPower > 0f
                 ? pool.OrderByDescending(x => x.Live.Members.Where(u => u.IsHero)
                         .Select(u => u.CommandRating).DefaultIfEmpty(0).Max())
                     .ThenBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)
                 : pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.ArmyId)))
             {
-                CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
+                // CommandHandover returns only an exchange the armies can make on arrival.
+                HandoffPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
                     opposition, defenderHexDefenseBonus, null);
-                if (handover == null
-                    || !ArmyActions.CanExchangeMembers(handover.Incoming, s.Live, host, handover.Hero,
-                        handover.Displaced, out _, requireChargeNow: false))
+                if (handover == null)
                     continue;
                 List<UnitData> handed = host.Members.Except(handover.Displaced)
                     .Concat(handover.Incoming).ToList();
-                bool raises = AiPower.EffectiveArmyPower(handed) > hostPowerBefore
-                    || (!WorthIt.CanDamageAll(host.Members.Select(WorthIt.FromLiveUnit).ToList(),
-                            opposition, defenderHexDefenseBonus)
-                        && WorthIt.CanDamageAll(handed.Select(WorthIt.FromLiveUnit).ToList(),
-                            opposition, defenderHexDefenseBonus));
-                if (!raises)
+                if (!GroundCombatReinforcement.RaisesPrimary(host.Members, handed, opposition,
+                        defenderHexDefenseBonus))
                     continue;
-                lead = handover.Hero;
+                lead = handover.Promote;
                 heroDonor = s;
                 // The whole exchange the handoff will make (PlanHandoff takes this same plan): the
                 // hero and every body it brings join, every host body it exchanges leaves — the

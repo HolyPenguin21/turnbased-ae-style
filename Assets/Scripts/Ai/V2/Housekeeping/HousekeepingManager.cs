@@ -63,7 +63,7 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                 commitments = ActorCommitments.FromIntents(
-                    MissionIntentRegistry.GetOrCreate(player).All,
+                    snapshot.AllIntents,
                     snapshot,
                     ReconObjectiveEvaluator.Enumerate(snapshot));
             }
@@ -81,7 +81,7 @@ namespace Game.Ai.V2
                     int apBeforeTempo = root.ActionPoints;
                     snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
                     ActorCommitments tempoCommitments = ActorCommitments.FromIntents(
-                        MissionIntentRegistry.GetOrCreate(player).All,
+                        snapshot.AllIntents,
                         snapshot,
                         ReconObjectiveEvaluator.Enumerate(snapshot));
                     var tempo = new StrategicPhaseResult();
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         commitments = ActorCommitments.FromIntents(
-                            MissionIntentRegistry.GetOrCreate(player).All,
+                            snapshot.AllIntents,
                             snapshot,
                             ReconObjectiveEvaluator.Enumerate(snapshot));
                     }

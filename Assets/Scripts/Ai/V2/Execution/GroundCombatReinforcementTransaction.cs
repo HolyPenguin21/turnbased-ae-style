@@ -16,11 +16,14 @@ namespace Game.Ai.V2
 {
     internal static class GroundCombatReinforcementTransaction
     {
+        // `intents` - the owner's durable intents (the caller's snapshot store).
         internal static bool ApplyLocalRefit(MaterializationPlan plan, PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, AiHandData hand, ArmyData support, SpendAuthority authority)
+            AiTurnContext ctx, AiHandData hand, ArmyData support, SpendAuthority authority,
+            IMissionIntentView intents)
         {
             var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
-            var attack = AttackBaseRefitPolicy.Resolve(player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
+            var attack = AttackBaseRefitPolicy.Resolve(intents?.All, player,
+                primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
             if (primary == null || support == null || attack == null
                 || attack.RefitCaptureTurn != plan.AttackRefitCaptureTurn
                 || (support != primary && AttackBaseRefitPolicy.RosterKey(primary) != plan.AttackRefitRoster)) return false;
@@ -34,7 +37,7 @@ namespace Game.Ai.V2
                 }
                 return true;
             }
-            var snap = WorldAnalysis.Scan(player, root, hand, ctx);
+            var snap = WorldAnalysis.Scan(player, root, hand, ctx, intents);
             var h = GroundCombatReinforcement.PlanAttackHandoff(primary, support,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx.Map, attack.Target.Hex),

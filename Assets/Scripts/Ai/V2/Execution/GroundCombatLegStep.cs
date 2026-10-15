@@ -231,7 +231,7 @@ namespace Game.Ai.V2
         {
             ArmyData wing = sortie.Army;
             if (wing != null)
-                yield return AviationRebasePlanner.ExecuteContinuation(
+                yield return AviationRebaseExecutor.ExecuteContinuation(
                     player, root, ctx, wing, _ => { }, result: result);
             ArmyData after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
             if (after != null)

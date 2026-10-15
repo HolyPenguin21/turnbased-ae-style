@@ -416,7 +416,7 @@ namespace Game.Ai.V2
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
                 return GroundCombatAssemblyPlan.Infeasible("assembly host has no owner");
-            ArmyData host = ArmyRegistry.AllForOwner(owner)
+            ArmyData host = OwnWorld.Of(owner).Armies
                 .FirstOrDefault(a => a != null && a.Id == hostSnap.ArmyId);
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0)
                 return GroundCombatAssemblyPlan.Infeasible("assembly host is no longer live/mobile");

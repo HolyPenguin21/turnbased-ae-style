@@ -420,7 +420,7 @@ namespace Game.Ai.V2
         {
             if (plan == null || plan.FinalCapability != CapabilityKind.ScoutCapability)
                 return false;
-            int solo = ArmyRegistry.AllForOwner(player).Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
+            int solo = OwnWorld.Of(player).Armies.Count(a => a != null && AiArmyRoles.IsSoloRecce(a));
             if (solo >= ReconConcurrencyPolicy.HardCap)
                 return true;
             if (reconObjectives == null)

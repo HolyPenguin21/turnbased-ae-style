@@ -476,7 +476,7 @@ namespace Game.EditorTests
             HexEventRegistry.MarkDiscovered(hex, player);
             HexEventRegistry.MarkConsumed(hex, player);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.True, "the claimant knows the completion at once");
         }
@@ -493,7 +493,7 @@ namespace Game.EditorTests
             HexEventRegistry.MarkDiscovered(hex, other);
             HexEventRegistry.MarkConsumed(hex, other);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.False, "an unobserved completion must not end our mission remotely");
             Assert.That(Game.Ai.AiMapMemory.KnownEventStateAt(player, hex),
@@ -509,7 +509,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData { Nickname = "P1" };
             HexEventRegistry.MarkDiscovered(hex, player);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.False);
         }
@@ -542,7 +542,7 @@ namespace Game.EditorTests
             MissionIntent intent = PutRaidIntent(player, primaryArmyId: 1,
                 target: RaidTargetRef.ForNeutralArmy(2), phase: RaidMissionPhase.Reinforcement);
 
-            MissionContinuityLayer.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
+            RaidContinuity.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
 
             Assert.That(intent.Raid.Phase, Is.EqualTo(RaidMissionPhase.SupportReturn));
             Assert.That(intent.Raid.SupportArmyId, Is.EqualTo(3));
@@ -560,7 +560,7 @@ namespace Game.EditorTests
             MissionIntent intent = PutRaidIntent(player, primaryArmyId: 1,
                 target: RaidTargetRef.ForNeutralArmy(2), phase: RaidMissionPhase.Reinforcement);
 
-            MissionContinuityLayer.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
+            RaidContinuity.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
 
             Assert.That(intent.Raid.Phase, Is.Not.EqualTo(RaidMissionPhase.SupportReturn));
             Assert.That(intent.Raid.SupportArmyId, Is.Null);
@@ -576,7 +576,7 @@ namespace Game.EditorTests
             intent.Raid.SupportArmyId = 3;
             intent.Raid.SupportReturnHex = new HexCoord(0, 0);
 
-            MissionContinuityLayer.CompleteRaidSupportReturn(player, snap, primaryArmyId: 1, "test");
+            RaidContinuity.CompleteRaidSupportReturn(player, snap, primaryArmyId: 1, "test");
 
             Assert.That(intent.Raid.SupportArmyId, Is.Null);
             Assert.That(intent.Raid.SupportReturnHex, Is.Null);

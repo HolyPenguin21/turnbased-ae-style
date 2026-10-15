@@ -188,7 +188,7 @@ namespace Game.Ai.V2
             if (player == null)
                 return false;
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All
+                snap.AllIntents
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 snap, null);
             return MaterializableGarrisonActors(snap, player, target, commitments.ClaimedArmyIdSet,
@@ -524,7 +524,7 @@ namespace Game.Ai.V2
             // (ReusableArmySelector.FindReusableAt, inside BuildCandidates) can never see a shell
             // as free that Provisioning would see as durably claimed by some OTHER active intent.
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All
+                snap.AllIntents
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 snap, null);
 
@@ -542,7 +542,7 @@ namespace Game.Ai.V2
                     // cheapest actor ScoutCostModel priced, claims ignored), so it relaxes durable
                     // ownership only when it IS this durable intent's own actor — the same rule
                     // ground combat applies (ProvisioningSession.ExcludedForGroundCombat).
-                    if (IsOwnDurableActor(player, fe.Mission, fe.Mission.PreferredMoverArmyId.Value))
+                    if (IsOwnDurableActor(player, snap.Intents, fe.Mission, fe.Mission.PreferredMoverArmyId.Value))
                         excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
                 }
                 else
@@ -695,9 +695,10 @@ namespace Game.Ai.V2
         }
 
         // A continuing mission may re-bind exactly the actor its own durable intent owns.
-        private static bool IsOwnDurableActor(PlayerSetupData player, MissionProposal mission, int armyId) =>
-            mission != null && mission.FromDurableIntent && player != null
-            && MissionIntentRegistry.GetOrCreate(player).TryGet(MissionIntentKey.For(mission),
+        private static bool IsOwnDurableActor(PlayerSetupData player, IMissionIntentView intents,
+            MissionProposal mission, int armyId) =>
+            mission != null && mission.FromDurableIntent && player != null && intents != null
+            && intents.TryGet(MissionIntentKey.For(mission),
                 out MissionIntent own)
             && own.PreferredMoverArmyId == armyId;
 

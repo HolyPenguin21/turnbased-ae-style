@@ -98,8 +98,8 @@ namespace Game.Ai.V2
                     "attack", out AirSupportWing w, out ProvisionFailure wingFailure))
                 return ProvisioningResult.Fail(wingFailure);
 
-            MissionIntentRegistry.GetOrCreate(player).TryGet(MissionIntentKey.ForAttack(target.Target),
-                out MissionIntent intent);
+            MissionIntent intent = null;
+            session.Snapshot?.Intents?.TryGet(MissionIntentKey.ForAttack(target.Target), out intent);
             if (intent?.Attack == null
                 || AttackObjectiveEvaluator.EvaluateTarget(snap, target.Target)
                     != AttackObjectiveEvaluator.AttackTargetStatus.Continue)
@@ -373,7 +373,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "attack donor purchase has no host or no support"));
             Dictionary<int, float> forSale = GroundCombatDonorPolicy.BorrowableDonorValues(
-                MissionIntentRegistry.GetOrCreate(player).All);
+                WorldSnapshot.IntentsOf(session.Snapshot));
             HashSet<int> durable = session.ExcludedForGroundCombat(funded.Mission);
             foreach (int id in target.GatherSupportArmyIds)
             {

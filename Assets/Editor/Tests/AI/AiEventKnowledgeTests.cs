@@ -152,7 +152,7 @@ namespace Game.EditorTests
             Assert.That(AiMapMemory.KnownEventStateAt(_a, Hex), Is.EqualTo(AiMapMemory.KnownEventState.Active));
             Assert.That(AiMapMemory.KnowledgeVersionFor(_a), Is.EqualTo(version));
             var target = RaidTargetRef.ForEventGuard(Hex);
-            Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(_a, target), Is.False);
+            Assert.That(ObjectiveLiveStatus.RaidSatisfied(_a, target), Is.False);
             Assert.That(RaidObjectiveEvaluator.EventTargetState(_a, Hex), Is.EqualTo(AiMapMemory.KnownEventState.Active));
 
             // Re-observing the hex confirms it: guard gone, completed, versions bumped, no repeat.
@@ -161,7 +161,7 @@ namespace Game.EditorTests
 
             Assert.That(AiMapMemory.KnownEventStateAt(_a, Hex), Is.EqualTo(AiMapMemory.KnownEventState.Completed));
             Assert.That(AiMapMemory.KnownEventGuardStrengthAt(_a, Hex), Is.Null);
-            Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(_a, target), Is.True);
+            Assert.That(ObjectiveLiveStatus.RaidSatisfied(_a, target), Is.True);
             int confirmed = AiMapMemory.KnowledgeVersionFor(_a);
             Assert.That(confirmed, Is.GreaterThan(version));
             AiMapMemory.RefreshVisibleForTest(_a);
@@ -180,7 +180,7 @@ namespace Game.EditorTests
 
             Assert.That(AiMapMemory.KnownEventStateAt(_a, Hex), Is.EqualTo(AiMapMemory.KnownEventState.Completed));
             Assert.That(AiMapMemory.KnownEventGuardHexes(_a), Is.Empty);
-            Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(_a, RaidTargetRef.ForEventGuard(Hex)), Is.True);
+            Assert.That(ObjectiveLiveStatus.RaidSatisfied(_a, RaidTargetRef.ForEventGuard(Hex)), Is.True);
         }
 
         [Test]

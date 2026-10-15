@@ -228,7 +228,7 @@ namespace Game.Ai.V2
                     BuilderRoutes = d.EconomyBuilderRoutes,
                 };
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i =>
-                    MissionContinuityLayer.HoldsEconomyBuildSite(i, target.TargetHex)
+                    EconomyContinuity.HoldsEconomyBuildSite(i, target.TargetHex)
                     && i.Economy.Kind == kind);
                 // Active Economy work was materialized above from continuity itself. A fresh
                 // demand may describe the same site with a newly ranked builder, but it cannot
@@ -308,8 +308,8 @@ namespace Game.Ai.V2
             int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
             IReadOnlyList<EconomyBuilderRouteSnapshot> currentRoutes =
                 CurrentBuilderRoutes(snapshot, t);
-            DemandLayer.EconomyBuilderChoice currentBuilder =
-                DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice currentBuilder =
+                EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, t.TargetHex, currentRoutes, activeIntents, commitments,
                 t.BuildValue, t.BuildApCost, includeReturn: false,
                 pinnedBuilderArmyId: preferredId,
@@ -346,7 +346,7 @@ namespace Game.Ai.V2
                             / (float)UnityEngine.Mathf.Max(1, route.MaxMovement));
             }
 
-            float ap = DemandLayer.EconomyCurrentStageAp(currentBuilder?.PreparationApCost ?? 0f,
+            float ap = EconomyBuilderSelection.EconomyCurrentStageAp(currentBuilder?.PreparationApCost ?? 0f,
                 activation, activated, travelNeeded, completionThisTurn,
                 t.BuildApCost, t.MinimumFollowupAp);
             r.ApMinimum = r.ApDesired = r.ApMaximum = ap;

@@ -113,7 +113,8 @@ namespace Game.Ai.V2
 
             PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apBudget, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
+                ctx, apBudget, demands, actorCommitments, MissionIntentRegistry.GetOrCreate(player), activeIntents,
+                reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             bool aggressionPressureFresh = false;
@@ -143,8 +144,12 @@ namespace Game.Ai.V2
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives, ctx: ctx);
+            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
+            var witnessRevisions = new List<RetreatWitnessRevision>();
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                activeIntents, aggressionObjectives, ctx));
+                activeIntents, aggressionObjectives, intentState, ctx,
+                witnessRevisions: witnessRevisions));
+            AttackRetreatWitness.Apply(intentState, witnessRevisions);
             // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path
             // as the main pass — Scout actor binding happens in Provisioning (ReconAssignmentPlanner)
             // exactly like the main pass, no separate reservation stage needed here either.
@@ -278,7 +283,7 @@ namespace Game.Ai.V2
 
             snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
+                snapshot.AllIntents, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
             var phaseB = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                 postCommitments, phaseA.Reservation, phaseB);

@@ -1,10 +1,13 @@
 using System.Linq;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
-    internal static partial class MissionContinuityLayer
+    // Continuity rules shared by the two ground-combat lines (Raid, Attack): support-leg release,
+    // walk-home fallback retirement, air-support cleanup and the handoff facts.
+    internal static class GroundCombatContinuity
     {
-        private static bool TryHandleInvalidGroundSupport(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryHandleInvalidGroundSupport(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -61,7 +64,7 @@ namespace Game.Ai.V2
         // completed Raid target's Return. When that actor is bound to a new ground-combat
         // operation the fallback leg is retired, never kept as a second owner of the same army.
         // (An ActiveDefence Return is a real, claimed withdrawal — not a fallback.)
-        private static void RetireReturnFallbacksForActor(MissionIntentState state,
+        internal static void RetireReturnFallbacksForActor(MissionIntentState state,
             int? actorId, string reason)
         {
             if (state == null || !actorId.HasValue)
@@ -75,16 +78,24 @@ namespace Game.Ai.V2
                     + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
             }
         }
-        private static void FinalizeAirSupportResolution(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
+        internal static void FinalizeAirSupportResolution(Game.Players.PlayerSetupData player, WorldSnapshot snap, ActiveResolution pass)
         {
             GroundCombatAirSupport.ReleaseOrphanStrikes(player, pass.State.All);
         }
 
-        private static void CaptureGroundHandoffFacts(ExecutionResult e, MissionStepResult o)
+        internal static void CaptureGroundHandoffFacts(ExecutionResult e, MissionStepResult o)
         {
             if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack)
                 o.GroundFactsForWrite().ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
         }
 
+        // Is the durable primary still the kind of army ground-combat provisioning (Raid, Attack)
+        // would accept? Uses the SAME structural snapshot predicate ActorCommitments applies in
+        // combat phases.
+        internal static bool GroundCombatPrimaryAlive(WorldSnapshot snap, int armyId)
+        {
+            ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
+            return a != null && a.IsStructuralRaidActor;
+        }
     }
 }

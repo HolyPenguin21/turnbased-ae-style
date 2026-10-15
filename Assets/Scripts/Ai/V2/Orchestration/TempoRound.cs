@@ -38,7 +38,7 @@ namespace Game.Ai.V2
         // The first Phase B: the ordinary passes are closed (also on bounded / no-progress exits):
         // the bank settles what it holds before Phase B spends (StrategicTurnLifecycle).
         public void SettleBeforeFirstRound() =>
-            StrategicManager.BeforeFirstTempo(_player, _root, _hand, _ctx);
+            StrategicManager.BeforeFirstTempo(_player, _frame.IntentState, _root, _hand, _ctx);
 
         public IEnumerator Round(int managementRound, TempoRoundSink sink)
         {
@@ -48,7 +48,7 @@ namespace Game.Ai.V2
                 WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
             // A prior Phase B action may have spent AP or removed a build card: the bank
             // revalidates its holds before the next pass.
-            StrategicManager.BeforeTempoSpend(_player, _root, _hand, _ctx);
+            StrategicManager.BeforeTempoSpend(_player, _frame.IntentState, _root, _hand, _ctx);
             var phaseBRound = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(_frame.Snapshot, _player, _root, _hand, _ctx,
                 _frame.PostCommitments, _phases.Carried,

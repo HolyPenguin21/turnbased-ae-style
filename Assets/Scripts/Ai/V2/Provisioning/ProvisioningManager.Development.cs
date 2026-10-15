@@ -59,7 +59,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "durable Development actor changed outside its bound extraction"));
 
-            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
+            List<MissionIntent> intents = WorldSnapshot.IntentsOf(session.Snapshot)
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             MissionIntentKey ownKey = MissionIntentKey.For(mission);
             if (intents.Any(i => !i.IntentKey.Equals(ownKey)

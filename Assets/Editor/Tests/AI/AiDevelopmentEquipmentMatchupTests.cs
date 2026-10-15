@@ -47,7 +47,7 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
 
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
                 "A weapon that makes an otherwise impenetrable enemy damageable must improve fit");
 
             var mobility = new EquipmentGrant();
@@ -59,7 +59,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.Zero,
                 "Movement alone cannot masquerade as an improvement in the battle roster");
             Assert.That(host.Equipment, Is.Null,
                 "Valuation must not attach the preview to the actual card");
@@ -106,7 +106,7 @@ namespace Game.EditorTests
                 new[] { new WorthIt.DefenderProfile(1, false, attack: 20, hitPoints: 8, initiative: 2) },
                 snap.TrueWorld.EnemyArmies[0].Members), Is.True,
                 "The host must already have penetration so this regression exercises defensive value");
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.GreaterThan(0f),
                 "A large defensive improvement must be visible through the active contextual combat delta");
             Assert.That(host.Equipment, Is.Null,
                 "Projected defensive valuation must not mutate the hand card");
@@ -150,7 +150,7 @@ namespace Game.EditorTests
                     },
                 },
             };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.GreaterThan(0f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.GreaterThan(0f),
                 "An existing field unit should benefit when its real army gains a new counter");
 
             var mobility = new EquipmentGrant();
@@ -162,7 +162,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientUnit, snap).Combat, Is.Zero,
                 "Movement must not be mistaken for a combat improvement in a deployed roster");
             Assert.That(unit.Attack, Is.EqualTo(1));
             Assert.That(unit.Equipment, Is.Null);
@@ -188,9 +188,9 @@ namespace Game.EditorTests
                 ExpectedGain = 10f,
             };
 
-            float handValue = StrategicCardEvaluator.EquipmentUpgradeValue(hand);
-            float garrisonValue = StrategicCardEvaluator.EquipmentUpgradeValue(garrison);
-            float fieldValue = StrategicCardEvaluator.EquipmentUpgradeValue(field);
+            float handValue = EquipmentUpgradeValuation.EquipmentUpgradeValue(hand);
+            float garrisonValue = EquipmentUpgradeValuation.EquipmentUpgradeValue(garrison);
+            float fieldValue = EquipmentUpgradeValuation.EquipmentUpgradeValue(field);
 
             Assert.That(garrisonValue, Is.EqualTo(handValue).Within(0.0001f));
             Assert.That(fieldValue, Is.EqualTo(handValue).Within(0.0001f),
@@ -243,17 +243,17 @@ namespace Game.EditorTests
                 },
             };
 
-            float known = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float known = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(known, Is.GreaterThan(0f),
                 "A legitimately sighted neutral may contribute its current composition to Production valuation");
 
             neutral.Hex = new HexCoord(-20, 19);
-            float movedBehindFog = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float movedBehindFog = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(movedBehindFog, Is.EqualTo(known).Within(0.0001f),
                 "The neutral's hidden live Hex must not enter Production valuation once identity is known");
 
             snap.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
                 "An unknown neutral must not become a Production threat merely because TrueWorld can see it (the efficiency value stands, no fabricated threat)");
         }
 
@@ -291,18 +291,18 @@ namespace Game.EditorTests
                 },
             };
 
-            float visible = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float visible = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(visible, Is.GreaterThan(0f),
                 "An honestly observed event guard is a legitimate neutral composition witness");
             snap.Known.EventGuards = new[]
             {
                 new KnownEventGuardSnapshot(new HexCoord(-15, 12), guard, "event guard", 1),
             };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(visible).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(visible).Within(0.0001f),
                 "Location must not leak from an event witness into production valuation");
 
             snap.Known.EventGuards = System.Array.Empty<KnownEventGuardSnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
                 "An undiscovered event must not be fabricated as a Production target (the efficiency value stands, no fabricated threat)");
         }
 
@@ -340,17 +340,17 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { airArmy } },
             };
 
-            float withAir = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float withAir = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(withAir, Is.GreaterThan(0f),
                 "Enemy aviation composition must reach the same contextual combat valuation as ground composition");
 
             airArmy.ArmyId = 999;
             airArmy.Hex = new HexCoord(-30, 22);
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(withAir).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(withAir).Within(0.0001f),
                 "Aviation composition may affect valuation, but its hidden identity/position must not");
 
             snap.TrueWorld.EnemyArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.LessThan(withAir),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.LessThan(withAir),
                 "Without the aviation witness AA falls back to the default share of air enemies");
         }
 
@@ -384,15 +384,15 @@ namespace Game.EditorTests
             {
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
-            float before = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float before = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             enemy.ArmyId = 900;
             enemy.Hex = new HexCoord(-10, 11);
-            float after = StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
+            float after = EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat;
             Assert.That(after, Is.EqualTo(before).Within(0.0001f),
                 "Only composition is permitted to reach equipment valuation, not a hidden target");
 
             snap.TrueWorld = null;
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(opportunity.Card, opportunity.RecipientCard, snap).Combat, Is.EqualTo(AiEquipmentTestMath.IntrinsicAttack(20)).Within(0.0001f),
                 "With no composition available the original intrinsic equipment score must stand (the efficiency value stands, no fabricated threat)");
         }
 
@@ -424,7 +424,7 @@ namespace Game.EditorTests
             var host = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 3, defenseRating = 3, hitPoints = 5 });
             Assert.DoesNotThrow(() =>
-                StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 2), host));
+                EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 2), host));
         }
 
         [TestCase(AttachmentSlot.Equipment, false)]
@@ -443,7 +443,7 @@ namespace Game.EditorTests
             Assert.That(predicted.Stats[EquipmentStat.HitPoints], Is.EqualTo(unit.HitPointsMax));
             Assert.That(predicted.Stats[EquipmentStat.Defense], Is.EqualTo(unit.Defense));
             var snap = PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 3, hitPoints: 5));
-            var delta = StrategicCardEvaluator.EquipmentDeltaParts(attachment, unit, snap);
+            var delta = EquipmentUpgradeValuation.EquipmentDeltaParts(attachment, unit, snap);
             Assert.That(delta.Total, Is.GreaterThan(0f));
             Assert.That(unit.Equipment, Is.Null);
             Assert.That(unit.Mutator, Is.Null);
@@ -466,8 +466,8 @@ namespace Game.EditorTests
             var scout = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 1, defenseRating = 1, hitPoints = 4 });
             var snap = PolicyWorld(new WorthIt.DefenderProfile(6, false, attack: 5, hitPoints: 6));
-            float small = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), scout, snap).Total;
-            float flat = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), scout, snap).Total;
+            float small = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), scout, snap).Total;
+            float flat = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), scout, snap).Total;
             Assert.That(flat, Is.GreaterThan(small * 4f));
         }
 
@@ -477,8 +477,8 @@ namespace Game.EditorTests
             var body = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 2, defenseRating = 12, hitPoints = 6 });
             var snap = PolicyWorld(new WorthIt.DefenderProfile(5, false, attack: 5, hitPoints: 6));
-            float armour = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Defense, 3), body, snap).Total;
-            float weapon = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 6), body, snap).Total;
+            float armour = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Defense, 3), body, snap).Total;
+            float weapon = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 6), body, snap).Total;
             Assert.That(weapon, Is.GreaterThan(armour * 4f));
         }
 
@@ -489,12 +489,12 @@ namespace Game.EditorTests
                 attack = 12, defenseRating = 4, hitPoints = 6 });
             var enemy = new WorthIt.DefenderProfile(3, false, attack: 4, hitPoints: 8);
             var snap = PolicyWorld(enemy, enemy, enemy);
-            float splash = StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total;
-            float attack = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), body, snap).Total;
+            float splash = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total;
+            float attack = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 1), body, snap).Total;
             Assert.That(splash, Is.GreaterThan(attack));
             snap.TrueWorld.EnemyArmies = new[] { new ArmySnapshot { Members = new[] { enemy } },
                 new ArmySnapshot { Members = new[] { enemy } }, new ArmySnapshot { Members = new[] { enemy } } };
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total, Is.Zero);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicySkill(UnitAbilities.Splash), body, snap).Total, Is.Zero);
         }
 
         [Test]
@@ -505,10 +505,10 @@ namespace Game.EditorTests
             var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
             var bio = PolicyWorld(new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Bio }, 4, 8));
             var machine = PolicyWorld(new WorthIt.DefenderProfile(4, false, new[] { UnitTypeTag.Mechanical }, 4, 8));
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, bio).Total, Is.GreaterThan(0));
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, machine).Total, Is.Zero);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, bio).Total, Is.GreaterThan(0));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, machine).Total, Is.Zero);
             body.Definition.grantedAbilities.Add(UnitAbilities.Pyrokinetic);
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, bio).Total, Is.Zero);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, bio).Total, Is.Zero);
         }
 
         [Test]
@@ -517,9 +517,9 @@ namespace Game.EditorTests
             var body = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 2, defenseRating = 4, hitPoints = 6 });
             var snap = PolicyWorld();
-            var gain = StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), body, snap);
-            Assert.That(StrategicCardEvaluator.EquipmentUpgradeValue(gain), Is.GreaterThan(0));
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(new CardDefinition
+            var gain = EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 8, true), body, snap);
+            Assert.That(EquipmentUpgradeValuation.EquipmentUpgradeValue(gain), Is.GreaterThan(0));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(new CardDefinition
                 { cardType = CardType.Equipment, equipment = new EquipmentGrant() }, body, snap).Total, Is.Zero);
             snap.Development = new DevelopmentReadiness { UpgradeTargetCount = 1, SurplusFraction = 1 };
             Assert.That(ForceNeedModel.DevelopmentNeed(snap), Is.GreaterThan(0));
@@ -531,11 +531,11 @@ namespace Game.EditorTests
         {
             var hero = new CardData(new CardDefinition { cardType = CardType.Hero, fate = 2, moveMax = 2 });
             var snap = PolicyWorld();
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 10), hero, snap).Total, Is.Zero);
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.CommandRating, 5), hero, snap).Total, Is.Zero);
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.Fate, 1), hero, snap).Total, Is.GreaterThan(0));
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicyGear(EquipmentStat.MoveMax, 1), hero, snap).Total, Is.GreaterThan(0));
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(PolicySkill("r1s2"), hero, snap).Total, Is.GreaterThan(0));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Attack, 10), hero, snap).Total, Is.Zero);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.CommandRating, 5), hero, snap).Total, Is.Zero);
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.Fate, 1), hero, snap).Total, Is.GreaterThan(0));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicyGear(EquipmentStat.MoveMax, 1), hero, snap).Total, Is.GreaterThan(0));
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(PolicySkill("r1s2"), hero, snap).Total, Is.GreaterThan(0));
         }
 
         [Test]
@@ -583,19 +583,20 @@ namespace Game.EditorTests
             {
                 MissionIntentRegistry.GetOrCreate(player).Put(intent);
                 var snap = PolicyWorld(); snap.Observer = player;
+                snap.Intents = MissionIntentRegistry.GetOrCreate(player);
                 snap.Known = new KnownSnapshot { EventGuards = new[] {
                     new KnownEventGuardSnapshot(firstHex, new AiMapMemory.GuardStrength(4, 4, new[] { bio }), "bio", 1),
                     new KnownEventGuardSnapshot(secondHex, new AiMapMemory.GuardStrength(4, 4, new[] { mechanical }), "mechanical", 1) } };
                 var pyro = PolicySkill(UnitAbilities.Pyrokinetic);
                 string before = DevelopmentAdmission.Facts(snap, new[] { intent });
-                Assert.That(StrategicCardEvaluator.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
-                float bioOnly = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
+                Assert.That(EquipmentUpgradeValuation.EquipmentPurposeLabel(snap, body, null), Is.EqualTo("Attack"));
+                float bioOnly = EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, snap).Total;
                 Assert.That(bioOnly, Is.GreaterThan(0));
                 intent.Attack.Target = AttackTargetRef.For(secondHex, new PlayerSetupData(), AttackTargetKind.Base);
                 Assert.That(DevelopmentAdmission.Facts(snap, new[] { intent }), Is.Not.EqualTo(before));
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, snap).Total, Is.Zero);
                 intent.Attack.Target = AttackTargetRef.None;
-                float noTarget = StrategicCardEvaluator.EquipmentDeltaParts(pyro, body, snap).Total;
+                float noTarget = EquipmentUpgradeValuation.EquipmentDeltaParts(pyro, body, snap).Total;
                 Assert.That(noTarget, Is.GreaterThan(0f).And.LessThan(bioOnly),
                     "An absent target is not a real objective at hex 0,0: the known compositions (one Bio, one "
                     + "Mechanical) are averaged, so Pyrokinetic pays on half of them only");
@@ -607,6 +608,7 @@ namespace Game.EditorTests
         public void DeckBenchmarkAndScoutRequirementAreExactAdmissionInputs()
         {
             var player = new PlayerSetupData(); var snap = PolicyWorld(); snap.Observer = player;
+            snap.Intents = MissionIntentRegistry.GetOrCreate(player);
             var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
                 PreferredMoverArmyId = 1, Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore } };
             try
@@ -634,6 +636,7 @@ namespace Game.EditorTests
                 VisibleArrivalBlockedHexes = new HashSet<HexCoord>() };
             var snap = new WorldSnapshot { Observer = player, Self = new SelfSnapshot { Armies = new[] { actor } },
                 MapKnowledge = map };
+                snap.Intents = MissionIntentRegistry.GetOrCreate(player);
             var intent = new MissionIntent { Kind = MissionKind.Scout, Status = IntentStatus.Active,
                 PreferredMoverArmyId = actor.ArmyId,
                 Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = focus } };
@@ -682,9 +685,9 @@ namespace Game.EditorTests
             body.Equipment = PolicySkill(UnitAbilities.Splash);
             var scorcher = PolicySkill(UnitAbilities.Scorcher); scorcher.attachmentSlot = AttachmentSlot.Mutator;
             var bio = new WorthIt.DefenderProfile(3, false, new[] { UnitTypeTag.Bio }, 4, 8);
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio)).Total, Is.Zero,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio)).Total, Is.Zero,
                 "Splash already occupies both available secondary targets");
-            Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio, bio)).Total,
+            Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(scorcher, body, PolicyWorld(bio, bio, bio, bio)).Total,
                 Is.GreaterThan(0), "The remaining target makes Scorcher useful");
         }
 
@@ -702,10 +705,11 @@ namespace Game.EditorTests
             {
                 MissionIntentRegistry.GetOrCreate(player).Put(intent);
                 var snap = PolicyWorld(); snap.Observer = player;
+                snap.Intents = MissionIntentRegistry.GetOrCreate(player);
                 var gear = PolicyGear(EquipmentStat.Fate, 5);
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(gear, hero, snap).Total, Is.GreaterThan(0));
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(gear, hero, snap).Total, Is.GreaterThan(0));
                 gear.equipment.removeAbilities.Add(UnitAbilities.Researcher);
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(gear, hero, snap).Total, Is.LessThan(0));
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(gear, hero, snap).Total, Is.LessThan(0));
             }
             finally { MissionIntentRegistry.Clear(); }
         }
@@ -718,9 +722,9 @@ namespace Game.EditorTests
             var body = new CardData(new CardDefinition { cardType = CardType.Unit,
                 attack = 5, defenseRating = 3, hitPoints = 6 });
             var regen = PolicySkill(UnitAbilities.Regeneration);
-            float weak = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
+            float weak = EquipmentUpgradeValuation.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 6, hitPoints: 6))).Total;
-            float lethal = StrategicCardEvaluator.EquipmentDeltaParts(regen, body,
+            float lethal = EquipmentUpgradeValuation.EquipmentDeltaParts(regen, body,
                 PolicyWorld(new WorthIt.DefenderProfile(3, false, attack: 40, hitPoints: 6))).Total;
             Assert.That(weak, Is.GreaterThan(0f), "A wounded survivor heals at the end of its owner's turn");
             Assert.That(lethal, Is.LessThan(weak),

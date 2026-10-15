@@ -106,10 +106,11 @@ namespace Game.Ai.V2
         // `main` is the operation's Base/Citadel. `lastLocalTurn` is the once-per-turn marker of
         // voluntary fights. `intermediateBaseAvailable` is the mission layer's already-proven
         // optional Base (AttackIntermediateBasePolicy.Select). `adObjectives` are the live
-        // ActiveDefence objectives of this snapshot (null: none).
+        // ActiveDefence objectives of this snapshot (null: none). `intents` is the owner's durable
+        // intent store, read only (null: no ActiveDefence response is running).
         internal static AttackLocalAction Decide(WorldSnapshot snap, ArmySnapshot army,
             AttackTargetRef main, int lastLocalTurn, bool intermediateBaseAvailable,
-            IReadOnlyList<ActiveDefenceObjective> adObjectives)
+            IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents)
         {
             if (snap?.Known == null || army == null || army.Owner == null
                 || !main.HasValue || army.Members == null || army.Members.Count == 0)
@@ -205,7 +206,7 @@ namespace Game.Ai.V2
                 return AttackLocalAction.Continue(lastLocalTurn == turn ? "local_fight_spent_this_turn" : "no_movement");
 
             List<AttackLocalAction> candidates = InterceptCandidates(snap, army, attackers, mainHex,
-                currentMovement, maxMovement, adObjectives);
+                currentMovement, maxMovement, adObjectives, intents);
             AttackLocalAction adBest = candidates.FirstOrDefault(c => c.ServesActiveDefence);
             if (adBest.Kind == AttackLocalActionKind.Intercept)
                 return adBest;
@@ -247,7 +248,7 @@ namespace Game.Ai.V2
 
         private static List<AttackLocalAction> InterceptCandidates(WorldSnapshot snap, ArmySnapshot army,
             List<WorthIt.DefenderProfile> attackers, HexCoord mainHex, int currentMovement,
-            int maxMovement, IReadOnlyList<ActiveDefenceObjective> adObjectives)
+            int maxMovement, IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents)
         {
             var found = new List<AttackLocalAction>();
             PlayerSetupData player = army.Owner;
@@ -267,7 +268,7 @@ namespace Game.Ai.V2
                 if (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(snap, s.Hex))
                     continue;
                 // An ActiveDefence Intercept already answering this army owns it.
-                if (UnderActiveDefenceResponse(player, s.ArmyId))
+                if (UnderActiveDefenceResponse(intents, s.ArmyId))
                     continue;
                 int adIndex = IndexOfObjective(adObjectives, s.ArmyId);
                 List<WorthIt.DefendingArmy> opposition = OppositionOn(snap, s.Hex);
@@ -419,6 +420,10 @@ namespace Game.Ai.V2
                 foreach (WorthIt.DefendingArmy army in opposition)
                 {
                     hash = hash * 31 + CommanderFingerprint(army.Commander);
+                    // The defender's own terrain + structure bonus on the hex it stands on now:
+                    // the same roster leaving (or entering) a fortification is a different fight.
+                    hash = hash * 31 + (army.DefenseBonusOverride.HasValue
+                        ? (int)System.Math.Round(army.DefenseBonusOverride.Value * 100f) + 1 : 0);
                     foreach (WorthIt.DefenderProfile profile in army.Units)
                         if (profile.IsHero) hash = hash * 31 + profile.FateMax;
                 }
@@ -507,9 +512,8 @@ namespace Game.Ai.V2
         // a second urgency model: an ActiveDefence intent exists at all only for a real threat to a
         // real asset, and an ACTIVE (not suspended) one is precisely the case where that lane is
         // responding to this army right now.
-        private static bool UnderActiveDefenceResponse(PlayerSetupData player, int enemyArmyId)
+        private static bool UnderActiveDefenceResponse(IMissionIntentView state, int enemyArmyId)
         {
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             return state != null
                 && state.TryGet(MissionIntentKey.ForActiveDefence(enemyArmyId),
                     out MissionIntent intent)

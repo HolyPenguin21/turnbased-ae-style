@@ -28,7 +28,7 @@ namespace Game.Ai.V2
     //
     //  Build has NO exception to "no mutation": it is a pure snapshot read even
     //  for the weakened-primary reinforcement case. The Assault -> Reinforcement phase transition
-    //  belongs to MissionContinuityLayer.AdvanceRaidPhase (it already independently re-verifies the
+    //  belongs to RaidContinuity.AdvanceRaidPhase (it already independently re-verifies the
     //  primary's state every reconciliation pass); the RaidIntent.ReinforcementRequestedTurn dedup
     //  stamp — the "exactly one support intent per weakened primary" invariant — is written only
     //  once a materialization for this exact ConsumerIntentKey is actually accepted/funded

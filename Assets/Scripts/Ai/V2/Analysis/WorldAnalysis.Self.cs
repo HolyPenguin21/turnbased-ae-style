@@ -22,7 +22,8 @@ namespace Game.Ai.V2
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {
-        private static SelfSnapshot BuildSelf(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        private static SelfSnapshot BuildSelf(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IMissionIntentView intents)
         {
             var self = new SelfSnapshot();
 
@@ -50,7 +51,7 @@ namespace Game.Ai.V2
                 && (!configuredCitadel.HasValue || canonicalCitadel.Value.Equals(configuredCitadel.Value));
             self.BaseHexes = baseHexes;
             using (new ProfileScope("AI/Self.ArmySnapshots"))
-                self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), ctx)).ToList();
+                self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx), intents, ctx)).ToList();
             // Includes own remaining MP: rebuild with Self even when enemy knowledge is unchanged.
             using (new ProfileScope("AI/Self.ReconCapture"))
                 self.ReconCaptureOpportunities = ownArmies.Where(AiArmyRoles.IsSoloRecce)
@@ -119,7 +120,7 @@ namespace Game.Ai.V2
                 BuildApActionEconomy(self, player, ownArmies, hand, ctx);
 
             using (new ProfileScope("AI/Self.ForceMeasures"))
-                BuildForceMeasures(self, player, ownArmies);
+                BuildForceMeasures(self, player, ownArmies, intents);
 
             self.MobilizationHeld = ctx != null
                 && OperationContinuationWindow.IsMobilizationHeld(player, ctx.TurnNumber);
@@ -160,12 +161,13 @@ namespace Game.Ai.V2
         // leaves out, so the gate compares like with like), prisoners and the garrison's
         // mandatory defence. Heroes
         // bring only their slots (their power is 0); a facility operator commands nothing.
+        // `intents` - the player's durable intents (its live scouts stay out of the measure).
         internal static float FieldStrikePotential(PlayerSetupData player, IEnumerable<ArmyData> ownArmies,
-            float groundAvailablePower)
+            float groundAvailablePower, IEnumerable<MissionIntent> intents)
         {
             var pool = new List<AiPower.PowerUnit>();
             HexCoord citadel = AiTurnController.GarrisonHexFor(player);
-            HashSet<int> scouts = AttackForcePool.ScoutMissionArmyIds(player);
+            HashSet<int> scouts = AttackForcePool.ScoutMissionArmyIds(player, intents);
             foreach (ArmyData a in ownArmies ?? Enumerable.Empty<ArmyData>())
             {
                 if (a == null || a.IsPrison || a.IsAirfield || AviationRules.IsAirArmy(a)
@@ -199,7 +201,7 @@ namespace Game.Ai.V2
         // TotalMilitaryPotential. Aviation never joins a ground stack; it is reserve only.
         // Prisoners do not fight and are no one's commander.
         private static void BuildForceMeasures(SelfSnapshot self, PlayerSetupData player,
-            List<ArmyData> ownArmies)
+            List<ArmyData> ownArmies, IMissionIntentView intents)
         {
             var commandHeroes = new List<OwnCommandHero>();
             var mapPool = new List<AiPower.PowerUnit>();
@@ -255,12 +257,13 @@ namespace Game.Ai.V2
                 PlayerForceAnalysis.AdditivePower(player, ownArmies, self.Hand, self.Deck,
                     out self.DeployedPower, out self.AvailablePower);
             using (new ProfileScope("AI/Self.FieldStrikePotential"))
-                self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower);
+                self.FieldStrikePotential = FieldStrikePotential(player, ownArmies, self.AvailablePower,
+                    intents?.All);
             // The force an Attack can actually assemble (busy armies, scouts, garrison defence,
             // garrison heroes and operators out): its peak, roster and pool.
             AttackForcePool attackPool;
             using (new ProfileScope("AI/Self.AttackForcePool"))
-                attackPool = AttackForcePool.Build(player, self);
+                attackPool = AttackForcePool.Build(player, self, intents?.All);
             self.AttackPeak = attackPool.Peak;
             self.StrikeRoster = attackPool.Roster;
             self.StrikePool = attackPool.Pool;
@@ -278,7 +281,7 @@ namespace Game.Ai.V2
         }
 
         // Σ over the equipment cards of each one's combat gain on a free, legal ground host
-        // (StrategicCardEvaluator.EquipmentDeltaParts — the one equipment value). A host takes one
+        // (EquipmentUpgradeValuation.EquipmentDeltaParts — the one equipment value). A host takes one
         // item; the largest gains are matched first.
         private static float EquipmentReserve(SelfSnapshot self, List<ArmyData> ownArmies,
             List<CardDefinition> equipment)
@@ -296,16 +299,16 @@ namespace Game.Ai.V2
                             && (slot == AttachmentSlot.Equipment ? u.Equipment == null : u.Mutator == null))
                             hosts.Add(eq => eq.attachmentSlot == slot
                                 && EquipmentSystem.FitsHost(eq, u.OriginatingCard, out _)
-                                    ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, u)) : 0f);
+                                    ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, u)) : 0f);
                 foreach (CardData c in self.Hand)
                     if (IsGroundHostCard(c?.Definition)
                         && (slot == AttachmentSlot.Equipment ? c.Equipment == null : c.Mutator == null))
                         hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, c.Definition, out _)
-                            ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, c)) : 0f);
+                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, c)) : 0f);
                 foreach (CardDefinition d in self.Deck)
                     if (IsGroundHostCard(d))
                         hosts.Add(eq => eq.attachmentSlot == slot && EquipmentSystem.FitsHost(eq, d, out _)
-                            ? ReserveBodies(StrategicCardEvaluator.EquipmentDeltaParts(eq, d)) : 0f);
+                            ? ReserveBodies(EquipmentUpgradeValuation.EquipmentDeltaParts(eq, d)) : 0f);
             }
 
             var pairs = new List<(float gain, int item, int host)>();
@@ -335,7 +338,7 @@ namespace Game.Ai.V2
         // consumer boundary: the reserve counts combat bodies. EquipmentDelta.Combat is U_combat divided by
         // the persistence factor, U_combat = 1.10 x dC in card score, and one reference body is
         // AiConfigV2.equipReserveReferenceBodyC of C.
-        private static float ReserveBodies(StrategicCardEvaluator.EquipmentDelta delta) =>
+        private static float ReserveBodies(EquipmentUpgradeValuation.EquipmentDelta delta) =>
             delta.Combat * AiConfigV2.equipmentUpgradePersistence / AiConfigV2.equipCombatCardScale
             / AiConfigV2.equipReserveReferenceBodyC;
 
@@ -423,7 +426,9 @@ namespace Game.Ai.V2
         internal static int SoloMoveCurrent(UnitData u) => u.TransportCarrier == null
             ? AviationRules.EffectiveMoveCurrent(u) : u.CurrentMoveAtMaximum(u.PermanentMoveMax);
 
-        internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius, AiTurnContext ctx = null)
+        // `ownIntents` - the owner's durable intents for an own army (null for a foreign one).
+        internal static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius,
+            IMissionIntentView ownIntents, AiTurnContext ctx = null)
         {
             var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
             bool allHidden = !isOwn && a.Members.Count > 0
@@ -477,6 +482,11 @@ namespace Game.Ai.V2
                     ? AviationRange.SafeUnlandedEndsRemaining(a) : 0,
                 Capacity = a.Capacity,
                 OccupiedBattleSlots = a.Members.Count,
+                RosterCapacity = isOwn ? StrikeRoster.HostRosterCapacity(a) : 0,
+                SupportCarrierSlots = isOwn ? StrikeRoster.RetainedSupportSlots(a.Members, null) : 0,
+                CommanderRosterCandidate = isOwn && a.Commander != null
+                    ? StrikeRoster.CommanderCandidate(a.Commander) : (StrikeRosterCandidate?)null,
+                CommanderCommandRating = isOwn ? a.Commander?.CommandRating ?? 0 : 0,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                 NonHeroMutatorOccupied = isOwn ? nonHero.Select(u => u.Mutator != null).ToList() : null,
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
@@ -486,7 +496,7 @@ namespace Game.Ai.V2
                 NonHeroSpareable = isOwn && a.IsGarrison
                     ? nonHero.Select(u => AiArmyRoles.CanSpareGarrisonMember(viewer, a, u)).ToList() : null,
                 NonHeroCurrentMovement = nonHero.Select(SoloMoveCurrent).ToList(),
-                EconomyRosterProtected = isOwn && MissionIntentRegistry.GetOrCreate(a.Owner).All.Any(i => i != null
+                EconomyRosterProtected = isOwn && ownIntents != null && ownIntents.All.Any(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
                     && i.PreferredMoverArmyId == a.Id),
                 HeroCurrentMovement = a.Members.Where(u => u.IsHero)

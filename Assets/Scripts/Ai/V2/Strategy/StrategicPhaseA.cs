@@ -81,9 +81,11 @@ namespace Game.Ai.V2
         // re-evaluated this call (StrategicReadmissionRunner.Run) — there, an absent
         // Economy demand means "not looked at", not "resolved", and must never be read as license
         // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
+        // `intentState` - the owner's durable intent store: Phase A transactions record their
+        // generated operators and delivery failures in it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget,
-            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
+            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments, MissionIntentState intentState,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
@@ -103,9 +105,10 @@ namespace Game.Ai.V2
             // change or base loss must not keep an obsolete actor promise alongside the live bank.
             foreach (int id in apBudget.ActorFollowupIds.ToArray())
             {
-                var primary = AiV2Util.ResolveArmy(player, id);
+                var primary = OwnWorld.Of(player).Army(id);
                 var attack = primary == null ? null
-                    : AttackBaseRefitPolicy.Resolve(player, id, primary.Hex, ctx.TurnNumber);
+                    : AttackBaseRefitPolicy.Resolve(
+                        intentState?.All, player, id, primary.Hex, ctx.TurnNumber);
                 apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
                     : AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
             }
@@ -113,7 +116,7 @@ namespace Game.Ai.V2
             radar ??= Radar.Even();
             // A new turn constructs a fresh MaterializationReservation. Restore the exact
             // pending Hero even when the current dirty-demand subset omits Development.
-            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, hand,
+            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, intentState, hand,
                 ctx.TurnNumber, result.Reservation);
             // Early admissions defer NEW zero-priority work, but never delay a durable
             // Economy build or a consumer-linked Raid reinforcement. Late residual admission
@@ -129,11 +132,11 @@ namespace Game.Ai.V2
             // BuildValue and must not compete for one slot. Within a kind, every ACTIVE Economy
             // intent is a real, independent obligation (Continuity supports several concurrent
             // BuildExtraction/FoundBase deliveries, each keyed by its own target hex — see
-            // MissionIntentKey.For and MissionContinuityLayer.BeginEconomyDelivery), and
+            // MissionIntentKey.For and EconomyContinuity.BeginEconomyDelivery), and
             // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
             // resources and idle clock.
             List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
-                .Where(i => MissionContinuityLayer.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
+                .Where(i => EconomyContinuity.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
                 // a transiently suspended build keeps its hold, but the retarget slot goes to an
                 // Active one (CanReplaceCommittedBase only switches an Active commitment)
                 .OrderByDescending(i => i.Status == IntentStatus.Active)
@@ -193,7 +196,7 @@ namespace Game.Ai.V2
                         .FirstOrDefault();
                 }
                 if (supersedingBaseSite != null
-                    && MissionContinuityLayer.TryRetargetCommittedBase(player,
+                    && EconomyContinuity.TryRetargetCommittedBase(player,
                         protectedActiveBase, supersedingBaseSite, ctx.TurnNumber))
                 {
                     // Continuity has atomically rekeyed the same intent/actor and released
@@ -437,7 +440,7 @@ namespace Game.Ai.V2
                             if (infra.GeneratedOperatorCard != null
                                 && istate.Demand.TargetHex.HasValue
                                 && istate.Demand.DevelopmentOperatorMode.HasValue)
-                                MissionIntentRegistry.GetOrCreate(player)
+                                intentState?
                                     .Development.RememberGeneratedDevelopmentOperator(
                                         infra.GeneratedOperatorCard, istate.Demand.TargetHex.Value,
                                         istate.Demand.DevelopmentOperatorMode.Value, ctx.TurnNumber);
@@ -480,11 +483,11 @@ namespace Game.Ai.V2
                             // A minted card is protected immediately. A consumed card or a
                             // newly invalid factory loses protection in this same pass.
                             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
-                                hand, ctx.TurnNumber, result.Reservation);
+                                intentState, hand, ctx.TurnNumber, result.Reservation);
                         }
                         if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
                             && infra.BuilderArmyId.HasValue)
-                            MissionContinuityLayer.BeginEconomyBuilderRecovery(
+                            EconomyContinuity.BeginEconomyBuilderRecovery(
                                 player, snap, istate.Demand, infra.BuilderArmyId.Value,
                                 ctx.TurnNumber);
                     }
@@ -649,7 +652,7 @@ namespace Game.Ai.V2
                                 result.Reservation);
                         if (availability.ConfirmedBlocked)
                         {
-                            bool suppressed = MissionIntentRegistry.GetOrCreate(player)
+                            bool suppressed = intentState != null && intentState
                                 .Economy.RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
                                     state.Demand.EconomyBuildCard, state.Demand.TargetHex);
                             AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block — "
@@ -909,8 +912,9 @@ namespace Game.Ai.V2
                 {
                     if (chosenDemand.AttackLocalRefit)
                     {
-                        var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
-                        var attack = AttackBaseRefitPolicy.Resolve(player, primary.Id, primary.Hex, ctx.TurnNumber);
+                        var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
+                        var attack = AttackBaseRefitPolicy.Resolve(
+                            intentState?.All, player, primary.Id, primary.Hex, ctx.TurnNumber);
                         apBudget.ReserveActorFollowup(primary.Id,
                             AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));
                     }
@@ -989,7 +993,7 @@ namespace Game.Ai.V2
         private static bool IsCommittedEconomyBuild(
             IReadOnlyList<MissionIntent> activeIntents, AxisDemand demand)
         {
-            return MissionContinuityLayer.HasEconomyBuildCommitment(activeIntents, demand);
+            return EconomyContinuity.HasEconomyBuildCommitment(activeIntents, demand);
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)

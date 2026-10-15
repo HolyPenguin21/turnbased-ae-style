@@ -373,7 +373,7 @@ namespace Game.EditorTests
         [Test]
         public void EconomyDelivery_FoldsRealPerTurnActivationApAtSharedRate()
         {
-            // Real DemandLayer.EstimateEconomyAssignmentAp production path, same mover physical
+            // Real EconomyBuilderSelection.EstimateEconomyAssignmentAp production path, same mover physical
             // facts (distance 6, MaxMovement 4, ActivationApCost 4, one-way / no return leg so it is
             // comparable to Recon/Raid's one-way convention). Economy's own real turn-counting rule
             // is different from Recon/Raid (see comment above the Recon test): a builder that has
@@ -389,7 +389,7 @@ namespace Game.EditorTests
             };
             const float buildApCost = 0f;
 
-            float assignmentAp = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
+            float assignmentAp = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
             float extraAp = Mathf.Max(0f, assignmentAp - buildApCost);
             Assert.That(extraAp, Is.EqualTo(8f),
                 "two un-activated outbound turns at real ActivationApCost 4 each — Economy's own real rule");
@@ -585,7 +585,7 @@ namespace Game.EditorTests
                 TargetHex = hex, EconomyResourceType = ResourceType.Materials,
                 Value = 4f, EconomySiteValue = 17f,
             };
-            MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+            MissionIntent intent = EconomyContinuity.BeginEconomyDelivery(
                 owner, demand, 9, 2);
             Assert.That(intent.Economy.IntrinsicValue, Is.EqualTo(4f));
             Assert.That(intent.Economy.BuildValue, Is.EqualTo(17f));
@@ -756,7 +756,7 @@ namespace Game.EditorTests
             intent.IntentKey = MissionIntentKey.For(intent);
 
             var proposals = AggressionMissionLayer.Propose(snap, breakdown,
-                new[] { intent }, new[] { objective });
+                new[] { intent }, new[] { objective }, MissionIntentRegistry.GetOrCreate(snap.Observer));
             Assert.That(proposals, Has.Count.EqualTo(1));
             MissionProposal result = proposals[0];
             Assert.That(result.PreferredMoverArmyId, Is.EqualTo(0));
@@ -787,7 +787,7 @@ namespace Game.EditorTests
                 NeutralOpportunities = Array.Empty<CombatOpportunity>(),
             };
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
-                new[] { intent }, Array.Empty<RaidObjective>()).Single();
+                new[] { intent }, Array.Empty<RaidObjective>(), MissionIntentRegistry.GetOrCreate(snap.Observer)).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
                 + objective.TaskScore.RaidReward
                 - TaskScoreEvaluator.Price(pinned.ActivationApCost)

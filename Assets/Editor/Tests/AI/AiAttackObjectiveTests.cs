@@ -587,7 +587,9 @@ namespace Game.EditorTests
             {
                 float idleRefresh = StrategyLayer.Evaluate(idle, new AiRadarState())
                     .Breakdown.ReconRefreshPressure;
-                MissionIntentRegistry.GetOrCreate(Us).Put(new MissionIntent
+                var store = new MissionIntentState();
+                attacking.Intents = store;
+                store.Put(new MissionIntent
                 {
                     Kind = MissionKind.Attack,
                     Status = IntentStatus.Active,

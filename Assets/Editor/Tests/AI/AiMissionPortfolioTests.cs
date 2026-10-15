@@ -385,7 +385,8 @@ namespace Game.EditorTests
             List<MissionProposal> missions = ReconMissionPlanner.Propose(f.Snap, f.Breakdown,
                 Array.Empty<MissionIntent>(), f.Recon, deferred, f.Ctx);
             missions.AddRange(AggressionMissionLayer.Propose(f.Snap, f.Breakdown,
-                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(), f.Ctx, deferred));
+                Array.Empty<MissionIntent>(), Array.Empty<RaidObjective>(),
+                MissionIntentRegistry.GetOrCreate(f.Snap.Observer), f.Ctx, deferred));
             missions.AddRange(EconomyMissionPlanner.Propose(f.Snap, f.Breakdown,
                 Array.Empty<MissionIntent>(), Array.Empty<AxisDemand>(), deferred));
             missions.AddRange(DevelopmentMissionPlanner.Propose(f.Snap, Array.Empty<MissionIntent>(),
@@ -416,14 +417,16 @@ namespace Game.EditorTests
                 List<MissionProposal> old = OldBuildMissionSet(oldF, oldTrace, out Dictionary<MissionIntentKey, string> oldDeferred);
                 MissionPortfolioResult built = MissionPortfolio.Build(newF.Snap, newF.Breakdown,
                     Array.Empty<MissionIntent>(), newF.Recon, Array.Empty<RaidObjective>(), newF.Radar,
-                    Array.Empty<AxisDemand>(), newTrace, newF.Ctx);
+                    Array.Empty<AxisDemand>(), newTrace, newF.Ctx,
+                    MissionIntentRegistry.GetOrCreate(newF.Snap.Observer));
                 Assert.That(Digest(built.Missions), Is.EqualTo(Digest(old)), "jobs=" + jobs);
                 // the counter continues across the admissions of one turn
                 Fixture oldG = MakeFixture(jobs), newG = MakeFixture(jobs);
                 List<MissionProposal> old2 = OldBuildMissionSet(oldG, oldTrace, out _);
                 MissionPortfolioResult built2 = MissionPortfolio.Build(newG.Snap, newG.Breakdown,
                     Array.Empty<MissionIntent>(), newG.Recon, Array.Empty<RaidObjective>(), newG.Radar,
-                    Array.Empty<AxisDemand>(), newTrace, newG.Ctx);
+                    Array.Empty<AxisDemand>(), newTrace, newG.Ctx,
+                    MissionIntentRegistry.GetOrCreate(newG.Snap.Observer));
                 Assert.That(Digest(built2.Missions), Is.EqualTo(Digest(old2)), "second admission, jobs=" + jobs);
                 Assert.That(built.Deferrals.Select(kv => kv.Key + "=" + kv.Value),
                     Is.EqualTo(oldDeferred.Select(kv => kv.Key + "=" + kv.Value)), "jobs=" + jobs);
@@ -440,10 +443,10 @@ namespace Game.EditorTests
             Fixture f = MakeFixture(2);
             MissionPortfolioResult first = MissionPortfolio.Build(f.Snap, f.Breakdown,
                 Array.Empty<MissionIntent>(), f.Recon, Array.Empty<RaidObjective>(), f.Radar,
-                Array.Empty<AxisDemand>(), null, f.Ctx);
+                Array.Empty<AxisDemand>(), null, f.Ctx, MissionIntentRegistry.GetOrCreate(f.Snap.Observer));
             MissionPortfolioResult second = MissionPortfolio.Build(f.Snap, f.Breakdown,
                 Array.Empty<MissionIntent>(), f.Recon, Array.Empty<RaidObjective>(), f.Radar,
-                Array.Empty<AxisDemand>(), null, f.Ctx);
+                Array.Empty<AxisDemand>(), null, f.Ctx, MissionIntentRegistry.GetOrCreate(f.Snap.Observer));
             Assert.That(first.Missions, Is.Not.Empty);
             Assert.That(second.Missions.Intersect(first.Missions), Is.Empty,
                 "proposals and their attempt ids are never carried between admissions");
@@ -455,7 +458,7 @@ namespace Game.EditorTests
             Fixture f = MakeFixture(3);
             MissionPortfolioResult built = MissionPortfolio.Build(f.Snap, f.Breakdown,
                 Array.Empty<MissionIntent>(), f.Recon, Array.Empty<RaidObjective>(), f.Radar,
-                Array.Empty<AxisDemand>(), null, f.Ctx);
+                Array.Empty<AxisDemand>(), null, f.Ctx, MissionIntentRegistry.GetOrCreate(f.Snap.Observer));
             Assert.That(built.Missions, Is.Not.Empty);
             foreach (MissionProposal m in built.Missions)
             {

@@ -112,7 +112,7 @@ namespace Game.Ai.V2
             int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
 
             // 2. One shared scan.
-            WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx);
+            WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx, turnSession.PersistentState);
             // The first Analyze (desires, Aggression facts) is ~50 ms of Monte Carlo: fill the exact
             // estimate cache across frames first, so Analyze below only reads it.
             yield return CombatOpportunityAnalyzer.WarmEstimates(scanned);
@@ -200,7 +200,7 @@ namespace Game.Ai.V2
             else
             {
                 phaseA = StrategicManager.FulfillDemands(frame.Snapshot, player, root, hand,
-                    ctx, apBudget, frame.Demands, frame.Commitments, frame.Intents, frame.Recon,
+                    ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, frame.Intents, frame.Recon,
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
@@ -234,7 +234,7 @@ namespace Game.Ai.V2
                 if (formation != null)
                 {
                     bool formedWing = false;
-                    yield return AviationRebasePlanner.Execute(player, root, ctx, formation,
+                    yield return AviationRebaseExecutor.Execute(player, root, ctx, formation,
                         changed => formedWing |= changed);
                     if (formedWing)
                     {
@@ -297,7 +297,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.StepObservationStamp beforeRecall =
                         WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     bool recallChanged = false;
-                    yield return AviationRebasePlanner.ExecuteContinuation(
+                    yield return AviationRebaseExecutor.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
                     frame.ObserveSettled(beforeRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,

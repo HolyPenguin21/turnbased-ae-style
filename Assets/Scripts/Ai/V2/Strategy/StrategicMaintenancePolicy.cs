@@ -55,9 +55,9 @@ namespace Game.Ai.V2
             out bool stateChanged, out bool progressed)
         {
             bool ok = _repairUnit != null
-                ? UnitRepair.TryRepair(_repairUnit, _repairHex, root, out _)
+                ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
-                    && StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                    && InfrastructureBuildExecutor.UpgradeBaseCapacity(
                         player, root, ctx, _upgradeBuilding, _upgradeTier);
             stateChanged = ok;
             progressed = ok;
@@ -174,7 +174,7 @@ namespace Game.Ai.V2
         private static IEnumerable<(UnitData Unit, HexCoord Hex)> FindRepairCandidates(
             PlayerSetupData player)
         {
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
                 if (army == null || army.IsPrison || AviationRules.IsAirfield(army)
                     || !UnitRepair.CanRepairAt(army.Hex, player))
@@ -218,14 +218,14 @@ namespace Game.Ai.V2
             // Research/Production facilities unlock only through the SAME admitted CapacityUnlock step
             // Development itself would act on (current-step window/bank/cost), never a looser predicate:
             // the opportunity IS the candidate, with the evaluator own fully priced score.
-            var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+            var intents = snap.AllIntents.ToList();
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.Enumerate(
                     snap, player, root, hand, ctx, intents)
                 .Where(o => o.PreparationKind == DevelopmentPreparationKind.CapacityUnlock
                     && o.PreparationCapacityTier != null && o.PreparationFacilityCard != null
                     && o.PreparationCardScore.HasValue))
             {
-                BuildingData building = BuildingRegistry.FindAt(op.FacilityHex);
+                BuildingData building = OwnWorld.Of(player).BuildingAt(op.FacilityHex);
                 BaseUpgradeTier planned = op.PreparationCapacityTier;
                 if (building == null || building.Owner != player || !building.IsBase)
                     continue;
@@ -296,8 +296,8 @@ namespace Game.Ai.V2
         // Phase-B maintenance candidate above and the Economy global-source placement
         // (InfrastructureFulfillment), so both buy the same upgrade for the same card.
         private static List<BuildingData> TieredOwnBases(PlayerSetupData player) =>
-            BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase && b.HasTieredUnlock)
+            OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase && b.HasTieredUnlock)
                 .ToList();
 
         private static IEnumerable<BuildingData> UnlockableBasesInOrder(IEnumerable<BuildingData> bases) =>
@@ -373,28 +373,6 @@ namespace Game.Ai.V2
             return sawCapacityBlock;
         }
 
-        internal static bool ExecuteCapacityUpgrade(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            BuildingData b, BaseUpgradeTier tier)
-        {
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            activity.InfrastructureAttempts++;
-            int apBefore = root.ActionPoints;
-            // The payment and the mutation belong to the gameplay primitive (the human UI uses it too);
-            // the planned tier must still be the Base's next one, so a stale plan buys nothing.
-            BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;
-            if (b == null || tier == null
-                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _)
-                || !ReferenceEquals(next, tier))
-                return false;
-            if (!InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
-                return false;
-
-            activity.InfrastructureBuilt++;
-            AiDebugLog.Write($"[AI][V2] maintenance capacity — upgraded {b.Name} "
-                + $"@({b.Hex.Q},{b.Hex.R}) to level {b.Level}; facility slots {b.UnlockedFacilitySlots}/{b.TotalFacilitySlots}; "
-                + $"ap {apBefore}->{root.ActionPoints}");
-            return true;
-        }
     }
 }
 

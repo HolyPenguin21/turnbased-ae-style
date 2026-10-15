@@ -2,12 +2,13 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using Game.Players;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  ACTIVE DEFENCE CONTINUITY — a mechanical partial of MissionContinuityLayer, beside
-    //  MissionContinuityLayer.Attack.cs / .Raid.cs: the ActiveDefence lane's own lifecycle answers.
+    //  ACTIVE DEFENCE CONTINUITY — the ActiveDefence line's own owner, beside AttackContinuity /
+    //  RaidContinuity; MissionContinuityLayer composes it by mission kind.
     //  Two independent one-actor intents and nothing else:
     //    Intercept — kept while its honest objective and its capable actor both exist; a victory,
     //                a vanished threat or a lost / no longer capable actor ends it, and the next
@@ -15,7 +16,7 @@ namespace Game.Ai.V2
     //    Return    — a necessary reinforcement of this own asset, or a safe withdrawal:
     //                re-evaluated against the corresponding current need before every step.
     // ===========================================================================================
-    internal static partial class MissionContinuityLayer
+    internal static class ActiveDefenceContinuity
     {
         internal static bool IsActiveDefenceStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm)
         {
@@ -27,12 +28,12 @@ namespace Game.Ai.V2
                     && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
             }
             // Preserve the observation-owned fog-of-war seam; no global enemy sweep.
-            return ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(player,
+            return ObjectiveLiveStatus.ActiveDefenceSatisfied(player,
                 pm.ActiveDefenceTarget.EnemyArmyId);
         }
 
         // The ActiveDefence lane's own lifecycle answer for ResolveActive (the counterpart of
-        // ResolveAttackIntent / ResolveRaidIntent). False retires the intent. A Return whose home
+        // AttackContinuity.ResolveAttackIntent / RaidContinuity.ResolveRaidIntent). False retires the intent. A Return whose home
         // had to be re-picked is re-keyed through `rekeys` (its identity is mover + destination).
         private static bool ResolveActiveDefenceIntent(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)
@@ -258,7 +259,7 @@ namespace Game.Ai.V2
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);
-            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
+            GroundCombatContinuity.RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh ActiveDefence admitted");
             if (payload.Phase == ActiveDefencePhase.Return)
                 // The army withdraws: an intercept it still held is over.
@@ -270,7 +271,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
                 + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
-        private static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCreateActiveDefenceStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (!(o.DefenceFacts().HasActiveDefencePayload && o.MadeProgress)) return false;
@@ -278,7 +279,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static void ResolveDefenceOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        internal static void ResolveDefenceOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -292,7 +293,7 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionStepResult o)
+        internal static void CaptureActiveDefenceProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
             o.DefenceFactsForWrite().HasActiveDefencePayload = true;
             o.DefenceFactsForWrite().ActiveDefenceTarget = pm.ActiveDefenceTarget;

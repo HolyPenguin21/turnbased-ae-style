@@ -34,17 +34,22 @@ namespace Game.EditorTests
             ["Diagnostics/MaterializationDiagnostics.cs"] = 3,
             ["Diagnostics/TurnResourceTelemetry.cs"] = 15,
             ["Evaluation/ActionPrice.cs"] = 1,
-            ["Evaluation/Cards/NonCombatCardPlayer.cs"] = 5,
             ["Evaluation/Cards/StrategicCardEvaluator.cs"] = 1,
             ["Evaluation/Effects/StrategicEffectRegistry.cs"] = 2,
             ["Execution/CardPlayExecutor.cs"] = 3,
+            // Moved, not new (2026-10-15): the executions that left Evaluation / Strategy with
+            // their physical before/after reads (NonCombatCardPlayer 5 -> 0;
+            // InfrastructureFulfillment 15 -> 13 and StrategicMaintenancePolicy 3 -> 0 -> 4 here).
+            ["Execution/NonCombatPlayExecutor.cs"] = 5,
+            ["Execution/InfrastructureBuildExecutor.cs"] = 4,
             // Physical aggregate preflight in the canonical executor. Strategic admission
             // checks the same base + immediate defender against owner-aware spendability first.
             ["Execution/BuildingPlayExecutor.cs"] = 2,
             ["Execution/ReconAirExecutor.cs"] = 34,
             ["Execution/ReconGroundExecutor.cs"] = 2,
-            // +1 (T01): the preparation step measures its physical AP delta like every lane.
-            ["Execution/ActiveDefenceExecutor.cs"] = 1,
+            // +1 (T01): the preparation step measures its physical AP delta like every lane;
+            // +1: the same physical after-read in that step's log line.
+            ["Execution/ActiveDefenceExecutor.cs"] = 2,
             ["Execution/RaidExecutor.cs"] = 1,
             ["Execution/TaskExecutor.cs"] = 10,
             ["Housekeeping/HousekeepingManager.cs"] = 6,
@@ -62,7 +67,10 @@ namespace Game.EditorTests
             ["Orchestration/MandatoryAviationStep.cs"] = 1,
             // T01: the preparation step's physical turn-AP-left read, as every provisioning lane.
             ["Provisioning/AttackProvisioner.cs"] = 1,
-            ["Provisioning/GroundCombatAssaultTransaction.cs"] = 3,
+            ["Provisioning/GroundCombatAssaultTransaction.cs"] = 1,
+            // Moved, not new: the walk-home and reinforcement leg checks' turn-AP-left reads
+            // (were in GroundCombatAssaultTransaction.cs, 3 -> 1).
+            ["Provisioning/GroundCombatLegChecks.cs"] = 2,
             ["Provisioning/ProvisioningManager.Air.cs"] = 1,
             ["Provisioning/ProvisioningManager.Development.cs"] = 1,
             ["Provisioning/ProvisioningManager.Economy.cs"] = 4,
@@ -80,14 +88,13 @@ namespace Game.EditorTests
             ["State/StrategicSpendability.cs"] = 3,
             ["State/TurnResourceBook.cs"] = 8,
             ["Strategy/Demand/DevelopmentUpgradeFulfillment.cs"] = 3,
-            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 15,
+            ["Strategy/Demand/InfrastructureFulfillment.cs"] = 13,
             // Moved, not new: the one read of the Economy reservation transitions
             // (was in InfrastructureFulfillment, 16 -> 15).
             ["Strategy/Demand/EconomyReservationLifecycle.cs"] = 1,
             ["Strategy/PhaseA/MaterializationPortfolioSolver.cs"] = 1,
             ["Strategy/PhaseB/HoldEvaluator.cs"] = 1,
             ["Strategy/PhaseB/TempoCandidateProvider.cs"] = 1,
-            ["Strategy/StrategicMaintenancePolicy.cs"] = 3,
             ["Strategy/StrategicPhaseA.cs"] = 4,
             ["Strategy/StrategicPhaseB.cs"] = 16,
         };

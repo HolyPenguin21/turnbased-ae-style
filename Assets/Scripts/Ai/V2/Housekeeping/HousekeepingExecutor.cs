@@ -221,7 +221,7 @@ namespace Game.Ai.V2
             // go to a free container (the planner chose it as an excess hero).
             bool heroRelease = giver != null && giver.MayReleaseExcessHeroes && inboundOnly
                 && released != null && released.IsHero && released != a.Commander && receiver == null
-                && (!StrategicEffectRegistry.HasArmySupportEffect(released.Abilities, released.MoveMax)
+                && (!StrategicEffectRegistry.IsArmySupportCarrier(released)
                     || LocalOperatorRelease.IsSoleOperator(player, a.Hex, released));
             // 2026-10-01 — and a body its frozen target roster does not contain (the planner chose
             // it for a missing position's source; ReorgViability.PreparationRosterWaste).

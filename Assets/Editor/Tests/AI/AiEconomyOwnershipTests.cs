@@ -58,8 +58,8 @@ namespace Game.EditorTests
             TurnNumber = 1, Self = new SelfSnapshot { Armies = armies, BaseHexes = new[] { Home } },
             Known = new KnownSnapshot(), Economy = new EconomyStanding(),
         };
-        private static DemandLayer.EconomyBuilderChoice Assess(WorldSnapshot s, ArmySnapshot a,
-            EconomyBuilderRouteSnapshot? route = null) => DemandLayer.AssessEconomyArmy(
+        private static EconomyBuilderSelection.EconomyBuilderChoice Assess(WorldSnapshot s, ArmySnapshot a,
+            EconomyBuilderRouteSnapshot? route = null) => EconomyBuilderSelection.AssessEconomyArmy(
                 s, Site, route ?? Route(a), a, 2, false);
 
         [TearDown]
@@ -84,12 +84,12 @@ namespace Game.EditorTests
             var first = Assess(s, a, route);
             float cost = first.TotalAssignmentApCost;
             first.TotalAssignmentApCost = -100;
-            first.Suitability = DemandLayer.EconomyArmySuitability.Ineligible;
+            first.Suitability = EconomyBuilderSelection.EconomyArmySuitability.Ineligible;
             first.Route.TravelCost = 999;
             first.AddedIndices = new[] { 1 };
             var second = Assess(s, a, route);
             Assert.That(second.TotalAssignmentApCost, Is.EqualTo(cost));
-            Assert.That(second.Suitability, Is.Not.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(second.Suitability, Is.Not.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
             Assert.That(second.Route.TravelCost, Is.EqualTo(route.TravelCost));
             Assert.That(second.AddedIndices, Is.EqualTo(new[] { 0 }));
             Assert.That(second.Route.PathHexes, Is.Not.SameAs(route.PathHexes));
@@ -99,10 +99,10 @@ namespace Game.EditorTests
         {
             var a = Builder(); var s = Snapshot(a, Garrison()); var route = Route(a);
             route.ReturnTravelCost = 8;
-            float ordinary = DemandLayer.AssessEconomyArmy(s, Site, route, a, 2, false).TotalAssignmentApCost;
-            Assert.That(DemandLayer.AssessEconomyArmy(s, Site, route, a, 5, false).TotalAssignmentApCost,
+            float ordinary = EconomyBuilderSelection.AssessEconomyArmy(s, Site, route, a, 2, false).TotalAssignmentApCost;
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(s, Site, route, a, 5, false).TotalAssignmentApCost,
                 Is.EqualTo(ordinary + 3));
-            Assert.That(DemandLayer.AssessEconomyArmy(s, Site, route, a, 2, true).TotalAssignmentApCost,
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(s, Site, route, a, 2, true).TotalAssignmentApCost,
                 Is.GreaterThan(ordinary));
         }
         [Test]
@@ -137,7 +137,7 @@ namespace Game.EditorTests
         {
             var a = Builder(); a.Capacity = 1;
             Assert.That(Assess(Snapshot(a, Garrison()), a).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
         }
         [Test]
         public void Escort_IncompleteThreatWitnessDoesNotInventSafety()
@@ -146,7 +146,7 @@ namespace Game.EditorTests
             route.RouteThreats = new[] { new AiMapMemory.KnownEnemySighting(Site,
                 new PlayerSetupData(), "unknown", 50, 1, 1, defenders: null) };
             Assert.That(Assess(Snapshot(a, Garrison()), a, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
         }
         [Test]
         public void Lightening_HonorsGarrisonCapacityAndPinsRetainedRoster()
@@ -164,7 +164,7 @@ namespace Game.EditorTests
         public void MissingRoute_ShortHexDistanceCannotProduceBuilder()
         {
             var a = Builder(1);
-            Assert.That(DemandLayer.SelectEconomyBuilder(Snapshot(a), new HexCoord(1, 0),
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(Snapshot(a), new HexCoord(1, 0),
                 null, null, null, 100, 1, false), Is.Null);
         }
         [Test]
@@ -265,7 +265,7 @@ namespace Game.EditorTests
             var a = Builder(); a.IsGarrison = true;
             var route = Route(a, 9); route.RequiresGarrisonExtraction = true;
             route.ExtractionContainerAvailable = true; route.ExtractionApCost = 2;
-            var choice = DemandLayer.AssessEconomyArmy(Snapshot(a), Site, route, a, 2f, includeReturn: true);
+            var choice = EconomyBuilderSelection.AssessEconomyArmy(Snapshot(a), Site, route, a, 2f, includeReturn: true);
             Assert.That(choice.PreparationApCost, Is.EqualTo(2));
             Assert.That(choice.Route.ActivationApCost, Is.EqualTo(1));
             Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(7));
@@ -278,13 +278,13 @@ namespace Game.EditorTests
             route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
             WorldSnapshot snap = Snapshot(hero);
             Assert.That(Assess(snap, hero, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
-            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, hero, 2, true).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(snap, Site, route, hero, 2, true).Suitability,
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
             // Mission leg pricing excludes the return independently of the building kind.
-            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, hero, 2, false,
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(snap, Site, route, hero, 2, false,
                 requiresFoundingGarrison: false).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
         }
 
         [Test]
@@ -293,15 +293,15 @@ namespace Game.EditorTests
             var solo = Builder(); var route = Route(solo);
             route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
             var snap = Snapshot(solo);
-            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(snap, Site, route, solo, 2, false,
                 requiresFoundingGarrison: false).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
-            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(snap, Site, route, solo, 2, false,
                 requiresFoundingGarrison: true).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
-            Assert.That(DemandLayer.AssessEconomyArmy(snap, Site, route, solo, 2, false,
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
+            Assert.That(EconomyBuilderSelection.AssessEconomyArmy(snap, Site, route, solo, 2, false,
                 requiresFoundingGarrison: false).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
         }
 
         [Test]
@@ -312,15 +312,15 @@ namespace Game.EditorTests
             route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
             var snap = Snapshot(builder);
             Assert.That(Assess(snap, builder, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready), "composition alone is valid");
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready), "composition alone is valid");
             var attack = new MissionIntent {
                 Kind = MissionKind.Attack, Status = IntentStatus.Active,
                 Funding = CommitmentTier.Hard, PreferredMoverArmyId = builder.ArmyId,
             };
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, Site, new[] { route },
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, Site, new[] { route },
                 new[] { attack }, new ActorCommitments(), 50f, 2f, false), Is.Null,
                 "on-site completion must not take a protected Attack mover");
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, Site, new[] { route },
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, Site, new[] { route },
                 Array.Empty<MissionIntent>(), new ActorCommitments(), 50f, 2f, false), Is.Not.Null);
         }
 
@@ -331,12 +331,12 @@ namespace Game.EditorTests
             route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
             WorldSnapshot before = Snapshot(escorted);
             Assert.That(Assess(before, escorted, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
             var solo = Builder(); WorldSnapshot after = Snapshot(solo);
             Assert.That(Assess(after, solo, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
             Assert.That(Assess(before, escorted, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready), "old facts retain their own decision");
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready), "old facts retain their own decision");
         }
 
         [Test]
@@ -348,12 +348,12 @@ namespace Game.EditorTests
             route.ExtractionContainerAvailable = true; route.ExtractedHeroCapacity = 4;
             route.RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>();
             var ready = Assess(Snapshot(garrison), garrison, route);
-            Assert.That(ready.Suitability, Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready));
+            Assert.That(ready.Suitability, Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready));
             Assert.That(ready.AddedIndices, Is.EqualTo(new[] { 0 }));
             Assert.That(ready.ProjectedActivationApCost, Is.EqualTo(route.ActivationApCost + 1));
             garrison.NonHeroSpareable = new[] { false };
             Assert.That(Assess(Snapshot(garrison), garrison, route).Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible), "original garrison keeps its floor");
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible), "original garrison keeps its floor");
         }
         private static MissionIntent ReturnIntent(ArmySnapshot a, EconomyTaskKind kind)
         {
@@ -371,9 +371,9 @@ namespace Game.EditorTests
             var s = Snapshot(a); s.Self.BaseHexes = new[] { nearHexButFarRoute, farHexButShortRoute };
             a.EconomyHomeRouteCosts = new Dictionary<HexCoord, int>
                 { [nearHexButFarRoute] = 12, [farHexButShortRoute] = 6 };
-            Assert.That(MissionContinuityLayer.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
+            Assert.That(EconomyContinuity.SelectEconomyHome(s, Site, a.EconomyHomeRouteCosts),
                 Is.EqualTo(farHexButShortRoute));
-            Assert.That(MissionContinuityLayer.SelectEconomyRecoveryTarget(s, p, a),
+            Assert.That(EconomyContinuity.SelectEconomyRecoveryTarget(s, p, a),
                 Is.EqualTo(farHexButShortRoute));
         }
         [Test]
@@ -401,10 +401,10 @@ namespace Game.EditorTests
                     TargetHex = Site, ResourceType = ResourceType.Energy, BuildCard = card } };
             MethodInfo phaseA = typeof(StrategicPhaseA).GetMethod("IsCommittedEconomyBuild",
                 BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.That(MissionContinuityLayer.HasEconomyBuildCommitment(new[] { i }, d), Is.False);
+            Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { i }, d), Is.False);
             Assert.That(phaseA.Invoke(null, new object[] { new[] { i }, d }), Is.EqualTo(false));
             i.Economy.ResourceType = ResourceType.Materials;
-            Assert.That(MissionContinuityLayer.HasEconomyBuildCommitment(new[] { i }, d), Is.True);
+            Assert.That(EconomyContinuity.HasEconomyBuildCommitment(new[] { i }, d), Is.True);
             Assert.That(phaseA.Invoke(null, new object[] { new[] { i }, d }), Is.EqualTo(true));
         }
         [Test]
@@ -452,8 +452,8 @@ namespace Game.EditorTests
                     [new HexCoord(1, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 2 },
                 });
                 var root = rootObject.AddComponent<PlayerRoot>(); root.ActionPoints = 10;
-                var a = WorldAnalysis.ToArmySnapshot(builder, p, true, 0);
-                var g = WorldAnalysis.ToArmySnapshot(garrison, p, true, 0);
+                var a = WorldAnalysis.ToArmySnapshot(builder, p, true, 0, MissionIntentRegistry.GetOrCreate(p));
+                var g = WorldAnalysis.ToArmySnapshot(garrison, p, true, 0, MissionIntentRegistry.GetOrCreate(p));
                 var s = Snapshot(a, g);
                 var target = new EconomyMissionTarget
                 {
@@ -503,7 +503,8 @@ namespace Game.EditorTests
             g.NonHeroActivationApCosts = Array.Empty<int>(); g.MemberCount = g.OccupiedBattleSlots = 0;
             var choice = Assess(Snapshot(a, g), a);
             Assert.That(ProvisioningManager.MaterializeEconomyRoster(p, builder, choice,
-                out ArmyData recipient, out List<UnitData> unload, out List<UnitData> add), Is.True);
+                out ArmyData recipient, out List<UnitData> unload, out List<UnitData> add,
+                MissionIntentRegistry.Peek(p)), Is.True);
             Assert.That(unload, Is.EqualTo(new[] { dear })); Assert.That(add, Is.Empty);
             Assert.That(ProvisioningManager.ApplyEconomyArmyLightening(builder, recipient, unload, add,
                 new AiTurnContext()), Is.EqualTo(1));
@@ -518,7 +519,7 @@ namespace Game.EditorTests
             builder.Members.AddRange(new[] { Unit(true, 1), Unit(false, 1) });
             var a = Builder(1); a.ArmyId = builder.Id; a.NonHeroRuntimeIds = new[] { -999 };
             Assert.That(ProvisioningManager.MaterializeEconomyRoster(p, builder, Assess(Snapshot(a), a),
-                out _, out _, out _), Is.False);
+                out _, out _, out _, MissionIntentRegistry.Peek(p)), Is.False);
         }
     }
 }

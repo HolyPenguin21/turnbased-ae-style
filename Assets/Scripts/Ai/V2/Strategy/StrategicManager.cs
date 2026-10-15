@@ -23,14 +23,14 @@ namespace Game.Ai.V2
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget,
-            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
+            IReadOnlyList<AxisDemand> demands, ActorCommitments commitments, MissionIntentState intentState,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
             bool economyAxisAuthoritative = true, Radar radar = null,
             bool deferFreshZeroRadar = false)
             => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, apBudget, demands, commitments,
-                activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar,
+                intentState, activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar,
                 deferFreshZeroRadar);
 
         public static IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
@@ -46,16 +46,16 @@ namespace Game.Ai.V2
             AiTurnContext ctx)
             => StrategicTurnLifecycle.ObserveInitialForce(snapshot, player, ctx);
 
-        internal static void AfterMissionSettlement(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
-            => StrategicTurnLifecycle.AfterMissionSettlement(player, root, hand, ctx);
+        internal static void AfterMissionSettlement(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.AfterMissionSettlement(player, intents, root, hand, ctx);
 
-        internal static void BeforeFirstTempo(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
-            => StrategicTurnLifecycle.BeforeFirstTempo(player, root, hand, ctx);
+        internal static void BeforeFirstTempo(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.BeforeFirstTempo(player, intents, root, hand, ctx);
 
-        internal static void BeforeTempoSpend(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
-            => StrategicTurnLifecycle.BeforeTempoSpend(player, root, hand, ctx);
+        internal static void BeforeTempoSpend(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            => StrategicTurnLifecycle.BeforeTempoSpend(player, intents, root, hand, ctx);
     }
 }

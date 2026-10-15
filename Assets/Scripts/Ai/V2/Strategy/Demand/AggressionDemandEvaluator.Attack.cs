@@ -187,7 +187,7 @@ namespace Game.Ai.V2
             if (host.MemberCount > 0)
             {
                 Dictionary<int, float> donors = GroundCombatDonorPolicy.BorrowableDonorValues(
-                    snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+                    snap.Observer == null ? null : snap.Intents?.All);
                 GroundCombatGatherPlan free = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                     hexBonus, ai.Target.Hex, claimed, GroundCombatAdmissionPolicy.AttackCoverageGate,
                     hostId, donors, requireMovementNow: false, minimumArmyPower: required,
@@ -210,7 +210,7 @@ namespace Game.Ai.V2
                     return null;
                 }
             }
-            ArmyData live = snap.Observer == null ? null : AiV2Util.ResolveArmy(snap.Observer, hostId);
+            ArmyData live = snap.Observer == null ? null : OwnWorld.Of(snap.Observer).Army(hostId);
             if (live != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(snap, live, claimed,
                     opposition, hexBonus).Feasible)
             {

@@ -200,7 +200,7 @@ namespace Game.EditorTests
                 Generation = new GenerationStep { CardDef = _card, Hero = _hero, FacilityHex = Site,
                     Mode = ResearchProductionMode.Research, SuccessChance = 0 },
             };
-            var result = NonCombatCardPlayer.Execute(play, null, _player, _root,
+            var result = NonCombatPlayExecutor.Execute(play, null, _player, _root,
                 new AiHandData(null, default, 0),
                 new AiTurnContext { TurnNumber = 8, ResearchProductionCatalog = _catalog });
             Assert.That(result.GenerationAttempted, Is.False);

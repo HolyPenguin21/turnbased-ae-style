@@ -43,22 +43,25 @@ namespace Game.Ai.V2
     //  partial file (Observation / Self / Development / Knowledge / Economy / Threat).
     public static partial class WorldAnalysis
     {
-        public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        // `intents` - the observer's durable intent store, bound read-only to the snapshot.
+        internal static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            IMissionIntentView intents)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Analysis.Scan");
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
             var snap = new WorldSnapshot
             {
                 Observer = player,
+                Intents = intents,
                 TurnNumber = ctx.TurnNumber,
                 KnowledgeVersion = AiMapMemory.KnowledgeVersionFor(player),
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
-                snap.Self = BuildSelf(player, root, hand, ctx);
+                snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
@@ -75,6 +78,10 @@ namespace Game.Ai.V2
             return snap;
         }
 
+        // A rescan for the same observer keeps the store the previous snapshot was bound to.
+        private static IMissionIntentView IntentsCarriedFrom(WorldSnapshot prev, PlayerSetupData player) =>
+            prev != null && object.ReferenceEquals(prev.Observer, player) ? prev.Intents : null;
+
         public static WorldSnapshot RefreshOperationalState(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
@@ -83,7 +90,7 @@ namespace Game.Ai.V2
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
                 || ctx == null || prev.TurnNumber != ctx.TurnNumber
                 || prev.Map != ctx.Map || prev.MapPathingVersion != (ctx.Map != null ? ctx.Map.PathingVersion : -1))
-                return Scan(player, root, hand, ctx);
+                return Scan(player, root, hand, ctx, IntentsCarriedFrom(prev, player));
             // Some callers refresh only operational facts between Phase-B actions. A play may
             // also reveal a site or defender: never pair fresh Self with a stale Known cache.
             if (prev.KnowledgeVersion != AiMapMemory.KnowledgeVersionFor(player))
@@ -92,6 +99,7 @@ namespace Game.Ai.V2
             var snap = new WorldSnapshot
             {
                 Observer = player,
+                Intents = prev.Intents,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = prev.KnowledgeVersion,
                 Map = prev.Map,
@@ -100,9 +108,9 @@ namespace Game.Ai.V2
                 MapKnowledge = prev.MapKnowledge,
             };
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
-                snap.Self = BuildSelf(player, root, hand, ctx);
+                snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
             // Operational combat facts must follow the registries even when honest knowledge did
             // not change (HP loss, reinforcement, destruction). This is materially cheaper than
             // rebuilding MapKnowledge and keeps the sanctioned TrueWorld boundary explicit.
@@ -123,7 +131,7 @@ namespace Game.Ai.V2
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
                 || ctx == null || prev.TurnNumber != ctx.TurnNumber
                 || prev.Map != ctx.Map || prev.MapPathingVersion != (ctx.Map != null ? ctx.Map.PathingVersion : -1))
-                return Scan(player, root, hand, ctx);
+                return Scan(player, root, hand, ctx, IntentsCarriedFrom(prev, player));
 
             // Stamp before choosing the identity: observation metadata can advance knowledge.
             AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
@@ -134,15 +142,16 @@ namespace Game.Ai.V2
             var snap = new WorldSnapshot
             {
                 Observer = player,
+                Intents = prev.Intents,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = knowledgeVersion,
                 Map = ctx.Map,
                 MapPathingVersion = ctx.Map != null ? ctx.Map.PathingVersion : -1,
             };
             using (new Game.Core.ProfileScope("AI/Analysis.BuildSelf"))
-                snap.Self = BuildSelf(player, root, hand, ctx);
+                snap.Self = BuildSelf(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildDevelopment"))
-                snap.Development = BuildDevelopment(player, root, hand, ctx);
+                snap.Development = BuildDevelopment(player, root, hand, ctx, snap.Intents);
             using (new Game.Core.ProfileScope("AI/Analysis.BuildKnown"))
                 snap.Known = BuildKnown(player, snap.Self.BaseHexes);
             AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,

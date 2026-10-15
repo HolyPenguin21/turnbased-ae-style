@@ -32,9 +32,9 @@ namespace Game.EditorTests
         public void BlockA_TwoIndependentBuilds_DoNotSupersedeEachOther()
         {
             var player = new PlayerSetupData();
-            MissionIntent first = MissionContinuityLayer.BeginEconomyDelivery(player,
+            MissionIntent first = EconomyContinuity.BeginEconomyDelivery(player,
                 ExtractionDemand(new HexCoord(8, -2), ResourceType.Materials), 15, 5);
-            MissionIntent second = MissionContinuityLayer.BeginEconomyDelivery(player,
+            MissionIntent second = EconomyContinuity.BeginEconomyDelivery(player,
                 ExtractionDemand(new HexCoord(4, 5), ResourceType.Energy), 17, 5);
 
             var all = MissionIntentRegistry.GetOrCreate(player).All
@@ -52,12 +52,12 @@ namespace Game.EditorTests
         public void BlockA_SameActorReassignment_SupersedesOnlyItsOwnAssignment()
         {
             var player = new PlayerSetupData();
-            MissionContinuityLayer.BeginEconomyDelivery(player,
+            EconomyContinuity.BeginEconomyDelivery(player,
                 ExtractionDemand(new HexCoord(8, -2), ResourceType.Materials), 15, 5);
-            MissionContinuityLayer.BeginEconomyDelivery(player,
+            EconomyContinuity.BeginEconomyDelivery(player,
                 ExtractionDemand(new HexCoord(4, 5), ResourceType.Energy), 17, 5);
             // #15 is re-tasked to a third site: its own old obligation goes, #17's stays.
-            MissionContinuityLayer.BeginEconomyDelivery(player,
+            EconomyContinuity.BeginEconomyDelivery(player,
                 ExtractionDemand(new HexCoord(1, 1), ResourceType.Human), 15, 6);
 
             var all = MissionIntentRegistry.GetOrCreate(player).All
@@ -75,13 +75,13 @@ namespace Game.EditorTests
         {
             var player = new PlayerSetupData();
             var shared = new CardData(new CardDefinition { cardType = CardType.Base });
-            MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+            EconomyContinuity.BeginEconomyDelivery(player, new AxisDemand
             {
                 RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.EconomicExpansionBase,
                 TargetHex = new HexCoord(8, -2), EconomyBuildCard = shared,
             }, 15, 5);
-            MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+            EconomyContinuity.BeginEconomyDelivery(player, new AxisDemand
             {
                 RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.EconomicExpansionBase,
@@ -98,12 +98,12 @@ namespace Game.EditorTests
         {
             var player = new PlayerSetupData();
             AxisDemand demand = ExtractionDemand(new HexCoord(8, -2), ResourceType.Materials);
-            MissionIntent created = MissionContinuityLayer.BeginEconomyDelivery(player, demand, 15, 5);
+            MissionIntent created = EconomyContinuity.BeginEconomyDelivery(player, demand, 15, 5);
             created.StepsMovedTotal = 3;
             created.CumulativeApSpent = 2f;
 
             for (int i = 0; i < 10; ++i)
-                MissionContinuityLayer.BeginEconomyDelivery(player, demand, 15, 5 + i);
+                EconomyContinuity.BeginEconomyDelivery(player, demand, 15, 5 + i);
 
             var all = MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Kind == MissionKind.Economy).ToList();

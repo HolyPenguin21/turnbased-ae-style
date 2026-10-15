@@ -212,15 +212,16 @@ namespace Game.EditorTests
             ArmyData host = Army(Staging, old, keep, extra, Body("Fighter", 20));
             var returned = new[] { old, extra };
             Assert.That(GroundCombatAssemblyPlanner.CanApplyHeroReturn(host, home, keep, returned), Is.True);
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            var baseline = GroundCombatAssemblyTransaction.Capture(Us, host, applied);
             host.TryReorderCommander(keep, out _);
             Assert.That(ArmyActions.TransferMembersAtomic(returned, host, home, null, out _), Is.True);
-            var applied = new List<GroundCombatAssemblyTransfer>();
             Assert.That(GroundCombatAssemblyTransaction.Rollback(Us, host, applied,
-                new AiTurnContext(), "raid", home, returned, old), Is.True);
+                new AiTurnContext(), "raid", baseline, home, returned), Is.True);
             Assert.That(host.Commander, Is.SameAs(old));
             Assert.That(host.Members, Does.Contain(extra));
             Assert.That(home.Members.Count, Is.EqualTo(2));
-            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, returned, old), Is.Zero);
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline, returned), Is.Zero);
         }
 
         [Test]
@@ -251,12 +252,12 @@ namespace Game.EditorTests
             if (ability != null) old.Abilities.Add(ability);
             ArmyData host = Army(Staging, old, Body("Fighter", 5));
             ArmyData support = Army(Staging, lead, Body("Fresh", 20), Body("Guard", 2));
-            CommandHandoverPlan plan = GroundCombatReinforcement.CommandHandover(
+            HandoffPlan plan = GroundCombatReinforcement.CommandHandover(
                 host, support, WeakOpposition(), 0f, null);
             Assert.That(plan, Is.Not.Null);
             var final = host.Members.Except(plan.Displaced).Concat(plan.Incoming).ToList();
             Assert.That(final.Contains(old), Is.EqualTo(keepOld));
-            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Promote,
                 plan.Displaced, out _, requireChargeNow: false), Is.True);
             if (!keepOld)
             {
@@ -275,8 +276,8 @@ namespace Game.EditorTests
             ArmyData support = Army(Staging, lead, Hero("Small reserve commander", 1), Body("Fresh", 20));
             var plan = GroundCombatReinforcement.CommandHandover(host, support, WeakOpposition(), 0f, null);
             Assert.That(plan, Is.Not.Null);
-            Assert.That(plan.Displaced, Does.Not.Contain(old));
-            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Hero,
+            Assert.That(plan.Displaced, Has.No.Member(old));
+            Assert.That(ArmyActions.CanExchangeMembers(plan.Incoming, support, host, plan.Promote,
                 plan.Displaced, out _, requireChargeNow: false), Is.True);
         }
 
@@ -290,7 +291,7 @@ namespace Game.EditorTests
                 WeakOpposition(), 0f, requireChargeNow: false, out string why);
             Assert.That(plan, Is.Not.Null, why);
             Assert.That(plan.Promote, Is.Null, "a body delivery must not invent a weaker command upgrade");
-            Assert.That(plan.Displaced, Does.Not.Contain(old));
+            Assert.That(plan.Displaced, Has.No.Member(old));
         }
 
         [Test]
@@ -339,7 +340,7 @@ namespace Game.EditorTests
             var plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(DepartureSnapshot(),
                 WeakOpposition(), host.Id, GroundCombatAdmissionPolicy.AttackCoverageGate);
             Assert.That(plan.Feasible, Is.True, plan.Reason);
-            Assert.That(plan.ReturnHeroes, Does.Not.Contain(support));
+            Assert.That(plan.ReturnHeroes, Has.No.Member(support));
         }
 
         [Test]
@@ -379,6 +380,138 @@ namespace Game.EditorTests
             Assert.That(plan.ReturnHeroes.Count, Is.EqualTo(1));
             Assert.That(plan.NeedsAssembly, Is.EqualTo(needsAssembly));
             Assert.That(GroundCombatAssemblyPlanner.ProjectedRoster(host, plan).Count, Is.LessThanOrEqualTo(sol.CommandRating));
+        }
+
+        // ---- army support carriers under any commander (2026-10-15 follow-up) ------------------
+
+        private static UnitData BioBody(string name)
+        {
+            UnitData u = Body(name, 4);
+            u.TypeTags.Add(UnitTypeTag.Bio);
+            return u;
+        }
+
+        private static IReadOnlyList<WorthIt.DefendingArmy> EvenOpposition()
+        {
+            var enemy = Enumerable.Range(0, 3).Select(i => WorthIt.FromLiveUnit(Body("Enemy" + i, 4))).ToList();
+            return new[] { new WorthIt.DefendingArmy(enemy, default) };
+        }
+
+        // Two otherwise identical heroes: the carrier's Heal acts whoever leads, so the fight cannot
+        // separate them and the current commander stays. Crediting the effect only to the carrier
+        // as commander made it win the command contest by its own passive.
+        [Test]
+        public void BestCommander_CreditsASecondaryCarrierUnderEveryCandidate()
+        {
+            UnitData lead = Hero("Lead", 6), carrier = Hero("Carrier", 6);
+            carrier.Abilities.Add(UnitAbilities.Heal);
+            var members = new List<UnitData> { lead, carrier, BioBody("A"), BioBody("B"), BioBody("C") };
+            Assert.That(HeroRoleEvaluator.BestCommanderFor(members, false, EvenOpposition(), 0f),
+                Is.SameAs(lead));
+        }
+
+        [Test]
+        public void SideCommanderWithSupport_AddsOnlyLivingSupportHeroes()
+        {
+            var plain = WorthIt.FromLiveUnit(Hero("Plain", 3));
+            UnitData medic = Hero("Medic", 3); medic.Abilities.Add(UnitAbilities.Heal);
+            UnitData fallen = Hero("Fallen", 3); fallen.Abilities.Add(UnitAbilities.Drill);
+            fallen.HitPointsCurrent = 0;
+            var lead = WorthIt.SideCommander.Of(Hero("Lead", 6));
+            var with = lead.WithSupport(new[] { plain, WorthIt.FromLiveUnit(medic), WorthIt.FromLiveUnit(fallen),
+                WorthIt.FromLiveUnit(Body("Body", 4)) });
+            Assert.That(with.SupportHeroes.Count, Is.EqualTo(1));
+            Assert.That(with.Initiative, Is.EqualTo(lead.Initiative));
+            Assert.That(lead.WithSupport(new[] { plain }), Is.EqualTo(lead));
+            Assert.That(default(WorthIt.SideCommander).WithSupport(new[] { WorthIt.FromLiveUnit(medic) }).Present,
+                Is.False);
+        }
+
+        // A kept support carrier takes a body slot: the frozen roster names only positions the
+        // host can actually hold, an ordinary extra hero (released by Housekeeping) does not count.
+        [TestCase(UnitAbilities.Heal, 3)]
+        [TestCase(UnitAbilities.Transport, 3)]
+        [TestCase(null, 4)]
+        public void PreparationRoster_LeavesTheSlotOfARetainedSupportCarrier(string ability, int capacity)
+        {
+            UnitData lead = Hero("Lead", 4), second = Hero("Second", 2);
+            if (ability != null) second.Abilities.Add(ability);
+            ArmyData host = Army(Staging, lead, second, Body("Fighter", 5));
+            Assert.That(StrikeRoster.HostRosterCapacity(host), Is.EqualTo(capacity));
+            var pool = Enumerable.Range(0, 6).Select(i => Body("Pool" + i, 5 + i))
+                .Select(u => new StrikeRosterCandidate(new StrikeRosterSlot(u.Name, false, 1f, ForceSource.Map),
+                    AiPower.ToPowerUnit(u))).ToList();
+            List<StrikeRosterSlot> roster = StrikeRoster.ComposeUnder(pool, StrikeRoster.CommanderCandidate(lead),
+                StrikeRoster.HostRosterCapacity(host), out _);
+            Assert.That(roster.Count(s => !s.IsHero), Is.EqualTo(capacity - 1));
+        }
+
+        // A handoff on the rendezvous moves no one: it costs its own charges, never the
+        // support's activation (which only a transit step spends).
+        [TestCase(false, 0)]
+        [TestCase(true, 2)]
+        public void ReinforcementHandoffStep_CostsOnlyItsCharges(bool primaryActivated, int expected)
+        {
+            ArmyData primary = Army(Staging, Hero("Lead", 6), Body("Fighter", 5));
+            UnitData fresh = Body("Fresh", 20); fresh.ActivationApCost = 2;
+            ArmyData support = Army(Staging, Hero("Escort", 4), fresh, Body("Guard", 2));
+            if (primaryActivated) primary.MarkActivated();
+            var plan = new HandoffPlan(new[] { fresh }, null, null, "test");
+            Assert.That(GroundCombatLegChecks.ReinforcementStepAp(support, primary, plan), Is.EqualTo(expected));
+            Assert.That(GroundCombatLegChecks.ReinforcementStepAp(support, primary, null),
+                Is.EqualTo(support.ActivationApCost), "a transit step activates the support");
+        }
+
+        // ---- the assembly rollback (2026-10-15 follow-up) -------------------------------------
+
+        private static GroundCombatAssemblyTransfer Move(UnitData unit, ArmyData donor, ArmyData host)
+        {
+            Assert.That(ArmyActions.TransferMember(unit, donor, host, null, out string why), Is.True, why);
+            return new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = unit };
+        }
+
+        [Test]
+        public void AssemblyRollback_LeavesNoActivationCoverageAndRestoresTheDonorCommander()
+        {
+            ArmyData host = Army(Staging, Body("Fighter", 5));
+            UnitData first = Hero("First", 4), second = Hero("Second", 4);
+            UnitData x = Body("X", 6);
+            ArmyData donor = Army(Staging, first, second, x, Body("Y", 6));
+            var baseline = GroundCombatAssemblyTransaction.Capture(Us, host, new[] {
+                new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = first } });
+            var applied = new List<GroundCombatAssemblyTransfer> { Move(first, donor, host), Move(x, donor, host) };
+            Assert.That(donor.Commander, Is.SameAs(second));
+
+            Assert.That(GroundCombatAssemblyTransaction.Rollback(Us, host, applied, new AiTurnContext(), "test",
+                baseline), Is.True);
+            Assert.That(donor.Commander, Is.SameAs(first));
+            Assert.That(host.HasActivationCoverageFor(x), Is.False);
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline), Is.Zero);
+            host.MarkActivated();
+            Assert.That(host.RequiresActivationCharge(x), Is.True, "a rolled-back join paid nothing");
+        }
+
+        [Test]
+        public void AssemblyRollback_ReportsATransportPairingItCouldNotRestore()
+        {
+            ArmyData host = Army(Staging, Hero("Lead", 6));
+            UnitData carrier = Body("Carrier", 4); carrier.MoveMax = 4; carrier.Abilities.Add(UnitAbilities.Transport);
+            UnitData u = Body("U", 4), v = Body("V", 4);
+            u.TypeTags.Add(UnitTypeTag.Infantry); v.TypeTags.Add(UnitTypeTag.Infantry);
+            u.MoveMax = v.MoveMax = 2;
+            ArmyData donor = Army(Staging, Hero("Donor lead", 6), carrier, u, v);
+            donor.RefreshTransport();
+            UnitData riding = u.TransportCarrier != null ? u : v;
+            Assert.That(riding.TransportCarrier, Is.SameAs(carrier));
+            var transfers = new[] { new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = riding } };
+            var baseline = GroundCombatAssemblyTransaction.Capture(Us, host, transfers);
+            var applied = new List<GroundCombatAssemblyTransfer> { Move(riding, donor, host) };
+
+            GroundCombatAssemblyTransaction.Rollback(Us, host, applied, new AiTurnContext(), "test", baseline);
+            Assert.That(donor.Members, Does.Contain(riding));
+            Assert.That(riding.TransportCarrier, Is.Null, "the canonical refresh keeps the carrier's new pair");
+            Assert.That(GroundCombatAssemblyTransaction.RemainingApplied(host, applied, baseline),
+                Is.GreaterThan(0), "a changed pairing is a remaining world change");
         }
 
         // ---- the Support tag on the catalog heroes -------------------------------------------
@@ -509,7 +642,8 @@ namespace Game.EditorTests
                 HitPointsMax = 4, HitPointsCurrent = 4, Initiative = 3 };
             scout.Abilities.Add("r1s4");
             Army(new HexCoord(2, 2), scout);
-            float withRaid = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f);
+            float withRaid = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f,
+                MissionIntentRegistry.GetOrCreate(Us).All);
             Assert.That(withRaid, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
         }
 
@@ -534,8 +668,10 @@ namespace Game.EditorTests
                     PreferredMoverArmyId = scouting.Id,
                 });
 
-                float field = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f);
-                float peak = AttackForcePool.Build(Us, new SelfSnapshot { AvailablePower = 100f }).Peak;
+                float field = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f,
+                MissionIntentRegistry.GetOrCreate(Us).All);
+                float peak = AttackForcePool.Build(Us, new SelfSnapshot { AvailablePower = 100f },
+                    MissionIntentRegistry.GetOrCreate(Us).All).Peak;
 
                 Assert.That(field, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
                 Assert.That(peak, Is.EqualTo(field).Within(1e-3f));

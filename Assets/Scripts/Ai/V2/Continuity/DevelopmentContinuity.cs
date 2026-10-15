@@ -1,11 +1,12 @@
 using Game.Cards;
 using Game.Map;
 using System.Linq;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
-    // Existing domain result semantics, owned by the same continuity policy.
-    internal static partial class MissionContinuityLayer
+    // The Development line's continuity rules; MissionContinuityLayer composes them by mission kind.
+    internal static class DevelopmentContinuity
     {
         internal static bool IsDevelopmentStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
             ProvisionedMission pm) => DevelopmentOpportunityEvaluator.OperatorPreparedAt(player,
@@ -32,7 +33,7 @@ namespace Game.Ai.V2
             }
             return;
         }
-        private static bool TryCreateDevelopmentStep(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCreateDevelopmentStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (!(o.DevelopmentFacts().HasDevelopmentPayload && o.MadeProgress)) return false;
@@ -62,7 +63,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2][Development] continuity create {intent.IntentKey} "
                 + $"hero={target.HeroKey} actor=#{o.MoverArmyId}");
         }
-        private static void ResolveDevelopmentOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        internal static void ResolveDevelopmentOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -95,13 +96,13 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureDevelopmentProvisionFacts(ProvisionedMission pm, MissionStepResult o)
+        internal static void CaptureDevelopmentProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
             o.DevelopmentFactsForWrite().HasDevelopmentPayload = true;
             o.DevelopmentFactsForWrite().DevelopmentTarget = pm.DevelopmentTarget;
         }
 
-        private static void CaptureDevelopmentExecutionFacts(ExecutionResult e, MissionStepResult o)
+        internal static void CaptureDevelopmentExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             o.PayloadForWrite<DevelopmentStepPayload>().DeliveryReady = e.DevelopmentDeliveryReady;
         }

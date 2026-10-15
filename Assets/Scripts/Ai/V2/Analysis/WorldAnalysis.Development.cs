@@ -30,7 +30,7 @@ namespace Game.Ai.V2
         // as DevelopmentFacility.Contested but is NOT applied here — a contested facility still
         // produces offerings for the analyzer/radar; Phase A alone skips execution while contested.
         private static DevelopmentReadiness BuildDevelopment(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
+            AiHandData hand, AiTurnContext ctx, IMissionIntentView intents)
         {
             var rd = new DevelopmentReadiness();
             var facilities = new List<DevelopmentFacility>();
@@ -161,7 +161,7 @@ namespace Game.Ai.V2
             // Operational generation is priced from the concrete chain by StrategicCardEvaluator /
             // StrategicSpendability. WHEN Development may spend at all is the investment window
             // (DevelopmentInvestmentGate over InvestmentSurplus), not a multiplier on its value.
-            rd.InvestmentSurplusByType = SurplusByType(player, root, ctx);
+            rd.InvestmentSurplusByType = SurplusByType(player, root, ctx, intents);
             rd.InvestmentSurplus = ResourceBundle.All.Min(t => rd.InvestmentSurplusByType.Get(t));
             bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
                 f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
@@ -173,7 +173,7 @@ namespace Game.Ai.V2
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             if (snap?.Development == null) return;
-            var intents = MissionIntentRegistry.Peek(player)?.All
+            var intents = snap.Intents?.All
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             var steps = DevelopmentOpportunityEvaluator.PreparationFacts(snap, player, root, hand, ctx, intents);
             snap.Development.HasPreparationStep = steps.Count > 0;
@@ -218,7 +218,7 @@ namespace Game.Ai.V2
         // reservation floors in Analysis. Kept per type so an unrelated empty resource (Tech on an
         // Energy+Materials chain) never suppresses a spend that does not consume it.
         private static ResourceBundle SurplusByType(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx)
+            AiTurnContext ctx, IMissionIntentView intents)
         {
             var surplus = new ResourceBundle();
             if (player == null || root == null)
@@ -227,7 +227,7 @@ namespace Game.Ai.V2
             {
                 float spendable = Mathf.Max(0f,
                     StrategicSpendability.SpendableAmount(player, root, ctx, t)
-                    - OutstandingEconomyCommitment(player, ctx, t));
+                    - OutstandingEconomyCommitment(player, ctx, t, intents));
                 float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
                 surplus.Add(t, Mathf.Clamp01(spendable / (income * 2f)));
             }
@@ -241,12 +241,12 @@ namespace Game.Ai.V2
         // already reserves under the two Economy reasons is subtracted first, so a mid-turn
         // snapshot never counts the same build twice.
         private static float OutstandingEconomyCommitment(PlayerSetupData player,
-            AiTurnContext ctx, ResourceType t)
+            AiTurnContext ctx, ResourceType t, IMissionIntentView intents)
         {
             if (player == null || ctx == null)
                 return 0f;
             int committed = 0;
-            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            foreach (MissionIntent i in intents?.All ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
                 if (i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
                     && i.Economy != null
                     && (i.Economy.Kind == EconomyTaskKind.BuildExtraction

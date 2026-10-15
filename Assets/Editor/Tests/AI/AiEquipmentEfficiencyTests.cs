@@ -176,12 +176,12 @@ namespace Game.EditorTests
             });
             var item = new CardDefinition { cardType = CardType.Equipment };
             item.equipment = new EquipmentGrant();
-            float baseline = StrategicCardEvaluator.EquipmentDeltaParts(item, host.Definition).Total;
+            float baseline = EquipmentUpgradeValuation.EquipmentDeltaParts(item, host.Definition).Total;
             foreach (int cards in new[] { 35, 24, 12, 0 })
             {
                 var snap = new WorldSnapshot { Self = new SelfSnapshot {
                     Deck = new CardDefinition[cards], Hand = new CardData[0] } };
-                Assert.That(StrategicCardEvaluator.EquipmentDeltaParts(item, host, snap).Total,
+                Assert.That(EquipmentUpgradeValuation.EquipmentDeltaParts(item, host, snap).Total,
                     Is.EqualTo(baseline).Within(1e-5f), $"cards left {cards}");
             }
         }

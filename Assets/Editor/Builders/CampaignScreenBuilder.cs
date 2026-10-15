@@ -339,7 +339,7 @@ public static class CampaignScreenBuilder
                 refs.FindPropertyRelative("round").objectReferenceValue = NoWrap(Text(row, "Round", "Round 1", 0, 0, 70, 24, 17, Cream));
                 refs.FindPropertyRelative("attackerLogo").objectReferenceValue = LogoImage(row, "AttackerLogo", 74, 2, 20);
                 refs.FindPropertyRelative("attacker").objectReferenceValue = NoWrap(Text(row, "Attacker", "Faction", 98, 0, 170, 24, 17, Cream));
-                Text(row, "Arrow", "→", 272, 0, 24, 24, 17, Cream);
+                Text(row, "Arrow", ">", 272, 0, 24, 24, 17, Cream);
                 refs.FindPropertyRelative("region").objectReferenceValue = NoWrap(Text(row, "Region", "Region", 300, 0, 200, 24, 17, Cream));
                 refs.FindPropertyRelative("outcome").objectReferenceValue = NoWrap(Text(row, "Outcome", "Defended", 504, 0, 140, 24, 17, Cream));
                 row.gameObject.SetActive(false);

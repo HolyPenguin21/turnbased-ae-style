@@ -90,7 +90,7 @@ namespace Game.Ai.V2
 
             foreach (ArmySnapshot donorSnap in donorSnaps)
             {
-                ArmyData donor = ArmyRegistry.AllForOwner(owner)
+                ArmyData donor = OwnWorld.Of(owner).Armies
                     .FirstOrDefault(a => a != null && a.Id == donorSnap.ArmyId);
                 if (donor == null || donor.Members.Count <= 1 || !donor.Hex.Equals(host.Hex)
                     || donor.IsPrison || donor.IsAirfield || donor.IsAirArmy || AiArmyRoles.IsSoloRecce(donor))

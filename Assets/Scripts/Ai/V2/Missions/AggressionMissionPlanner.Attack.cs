@@ -24,7 +24,8 @@ namespace Game.Ai.V2
         internal static void AppendAttack(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx,
-            IDictionary<MissionIntentKey, string> deferredThisPass)
+            IDictionary<MissionIntentKey, string> deferredThisPass, IMissionIntentView intentState,
+            ICollection<RetreatWitnessRevision> witnessRevisions)
         {
             if (snap?.Self == null || snap.Self.AttackPeak <= 0f)
                 return;
@@ -45,7 +46,7 @@ namespace Game.Ai.V2
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx,
                             deferredThisPass);
                     else if (a.Phase == AttackMissionPhase.Gather)
-                        AppendAttackGather(snap, intent, a, committed, proposals, ctx);
+                        AppendAttackGather(snap, intent, a, committed, proposals, ctx, intentState);
                     // Strike force step 5 — donors that already handed over walk home beside
                     // whatever the operation itself does.
                     foreach (AttackGatherReturn r in a.GatherReturns)
@@ -97,6 +98,9 @@ namespace Game.Ai.V2
                 }
 
                 int? pinnedActor = incumbent?.Attack?.PrimaryArmyId;
+                // A started Assault keeps its committed members and drops the fresh power bar; the
+                // one fact Missions, admission (ForceCommitted) and provisioning all read.
+                bool assaultStarted = incumbent?.Attack?.AssaultStarted == true;
                 var excluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
@@ -117,7 +121,7 @@ namespace Game.Ai.V2
                 {
                     local = AttackTacticalOpportunity.Decide(snap, marching, objective.Target,
                         incumbent.Attack.LastOpportunisticStrikeTurn, intermediate != null,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snap));
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snap), intentState);
                     if (local.Kind == AttackLocalActionKind.Retreat)
                     {
                         AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat",
@@ -149,8 +153,8 @@ namespace Game.Ai.V2
                             ? GroundCombatAdmissionPolicy.AttackIntermediateBaseRequiresCoverage
                             : (bool?)null,
                         AllowSameHexAssembly = intermediate == null,
-                        PreserveDepartureRoster = incumbent?.Attack?.AssaultStarted == true,
-                        MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
+                        PreserveDepartureRoster = assaultStarted,
+                        MinimumArmyPower = assaultStarted
                             ? 0f : AttackForceReadiness.RequiredPower(snap.Self.AttackPeak),
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
@@ -163,7 +167,7 @@ namespace Game.Ai.V2
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be formed by free armies spread over several hexes: gather them.
                     if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
-                            hexBonus, excluded, freshCandidates))
+                            hexBonus, excluded, freshCandidates, intentState))
                     {
                         attackProposed = true;
                         continue;
@@ -195,7 +199,7 @@ namespace Game.Ai.V2
                 {
                     // lastLocalTurn = this turn: only the mandatory evaluation runs, no voluntary search
                     AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, actor, objective.Target,
-                        snap.TurnNumber, false, null);
+                        snap.TurnNumber, false, null, intentState);
                     if (fresh.Kind == AttackLocalActionKind.Retreat)
                     {
                         AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat-fresh",
@@ -213,9 +217,16 @@ namespace Game.Ai.V2
                 // fight (our roster / equipment / HP, the enemy's visible state, the enemy gone)
                 // that the shared estimator confirms lifts it: a new turn number, AP or a timer
                 // is not a reason. A march already under way is governed by Continuity's edge.
-                if ((incumbent == null || incumbent.Attack?.AssaultStarted != true)
-                    && AttackRetreatWitness.Blocks(MissionIntentRegistry.GetOrCreate(snap.Observer), snap,
-                        objective.Target, actor, out string witnessWhy))
+                bool witnessBlocks = false;
+                string witnessWhy = null;
+                if (!assaultStarted)
+                {
+                    witnessBlocks = AttackRetreatWitness.Blocks(intentState, snap, objective.Target, actor,
+                        out witnessWhy, out RetreatWitnessRevision revision);
+                    if (revision.Kind != RetreatWitnessRevisionKind.None)
+                        witnessRevisions?.Add(revision);
+                }
+                if (witnessBlocks)
                 {
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#witness",
                         $"[AI][V2][Attack][Retreat] decision=HOLD target={objective.Target.DiagnosticLabel} "
@@ -258,7 +269,7 @@ namespace Game.Ai.V2
                     DefenderCount = assaultObjective.DefenderCount,
                     ProjectedWinChance = plan.ProjectedWinChance,
                     CoversAllDefenders = plan.CoversAllDefenders,
-                    ForceCommitted = incumbent?.Attack?.AssaultStarted == true,
+                    ForceCommitted = assaultStarted,
                     EstimatedEta = eta,
                     // §17 — carry the operation's own once-per-turn side-strike marker into the leg
                     // the executor will run. A fresh objective has no incumbent and therefore no
@@ -339,7 +350,7 @@ namespace Game.Ai.V2
                 proposals.Add(bestFresh);
 
             TryAppendAttackPreparation(snap, objectives, activeIntents, committed, proposals, ctx,
-                attackProposed);
+                attackProposed, intentState);
 
             RecordAttackDeferrals(activeIntents, proposals, assaultWhy, deferredThisPass);
         }

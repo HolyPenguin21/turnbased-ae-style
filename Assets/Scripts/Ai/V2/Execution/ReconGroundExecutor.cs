@@ -513,7 +513,7 @@ namespace Game.Ai.V2
             if (result.ReachedGoal)
                 return;
 
-            bool met = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
+            bool met = ObjectiveLiveStatus.ScoutSatisfied(player, pm.ScoutKind, pm.FocusHex);
 
             if (met)
             {

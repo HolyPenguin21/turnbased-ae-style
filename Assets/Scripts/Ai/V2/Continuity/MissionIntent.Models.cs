@@ -273,7 +273,7 @@ namespace Game.Ai.V2
 
         // RecoveryReturn is a continuation leg of this same durable Raid. The selected base
         // remains fixed until it is lost/unreachable; arrival retires the Raid outright (see
-        // MissionContinuityLayer.CompleteRaidRecoveryReturn) rather than resuming it.
+        // RaidContinuity.CompleteRaidRecoveryReturn) rather than resuming it.
         public HexCoord? RecoveryBaseHex;
 
         // Turn on which the reinforcement demand was raised, so exactly ONE support intent is
@@ -387,12 +387,15 @@ namespace Game.Ai.V2
         // 2026-10-01 (user decision) — the frozen strike-force target roster (StrikeRoster) the
         // preparation gathers toward and the peak it was frozen at. Re-frozen only when the peak
         // grew by attackTargetRosterRefreezeGrowth or a frozen position left the pool
-        // (MissionContinuityLayer.RefreshTargetRoster) — never on every small reshuffle.
+        // (AttackContinuity.RefreshTargetRoster) — never on every small reshuffle.
         public List<StrikeRosterSlot> TargetRoster;
         public float TargetRosterPeak;
         // The host commander (card key) the roster was composed under, and the roster's power.
         public string TargetRosterCommanderKey;
         public float TargetRosterPower;
+        // The capacity it was composed under (StrikeRoster.HostRosterCapacity: the commander's
+        // slots less the support carriers the host keeps); a change re-freezes it.
+        public int TargetRosterCapacity;
         // 2026-10-01 (variant B) — a stronger commander fetched from an own garrison elsewhere:
         // the lone-hero container walking to the host (AttackPreparationStep.FetchCommander /
         // MoveCommander). Housekeeping promotes it on the host's hex; cleared when it is gone.
