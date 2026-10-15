@@ -1314,7 +1314,7 @@ namespace Game.Ai.V2
             var projected = new PredictedEquipmentState(stats, next.Abilities);
             return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv, projected,
                 true, host.TypeTags?.ToList(), EquipmentPurpose(snap, null, host),
-                ArmyRegistry.FindArmyContaining(host), null,
+                OwnWorld.Of(snap?.Observer).ArmyContaining(host), null,
                 Mathf.Max(0, host.HitPointsMax - host.HitPointsCurrent), host);
         }
 
@@ -1525,7 +1525,7 @@ namespace Game.Ai.V2
                         && Game.Aviation.AntiAirState.CanReact(other, sighting.ArmyId))
                         earlier++;
                 }
-                contacts.Add(new AirContact(mean, distance, VisionSystem.IsVisible(snap.Observer, sighting.Hex),
+                contacts.Add(new AirContact(mean, distance, snap.Own.IsVisible(sighting.Hex),
                     !Game.Aviation.AntiAirState.CanReact(host, sighting.ArmyId), earlier));
             }
             return contacts;
@@ -1585,7 +1585,7 @@ namespace Game.Ai.V2
 
         private static MissionIntent FindEquipmentPurpose(WorldSnapshot snap, CardData card, UnitData unit)
         {
-            ArmyData army = unit != null ? ArmyRegistry.FindArmyContaining(unit) : null;
+            ArmyData army = unit != null ? OwnWorld.Of(snap?.Observer).ArmyContaining(unit) : null;
             string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
             var intents = MissionIntentRegistry.Peek(snap?.Observer)?.All;
             return intents?.Where(i => i != null && i.Status == IntentStatus.Active && !i.IsLifecycleLeg

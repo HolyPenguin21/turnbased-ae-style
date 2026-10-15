@@ -75,7 +75,7 @@ namespace Game.Ai.V2
                 AiMapMemory.KnownEnemySighting? sighting = FindLiveSighting(player, raidTarget.ArmyId);
                 if (sighting == null)
                 {
-                    if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, raidTarget))
+                    if (ObjectiveLiveStatus.RaidSatisfied(player, raidTarget))
                         return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                             $"raid target #{raidTarget.ArmyId} no longer exists (destroyed / captured)"));
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(

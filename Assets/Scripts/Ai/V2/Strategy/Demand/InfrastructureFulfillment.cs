@@ -95,8 +95,7 @@ namespace Game.Ai.V2
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
-                    return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
-                        && g.IsGarrison && !g.IsPrison
+                    return OwnWorld.Of(player).ArmiesAt(site).Any(g => g.IsGarrison && !g.IsPrison
                         && PlacementRules.CanDepositIntoGarrison(g)
                         && CardPlayExecutor.CanFitAfterDeploy(g, card.Definition));
                 });
@@ -564,8 +563,8 @@ namespace Game.Ai.V2
                     && x.Card.Definition.grantedAbilities.Contains(
                         ResearchProductionSystem.FacilityAbility(demand.DevelopmentOperatorMode.Value)))
                 .ToList();
-            List<HexCoord> bases = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase)
+            List<HexCoord> bases = OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase)
                 .Select(b => b.Hex)
                 .OrderBy(h => h.Q).ThenBy(h => h.R)
                 .ToList();
@@ -635,8 +634,8 @@ namespace Game.Ai.V2
                 return null;
             HexCoord citadel = snap?.Self != null ? snap.Self.Citadel : default;
             string lastReject = "no owned Base";
-            HexCoord? at = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase)
+            HexCoord? at = OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase)
                 .Select(b => b.Hex)
                 .Where(h =>
                 {
@@ -752,8 +751,7 @@ namespace Game.Ai.V2
                 if (fac.HasHero || fac.Contested) continue;
 
                 string role = ResearchProductionSystem.RoleAbility(fac.Mode);
-                ArmyData garrison = ArmyRegistry.AllAt(fac.Hex)
-                    .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+                ArmyData garrison = OwnWorld.Of(player).GarrisonAt(fac.Hex);
                 if (garrison == null || !PlacementRules.CanDepositIntoGarrison(garrison))
                     continue;
 
@@ -797,8 +795,7 @@ namespace Game.Ai.V2
                         Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
                         Execute = () =>
                         {
-                            ArmyData g = ArmyRegistry.AllAt(at)
-                                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+                            ArmyData g = OwnWorld.Of(player).GarrisonAt(at);
                             CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
                                 CardPlayPlan.Into(selectedCard, at, DeploymentKind.Garrison, g));
                             return new BuildingPlayResult
@@ -830,9 +827,8 @@ namespace Game.Ai.V2
                 || !MaterializationChainMatching.EffectiveAbilities(proposed.CardDef, null)
                     .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
                 return null;
-            BuildingData destination = BuildingRegistry.FindAt(demand.TargetHex.Value);
-            ArmyData destinationGarrison = ArmyRegistry.AllAt(demand.TargetHex.Value)
-                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+            BuildingData destination = OwnWorld.Of(player).BuildingAt(demand.TargetHex.Value);
+            ArmyData destinationGarrison = OwnWorld.Of(player).GarrisonAt(demand.TargetHex.Value);
             if (destination == null || destination.Owner != player
                 || !destination.IsBase
                 || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)

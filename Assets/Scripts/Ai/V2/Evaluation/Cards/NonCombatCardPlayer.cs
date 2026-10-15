@@ -740,7 +740,7 @@ namespace Game.Ai.V2
                 }
                 case PlayKind.Equipment:
                 {
-                    ArmyData recipientArmy = ArmyRegistry.FindArmyContaining(play.EquipHost);
+                    ArmyData recipientArmy = OwnWorld.Of(player).ArmyContaining(play.EquipHost);
                     if (play.EquipHostCard != null
                         ? !hand.Hand.Contains(play.EquipHostCard)
                         : play.EquipHost == null || play.EquipHost.IsPrisoner || recipientArmy?.Owner != player)
@@ -806,8 +806,8 @@ namespace Game.Ai.V2
         private static List<HexCoord> OwnedBaseHexes(WorldSnapshot snap, PlayerSetupData player)
         {
             var set = new HashSet<HexCoord>();
-            foreach (BuildingData b in BuildingRegistry.AllBuildings())
-                if (b != null && b.Owner == player && b.IsBase)
+            foreach (BuildingData b in OwnWorld.Of(player).Buildings)
+                if (b.IsBase)
                     set.Add(b.Hex);
             if (snap?.Self?.BaseHexes != null)
                 foreach (HexCoord h in snap.Self.BaseHexes)
@@ -838,7 +838,7 @@ namespace Game.Ai.V2
                     Card = card, Kind = PlayKind.Equipment, EquipHost = op.RecipientUnit,
                     EquipHostCard = op.RecipientCard,
                     TargetHex = op.RecipientUnit != null
-                        ? ArmyRegistry.FindArmyContaining(op.RecipientUnit)?.Hex ?? default : default,
+                        ? OwnWorld.Of(player).ArmyContaining(op.RecipientUnit)?.Hex ?? default : default,
                     ApCost = ap, ResCost = resources,
                     Score = Score(snap, player, root, ctx, PlayKind.Equipment, card, hand, value,
                         ap, resources, null, workload),

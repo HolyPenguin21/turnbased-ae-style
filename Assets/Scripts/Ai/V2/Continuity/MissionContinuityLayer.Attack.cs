@@ -33,7 +33,7 @@ namespace Game.Ai.V2
             }
             // Reinforcement is a rendezvous with the primary, never the site's capture.
             return attack.Phase == AttackMissionPhase.Assault
-                && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
+                && ObjectiveLiveStatus.AttackTarget(player, attack.Target)
                     == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
         }
 

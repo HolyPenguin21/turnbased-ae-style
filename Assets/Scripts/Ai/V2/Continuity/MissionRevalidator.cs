@@ -112,7 +112,7 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Raid)
             {
                 if (pm.RaidPhase == RaidMissionPhase.Assault
-                    && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+                    && ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget))
                     return MissionValidity.StaleGoalMet;
                 return MissionValidity.Valid;
             }
@@ -127,7 +127,7 @@ namespace Game.Ai.V2
                 // an intercept ends because WE learned something, not because the army vanished
                 // from the world, and the provisioner for the same mission reads the same
                 // sightings.
-                return ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(
+                return ObjectiveLiveStatus.ActiveDefenceSatisfied(
                         player, target.EnemyArmyId)
                     ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
             }
@@ -183,7 +183,7 @@ namespace Game.Ai.V2
                         ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;
                 // Assault: the one §25 owner answers whether this is still the thing we set out to
                 // capture, from live own-Base truth plus this player's own honest memory.
-                switch (AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target))
+                switch (ObjectiveLiveStatus.AttackTarget(player, attack.Target))
                 {
                     case AttackObjectiveEvaluator.AttackTargetStatus.Captured:
                         return MissionValidity.StaleGoalMet;
@@ -191,7 +191,7 @@ namespace Game.Ai.V2
                         return MissionValidity.StaleTargetInvalidated;
                     default:
                         return attack.IsIntermediateAssault
-                            && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.IntermediateTarget)
+                            && ObjectiveLiveStatus.AttackTarget(player, attack.IntermediateTarget)
                                 != AttackObjectiveEvaluator.AttackTargetStatus.Continue
                             ? MissionValidity.StaleTargetInvalidated : MissionValidity.Valid;
                 }
@@ -199,7 +199,7 @@ namespace Game.Ai.V2
 
             // Scout: the objective met live (one dispatch for every kind), then each kind's own
             // invalidation of the provisioned execution hex.
-            if (ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex))
+            if (ObjectiveLiveStatus.ScoutSatisfied(player, pm.ScoutKind, pm.FocusHex))
                 return MissionValidity.StaleGoalMet;
 
             // AirSweep is an aviation pass toward a moving anchor; it is never goal-met by

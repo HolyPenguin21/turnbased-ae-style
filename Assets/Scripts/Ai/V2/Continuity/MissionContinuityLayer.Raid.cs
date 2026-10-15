@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // Only the assault leg owns the previous target; support/return are independent legs.
         internal static bool IsRaidStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm) =>
             pm.RaidPhase == RaidMissionPhase.Assault
-                && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget);
+                && ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget);
 
         // The Raid lane's own lifecycle answers for ResolveActive (the counterpart of
         // ResolveAttackIntent). Returns false when the intent must be retired; true keeps it, and
@@ -324,7 +324,7 @@ namespace Game.Ai.V2
             // positive live read (ours / another player's roster / honest map memory / confirmed event-guard
             // completion, per target kind).
             bool targetGone = ri.Target.HasValue
-                && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
+                && (ObjectiveLiveStatus.RaidSatisfied(player, ri.Target)
                     || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target));
             if (!targetGone)
             {
@@ -554,7 +554,7 @@ namespace Game.Ai.V2
             ri.SupportArmyId = null;
             ri.SupportReturnHex = null;
             bool stillHasTarget = ri.Target.HasValue
-                && !RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
+                && !ObjectiveLiveStatus.RaidSatisfied(player, ri.Target)
                 && !RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target);
             if (!stillHasTarget)
             {

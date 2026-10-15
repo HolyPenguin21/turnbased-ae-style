@@ -44,7 +44,7 @@ namespace Game.Ai.V2
             currentPower = 0f;
             currentCommand = 0;
             PlayerSetupData player = snap.Observer;
-            ArmyData liveHost = player == null ? null : AiV2Util.ResolveArmy(player, host.ArmyId);
+            ArmyData liveHost = player == null ? null : OwnWorld.Of(player).Army(host.ArmyId);
             if (liveHost == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return default;
 
@@ -60,7 +60,7 @@ namespace Game.Ai.V2
                 return default;
             currentCommand = current?.CommandRating ?? 0;
             (ArmyData garrison, UnitData hero, float power) best = (null, null, currentPower);
-            foreach (ArmyData g in ArmyRegistry.AllForOwner(player))
+            foreach (ArmyData g in OwnWorld.Of(player).Armies)
             {
                 if (g == null || !g.IsGarrison || g.Hex.Equals(liveHost.Hex))
                     continue;

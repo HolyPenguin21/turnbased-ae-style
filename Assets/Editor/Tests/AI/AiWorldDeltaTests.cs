@@ -19,7 +19,7 @@ namespace Game.EditorTests
         {
             int before = WorldDeltaLifecycle.Current;
             // No registry actor: a destroyed wing is no longer available to the caller.
-            AviationRebasePlanner.RecordLaunchReceipt(new Game.Ai.AiMoveExecutionTrace
+            AviationRebaseExecutor.RecordLaunchReceipt(new Game.Ai.AiMoveExecutionTrace
                 { FormationCommitted = committed });
             Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before + (committed ? 1 : 0)));
         }
@@ -28,7 +28,7 @@ namespace Game.EditorTests
         public void MissingAviationLaunchReceiptDoesNotAdvanceRevision()
         {
             int before = WorldDeltaLifecycle.Current;
-            AviationRebasePlanner.RecordLaunchReceipt(null);
+            AviationRebaseExecutor.RecordLaunchReceipt(null);
             Assert.That(WorldDeltaLifecycle.Current, Is.EqualTo(before));
         }
 

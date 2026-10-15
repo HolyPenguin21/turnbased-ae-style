@@ -222,7 +222,7 @@ namespace Game.Ai.V2
                     case TempoKind.AviationRebase:
                     {
                         bool moved = false;
-                        yield return AviationRebasePlanner.Execute(
+                        yield return AviationRebaseExecutor.Execute(
                             player, root, ctx, best.Rebase, v => moved = v);
                         exec.Succeeded = exec.StateChanged = exec.Progressed = moved;
                         if (!moved) exec.FailReason = "aviation rebase took no safe step";

@@ -33,7 +33,7 @@ namespace Game.Ai.V2
         {
             var a = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == id)?.Attack;
-            var building = BuildingRegistry.FindAt(hex);
+            var building = OwnWorld.Of(player).BuildingAt(hex);
             return a != null && a.AssaultStarted && a.RefitBaseHex.HasValue && a.RefitBaseHex.Value.Equals(hex)
                 && a.RefitCaptureTurn >= 0 && turn >= a.RefitCaptureTurn && turn <= a.RefitCaptureTurn + 1
                 && (a.Phase == AttackMissionPhase.Assault || a.Phase == AttackMissionPhase.Reinforcement)
@@ -50,7 +50,7 @@ namespace Game.Ai.V2
             var intent = MissionIntentRegistry.GetOrCreate(player).All.FirstOrDefault(i =>
                 i.Status == IntentStatus.Active && i.Attack?.PrimaryArmyId == demand.AttackFistArmyId)?.Attack;
             if (!WindowOpen(snap, intent)) return plans;
-            var primary = AiV2Util.ResolveArmy(player, demand.AttackFistArmyId.Value);
+            var primary = OwnWorld.Of(player).Army(demand.AttackFistArmyId.Value);
             if (primary == null || !primary.Hex.Equals(demand.TargetHex.Value)) return plans;
             // Reuse a legal empty local shell, otherwise price a canonical new container.
             var shell = ReusableArmySelector.FindReusableAt(player, primary.Hex, commitments);
@@ -133,7 +133,7 @@ namespace Game.Ai.V2
             handoff = null; support = null;
             if (plan?.AttackRefitPrimaryId == null || plan.BaseCardInHand?.Definition == null || snap == null)
                 return false;
-            var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
+            var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
             var attack = Resolve(player, plan.AttackRefitPrimaryId.Value, plan.Deploy.Hex, snap.TurnNumber);
             if (primary == null || !primary.Hex.Equals(plan.Deploy.Hex) || attack == null
                 || attack.RefitCaptureTurn != plan.AttackRefitCaptureTurn
@@ -188,7 +188,7 @@ namespace Game.Ai.V2
         internal static bool FollowupStillCurrent(MaterializationPlan plan, PlayerSetupData player,
             AiTurnContext ctx, HandoffPlan handoff, PlayerRoot root = null)
         {
-            var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
+            var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
             var attack = Resolve(player, primary?.Id ?? -1, plan.Deploy.Hex, ctx.TurnNumber);
             return primary != null && attack != null
                 && plan.AttackRefitFollowupAp == FollowupAp(player, primary, attack,
@@ -200,7 +200,7 @@ namespace Game.Ai.V2
         internal static bool OnwardFunded(MaterializationPlan plan, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, float remainingChainCost, IEnumerable<UnitData> roster)
         {
-            var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
+            var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
             if (primary == null) return false;
             int activation = primary.ProjectedActivationApCost(roster);
             float otherOperations = StrategicSpendability.OperationContinuationHold(player, root, ctx)
@@ -224,6 +224,6 @@ namespace Game.Ai.V2
                 .OrderBy(i => i.IntentKey).Select(i =>
                 $"{i.IntentKey}:{i.Attack.RefitBaseHex}:{i.Attack.RefitCaptureTurn}:{turn}:"
                 + RosterKey(i.Attack.PrimaryArmyId.HasValue
-                    ? AiV2Util.ResolveArmy(player, i.Attack.PrimaryArmyId.Value) : null)));
+                    ? OwnWorld.Of(player).Army(i.Attack.PrimaryArmyId.Value) : null)));
     }
 }

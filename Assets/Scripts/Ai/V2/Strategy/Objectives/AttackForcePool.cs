@@ -58,7 +58,7 @@ namespace Game.Ai.V2
             if (player == null || self == null)
                 return new AttackForcePool();
             var map = new List<StrikeRosterCandidate>();
-            foreach (ArmyData a in ArmyRegistry.AllForOwner(player).Where(x => x != null).OrderBy(x => x.Id))
+            foreach (ArmyData a in OwnWorld.Of(player).Armies.Where(x => x != null).OrderBy(x => x.Id))
             {
                 if (a.IsPrison || a.IsAirfield || AviationRules.IsAirArmy(a) || AiArmyRoles.IsSoloRecce(a)
                     || scouts.Contains(a.Id))

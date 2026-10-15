@@ -476,7 +476,7 @@ namespace Game.EditorTests
             HexEventRegistry.MarkDiscovered(hex, player);
             HexEventRegistry.MarkConsumed(hex, player);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.True, "the claimant knows the completion at once");
         }
@@ -493,7 +493,7 @@ namespace Game.EditorTests
             HexEventRegistry.MarkDiscovered(hex, other);
             HexEventRegistry.MarkConsumed(hex, other);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.False, "an unobserved completion must not end our mission remotely");
             Assert.That(Game.Ai.AiMapMemory.KnownEventStateAt(player, hex),
@@ -509,7 +509,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData { Nickname = "P1" };
             HexEventRegistry.MarkDiscovered(hex, player);
 
-            bool satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, RaidTargetRef.ForEventGuard(hex));
+            bool satisfied = ObjectiveLiveStatus.RaidSatisfied(player, RaidTargetRef.ForEventGuard(hex));
 
             Assert.That(satisfied, Is.False);
         }

@@ -103,7 +103,7 @@ namespace Game.Ai.V2
             // change or base loss must not keep an obsolete actor promise alongside the live bank.
             foreach (int id in apBudget.ActorFollowupIds.ToArray())
             {
-                var primary = AiV2Util.ResolveArmy(player, id);
+                var primary = OwnWorld.Of(player).Army(id);
                 var attack = primary == null ? null
                     : AttackBaseRefitPolicy.Resolve(player, id, primary.Hex, ctx.TurnNumber);
                 apBudget.ReserveActorFollowup(id, primary == null || attack == null ? 0f
@@ -909,7 +909,7 @@ namespace Game.Ai.V2
                 {
                     if (chosenDemand.AttackLocalRefit)
                     {
-                        var primary = AiV2Util.ResolveArmy(player, plan.AttackRefitPrimaryId.Value);
+                        var primary = OwnWorld.Of(player).Army(plan.AttackRefitPrimaryId.Value);
                         var attack = AttackBaseRefitPolicy.Resolve(player, primary.Id, primary.Hex, ctx.TurnNumber);
                         apBudget.ReserveActorFollowup(primary.Id,
                             AttackBaseRefitPolicy.FollowupAp(player, primary, attack, primary.Members, ctx, root));

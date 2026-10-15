@@ -7,7 +7,7 @@ namespace Game.Ai.V2
     internal static partial class MissionContinuityLayer
     {
         internal static bool IsScoutStepObjectiveSatisfiedLive(Game.Players.PlayerSetupData player,
-            ProvisionedMission pm) => ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex);
+            ProvisionedMission pm) => ObjectiveLiveStatus.ScoutSatisfied(player, pm.ScoutKind, pm.FocusHex);
 
         internal static void ClassifyScoutStep(ExecutionResult e, MissionStepResult o)
         {

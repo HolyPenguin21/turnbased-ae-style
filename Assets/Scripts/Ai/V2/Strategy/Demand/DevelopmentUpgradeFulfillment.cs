@@ -122,6 +122,6 @@ namespace Game.Ai.V2
         }
 
         private static bool UnitOnMap(PlayerSetupData player, UnitData u) =>
-            ArmyRegistry.AllForOwner(player).Any(a => a?.Members != null && a.Members.Contains(u));
+            OwnWorld.Of(player).Armies.Any(a => a?.Members != null && a.Members.Contains(u));
     }
 }

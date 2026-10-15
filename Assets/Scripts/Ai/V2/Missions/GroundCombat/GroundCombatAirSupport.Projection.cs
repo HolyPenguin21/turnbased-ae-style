@@ -175,7 +175,7 @@ namespace Game.Ai.V2
         {
             if (requests == null) return new List<CombatAirSupportRequest>();
             if (ctx?.Map == null || player == null || root == null) return requests.ToList();
-            var wings = ArmyRegistry.AllForOwner(player)
+            var wings = OwnWorld.Of(player).Armies
                 .Where(w => AviationRules.IsValidAirArmy(w) && w.CurrentMovement > 0
                     && AirSortieRegistry.ForArmy(player, w) == null
                     && (commitments == null || !commitments.IsArmyClaimed(w.Id)))

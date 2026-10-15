@@ -210,7 +210,7 @@ namespace Game.Ai.V2
                     return null;
                 }
             }
-            ArmyData live = snap.Observer == null ? null : AiV2Util.ResolveArmy(snap.Observer, hostId);
+            ArmyData live = snap.Observer == null ? null : OwnWorld.Of(snap.Observer).Army(hostId);
             if (live != null && GroundCombatAssemblyPlanner.PlanPreparationAssembly(snap, live, claimed,
                     opposition, hexBonus).Feasible)
             {

@@ -174,7 +174,7 @@ namespace Game.Ai.V2
         private static IEnumerable<(UnitData Unit, HexCoord Hex)> FindRepairCandidates(
             PlayerSetupData player)
         {
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
                 if (army == null || army.IsPrison || AviationRules.IsAirfield(army)
                     || !UnitRepair.CanRepairAt(army.Hex, player))
@@ -225,7 +225,7 @@ namespace Game.Ai.V2
                     && o.PreparationCapacityTier != null && o.PreparationFacilityCard != null
                     && o.PreparationCardScore.HasValue))
             {
-                BuildingData building = BuildingRegistry.FindAt(op.FacilityHex);
+                BuildingData building = OwnWorld.Of(player).BuildingAt(op.FacilityHex);
                 BaseUpgradeTier planned = op.PreparationCapacityTier;
                 if (building == null || building.Owner != player || !building.IsBase)
                     continue;
@@ -296,8 +296,8 @@ namespace Game.Ai.V2
         // Phase-B maintenance candidate above and the Economy global-source placement
         // (InfrastructureFulfillment), so both buy the same upgrade for the same card.
         private static List<BuildingData> TieredOwnBases(PlayerSetupData player) =>
-            BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase && b.HasTieredUnlock)
+            OwnWorld.Of(player).Buildings
+                .Where(b => b.IsBase && b.HasTieredUnlock)
                 .ToList();
 
         private static IEnumerable<BuildingData> UnlockableBasesInOrder(IEnumerable<BuildingData> bases) =>

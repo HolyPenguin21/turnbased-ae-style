@@ -234,7 +234,7 @@ namespace Game.Ai.V2
                 if (formation != null)
                 {
                     bool formedWing = false;
-                    yield return AviationRebasePlanner.Execute(player, root, ctx, formation,
+                    yield return AviationRebaseExecutor.Execute(player, root, ctx, formation,
                         changed => formedWing |= changed);
                     if (formedWing)
                     {
@@ -297,7 +297,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.StepObservationStamp beforeRecall =
                         WorldAnalysis.CaptureStepObservation(root, hand, frame.Snapshot);
                     bool recallChanged = false;
-                    yield return AviationRebasePlanner.ExecuteContinuation(
+                    yield return AviationRebaseExecutor.ExecuteContinuation(
                         player, root, ctx, unsafeWing, v => recallChanged = v);
                     frame.ObserveSettled(beforeRecall, null);
                     ReservationInvariants.CheckBoundary(player, root, ctx,

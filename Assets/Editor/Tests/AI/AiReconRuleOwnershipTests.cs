@@ -307,8 +307,8 @@ namespace Game.EditorTests
             AssertCalls(typeof(ReconGroundExecutor), "MaybeEnterOptionalStealth", typeof(StrategicSpendability), "SpendableAp");
             AssertCalls(typeof(ReconGroundExecutor), "RunPreparedStep", typeof(AiV2Util), "KnownArmyIds");
             AssertCalls(typeof(ReconAirExecutor), "RecordDiscoveries", typeof(AiV2Util), "KnownArmyIds");
-            AssertCalls(typeof(ReconGroundExecutor), "RefreshObjectiveSatisfied", typeof(ScoutObjectiveEvaluator), "IsSatisfiedLive");
-            AssertCalls(typeof(ReconAirExecutor), "ObjectiveSatisfied", typeof(ScoutObjectiveEvaluator), "IsSatisfiedLive");
+            AssertCalls(typeof(ReconGroundExecutor), "RefreshObjectiveSatisfied", typeof(ObjectiveLiveStatus), "ScoutSatisfied");
+            AssertCalls(typeof(ReconAirExecutor), "ObjectiveSatisfied", typeof(ObjectiveLiveStatus), "ScoutSatisfied");
         }
 
         private const BindingFlags AllMethods = BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic;

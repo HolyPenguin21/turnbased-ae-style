@@ -138,7 +138,7 @@ namespace Game.Ai.V2
             foreach (ResearchProductionMode mode in Modes)
             foreach (HexCoord hex in sites)
             {
-                BuildingData building = BuildingRegistry.FindAt(hex);
+                BuildingData building = OwnWorld.Of(player).BuildingAt(hex);
                 if (building == null || building.Owner != player)
                     continue;
                 bool facilityReady = building.HasFacilityWithAbility(
@@ -214,10 +214,10 @@ namespace Game.Ai.V2
             // own (CapacityUnlock), priced and paid for itself; the Facility placement it makes possible is a
             // later action evaluated on the refreshed world. StrategicMaintenancePolicy owns which tier
             // opens a slot. No unlockable tier left -> the site cannot host it.
-            if (!facilityReady && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            if (!facilityReady && OwnWorld.Of(player).BuildingAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
             {
                 capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
-                    BuildingRegistry.FindAt(hex), ctx);
+                    OwnWorld.Of(player).BuildingAt(hex), ctx);
                 if (capacityTier == null)
                     return "reason=no_facility_slot";
             }
@@ -245,7 +245,7 @@ namespace Game.Ai.V2
             return SelectedPreparationSite(mode, player, hand, ctx,
                 MissionIntentRegistry.Peek(player)?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 hand?.RemainingDeck,
-                BuildingRegistry.AllBuildings().Where(b => b != null && b.Owner == player && b.IsBase)
+                OwnWorld.Of(player).Buildings.Where(b => b.IsBase)
                     .Select(b => b.Hex).ToList());
         }
 
@@ -279,11 +279,10 @@ namespace Game.Ai.V2
             if (baseHexes == null || player == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return null;
-            bool facilityOfModeExists = BuildingRegistry.AllBuildings().Any(b => b != null
-                && b.Owner == player && b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
+            bool facilityOfModeExists = OwnWorld.Of(player).Buildings.Any(b => b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)));
             bool Viable(HexCoord hex)
             {
-                BuildingData b = BuildingRegistry.FindAt(hex);
+                BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
                 return b != null && b.Owner == player
                     && !b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode))
                     && StructuralPreparationBlock(mode, hex, false, facilityOfModeExists, deck, player,
@@ -299,7 +298,7 @@ namespace Game.Ai.V2
                     UnitData hero = i.Development.Hero;
                     if (hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
                         && hero.HasAbility(role)
-                        && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                        && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                             && a.Members.Contains(hero))
                         && Viable(i.Development.FacilityHex))
                         return i.Development.FacilityHex;
@@ -448,14 +447,13 @@ namespace Game.Ai.V2
                     facility.EffectivePlayApCost,
                     facility.EffectivePlayResourceCost,
                     snap, inv, hand, spendable, player);
-            ArmyData garrison = ArmyRegistry.AllAt(hex)
-                .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
+            ArmyData garrison = OwnWorld.Of(player).GarrisonAt(hex);
             bool operatorInTransit = activeIntents?.Any(i => i?.Status == IntentStatus.Active
                 && i.Development != null && i.Development.Mode == mode
                 && i.Development.FacilityHex.Equals(hex) && i.Development.Hero?.Owner == player
                 && !i.Development.Hero.IsPrisoner
                 && i.Development.Hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
-                && ArmyRegistry.AllForOwner(player).Any(a => a != null && !a.IsPrison
+                && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                     && a.Members.Contains(i.Development.Hero))) == true;
             DevelopmentLifecycleState lifecycle = MissionIntentRegistry.Peek(player)?.Development;
             CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
@@ -494,7 +492,7 @@ namespace Game.Ai.V2
             float remoteCost = float.PositiveInfinity;
             if (actor == null && !operatorInTransit && ctx.Map != null)
             {
-                foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+                foreach (ArmyData army in OwnWorld.Of(player).Armies)
                 {
                     if (army == null || army.IsPrison || army.Hex.Equals(hex)
                         || occupied.IsArmyClaimed(army.Id))
@@ -512,7 +510,7 @@ namespace Game.Ai.V2
                     if (candidate == null || candidate.Owner != player)
                         continue;
                     // Never strip a different active facility of its exact operator.
-                    BuildingData sourceBuilding = BuildingRegistry.FindAt(army.Hex);
+                    BuildingData sourceBuilding = OwnWorld.Of(player).BuildingAt(army.Hex);
                     if (sourceBuilding != null && sourceBuilding.Owner == player
                         && Modes.Any(m => sourceBuilding.HasFacilityWithAbility(
                                 ResearchProductionSystem.FacilityAbility(m))
@@ -575,8 +573,7 @@ namespace Game.Ai.V2
                     .Where(g => IsGeneratedOperatorCandidate(g, mode)
                         && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
                         && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
-                        && ArmyRegistry.AllAt(g.FacilityHex).Any(source => source != null
-                            && source.Owner == player && !source.IsPrison
+                        && OwnWorld.Of(player).ArmiesAt(g.FacilityHex).Any(source => !source.IsPrison
                             && source.Members.Contains(g.Hero)
                             && !occupied.IsArmyClaimed(source.Id)))
                     .Select(g => (step: g, score: describeOnly ? 0f
@@ -648,7 +645,7 @@ namespace Game.Ai.V2
                     StageResourceCost = cost, WorldTaskScore = score,
                     PreparationCapacityTier = kind == DevelopmentPreparationKind.CapacityUnlock ? capacityTier : null,
                     PreparationExpectedLevel = kind == DevelopmentPreparationKind.CapacityUnlock
-                        ? BuildingRegistry.FindAt(hex)?.Level ?? 0 : 0,
+                        ? OwnWorld.Of(player).BuildingAt(hex)?.Level ?? 0 : 0,
                     PreparationFacilityCard = kind == DevelopmentPreparationKind.Operator ? null : card,
                     PreparationOperatorCard = kind == DevelopmentPreparationKind.Operator ? card : null,
                     PreparationOperatorGeneration = generated, PreparationExistingHero = hero,
@@ -747,7 +744,7 @@ namespace Game.Ai.V2
                 return false;
             HexCoord hex = plan.FacilityHex;
             ResearchProductionMode mode = plan.Mode;
-            BuildingData b = BuildingRegistry.FindAt(hex);
+            BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
             if (b == null || b.Owner != player || !b.IsBase || !b.HasTieredUnlock
                 || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null
                 || b.FindFirstAvailableFacilitySlot() >= 0          // a slot is already open: nothing to buy
@@ -790,7 +787,7 @@ namespace Game.Ai.V2
             foreach (ResearchProductionMode mode in Modes)
             foreach (HexCoord hex in snap.Self.BaseHexes.OrderBy(h => h.Q).ThenBy(h => h.R))
             {
-                BuildingData b = BuildingRegistry.FindAt(hex);
+                BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
                 if (b == null || b.Owner != player) continue;
                 bool ready = b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
@@ -813,7 +810,7 @@ namespace Game.Ai.V2
         // permission to generate: ResearchProductionSystem keeps the staffed-source contract.
         internal static bool IsPreparationSite(Game.Players.PlayerSetupData player, HexCoord hex)
         {
-            BuildingData b = BuildingRegistry.FindAt(hex);
+            BuildingData b = OwnWorld.Of(player).BuildingAt(hex);
             return b != null && b.Owner == player && b.IsBase;
         }
 
@@ -821,7 +818,7 @@ namespace Game.Ai.V2
             ResearchProductionMode mode) => IsPreparationSite(player, hex)
                 && hero != null && hero.Owner == player && hero.IsHero && !hero.IsPrisoner
                 && hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
-                && ArmyRegistry.AllAt(hex).Any(a => a.Owner == player && !a.IsPrison
+                && OwnWorld.Of(player).ArmiesAt(hex).Any(a => !a.IsPrison
                     && a.Members.Contains(hero));
 
         // Development's ONE world-task score assembly point. Every argument is a raw fact;
@@ -1145,7 +1142,7 @@ namespace Game.Ai.V2
                     Consider(v, DevRecipientKind.HandCard, c, null, null, $"hand:{c.Definition.displayName}");
                 }
 
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            foreach (ArmyData army in OwnWorld.Of(player).Armies)
             {
                 if (army == null || army.IsPrison) continue;
                 foreach (UnitData u in army.Members)

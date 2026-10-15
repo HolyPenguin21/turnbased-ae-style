@@ -198,7 +198,7 @@ namespace Game.Ai.V2
                     continue;
                 }
                 EconomyIntent build = intent.Economy;
-                ArmyData actor = ArmyRegistry.AllForOwner(player).FirstOrDefault(a =>
+                ArmyData actor = OwnWorld.Of(player).Armies.FirstOrDefault(a =>
                     a != null && a.Id == intent.PreferredMoverArmyId && a.Owner == player
                     && AiArmyRoles.IsHeroLed(a));
                 bool cardStillAvailable = build.Kind != EconomyTaskKind.FoundBase

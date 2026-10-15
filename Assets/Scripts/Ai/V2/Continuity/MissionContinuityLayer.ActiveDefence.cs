@@ -27,7 +27,7 @@ namespace Game.Ai.V2
                     && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
             }
             // Preserve the observation-owned fog-of-war seam; no global enemy sweep.
-            return ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(player,
+            return ObjectiveLiveStatus.ActiveDefenceSatisfied(player,
                 pm.ActiveDefenceTarget.EnemyArmyId);
         }
 

@@ -97,7 +97,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+            if (ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget))
             {
                 result.ReachedGoal = true;
                 result.StopReason = ExecutionStopReason.ReachedGoal;
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
                     // Standing on the hex IS the re-observation: an event another player finished
                     // while we walked is confirmed here (memory) and the goal is simply reached.
                     AiMapMemory.ObserveEventAt(player, targetHex);
-                    if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
+                    if (ObjectiveLiveStatus.RaidSatisfied(player, pm.RaidTarget))
                     {
                         result.ReachedGoal = true;
                         result.StopReason = ExecutionStopReason.ReachedGoal;

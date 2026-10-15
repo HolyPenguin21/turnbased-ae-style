@@ -99,7 +99,7 @@ namespace Game.Ai.V2
                 // that is below that hex's cost (rough terrain costs 2) would only fail the
                 // provisioning with "no safe first step" and mark the whole operation Blocked.
                 ArmyData liveHost = ctx?.Map == null || snap.Observer == null ? null
-                    : AiV2Util.ResolveArmy(snap.Observer, host.ArmyId);
+                    : OwnWorld.Of(snap.Observer).Army(host.ArmyId);
                 bool canStepNow = liveHost != null
                     ? SafeStepPathing.FindNextSafeStep(ctx.Map, liveHost, staging.Value,
                         profile: SafeRouteProfile.Combat).HasValue

@@ -66,49 +66,6 @@ namespace Game.Ai.V2
         public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId) =>
             FindSightingIn(snap?.Known?.EnemySightings, snap?.Known?.NeutralSightings, trackedArmyId);
 
-        // ---- LIVE (post-execution ledger pass) --------------------------------------------
-
-        // Objective completion must be POSITIVE, not inferred from one registry's absence.
-        //  NeutralArmy:
-        //   1) If the target id is now ours, it was captured -> satisfied.
-        //   2) If any ordinary non-us player now fields it, it is no longer neutral and therefore
-        //      no longer a legal Raid target -> satisfied for this campaign objective.
-        //   3) If no ordinary roster resolves it but honest neutral memory still tracks it, this is
-        //      the neutral/fog case -> not satisfied.
-        //   4) Only absence from both live ownership and honest memory counts as confirmed gone.
-        //  EventGuard:
-        //   Satisfied exactly when OUR memory confirms the event completed — by us (known at once)
-        //   or by another player, learned only on a re-observation of the hex. Disappearance from
-        //   visibility, or a global Consumed flag we have not observed, has no bearing.
-        public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, RaidTargetRef target)
-        {
-            if (player == null || !target.HasValue)
-                return false;
-
-            if (target.Kind == RaidTargetKind.EventGuard)
-                return AiMapMemory.KnownEventStateAt(player, target.Hex) == AiMapMemory.KnownEventState.Completed;
-
-            int targetArmyId = target.ArmyId;
-            if (ArmyRegistry.AllForOwner(player)
-                .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
-                return true;
-
-            foreach (PlayerSetupData other in GameSession.Players ?? System.Linq.Enumerable.Empty<PlayerSetupData>())
-            {
-                if (other == null || other.Equals(player))
-                    continue;
-                if (ArmyRegistry.AllForOwner(other)
-                    .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
-                    return true;
-            }
-
-            bool rememberedEnemy = AiMapMemory.AllKnownEnemySightings(player)
-                .Any(s => s.ArmyId == targetArmyId);
-            bool rememberedNeutral = AiMapMemory.AllKnownNeutralSightings(player)
-                .Any(s => s.ArmyId == targetArmyId);
-            return !rememberedEnemy && !rememberedNeutral;
-        }
-
         // The one answer to "what do WE know about this event target" for Provisioning/Execution:
         // Active = remembered, still pending; Completed = we confirmed it is done; Unknown = we hold
         // no personal knowledge of it (never actionable).

@@ -38,8 +38,8 @@ namespace Game.Ai.V2
             float minimumPower, bool? requireCoverage)
         {
             ArmyData home = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Contains(host.Hex)
-                ? ArmyRegistry.AllAt(host.Hex).FirstOrDefault(a => a != null && a.IsGarrison
-                    && a.Owner == host.Owner && !a.HasActivatedThisTurn) : null;
+                ? OwnWorld.Of(host.Owner).ArmiesAt(host.Hex).FirstOrDefault(a => a.IsGarrison
+                    && !a.HasActivatedThisTurn) : null;
             var heroes = members.Where(u => u != null && u.IsHero && !u.IsPrisoner).ToList();
             var leaders = heroes.Count > 0 ? heroes : new List<UnitData> { null };
             GroundCombatAssemblyPlan best = null;
@@ -238,7 +238,7 @@ namespace Game.Ai.V2
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
                 return null;
-            ArmyData host = ArmyRegistry.AllForOwner(owner)
+            ArmyData host = OwnWorld.Of(owner).Armies
                 .FirstOrDefault(a => a != null && a.Id == plan.BaseArmyId);
             if (host == null || host.Members.Count == 0)
                 return null;
@@ -248,7 +248,7 @@ namespace Game.Ai.V2
         private static ArmyData LiveArmy(ArmySnapshot s)
         {
             PlayerSetupData owner = s?.Owner;
-            return owner == null ? null : ArmyRegistry.AllForOwner(owner)
+            return owner == null ? null : OwnWorld.Of(owner).Armies
                 .FirstOrDefault(a => a != null && a.Id == s.ArmyId);
         }
 

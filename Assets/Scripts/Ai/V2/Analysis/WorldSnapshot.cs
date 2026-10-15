@@ -39,6 +39,9 @@ namespace Game.Ai.V2
         // from army contents or citadel coordinates: an empty/army-less snapshot is still owned
         // by exactly one player.
         public PlayerSetupData Observer;
+        // The observer's own live objects — the one door planning layers use (OwnWorld).
+        public OwnWorld Own => _own != null && _own.Player == Observer ? _own : (_own = OwnWorld.Of(Observer));
+        private OwnWorld _own;
         public int TurnNumber;
         // Revision of the authoritative per-player knowledge memory captured by this immutable
         // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,

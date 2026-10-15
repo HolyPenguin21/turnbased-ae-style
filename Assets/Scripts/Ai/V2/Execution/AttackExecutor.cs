@@ -430,7 +430,7 @@ namespace Game.Ai.V2
                 result.ActualActorArmyId = pm.MoverArmyId;
 
             bool intermediateCaptured = target.IsIntermediateAssault
-                && AttackObjectiveEvaluator.EvaluateTargetLive(player, target.IntermediateTarget)
+                && ObjectiveLiveStatus.AttackTarget(player, target.IntermediateTarget)
                     == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
             if (intermediateCaptured)
             {

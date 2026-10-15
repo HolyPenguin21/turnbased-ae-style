@@ -81,7 +81,7 @@ namespace Game.Ai.V2
     internal static partial class GroundCombatAirSupport
     {
         internal static bool WingLanded(PlayerSetupData player, int? armyId) =>
-            armyId.HasValue && AiV2Util.ResolveArmy(player, armyId.Value)?.AirWingLanded == true;
+            armyId.HasValue && OwnWorld.Of(player).Army(armyId.Value)?.AirWingLanded == true;
 
         // Absence is evidence only after a fresh observation reconciled the aviation target pool.
         // Fogged or stale empty collections never suppress a blind support sortie.
@@ -203,7 +203,7 @@ namespace Game.Ai.V2
             {
                 if (!ReferenceEquals(snap.Map, null) && observedAir)
                 {
-                    ArmyData live = AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId);
+                    ArmyData live = OwnWorld.Of(snap.Observer).Army(wing.ArmyId);
                     if (live == null) continue;
                     AirSortie active = AirSortieRegistry.ForArmy(snap.Observer, live);
                     bool reconHandoff = active?.Kind == AirSortieKind.Recon
@@ -238,7 +238,7 @@ namespace Game.Ai.V2
                 if (strikeTurns <= 0)
                     continue;
                 int eta = SortieEta(wing, targetHex);
-                ArmyData liveWing = eta <= 1 ? AiV2Util.ResolveArmy(snap.Observer, wing.ArmyId) : null;
+                ArmyData liveWing = eta <= 1 ? OwnWorld.Of(snap.Observer).Army(wing.ArmyId) : null;
                 bool[] firstPassSpent = liveWing == null ? null :
                     (wing.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
                         .Where(x => x.IsAviation).OrderBy(x => x.UnitIndex)
@@ -364,7 +364,7 @@ namespace Game.Ai.V2
         // Is this wing still a valid air army flying a support (Strike) sortie right now?
         internal static bool SortieLive(PlayerSetupData player, int? wingArmyId, out bool wingValid)
         {
-            ArmyData wing = wingArmyId.HasValue ? AiV2Util.ResolveArmy(player, wingArmyId.Value) : null;
+            ArmyData wing = wingArmyId.HasValue ? OwnWorld.Of(player).Army(wingArmyId.Value) : null;
             wingValid = wing != null && AviationRules.IsValidAirArmy(wing);
             AirSortie sortie = wingValid ? AirSortieRegistry.ForArmy(player, wing) : null;
             // The task owns the wing only while it flies the strike series. Once execution turns
@@ -376,7 +376,7 @@ namespace Game.Ai.V2
         // executor's HOLD): its support leg is not proposed again this turn.
         internal static bool HoldingThisTurn(PlayerSetupData player, int wingArmyId, int turn)
         {
-            ArmyData wing = AiV2Util.ResolveArmy(player, wingArmyId);
+            ArmyData wing = OwnWorld.Of(player).Army(wingArmyId);
             AirSortie sortie = wing != null ? AirSortieRegistry.ForArmy(player, wing) : null;
             return sortie != null && sortie.Kind == AirSortieKind.Strike && sortie.HeldTurn == turn;
         }
@@ -411,7 +411,7 @@ namespace Game.Ai.V2
             foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
                 if (sortie?.Army == null || !AviationRules.IsValidAirArmy(sortie.Army))
                     AirSortieRegistry.Remove(player, sortie);
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player).ToList())
+            foreach (ArmyData army in OwnWorld.Of(player).Armies.ToList())
             {
                 if (army == null || AviationRules.IsValidAirArmy(army)
                     || !ReconAirSortieRegistry.TryGet(player, army.Id, out _))
@@ -465,7 +465,7 @@ namespace Game.Ai.V2
         {
             resolved = default;
             failure = default;
-            ArmyData wing = AiV2Util.ResolveArmy(player, wingArmyId);
+            ArmyData wing = OwnWorld.Of(player).Army(wingArmyId);
             if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Owner != player
                 || wing.Members.Count == 0 || session.ClaimedArmyIds.Contains(wing.Id))
             {

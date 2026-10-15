@@ -175,6 +175,22 @@ Forbidden edges: `Evaluator → StrategicManager`, `Domain → MissionPlanner`,
 cycle across the tiers above. `Execution/` receives concrete plans and calls
 canonical game actions; it never selects objectives or invents alternative actions.
 
+**Live-state boundary (2026-10-15).** The planning layers — `Strategy/`, `Missions/`,
+`Evaluation/` — reason on the `WorldSnapshot` and never read the registries (`ArmyRegistry`,
+`BuildingRegistry`, `VisionSystem`, `StealthSystem`, `PlayerRootRegistry`) or
+`AiV2Util.ResolveArmy` themselves. Where a plan must hold a concrete live object (the `ArmyData`
+whose units it transfers, the `BuildingData` whose slot it fills) it asks the one observer-scoped
+door `Analysis/OwnWorld` (`snap.Own`, or `OwnWorld.Of(player)`): own armies and buildings, plus the
+observer's own vision (`VisibleBuildingAt` only for a hex seen now). Foreign facts come from
+`AiMapMemory` / `WorldSnapshot.Known`. Live reads stay in Analysis and the live tiers (Continuity,
+Provisioning, Execution, Housekeeping, Reaction); the live objective checks are
+`Continuity/ObjectiveLiveStatus`, the aviation rebase execution is `Execution/AviationRebaseExecutor`
+and wing forming `Execution/AviationWingPreparation`. Canonical domain rules (`ArmyActions.Can*`,
+`ResearchProductionSystem` queries) remain callable — they are rules, not raw state.
+`AiPlanningLiveReadBoundaryTests` guards the boundary. OwnWorld reads are live, not cached, so a
+plan made after a same-cycle mutation still sees it; turning them into snapshot facts is the next
+step of the snapshot refactoring.
+
 ## Mid-turn loop boundary (rollout contract)
 
 The loop is a bounded repetition of the existing horizontal pipeline, not a new
