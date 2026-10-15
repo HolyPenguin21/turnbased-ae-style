@@ -39,10 +39,6 @@ namespace Game.Ai.V2
 
         public ArmyData Army(int armyId) => Armies.FirstOrDefault(a => a != null && a.Id == armyId);
 
-        // The live army of an own snapshot row (null: gone, or not ours).
-        public ArmyData Army(ArmySnapshot snapshot) =>
-            snapshot == null || snapshot.Owner != Player ? null : Army(snapshot.ArmyId);
-
         public IEnumerable<ArmyData> ArmiesAt(HexCoord hex) =>
             ArmyRegistry.AllAt(hex).Where(a => a != null && a.Owner == Player);
 
@@ -62,8 +58,6 @@ namespace Game.Ai.V2
 
         public IEnumerable<BuildingData> Buildings =>
             BuildingRegistry.AllBuildings().Where(b => b != null && b.Owner == Player);
-
-        public IEnumerable<HexCoord> BaseHexes => Buildings.Where(b => b.IsBase).Select(b => b.Hex);
 
         // The own building on `hex` (null: none, or a foreign one).
         public BuildingData BuildingAt(HexCoord hex)

@@ -374,7 +374,7 @@ reactivate when important contact becomes stale or blind again.
 | Scout exposure and stealth-detector risk | `Recon/ScoutRiskModel` (`IsExposed` / `CountDetectors` / `DetectorRisk`, snapshot or live sightings) — frontier annotation, objective scan, vantage ranking, optional-stealth leg risk |
 | A met Scout objective is only a waypoint (the durable ground role continues) | `ScoutObjectiveEvaluator.RoleContinuesAtWaypoint` — ground executor, `TaskExecutor` stale-goal path, air executor |
 | An air sortie must turn for home (endurance deadline / used-up outbound leg) | `ReconAirSortieState.OutboundCapReached` + must-recover, applied identically by `AirReconStepDirector.PlanStep` and the read-only `ReconAirReservationPrepass.ProjectScoringSortie` (mandatory recovery, capacity) |
-| Scout objective met live | `ScoutObjectiveEvaluator.IsSatisfiedLive` — post-execution ledger, ground and air executors, `MissionRevalidator` |
+| Scout objective met live | `ObjectiveLiveStatus.ScoutSatisfied` — post-execution ledger, ground and air executors, `MissionRevalidator` |
 | A durable Scout intent's current objective | `ReconObjectiveEvaluator.ForIntent` — mission re-materialisation and `ActorCommitments`' off-list stealth requirement |
 | Writing a Scout outcome into its durable intent (create / advance / absorb) | `MissionContinuityLayer.ApplyScoutPayload` |
 | Which durable actor a Recon mission may re-bind | only its own durable intent's actor (`ReconAssignmentPlanner.IsOwnDurableActor`), the rule ground combat applies in `ProvisioningSession.ExcludedForGroundCombat`; a planning witness never relaxes another intent's claim |

@@ -320,7 +320,7 @@ namespace Game.Ai.V2
             MissionIntent intent, RaidIntent ri, ISet<int> unavailableArmyIds,
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
-            // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
+            // Loss of VISIBILITY is never proof of destruction — ObjectiveLiveStatus.RaidSatisfied is the
             // positive live read (ours / another player's roster / honest map memory / confirmed event-guard
             // completion, per target kind).
             bool targetGone = ri.Target.HasValue

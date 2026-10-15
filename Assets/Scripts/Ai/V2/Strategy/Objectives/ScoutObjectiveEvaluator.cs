@@ -9,13 +9,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT OBJECTIVE EVALUATOR  (Strategy V2 build-order step 7 — the single completion/validity home)
     // ===========================================================================================
-    //  One home for Explore / generic Refresh lifecycle rules.
-    //
-    //    · LIVE overloads  — read the mutated world directly (VisionSystem / AiMapMemory). Called
-    //                        at execution / provisioning time, where post-mutation live state IS
-    //                        the truth and there is no fog on our own observations this turn.
-    //    · SNAPSHOT overload (IsIntentStillValid) — reads ONLY the turn's WorldSnapshot plus the
-    //                        frozen Recon IntelAge sidecar captured with that snapshot.
+    //  One home for Explore / generic Refresh lifecycle rules, judged on the turn's WorldSnapshot
+    //  plus the frozen Recon IntelAge sidecar captured with that snapshot (IsIntentStillValid).
+    //  The live counterparts read at execution / provisioning time are
+    //  Continuity/ObjectiveLiveStatus (ScoutSatisfied, ExploreSatisfied, RefreshSatisfied).
     // ===========================================================================================
     public static class ScoutObjectiveEvaluator
     {
