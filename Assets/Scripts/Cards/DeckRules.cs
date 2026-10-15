@@ -81,7 +81,8 @@ namespace Game.Cards
                     if (row == null || string.IsNullOrWhiteSpace(row.cardKey)) { result.Errors.Add("Missing card identity."); continue; }
                     if (!keys.Add(row.cardKey)) result.Errors.Add("Duplicate card row: " + row.cardKey);
                     var card = Resolve(row.cardKey);
-                    if (card == null) { result.Errors.Add("Obsolete card reference: " + row.cardKey); continue; }
+                    // Kept in the saved deck so the row returns if the card does; ignored in play (see MatchLoadout).
+                    if (card == null) { result.Warnings.Add("Unknown card ignored: " + row.cardKey); continue; }
                     if (Category(card) != category || !Permitted(card, deck.faction)) result.Errors.Add("Forbidden card: " + card.displayName);
                     if (card.deckPointCost < 0 || card.deckCopyLimit < 0) result.Errors.Add("Invalid card metadata: " + row.cardKey);
                     if (row.count < 0 || row.count > CopyLimit(card) || row.count > owned(row.cardKey))

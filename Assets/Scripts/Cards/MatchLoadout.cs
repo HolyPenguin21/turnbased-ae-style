@@ -16,6 +16,10 @@ namespace Game.Cards
             var validation = rules.Validate(source, ownership);
             if (!validation.IsValid) throw new InvalidOperationException(string.Join("\n", validation.Errors));
             deck = CollectionProfile.CopyDeck(source);
+            // Unknown cards are only warnings in Validate; they never reach the match.
+            deck.mainCards.RemoveAll(e => rules.Resolve(e.cardKey) == null);
+            deck.equipment.RemoveAll(e => rules.Resolve(e.cardKey) == null);
+            deck.mutators.RemoveAll(e => rules.Resolve(e.cardKey) == null);
             foreach (var e in deck.mainCards) owned[e.cardKey] = e.count;
             foreach (var e in deck.equipment) owned[e.cardKey] = e.count;
             foreach (var e in deck.mutators) owned[e.cardKey] = e.count;

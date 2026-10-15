@@ -40,7 +40,23 @@ namespace Game.EditorTools
         [Test] public void DuplicateRowsAreRejectedWithoutLosingData() { var deck = Deck(1); deck.mainCards.Add(new DeckCardEntry { cardKey = card.authoredKey, count = 1 }); Assert.That(rules.Validate(deck, _ => 4).IsValid, Is.False); Assert.That(deck.mainCards.Count, Is.EqualTo(2)); }
         [Test] public void SystemCardsNeverBecomeRewardsOrDeckCards() { card.deckBuilderExcluded = true; Assert.That(rules.Cards(Faction.IronConcord), Is.Empty); Assert.That(rules.Validate(Deck(1), _ => 4).IsValid, Is.False); }
         [Test] public void NeutralIsNotAnImplicitPermission() { catalog.faction = Faction.Neutral; card.faction = Faction.Neutral; Assert.That(rules.Cards(Faction.IronConcord), Is.Empty); }
-        [Test] public void UnknownIdentityInvalidatesDeck() { var deck = Deck(1); deck.mainCards[0].cardKey = "removed"; Assert.That(rules.Validate(deck, _ => 4).IsValid, Is.False); }
+        [Test] public void UnknownIdentityIsKeptInDeckButIgnoredInPlay()
+        {
+            var deck = Deck(1); deck.mainCards.Add(new DeckCardEntry { cardKey = "removed", count = 1 });
+            var validation = rules.Validate(deck, _ => 4);
+            Assert.That(validation.IsValid, Is.True); Assert.That(validation.Warnings.Any(w => w.Contains("removed")), Is.True);
+            Assert.That(new MatchLoadout(deck, rules, _ => 4).TryBuildPool(rules, out var pool, out _), Is.True);
+            Assert.That(pool.Single(), Is.SameAs(card)); Assert.That(deck.mainCards.Count, Is.EqualTo(2));
+        }
+        [Test] public void MissingStarterCardIsSkippedWithReadableIssue()
+        {
+            starting.decks.Add(new StartingDeck { deckName = "Concord Starter", faction = Faction.IronConcord, cards = new List<DeckCardEntry>
+                { new DeckCardEntry { cardKey = card.authoredKey, count = 1 }, new DeckCardEntry { cardKey = "removed", count = 1 } } });
+            var p = new CollectionProfile(); var service = new CollectionService(rules, null, p);
+            Assert.That(() => service.InitializeStarters(p), Throws.Nothing);
+            Assert.That(p.savedDecks.Single(d => d.faction == Faction.IronConcord).mainCards.Single().cardKey, Is.EqualTo(card.authoredKey));
+            Assert.That(service.StarterIssues.Single(), Does.Contain("Concord Starter").And.Contain("'removed'").And.Contain("not in any card catalog"));
+        }
         [Test] public void RemovalRepairsOverBudgetDeckWithoutChangingOwnership() { var deck = Deck(4); card.deckPointCost = 40; Assert.That(rules.TryChange(deck, card.authoredKey, -1, _ => 4, out _), Is.True); Assert.That(deck.mainCards[0].count, Is.EqualTo(3)); }
         [Test] public void SnapshotIsDetachedFromSavedDeckAndOwnership() { var deck = Deck(2); var snapshot = new MatchLoadout(deck, rules, _ => 4); deck.mainCards[0].count = 4; Assert.That(snapshot.TryBuildPool(rules, out var pool, out _), Is.True); Assert.That(pool.Count, Is.EqualTo(2)); }
         [Test] public void PoolInstancesAreIndependent() { starting.decks.Add(new StartingDeck { faction = Faction.IronConcord, cards = Deck(2).mainCards }); var first = starting.BuildDeckPool(Faction.IronConcord); var second = starting.BuildDeckPool(Faction.IronConcord); first.Clear(); Assert.That(second.Count, Is.EqualTo(2)); }

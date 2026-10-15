@@ -324,7 +324,7 @@ namespace Game.UI
 
             int n = 0;
             var allEntries = new[] { DeckCategory.Main, DeckCategory.Equipment, DeckCategory.Mutator }
-                .SelectMany(c => DeckRules.Entries(draft, c)).ToList();
+                .SelectMany(c => DeckRules.Entries(draft, c)).Where(e => collection.Rules.Resolve(e.cardKey) != null).ToList();
             // Same section order as CollectionOrder: Buildings, Heroes, Units, Equipment, Mutators.
             string[] sections = { "Buildings", "Heroes", "Units", "Equipment", "Mutators", "Other" };
             for (int s = 0; s < sections.Length; s++)
