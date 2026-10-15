@@ -22,13 +22,13 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: a8ff5139211963a4ba9c4071e7ad163c, type: 3}
     description: The dry oasis outpost still has a deep well beneath its collapsed adobe courtyard. Its cistern and storehouse may hold useful supplies.
     variants:
-    - guardArmyName: Event Light 01
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 04
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 08
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Solar farm
@@ -48,26 +48,26 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: d3d2a7273506a574da64907964c0f68e, type: 3}
     description: A cargo blimp lies tangled among desert rocks. Its torn hold has exposed sealed crates beneath the sun-bleached envelope.
     variants:
-    - guardArmyName: Event Light 03
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 06
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 10
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Orbital satellite
     image: {fileID: 21300000, guid: e110a89a93bed9345a939fd80bd2d6aa, type: 3}
     description: A fallen orbital satellite has carved a long scar through the dunes. Its surviving instruments may still be worth salvaging.
     variants:
-    - guardArmyName: Event Light 04
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 07
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 01
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Abandoned warehouse
@@ -83,7 +83,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: concord.card.scrapper
+        cardKey: neutral.equipment.infantry.ballistic-shield
     - guardArmyName: Event Medium 08
       resourceCount: 3
       rewards:
@@ -93,7 +93,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: neutral.equipment.bio.heavy-mg
+        cardKey: neutral.equipment.infantry.assault-rifle-kit
     - guardArmyName: Event Heavy 02
       resourceCount: 4
       rewards:
@@ -103,7 +103,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: ashen.card.iron-husk
+        cardKey: neutral.equipment.infantry.ceramic-vest
   - name: Concrete bunker
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
     description: A reinforced logistics bunker hides beneath a ruined highway. Its supply vaults are occupied.
@@ -119,15 +119,15 @@ MonoBehaviour:
       rewards: []
   - name: Resort settlement
     image: {fileID: 21300000, guid: e899db11b325dca4abbf7d226647091f, type: 3}
-    description: Glass-fronted resort houses emerge from the dunes. Their current inhabitants have secured the most useful rooms.
+    description: Glass-fronted resort houses emerge from the dunes. Their abandoned rooms may still contain useful supplies.
     variants:
-    - guardArmyName: Event Light 07
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 10
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 04
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Auto repair shop
@@ -143,7 +143,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: concord.card.rc-vehicle
+        cardKey: neutral.equipment.mechanical.armor-plate
     - guardArmyName: Event Medium 01
       resourceCount: 3
       rewards:
@@ -153,7 +153,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: neutral.equipment.mechanical.armor-plate
+        cardKey: neutral.equipment.mechanical.reinforced-chassis
     - guardArmyName: Event Heavy 05
       resourceCount: 4
       rewards:
@@ -163,41 +163,20 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: vessels.18.bastion-frame
+        cardKey: neutral.equipment.mechanical.servo-actuators
   - name: Nuclear silo
     image: {fileID: 21300000, guid: 26e3f7db440643843a22bba89cad625f, type: 3}
-    description: A sunken missile silo opens into a dry lakebed. Scavengers have fortified the surviving service tunnels.
+    description: A sunken missile silo opens into a dry lakebed. The surviving service tunnels may still contain useful equipment.
     variants:
-    - guardArmyName: Event Light 09
+    - guardArmyName:
       resourceCount: 2
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: neutral.equipment.bio.at-launcher
-    - guardArmyName: Event Medium 02
+      rewards: []
+    - guardArmyName:
       resourceCount: 3
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: vessels.16.bulwark-vessel
-    - guardArmyName: Event Heavy 06
+      rewards: []
+    - guardArmyName:
       resourceCount: 4
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: neutral.equipment.mechanical.nuclear-engine
+      rewards: []
   - name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
     description: A disguised research bunker lies under a treatment station. Its sealed laboratories remain under guard.
@@ -211,7 +190,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: neutral.equipment.bio.plasma-gun
+        cardKey: neutral.mutator.dermal-plating
     - guardArmyName: Event Medium 03
       resourceCount: 3
       rewards:
@@ -221,7 +200,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: vessels.13.arc-sentry
+        cardKey: neutral.mutator.reactive-marrow
     - guardArmyName: Event Heavy 07
       resourceCount: 4
       rewards:
@@ -231,7 +210,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: neutral.card.wrecker
+        cardKey: neutral.mutator.reinforced-skeleton
   - name: Factory
     image: {fileID: 21300000, guid: 5b8041f5d35ba1445b31169b8b12c6e0, type: 3}
     description: The dead smokestacks of a manufacturing plant rise above the sand. Its assembly floor still contains recoverable machinery.
@@ -249,62 +228,41 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: 163172a6c2e2e93409c7f956e041a13a, type: 3}
     description: Stripped airliners and transport craft rest half-buried in the desert. Their sheltered compartments may hide spare parts.
     variants:
-    - guardArmyName: Event Light 02
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 05
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 09
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Tunnel
     image: {fileID: 21300000, guid: 705ae8d5867e0f349a77e77ee190e92b, type: 3}
     description: A mountain tunnel is blocked by rusted vehicles and fallen stone. A route through the wrecks leads toward abandoned cargo.
     variants:
-    - guardArmyName: Event Light 03
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 06
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 10
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Train station
     image: {fileID: 21300000, guid: 334db0f20a20a304390f75bc764d8e33, type: 3}
     description: Only the concrete roof of a buried railway station remains visible. Its platforms and service rooms are still accessible.
     variants:
-    - guardArmyName: Event Light 04
+    - guardArmyName:
       resourceCount: 2
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: concord.card.scout
-    - guardArmyName: Event Medium 07
+      rewards: []
+    - guardArmyName:
       resourceCount: 3
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: neutral.equipment.armored.double-barrel
-    - guardArmyName: Event Heavy 01
+      rewards: []
+    - guardArmyName:
       resourceCount: 4
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: ashen.card.scav-carrier
+      rewards: []
   - name: Oil refinery
     image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
     description: Pipelines and storage tanks mark an abandoned refinery. The remaining fuel stores have drawn a local patrol.
@@ -322,49 +280,28 @@ MonoBehaviour:
     image: {fileID: 21300000, guid: e0d33263f0ad6694594ce8ba63bbd50b, type: 3}
     description: A looted casino resort rises above the dunes. Its service vaults and private rooms may still hold valuables.
     variants:
-    - guardArmyName: Event Light 06
+    - guardArmyName:
       resourceCount: 2
       rewards: []
-    - guardArmyName: Event Medium 09
+    - guardArmyName:
       resourceCount: 3
       rewards: []
-    - guardArmyName: Event Heavy 03
+    - guardArmyName:
       resourceCount: 4
       rewards: []
   - name: Radio observatory
     image: {fileID: 21300000, guid: 0cc82e1994ea4e57b96fb45fc6e78a19, type: 3}
     description: Dish antennas surround a silent desert observatory. The control room may contain intact signal equipment.
     variants:
-    - guardArmyName: Event Light 07
+    - guardArmyName:
       resourceCount: 2
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: vessels.10.whisper-scout
-    - guardArmyName: Event Medium 10
+      rewards: []
+    - guardArmyName:
       resourceCount: 3
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: neutral.equipment.armored.plasma-cannon
-    - guardArmyName: Event Heavy 04
+      rewards: []
+    - guardArmyName:
       resourceCount: 4
-      rewards:
-      - type: 1
-        resources:
-          human: 0
-          energy: 0
-          materials: 0
-          tech: 0
-        cardKey: concord.card.watcher-drone
+      rewards: []
   - name: Water purification plant
     image: {fileID: 21300000, guid: 437b6d78e5d54b548e524634ef384cd9, type: 3}
     description: A water purification plant stands behind cracked settling pools. Its filters and reserve tanks have become valuable territory.
@@ -384,13 +321,34 @@ MonoBehaviour:
     variants:
     - guardArmyName: Event Light 09
       resourceCount: 2
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.equipment.mechanical.reactive-armor
     - guardArmyName: Event Medium 02
       resourceCount: 3
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.equipment.mechanical.ceramic-plating
     - guardArmyName: Event Heavy 06
       resourceCount: 4
-      rewards: []
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: neutral.equipment.vehicle.turbocharger
   - name: Underground archive
     image: {fileID: 21300000, guid: 6999513a02774353868c09d5e84715dc, type: 3}
     description: A buried archive can be reached through a collapsed access shaft. Shelved records and preserved equipment wait below.
@@ -404,7 +362,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: ashen.card.dust-runner
+        cardKey: neutral.mutator.metabolic-overdrive
     - guardArmyName: Event Medium 03
       resourceCount: 3
       rewards:
@@ -414,7 +372,7 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: neutral.equipment.mechanical.armor-plate
+        cardKey: neutral.mutator.pain-suppression
     - guardArmyName: Event Heavy 07
       resourceCount: 4
       rewards:
@@ -424,4 +382,4 @@ MonoBehaviour:
           energy: 0
           materials: 0
           tech: 0
-        cardKey: vessels.19.heavy-sentinel
+        cardKey: neutral.mutator.adrenal-surge
