@@ -163,8 +163,9 @@ namespace Game.UI
             RefreshAbilityText();
         }
 
-        // typeText content. An Equipment card shows who it fits + what its grant does (see
-        // EquipmentCardText). Every other card shows its ability tags — folding in an attached
+        // typeText content — ability abbreviations only, never card type or unit type tags. An
+        // Equipment card shows the abilities its grant adds (see EquipmentCardText.CardFace).
+        // Every other card shows its own abilities — folding in an attached
         // in-hand equipment's added/removed abilities (see CardData.Equipment) so the face
         // matches what EquipmentSystem.Apply will give the spawned unit. Called from Setup and
         // again by CardHandUI right after an attach lands on this hand card.

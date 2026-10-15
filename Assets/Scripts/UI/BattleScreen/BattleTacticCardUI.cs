@@ -1,4 +1,5 @@
 using Game.Cards;
+using Game.Core;
 using Game.Economy;
 using TMPro;
 using UnityEngine;
@@ -6,7 +7,7 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One Tactic card's visual inside BattleHandUI's vertical hand — art, name, type, and cost
+    // One Tactic card's visual inside BattleHandUI's vertical hand — art, name, abilities, and cost
     // badges (same badge convention as CardUI's own CostRow). No StatsRow (CardUI already hides
     // it for CardType.Tactic — Tactic cards have no unit/hero/building stats to show), no drag,
     // no hover-grow — playing a Tactic card during battle isn't wired up yet (see
@@ -37,7 +38,7 @@ namespace Game.UI
                 rectTransform = (RectTransform)transform;
         }
 
-        public void Setup(CardData data)
+        public void Setup(CardData data, GameConfig config)
         {
             Data = data;
             CardDefinition definition = data?.Definition;
@@ -46,8 +47,12 @@ namespace Game.UI
                 artImage.sprite = definition != null ? definition.art : null;
             if (nameText != null)
                 nameText.text = definition != null ? definition.displayName : string.Empty;
+            // Ability abbreviations only, same as every other card face (see CardUI) — never
+            // the card type.
             if (typeText != null)
-                typeText.text = definition != null ? definition.cardType.ToString() : string.Empty;
+                typeText.text = definition != null && config != null
+                    ? config.FormatAbilities(definition.grantedAbilities)
+                    : string.Empty;
 
             ResourceCost cost = definition?.resourceCost;
             SetBadge(apBadgeRoot, apBadgeText, definition != null ? definition.apCost : 0);

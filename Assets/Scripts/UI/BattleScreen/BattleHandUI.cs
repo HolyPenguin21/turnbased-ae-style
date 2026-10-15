@@ -94,11 +94,14 @@ namespace Game.UI
 
             float step = cardHeight * (1f - overlapFraction);
             int end = Mathf.Min(_cards.Count, _scrollOffset + MaxVisible);
+            // Only for the cards' ability abbreviations (see BattleTacticCardUI.Setup).
+            BattleScreenUI screen = GetComponentInParent<BattleScreenUI>(true);
+            Game.Core.GameConfig config = screen != null ? screen.GameConfig : null;
             for (int i = _scrollOffset; i < end; i++)
             {
                 BattleTacticCardUI card = Instantiate(cardPrefab, cardContainer);
                 Game.Audio.SceneUIAudioBinder.BindCreatedRoot(card);
-                card.Setup(_cards[i]);
+                card.Setup(_cards[i], config);
                 card.SetSlot(new Vector2(0f, -(i - _scrollOffset) * step));
                 _visible.Add(card);
             }

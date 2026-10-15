@@ -346,7 +346,7 @@ namespace Game.EditorTests
                 {
                     Assert.That(c.attachmentSlot, Is.EqualTo(AttachmentSlot.Equipment));
                     Assert.That(c.art, Is.Not.Null, c.displayName); Assert.That(c.detailArt, Is.Not.Null, c.displayName);
-                    var preview = EquipmentCardText.CardFace(c, null);
+                    var preview = EquipmentCardText.Description(c, null);
                     Assert.That(preview, Does.Contain("Unit").And.Not.Contain("required"));
                 }
             }
