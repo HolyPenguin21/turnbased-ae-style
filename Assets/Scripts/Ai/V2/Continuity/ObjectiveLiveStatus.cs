@@ -58,7 +58,8 @@ namespace Game.Ai.V2
         //   3) If no ordinary roster resolves it but honest neutral memory still tracks it, this is
         //      the neutral/fog case -> not satisfied.
         //   4) Only absence from both live ownership and honest memory counts as confirmed gone.
-        //  Step 2 reads OTHER players' live rosters: a live-tier fact (this class), never planning.
+        //  Step 2 reads OTHER players' live rosters regardless of what we could see: a sanctioned
+        //  cheat, named in TrueWorldReads (owner decision 2026-10-15), never planning.
         //  EventGuard:
         //   Satisfied exactly when OUR memory confirms the event completed — by us (known at once)
         //   or by another player, learned only on a re-observation of the hex. Disappearance from
@@ -76,14 +77,9 @@ namespace Game.Ai.V2
                 .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
                 return true;
 
-            foreach (PlayerSetupData other in GameSession.Players ?? System.Linq.Enumerable.Empty<PlayerSetupData>())
-            {
-                if (other == null || other.Equals(player))
-                    continue;
-                if (ArmyRegistry.AllForOwner(other)
-                    .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
-                    return true;
-            }
+            // Step 2 is a sanctioned cheat (owner decision 2026-10-15), not fog-honest knowledge.
+            if (TrueWorldReads.ArmyFieldedByAnotherPlayer(player, targetArmyId))
+                return true;
 
             bool rememberedEnemy = AiMapMemory.AllKnownEnemySightings(player)
                 .Any(s => s.ArmyId == targetArmyId);
