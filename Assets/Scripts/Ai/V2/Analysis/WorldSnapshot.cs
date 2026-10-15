@@ -42,6 +42,10 @@ namespace Game.Ai.V2
         // The observer's own live objects — the one door planning layers use (OwnWorld).
         public OwnWorld Own => _own != null && _own.Player == Observer ? _own : (_own = OwnWorld.Of(Observer));
         private OwnWorld _own;
+        // The observer's durable intents, read-only (IMissionIntentView). Bound by Analysis from the
+        // store the caller hands to WorldAnalysis.Scan (the turn session's) and carried by every
+        // refresh; a live view of that store, like Own. Null in a snapshot built without one.
+        internal IMissionIntentView Intents;
         public int TurnNumber;
         // Revision of the authoritative per-player knowledge memory captured by this immutable
         // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,

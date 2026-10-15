@@ -67,7 +67,7 @@ namespace Game.Ai.V2
         private static void AppendRaid(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<RaidObjective> objectives,
             ISet<int> committed, List<MissionProposal> proposals,
-            IDictionary<MissionIntentKey, string> deferredThisPass, MissionIntentState intentState)
+            IDictionary<MissionIntentKey, string> deferredThisPass, IMissionIntentView intentState)
         {
             // 2026-10-01 (user decision, playtest #7): while mobilization is open and the
             // preparation has not started yet, its host has no intent to claim it — a fresh Raid
@@ -312,7 +312,7 @@ namespace Game.Ai.V2
         // `committed` — armies claimed by other operations; the same exclusion Demand and
         // Provisioning apply, so an unpinned leg is proposed only while a bindable support exists.
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent,
-            ISet<int> committed, MissionIntentState intentState, out string deferredReason)
+            ISet<int> committed, IMissionIntentView intentState, out string deferredReason)
         {
             deferredReason = null;
             RaidIntent ri = intent.Raid;
@@ -387,7 +387,7 @@ namespace Game.Ai.V2
         }
 
         private static RaidCandidate? AirSupportCandidate(WorldSnapshot snap, MissionIntent intent,
-            ISet<int> committed, MissionIntentState intentState)
+            ISet<int> committed, IMissionIntentView intentState)
         {
             RaidIntent ri = intent?.Raid;
             if (ri == null || ri.Target.Kind != RaidTargetKind.NeutralArmy

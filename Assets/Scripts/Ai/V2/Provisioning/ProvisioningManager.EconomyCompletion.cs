@@ -221,12 +221,14 @@ namespace Game.Ai.V2
                 return 0;
             BuildingData home = BuildingRegistry.FindAt(builder.Hex);
             if (home?.Owner != player || !(home.IsBase || home.IsStartingCitadel)) return 0;
-            var frozen = WorldAnalysis.ToArmySnapshot(builder, player, true, 0);
+            var frozen = WorldAnalysis.ToArmySnapshot(builder, player, true, 0,
+                MissionIntentRegistry.GetOrCreate(player));
             ArmyData liveGarrison = ArmyRegistry.FindGarrisonAt(builder.Hex, player);
             var self = new SelfSnapshot { BaseHexes = new[] { builder.Hex },
                 Armies = liveGarrison == null ? new[] { frozen }
-                    : new[] { frozen, WorldAnalysis.ToArmySnapshot(liveGarrison, player, true, 0) } };
-            var facts = new WorldSnapshot { Self = self, Known = snapshot?.Known };
+                    : new[] { frozen, WorldAnalysis.ToArmySnapshot(liveGarrison, player, true, 0,
+                        MissionIntentRegistry.GetOrCreate(player)) } };
+            var facts = new WorldSnapshot { Self = self, Known = snapshot?.Known, Intents = MissionIntentRegistry.GetOrCreate(player) };
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes = WorldAnalysis.EconomyBuilderRoutes(
                 facts, player, ctx, target);
             if (routes.Count == 0) return 0;
@@ -283,7 +285,8 @@ namespace Game.Ai.V2
         {
             if (builder == null) return null;
             var pool = (bodies ?? Array.Empty<UnitData>()).Where(u => u != null).Distinct().ToList();
-            ArmySnapshot facts = WorldAnalysis.ToArmySnapshot(builder, builder.Owner, true, 0);
+            ArmySnapshot facts = WorldAnalysis.ToArmySnapshot(builder, builder.Owner, true, 0,
+                MissionIntentRegistry.GetOrCreate(builder.Owner));
             facts.Members = pool.Select(WorthIt.FromLiveUnit).ToList();
             facts.NonHeroActivationApCosts = pool.Select(u => u.ActivationApCost).ToList();
             facts.NonHeroMoveMax = pool.Select(WorldAnalysis.SoloMoveMax).ToList();

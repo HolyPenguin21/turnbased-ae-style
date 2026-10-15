@@ -205,7 +205,8 @@ namespace Game.EditorTests
             body.MoveCurrent -= 1;
             try
             {
-                var facts = Game.Ai.V2.WorldAnalysis.ToArmySnapshot(army, owner, true, 0);
+                var facts = Game.Ai.V2.WorldAnalysis.ToArmySnapshot(army, owner, true, 0,
+                    Game.Ai.V2.MissionIntentRegistry.GetOrCreate(owner));
                 int i = facts.NonHeroRuntimeIds.ToList().IndexOf(body.RuntimeId);
                 Assert.That(body.MoveMax, Is.EqualTo(5));
                 Assert.That(facts.MaxMovement, Is.EqualTo(5));

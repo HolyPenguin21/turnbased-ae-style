@@ -21,6 +21,10 @@ namespace Game.Ai.V2
     // class; only this snapshot family's slice moved to its own file.
     public static partial class WorldAnalysis
     {
+        // The snapshot's durable intents (empty when none is bound).
+        private static IEnumerable<MissionIntent> IntentsOf(WorldSnapshot snap) =>
+            snap?.Intents?.All ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>();
+
         private static EconomyStanding BuildEconomy(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snap)
         {
@@ -32,7 +36,7 @@ namespace Game.Ai.V2
             var preparationSite = DevelopmentOpportunityEvaluator.LivePreparationSite(
                 player, AiHandRegistry.Peek(player), ctx);
             ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All, snap, null);
+                IntentsOf(snap), snap, null);
             foreach (ArmySnapshot actor in snap.Self.Armies.Where(a => a != null
                          && !a.IsGarrison && !a.IsPrison && !a.IsAir && !a.IsAirfield
                          && !a.IsMobileEconomyBuilder))
@@ -42,7 +46,7 @@ namespace Game.Ai.V2
                         preparationSite, out _, out ArmyData departure)
                     || ReferenceEquals(live, departure) || !AiArmyRoles.IsHeroLed(departure))
                     continue;
-                ArmySnapshot projected = ToArmySnapshot(departure, player, true, 0);
+                ArmySnapshot projected = ToArmySnapshot(departure, player, true, 0, snap.Intents);
                 projected.ArmyId = actor.ArmyId;
                 projected.EconomyRosterProtected = actor.EconomyRosterProtected;
                 projected.ActivationCoveredUnitRuntimeIds = actor.ActivationCoveredUnitRuntimeIds;
@@ -230,7 +234,7 @@ namespace Game.Ai.V2
 
             var mobileCollection = new List<MobileCollectionOpportunity>();
             var collectorRoutes = new Dictionary<(int, HexCoord), HexPath>();
-            var committedCollectors = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
+            var committedCollectors = new HashSet<int>(IntentsOf(snap)
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.PreferredMoverArmyId.HasValue)
                 .Select(i => i.PreferredMoverArmyId.Value));
@@ -298,7 +302,7 @@ namespace Game.Ai.V2
 
             // Free candidates already supplied their route above. Only bound site-holders need
             // an additional witness; never rescan every collector against the whole map.
-            foreach (MissionIntent intent in MissionIntentRegistry.GetOrCreate(player).All.Where(i =>
+            foreach (MissionIntent intent in IntentsOf(snap).Where(i =>
                          i?.Economy?.Kind == EconomyTaskKind.MobileCollection && i.PreferredMoverArmyId.HasValue))
             {
                 ArmySnapshot collector = snap.Self.Armies.FirstOrDefault(a => a != null
@@ -674,7 +678,7 @@ namespace Game.Ai.V2
             Dictionary<int, ArmyData> liveById = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null).ToDictionary(a => a.Id);
             HashSet<int> activeEconomyActors = new HashSet<int>(
-                MissionIntentRegistry.GetOrCreate(player).All
+                IntentsOf(snap)
                     .Where(i => i != null && i.Status == IntentStatus.Active
                         && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue)
                     .Select(i => i.PreferredMoverArmyId.Value));

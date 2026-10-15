@@ -70,9 +70,12 @@ namespace Game.Ai.V2
                     strongestPower = power;
                 }
             }
-            float fieldStrike = WorldAnalysis.FieldStrikePotential(player, own, total);
+            // Outside the AI turn: the player's standing intents come from the registry.
+            IEnumerable<MissionIntent> intents = player == null ? null
+                : MissionIntentRegistry.GetOrCreate(player).All;
+            float fieldStrike = WorldAnalysis.FieldStrikePotential(player, own, total, intents);
             float attackPeak = AttackForcePool.Build(player,
-                new SelfSnapshot { Hand = handCards, Deck = deckCards, AvailablePower = total }).Peak;
+                new SelfSnapshot { Hand = handCards, Deck = deckCards, AvailablePower = total }, intents).Peak;
             return new PlayerForceAnalysis(deployed, total, strongest, strongestPower, potential, fieldStrike,
                 attackPeak);
         }

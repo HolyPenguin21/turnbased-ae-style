@@ -24,7 +24,7 @@ namespace Game.Ai.V2
         internal static void AppendAttack(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx,
-            IDictionary<MissionIntentKey, string> deferredThisPass, MissionIntentState intentState,
+            IDictionary<MissionIntentKey, string> deferredThisPass, IMissionIntentView intentState,
             ICollection<RetreatWitnessRevision> witnessRevisions)
         {
             if (snap?.Self == null || snap.Self.AttackPeak <= 0f)

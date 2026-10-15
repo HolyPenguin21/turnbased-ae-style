@@ -110,7 +110,7 @@ namespace Game.Ai.V2
         // intent store, read only (null: no ActiveDefence response is running).
         internal static AttackLocalAction Decide(WorldSnapshot snap, ArmySnapshot army,
             AttackTargetRef main, int lastLocalTurn, bool intermediateBaseAvailable,
-            IReadOnlyList<ActiveDefenceObjective> adObjectives, MissionIntentState intents)
+            IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents)
         {
             if (snap?.Known == null || army == null || army.Owner == null
                 || !main.HasValue || army.Members == null || army.Members.Count == 0)
@@ -248,7 +248,7 @@ namespace Game.Ai.V2
 
         private static List<AttackLocalAction> InterceptCandidates(WorldSnapshot snap, ArmySnapshot army,
             List<WorthIt.DefenderProfile> attackers, HexCoord mainHex, int currentMovement,
-            int maxMovement, IReadOnlyList<ActiveDefenceObjective> adObjectives, MissionIntentState intents)
+            int maxMovement, IReadOnlyList<ActiveDefenceObjective> adObjectives, IMissionIntentView intents)
         {
             var found = new List<AttackLocalAction>();
             PlayerSetupData player = army.Owner;
@@ -512,7 +512,7 @@ namespace Game.Ai.V2
         // a second urgency model: an ActiveDefence intent exists at all only for a real threat to a
         // real asset, and an ACTIVE (not suspended) one is precisely the case where that lane is
         // responding to this army right now.
-        private static bool UnderActiveDefenceResponse(MissionIntentState state, int enemyArmyId)
+        private static bool UnderActiveDefenceResponse(IMissionIntentView state, int enemyArmyId)
         {
             return state != null
                 && state.TryGet(MissionIntentKey.ForActiveDefence(enemyArmyId),

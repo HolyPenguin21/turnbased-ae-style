@@ -84,7 +84,7 @@ namespace Game.Ai.V2
                 List<ArmyData> armies = ArmyRegistry.AllForOwner(p)
                     .Where(a => a != null && !a.IsPrison && a.Members.Count > 0)
                     .ToList();
-                var snaps = armies.Select(a => ToArmySnapshot(a, player, isOwn: false, ArmyVisionRadius(ctx))).ToList();
+                var snaps = armies.Select(a => ToArmySnapshot(a, player, isOwn: false, ArmyVisionRadius(ctx), null)).ToList();
 
                 if (p.IsNeutral)
                 {

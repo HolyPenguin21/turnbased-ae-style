@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // support with the longest walk that can act this turn.
         private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
-            List<MissionProposal> proposals, MissionIntentState intentState)
+            List<MissionProposal> proposals, IMissionIntentView intentState)
         {
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                 snap.Observer == null ? null : intentState?.All);
@@ -80,7 +80,7 @@ namespace Game.Ai.V2
         // so, like the Reinforcement convoy, the intrinsic score stays neutral.
         private static void AppendAttackGather(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
-            MissionIntentState intentState)
+            IMissionIntentView intentState)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;

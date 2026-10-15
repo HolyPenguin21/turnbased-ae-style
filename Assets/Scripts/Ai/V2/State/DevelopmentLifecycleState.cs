@@ -10,7 +10,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // Persistent per-player generated operator claims. The reconciliation rule is unchanged.
-    internal sealed class DevelopmentLifecycleState
+    internal sealed class DevelopmentLifecycleState : IDevelopmentLifecycleView
     {
         // Challenge mints a physical Hero before the destination factory can deploy it.
         // This per-player intent store survives turns; AP/resource reservations do not.
@@ -31,18 +31,18 @@ namespace Game.Ai.V2
         }
 
         // Read-only destination binding. Expired claims never constrain a new candidate.
-        internal bool CanUseGeneratedOperatorAt(CardData card, HexCoord site,
+        public bool CanUseGeneratedOperatorAt(CardData card, HexCoord site,
             ResearchProductionMode mode, int turn) =>
             !_generatedDevelopmentOperators.TryGetValue(card, out var claim)
                 || turn < claim.Turn || turn - claim.Turn > Math.Max(1, AiConfigV2.commitmentStallTurns)
                 || (claim.Site.Equals(site) && claim.Mode == mode);
 
-        internal CardData GeneratedOperatorFor(HexCoord site, ResearchProductionMode mode, int turn) =>
+        public CardData GeneratedOperatorFor(HexCoord site, ResearchProductionMode mode, int turn) =>
             _generatedDevelopmentOperators.Where(x => x.Value.Site.Equals(site) && x.Value.Mode == mode
                 && turn >= x.Value.Turn && turn - x.Value.Turn <= Math.Max(1, AiConfigV2.commitmentStallTurns))
                 .Select(x => x.Key).FirstOrDefault();
 
-        internal string GeneratedOperatorFacts(int turn) => string.Join(";",
+        public string GeneratedOperatorFacts(int turn) => string.Join(";",
             _generatedDevelopmentOperators.Where(x => turn >= x.Value.Turn
                     && turn - x.Value.Turn <= Math.Max(1, AiConfigV2.commitmentStallTurns))
                 .Select(x => $"{GenerationSource.StableCardKey(x.Key)}:{x.Value.Site}:{x.Value.Mode}:{x.Value.Turn}")

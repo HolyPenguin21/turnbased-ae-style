@@ -11,7 +11,7 @@ namespace Game.Ai.V2
     {
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<RaidObjective> frozenObjectives, MissionIntentState intentState,
+            IReadOnlyList<RaidObjective> frozenObjectives, IMissionIntentView intentState,
             AiTurnContext ctx = null, IDictionary<MissionIntentKey, string> deferredThisPass = null,
             ICollection<RetreatWitnessRevision> witnessRevisions = null)
         {

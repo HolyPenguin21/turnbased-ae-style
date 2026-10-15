@@ -71,7 +71,7 @@ namespace Game.Ai.V2
         // answer implies for the witness (cleared when the enemy is gone from knowledge or the fight
         // now clears the voluntary-fight bar, refreshed while it stays unwinnable) is returned in
         // `revision`, and the caller hands it to Apply after planning.
-        internal static bool Blocks(MissionIntentState state, WorldSnapshot snap, AttackTargetRef target,
+        internal static bool Blocks(IMissionIntentView state, WorldSnapshot snap, AttackTargetRef target,
             ArmySnapshot army, out string why, out RetreatWitnessRevision revision)
         {
             why = null;

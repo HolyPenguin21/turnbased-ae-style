@@ -35,7 +35,7 @@ namespace Game.Ai.V2
                 }
                 return true;
             }
-            var snap = WorldAnalysis.Scan(player, root, hand, ctx);
+            var snap = WorldAnalysis.Scan(player, root, hand, ctx, MissionIntentRegistry.GetOrCreate(player));
             var h = GroundCombatReinforcement.PlanAttackHandoff(primary, support,
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex),
                 AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx.Map, attack.Target.Hex),

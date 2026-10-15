@@ -36,12 +36,12 @@ namespace Game.Ai.V2
 
         // Explicit scouts on a mission: the mover of every live Scout intent. Out of both Attack
         // force measures (this pool and WorldAnalysis.FieldStrikePotential).
-        internal static HashSet<int> ScoutMissionArmyIds(PlayerSetupData player)
+        internal static HashSet<int> ScoutMissionArmyIds(PlayerSetupData player, IEnumerable<MissionIntent> intents)
         {
             var scouts = new HashSet<int>();
-            if (player == null)
+            if (player == null || intents == null)
                 return scouts;
-            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            foreach (MissionIntent i in intents)
                 if (i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Scout
                     && i.PreferredMoverArmyId.HasValue)
                     scouts.Add(i.PreferredMoverArmyId.Value);
@@ -51,9 +51,11 @@ namespace Game.Ai.V2
         // Built once per snapshot, inside WorldAnalysis.BuildForceMeasures (self.Hand/Deck/
         // AvailablePower are already set), and stored on SelfSnapshot (AttackPeak, StrikeRoster,
         // StrikePool, StrikePoolKeyCounts): no second cache to invalidate.
-        internal static AttackForcePool Build(PlayerSetupData player, SelfSnapshot self)
+        // `intents` - the player's durable intents (MissionIntentState.All).
+        internal static AttackForcePool Build(PlayerSetupData player, SelfSnapshot self,
+            IEnumerable<MissionIntent> intents)
         {
-            HashSet<int> scouts = ScoutMissionArmyIds(player);
+            HashSet<int> scouts = ScoutMissionArmyIds(player, intents);
             HexCoord citadel = AiTurnController.GarrisonHexFor(player);
             if (player == null || self == null)
                 return new AttackForcePool();

@@ -112,7 +112,7 @@ namespace Game.Ai.V2
             int replenishDrawn = HandReplenishPolicy.Run(player, root, hand, ctx);
 
             // 2. One shared scan.
-            WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx);
+            WorldSnapshot scanned = WorldAnalysis.Scan(player, root, hand, ctx, turnSession.PersistentState);
             // The first Analyze (desires, Aggression facts) is ~50 ms of Monte Carlo: fill the exact
             // estimate cache across frames first, so Analyze below only reads it.
             yield return CombatOpportunityAnalyzer.WarmEstimates(scanned);

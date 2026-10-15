@@ -573,8 +573,9 @@ namespace Game.EditorTests
             Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player), Is.True,
                 "Provisioning admits the legal departing roster, not the original two-hero shape");
             Assert.That(ProvisioningManager.IsMobileEconomyHero(field, _player, departureNeeded: false), Is.False);
-            var facts = WorldAnalysis.ToArmySnapshot(field, _player, true, 0);
-            facts.EconomyDeparture = WorldAnalysis.ToArmySnapshot(departure, _player, true, 0);
+            var facts = WorldAnalysis.ToArmySnapshot(field, _player, true, 0, MissionIntentRegistry.GetOrCreate(_player));
+            facts.EconomyDeparture = WorldAnalysis.ToArmySnapshot(departure, _player, true, 0,
+                MissionIntentRegistry.GetOrCreate(_player));
             facts.EconomyDeparture.ArmyId = field.Id;
             _snapshot.Self.Armies = new[] { facts };
             var route = new EconomyBuilderRouteSnapshot { ArmyId = field.Id, TravelCost = 1,

@@ -42,7 +42,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace, AiTurnContext ctx,
-            MissionIntentState intentState)
+            IMissionIntentView intentState)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Pipeline.BuildMissionSet");
             // Refresh only the Recon lane pressures from the current snapshot right before Missions

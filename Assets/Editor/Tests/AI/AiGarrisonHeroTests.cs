@@ -642,7 +642,8 @@ namespace Game.EditorTests
                 HitPointsMax = 4, HitPointsCurrent = 4, Initiative = 3 };
             scout.Abilities.Add("r1s4");
             Army(new HexCoord(2, 2), scout);
-            float withRaid = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f);
+            float withRaid = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f,
+                MissionIntentRegistry.GetOrCreate(Us).All);
             Assert.That(withRaid, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
         }
 
@@ -667,8 +668,10 @@ namespace Game.EditorTests
                     PreferredMoverArmyId = scouting.Id,
                 });
 
-                float field = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f);
-                float peak = AttackForcePool.Build(Us, new SelfSnapshot { AvailablePower = 100f }).Peak;
+                float field = WorldAnalysis.FieldStrikePotential(Us, ArmyRegistry.AllForOwner(Us), 100f,
+                MissionIntentRegistry.GetOrCreate(Us).All);
+                float peak = AttackForcePool.Build(Us, new SelfSnapshot { AvailablePower = 100f },
+                    MissionIntentRegistry.GetOrCreate(Us).All).Peak;
 
                 Assert.That(field, Is.EqualTo(AiPower.EffectiveArmyPower(raid.Members)).Within(1e-3f));
                 Assert.That(peak, Is.EqualTo(field).Within(1e-3f));

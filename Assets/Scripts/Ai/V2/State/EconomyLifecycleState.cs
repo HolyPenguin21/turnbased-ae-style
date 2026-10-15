@@ -10,7 +10,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // Persistent per-project delivery evidence and bounded suppression. No resource storage.
-    internal sealed class EconomyLifecycleState
+    internal sealed class EconomyLifecycleState : IEconomyLifecycleView
     {
         internal static bool ObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
         {
@@ -88,7 +88,7 @@ namespace Game.Ai.V2
         private readonly DeliveryFailureStreaks<(ResourceType?, HexCoord)> _extractionDeliveryFailures =
             new DeliveryFailureStreaks<(ResourceType?, HexCoord)>();
 
-        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
+        public bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
             card != null && target.HasValue
             && _baseDeliveryFailures.IsSuppressed(turn, (card, target.Value));
 
@@ -107,7 +107,7 @@ namespace Game.Ai.V2
         internal void RecordExtractionDeliveryProgress(int turn, ResourceType? resourceType, HexCoord target) =>
             _extractionDeliveryFailures.RecordProgress(turn, (resourceType, target));
 
-        internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
+        public bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
             _extractionDeliveryFailures.IsSuppressed(turn, (resourceType, target));
 
         internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) =>

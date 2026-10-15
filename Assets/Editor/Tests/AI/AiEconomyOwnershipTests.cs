@@ -452,8 +452,8 @@ namespace Game.EditorTests
                     [new HexCoord(1, 0)] = new Game.Terrain.TerrainTypeEntry { moveCost = 2 },
                 });
                 var root = rootObject.AddComponent<PlayerRoot>(); root.ActionPoints = 10;
-                var a = WorldAnalysis.ToArmySnapshot(builder, p, true, 0);
-                var g = WorldAnalysis.ToArmySnapshot(garrison, p, true, 0);
+                var a = WorldAnalysis.ToArmySnapshot(builder, p, true, 0, MissionIntentRegistry.GetOrCreate(p));
+                var g = WorldAnalysis.ToArmySnapshot(garrison, p, true, 0, MissionIntentRegistry.GetOrCreate(p));
                 var s = Snapshot(a, g);
                 var target = new EconomyMissionTarget
                 {

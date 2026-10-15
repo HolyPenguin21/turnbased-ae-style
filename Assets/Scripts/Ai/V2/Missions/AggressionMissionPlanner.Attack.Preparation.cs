@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         private static void TryAppendAttackPreparation(WorldSnapshot snap,
             List<AttackObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
             ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
-            bool attackProposed, MissionIntentState intentState)
+            bool attackProposed, IMissionIntentView intentState)
         {
             SelfSnapshot self = snap.Self;
             bool open = AttackForceReadiness.MobilizationOpen(self);
@@ -385,7 +385,7 @@ namespace Game.Ai.V2
         // Until it is funded and executed the donors stay with their operations.
         private static void AppendPreparationRecruit(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ArmySnapshot host, float hexBonus, ISet<int> committed,
-            List<MissionProposal> proposals, MissionIntentState intentState)
+            List<MissionProposal> proposals, IMissionIntentView intentState)
         {
             if (host.MemberCount == 0 || snap.Observer == null)
                 return;
