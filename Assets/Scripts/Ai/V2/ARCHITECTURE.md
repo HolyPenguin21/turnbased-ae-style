@@ -206,7 +206,12 @@ plan made after a same-cycle mutation still sees it; turning them into snapshot 
 step of the snapshot refactoring, one fact per consumer. Done: a preparation host's roster capacity
 under its support carriers (`ArmySnapshot.RosterCapacity`, `SupportCarrierSlots`,
 `CommanderRosterCandidate`, `CommanderCommandRating`) for `AttackPreparationPolicy.FindCommanderUpgrade`,
-which now reads no live host (only the garrison and hero it returns are live objects).
+which now reads no live host (only the garrison and hero it returns are live objects). Checked
+and left live on purpose: activation coverage is already a fact (`ActivationCoveredUnitRuntimeIds`);
+its remaining live reads are the refit feasibility check (`AttackBaseRefitPolicy.RosterKey`, an
+execution-time comparison with the live roster) and donor picks that return the live units to
+transfer. Transport pairs have no planning-layer reader (Analysis folds them into movement facts;
+Housekeeping and Provisioning are live tiers), so no fact is added for them.
 
 **Intent-store boundary (2026-10-15).** The durable intent store (`MissionIntentState`) reaches
 `Strategy/`, `Missions/`, `Evaluation/` and `Analysis/` explicitly, never through
