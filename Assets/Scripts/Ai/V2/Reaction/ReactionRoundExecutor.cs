@@ -143,8 +143,12 @@ namespace Game.Ai.V2
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives, ctx: ctx);
+            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
+            var witnessRevisions = new List<RetreatWitnessRevision>();
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                activeIntents, aggressionObjectives, ctx));
+                activeIntents, aggressionObjectives, ctx, intentState: intentState,
+                witnessRevisions: witnessRevisions));
+            AttackRetreatWitness.Apply(intentState, witnessRevisions);
             // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path
             // as the main pass — Scout actor binding happens in Provisioning (ReconAssignmentPlanner)
             // exactly like the main pass, no separate reservation stage needed here either.

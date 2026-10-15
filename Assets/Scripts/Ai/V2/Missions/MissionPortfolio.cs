@@ -2,18 +2,21 @@ using System.Collections.Generic;
 
 namespace Game.Ai.V2
 {
-    // What one portfolio build produced: the valued proposals of this admission and the reasons the
-    // planners withheld durable legs.
+    // What one portfolio build produced: the valued proposals of this admission, the reasons the
+    // planners withheld durable legs and the retreat-witness revisions their checks implied
+    // (applied by the caller through Continuity, AttackRetreatWitness.Apply).
     internal readonly struct MissionPortfolioResult
     {
         internal readonly List<MissionProposal> Missions;
         internal readonly Dictionary<MissionIntentKey, string> Deferrals;
+        internal readonly List<RetreatWitnessRevision> WitnessRevisions;
 
         internal MissionPortfolioResult(List<MissionProposal> missions,
-            Dictionary<MissionIntentKey, string> deferrals)
+            Dictionary<MissionIntentKey, string> deferrals, List<RetreatWitnessRevision> witnessRevisions)
         {
             Missions = missions;
             Deferrals = deferrals;
+            WitnessRevisions = witnessRevisions;
         }
     }
 
@@ -38,17 +41,19 @@ namespace Game.Ai.V2
         internal static MissionPortfolioResult Build(WorldSnapshot snapshot, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents, IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<RaidObjective> aggressionObjectives, Radar radar,
-            IReadOnlyList<AxisDemand> demands, V2TraceScope trace, AiTurnContext ctx)
+            IReadOnlyList<AxisDemand> demands, V2TraceScope trace, AiTurnContext ctx,
+            MissionIntentState intentState = null)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Pipeline.BuildMissionSet");
             // Refresh only the Recon lane pressures from the current snapshot right before Missions
             // consumes them, so a frontier completion earlier this same settled pass is reflected.
             StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
             var deferredThisPass = new Dictionary<MissionIntentKey, string>();
+            var witnessRevisions = new List<RetreatWitnessRevision>();
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives, deferredThisPass, ctx);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                activeIntents, aggressionObjectives, ctx, deferredThisPass));
+                activeIntents, aggressionObjectives, ctx, deferredThisPass, intentState, witnessRevisions));
             missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, demands, deferredThisPass));
             missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
@@ -63,7 +68,7 @@ namespace Game.Ai.V2
             AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
-            return new MissionPortfolioResult(missions, deferredThisPass);
+            return new MissionPortfolioResult(missions, deferredThisPass, witnessRevisions);
         }
     }
 }

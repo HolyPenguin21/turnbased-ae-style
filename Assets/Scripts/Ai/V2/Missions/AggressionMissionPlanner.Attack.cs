@@ -24,7 +24,8 @@ namespace Game.Ai.V2
         internal static void AppendAttack(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx,
-            IDictionary<MissionIntentKey, string> deferredThisPass)
+            IDictionary<MissionIntentKey, string> deferredThisPass, MissionIntentState intentState = null,
+            ICollection<RetreatWitnessRevision> witnessRevisions = null)
         {
             if (snap?.Self == null || snap.Self.AttackPeak <= 0f)
                 return;
@@ -120,7 +121,7 @@ namespace Game.Ai.V2
                 {
                     local = AttackTacticalOpportunity.Decide(snap, marching, objective.Target,
                         incumbent.Attack.LastOpportunisticStrikeTurn, intermediate != null,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snap));
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snap), intentState);
                     if (local.Kind == AttackLocalActionKind.Retreat)
                     {
                         AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat",
@@ -198,7 +199,7 @@ namespace Game.Ai.V2
                 {
                     // lastLocalTurn = this turn: only the mandatory evaluation runs, no voluntary search
                     AttackLocalAction fresh = AttackTacticalOpportunity.Decide(snap, actor, objective.Target,
-                        snap.TurnNumber, false, null);
+                        snap.TurnNumber, false, null, intentState);
                     if (fresh.Kind == AttackLocalActionKind.Retreat)
                     {
                         AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#retreat-fresh",
@@ -216,9 +217,16 @@ namespace Game.Ai.V2
                 // fight (our roster / equipment / HP, the enemy's visible state, the enemy gone)
                 // that the shared estimator confirms lifts it: a new turn number, AP or a timer
                 // is not a reason. A march already under way is governed by Continuity's edge.
-                if (!assaultStarted
-                    && AttackRetreatWitness.Blocks(MissionIntentRegistry.GetOrCreate(snap.Observer), snap,
-                        objective.Target, actor, out string witnessWhy))
+                bool witnessBlocks = false;
+                string witnessWhy = null;
+                if (!assaultStarted)
+                {
+                    witnessBlocks = AttackRetreatWitness.Blocks(intentState, snap, objective.Target, actor,
+                        out witnessWhy, out RetreatWitnessRevision revision);
+                    if (revision.Kind != RetreatWitnessRevisionKind.None)
+                        witnessRevisions?.Add(revision);
+                }
+                if (witnessBlocks)
                 {
                     AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#witness",
                         $"[AI][V2][Attack][Retreat] decision=HOLD target={objective.Target.DiagnosticLabel} "

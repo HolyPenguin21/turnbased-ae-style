@@ -128,7 +128,8 @@ namespace Game.Ai.V2
             // The proposals of this admission, valued (Missions).
             MissionPortfolioResult portfolio = MissionPortfolio.Build(_frame.Snapshot,
                 _breakdown, _frame.Intents, _frame.Recon, _frame.Aggression,
-                _radar, _frame.Demands, _trace, _ctx);
+                _radar, _frame.Demands, _trace, _ctx, _frame.IntentState);
+            AttackRetreatWitness.Apply(_frame.IntentState, portfolio.WitnessRevisions);
             missions = portfolio.Missions;
             Dictionary<MissionIntentKey, string> missionDeferrals = portfolio.Deferrals;
             // Return legs wait for the first Phase B round (Continuity decides which, records

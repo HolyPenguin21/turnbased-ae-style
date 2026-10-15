@@ -351,7 +351,8 @@ namespace Game.Ai.V2
                 {
                     AttackLocalAction now = AttackTacticalOpportunity.Decide(snapshot, self, target.Target,
                         target.OpportunisticStrikeTurn, intermediateBaseAvailable: false,
-                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot));
+                        ActiveDefenceObjectiveEvaluator.Enumerate(snapshot),
+                        MissionIntentRegistry.GetOrCreate(player));
                     strike = AttackTacticalOpportunity.ForExecution(target.Local, now, out string rejection);
                     if (rejection != null)
                     {
