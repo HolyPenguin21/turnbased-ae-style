@@ -220,7 +220,8 @@ namespace Game.Ai.V2
                 + $"{string.Join(",", u.Abilities.OrderBy(x => x, StringComparer.Ordinal))}:"
                 + $"{string.Join(",", u.TypeTags.OrderBy(x => x))}"));
 
-        internal static string Fingerprint(PlayerSetupData player, IEnumerable<MissionIntent> intents, int turn) => string.Join("|",
+        internal static string Fingerprint(PlayerSetupData player, IEnumerable<MissionIntent> intents,
+            int turn) => string.Join("|",
             (intents ?? Enumerable.Empty<MissionIntent>()).Where(i => i.Status == IntentStatus.Active
                 && i.Attack?.RefitBaseHex.HasValue == true
                 && turn >= i.Attack.RefitCaptureTurn && turn <= i.Attack.RefitCaptureTurn + 1)

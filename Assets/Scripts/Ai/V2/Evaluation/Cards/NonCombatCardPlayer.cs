@@ -43,8 +43,8 @@ namespace Game.Ai.V2
             public string StableKey;
             public string Explain;
             // Set when this play must first MINT its card through a
-            // Research/Production Challenge (Card is then a throwaway pre-mint stand-in; Execute
-            // re-resolves the placement against the real minted instance). null => Card is a real
+            // Research/Production Challenge (Card is then a throwaway pre-mint stand-in;
+            // NonCombatPlayExecutor.Execute re-resolves the placement against the real minted instance). null => Card is a real
             // hand card.
             public GenerationStep Generation;
         }
@@ -212,8 +212,8 @@ namespace Game.Ai.V2
             // Generated non-combat cards. A Research/Production
             // Challenge whose minted card is an Aviation / Base / Facility is scored on the SAME
             // NetScore band (throwaway pre-mint stand-in), discounted by the Challenge success
-            // chance + the generation step penalty; Execute mints then deploys via the canonical
-            // API. Generated Equipment stays with the materialization GenerateAttachDeploy chain.
+            // chance + the generation step penalty; NonCombatPlayExecutor.Execute mints then deploys
+            // via the canonical API. Generated Equipment stays with the materialization GenerateAttachDeploy chain.
             if (reservation != null && reservation.CanGenerateMore)
             {
                 foreach (GenerationStep g in GenerationSource.Enumerate(player, root, ctx, hand,
@@ -472,8 +472,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ReconObjective> objectives)
         {
-            List<MissionIntent> intents = (snap?.Intents?.All
-                    ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
+            List<MissionIntent> intents = WorldSnapshot.IntentsOf(snap)
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,

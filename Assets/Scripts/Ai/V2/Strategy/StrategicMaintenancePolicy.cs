@@ -218,8 +218,7 @@ namespace Game.Ai.V2
             // Research/Production facilities unlock only through the SAME admitted CapacityUnlock step
             // Development itself would act on (current-step window/bank/cost), never a looser predicate:
             // the opportunity IS the candidate, with the evaluator own fully priced score.
-            var intents = (snap.Intents?.All ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
-                .ToList();
+            var intents = snap.AllIntents.ToList();
             foreach (DevelopmentOpportunity op in DevelopmentOpportunityEvaluator.Enumerate(
                     snap, player, root, hand, ctx, intents)
                 .Where(o => o.PreparationKind == DevelopmentPreparationKind.CapacityUnlock

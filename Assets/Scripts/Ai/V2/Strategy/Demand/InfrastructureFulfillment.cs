@@ -16,7 +16,8 @@ namespace Game.Ai.V2
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
     //  complete cost -> check the live Phase A AP budget -> check live
-    //  gameplay affordability -> ONLY THEN run the authoritative BuildingPlayExecutor transaction
+    //  gameplay affordability -> ONLY THEN hand the admitted InfraBuildAction to
+    //  Execution/InfrastructureBuildExecutor (the authoritative BuildingPlayExecutor transaction)
     //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
     //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
     //  permission.

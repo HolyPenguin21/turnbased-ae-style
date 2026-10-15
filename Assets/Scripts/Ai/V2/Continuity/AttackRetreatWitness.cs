@@ -16,39 +16,6 @@ namespace Game.Ai.V2
     // Plain domain state of MissionIntentState (one record per Attack target), written by the
     // Continuity retreat edge and read by the Attack planner; the planner's re-check reports its
     // revision, applied after the portfolio build. No manager, no second bank.
-    internal enum RetreatWitnessRevisionKind { None, Clear, Refresh }
-
-    // What a witness check found should change in the witness: the planner reports it, Continuity
-    // applies it (AttackRetreatWitness.Apply).
-    internal readonly struct RetreatWitnessRevision
-    {
-        internal readonly AttackTargetRef Target;
-        internal readonly RetreatWitnessRevisionKind Kind;
-        internal readonly int EnemyFingerprint;
-        internal readonly int OwnFingerprint;
-        internal readonly HexCoord EnemyHex;
-        internal readonly string Reason;
-
-        private RetreatWitnessRevision(AttackTargetRef target, RetreatWitnessRevisionKind kind,
-            int enemyFingerprint, int ownFingerprint, HexCoord enemyHex, string reason)
-        {
-            Target = target;
-            Kind = kind;
-            EnemyFingerprint = enemyFingerprint;
-            OwnFingerprint = ownFingerprint;
-            EnemyHex = enemyHex;
-            Reason = reason;
-        }
-
-        internal static RetreatWitnessRevision Clear(AttackTargetRef target, string reason) =>
-            new RetreatWitnessRevision(target, RetreatWitnessRevisionKind.Clear, 0, 0, default, reason);
-
-        internal static RetreatWitnessRevision Refresh(AttackTargetRef target, int enemyFingerprint,
-            int ownFingerprint, HexCoord enemyHex) =>
-            new RetreatWitnessRevision(target, RetreatWitnessRevisionKind.Refresh, enemyFingerprint,
-                ownFingerprint, enemyHex, null);
-    }
-
     internal sealed class AttackRetreatWitness
     {
         public AttackTargetRef Target;
@@ -143,5 +110,37 @@ namespace Game.Ai.V2
             }
         }
     }
-}
 
+    internal enum RetreatWitnessRevisionKind { None, Clear, Refresh }
+
+    // What a witness check found should change in the witness: the planner reports it, Continuity
+    // applies it (AttackRetreatWitness.Apply).
+    internal readonly struct RetreatWitnessRevision
+    {
+        internal readonly AttackTargetRef Target;
+        internal readonly RetreatWitnessRevisionKind Kind;
+        internal readonly int EnemyFingerprint;
+        internal readonly int OwnFingerprint;
+        internal readonly HexCoord EnemyHex;
+        internal readonly string Reason;
+
+        private RetreatWitnessRevision(AttackTargetRef target, RetreatWitnessRevisionKind kind,
+            int enemyFingerprint, int ownFingerprint, HexCoord enemyHex, string reason)
+        {
+            Target = target;
+            Kind = kind;
+            EnemyFingerprint = enemyFingerprint;
+            OwnFingerprint = ownFingerprint;
+            EnemyHex = enemyHex;
+            Reason = reason;
+        }
+
+        internal static RetreatWitnessRevision Clear(AttackTargetRef target, string reason) =>
+            new RetreatWitnessRevision(target, RetreatWitnessRevisionKind.Clear, 0, 0, default, reason);
+
+        internal static RetreatWitnessRevision Refresh(AttackTargetRef target, int enemyFingerprint,
+            int ownFingerprint, HexCoord enemyHex) =>
+            new RetreatWitnessRevision(target, RetreatWitnessRevisionKind.Refresh, enemyFingerprint,
+                ownFingerprint, enemyHex, null);
+    }
+}
