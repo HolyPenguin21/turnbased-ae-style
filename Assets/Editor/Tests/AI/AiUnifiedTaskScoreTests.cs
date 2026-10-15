@@ -373,7 +373,7 @@ namespace Game.EditorTests
         [Test]
         public void EconomyDelivery_FoldsRealPerTurnActivationApAtSharedRate()
         {
-            // Real DemandLayer.EstimateEconomyAssignmentAp production path, same mover physical
+            // Real EconomyBuilderSelection.EstimateEconomyAssignmentAp production path, same mover physical
             // facts (distance 6, MaxMovement 4, ActivationApCost 4, one-way / no return leg so it is
             // comparable to Recon/Raid's one-way convention). Economy's own real turn-counting rule
             // is different from Recon/Raid (see comment above the Recon test): a builder that has
@@ -389,7 +389,7 @@ namespace Game.EditorTests
             };
             const float buildApCost = 0f;
 
-            float assignmentAp = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
+            float assignmentAp = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
             float extraAp = Mathf.Max(0f, assignmentAp - buildApCost);
             Assert.That(extraAp, Is.EqualTo(8f),
                 "two un-activated outbound turns at real ActivationApCost 4 each — Economy's own real rule");

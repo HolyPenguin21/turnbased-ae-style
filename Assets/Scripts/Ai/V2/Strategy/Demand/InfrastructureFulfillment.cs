@@ -397,12 +397,12 @@ namespace Game.Ai.V2
                     })) continue;
                 // Composition readiness alone does not grant ownership of an Attack/Defence
                 // mover standing here. Reuse the same candidate/claim gate as outbound planning.
-                var choice = DemandLayer.SelectEconomyBuilder(snap, hex, new[] { route },
+                var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, hex, new[] { route },
                     activeIntents, commitments, demand.EconomySiteValue > 0f
                         ? demand.EconomySiteValue : demand.Value,
                     card.EffectivePlayApCost, includeReturn: false, pinnedBuilderArmyId: route.ArmyId,
                     requiresFoundingGarrison: continuation == null);
-                if (choice == null || choice.Suitability != DemandLayer.EconomyArmySuitability.Ready)
+                if (choice == null || choice.Suitability != EconomyBuilderSelection.EconomyArmySuitability.Ready)
                     continue;
                 builderId = route.ArmyId;
                 defender = continuation;
@@ -424,13 +424,13 @@ namespace Game.Ai.V2
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
-            var choice = DemandLayer.SelectEconomyBuilder(snap, target,
+            var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, target,
                 (routes ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
                     .Where(r => r.IsOnTarget && !r.RequiresGarrisonExtraction).ToList(),
                 activeIntents, commitments, demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
                 demand.EconomyBuildApCost, includeReturn: true,
                 pinnedBuilderArmyId: demand.EconomyPreferredBuilderArmyId);
-            return choice?.Suitability == DemandLayer.EconomyArmySuitability.Ready ? choice.Army.ArmyId : (int?)null;
+            return choice?.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ready ? choice.Army.ArmyId : (int?)null;
         }
 
         // ECO — extraction facility for demand.EconomyResourceType on a same-type known unbuilt

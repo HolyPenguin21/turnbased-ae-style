@@ -96,7 +96,7 @@ namespace Game.EditorTests
             support.HeroActivationApCost = support.ActivationApCost = 0;
             var snap = SnapshotWithDeficits(1, 1, true);
             snap.Self.Armies = new[] { support, ordinary };
-            var choice = DemandLayer.SelectEconomyBuilder(snap, new HexCoord(2, 0),
+            var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, new HexCoord(2, 0),
                 new[] { BuilderRoute(support, 2, 2, 0), BuilderRoute(ordinary, 2, 2, 1) },
                 null, null, 20, 1, true);
             Assert.That(choice.Army.ArmyId, Is.EqualTo(10));
@@ -112,7 +112,7 @@ namespace Game.EditorTests
             support.HeroActivationApCost = support.ActivationApCost = 0;
             var snap = SnapshotWithDeficits(1, 1, true);
             snap.Self.Armies = new[] { support, ordinary };
-            var choice = DemandLayer.SelectEconomyBuilder(snap, new HexCoord(2, 0),
+            var choice = EconomyBuilderSelection.SelectEconomyBuilder(snap, new HexCoord(2, 0),
                 new[] { BuilderRoute(support, 2, 2, 0), BuilderRoute(ordinary, 2, 2, 10) },
                 null, null, 3, 1, true);
             Assert.That(choice.Army.ArmyId, Is.EqualTo(11));
@@ -128,9 +128,9 @@ namespace Game.EditorTests
             var support = EconomyBuilder(11, 1, 0);
             support.HeroIsHomeVocation = true;
             support.MaxMovement = support.CurrentMovement = support.HeroMoveMax = 2;
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
                 { Army = support, Route = BuilderRoute(support, travel, home, 0) };
-            Assert.That(DemandLayer.EconomySupportBuilderAllowed(choice), Is.EqualTo(allowed));
+            Assert.That(EconomyBuilderSelection.EconomySupportBuilderAllowed(choice), Is.EqualTo(allowed));
         }
 
         [TestCase(true, int.MaxValue, int.MaxValue, false)]
@@ -154,9 +154,9 @@ namespace Game.EditorTests
             mixed.HeroIsHomeVocation = true;
             var route = BuilderRoute(mixed, 8, 8, 1);
             route.BuilderHasHomeVocation = false;
-            var choice = new DemandLayer.EconomyBuilderChoice { Army = mixed, Route = route };
-            Assert.That(DemandLayer.EconomyBuilderIsSupport(choice), Is.False);
-            Assert.That(DemandLayer.EconomySupportBuilderAllowed(choice), Is.True);
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice { Army = mixed, Route = route };
+            Assert.That(EconomyBuilderSelection.EconomyBuilderIsSupport(choice), Is.False);
+            Assert.That(EconomyBuilderSelection.EconomySupportBuilderAllowed(choice), Is.True);
         }
 
         [Test]
@@ -171,8 +171,8 @@ namespace Game.EditorTests
                 PreferredMoverArmyId = 11, Objective = new EconomyIntent
                 { Kind = EconomyTaskKind.BuildExtraction, TargetHex = target, BuilderArmyId = 11 } };
             var routes = new[] { BuilderRoute(support, 8, 8, 1) };
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null, 20, 1, true), Is.Null);
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, null, null, 20, 1, true), Is.Null);
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
                 20, 1, true, pinnedBuilderArmyId: 11).Army.ArmyId, Is.EqualTo(11));
         }
 
@@ -192,7 +192,7 @@ namespace Game.EditorTests
                 EconomyReadyDeliveryCost = 1, EconomyReadyBuilderIsSupport = readySupport };
             var route = new EconomyBuilderRouteSnapshot { TravelCost = 2, ReturnTravelCost = 2,
                 CurrentMovement = 5, MaxMovement = 5, BuilderHasHomeVocation = newSupport };
-            var choice = new DemandLayer.EconomyBuilderChoice { Route = route, TotalAssignmentApCost = 1 };
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice { Route = route, TotalAssignmentApCost = 1 };
             Assert.That(MaterializationDeliveryPolicy.EconomyNewHeroWorthIt(plan, demand, choice, 1)
                 .CanDeliver, Is.EqualTo(allowed));
         }
@@ -204,7 +204,7 @@ namespace Game.EditorTests
                 moveMax = 2, grantedAbilities = new List<string> { UnitAbilities.ApBonus } };
             var plan = new MaterializationPlan { GeneratedBaseDef = card };
             var demand = new AxisDemand { TargetHex = new HexCoord(1, 0), EconomySiteValue = 20 };
-            var choice = new DemandLayer.EconomyBuilderChoice { TotalAssignmentApCost = 0,
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice { TotalAssignmentApCost = 0,
                 Route = new EconomyBuilderRouteSnapshot { TravelCost = 1, ReturnTravelCost = 9,
                     CurrentMovement = 2, MaxMovement = 2, BuilderHasHomeVocation = true } };
             Assert.That(MaterializationDeliveryPolicy.EconomyNewHeroWorthIt(plan, demand, choice, 1)
@@ -334,15 +334,15 @@ namespace Game.EditorTests
             var snap = SnapshotWithDeficits(0.5f, 0.2f, true);
             snap.Self.Armies = new[] { builder };
             var routes = new[] { BuilderRoute(builder, 9, 9, 1) };
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, null, null,
                 20f, 1f, true), Is.Null, "Iri's five-turn trip is not a new local extraction project");
             var intent = new MissionIntent { Kind = MissionKind.Economy, Status = IntentStatus.Active,
                 PreferredMoverArmyId = 34, Objective = new EconomyIntent
                 { Kind = EconomyTaskKind.BuildExtraction, TargetHex = target, BuilderArmyId = 34 } };
             intent.IntentKey = MissionIntentKey.For(intent);
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, new[] { intent }, null,
                 20f, 1f, true), Is.Not.Null, "continuity owns completion/recovery of earlier obligations");
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, null, null,
                 20f, 1f, true), Is.Null, "allowing a commitment must not poison the snapshot assessment cache");
         }
 
@@ -1856,7 +1856,7 @@ namespace Game.EditorTests
                 BuilderRoute(stack, travel: 2, back: 2, activation: 5),
             };
 
-            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, target, routes, null, null, 50f, 1f, includeReturn: true);
             Assert.That(choice.Army.ArmyId, Is.EqualTo(11));
 
@@ -1887,7 +1887,7 @@ namespace Game.EditorTests
                 incumbent, travel: 4, back: 4, activation: 3);
             incumbentRoute.HasActiveEconomyCommitment = true;
 
-            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, target,
                 new[] { incumbentRoute, BuilderRoute(cheaper, 1, 1, 1) },
                 null, null, 50f, 1f, includeReturn: true);
@@ -1909,7 +1909,7 @@ namespace Game.EditorTests
             snapshot.Self.Armies = new[] { builder };
             MissionIntent recovery = ReturnBuilderIntent(builder.ArmyId, shelter);
 
-            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice choice = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, newTarget, new[] { BuilderRoute(builder, travel: 2, back: 2, activation: 1) },
                 new[] { recovery }, null, 50f, 1f, includeReturn: true);
 
@@ -1931,7 +1931,7 @@ namespace Game.EditorTests
                 "sanity: this test only proves something if recovery funding actually blocks the old tier gate");
             recovery.Funding = CommitmentTier.Hard;
 
-            Assert.That(DemandLayer.EconomyDonorStructurallyEligible(recovery), Is.True);
+            Assert.That(EconomyBuilderSelection.EconomyDonorStructurallyEligible(recovery), Is.True);
 
             var inProgressBuild = new MissionIntent
             {
@@ -1941,7 +1941,7 @@ namespace Game.EditorTests
                     Kind = EconomyTaskKind.BuildExtraction, TargetHex = new HexCoord(3, 3),
                 },
             };
-            Assert.That(DemandLayer.EconomyDonorStructurallyEligible(inProgressBuild), Is.False,
+            Assert.That(EconomyBuilderSelection.EconomyDonorStructurallyEligible(inProgressBuild), Is.False,
                 "a genuine in-progress build must still require the existing TargetHex match, " +
                 "not fall through as a donor");
         }
@@ -2851,24 +2851,24 @@ namespace Game.EditorTests
             try
             {
                 // The real garrison disappears before the first assessment of this snapshot.
-                DemandLayer.EconomyBuilderChoice missing = DemandLayer.AssessEconomyArmy(
+                EconomyBuilderSelection.EconomyBuilderChoice missing = EconomyBuilderSelection.AssessEconomyArmy(
                     oldSnapshot, target, route, army, 1f, includeReturn: false);
                 Assert.That(missing.Suitability,
-                    Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+                    Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
 
                 ArmyRegistry.Register(garrison);
-                DemandLayer.EconomyBuilderChoice frozen = DemandLayer.AssessEconomyArmy(
+                EconomyBuilderSelection.EconomyBuilderChoice frozen = EconomyBuilderSelection.AssessEconomyArmy(
                     oldSnapshot, target, route, army, 1f, includeReturn: false);
                 // A fresh Analysis witness publishes the newly available container. Demand never
                 // queries the live registry behind an existing immutable snapshot.
                 EconomyBuilderRouteSnapshot freshRoute = route;
                 freshRoute.ExtractionContainerAvailable = true;
-                DemandLayer.EconomyBuilderChoice fresh = DemandLayer.AssessEconomyArmy(
+                EconomyBuilderSelection.EconomyBuilderChoice fresh = EconomyBuilderSelection.AssessEconomyArmy(
                     new WorldSnapshot(), target, freshRoute, army, 1f, includeReturn: false);
 
                 Assert.That(frozen.Suitability, Is.EqualTo(missing.Suitability),
                     "an old snapshot must keep its own assessment after the live registry changes");
-                Assert.That(fresh.Suitability, Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready),
+                Assert.That(fresh.Suitability, Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ready),
                     "a new Analysis witness must publish the available extraction container");
             }
             finally
@@ -2887,7 +2887,7 @@ namespace Game.EditorTests
             ArmySnapshot solo = EconomyBuilder(41, 1, 1f);
             snapshot.Self.Armies = new[] { solo };
 
-            DemandLayer.EconomyBuilderChoice alone = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice alone = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: false);
             Assert.That(alone, Is.Null, "no body or immediate defender: founding waits for preparation");
@@ -2908,15 +2908,15 @@ namespace Game.EditorTests
             // A fresh snapshot: assessments are cached per snapshot (the garrison is a new witness).
             snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             snapshot.Self.Armies = new[] { solo, garrison };
-            DemandLayer.EconomyBuilderChoice founding = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice founding = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: false);
             Assert.That(founding, Is.Not.Null);
             Assert.That(founding.Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.ReinforceAtBase));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.ReinforceAtBase));
             Assert.That(founding.MinimumEscortCount, Is.EqualTo(1));
 
-            DemandLayer.EconomyBuilderChoice extraction = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice extraction = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(1, 0), new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: true);
             Assert.That(extraction.MinimumEscortCount, Is.Zero,
@@ -2930,11 +2930,11 @@ namespace Game.EditorTests
             ArmySnapshot solo = EconomyBuilder(41, 1, 1f);
             snapshot.Self.Armies = new[] { solo };
 
-            DemandLayer.EconomyBuilderChoice rear = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice rear = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(1, 0),
                 new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
                 30f, 1f, includeReturn: true);
-            DemandLayer.EconomyBuilderChoice central = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice central = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
                 new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
                 30f, 1f, includeReturn: true);
@@ -2960,19 +2960,19 @@ namespace Game.EditorTests
                 MaxMovement = 2,
             };
             snapshot.Self.Armies = new[] { solo, garrison };
-            DemandLayer.EconomyBuilderChoice reinforced = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice reinforced = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
                 new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
                 30f, 1f, includeReturn: true);
             Assert.That(reinforced, Is.Not.Null);
             Assert.That(reinforced.Suitability,
-                Is.EqualTo(DemandLayer.EconomyArmySuitability.ReinforceAtBase));
+                Is.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.ReinforceAtBase));
             Assert.That(reinforced.MinimumEscortCount, Is.EqualTo(1));
             Assert.That(reinforced.ProjectedActivationApCost, Is.EqualTo(2));
 
             ArmySnapshot escorted = EconomyBuilder(42, 2, 5f);
             snapshot.Self.Armies = new[] { escorted };
-            DemandLayer.EconomyBuilderChoice frontier = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice frontier = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, new HexCoord(3, 0),
                 new[] { BuilderRoute(escorted, 3, 3, 2) }, null, null,
                 30f, 1f, includeReturn: true);
@@ -3015,7 +3015,7 @@ namespace Game.EditorTests
             };
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             snapshot.Self.Armies = new[] { solo, reserve };
-            DemandLayer.EconomyBuilderChoice projected = DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice projected = EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, target, new[] { BuilderRoute(solo, 3, 3, 1) },
                 null, null, 30f, 1f, includeReturn: true);
 
@@ -3193,7 +3193,7 @@ namespace Game.EditorTests
         }
 
         // Match the shared, real assignment-AP model used by the production owner.
-        private static DemandLayer.EconomyBuilderChoice LoanChoiceForPolicyTest(int distance, int mp)
+        private static EconomyBuilderSelection.EconomyBuilderChoice LoanChoiceForPolicyTest(int distance, int mp)
         {
             var route = new EconomyBuilderRouteSnapshot
             {
@@ -3203,10 +3203,10 @@ namespace Game.EditorTests
                 HasActivatedThisTurn = true,
                 ActivationApCost = 1,
             };
-            return new DemandLayer.EconomyBuilderChoice
+            return new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = route,
-                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 0f, false),
+                TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 0f, false),
             };
         }
 
@@ -3214,7 +3214,7 @@ namespace Game.EditorTests
         public void EconomyLoan_SoftReconCanBeBorrowedForHighSameTurnValue()
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 80f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(donor, 80f,
                 LoanChoiceForPolicyTest(2, 3), 0f, out float net), Is.True);
             Assert.That(net, Is.GreaterThanOrEqualTo(AiConfigV2.taskScoreEconomyLoanHysteresisThreshold));
         }
@@ -3222,7 +3222,7 @@ namespace Game.EditorTests
         [Test]
         public void EconomyLoan_HardReconCannotBeBorrowed()
         {
-            Assert.That(DemandLayer.EconomyLoanAllowed(
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(
                 ScoutDonor(CommitmentTier.Hard, ScoutTargetKind.Explore), 100f,
                 LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
         }
@@ -3235,7 +3235,7 @@ namespace Game.EditorTests
                 Kind = MissionKind.Raid, Funding = CommitmentTier.Soft,
                 Objective = new RaidIntent { OperationStarted = true },
             };
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(donor, 100f,
                 LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
         }
 
@@ -3243,7 +3243,7 @@ namespace Game.EditorTests
         public void EconomyLoan_MustCompleteMovementThisTurn()
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(donor, 100f,
                 LoanChoiceForPolicyTest(4, 3), 0f, out _), Is.False);
         }
 
@@ -4122,7 +4122,7 @@ namespace Game.EditorTests
             var snap = SnapshotWithDeficits(0.5f, 0.2f, true);
             snap.Self.Armies = new[] { solo };
             var routes = new[] { BuilderRoute(solo, 1, 1, 1) };
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, null, null,
                 30f, 4f, false), Is.Null);
             Assert.That(DemandLayer.EconomyEscortRecipient(snap, target, routes, null, null, 4f), Is.SameAs(solo));
             var claims = new ActorCommitments(); claims.Claim(solo.ArmyId);
@@ -4134,9 +4134,9 @@ namespace Game.EditorTests
             fresh.Self.Armies = new[] { ready };
             Assert.That(DemandLayer.EconomyEscortRecipient(fresh, target,
                 new[] { BuilderRoute(ready, 1, 1, 2) }, null, null, 4f), Is.Null);
-            Assert.That(DemandLayer.SelectEconomyBuilder(fresh, target,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(fresh, target,
                 new[] { BuilderRoute(ready, 1, 1, 2) }, null, null, 30f, 4f, false), Is.Not.Null);
-            Assert.That(DemandLayer.SelectEconomyBuilder(snap, target, routes, null, null,
+            Assert.That(EconomyBuilderSelection.SelectEconomyBuilder(snap, target, routes, null, null,
                 30f, 4f, false), Is.Null, "a later snapshot cannot mutate the cached solo decision");
         }
 
@@ -4278,13 +4278,13 @@ namespace Game.EditorTests
             var ready = EconomyBuilder(41, 2, 8f);
             var snap = SnapshotWithDeficits(0.5f, 0.2f, true); snap.Self.Armies = new[] { ready };
             var route = BuilderRoute(ready, 1, 1, 2);
-            var first = DemandLayer.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
+            var first = EconomyBuilderSelection.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
             float original = first.TotalAssignmentApCost;
             first.TotalAssignmentApCost = 999f;
-            first.Suitability = DemandLayer.EconomyArmySuitability.Ineligible;
-            var second = DemandLayer.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
+            first.Suitability = EconomyBuilderSelection.EconomyArmySuitability.Ineligible;
+            var second = EconomyBuilderSelection.AssessEconomyArmy(snap, target, route, ready, 4f, false, true);
             Assert.That(second.TotalAssignmentApCost, Is.EqualTo(original));
-            Assert.That(second.Suitability, Is.Not.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+            Assert.That(second.Suitability, Is.Not.EqualTo(EconomyBuilderSelection.EconomyArmySuitability.Ineligible));
             Assert.That(second, Is.Not.SameAs(first));
         }
 

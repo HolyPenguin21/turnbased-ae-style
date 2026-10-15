@@ -158,7 +158,7 @@ namespace Game.Setup
             new MatchStateEntry("Game.Ai.V2.WorldAnalysis", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.CombatOpportunityAnalyzer", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.ForceNeedModel", MatchStateKind.Cache),
-            new MatchStateEntry("Game.Ai.V2.DemandLayer", MatchStateKind.Cache),
+            new MatchStateEntry("Game.Ai.V2.EconomyBuilderSelection", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.EquipmentEfficiency", MatchStateKind.Cache),
             new MatchStateEntry("Game.Ai.V2.Initiative.InitiativeOutcomeEvaluator", MatchStateKind.Cache),
             new MatchStateEntry("Game.Combat.WorthIt", MatchStateKind.Cache),

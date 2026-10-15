@@ -77,12 +77,12 @@ namespace Game.Ai.V2
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(
                 standingIntents, session.Snapshot, null);
-            IReadOnlyList<DemandLayer.EconomyBuilderChoice> rankedBuilders =
-                DemandLayer.RankEconomyBuilders(session.Snapshot, target.TargetHex,
+            IReadOnlyList<EconomyBuilderSelection.EconomyBuilderChoice> rankedBuilders =
+                EconomyBuilderSelection.RankEconomyBuilders(session.Snapshot, target.TargetHex,
                     target.BuilderRoutes, standingIntents, actorCommitments,
                     target.BuildValue, target.BuildApCost,
                     includeReturn: target.Kind == EconomyTaskKind.BuildExtraction);
-            IEnumerable<DemandLayer.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
+            IEnumerable<EconomyBuilderSelection.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
             eligibleBuilders = eligibleBuilders.Where(x => IsEligibleEconomyBuildActor(m, x.Route.ArmyId));
 
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
@@ -92,14 +92,14 @@ namespace Game.Ai.V2
             // Why one ranked candidate cannot be this mission's builder right now, or null when it
             // can. The ONE eligibility gate of the selection loop below; the FoundBase diagnostic
             // traces print this same answer instead of re-deriving the clauses.
-            string CandidateRejection(DemandLayer.EconomyBuilderChoice x)
+            string CandidateRejection(EconomyBuilderSelection.EconomyBuilderChoice x)
             {
                 // Another mission holding this actor — a field army, or a garrison whose hero an
                 // Economy / Development intent has pinned through the garrison's id.
                 MissionIntent conflicting = standingIntents.FirstOrDefault(i =>
                     i.PreferredMoverArmyId == x.Route.ArmyId
                     && !i.IntentKey.Equals(currentIntentKey)
-                    && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                    && !EconomyBuilderSelection.EconomyDonorStructurallyEligible(i));
                 if (conflicting != null)
                     return $"conflicts_with={conflicting.IntentKey}({conflicting.Kind},{conflicting.Status})";
                 if (x.Route.RequiresGarrisonExtraction)
@@ -159,7 +159,7 @@ namespace Game.Ai.V2
             // Shared by the selection loop and the FoundBase diagnostic trace.
             (ArmyData Garrison, GarrisonExtractionCandidate Plan, EconomyCompletionPlan Prep,
                 float? ShortfallAp, string Detail) EvaluateGarrisonCandidate(
-                    DemandLayer.EconomyBuilderChoice candidate)
+                    EconomyBuilderSelection.EconomyBuilderChoice candidate)
             {
                 ArmyData g = AiV2Util.ResolveArmy(player, candidate.Route.ArmyId);
                 if (g == null)
@@ -219,10 +219,10 @@ namespace Game.Ai.V2
                     + $"eligibleAfterMoverFilter={eligibleList.Count}");
                 if (!inRankedAtAll)
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
-                        + DemandLayer.EconomyBuilderCandidateRejection(session.Snapshot,
+                        + EconomyBuilderSelection.EconomyBuilderCandidateRejection(session.Snapshot,
                             target.TargetHex, target.BuilderRoutes, preferredId,
                             standingIntents, actorCommitments));
-                foreach (DemandLayer.EconomyBuilderChoice x in eligibleList)
+                foreach (EconomyBuilderSelection.EconomyBuilderChoice x in eligibleList)
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} "
                         + $"rejection={CandidateRejection(x) ?? "none"}");
             }
@@ -237,7 +237,7 @@ namespace Game.Ai.V2
             // (ArmyActions.CreateArmy/TransferMember) happens later, in
             // TaskExecutor.ApplyEconomyPreparation, inside that step's own
             // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
-            DemandLayer.EconomyBuilderChoice builderChoice = null;
+            EconomyBuilderSelection.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
             GarrisonExtractionCandidate deferredPlan = default;
@@ -248,7 +248,7 @@ namespace Game.Ai.V2
             // legal way to get a builder" — the caller below reports EnvelopeTooSmall(requiredAp)
             // instead of a generic NoMoverExists.
             float? economyBuilderShortfallAp = null;
-            foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
+            foreach (EconomyBuilderSelection.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .Where(x => CandidateRejection(x) == null))
             {
@@ -356,7 +356,7 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
                         + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
                         + $"turn={session.Snapshot?.TurnNumber} — rankedBuildersTotal={rankedBuilders.Count}");
-                    foreach (DemandLayer.EconomyBuilderChoice x in rankedBuilders)
+                    foreach (EconomyBuilderSelection.EconomyBuilderChoice x in rankedBuilders)
                     {
                         string rejection = CandidateRejection(x);
                         string plan = "n/a";

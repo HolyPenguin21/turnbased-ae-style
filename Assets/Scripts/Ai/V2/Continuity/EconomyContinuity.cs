@@ -539,9 +539,9 @@ namespace Game.Ai.V2
                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
             {
                 if (route.ArmyId != actor.ArmyId) continue;
-                var suitability = DemandLayer.AssessEconomyArmy(snap, ei.TargetHex, route,
+                var suitability = EconomyBuilderSelection.AssessEconomyArmy(snap, ei.TargetHex, route,
                     actor, ei.BuildApCost, includeReturn: ei.Kind == EconomyTaskKind.BuildExtraction);
-                if (suitability.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
+                if (suitability.Suitability != EconomyBuilderSelection.EconomyArmySuitability.Ineligible
                     || suitability.IneligibleReason == "escort_activated_this_turn")
                     break;
                 // A composition failure does not heal when movement resets. Release the
@@ -857,7 +857,7 @@ namespace Game.Ai.V2
             if (lender == null)
                 lender = state.All.FirstOrDefault(i => i != null && i.Kind != MissionKind.Economy
                     && i.PreferredMoverArmyId == builderArmyId
-                    && DemandLayer.EconomyDonorStructurallyEligible(i));
+                    && EconomyBuilderSelection.EconomyDonorStructurallyEligible(i));
 
             ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == builderArmyId && a.HasHero && !a.IsPrison && !a.IsAir);

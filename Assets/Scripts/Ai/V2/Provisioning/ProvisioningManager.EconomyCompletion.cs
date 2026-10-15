@@ -77,7 +77,7 @@ namespace Game.Ai.V2
         internal static EconomyCompletionPlan PlanEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> standingIntents, StableMissionKey key,
-            EconomyMissionTarget target, DemandLayer.EconomyBuilderChoice builderChoice,
+            EconomyMissionTarget target, EconomyBuilderSelection.EconomyBuilderChoice builderChoice,
             ArmyData hero, int identityArmyId, float apEnvelope, float apPoolRemaining,
             float alreadyCommittedApCost = 0f)
         {
@@ -86,7 +86,7 @@ namespace Game.Ai.V2
             float eps = AiConfigV2.allocatorSliceEpsilon;
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
                 && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == identityArmyId
-                && DemandLayer.EconomyDonorStructurallyEligible(i));
+                && EconomyBuilderSelection.EconomyDonorStructurallyEligible(i));
             if (!MaterializeEconomyRoster(player, hero, builderChoice,
                     out ArmyData garrison, out List<UnitData> lighteningPlan,
                     out List<UnitData> reinforcementPlan, snapshot?.Intents, ctx,
@@ -116,14 +116,14 @@ namespace Game.Ai.V2
                 liveRoute.CurrentMovement = projectedMovement;
                 liveRoute.MaxMovement = projectedMaxMovement;
                 liveRoute.HasActivatedThisTurn = hero.HasActivatedThisTurn;
-                var liveChoice = new DemandLayer.EconomyBuilderChoice
+                var liveChoice = new EconomyBuilderSelection.EconomyBuilderChoice
                 {
                     Route = liveRoute,
-                    TotalAssignmentApCost = builderChoice.PreparationApCost + DemandLayer.EstimateEconomyAssignmentAp(
+                    TotalAssignmentApCost = builderChoice.PreparationApCost + EconomyBuilderSelection.EstimateEconomyAssignmentAp(
                         liveRoute, target.BuildApCost,
                         target.Kind == EconomyTaskKind.BuildExtraction),
                 };
-                if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue,
+                if (!EconomyBuilderSelection.EconomyLoanAllowed(donor, target.BuildValue,
                         liveChoice, target.BuildApCost, out float loanNet))
                     return EconomyCompletionPlan.No(ProvisionFailure.MoverContended(
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
@@ -156,7 +156,7 @@ namespace Game.Ai.V2
         // Materialization of Demand's exact choice. A changed identity/order/transfer contract
         // invalidates the witness; it never triggers a second roster optimizer here.
         internal static bool MaterializeEconomyRoster(PlayerSetupData player, ArmyData builder,
-            DemandLayer.EconomyBuilderChoice choice, out ArmyData garrison,
+            EconomyBuilderSelection.EconomyBuilderChoice choice, out ArmyData garrison,
             out List<UnitData> unload, out List<UnitData> reinforcement, IMissionIntentView intents,
             AiTurnContext ctx = null, ActorCommitments commitments = null)
         {
@@ -232,9 +232,9 @@ namespace Game.Ai.V2
             IReadOnlyList<EconomyBuilderRouteSnapshot> routes = WorldAnalysis.EconomyBuilderRoutes(
                 facts, player, ctx, target);
             if (routes.Count == 0) return 0;
-            var choice = DemandLayer.AssessEconomyArmy(facts, target, routes.First(x => x.ArmyId == builder.Id),
+            var choice = EconomyBuilderSelection.AssessEconomyArmy(facts, target, routes.First(x => x.ArmyId == builder.Id),
                 frozen, 0f, false);
-            if (choice.Suitability == DemandLayer.EconomyArmySuitability.Ineligible
+            if (choice.Suitability == EconomyBuilderSelection.EconomyArmySuitability.Ineligible
                 || !MaterializeEconomyRoster(player, builder, choice, out ArmyData garrison,
                     out List<UnitData> unload, out List<UnitData> reinforcement, snapshot?.Intents)) return 0;
             return ApplyEconomyArmyLightening(builder, garrison, unload, reinforcement, ctx);
@@ -291,7 +291,7 @@ namespace Game.Ai.V2
             facts.NonHeroActivationApCosts = pool.Select(u => u.ActivationApCost).ToList();
             facts.NonHeroMoveMax = pool.Select(WorldAnalysis.SoloMoveMax).ToList();
             facts.NonHeroIsAviation = pool.Select(u => u.IsAviation).ToList();
-            List<int> selected = DemandLayer.MinimumSafeEconomyEscortIndices(facts, threats, minimumEscort);
+            List<int> selected = EconomyBuilderSelection.MinimumSafeEconomyEscortIndices(facts, threats, minimumEscort);
             return selected?.Select(i => pool[i]).ToList();
         }
 #endif
@@ -319,7 +319,7 @@ namespace Game.Ai.V2
                     .Where(u => u != null && (unloaded == null || !unloaded.Contains(u)))
                     .Concat(added ?? System.Array.Empty<UnitData>())
                     .Distinct().Sum(u => u.ActivationApCost);
-            return DemandLayer.EconomyCurrentStageAp(immediateTransfers, activation,
+            return EconomyBuilderSelection.EconomyCurrentStageAp(immediateTransfers, activation,
                 builder?.HasActivatedThisTurn == true, travelNeeded, completionThisTurn,
                 buildApCost, minimumFollowupAp);
         }

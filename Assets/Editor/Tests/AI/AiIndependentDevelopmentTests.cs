@@ -580,10 +580,10 @@ namespace Game.EditorTests
             _snapshot.Self.Armies = new[] { facts };
             var route = new EconomyBuilderRouteSnapshot { ArmyId = field.Id, TravelCost = 1,
                 MaxMovement = 1, CurrentMovement = 1, RouteThreats = Array.Empty<AiMapMemory.KnownEnemySighting>() };
-            Assert.That(DemandLayer.EconomyBuilderCandidateRejection(_snapshot, new HexCoord(92, -17),
+            Assert.That(EconomyBuilderSelection.EconomyBuilderCandidateRejection(_snapshot, new HexCoord(92, -17),
                 new[] { route }, field.Id, Array.Empty<MissionIntent>(), null),
                 Is.EqualTo("ranking_rejected (suitability or loan gate)"), "the structural Demand gate passes");
-            var choice = DemandLayer.AssessEconomyArmy(_snapshot, new HexCoord(92, -17), route,
+            var choice = EconomyBuilderSelection.AssessEconomyArmy(_snapshot, new HexCoord(92, -17), route,
                 facts, 0f, false, requiresFoundingGarrison: false);
             Assert.That(choice.Army, Is.SameAs(facts.EconomyDeparture),
                 "AP, commander and escort assessment use the departing roster");

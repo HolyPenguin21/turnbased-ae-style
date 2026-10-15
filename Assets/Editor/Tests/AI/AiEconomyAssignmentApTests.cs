@@ -4,7 +4,7 @@ using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Task 2 regression coverage: DemandLayer.EstimateEconomyAssignmentAp() must never drop a
+    // Task 2 regression coverage: EconomyBuilderSelection.EstimateEconomyAssignmentAp() must never drop a
     // future re-activation it hasn't actually already paid for. The bug only manifested when
     // CurrentMovement == 0 (this turn's activation is fully spent with nothing left for the
     // route), so the "already paid" discount must key off whether MP is actually available for
@@ -18,26 +18,26 @@ namespace Game.EditorTests
         public void NewExtraction_BoundsRealDeliveryTimeEvenWhenActivationIsFree(
             int travel, int movement, bool allowed)
         {
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = Route(travel, movement, movement, false, activationApCost: 0),
             };
-            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.EqualTo(allowed));
-            Assert.That(DemandLayer.EstimateEconomyAssignmentAp(choice.Route, 1f, true), Is.EqualTo(1f),
+            Assert.That(EconomyBuilderSelection.EconomyExtractionDeliveryAllowed(choice), Is.EqualTo(allowed));
+            Assert.That(EconomyBuilderSelection.EstimateEconomyAssignmentAp(choice.Route, 1f, true), Is.EqualTo(1f),
                 "zero AP does not make a five-owner-turn delivery local");
         }
 
         [Test]
         public void ExtractionHorizon_DoesNotConstrainFoundingOrOnSiteCompletion()
         {
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = Route(20, 2, 2, false), FoundsBase = true,
             };
-            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.True);
+            Assert.That(EconomyBuilderSelection.EconomyExtractionDeliveryAllowed(choice), Is.True);
             choice.FoundsBase = false;
             choice.Route = Route(0, 0, 2, true, isOnTarget: true);
-            Assert.That(DemandLayer.EconomyExtractionDeliveryAllowed(choice), Is.True);
+            Assert.That(EconomyBuilderSelection.EconomyExtractionDeliveryAllowed(choice), Is.True);
         }
 
         private static EconomyBuilderRouteSnapshot Route(int travelCost, int currentMovement,
@@ -59,9 +59,9 @@ namespace Game.EditorTests
         [Test]
         public void UnknownReturnPath_IsNotPricedAsAnEndlessReturn()
         {
-            float noReturn = DemandLayer.EstimateEconomyAssignmentAp(
+            float noReturn = EconomyBuilderSelection.EstimateEconomyAssignmentAp(
                 Route(4, 2, 2, false, activationApCost: 1, returnTravelCost: int.MaxValue), 2f, true);
-            float outboundOnly = DemandLayer.EstimateEconomyAssignmentAp(
+            float outboundOnly = EconomyBuilderSelection.EstimateEconomyAssignmentAp(
                 Route(4, 2, 2, false, activationApCost: 1, returnTravelCost: 0), 2f, true);
             Assert.That(noReturn, Is.EqualTo(outboundOnly));
             Assert.That(noReturn, Is.LessThan(10f));
@@ -76,7 +76,7 @@ namespace Game.EditorTests
             // activation next turn) = 6.
             var route = Route(travelCost: 3, currentMovement: 0, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
-            float cost = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
+            float cost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
                 includeReturn: false);
             Assert.That(cost, Is.EqualTo(6f));
         }
@@ -94,8 +94,8 @@ namespace Game.EditorTests
                 hasActivatedThisTurn: true, activationApCost: 4);
             var partially = Route(travelCost: 3, currentMovement: 1, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
-            float depletedCost = DemandLayer.EstimateEconomyAssignmentAp(depleted, 2f, false);
-            float partiallyCost = DemandLayer.EstimateEconomyAssignmentAp(partially, 2f, false);
+            float depletedCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(depleted, 2f, false);
+            float partiallyCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(partially, 2f, false);
             Assert.That(partiallyCost, Is.EqualTo(depletedCost));
         }
 
@@ -107,7 +107,7 @@ namespace Game.EditorTests
             // outboundTurns = 1 + ceil((3-2)/3) = 2; one of those turns is already paid.
             var route = Route(travelCost: 3, currentMovement: 2, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
-            float cost = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
+            float cost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
                 includeReturn: false);
             Assert.That(cost, Is.EqualTo(2f + 1 * 4f));
         }
@@ -119,7 +119,7 @@ namespace Game.EditorTests
             // HasActivatedThisTurn.
             var route = Route(travelCost: 3, currentMovement: 3, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
-            float cost = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
+            float cost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
                 includeReturn: false);
             Assert.That(cost, Is.EqualTo(2f));
         }
@@ -132,7 +132,7 @@ namespace Game.EditorTests
             // this turn's own activation still has to be paid.
             var route = Route(travelCost: 4, currentMovement: 3, maxMovement: 3,
                 hasActivatedThisTurn: false, activationApCost: 4);
-            float cost = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
+            float cost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
                 includeReturn: false);
             // outboundTurns = 1 + ceil((4-3)/3) = 2, no discount -> 2 activations.
             Assert.That(cost, Is.EqualTo(2f + 2 * 4f));
@@ -143,7 +143,7 @@ namespace Game.EditorTests
         {
             var route = Route(travelCost: 3, currentMovement: 0, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4, returnTravelCost: 3);
-            float cost = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
+            float cost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, buildApCost: 2f,
                 includeReturn: true);
             // 1 outbound turn (no discount, 0 MP) + 1 return turn = 2 activations + build.
             Assert.That(cost, Is.EqualTo(2f + 2 * 4f));
@@ -159,8 +159,8 @@ namespace Game.EditorTests
                 hasActivatedThisTurn: true, activationApCost: 4);
             var freeAdjacent = Route(travelCost: 1, currentMovement: 3, maxMovement: 3,
                 hasActivatedThisTurn: false, activationApCost: 1);
-            float pinnedCost = DemandLayer.EstimateEconomyAssignmentAp(pinnedZeroMp, 2f, false);
-            float freeCost = DemandLayer.EstimateEconomyAssignmentAp(freeAdjacent, 2f, false);
+            float pinnedCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(pinnedZeroMp, 2f, false);
+            float freeCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(freeAdjacent, 2f, false);
             Assert.That(pinnedCost, Is.GreaterThan(freeCost));
         }
         // The donor scout's own task is worth 4 on the TaskScore scale: that value, not a
@@ -180,13 +180,13 @@ namespace Game.EditorTests
             // 3 hexes, 3 MP and activation already paid: only 2 card AP, no extra AP.
             // The same site score 7 minus the donor task's value 4 = 3 (above threshold 1.6).
             var route = Route(3, 3, 3, true, activationApCost: 4);
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = route,
-                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+                TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false),
             };
             Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(2f));
-            bool allowed = DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f, choice, 2f,
+            bool allowed = EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 7f, choice, 2f,
                 out float netValue);
             Assert.That(netValue, Is.EqualTo(3f));
             Assert.That(allowed, Is.True, "already paid MP must never incur a second hex fee");
@@ -198,14 +198,14 @@ namespace Game.EditorTests
             // Fresh 4-AP activation, 3-hex trip and optional 4-AP return.
             // Same site: roundtrip 12-8-4=0 rejected; one-way 12-4-4=4 allowed.
             var route = Route(3, 3, 3, false, activationApCost: 4, returnTravelCost: 3);
-            var choice = new DemandLayer.EconomyBuilderChoice { Route = route };
-            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, true);
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice { Route = route };
+            choice.TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, true);
             Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(10f));
-            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
                 out float roundTrip), Is.False);
             Assert.That(roundTrip, Is.EqualTo(0f));
-            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
-            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
+            choice.TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
                 out float oneWay), Is.True);
             Assert.That(oneWay, Is.EqualTo(4f));
         }
@@ -214,26 +214,26 @@ namespace Game.EditorTests
         public void EconomyLoan_PreservesReachabilityAndDonorProtection()
         {
             var route = Route(4, 3, 3, true, activationApCost: 4);
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = route,
-                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+                TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false),
             };
-            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 30f, choice, 2f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 30f, choice, 2f,
                 out _), Is.False, "high value must not override the same-turn reachability gate");
             route = Route(3, 3, 3, true, activationApCost: 4);
             choice.Route = route;
-            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
+            choice.TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false);
             var hard = LoanableScout();
             hard.Funding = CommitmentTier.Hard;
-            Assert.That(DemandLayer.EconomyLoanAllowed(hard, 30f, choice, 2f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(hard, 30f, choice, 2f,
                 out _), Is.False);
             var raid = new MissionIntent
             {
                 Kind = MissionKind.Raid, Funding = CommitmentTier.Soft,
                 Objective = new RaidIntent { OperationStarted = true },
             };
-            Assert.That(DemandLayer.EconomyLoanAllowed(raid, 30f, choice, 2f,
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(raid, 30f, choice, 2f,
                 out _), Is.False);
         }
 
@@ -241,17 +241,17 @@ namespace Game.EditorTests
         public void EconomyLoan_RepricesWhenLiveMoverHasLostItsPaidMovement()
         {
             var route = Route(3, 3, 3, true, activationApCost: 4);
-            var choice = new DemandLayer.EconomyBuilderChoice { Route = route };
-            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
-            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f,
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice { Route = route };
+            choice.TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 7f,
                 choice, 2f, out float initial), Is.True);
             Assert.That(initial, Is.EqualTo(3f));
             // Live provisioning re-observes 0 MP; this route can no longer be loaned
             // this turn, regardless of the previously approved plan.
             route.CurrentMovement = 0;
             choice.Route = route;
-            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
-            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f,
+            choice.TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(EconomyBuilderSelection.EconomyLoanAllowed(LoanableScout(), 7f,
                 choice, 2f, out float updated), Is.False);
             Assert.That(updated, Is.EqualTo(-1f));
         }
@@ -260,14 +260,14 @@ namespace Game.EditorTests
         public void EconomyLoan_ChargesTheDonorTasksOwnValue()
         {
             var route = Route(3, 3, 3, true, activationApCost: 4);
-            var choice = new DemandLayer.EconomyBuilderChoice
+            var choice = new EconomyBuilderSelection.EconomyBuilderChoice
             {
                 Route = route,
-                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+                TotalAssignmentApCost = EconomyBuilderSelection.EstimateEconomyAssignmentAp(route, 2f, false),
             };
             MissionIntent valuable = LoanableScout();
             valuable.LastIntrinsicValue = 9f;
-            DemandLayer.EconomyLoanAllowed(valuable, 12f, choice, 2f, out float net);
+            EconomyBuilderSelection.EconomyLoanAllowed(valuable, 12f, choice, 2f, out float net);
             Assert.That(net, Is.EqualTo(3f), "a donor worth 9 costs 9, not a fixed loss");
 
             MissionIntent suspended = LoanableScout();

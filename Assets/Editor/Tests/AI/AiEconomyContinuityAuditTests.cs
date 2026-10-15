@@ -884,7 +884,7 @@ namespace Game.EditorTests
             var commitments = new ActorCommitments();
             commitments.Claim(4);
 
-            string Why(int id) => DemandLayer.EconomyBuilderCandidateRejection(snap, Site, routes, id,
+            string Why(int id) => EconomyBuilderSelection.EconomyBuilderCandidateRejection(snap, Site, routes, id,
                 new[] { protectedScout }, commitments);
 
             Assert.That(Why(1), Is.EqualTo("garrison_without_extraction_route"));

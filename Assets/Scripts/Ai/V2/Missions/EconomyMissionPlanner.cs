@@ -308,8 +308,8 @@ namespace Game.Ai.V2
             int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
             IReadOnlyList<EconomyBuilderRouteSnapshot> currentRoutes =
                 CurrentBuilderRoutes(snapshot, t);
-            DemandLayer.EconomyBuilderChoice currentBuilder =
-                DemandLayer.SelectEconomyBuilder(
+            EconomyBuilderSelection.EconomyBuilderChoice currentBuilder =
+                EconomyBuilderSelection.SelectEconomyBuilder(
                 snapshot, t.TargetHex, currentRoutes, activeIntents, commitments,
                 t.BuildValue, t.BuildApCost, includeReturn: false,
                 pinnedBuilderArmyId: preferredId,
@@ -346,7 +346,7 @@ namespace Game.Ai.V2
                             / (float)UnityEngine.Mathf.Max(1, route.MaxMovement));
             }
 
-            float ap = DemandLayer.EconomyCurrentStageAp(currentBuilder?.PreparationApCost ?? 0f,
+            float ap = EconomyBuilderSelection.EconomyCurrentStageAp(currentBuilder?.PreparationApCost ?? 0f,
                 activation, activated, travelNeeded, completionThisTurn,
                 t.BuildApCost, t.MinimumFollowupAp);
             r.ApMinimum = r.ApDesired = r.ApMaximum = ap;
