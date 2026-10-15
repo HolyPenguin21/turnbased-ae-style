@@ -10,10 +10,11 @@ using Game.Aviation;
 
 namespace Game.Ai.V2
 {
-    // MissionContinuityLayer (Strategy V2 build-order step 7).
-    // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
-    // domain policies share this partial class and one durable intent store.
+    // MissionContinuityLayer (Strategy V2 build-order step 7): the one durable intent store's
+    // continuity pass (ResolveActive), funding binding and step/turn reconciliation. Each mission
+    // line's rules live in its own static owner (ReconContinuity, RaidContinuity, AttackContinuity,
+    // ActiveDefenceContinuity, EconomyContinuity, DevelopmentContinuity, GroundCombatContinuity),
+    // composed here by mission kind (MissionContinuityLayer.DomainResults.cs).
     internal static partial class MissionContinuityLayer
     {
         // A transient suspension (the pool or a capability was unavailable on an earlier pass) is
