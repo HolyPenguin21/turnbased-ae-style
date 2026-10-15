@@ -156,7 +156,7 @@ namespace Game.EditorTests
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn,
             });
             int version = WorldDeltaLifecycle.Current;
-            var result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand, ctx);
+            var result = NonCombatPlayExecutor.Execute(play, null, _owner, _root, hand, ctx);
             bool blocked = !produced;
             Assert.That(result.Played, Is.EqualTo(!blocked));
             if (blocked)
@@ -168,7 +168,7 @@ namespace Game.EditorTests
                 Assert.That(EquipmentSystem.GetAttachment(unit, definition), Is.Null);
                 Assert.That(hand.Hand.Contains(card), Is.True);
                 StrategicResourceReservationLedger.ReleaseByOwner(_owner, 1, "other-build");
-                result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand, ctx);
+                result = NonCombatPlayExecutor.Execute(play, null, _owner, _root, hand, ctx);
                 Assert.That(result.Played, Is.True, result.FailReason);
             }
             Assert.That(_root.ActionPoints, Is.EqualTo(produced ? 19 : 17));
@@ -190,7 +190,7 @@ namespace Game.EditorTests
             var play = new NonCombatCardPlayer.NonCombatPlay
                 { Card = card, Kind = NonCombatCardPlayer.PlayKind.Equipment, EquipHost = unit };
             army.Members.Clear();
-            var result = NonCombatCardPlayer.Execute(play, null, _owner, _root, hand,
+            var result = NonCombatPlayExecutor.Execute(play, null, _owner, _root, hand,
                 new AiTurnContext { TurnNumber = 1 });
             Assert.That(result.Played, Is.False);
             Assert.That(result.StateChanged, Is.False);

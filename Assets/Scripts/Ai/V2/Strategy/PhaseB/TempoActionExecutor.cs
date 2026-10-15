@@ -114,8 +114,8 @@ namespace Game.Ai.V2
             StrategicPhaseResult result, ref TempoExecutionResult exec)
         {
             result.MaterializationAttempts++;
-            NonCombatCardPlayer.NonCombatExecuteResult ncRes =
-                NonCombatCardPlayer.Execute(nc, snap, player, root, hand, ctx);
+            NonCombatExecuteResult ncRes =
+                NonCombatPlayExecutor.Execute(nc, snap, player, root, hand, ctx);
             if (ncRes.StateChanged) { exec.StateChanged = true; result.StateChanged = true; }
             if (ncRes.GenerationAttempted)
             {

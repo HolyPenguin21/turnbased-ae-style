@@ -96,6 +96,47 @@ namespace Game.EditorTests
             Assert.That(reads, Is.Empty, "Planning layers / Analysis look the intent store up globally; "
                 + "take it from the caller (IMissionIntentView, WorldSnapshot.Intents):\n" + string.Join("\n", reads));
         }
+
+        // 2026-10-15 — planning never mutates the world itself: the canonical gameplay mutations run
+        // in Execution (InfrastructureBuildExecutor, NonCombatPlayExecutor, CardPlayExecutor, ...).
+        // A Phase A / Phase B coordinator may call an executor's entry point; it never calls the
+        // primitive directly.
+        private static readonly Regex GameplayMutation = new Regex(
+            @"\b(CardPlayExecutor\.Play|BuildingPlayExecutor\.(PlayBaseCard|PlayFacilityCard|BuildExtractionFacility)"
+            + @"|EquipmentSystem\.TryAttach|InfrastructureActions\.TryUpgradeBase|UnitRepair\.TryRepair"
+            + @"|AviationActions\.TryDeploy\w*)\(");
+
+        [Test]
+        public void PlanningLayers_NeverCallAGameplayMutationDirectly()
+        {
+            Assert.That(GameplayMutation.IsMatch("CardPlayExecutor.Play(player, root"), Is.True);
+            Assert.That(GameplayMutation.IsMatch("CardPlayExecutor.Preflight(player, root"), Is.False);
+            Assert.That(GameplayMutation.IsMatch("EquipmentSystem.CanAttach(card"), Is.False);
+
+            string root = new[] { "Assets", Path.Combine("src", "Assets") }
+                .Select(a => Path.Combine(Directory.GetCurrentDirectory(), a, "Scripts", "Ai", "V2"))
+                .FirstOrDefault(Directory.Exists);
+            if (root == null)
+                Assert.Ignore("AI V2 sources not found from the working directory");
+
+            var calls = new List<string>();
+            foreach (string layer in PlanningLayers)
+                foreach (string file in Directory.GetFiles(Path.Combine(root, layer), "*.cs",
+                             SearchOption.AllDirectories))
+                {
+                    int n = 0;
+                    foreach (string line in File.ReadLines(file))
+                    {
+                        n++;
+                        string code = line.Split(new[] { "//" }, 2, System.StringSplitOptions.None)[0];
+                        if (GameplayMutation.IsMatch(code))
+                            calls.Add($"{file.Substring(root.Length + 1).Replace(Path.DirectorySeparatorChar, '/')}:{n}: {code.Trim()}");
+                    }
+                }
+
+            Assert.That(calls, Is.Empty, "Planning layers mutate the world directly; move the action "
+                + "to an executor in Execution/:\n" + string.Join("\n", calls));
+        }
     }
 }
 #endif

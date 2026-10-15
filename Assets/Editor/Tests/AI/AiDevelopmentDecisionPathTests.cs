@@ -162,7 +162,7 @@ namespace Game.EditorTests
                 var play = NonCombatCardPlayer.EnumeratePlays(snap, player, root, hand, ctx, new List<string>())
                     .Single(p => p.Card == pending);
                 Assert.That(play.EquipHostCard, Is.SameAs(replacement));
-                var result = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx);
+                var result = NonCombatPlayExecutor.Execute(play, snap, player, root, hand, ctx);
                 Assert.That(result.Played, Is.True, result.FailReason);
                 Assert.That(result.ApSpent, Is.EqualTo(1));
                 Assert.That(replacement.Equipment, Is.SameAs(output));
@@ -620,7 +620,7 @@ namespace Game.EditorTests
                 Assert.That(before.Count(p => p.Card == mutator), Is.EqualTo(2));
                 float previous = StrategicCardEvaluator.EquipmentDeltaParts(mutator.Definition, hosts[0], snap).Total;
                 var chosen = before.Single(p => p.Card == equipment && p.EquipHostCard == hosts[0]);
-                var result = NonCombatCardPlayer.Execute(chosen, snap, player, root, hand, ctx);
+                var result = NonCombatPlayExecutor.Execute(chosen, snap, player, root, hand, ctx);
                 Assert.That(result.Played, Is.True, result.FailReason);
                 Assert.That(hosts[0].Equipment, Is.SameAs(equipment.Definition));
                 Assert.That(hand.Hand.Contains(equipment), Is.False);
@@ -657,7 +657,7 @@ namespace Game.EditorTests
                     .Single(p => p.Card == gear);
                 Assert.That(play.ApCost, Is.EqualTo(1));
                 Assert.That(play.ResCost, Is.Null);
-                var result = NonCombatCardPlayer.Execute(play, snap, player, root, hand, ctx);
+                var result = NonCombatPlayExecutor.Execute(play, snap, player, root, hand, ctx);
                 Assert.That(result.Played, Is.True, result.FailReason);
                 Assert.That(result.ApSpent, Is.EqualTo(1));
                 Assert.That(root.ActionPoints, Is.Zero);

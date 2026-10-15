@@ -113,7 +113,8 @@ namespace Game.Ai.V2
             public int? BuilderArmyId;
             public string Explain;
             public GenerationStep Generation;
-            public System.Func<BuildingPlayResult> Execute;
+            // The admitted action; InfrastructureBuildExecutor runs it.
+            public InfraBuildAction Action;
             // CapacityUnlock: buy exactly this Base level (re-confirmed by the gameplay primitive).
             public BuildingData CapacityBuilding;
             public BaseUpgradeTier CapacityTier;
@@ -262,8 +263,8 @@ namespace Game.Ai.V2
             if (cand.CapacityTier != null)
                 return ExecuteCapacityUnlock(player, root, ctx, cand);
 
-            // --- authoritative transaction ---
-            BuildingPlayResult r = cand.Execute();
+            // --- authoritative transaction (Execution) ---
+            BuildingPlayResult r = InfrastructureBuildExecutor.Run(cand.Action, player, root, hand, ctx);
             if (r.Built && economyOwner != null)
                 MissionLeaseBook.ReleaseByOwner(player, ctx.TurnNumber,
                     economyOwner);
@@ -414,7 +415,7 @@ namespace Game.Ai.V2
                 ResCost = BuildingPlayExecutor.BaseAndGarrisonCost(card, defender),
                 TargetHex = hex,
                 Explain = $"Base {card.Definition.displayName} @({hex.Q},{hex.R})",
-                Execute = () => BuildingPlayExecutor.PlayBaseCard(player, root, hand, ctx, card, hex, builderId, defender),
+                Action = InfraBuildAction.BaseCard(card, hex, builderId, defender),
             };
         }
 
@@ -459,7 +460,7 @@ namespace Game.Ai.V2
                 BuilderArmyId = builderId,
                 ResCost = facilityDef.resourceCost,
                 Explain = $"extraction {facilityDef.displayName} @({built.Q},{built.R}) for {type.Value}",
-                Execute = () => BuildingPlayExecutor.BuildExtractionFacility(player, root, ctx, facilityDef, built),
+                Action = InfraBuildAction.ExtractionFacility(facilityDef, built),
             };
         }
 
@@ -484,23 +485,14 @@ namespace Game.Ai.V2
             AiTurnContext ctx, InfraCandidate cand)
         {
             int apBefore = root.ActionPoints;
-            // No spend authority: the payment may not reach into anyone else's hold.
-            ReservationInvariants.SpendProbe probe = ReservationInvariants.BeginSpend(
-                player, root, ctx, "phaseA CapacityUnlock");
-            BaseUpgradeOutcome outcome = InfrastructureActions.TryUpgradeBase(
-                cand.CapacityBuilding, ctx.GameConfig?.baseUpgradeTiers, cand.CapacityExpectedLevel);
-            ReservationInvariants.EndSpend(player, root, ctx, probe);
+            BaseUpgradeOutcome outcome = InfrastructureBuildExecutor.UnlockCapacity(player, root, ctx,
+                cand.CapacityBuilding, cand.CapacityExpectedLevel, cand.TargetHex, out int version);
             if (!outcome.Ok)
             {
                 // Nothing was paid or changed: the plan is stale. The next pass re-judges the world.
                 AiDebugLog.Write($"[AI][V2]   infra — CapacityUnlock refused: {outcome.FailReason} ({cand.Explain})");
                 return InfraFulfillResult.No(outcome.FailReason);
             }
-            // ONE top-level mutation, one receipt; the placement later is its own mutation.
-            int version = WorldDeltaLifecycle.CommitMutation();
-            WorldDeltaLifecycle.Publish(player, ctx.TurnNumber,
-                StrategicInvalidationReason.Infrastructure | StrategicInvalidationReason.Capability,
-                hexes: new[] { cand.TargetHex });
             return new InfraFulfillResult
             {
                 Built = false, CapacityUnlocked = true, CardPlayed = false,
@@ -610,8 +602,7 @@ namespace Game.Ai.V2
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
                         Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
-                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
-                            player, root, hand, ctx, selectedCard, selectedHex),
+                        Action = InfraBuildAction.FacilityCard(selectedCard, selectedHex),
                     });
                 }
             }
@@ -690,34 +681,8 @@ namespace Game.Ai.V2
                     + $"@({hex.Q},{hex.R})"
                     + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : "")
                     + $" net={net:0.00}",
-                Execute = () => PlaceFacilityAfterOptionalUpgrade(
-                    player, root, hand, ctx, card, hex, buildingToUpgrade, tierToBuy),
+                Action = InfraBuildAction.FacilityAfterUpgrade(card, hex, buildingToUpgrade, tierToBuy),
             };
-        }
-
-        // One action: buy `tier` on `building` (when a slot must be unlocked first), then place the
-        // Facility. Shared by every infrastructure path whose facility carries its own capacity
-        // prerequisite (global resource source, Development facility stage).
-        private static BuildingPlayResult PlaceFacilityAfterOptionalUpgrade(PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex,
-            BuildingData building, BaseUpgradeTier tier)
-        {
-            if (tier == null)
-                return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
-            int apBefore = root.ActionPoints;
-            if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
-                return BuildingPlayResult.Fail("capacity upgrade refused");
-            int upgradeVersion = WorldDeltaLifecycle.CommitMutation();
-            BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
-                player, root, hand, ctx, card, hex);
-            // The upgrade is a real mutation even if the placement then fails.
-            placed.StateChanged = true;
-            placed.ApSpent = apBefore - root.ActionPoints;
-            placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
-                placed.ResourcesSpent, tier.cost);
-            if (placed.StateVersionAfter < upgradeVersion)
-                placed.StateVersionAfter = upgradeVersion;
-            return placed;
         }
 
         // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),
@@ -793,22 +758,7 @@ namespace Game.Ai.V2
                         HandOrdinal = ordinal,
                         TargetHex = at,
                         Explain = $"operator {selectedCard.Definition.displayName} ({mode}) into preparation base garrison @({at.Q},{at.R})",
-                        Execute = () =>
-                        {
-                            ArmyData g = OwnWorld.Of(player).GarrisonAt(at);
-                            CardPlayResult r = CardPlayExecutor.Play(player, root, hand, ctx,
-                                CardPlayPlan.Into(selectedCard, at, DeploymentKind.Garrison, g));
-                            return new BuildingPlayResult
-                            {
-                                Built = r.Deployed,
-                                ApSpent = r.ApSpent,
-                                ResourcesSpent = r.ResourcesSpent,
-                                StateChanged = r.StateChanged,
-                                CardConsumed = r.Deployed,
-                                StateVersionAfter = r.StateVersionAfter,
-                                FailReason = r.FailReason,
-                            };
-                        },
+                        Action = InfraBuildAction.OperatorIntoGarrison(selectedCard, at),
                     });
                 }
             }

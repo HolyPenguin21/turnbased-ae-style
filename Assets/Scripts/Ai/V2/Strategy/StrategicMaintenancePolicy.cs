@@ -55,9 +55,9 @@ namespace Game.Ai.V2
             out bool stateChanged, out bool progressed)
         {
             bool ok = _repairUnit != null
-                ? UnitRepair.TryRepair(_repairUnit, _repairHex, root, out _)
+                ? InfrastructureBuildExecutor.RepairUnit(_repairUnit, _repairHex, root)
                 : (Revalidate == null || Revalidate())
-                    && StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                    && InfrastructureBuildExecutor.UpgradeBaseCapacity(
                         player, root, ctx, _upgradeBuilding, _upgradeTier);
             stateChanged = ok;
             progressed = ok;
@@ -374,28 +374,6 @@ namespace Game.Ai.V2
             return sawCapacityBlock;
         }
 
-        internal static bool ExecuteCapacityUpgrade(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            BuildingData b, BaseUpgradeTier tier)
-        {
-            V2PhaseActivity activity = V2TurnActivityTelemetry.Phase(player, ctx.TurnNumber, V2Phase.Main);
-            activity.InfrastructureAttempts++;
-            int apBefore = root.ActionPoints;
-            // The payment and the mutation belong to the gameplay primitive (the human UI uses it too);
-            // the planned tier must still be the Base's next one, so a stale plan buys nothing.
-            BaseUpgradeTier[] tiers = ctx.GameConfig?.baseUpgradeTiers;
-            if (b == null || tier == null
-                || !InfrastructureActions.CanUpgradeBase(b, tiers, null, out BaseUpgradeTier next, out _)
-                || !ReferenceEquals(next, tier))
-                return false;
-            if (!InfrastructureActions.TryUpgradeBase(b, tiers).Ok)
-                return false;
-
-            activity.InfrastructureBuilt++;
-            AiDebugLog.Write($"[AI][V2] maintenance capacity — upgraded {b.Name} "
-                + $"@({b.Hex.Q},{b.Hex.R}) to level {b.Level}; facility slots {b.UnlockedFacilitySlots}/{b.TotalFacilitySlots}; "
-                + $"ap {apBefore}->{root.ActionPoints}");
-            return true;
-        }
     }
 }
 

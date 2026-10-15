@@ -175,6 +175,20 @@ Forbidden edges: `Evaluator → StrategicManager`, `Domain → MissionPlanner`,
 cycle across the tiers above. `Execution/` receives concrete plans and calls
 canonical game actions; it never selects objectives or invents alternative actions.
 
+**Execution boundary (2026-10-15).** `Strategy/`, `Missions/` and `Evaluation/` never call a gameplay
+mutation primitive themselves (`CardPlayExecutor.Play`, `BuildingPlayExecutor.Play*/Build*`,
+`EquipmentSystem.TryAttach`, `InfrastructureActions.TryUpgradeBase`, `UnitRepair.TryRepair`,
+`AviationActions.TryDeploy*`). A plan carries its action as data (`InfraBuildAction`, `NonCombatPlay`);
+`Execution/InfrastructureBuildExecutor` (builds, capacity unlock/upgrade, repair) and
+`Execution/NonCombatPlayExecutor` run it. The Phase A/B coordinators may call an executor's entry
+point (`MaterializationExecutor.Execute/TryGenerate`, the two above). Guarded by
+`AiPlanningLiveReadBoundaryTests.PlanningLayers_NeverCallAGameplayMutationDirectly`.
+
+**Sanctioned live cheats.** A live tier that must read a true-world fact outside the observer's
+knowledge calls `Analysis/TrueWorldReads` (the live counterpart of `WorldSnapshot.TrueWorld`); each
+member is an owner decision. Today: `ArmyFieldedByAnotherPlayer`, step 2 of
+`ObjectiveLiveStatus.RaidSatisfied` (a neutral captured in the fog stops being a Raid target at once).
+
 **Live-state boundary (2026-10-15).** The planning layers — `Strategy/`, `Missions/`,
 `Evaluation/` — reason on the `WorldSnapshot` and never read the registries (`ArmyRegistry`,
 `BuildingRegistry`, `VisionSystem`, `StealthSystem`, `PlayerRootRegistry`) or
