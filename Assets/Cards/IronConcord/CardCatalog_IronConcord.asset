@@ -924,8 +924,8 @@ MonoBehaviour:
     deckCopyLimit: 4
     deckBuilderExcluded: 0
     displayName: Hazard Pioneer
-    art: {fileID: 21300000, guid: cb7141a8b0c93e04fb581e4e232fcb06, type: 3}
-    detailArt: {fileID: 21300000, guid: 04cb285496a2af240a1868515b55ef60, type: 3}
+    art: {fileID: 21300000, guid: f92e1c2e226339d4fbfdd9ecf1d5f907, type: 3}
+    detailArt: {fileID: 21300000, guid: 67722ae871778454884a8e7db6a15f8b, type: 3}
     faction: 0
     cardType: 1
     apCost: 2
