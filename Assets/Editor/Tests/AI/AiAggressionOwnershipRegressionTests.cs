@@ -286,7 +286,11 @@ namespace Game.EditorTests
                 HitPointsMax = 20, HitPointsCurrent = 20, Initiative = 5 });
             ArmyRegistry.Register(host);
             ArmyRegistry.Register(donor);
-            WorldSnapshot snap = Snap(Actor(host.Id, Home));
+            ArmySnapshot hostFacts = Actor(host.Id, Home);
+            hostFacts.RosterCapacity = StrikeRoster.HostRosterCapacity(host);
+            hostFacts.CommanderRosterCandidate = StrikeRoster.CommanderCandidate(host.Commander);
+            hostFacts.CommanderCommandRating = host.Commander.CommandRating;
+            WorldSnapshot snap = Snap(hostFacts);
             snap.Self.AttackPeak = 60f;
             snap.Self.StrikePool = Enumerable.Range(0, 3).Select(i => new StrikeRosterCandidate(
                 new StrikeRosterSlot("body" + i, false, 20f, ForceSource.Deck),
@@ -296,6 +300,21 @@ namespace Game.EditorTests
             Assert.That(assessable, Is.True);
             Assert.That(result.hero, garrisonHero ? Is.Null : Is.SameAs(hero));
             Assert.That(donor.Members.Contains(hero), Is.True, "policy may never perform the extraction");
+        }
+
+        [Test]
+        public void HostRosterFactsAreFrozenFromTheOwnArmy()
+        {
+            var host = new ArmyData { Owner = _us, Hex = Home };
+            var commander = new UnitData { Owner = _us, IsHero = true, CommandRating = 4 };
+            host.Members.Add(commander);
+            ArmyRegistry.Register(host);
+            ArmySnapshot facts = WorldAnalysis.ToArmySnapshot(host, _us, true, 0, null);
+            Assert.That(facts.RosterCapacity, Is.EqualTo(StrikeRoster.HostRosterCapacity(host)));
+            Assert.That(facts.SupportCarrierSlots, Is.EqualTo(StrikeRoster.RetainedSupportSlots(host.Members, null)));
+            Assert.That(facts.CommanderCommandRating, Is.EqualTo(4));
+            Assert.That(facts.CommanderRosterCandidate.HasValue, Is.True);
+            Assert.That(facts.CommanderRosterCandidate.Value.Slot.Key, Is.EqualTo(StrikeRoster.UnitKey(commander)));
         }
 
         private static void Drain(IEnumerator routine)

@@ -482,6 +482,11 @@ namespace Game.Ai.V2
                     ? AviationRange.SafeUnlandedEndsRemaining(a) : 0,
                 Capacity = a.Capacity,
                 OccupiedBattleSlots = a.Members.Count,
+                RosterCapacity = isOwn ? StrikeRoster.HostRosterCapacity(a) : 0,
+                SupportCarrierSlots = isOwn ? StrikeRoster.RetainedSupportSlots(a.Members, null) : 0,
+                CommanderRosterCandidate = isOwn && a.Commander != null
+                    ? StrikeRoster.CommanderCandidate(a.Commander) : (StrikeRosterCandidate?)null,
+                CommanderCommandRating = isOwn ? a.Commander?.CommandRating ?? 0 : 0,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                 NonHeroMutatorOccupied = isOwn ? nonHero.Select(u => u.Mutator != null).ToList() : null,
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),

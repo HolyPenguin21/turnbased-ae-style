@@ -203,7 +203,10 @@ and wing forming `Execution/AviationWingPreparation`. Canonical domain rules (`A
 `ResearchProductionSystem` queries) remain callable — they are rules, not raw state.
 `AiPlanningLiveReadBoundaryTests` guards the boundary. OwnWorld reads are live, not cached, so a
 plan made after a same-cycle mutation still sees it; turning them into snapshot facts is the next
-step of the snapshot refactoring.
+step of the snapshot refactoring, one fact per consumer. Done: a preparation host's roster capacity
+under its support carriers (`ArmySnapshot.RosterCapacity`, `SupportCarrierSlots`,
+`CommanderRosterCandidate`, `CommanderCommandRating`) for `AttackPreparationPolicy.FindCommanderUpgrade`,
+which now reads no live host (only the garrison and hero it returns are live objects).
 
 **Intent-store boundary (2026-10-15).** The durable intent store (`MissionIntentState`) reaches
 `Strategy/`, `Missions/`, `Evaluation/` and `Analysis/` explicitly, never through

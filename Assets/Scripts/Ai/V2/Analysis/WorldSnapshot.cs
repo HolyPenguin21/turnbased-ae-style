@@ -300,6 +300,15 @@ namespace Game.Ai.V2
         public int Capacity;                // ArmyData.Capacity — nominal battle-member cap
         public int OccupiedBattleSlots;     // members currently occupying slots (heroes included)
         public int FreeBattleSlots => System.Math.Max(0, Capacity - OccupiedBattleSlots);
+        // Own armies only. The capacity a preparation host's roster is composed under
+        // (StrikeRoster.HostRosterCapacity: Capacity less the support carriers it keeps under its
+        // current commander), the slots its support carriers keep under any commander
+        // (StrikeRoster.RetainedSupportSlots with no commander), and its current commander as a
+        // strike-roster candidate with that commander's CommandRating (null / 0 without one).
+        public int RosterCapacity;
+        public int SupportCarrierSlots;
+        public StrikeRosterCandidate? CommanderRosterCandidate;
+        public int CommanderCommandRating;
 
         // ---- OPERATIONAL state --------------------------------------------------------------
         // Frozen here so the Recon mission planner / ScoutCostModel can size a mover's cost for

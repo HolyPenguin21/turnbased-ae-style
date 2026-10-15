@@ -44,25 +44,22 @@ namespace Game.Ai.V2
             currentPower = 0f;
             currentCommand = 0;
             PlayerSetupData player = snap.Observer;
-            ArmyData liveHost = player == null ? null : OwnWorld.Of(player).Army(host.ArmyId);
-            if (liveHost == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
+            if (player == null || host == null || snap.Self.StrikePool == null || snap.Self.StrikePool.Count == 0)
                 return default;
 
             assessable = true;
-            UnitData current = liveHost.Commander;
-            StrikeRoster.ComposeUnder(snap.Self.StrikePool,
-                current == null ? (StrikeRosterCandidate?)null : StrikeRoster.CommanderCandidate(current),
-                StrikeRoster.HostRosterCapacity(liveHost), out currentPower);
+            StrikeRoster.ComposeUnder(snap.Self.StrikePool, host.CommanderRosterCandidate,
+                host.RosterCapacity, out currentPower);
             // Under a fetched commander every support carrier of the host stays, the current
             // commander included when it is one (an ordinary one returns to the garrison).
-            int retainedUnderUpgrade = StrikeRoster.RetainedSupportSlots(liveHost.Members, null);
+            int retainedUnderUpgrade = host.SupportCarrierSlots;
             if (AttackForceReadiness.ForceReady(currentPower, snap.Self.AttackPeak))
                 return default;
-            currentCommand = current?.CommandRating ?? 0;
+            currentCommand = host.CommanderCommandRating;
             (ArmyData garrison, UnitData hero, float power) best = (null, null, currentPower);
             foreach (ArmyData g in OwnWorld.Of(player).Armies)
             {
-                if (g == null || !g.IsGarrison || g.Hex.Equals(liveHost.Hex))
+                if (g == null || !g.IsGarrison || g.Hex.Equals(host.Hex))
                     continue;
                 foreach (UnitData u in g.Members)
                 {
@@ -74,7 +71,7 @@ namespace Game.Ai.V2
                         u.CommandRating - retainedUnderUpgrade, out float power);
                     if (power > best.power + AiConfigV2.allocatorSliceEpsilon
                         || (best.hero != null && System.Math.Abs(power - best.power) <= AiConfigV2.allocatorSliceEpsilon
-                            && HexGridMath.Distance(g.Hex, liveHost.Hex) < HexGridMath.Distance(best.garrison.Hex, liveHost.Hex)))
+                            && HexGridMath.Distance(g.Hex, host.Hex) < HexGridMath.Distance(best.garrison.Hex, host.Hex)))
                         best = (g, u, power);
                 }
             }
