@@ -347,7 +347,7 @@ namespace Game.Ai.V2
                         snapshot == null ? null : ActorCommitments.FromIntents(
                             MissionIntentRegistry.GetOrCreate(player).All, snapshot, null),
                         DevelopmentOpportunityEvaluator.LivePreparationSite(
-                            player, AiHandRegistry.Peek(player), ctx)) > 0)
+                            player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player))) > 0)
                     result.StateVersionAfter = WorldDeltaLifecycle.Current;
             }
 
@@ -601,7 +601,7 @@ namespace Game.Ai.V2
                 return false;   // defensive only — Provisioning only ever defers a feasible plan
 
             var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
-                player, AiHandRegistry.Peek(player), ctx);
+                player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player));
             ActorCommitments commitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, null);
 
@@ -837,7 +837,7 @@ namespace Game.Ai.V2
             {
                 AiHandData hand = AiHandRegistry.Peek(player);
                 System.Func<ResearchProductionMode, HexCoord?> site =
-                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx);
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, hand, ctx, MissionIntentRegistry.Peek(player));
                 if (AiArmyRoles.DepartureStripsOperator(player, army, site))
                 {
                     ActorCommitments commitments = snapshot == null ? null : ActorCommitments.FromIntents(

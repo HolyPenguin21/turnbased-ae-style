@@ -1587,7 +1587,7 @@ namespace Game.Ai.V2
         {
             ArmyData army = unit != null ? OwnWorld.Of(snap?.Observer).ArmyContaining(unit) : null;
             string key = unit != null ? StrikeRoster.UnitKey(unit) : StrikeRoster.CardKey(card?.Definition);
-            var intents = MissionIntentRegistry.Peek(snap?.Observer)?.All;
+            var intents = snap?.Intents?.All;
             return intents?.Where(i => i != null && i.Status == IntentStatus.Active && !i.IsLifecycleLeg
                 && (unit != null && object.ReferenceEquals(i.Development?.Hero, unit)
                     || i.PreferredMoverArmyId == army?.Id && army != null

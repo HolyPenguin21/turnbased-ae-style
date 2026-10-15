@@ -34,7 +34,7 @@ namespace Game.Ai.V2
             // Price only the roster that can actually depart. Preparation-site selection is
             // structural and does not depend on the Economy standings being built here.
             var preparationSite = DevelopmentOpportunityEvaluator.LivePreparationSite(
-                player, AiHandRegistry.Peek(player), ctx);
+                player, AiHandRegistry.Peek(player), ctx, snap.Intents);
             ActorCommitments commitments = ActorCommitments.FromIntents(
                 IntentsOf(snap), snap, null);
             foreach (ArmySnapshot actor in snap.Self.Armies.Where(a => a != null
@@ -694,7 +694,7 @@ namespace Game.Ai.V2
                     if (!liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
                         continue;
                     var site = DevelopmentOpportunityEvaluator.LivePreparationSite(
-                        player, AiHandRegistry.Peek(player), ctx);
+                        player, AiHandRegistry.Peek(player), ctx, snap.Intents);
                     foreach (UnitData sparableHero in AiArmyRoles.EconomyHeroCandidates(player, liveGarrison, site))
                     {
                         ProvisioningManager.GarrisonExtractionCandidate extraction =

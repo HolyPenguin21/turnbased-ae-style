@@ -56,6 +56,46 @@ namespace Game.EditorTests
             Assert.That(reads, Is.Empty, "Planning layers read live state directly; use OwnWorld "
                 + "or move the code to a live tier:\n" + string.Join("\n", reads));
         }
+
+        // 2026-10-15 — the durable intent store reaches the planning layers and Analysis explicitly:
+        // the decision frame's MissionIntentState for the owners that write (Phase A), the read-only
+        // IMissionIntentView (a parameter, or WorldSnapshot.Intents bound by WorldAnalysis.Scan) for
+        // everything else. The global registry is the lookup of the live tiers and the turn session.
+        private static readonly Regex RegistryRead = new Regex(@"\bMissionIntentRegistry\.");
+        private static readonly string[] IntentReceivingLayers = { "Strategy", "Missions", "Evaluation", "Analysis" };
+        // Force measures computed outside the AI turn (no decision frame exists there).
+        private static readonly string[] RegistryReadAllowed = { "Analysis/PlayerForceAnalysis.cs" };
+
+        [Test]
+        public void PlanningLayersAndAnalysis_ReceiveTheIntentStoreExplicitly()
+        {
+            string root = new[] { "Assets", Path.Combine("src", "Assets") }
+                .Select(a => Path.Combine(Directory.GetCurrentDirectory(), a, "Scripts", "Ai", "V2"))
+                .FirstOrDefault(Directory.Exists);
+            if (root == null)
+                Assert.Ignore("AI V2 sources not found from the working directory");
+
+            var reads = new List<string>();
+            foreach (string layer in IntentReceivingLayers)
+                foreach (string file in Directory.GetFiles(Path.Combine(root, layer), "*.cs",
+                             SearchOption.AllDirectories))
+                {
+                    string rel = file.Substring(root.Length + 1).Replace(Path.DirectorySeparatorChar, '/');
+                    if (RegistryReadAllowed.Contains(rel))
+                        continue;
+                    int n = 0;
+                    foreach (string line in File.ReadLines(file))
+                    {
+                        n++;
+                        string code = line.Split(new[] { "//" }, 2, System.StringSplitOptions.None)[0];
+                        if (RegistryRead.IsMatch(code))
+                            reads.Add($"{rel}:{n}: {code.Trim()}");
+                    }
+                }
+
+            Assert.That(reads, Is.Empty, "Planning layers / Analysis look the intent store up globally; "
+                + "take it from the caller (IMissionIntentView, WorldSnapshot.Intents):\n" + string.Join("\n", reads));
+        }
     }
 }
 #endif

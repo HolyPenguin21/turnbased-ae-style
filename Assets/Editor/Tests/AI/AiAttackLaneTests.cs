@@ -342,6 +342,7 @@ namespace Game.EditorTests
             WorldSnapshot snap = DefendedSite(
                 new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
                 new[] { OurBase });
+            snap.Intents = MissionIntentRegistry.GetOrCreate(Us);
             var demand = new AxisDemand
             {
                 RequestingAxis = DesireAxis.Aggression,

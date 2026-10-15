@@ -188,7 +188,7 @@ namespace Game.Ai.V2
                 // Both phases must establish the same durable owner before reducing a residual.
                 // Revalidate after the real deployment: a successful card play can still fail to
                 // deliver a builder if the route or escort changed during that operation.
-                var intents = MissionIntentRegistry.GetOrCreate(player).All
+                var intents = (afterSnap.Intents?.All ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
                 var commitments = ActorCommitments.FromIntents(intents, afterSnap, null);
                 // Audit F5: both "not delivered" exits below used to be silent, so a hero card that
@@ -353,8 +353,8 @@ namespace Game.Ai.V2
                 || !demand.ConsumerIntentKey.HasValue)
                 return false;
 
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            if (!state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
+            IMissionIntentView state = afterSnap?.Intents;
+            if (state == null || !state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
                 || intent == null)
                 return false;
 

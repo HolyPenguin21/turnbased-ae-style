@@ -97,7 +97,7 @@ namespace Game.Ai.V2
             // are not part of the walking roster.
             IReadOnlyList<UnitData> staying = hero.Hex.Equals(target.TargetHex)
                 ? System.Array.Empty<UnitData>()
-                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx);
+                : DevelopmentOpportunityEvaluator.OperatorsStayingHome(player, hero, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player));
             List<UnitData> projectedMembers = hero.Members.Where(u => !lighteningPlan.Contains(u) && !staying.Contains(u))
                 .Concat(reinforcementPlan).ToList();
             int projectedMovement = ArmyData.ComputeCurrentMovement(projectedMembers);
@@ -188,10 +188,10 @@ namespace Game.Ai.V2
             ArmyData departing = builder;
             ArmyData receiving = garrison;
             if (!choice.Route.IsOnTarget && LocalOperatorRelease.OperatorsNeededHome(player, builder,
-                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx)).Count > 0)
+                    DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player))).Count > 0)
             {
                 if (!LocalOperatorRelease.CanKeepOperatorsHome(player, builder, commitments,
-                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx),
+                        DevelopmentOpportunityEvaluator.LivePreparationSite(player, AiHandRegistry.Peek(player), ctx, MissionIntentRegistry.Peek(player)),
                         out _, out departing)) return false;
                 receiving = ArmyData.CreateVisualSnapshot();
                 receiving.Owner = garrison.Owner; receiving.Hex = garrison.Hex; receiving.IsGarrison = true;

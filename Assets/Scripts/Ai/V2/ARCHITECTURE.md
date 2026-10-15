@@ -191,6 +191,23 @@ and wing forming `Execution/AviationWingPreparation`. Canonical domain rules (`A
 plan made after a same-cycle mutation still sees it; turning them into snapshot facts is the next
 step of the snapshot refactoring.
 
+**Intent-store boundary (2026-10-15).** The durable intent store (`MissionIntentState`) reaches
+`Strategy/`, `Missions/`, `Evaluation/` and `Analysis/` explicitly, never through
+`MissionIntentRegistry`. The decision frame holds the turn session's store
+(`DecisionFrame.IntentState`). Owners that write receive the concrete store as a parameter: Strategy
+Phase A (`StrategicManager.FulfillDemands`: generated operators, delivery failures) and Continuity
+(`AttackRetreatWitness.Apply`). Everything else gets the read-only `IMissionIntentView`, which has no
+store writers: a planning decision cannot change the store and reports the change instead
+(`AttackRetreatWitness.Blocks` → `RetreatWitnessRevision`, carried out by
+`MissionPortfolioResult.WitnessRevisions` and applied right after the build). Layer entries take it as
+a parameter (`MissionPortfolio.Build`, `AggressionMissionLayer.Propose`, `StrategicTurnLifecycle`).
+Deep evaluators read `WorldSnapshot.Intents`, which `WorldAnalysis.Scan` binds from the store it is
+handed and every refresh carries; like `Own`, it is a live view, not a copy. Live tiers (Continuity,
+Provisioning, Execution, Reaction, Housekeeping) still look the store up in the registry and pass it
+to the shared helpers they call (`LivePreparationSite`, `AttackBaseRefitPolicy`, `RaidRecoveryPlanner`).
+`PlayerForceAnalysis` runs outside the AI turn and is the one allowed registry read in Analysis.
+`AiPlanningLiveReadBoundaryTests.PlanningLayersAndAnalysis_ReceiveTheIntentStoreExplicitly` guards it.
+
 ## Mid-turn loop boundary (rollout contract)
 
 The loop is a bounded repetition of the existing horizontal pipeline, not a new

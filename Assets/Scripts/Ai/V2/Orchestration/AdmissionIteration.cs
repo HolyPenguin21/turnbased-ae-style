@@ -266,7 +266,7 @@ namespace Game.Ai.V2
                 _frame.Snapshot, _frame.Recon);
             // A single atomic move may consume the last MP after Provisioning had
             // legitimately reserved this owner's completion AP: the bank settles its stage.
-            StrategicManager.AfterMissionSettlement(_player, _root, _hand, _ctx);
+            StrategicManager.AfterMissionSettlement(_player, _frame.IntentState, _root, _hand, _ctx);
 
             int taskStepNumber = view.SettledSteps + 1;
             ReservationInvariants.CheckBoundary(_player, _root, _ctx,

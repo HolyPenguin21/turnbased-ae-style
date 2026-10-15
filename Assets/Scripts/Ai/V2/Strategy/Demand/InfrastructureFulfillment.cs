@@ -78,11 +78,11 @@ namespace Game.Ai.V2
         // This existing staffing owner validates persisted claims before Phase A/B and after
         // infrastructure mutations. Never duplicate generation, movement or card execution.
         // Current AP/resources are deliberately NOT eligibility criteria for a future turn.
-        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player,
+        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player, MissionIntentState intentState,
             AiHandData hand, int turn, MaterializationReservation reservation)
         {
-            if (player == null || reservation == null) return;
-            IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
+            if (player == null || intentState == null || reservation == null) return;
+            IReadOnlyList<CardData> cards = intentState
                 .Development.ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
                 {
                     if (card?.Definition?.cardType != CardType.Hero

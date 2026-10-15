@@ -174,7 +174,7 @@ namespace Game.Ai.V2
         // Compute current-turn feasibility from the REAL actor/path/AP/card, not the snapshot
         // used by the earlier Provisioning prediction. No global world rebuild or AP threshold.
         internal static void ReconcileEconomyCompletionReservations(PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            IMissionIntentView intents, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             if (player == null || root == null || ctx == null)
                 return;
@@ -183,14 +183,14 @@ namespace Game.Ai.V2
                 StrategicResourceReservationLedger.CompletionOwners(player, turn);
             if (owners.Count == 0)
                 return;
-            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
+            List<MissionIntent> economy = (intents?.All ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
                 .Where(i => i != null && i.Kind == MissionKind.Economy && i.Economy != null
                     && (i.Economy.Kind == EconomyTaskKind.FoundBase
                         || i.Economy.Kind == EconomyTaskKind.BuildExtraction))
                 .ToList();
             foreach (string owner in owners)
             {
-                MissionIntent intent = intents.FirstOrDefault(i =>
+                MissionIntent intent = economy.FirstOrDefault(i =>
                     EconomyMissionPlanner.OwnerKey(i.LastAttemptKey) == owner);
                 if (intent == null)
                 {

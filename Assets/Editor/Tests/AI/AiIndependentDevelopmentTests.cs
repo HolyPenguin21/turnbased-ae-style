@@ -666,7 +666,7 @@ namespace Game.EditorTests
                 {
                     AiHandRegistry.GetOrCreate(_player, null, 0).AddCard(_facility);
                     Assert.That(DevelopmentOpportunityEvaluator.SelectedPreparationSite(
-                        ResearchProductionMode.Production, _player, AiHandRegistry.Peek(_player), _ctx), Is.EqualTo(Site));
+                        ResearchProductionMode.Production, _player, AiHandRegistry.Peek(_player), _ctx, MissionIntentRegistry.Peek(_player)), Is.EqualTo(Site));
                 }
                 var pm = new ProvisionedMission { Kind = MissionKind.Economy,
                     EconomyExtractionGarrisonArmyId = _garrison.Id, EconomyExtractionPlan = plan,

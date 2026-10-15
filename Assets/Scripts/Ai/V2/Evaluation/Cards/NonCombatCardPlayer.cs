@@ -472,7 +472,8 @@ namespace Game.Ai.V2
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ReconObjective> objectives)
         {
-            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
+            List<MissionIntent> intents = (snap?.Intents?.All
+                    ?? (IEnumerable<MissionIntent>)System.Array.Empty<MissionIntent>())
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             ActorCommitments commitments = ActorCommitments.FromIntents(intents, snap, objectives);
             return GroundCombatAirSupport.UncoveredRequests(snap, player, root, ctx,

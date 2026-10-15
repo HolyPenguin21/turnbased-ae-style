@@ -32,30 +32,30 @@ namespace Game.Ai.V2
 
         // A mission step settled: a single atomic move may have consumed the last MP after
         // Provisioning had legitimately reserved this owner's completion AP; settle its stage now.
-        internal static void AfterMissionSettlement(PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx)
+        internal static void AfterMissionSettlement(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, root, hand, ctx);
+            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, intents, root, hand, ctx);
         }
 
         // The ordinary passes are closed (also on bounded / no-progress exits where no further typed
         // admission occurs): Phase B must see the AP no actor can spend on a build; every build still
         // deferred is proven not to complete this turn, so the part of its hold the next income tick
         // covers is released; the Phase-A protection of continuing Hard operations ends.
-        internal static void BeforeFirstTempo(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
+        internal static void BeforeFirstTempo(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, root, hand, ctx);
+            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, intents, root, hand, ctx);
             EconomyReservationLifecycle.ReleaseDeferredEconomyIncomeCover(player, ctx);
             OperationContinuationWindow.Settle(player, ctx.TurnNumber);
         }
 
         // A Phase B round is about to spend: a prior Phase B action may have spent AP or removed a
         // build card, so revalidate each owner's stronger completion claim first.
-        internal static void BeforeTempoSpend(PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx)
+        internal static void BeforeTempoSpend(PlayerSetupData player, IMissionIntentView intents,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, root, hand, ctx);
+            EconomyReservationLifecycle.ReconcileEconomyCompletionReservations(player, intents, root, hand, ctx);
         }
     }
 }

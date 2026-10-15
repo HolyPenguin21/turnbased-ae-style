@@ -64,7 +64,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.CaptureStepObservation(_root, _hand, _frame.Snapshot);
                 StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
                     _frame.Snapshot, _player, _root, _hand, _ctx, _apBudget, coldDemands,
-                    _frame.Commitments, _frame.Intents, _frame.Recon,
+                    _frame.Commitments, _frame.IntentState, _frame.Intents, _frame.Recon,
                     _phases.Carried,
                     economyAxisAuthoritative: _coldAxes.Contains(DesireAxis.Economy),
                     radar: _radar);

@@ -238,12 +238,13 @@ namespace Game.Ai.V2
 
         // The same rule read from the LIVE world (hand, deck, registries, standing intents): the one
         // answer for Provisioning and Execution re-checks, never a stale snapshot.
+        // `intents` - the player's durable intents, supplied by the live caller.
         internal static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx)
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents)
         {
             if (player == null) return null;
             return SelectedPreparationSite(mode, player, hand, ctx,
-                MissionIntentRegistry.Peek(player)?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                intents?.All.Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
                 hand?.RemainingDeck,
                 OwnWorld.Of(player).Buildings.Where(b => b.IsBase)
                     .Select(b => b.Hex).ToList());
@@ -253,8 +254,8 @@ namespace Game.Ai.V2
         // takes the last qualified operator of a served facility / the selected preparation site away
         // and the operator cannot legally stay home (LocalOperatorRelease.CanKeepOperatorsHome).
         internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
-            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments) =>
-            OperatorDutyBlocksDeparture(player, army, commitments, LivePreparationSite(player, hand, ctx));
+            AiHandData hand, AiTurnContext ctx, ActorCommitments commitments, IMissionIntentView intents) =>
+            OperatorDutyBlocksDeparture(player, army, commitments, LivePreparationSite(player, hand, ctx, intents));
 
         internal static bool OperatorDutyBlocksDeparture(PlayerSetupData player, ArmyData army,
             ActorCommitments commitments, System.Func<ResearchProductionMode, HexCoord?> site) =>
@@ -262,14 +263,14 @@ namespace Game.Ai.V2
             && !LocalOperatorRelease.CanKeepOperatorsHome(player, army, commitments, site, out _);
 
         internal static System.Func<ResearchProductionMode, HexCoord?> LivePreparationSite(
-            PlayerSetupData player, AiHandData hand, AiTurnContext ctx) =>
-            mode => SelectedPreparationSite(mode, player, hand, ctx);
+            PlayerSetupData player, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents) =>
+            mode => SelectedPreparationSite(mode, player, hand, ctx, intents);
 
         // The operators the departing `army` leaves in the local garrison (empty when none is needed).
         internal static IReadOnlyList<UnitData> OperatorsStayingHome(PlayerSetupData player,
-            ArmyData army, AiHandData hand, AiTurnContext ctx) =>
+            ArmyData army, AiHandData hand, AiTurnContext ctx, IMissionIntentView intents) =>
             player == null || army == null || army.IsGarrison ? System.Array.Empty<UnitData>()
-                : LocalOperatorRelease.OperatorsNeededHome(player, army, LivePreparationSite(player, hand, ctx));
+                : LocalOperatorRelease.OperatorsNeededHome(player, army, LivePreparationSite(player, hand, ctx, intents));
 
         private static HexCoord? SelectedPreparationSite(ResearchProductionMode mode,
             PlayerSetupData player, AiHandData hand, AiTurnContext ctx,
@@ -455,7 +456,7 @@ namespace Game.Ai.V2
                 && i.Development.Hero.HasAbility(ResearchProductionSystem.RoleAbility(mode))
                 && OwnWorld.Of(player).Armies.Any(a => a != null && !a.IsPrison
                     && a.Members.Contains(i.Development.Hero))) == true;
-            DevelopmentLifecycleState lifecycle = MissionIntentRegistry.Peek(player)?.Development;
+            IDevelopmentLifecycleView lifecycle = snap.Intents?.Development;
             CardData pendingOperator = lifecycle?.GeneratedOperatorFor(hex, mode, snap.TurnNumber);
             CardData operatorCard = null;
             float operatorScore = 0f;

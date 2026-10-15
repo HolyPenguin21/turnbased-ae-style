@@ -113,7 +113,8 @@ namespace Game.Ai.V2
 
             PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apBudget, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
+                ctx, apBudget, demands, actorCommitments, MissionIntentRegistry.GetOrCreate(player), activeIntents,
+                reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             bool aggressionPressureFresh = false;

@@ -126,8 +126,7 @@ namespace Game.Ai.V2
             // suppression Base candidates read in AddBaseCandidates. A project nobody could
             // deliver for consecutive turns is not re-selected (and its H/E/M/T is not held)
             // during its cooldown.
-            MissionIntentState intentState = player != null
-                ? MissionIntentRegistry.GetOrCreate(player) : null;
+            IMissionIntentView intentState = player != null ? s.Intents : null;
 
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
@@ -1397,14 +1396,15 @@ namespace Game.Ai.V2
             AxisDemand best = null;
             (float Value, HexCoord Hex, string Card, float Economic, float Payback,
                 float Global, float Expansion)? bestRejected = null;
-            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
+            IMissionIntentView intentState = s.Intents;
             var meaningfulDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
                 {
                     considered++;
-                    if (intentState.Economy.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
+                    if (intentState != null
+                        && intentState.Economy.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
                     {
                         thresholdRejected++;
                         continue;

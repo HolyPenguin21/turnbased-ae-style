@@ -200,7 +200,7 @@ namespace Game.Ai.V2
             else
             {
                 phaseA = StrategicManager.FulfillDemands(frame.Snapshot, player, root, hand,
-                    ctx, apBudget, frame.Demands, frame.Commitments, frame.Intents, frame.Recon,
+                    ctx, apBudget, frame.Demands, frame.Commitments, frame.IntentState, frame.Intents, frame.Recon,
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }

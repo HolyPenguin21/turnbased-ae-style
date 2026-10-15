@@ -538,7 +538,8 @@ namespace Game.Ai.V2
                 && !buildings.Any(b => IsHostileStrategicStructure(b, player))
                 && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
                 yield return citadel;
-            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            foreach (MissionIntent i in snap.Intents?.All
+                ?? (IEnumerable<MissionIntent>)Array.Empty<MissionIntent>())
             {
                 AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
                     ? i.Attack : null;
