@@ -283,7 +283,7 @@
         //  LONGER a flat "+0.75 because the ability is present". Its value is
         //     perTurnValue x yield x (horizon x futureOpportunity) x marginalApUtility
         //         x carrierPersistence x saturation
-        //  (generation risk is owned once by StrategicCardEvaluator.GenerationRiskDiscount, never here)
+        //  (generation risk is owned once by StrategicUseScoreBreakdown.GenerationRiskDiscount, never here)
         //  computed from snapshot-pure state (SelfSnapshot.ApEconomy). All descriptor-driven — a
         //  new global recurring effect (Energy/turn, draw/N turns, movement budget) is one more
         //  StrategicEffect row, no evaluator edit. Meant to be tuned against real AiDebug runs.

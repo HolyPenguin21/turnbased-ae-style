@@ -1008,9 +1008,9 @@ namespace Game.Ai.V2
         private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
         // =======================================================================================
-        //  C. MeasureCapacity — Demand's ONE read-only aggregate query. Moved verbatim from
-        //  DemandLayer.ComputeReconWitness/SolveReconFlow (spec §5/§9 checklist) — Demand must
-        //  not know HOW the matching is produced, only the resulting witnessed counts.
+        //  C. MeasureCapacity — Demand's ONE read-only aggregate query, moved here from DemandLayer
+        //  together with SolveReconFlow (spec §5/§9 checklist) — Demand must not know HOW the
+        //  matching is produced, only the resulting witnessed counts.
         //
         //     A small max-flow network, not a bipartite matching — see the historical note kept
         //     below (unchanged reasoning, only the owner moved):
