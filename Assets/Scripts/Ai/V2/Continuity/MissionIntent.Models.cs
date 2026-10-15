@@ -273,7 +273,7 @@ namespace Game.Ai.V2
 
         // RecoveryReturn is a continuation leg of this same durable Raid. The selected base
         // remains fixed until it is lost/unreachable; arrival retires the Raid outright (see
-        // MissionContinuityLayer.CompleteRaidRecoveryReturn) rather than resuming it.
+        // RaidContinuity.CompleteRaidRecoveryReturn) rather than resuming it.
         public HexCoord? RecoveryBaseHex;
 
         // Turn on which the reinforcement demand was raised, so exactly ONE support intent is

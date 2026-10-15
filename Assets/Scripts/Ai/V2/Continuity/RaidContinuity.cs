@@ -5,16 +5,17 @@ using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
+using static Game.Ai.V2.MissionContinuityLayer;
 
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  RAID CONTINUITY — a mechanical partial of MissionContinuityLayer, the Raid counterpart of
-    //  MissionContinuityLayer.Attack.cs: the Raid lane's own lifecycle answers (phase machine,
+    //  RAID CONTINUITY — the Raid line's own owner, the counterpart of AttackContinuity;
+    //  MissionContinuityLayer composes it by mission kind. The Raid lane's lifecycle answers (phase machine,
     //  recovery, support legs, walk-home completion). Intents still live in the one
     //  MissionIntentState and are reaped by the same rules.
     // ===========================================================================================
-    internal static partial class MissionContinuityLayer
+    internal static class RaidContinuity
     {
         // Only the assault leg owns the previous target; support/return are independent legs.
         internal static bool IsRaidStepObjectiveSatisfiedLive(PlayerSetupData player, ProvisionedMission pm) =>
@@ -25,7 +26,7 @@ namespace Game.Ai.V2
         // ResolveAttackIntent). Returns false when the intent must be retired; true keeps it, and
         // ResolveActive adds it to this pass's active set while it is Active.
         // `raidClaims` — every durable claim (recovery may not recruit another operation's actor).
-        private static bool ResolveRaidIntent(PlayerSetupData player, WorldSnapshot snap,
+        internal static bool ResolveRaidIntent(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, ISet<int> raidClaims,
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
@@ -317,7 +318,7 @@ namespace Game.Ai.V2
         // fallback with an unclaimed actor. Any next Raid / Attack / ActiveDefence is proposed as
         // a fresh mission and competes through TaskScore + the global allocator.
         // Returns false only when the operation cannot continue in any phase (caller retires it).
-        private static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
+        internal static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, RaidIntent ri, ISet<int> unavailableArmyIds,
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
@@ -600,7 +601,7 @@ namespace Game.Ai.V2
         // `winChanceGate` defaults to the fresh start gate (the "clears again" exits keep it as
         // hysteresis); a started operation's own stay-in-Assault check passes the continuation
         // floor, so this re-check is never stricter than the admission it re-checks.
-        internal static bool PrimaryClearsTarget(WorldSnapshot snap, PlayerSetupData player,
+        private static bool PrimaryClearsTarget(WorldSnapshot snap, PlayerSetupData player,
             int? primaryArmyId, RaidTargetRef target, float? winChanceGate = null)
         {
             if (snap == null || !primaryArmyId.HasValue || !target.HasValue)
@@ -685,7 +686,7 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool TryCompleteRaidTarget(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCompleteRaidTarget(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             string aid = AiV2Trace.FormatCorrelation(o.Proposal);
@@ -720,7 +721,7 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool TryCreateRaidStep(MissionIntentState state, AiAllocatorState allocState,
+        internal static bool TryCreateRaidStep(MissionIntentState state, AiAllocatorState allocState,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (!(o.RaidFacts().HasRaidPayload && o.GroundFacts().OperationStarted)) return false;
@@ -728,7 +729,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool TryApplyRaidMoverFacts(MissionIntentState state, AiAllocatorState allocator,
+        internal static bool TryApplyRaidMoverFacts(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             // For a Raid the executor of a given turn may be the
@@ -769,7 +770,7 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static void ApplyRaidStepFacts(MissionIntentState state, AiAllocatorState allocator,
+        internal static void ApplyRaidStepFacts(MissionIntentState state, AiAllocatorState allocator,
             MissionIntent intent, MissionStepResult o, int turn)
         {
             if (o.RaidFacts().HasRaidPayload && intent.Raid != null)
@@ -788,7 +789,7 @@ namespace Game.Ai.V2
 
         }
 
-        private static void ResolveRaidOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
+        internal static void ResolveRaidOperation(Game.Players.PlayerSetupData player, WorldSnapshot snap, MissionIntent intent, ActiveResolution pass)
         {
             var state = pass.State;
             var active = pass.Active;
@@ -807,7 +808,7 @@ namespace Game.Ai.V2
             return;
         }
 
-        private static void CaptureRaidProvisionFacts(ProvisionedMission pm, MissionStepResult o)
+        internal static void CaptureRaidProvisionFacts(ProvisionedMission pm, MissionStepResult o)
         {
             o.RaidFactsForWrite().HasRaidPayload = true;
             o.RaidFactsForWrite().RaidTarget = pm.RaidTarget;
@@ -821,7 +822,7 @@ namespace Game.Ai.V2
             o.RaidFactsForWrite().RaidRefitAction = pm.RaidRefitAction;
         }
 
-        private static void CaptureRaidExecutionFacts(ExecutionResult e, MissionStepResult o)
+        internal static void CaptureRaidExecutionFacts(ExecutionResult e, MissionStepResult o)
         {
             bool raidEngaged = o.MissionKind == MissionKind.Raid
                 && (e.StopReason == ExecutionStopReason.BattleStarted

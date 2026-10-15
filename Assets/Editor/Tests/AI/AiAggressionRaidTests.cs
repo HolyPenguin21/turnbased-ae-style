@@ -542,7 +542,7 @@ namespace Game.EditorTests
             MissionIntent intent = PutRaidIntent(player, primaryArmyId: 1,
                 target: RaidTargetRef.ForNeutralArmy(2), phase: RaidMissionPhase.Reinforcement);
 
-            MissionContinuityLayer.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
+            RaidContinuity.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
 
             Assert.That(intent.Raid.Phase, Is.EqualTo(RaidMissionPhase.SupportReturn));
             Assert.That(intent.Raid.SupportArmyId, Is.EqualTo(3));
@@ -560,7 +560,7 @@ namespace Game.EditorTests
             MissionIntent intent = PutRaidIntent(player, primaryArmyId: 1,
                 target: RaidTargetRef.ForNeutralArmy(2), phase: RaidMissionPhase.Reinforcement);
 
-            MissionContinuityLayer.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
+            RaidContinuity.BeginRaidSupportReturn(player, snap, primaryArmyId: 1, supportArmyId: 3, "test");
 
             Assert.That(intent.Raid.Phase, Is.Not.EqualTo(RaidMissionPhase.SupportReturn));
             Assert.That(intent.Raid.SupportArmyId, Is.Null);
@@ -576,7 +576,7 @@ namespace Game.EditorTests
             intent.Raid.SupportArmyId = 3;
             intent.Raid.SupportReturnHex = new HexCoord(0, 0);
 
-            MissionContinuityLayer.CompleteRaidSupportReturn(player, snap, primaryArmyId: 1, "test");
+            RaidContinuity.CompleteRaidSupportReturn(player, snap, primaryArmyId: 1, "test");
 
             Assert.That(intent.Raid.SupportArmyId, Is.Null);
             Assert.That(intent.Raid.SupportReturnHex, Is.Null);

@@ -33,7 +33,7 @@ namespace Game.Ai.V2
         }
 
         // The ActiveDefence lane's own lifecycle answer for ResolveActive (the counterpart of
-        // ResolveAttackIntent / ResolveRaidIntent). False retires the intent. A Return whose home
+        // ResolveAttackIntent / RaidContinuity.ResolveRaidIntent). False retires the intent. A Return whose home
         // had to be re-picked is re-keyed through `rekeys` (its identity is mover + destination).
         private static bool ResolveActiveDefenceIntent(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)

@@ -10,7 +10,7 @@ namespace Game.Ai.V2
             ExecutionClassifiers = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
                 [MissionKind.Scout] = ReconContinuity.ClassifyScoutStep,
-                [MissionKind.Raid] = ClassifyRaidStep,
+                [MissionKind.Raid] = RaidContinuity.ClassifyRaidStep,
                 [MissionKind.Attack] = ClassifyAttackStep,
                 [MissionKind.Economy] = EconomyContinuity.ClassifyEconomyStep,
                 [MissionKind.Development] = DevelopmentContinuity.ClassifyDevelopmentStep,
@@ -19,7 +19,7 @@ namespace Game.Ai.V2
             LiveObjectiveReaders = new Dictionary<MissionKind, Func<Game.Players.PlayerSetupData, ProvisionedMission, bool>>
             {
                 [MissionKind.Scout] = ReconContinuity.IsScoutStepObjectiveSatisfiedLive,
-                [MissionKind.Raid] = IsRaidStepObjectiveSatisfiedLive,
+                [MissionKind.Raid] = RaidContinuity.IsRaidStepObjectiveSatisfiedLive,
                 [MissionKind.Attack] = IsAttackStepObjectiveSatisfiedLive,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.IsActiveDefenceStepObjectiveSatisfiedLive,
                 [MissionKind.Economy] = EconomyContinuity.IsEconomyStepObjectiveSatisfiedLive,
@@ -41,7 +41,7 @@ namespace Game.Ai.V2
             else MissionStepResultPolicy.ClassifyDefaultExecution(execution, outcome);
         }
         internal static bool TryClassifySatisfiedDomainLeg(MissionStepResult outcome) =>
-            outcome.MissionKind == MissionKind.Raid && TryClassifySatisfiedRaidLeg(outcome);
+            outcome.MissionKind == MissionKind.Raid && RaidContinuity.TryClassifySatisfiedRaidLeg(outcome);
         internal static void ClassifyInvalidatedDomainTarget(MissionStepResult outcome)
         {
             if (InvalidatedTargetContinues.TryGetValue(outcome.MissionKind, out var continues)
@@ -57,12 +57,12 @@ namespace Game.Ai.V2
         private static readonly OutcomeTransition[] SideLegTransitions =
             { TryHandleAttackSideLeg, GroundCombatContinuity.TryHandleInvalidGroundSupport };
         private static readonly OutcomeTransition[] CompletionTransitions =
-            { TryCompleteRaidTarget, TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
+            { RaidContinuity.TryCompleteRaidTarget, TryCompleteAttackLeg, ReconContinuity.TryContinueScoutWaypoint };
         private static readonly OutcomeTransition[] RecoveryTransitions = { EconomyContinuity.TryKeepEconomyRecovery };
         private static readonly OutcomeObservation[] RetirementPreparers = { EconomyContinuity.PrepareEconomyRetirement };
         private static readonly OutcomeTransition[] NoProgressTransitions = { EconomyContinuity.TryHandleEconomyNoProgress };
         private static readonly OutcomeTransition[] CreationTransitions =
-            { ReconContinuity.TryCreateScoutStep, TryCreateRaidStep, TryCreateAttackStep, ActiveDefenceContinuity.TryCreateActiveDefenceStep,
+            { ReconContinuity.TryCreateScoutStep, RaidContinuity.TryCreateRaidStep, TryCreateAttackStep, ActiveDefenceContinuity.TryCreateActiveDefenceStep,
                 EconomyContinuity.TryCreateEconomyStep, DevelopmentContinuity.TryCreateDevelopmentStep };
         private static readonly Action<MissionIntentState, MissionStepResult, int>[] ProgressRecorders =
             { EconomyContinuity.RecordEconomyStepProgress };
@@ -81,9 +81,9 @@ namespace Game.Ai.V2
             MissionIntent intent, MissionStepResult result, int turn);
         private static readonly OutcomeObservation[] BeforeMoverObservers = { ReconContinuity.ObserveReconMover };
         private static readonly OutcomeTransition[] MoverTransitions =
-            { TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
+            { RaidContinuity.TryApplyRaidMoverFacts, TryPreserveAttackSupportMover, TryPreservePinnedDomainMover };
         private static readonly OutcomeObservation[] IntentFactObservers =
-            { ReconContinuity.ApplyScoutStepFacts, ApplyAttackStepFacts, ApplyRaidStepFacts, EconomyContinuity.ApplyEconomyStepFacts };
+            { ReconContinuity.ApplyScoutStepFacts, ApplyAttackStepFacts, RaidContinuity.ApplyRaidStepFacts, EconomyContinuity.ApplyEconomyStepFacts };
         private static readonly OutcomeTransition[] CapabilityFailureTransitions =
             { EconomyContinuity.TryHandleEconomyCapabilityFailure };
 
@@ -148,13 +148,13 @@ namespace Game.Ai.V2
                 [MissionKind.Economy] = EconomyContinuity.ResolveEconomyOperation,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.ResolveDefenceOperation,
                 [MissionKind.Attack] = ResolveAttackOperation,
-                [MissionKind.Raid] = ResolveRaidOperation,
+                [MissionKind.Raid] = RaidContinuity.ResolveRaidOperation,
             };
 
         private static readonly IReadOnlyDictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
             ProvisionFactReaders = new Dictionary<MissionKind, Action<ProvisionedMission, MissionStepResult>>
             {
-                [MissionKind.Raid] = CaptureRaidProvisionFacts,
+                [MissionKind.Raid] = RaidContinuity.CaptureRaidProvisionFacts,
                 [MissionKind.Attack] = CaptureAttackProvisionFacts,
                 [MissionKind.ActiveDefence] = ActiveDefenceContinuity.CaptureActiveDefenceProvisionFacts,
                 [MissionKind.Economy] = EconomyContinuity.CaptureEconomyProvisionFacts,
@@ -164,7 +164,7 @@ namespace Game.Ai.V2
             ExecutionFactReaders = new Dictionary<MissionKind, Action<ExecutionResult, MissionStepResult>>
             {
                 [MissionKind.Scout] = ReconContinuity.CaptureScoutExecutionFacts,
-                [MissionKind.Raid] = CaptureRaidExecutionFacts,
+                [MissionKind.Raid] = RaidContinuity.CaptureRaidExecutionFacts,
                 [MissionKind.Attack] = CaptureAttackExecutionFacts,
                 [MissionKind.Economy] = EconomyContinuity.CaptureEconomyExecutionFacts,
                 [MissionKind.Development] = DevelopmentContinuity.CaptureDevelopmentExecutionFacts,

@@ -69,7 +69,7 @@ namespace Game.Ai.V2
                     if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
 
                     // Build is a pure snapshot read; it never mutates the real RaidIntent. The
-                    // Assault -> Reinforcement transition is MissionContinuityLayer.AdvanceRaidPhase's
+                    // Assault -> Reinforcement transition is RaidContinuity.AdvanceRaidPhase's
                     // job; the ReinforcementRequestedTurn dedup stamp is written only once a
                     // materialization for this exact ConsumerIntentKey is accepted/funded
                     // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build also serves the
